@@ -442,8 +442,15 @@
       async init() {
         // Require authentication
         const user = await Auth.requireAuth();
-        if (!user) return;
-        this.userId = user.id;
+
+        // Demo mode: if user is null and CONFIG.DEMO_MODE is true, load demo data
+        if (!user && CONFIG.DEMO_MODE) {
+          this.loadDemoData();
+        } else if (!user) {
+          return;
+        } else {
+          this.userId = user.id;
+        }
 
         // Render navigation
         Nav.renderHeader({ active: '' });
@@ -453,20 +460,45 @@
         const params = new URLSearchParams(window.location.search);
         this.claimId = params.get('claim_id');
 
-        if (!this.claimId) {
+        if (!this.claimId && !CONFIG.DEMO_MODE) {
           alert('No claim found. Redirecting to dashboard.');
           window.location.href = '/dashboard.html';
           return;
         }
 
-        // Load claim data
-        await this.loadClaimData();
+        // Load claim data (or use demo data if in demo mode)
+        if (CONFIG.DEMO_MODE && !user) {
+          // Demo data already loaded, just render
+          this.renderColorOptions();
+          this.renderVisualizer();
+        } else {
+          await this.loadClaimData();
+          this.renderColorOptions();
+          this.renderVisualizer();
+        }
+      },
 
-        // Render options based on brand
-        this.renderColorOptions();
+      /**
+       * Load demo data for testing
+       */
+      loadDemoData() {
+        this.claimId = 'demo-claim-001';
+        this.userId = 'demo-user-001';
+        this.contractorId = 'demo-contractor-001';
+        this.contractorName = 'Hoosier Roofing Co.';
+        this.brand = 'GAF';
 
-        // Render visualizer if applicable
-        this.renderVisualizer();
+        // Update subtitle
+        const subtitle = document.getElementById('color-subtitle');
+        if (subtitle) {
+          subtitle.textContent = `Your contractor ${this.contractorName} uses ${this.brand}. Let's pick the perfect color for your home.`;
+        }
+
+        // Update brand display
+        const brandDisplay = document.getElementById('brand-display-value');
+        if (brandDisplay) {
+          brandDisplay.textContent = this.brand;
+        }
       },
 
       /**

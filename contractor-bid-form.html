@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submit Your Bid | ClaimShield Contractor Portal</title>
+
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-JNQ6XR3LX2');
+  </script>
+
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+
+  <!-- Design System -->
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+
+  <style>
+    :root {
+      --navy: #0B1929;
+      --navy-2: #0F2440;
+      --navy-3: #132D50;
+      --amber: #F59E0B;
+      --white: #FFFFFF;
+      --slate: #94A3B8;
+      --light: #E2E8F0;
+      --sp-1: 0.25rem;
+      --sp-2: 0.5rem;
+      --sp-3: 0.75rem;
+      --sp-4: 1rem;
+      --sp-6: 1.5rem;
+      --sp-8: 2rem;
+      --sp-12: 3rem;
+      --sp-16: 4rem;
+      --sp-24: 6rem;
+      --radius-sm: 0.375rem;
+      --radius-md: 0.5rem;
+      --radius-lg: 0.75rem;
+      --radius-xl: 1rem;
+      --font-body: 'DM Sans', sans-serif;
+      --font-heading: 'Playfair Display', serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--navy);
+      background-color: #F8FAFC;
+      line-height: 1.6;
+    }
+
+    main {
+      flex: 1;
+      padding: var(--sp-8) var(--sp-4);
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .page-header {
+      margin-bottom: var(--sp-12);
+    }
+
+    .page-header h1 {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: var(--sp-2);
+    }
+
+    .lead-id {
+      font-size: 0.875rem;
+      color: var(--slate);
+      font-weight: 500;
+    }
+
+    .lead-summary {
+      background: var(--white);
+      border: 1px solid #CBD5E1;
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+    }
+
+    .lead-summary-title {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--navy);
+      margin-bottom: var(--sp-6);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--sp-6);
+    }
+
+    .summary-item {
+      padding: var(--sp-4);
+      background: #F8FAFC;
+      border-radius: var(--radius-md);
+    }
+
+    .summary-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--slate);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: var(--sp-2);
+    }
+
+    .summary-value {
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--navy);
+    }
+
+    .summary-highlight {
+      font-size: 0.875rem;
+      color: var(--navy-3);
+      margin-top: var(--sp-2);
+      padding: var(--sp-3) var(--sp-4);
+      background: #EFF6FF;
+      border-left: 2px solid var(--amber);
+      border-radius: var(--radius-sm);
+    }
+
+    .form-card {
+      background: var(--white);
+      border: 1px solid #CBD5E1;
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+    }
+
+    .form-card-title {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--navy);
+      margin-bottom: var(--sp-6);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: var(--sp-6);
+    }
+
+    .form-grid.full {
+      grid-template-columns: 1fr;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form-group label {
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--navy);
+      margin-bottom: var(--sp-2);
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      padding: var(--sp-3) var(--sp-4);
+      border: 1px solid #CBD5E1;
+      border-radius: var(--radius-md);
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      color: var(--navy);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--amber);
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .form-help {
+      font-size: 0.8rem;
+      color: var(--slate);
+      margin-top: var(--sp-2);
+    }
+
+    .fee-calculator {
+      background: var(--navy-3);
+      border: 1px solid var(--navy-2);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+      color: var(--white);
+    }
+
+    .fee-calculator-title {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: var(--sp-6);
+      color: var(--amber);
+    }
+
+    .fee-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--sp-4) 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.95rem;
+    }
+
+    .fee-row.total {
+      border-top: 2px solid var(--amber);
+      border-bottom: none;
+      padding-top: var(--sp-6);
+      margin-top: var(--sp-4);
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+
+    .fee-row.net {
+      background: rgba(245, 158, 11, 0.15);
+      padding: var(--sp-4);
+      margin-top: var(--sp-4);
+      border-radius: var(--radius-md);
+      border: none;
+    }
+
+    .fee-label {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+    }
+
+    .fee-check {
+      color: var(--amber);
+      font-weight: bold;
+    }
+
+    .fee-amount {
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    .fee-percentage {
+      font-size: 0.85rem;
+      color: #94A3B8;
+      margin-left: var(--sp-2);
+    }
+
+    .fee-info {
+      background: rgba(245, 158, 11, 0.1);
+      border-left: 2px solid var(--amber);
+      padding: var(--sp-4);
+      border-radius: var(--radius-sm);
+      margin-top: var(--sp-6);
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+
+    .fee-info-link {
+      color: var(--amber);
+      text-decoration: none;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+    }
+
+    .fee-info-link:hover {
+      text-decoration: underline;
+    }
+
+    .submit-section {
+      background: var(--white);
+      border: 1px solid #CBD5E1;
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-12);
+    }
+
+    .submit-button {
+      background: var(--amber);
+      color: var(--navy);
+      padding: var(--sp-4) var(--sp-8);
+      border: none;
+      border-radius: var(--radius-md);
+      font-family: var(--font-body);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+      width: 100%;
+      margin-bottom: var(--sp-6);
+    }
+
+    .submit-button:hover {
+      background: #DDA500;
+    }
+
+    .submit-button:active {
+      transform: scale(0.98);
+    }
+
+    .submit-button:disabled {
+      background: #D1D5DB;
+      cursor: not-allowed;
+      color: var(--slate);
+    }
+
+    .submit-disclaimer {
+      font-size: 0.85rem;
+      color: var(--slate);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .success-state {
+      background: #ECFDF5;
+      border: 1px solid #6EE7B7;
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      text-align: center;
+      color: #065F46;
+      display: none;
+      margin-top: var(--sp-8);
+    }
+
+    .success-state.show {
+      display: block;
+    }
+
+    .success-icon {
+      font-size: 2rem;
+      margin-bottom: var(--sp-4);
+    }
+
+    @media (max-width: 768px) {
+      main {
+        padding: var(--sp-6) var(--sp-4);
+      }
+
+      .page-header h1 {
+        font-size: 1.75rem;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .fee-row {
+        flex-wrap: wrap;
+      }
+
+      .fee-label {
+        width: 100%;
+        margin-bottom: var(--sp-2);
+      }
+
+      .fee-amount {
+        width: 100%;
+        text-align: right;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header id="site-header" data-auth="false"></header>
+
+  <main>
+    <div class="page-header">
+      <h1>Submit Your Bid</h1>
+      <div class="lead-id">Lead ID: <strong>CS-2026-0001</strong></div>
+    </div>
+
+    <!-- Lead Summary -->
+    <div class="lead-summary">
+      <div class="lead-summary-title">Lead Summary</div>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-label">Location</div>
+          <div class="summary-value">Indianapolis, IN 46208</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Damage Type</div>
+          <div class="summary-value">Roof — Hail & Wind</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Insurance Carrier</div>
+          <div class="summary-value">State Farm</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Material Selected</div>
+          <div class="summary-value">GAF Architectural</div>
+        </div>
+      </div>
+      <div class="summary-highlight">
+        ✓ This homeowner has selected <strong>GAF Architectural Shingles, Class 4 Impact Resistant</strong>
+      </div>
+    </div>
+
+    <!-- Bid Form -->
+    <div class="form-card">
+      <div class="form-card-title">Your Bid Details</div>
+      <form id="bidForm" class="form-grid">
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label for="totalPrice">Total Bid Price *</label>
+          <input type="number" id="totalPrice" name="totalPrice" placeholder="Enter your total bid price" value="19850" required min="500" step="0.01">
+          <div class="form-help">Enter your complete bid for this roofing job including labor and materials</div>
+        </div>
+
+        <div class="form-group">
+          <label for="brandProduct">Brand & Product Line *</label>
+          <input type="text" id="brandProduct" name="brandProduct" placeholder="e.g., GAF Timberline HDZ" value="GAF Timberline HDZ" required>
+        </div>
+
+        <div class="form-group">
+          <label for="startDate">Estimated Start Date *</label>
+          <input type="date" id="startDate" name="startDate" required>
+        </div>
+
+        <div class="form-group">
+          <label for="completionTime">Estimated Completion Time *</label>
+          <select id="completionTime" name="completionTime" required>
+            <option value="">Select completion time</option>
+            <option value="1-2 days">1-2 days</option>
+            <option value="3-5 days">3-5 days</option>
+            <option value="1-2 weeks">1-2 weeks</option>
+            <option value="2-4 weeks">2-4 weeks</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="workmanshipWarranty">Workmanship Warranty (years) *</label>
+          <input type="number" id="workmanshipWarranty" name="workmanshipWarranty" placeholder="e.g., 10" value="10" required min="1" max="50">
+        </div>
+
+        <div class="form-group">
+          <label for="manufacturerWarranty">Manufacturer Warranty (years) *</label>
+          <input type="number" id="manufacturerWarranty" name="manufacturerWarranty" placeholder="e.g., 30" value="30" required min="1" max="50">
+        </div>
+
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label for="warrantySummary">Warranty Summary *</label>
+          <input type="text" id="warrantySummary" name="warrantySummary" placeholder="e.g., Lifetime architectural shingle warranty + 10-year workmanship" value="Lifetime architectural shingle warranty + 10-year workmanship" required>
+          <div class="form-help">Summarize the complete warranty coverage you're offering</div>
+        </div>
+
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label for="homeownerMessage">Message to Homeowner</label>
+          <textarea id="homeownerMessage" name="homeownerMessage" placeholder="Add a personal note for the homeowner (optional)" maxlength="500"></textarea>
+          <div class="form-help"><span id="charCount">0</span>/500 characters</div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Fee Calculator -->
+    <div class="fee-calculator">
+      <div class="fee-calculator-title">Platform Fee Breakdown</div>
+
+      <div class="fee-row">
+        <span>Your Bid:</span>
+        <span class="fee-amount" id="displayBid">$19,850.00</span>
+      </div>
+
+      <div style="margin-top: var(--sp-6); margin-bottom: var(--sp-4);">
+        <div class="fee-row">
+          <span class="fee-label">
+            <span class="fee-check">✓</span>
+            <span>Contract Signing (base)</span>
+            <span class="fee-percentage">5.0%</span>
+          </span>
+          <span class="fee-amount" id="feeContractSigning">$992.50</span>
+        </div>
+
+        <div class="fee-row">
+          <span class="fee-label">
+            <span class="fee-check">✓</span>
+            <span>Color Selection</span>
+            <span class="fee-percentage">3.0%</span>
+          </span>
+          <span class="fee-amount" id="feeColorSelection">$595.50</span>
+        </div>
+
+        <div class="fee-row">
+          <span class="fee-label">
+            <span class="fee-check">✓</span>
+            <span>Deductible Collection</span>
+            <span class="fee-percentage">5.0%</span>
+          </span>
+          <span class="fee-amount" id="feeDeductibleCollection">$992.50</span>
+        </div>
+      </div>
+
+      <div class="fee-row total">
+        <span>Total Platform Fee</span>
+        <div>
+          <span class="fee-amount" id="totalFeePercent">13.0%</span>
+          <span style="margin-left: var(--sp-2); font-weight: 400;">= <span class="fee-amount" id="totalFeeAmount">$2,580.50</span></span>
+        </div>
+      </div>
+
+      <div class="fee-row net">
+        <span>Your Net:</span>
+        <span class="fee-amount" id="yourNet">$17,269.50</span>
+      </div>
+
+      <div class="fee-info">
+        <div>ℹ Color selection and scheduling fees based on your service tier settings. Deductible collection is mandatory.</div>
+        <a href="contractor-settings.html" class="fee-info-link">
+          Adjust your service tier → Settings
+        </a>
+      </div>
+    </div>
+
+    <!-- Submit Section -->
+    <div class="submit-section">
+      <button type="submit" form="bidForm" class="submit-button" id="submitBtn">Submit Bid</button>
+      <div class="submit-disclaimer">
+        By submitting, you agree to the platform fees shown above.<br>
+        The homeowner will be notified immediately upon receipt.
+      </div>
+      <div class="success-state" id="successState">
+        <div class="success-icon">✓</div>
+        <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: var(--sp-3);">Bid submitted!</div>
+        <div>The homeowner will be notified and can review your bid details.</div>
+      </div>
+    </div>
+  </main>
+
+  <footer id="site-footer"></footer>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+
+  <script>
+    // Fee calculator configuration
+    const PLATFORM_FEES = {
+      contractSigning: 0.05,    // 5%
+      colorSelection: 0.03,     // 3%
+      deductibleCollection: 0.05 // 5%
+    };
+
+    // Contractor tier settings (demo)
+    const contractorTiers = {
+      colorSelection: true,
+      deductibleCollection: true
+    };
+
+    const priceInput = document.getElementById('totalPrice');
+    const charCountEl = document.getElementById('charCount');
+    const messageInput = document.getElementById('homeownerMessage');
+    const bidForm = document.getElementById('bidForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const successState = document.getElementById('successState');
+
+    // Update fee calculator
+    function updateFeeCalculator() {
+      const bidAmount = parseFloat(priceInput.value) || 0;
+
+      // Calculate fees
+      const contractSigningFee = bidAmount * PLATFORM_FEES.contractSigning;
+      const colorSelectionFee = contractorTiers.colorSelection ? bidAmount * PLATFORM_FEES.colorSelection : 0;
+      const deductibleCollectionFee = contractorTiers.deductibleCollection ? bidAmount * PLATFORM_FEES.deductibleCollection : 0;
+
+      const totalFee = contractSigningFee + colorSelectionFee + deductibleCollectionFee;
+      const totalFeePercent = bidAmount > 0 ? (totalFee / bidAmount * 100).toFixed(1) : 0;
+      const netAmount = bidAmount - totalFee;
+
+      // Update display
+      document.getElementById('displayBid').textContent = formatCurrency(bidAmount);
+      document.getElementById('feeContractSigning').textContent = formatCurrency(contractSigningFee);
+      document.getElementById('feeColorSelection').textContent = formatCurrency(colorSelectionFee);
+      document.getElementById('feeDeductibleCollection').textContent = formatCurrency(deductibleCollectionFee);
+      document.getElementById('totalFeePercent').textContent = totalFeePercent + '%';
+      document.getElementById('totalFeeAmount').textContent = formatCurrency(totalFee);
+      document.getElementById('yourNet').textContent = formatCurrency(netAmount);
+    }
+
+    function formatCurrency(value) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(value);
+    }
+
+    // Character counter
+    messageInput.addEventListener('input', (e) => {
+      charCountEl.textContent = e.target.value.length;
+    });
+
+    // Price input listener
+    priceInput.addEventListener('input', updateFeeCalculator);
+
+    // Form submission
+    bidForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      // Validate form
+      if (!bidForm.checkValidity()) {
+        alert('Please fill in all required fields');
+        return;
+      }
+
+      // Show success state
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+
+      setTimeout(() => {
+        bidForm.style.display = 'none';
+        successState.classList.add('show');
+      }, 800);
+    });
+
+    // Initial calculation
+    updateFeeCalculator();
+
+    // Set default start date to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').value = today;
+  </script>
+</body>
+</html>

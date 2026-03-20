@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contractor Login — ClaimShield</title>
+<meta name="description" content="Log in to your ClaimShield contractor portal to view leads, manage bids, and grow your business.">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.cl-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: calc(100vh - 64px);
+}
+
+.cl-left {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-12) var(--sp-8);
+}
+
+.cl-form-wrap {
+  width: 100%;
+  max-width: 440px;
+}
+
+.cl-form-wrap h1 {
+  font-size: 2rem;
+  margin-bottom: var(--sp-2);
+}
+
+.cl-form-wrap .subtitle {
+  color: var(--slate);
+  font-size: 1rem;
+  margin-bottom: var(--sp-8);
+  line-height: 1.6;
+}
+
+.cl-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.cl-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: var(--sp-6) 0;
+  color: var(--gray);
+  font-size: 0.85rem;
+}
+
+.cl-divider::before,
+.cl-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.1);
+}
+
+.cl-join-cta {
+  text-align: center;
+  padding: var(--sp-6);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg);
+}
+
+.cl-join-cta p {
+  color: var(--slate);
+  font-size: 0.95rem;
+  margin-bottom: var(--sp-4);
+}
+
+.cl-right {
+  background: var(--navy-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-12) var(--sp-8);
+  border-left: 1px solid rgba(255,255,255,0.06);
+}
+
+.cl-benefits {
+  max-width: 380px;
+}
+
+.cl-benefits h2 {
+  font-size: 1.5rem;
+  margin-bottom: var(--sp-8);
+}
+
+.benefit-item {
+  display: flex;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
+}
+
+.benefit-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--amber-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.benefit-text h4 {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: var(--sp-1);
+}
+.benefit-text p { font-size: 0.85rem; }
+
+/* ── Magic link sent state ── */
+.magic-link-sent {
+  display: none;
+  text-align: center;
+  padding: var(--sp-8) 0;
+}
+
+.magic-link-sent.active { display: block; }
+.cl-form.hidden { display: none; }
+.cl-divider.hidden { display: none; }
+.cl-join-cta.hidden { display: none; }
+
+.magic-link-icon {
+  font-size: 3rem;
+  margin-bottom: var(--sp-4);
+}
+
+.magic-link-sent h2 {
+  font-size: 1.5rem;
+  margin-bottom: var(--sp-3);
+}
+
+.magic-link-sent p { max-width: 340px; margin: 0 auto; }
+
+.magic-link-email {
+  display: inline-block;
+  background: var(--amber-glow);
+  color: var(--amber);
+  font-weight: 700;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-sm);
+  margin: var(--sp-3) 0;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+/* ── Loading ── */
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+}
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(11,25,41,0.3);
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .cl-layout { grid-template-columns: 1fr; }
+  .cl-right { display: none; }
+  .cl-left { padding: var(--sp-8) var(--sp-6); }
+}
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active=""></header>
+
+<div class="cl-layout">
+  <!-- Left: Login Form -->
+  <div class="cl-left">
+    <div class="cl-form-wrap">
+      <h1>Contractor Login</h1>
+      <p class="subtitle">Sign in to your ClaimShield contractor portal to view leads, manage bids, and track your jobs.</p>
+
+      <!-- Login Form -->
+      <form class="cl-form" id="cl-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="email">Business Email</label>
+          <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="you@yourcompany.com">
+          <span class="form-hint">We'll send you a secure login link — no password needed.</span>
+        </div>
+
+        <div id="form-error" class="form-error" style="display:none;"></div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">
+          Send Login Link
+        </button>
+      </form>
+
+      <!-- Magic Link Sent -->
+      <div class="magic-link-sent" id="magic-link-sent">
+        <div class="magic-link-icon">&#x2709;&#xFE0F;</div>
+        <h2>Check Your Email</h2>
+        <p>We sent a secure login link to:</p>
+        <div class="magic-link-email" id="sent-email"></div>
+        <p style="margin-top: var(--sp-4);">Click the link in your email to access your contractor dashboard. The link expires in 1 hour.</p>
+        <p style="margin-top: var(--sp-6);"><a href="#" id="resend-link">Didn't get it? Send again</a></p>
+      </div>
+
+      <!-- Join CTA -->
+      <div class="cl-divider" id="cl-divider">or</div>
+      <div class="cl-join-cta" id="cl-join-cta">
+        <p>New to ClaimShield? Apply to join our contractor network.</p>
+        <a href="contractor-join.html" class="btn btn-secondary btn-lg btn-full">Apply to Join</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Benefits -->
+  <div class="cl-right">
+    <div class="cl-benefits">
+      <h2>Why Contractors Choose ClaimShield</h2>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">&#x1F4CB;</div>
+        <div class="benefit-text">
+          <h4>Contract-ready lead packages</h4>
+          <p>Every lead comes with a loss sheet, executed contract, and trade-specific measurements. Show up ready to work.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">&#x1F4B0;</div>
+        <div class="benefit-text">
+          <h4>Pay only when you win</h4>
+          <p>No upfront costs. You only pay a small platform fee when you're awarded the job.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">&#x1F3AF;</div>
+        <div class="benefit-text">
+          <h4>Qualified, ready-to-go homeowners</h4>
+          <p>Every homeowner has an approved insurance claim and has already selected materials. No tire-kickers.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">&#x1F4C8;</div>
+        <div class="benefit-text">
+          <h4>Grow your business</h4>
+          <p>Expand into new service areas and trades. We handle the homeowner relationship — you focus on the work.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+(function() {
+  const form = document.getElementById('cl-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const errorEl = document.getElementById('form-error');
+  const sentSection = document.getElementById('magic-link-sent');
+  const sentEmail = document.getElementById('sent-email');
+
+  // Form submission
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.style.display = 'none';
+
+    const email = document.getElementById('email').value.trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errorEl.textContent = 'Please enter a valid email address.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    submitBtn.classList.add('btn-loading');
+    submitBtn.disabled = true;
+
+    try {
+      // Store the intended role so post-auth can route correctly
+      sessionStorage.setItem('cs_auth_role', 'contractor');
+
+      // Send magic link with contractor redirect
+      await Auth.sendMagicLink(email, 'contractor');
+
+      // Show success state
+      form.classList.add('hidden');
+      document.getElementById('cl-divider').classList.add('hidden');
+      document.getElementById('cl-join-cta').classList.add('hidden');
+      sentEmail.textContent = email;
+      sentSection.classList.add('active');
+
+      // GA4 event
+      gtag('event', 'login', {
+        method: 'magic_link',
+        role: 'contractor',
+      });
+
+    } catch (err) {
+      console.error('Login error:', err);
+      errorEl.textContent = 'Something went wrong. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL;
+      errorEl.style.display = 'block';
+    } finally {
+      submitBtn.classList.remove('btn-loading');
+      submitBtn.disabled = false;
+    }
+  });
+
+  // Resend link
+  document.getElementById('resend-link').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = sentEmail.textContent;
+    if (email) {
+      try {
+        await Auth.sendMagicLink(email, 'contractor');
+        alert('Login link resent! Check your email.');
+      } catch (err) {
+        alert('Could not resend. Please try again in a moment.');
+      }
+    }
+  });
+
+  // Check if user is already logged in — redirect to contractor dashboard
+  Auth.getUser().then(async user => {
+    if (user) {
+      window.location.href = '/contractor-dashboard.html';
+    }
+  });
+})();
+</script>
+
+<footer id="site-footer"></footer>
+
+</body>
+</html>

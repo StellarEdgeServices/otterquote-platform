@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contractor Partner Agreement - ClaimShield</title>
+
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-JNQ6XR3LX2');
+  </script>
+
+  <!-- Supabase JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Design System CSS -->
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+
+  <!-- Page-Specific Styles -->
+  <style>
+    .page-hero { padding: var(--sp-16) 0 var(--sp-12); text-align: center; background: radial-gradient(ellipse at 50% 0%, rgba(245,158,11,0.06) 0%, transparent 60%); }
+    .page-hero h1 { margin-bottom: var(--sp-4); }
+    .page-hero p { max-width: 600px; margin: 0 auto; font-size: 1.1rem; color: var(--slate); }
+    .legal-content { max-width: 800px; margin: 0 auto; padding: 0 var(--sp-4) var(--sp-16); }
+    .legal-content section { margin-bottom: var(--sp-8); }
+    .legal-content h2 { color: var(--amber); font-family: var(--font-heading); font-size: 1.5rem; margin-bottom: var(--sp-4); margin-top: var(--sp-8); }
+    .legal-content h3 { color: var(--white); font-size: 1.1rem; margin-bottom: var(--sp-3); margin-top: var(--sp-6); font-weight: 600; }
+    .legal-content p { color: var(--light); margin-bottom: var(--sp-4); line-height: 1.7; }
+    .legal-content ul, .legal-content ol { margin-left: var(--sp-8); margin-bottom: var(--sp-4); color: var(--light); }
+    .legal-content li { margin-bottom: var(--sp-2); }
+    .legal-content strong { color: var(--amber); }
+    .legal-content a { color: var(--amber); text-decoration: none; }
+    .legal-content a:hover { text-decoration: underline; }
+    .disclaimer-box { background: rgba(245,158,11,0.08); border-left: 4px solid var(--amber); padding: var(--sp-6); margin-bottom: var(--sp-8); border-radius: var(--radius-sm); }
+    .disclaimer-box h3 { color: var(--amber); margin-bottom: var(--sp-2); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .disclaimer-box p { color: var(--slate); font-size: 0.95rem; }
+    .definition-box { background: rgba(245,158,11,0.06); padding: var(--sp-4); margin: var(--sp-3) 0; border-radius: var(--radius-sm); border-left: 3px solid var(--amber); }
+    .definition-term { color: var(--amber); font-weight: 700; }
+    .toc-box { background: rgba(245,158,11,0.05); padding: var(--sp-6); margin-bottom: var(--sp-8); border-radius: var(--radius-md); border: 1px solid rgba(245,158,11,0.15); }
+    .toc-box h2 { color: var(--amber); margin-bottom: var(--sp-4); font-size: 1.2rem; }
+    .toc-box ol { margin-left: var(--sp-8); }
+    .toc-box a { color: var(--light); text-decoration: none; }
+    .toc-box a:hover { color: var(--amber); }
+    .toc-box li { margin-bottom: var(--sp-2); }
+    .signature-section { background: rgba(245,158,11,0.06); padding: var(--sp-8); margin-top: var(--sp-8); border-radius: var(--radius-md); border: 1px solid rgba(245,158,11,0.15); }
+    .signature-section h2 { color: var(--amber); margin-bottom: var(--sp-6); }
+    .contact-box { background: rgba(245,158,11,0.05); padding: var(--sp-6); border-radius: var(--radius-sm); margin: var(--sp-6) 0; }
+    .checklist-item { margin-bottom: var(--sp-3); color: var(--light); }
+    .checklist-item input { margin-right: var(--sp-2); }
+    .signature-line { border-bottom: 1px solid var(--slate); margin: var(--sp-4) 0 var(--sp-2); height: 40px; }
+    .signature-label { font-size: 0.85rem; color: var(--slate); }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header id="site-header" data-auth="false"></header>
+
+  <!-- Main Content -->
+  <main>
+    <!-- Hero Section -->
+    <section class="page-hero">
+      <h1>Contractor Partner Agreement</h1>
+      <p>ClaimShield Platform Terms and Conditions</p>
+      <p style="color: var(--slate); font-size: 0.95rem; margin-top: var(--sp-3);">Effective Date: March 16, 2026</p>
+    </section>
+
+    <!-- Legal Content -->
+    <div class="legal-content">
+      <!-- Disclaimer -->
+      <div class="disclaimer-box">
+        <h3>Important Notice</h3>
+        <p>This Contractor Partner Agreement is a legally binding contract. <strong>We strongly recommend that you review this agreement with a qualified attorney before signing or accepting these terms.</strong> Your acceptance of these terms constitutes your legal agreement to all provisions outlined herein.</p>
+      </div>
+
+      <!-- Table of Contents -->
+      <div class="toc-box">
+        <h2>Table of Contents</h2>
+        <ol>
+          <li><a href="#section-1">Definitions</a></li>
+          <li><a href="#section-2">Contractor Eligibility</a></li>
+          <li><a href="#section-3">Platform Access and Account</a></li>
+          <li><a href="#section-4">Job Package Confidentiality</a></li>
+          <li><a href="#section-5">Bid Submission Process</a></li>
+          <li><a href="#section-6">Platform Fee Structure</a></li>
+          <li><a href="#section-7">Payment Terms</a></li>
+          <li><a href="#section-8">Contractor Obligations</a></li>
+          <li><a href="#section-9">ClaimShield Obligations</a></li>
+          <li><a href="#section-10">Non-Solicitation</a></li>
+          <li><a href="#section-11">Termination</a></li>
+          <li><a href="#section-12">Limitation of Liability</a></li>
+          <li><a href="#section-13">Indemnification</a></li>
+          <li><a href="#section-14">Governing Law</a></li>
+          <li><a href="#section-15">Dispute Resolution</a></li>
+          <li><a href="#section-16">Modifications</a></li>
+          <li><a href="#section-17">Entire Agreement and Severability</a></li>
+        </ol>
+      </div>
+
+      <!-- Section 1: Definitions -->
+      <section id="section-1">
+        <h2>1. Definitions</h2>
+        <p>For purposes of this Agreement, the following terms shall have the meanings ascribed to them:</p>
+
+        <div class="definition-box">
+          <span class="definition-term">Platform:</span> The ClaimShield online platform and all associated services, tools, databases, and software provided by ClaimShield for managing, distributing, and processing homeowner property damage claims.
+        </div>
+
+        <div class="definition-box">
+          <span class="definition-term">Contractor:</span> The individual or business entity that enters into this Agreement with ClaimShield and agrees to utilize the Platform to submit bids on Job Packages and complete work for Homeowners.
+        </div>
+
+        <div class="definition-box">
+          <span class="definition-term">Homeowner:</span> The property owner who has engaged ClaimShield to manage their property damage claim and who may award Job Packages to qualified Contractors through the Platform.
+        </div>
+
+        <div class="definition-box">
+          <span class="definition-term">Job Package:</span> A detailed scope of work, project specifications, and materials list for a specific property damage repair or restoration project, created by or on behalf of the Homeowner and made available to Contractors through the Platform.
+        </div>
+
+        <div class="definition-box">
+          <span class="definition-term">Platform Fee:</span> The percentage-based fee charged by ClaimShield to the Contractor for each completed job, calculated as a percentage of the final contracted price between the Contractor and Homeowner.
+        </div>
+
+        <div class="definition-box">
+          <span class="definition-term">Bid:</span> A formal proposal submitted by a Contractor through the Platform that includes pricing, timeline, materials, and labor for completion of a specific Job Package.
+        </div>
+
+        <div class="definition-box">
+          <span class="definition-term">Job Assignment:</span> The formal award of a Job Package to a Contractor following acceptance of the Contractor's Bid by the Homeowner through the Platform.
+        </div>
+      </section>
+
+      <!-- Section 2: Contractor Eligibility -->
+      <section id="section-2">
+        <h2>2. Contractor Eligibility</h2>
+
+        <h3>2.1 Licensing and Insurance Requirements</h3>
+        <p>To be eligible to submit Bids and accept Job Assignments through the Platform, Contractor represents and warrants that it maintains:</p>
+        <ul>
+          <li>Current, valid professional license(s) required in the jurisdiction(s) where work will be performed;</li>
+          <li>Active general liability insurance with minimum coverage of $1,000,000;</li>
+          <li>Workers' compensation insurance as required by applicable state law;</li>
+          <li>Current proof of bonding or similar financial protection mechanism as required by state law;</li>
+          <li>Compliance with all local, state, and federal licensing and regulatory requirements;</li>
+          <li>No suspension, revocation, or disciplinary action pending against any professional license.</li>
+        </ul>
+
+        <h3>2.2 Verification and Renewal</h3>
+        <p>ClaimShield reserves the right to verify all licenses, insurance, and credentials at any time. Contractor agrees to provide current proof of insurance and licensure upon request. Contractor shall notify ClaimShield immediately of any changes, lapses, or suspensions in licensing or insurance coverage. Failure to maintain current credentials may result in immediate suspension of Platform access.</p>
+
+        <h3>2.3 Ineligibility</h3>
+        <p>Contractor is ineligible to use the Platform if:</p>
+        <ul>
+          <li>Contractor has been convicted of fraud, theft, or crimes involving dishonesty;</li>
+          <li>Contractor has a pattern of complaints or disciplinary actions with industry regulatory bodies;</li>
+          <li>Contractor's license has been revoked or suspended in any jurisdiction;</li>
+          <li>Contractor has filed bankruptcy within the past five (5) years;</li>
+          <li>Contractor has engaged in prior breach of similar platform agreements or non-solicitation obligations.</li>
+        </ul>
+      </section>
+
+      <!-- Section 3: Platform Access and Account -->
+      <section id="section-3">
+        <h2>3. Platform Access and Account</h2>
+
+        <h3>3.1 Account Creation</h3>
+        <p>Contractor shall create an account on the Platform by providing accurate, complete, and current information. Contractor is responsible for maintaining the confidentiality of account credentials and shall notify ClaimShield immediately of any unauthorized access.</p>
+
+        <h3>3.2 Account Security</h3>
+        <p>Contractor agrees to maintain strong password security, use unique credentials, and not share account access with unauthorized third parties. ClaimShield shall not be liable for unauthorized access resulting from Contractor's failure to maintain account security.</p>
+
+        <h3>3.3 Account Termination</h3>
+        <p>ClaimShield may terminate or suspend Contractor's account for violation of this Agreement, failure to maintain required credentials, or engagement in fraudulent or prohibited activities.</p>
+
+        <h3>3.4 Platform Availability</h3>
+        <p>While ClaimShield strives to maintain continuous Platform availability, ClaimShield makes no guarantee regarding uptime or uninterrupted access. ClaimShield shall not be liable for any losses resulting from Platform outages or interruptions.</p>
+      </section>
+
+      <!-- Section 4: Job Package Confidentiality -->
+      <section id="section-4">
+        <h2>4. Job Package Confidentiality</h2>
+
+        <h3>4.1 Limited Use License</h3>
+        <p>ClaimShield grants Contractor a limited, non-exclusive license to view and use Job Package information solely for the purpose of preparing and submitting Bids through the Platform. All Job Packages remain the exclusive property of ClaimShield and the respective Homeowners.</p>
+
+        <h3>4.2 Prohibited Activities</h3>
+        <p>Contractor shall not:</p>
+        <ul>
+          <li>Share, disclose, or distribute Job Package information to any third party without written consent;</li>
+          <li>Use Job Package information for any purpose other than submitting a Bid through the Platform;</li>
+          <li>Copy, download, or reproduce Job Package documents except as necessary to prepare a Bid;</li>
+          <li>Solicit or contact Homeowners directly using information obtained from a Job Package;</li>
+          <li>Reverse engineer or attempt to identify Homeowners or property information from Job Packages;</li>
+          <li>Use Job Package information to compete with ClaimShield or its affiliated services.</li>
+        </ul>
+
+        <h3>4.3 Duration</h3>
+        <p>Contractor's confidentiality obligations regarding Job Package information shall survive termination of this Agreement and continue for as long as the information remains non-public.</p>
+
+        <h3>4.4 Enforcement</h3>
+        <p>Contractor acknowledges that breach of confidentiality obligations may cause irreparable harm to ClaimShield and Homeowners, for which monetary damages may be insufficient. ClaimShield shall be entitled to seek injunctive relief in addition to all other legal remedies.</p>
+      </section>
+
+      <!-- Section 5: Bid Submission Process -->
+      <section id="section-5">
+        <h2>5. Bid Submission Process</h2>
+
+        <h3>5.1 Bid Requirements</h3>
+        <p>All Bids submitted through the Platform must include:</p>
+        <ul>
+          <li>Itemized labor costs broken down by work category;</li>
+          <li>Itemized material costs with detailed product specifications;</li>
+          <li>Project timeline and completion schedule;</li>
+          <li>Warranty or guarantee information for completed work;</li>
+          <li>References from previous similar projects;</li>
+          <li>Proof of required licensing and insurance;</li>
+          <li>Any assumptions, exclusions, or notes regarding scope limitations.</li>
+        </ul>
+
+        <h3>5.2 Bid Accuracy</h3>
+        <p>Contractor represents and warrants that all information submitted in a Bid is accurate, complete, and truthful. Bids are binding proposals that, if accepted by a Homeowner, create a contractual obligation for Contractor to perform work at the stated price and within the stated timeline.</p>
+
+        <h3>5.3 Fee Disclosure</h3>
+        <p>Contractor's Bids shall disclose the anticipated Platform Fee at the time of submission, clearly separated from labor and material costs. Contractor acknowledges understanding that the Platform Fee will be deducted from payments received through the Platform.</p>
+
+        <h3>5.4 Bid Selection</h3>
+        <p>ClaimShield and Homeowners have sole discretion in selecting which Contractor's Bid to accept. ClaimShield does not guarantee that any submitted Bid will be selected for Job Assignment. Rejection of a Bid does not constitute grounds for dispute or complaint.</p>
+      </section>
+
+      <!-- Section 6: Platform Fee Structure -->
+      <section id="section-6">
+        <h2>6. Platform Fee Structure</h2>
+
+        <h3>6.1 Fee Calculation</h3>
+        <p>ClaimShield charges a Platform Fee equal to <strong>5%</strong> of the final contracted price agreed upon between Contractor and Homeowner for each completed Job Assignment. The Platform Fee is calculated on the total contracted amount, including all labor, materials, and any change orders or supplemental work authorized in writing.</p>
+
+        <h3>6.2 Fee Lock</h3>
+        <p>The Platform Fee rate of 5% is locked for the initial term of this Agreement. ClaimShield reserves the right to adjust fees upon thirty (30) days' written notice for renewal terms or following material changes in platform services.</p>
+
+        <h3>6.3 Fee Schedule and Adjustments</h3>
+        <p>Platform Fees are calculated based on the final Job Assignment price. If the contracted price is adjusted through authorized change orders or supplemental agreements, the Platform Fee shall apply to the adjusted contract amount. Contractor shall inform ClaimShield of all change orders affecting final contract price within five (5) business days of authorization.</p>
+
+        <h3>6.4 Special Situations</h3>
+        <p>In the event a Job Assignment is terminated prior to completion, or if a dispute arises regarding final contract price, fees shall be calculated based on the amount actually paid to Contractor. ClaimShield shall have no obligation to calculate or collect fees on disputed or unpaid amounts.</p>
+
+        <h3>6.5 No Refunds</h3>
+        <p>All Platform Fees are non-refundable once payment has been received by ClaimShield, except as required by law or in cases of documented platform error. Contractor waives any claim to refund of Platform Fees except in cases of proven overbilling.</p>
+      </section>
+
+      <!-- Section 7: Payment Terms -->
+      <section id="section-7">
+        <h2>7. Payment Terms</h2>
+
+        <h3>7.1 Due Date</h3>
+        <p>All Platform Fees are due and payable within thirty (30) days of the date an invoice is issued by ClaimShield. An invoice shall be issued upon receipt of proof of final payment from the Homeowner or upon completion of the Job Assignment, whichever is later.</p>
+
+        <h3>7.2 Payment Method</h3>
+        <p>All Platform Fee payments must be made through Stripe or such other payment processor as designated by ClaimShield. Contractor authorizes ClaimShield to charge the designated payment method for all Platform Fees due. Contractor shall maintain a valid payment method on file at all times.</p>
+
+        <h3>7.3 Late Payment</h3>
+        <p>If payment is not received by the due date, Contractor shall be charged a late payment fee of <strong>1.5% per month</strong> (or the highest rate permitted by law) on the unpaid balance, calculated from the original due date. Repeated late payments may result in suspension of Platform access or termination of this Agreement.</p>
+
+        <h3>7.4 Disputes</h3>
+        <p>Contractor must notify ClaimShield in writing of any fee calculation disputes within fifteen (15) days of invoice receipt. Disputes raised after this fifteen-day window shall be deemed waived. ClaimShield shall investigate disputed fees and respond within ten (10) business days.</p>
+
+        <h3>7.5 Tax Responsibility</h3>
+        <p>Contractor is solely responsible for all taxes, including sales tax, income tax, and self-employment tax, relating to payments received through the Platform. ClaimShield shall not withhold, calculate, or remit any taxes on Contractor's behalf. Contractor agrees to provide appropriate tax documentation as requested.</p>
+      </section>
+
+      <!-- Section 8: Contractor Obligations -->
+      <section id="section-8">
+        <h2>8. Contractor Obligations</h2>
+
+        <h3>8.1 Quality of Work</h3>
+        <p>Contractor warrants that all work performed pursuant to a Job Assignment shall be completed in a professional, workmanlike manner in compliance with applicable building codes, industry standards, and manufacturer specifications. All work shall be warranted for a minimum of one (1) year against defects in workmanship.</p>
+
+        <h3>8.2 Timely Completion</h3>
+        <p>Contractor shall complete all assigned work within the timeline specified in the accepted Bid. Failure to meet the completion timeline may result in complaints, disputes, or suspension from future Job Assignments. If timeline delays are anticipated, Contractor shall notify the Homeowner and ClaimShield in writing immediately.</p>
+
+        <h3>8.3 Insurance and Licensing Compliance</h3>
+        <p>Contractor shall maintain current insurance, licensing, and bonding throughout the term of this Agreement and shall provide proof upon request. Contractor shall comply with all applicable licensing laws and shall not permit unlicensed individuals to perform licensed work.</p>
+
+        <h3>8.4 Complaint Response</h3>
+        <p>Contractor shall respond to any complaints or inquiries from Homeowners or ClaimShield within forty-eight (48) hours. Contractor shall cooperate fully in resolving disputes and shall make good-faith efforts to remedy any deficiencies identified by Homeowners.</p>
+
+        <h3>8.5 Legal Compliance</h3>
+        <p>Contractor shall comply with all applicable federal, state, and local laws, including but not limited to building codes, labor laws, environmental regulations, and tax laws. Contractor shall not engage in any illegal activity or activity that violates the terms of this Agreement.</p>
+
+        <h3>8.6 Records and Documentation</h3>
+        <p>Contractor shall maintain detailed records of all work performed, including photographs, invoices, material receipts, and correspondence with Homeowners. Contractor shall make such records available to ClaimShield upon request for purposes of dispute resolution or quality assurance.</p>
+
+        <h3>8.7 Communication</h3>
+        <p>Contractor shall maintain professional communication with Homeowners throughout the duration of each Job Assignment. Contractor shall provide regular updates on project progress and shall respond promptly to questions or concerns raised by Homeowners.</p>
+      </section>
+
+      <!-- Section 9: ClaimShield Obligations -->
+      <section id="section-9">
+        <h2>9. ClaimShield Obligations</h2>
+
+        <h3>9.1 Job Package Accuracy</h3>
+        <p>ClaimShield shall use reasonable efforts to ensure that Job Package information is accurate and complete. However, ClaimShield does not warrant the accuracy of all information contained in Job Packages, as such information is provided by or on behalf of Homeowners. Contractor should conduct independent verification as needed.</p>
+
+        <h3>9.2 Fair Bidding Process</h3>
+        <p>ClaimShield shall maintain a fair and transparent bidding process in which all qualified Contractors have equal opportunity to submit Bids. ClaimShield shall not favor particular Contractors based on personal relationships or other improper considerations.</p>
+
+        <h3>9.3 Platform Maintenance</h3>
+        <p>ClaimShield shall use commercially reasonable efforts to maintain the Platform in a secure, functional condition. ClaimShield shall address critical technical issues promptly but makes no guarantee regarding uptime or availability.</p>
+
+        <h3>9.4 Dispute Facilitation</h3>
+        <p>ClaimShield shall provide reasonable facilitation for resolution of disputes between Contractors and Homeowners, including communication and information gathering. However, ClaimShield assumes no obligation to force resolution or to compel either party to accept a particular outcome.</p>
+
+        <h3>9.5 No Representation or Warranty</h3>
+        <p>Except as expressly stated in this Agreement, ClaimShield makes no representations or warranties regarding the Platform, Job Packages, or anticipated job volume. Contractor accepts the Platform on an "as-is" basis and assumes all risk of use.</p>
+      </section>
+
+      <!-- Section 10: Non-Solicitation -->
+      <section id="section-10">
+        <h2>10. Non-Solicitation</h2>
+
+        <h3>10.1 Platform Exclusivity</h3>
+        <p>During the term of this Agreement and for a period of twelve (12) months following any termination, Contractor shall not:</p>
+        <ul>
+          <li>Solicit, contact, or attempt to contract directly with any Homeowner whose Job Package has been viewed by Contractor through the Platform;</li>
+          <li>Use information from a Job Package to identify or locate Homeowners for direct contracting;</li>
+          <li>Offer to perform work for a Job Package at a different price or terms outside of the Platform;</li>
+          <li>Disparage or undermine the Platform or encourage Homeowners to bypass the Platform for job assignment.</li>
+        </ul>
+
+        <h3>10.2 Duration</h3>
+        <p>The non-solicitation restrictions shall apply for a period of twelve (12) months following termination of this Agreement. Following expiration of this twelve-month period, Contractor may solicit Homeowners directly, provided that all information learned through the Platform during the agreement term has been deleted or destroyed.</p>
+
+        <h3>10.3 Consequences</h3>
+        <p>Breach of non-solicitation obligations may result in significant damages to ClaimShield's business relationships and revenue model. In addition to all legal remedies, ClaimShield reserves the right to pursue injunctive relief, liquidated damages, and recovery of attorney's fees for breach of this section.</p>
+      </section>
+
+      <!-- Section 11: Termination -->
+      <section id="section-11">
+        <h2>11. Termination</h2>
+
+        <h3>11.1 Termination by Contractor</h3>
+        <p>Contractor may terminate this Agreement at any time by providing written notice to ClaimShield. Termination shall be effective thirty (30) days after written notice is received, provided that Contractor remains bound by all obligations relating to pending or in-progress Job Assignments.</p>
+
+        <h3>11.2 Termination by ClaimShield Without Cause</h3>
+        <p>ClaimShield may terminate this Agreement without cause by providing thirty (30) days' written notice to Contractor. Upon such termination, Contractor shall immediately cease use of the Platform and shall fulfill all outstanding obligations relating to pending Job Assignments.</p>
+
+        <h3>11.3 Termination for Cause</h3>
+        <p>ClaimShield may immediately terminate this Agreement for cause upon written notice if:</p>
+        <ul>
+          <li>Contractor materially breaches the terms of this Agreement and fails to cure within ten (10) days of written notice;</li>
+          <li>Contractor loses required licensing, insurance, or bonding;</li>
+          <li>Contractor engages in fraud or dishonest conduct;</li>
+          <li>Contractor violates confidentiality or non-solicitation obligations;</li>
+          <li>Contractor receives multiple complaints from Homeowners regarding quality, professionalism, or conduct;</li>
+          <li>Contractor fails to pay Platform Fees when due;</li>
+          <li>Contractor's actions violate applicable law or regulatory requirements.</li>
+        </ul>
+
+        <h3>11.4 Effect of Termination</h3>
+        <p>Upon termination, Contractor's right to access the Platform, submit Bids, and receive Job Assignments shall immediately cease. Contractor remains liable for all Platform Fees owing at the time of termination. Contractor shall return or destroy all Job Package materials and shall cease any use of Platform information.</p>
+
+        <h3>11.5 Survival</h3>
+        <p>The following sections shall survive any termination of this Agreement: Section 4 (Job Package Confidentiality), Section 10 (Non-Solicitation), Section 12 (Limitation of Liability), Section 13 (Indemnification), Section 14 (Governing Law), and Section 15 (Dispute Resolution).</p>
+      </section>
+
+      <!-- Section 12: Limitation of Liability -->
+      <section id="section-12">
+        <h2>12. Limitation of Liability</h2>
+
+        <h3>12.1 Disclaimer</h3>
+        <p><strong>IN NO EVENT SHALL CLAIMSHIELD BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOST PROFITS, LOST REVENUE, LOST DATA, OR LOSS OF BUSINESS OPPORTUNITY, EVEN IF CLAIMSHIELD HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.</strong></p>
+
+        <h3>12.2 Cap on Liability</h3>
+        <p>CLAIMSHIELD'S TOTAL LIABILITY TO CONTRACTOR FOR ANY CLAIM ARISING OUT OF OR RELATING TO THIS AGREEMENT, THE PLATFORM, OR THE PERFORMANCE OF SERVICES SHALL NOT EXCEED THE TOTAL PLATFORM FEES PAID BY CONTRACTOR DURING THE TWELVE (12) MONTHS PRECEDING THE CLAIM.</p>
+
+        <h3>12.3 Excluded Damages</h3>
+        <p><strong>CLAIMSHIELD SHALL NOT BE LIABLE FOR: (A) LOSS OF ANTICIPATED PROFITS OR BUSINESS; (B) LOSS OF USE, DATA, OR GOODWILL; (C) BUSINESS INTERRUPTION; (D) FAILURE TO OBTAIN JOB ASSIGNMENTS; OR (E) ANY OTHER INDIRECT OR CONSEQUENTIAL DAMAGES, REGARDLESS OF THE FORM OF ACTION AND WHETHER OR NOT SUCH PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.</strong></p>
+
+        <h3>12.4 Contractor Responsibility</h3>
+        <p>Contractor assumes all risk associated with use of the Platform and selection of Job Assignments. Contractor is responsible for evaluating the feasibility, profitability, and risk profile of each Job Assignment. ClaimShield makes no guarantees regarding job volume, job profitability, or Homeowner creditworthiness.</p>
+
+        <h3>12.5 Insurance as Primary</h3>
+        <p>Contractor's insurance policies shall be the primary source of recovery for any loss arising from Contractor's performance of work or interaction with Homeowners. ClaimShield's liability limitations shall not be construed to eliminate coverage otherwise provided by Contractor's insurance.</p>
+      </section>
+
+      <!-- Section 13: Indemnification -->
+      <section id="section-13">
+        <h2>13. Indemnification</h2>
+
+        <h3>13.1 Contractor Indemnification</h3>
+        <p>Contractor shall defend, indemnify, and hold harmless ClaimShield, its officers, employees, and agents from any and all claims, damages, liabilities, and expenses (including reasonable attorney's fees) arising from or related to:</p>
+        <ul>
+          <li>Contractor's performance or failure to perform work under a Job Assignment;</li>
+          <li>Contractor's violation of applicable law or regulatory requirements;</li>
+          <li>Personal injury or property damage caused by Contractor's work or negligence;</li>
+          <li>Contractor's breach of this Agreement or misuse of Platform information;</li>
+          <li>Contractor's infringement of third-party intellectual property rights;</li>
+          <li>Disputes, claims, or complaints arising from Contractor's interaction with Homeowners;</li>
+          <li>Contractor's violation of confidentiality or non-solicitation obligations.</li>
+        </ul>
+
+        <h3>13.2 ClaimShield Indemnification</h3>
+        <p>ClaimShield shall defend, indemnify, and hold harmless Contractor from claims arising solely from ClaimShield's use of Contractor's business name, logo, or testimonials in marketing materials, provided that such use is accurate and does not misrepresent Contractor's involvement.</p>
+
+        <h3>13.3 Insurance as Primary</h3>
+        <p>Contractor's indemnification obligation shall be secondary to coverage provided by Contractor's liability insurance. Contractor shall ensure that all insurance policies include ClaimShield as an additional insured and shall provide certificates of insurance as requested.</p>
+      </section>
+
+      <!-- Section 14: Governing Law -->
+      <section id="section-14">
+        <h2>14. Governing Law</h2>
+
+        <h3>14.1 Governing Law</h3>
+        <p>This Agreement shall be governed by and construed in accordance with the laws of the State of Indiana, without regard to its conflict of laws principles. The United Nations Convention on Contracts for the International Sale of Goods shall not apply.</p>
+
+        <h3>14.2 Venue</h3>
+        <p>Any legal action or proceeding arising from or relating to this Agreement shall be brought exclusively in the state or federal courts located in Indianapolis, Marion County, Indiana. Contractor consents to the jurisdiction and venue of such courts and waives any objection based on improper venue or inconvenient forum.</p>
+
+        <h3>14.3 No Jury Trial Waiver</h3>
+        <p>EACH PARTY WAIVES ITS RIGHT TO TRIAL BY JURY IN ANY LEGAL ACTION OR PROCEEDING ARISING FROM OR RELATING TO THIS AGREEMENT. EACH PARTY EXPRESSLY ACKNOWLEDGES THAT THIS WAIVER IS A MATERIAL INDUCEMENT FOR THE OTHER PARTY ENTERING INTO THIS AGREEMENT.</p>
+      </section>
+
+      <!-- Section 15: Dispute Resolution -->
+      <section id="section-15">
+        <h2>15. Dispute Resolution</h2>
+
+        <h3>15.1 Informal Resolution</h3>
+        <p>Prior to initiating formal dispute resolution, the parties shall make good-faith efforts to resolve disputes through informal negotiation. Either party may initiate this process by providing written notice describing the dispute. The parties shall meet or communicate within ten (10) days of such notice to attempt resolution.</p>
+
+        <h3>15.2 Mediation</h3>
+        <p>If informal negotiation fails, either party may initiate non-binding mediation. The parties shall submit the dispute to mediation with a mutually agreeable mediator or through JAMS (Judicial Arbitration and Mediation Services) in Indianapolis, Indiana. Each party shall bear its own costs and shall share the mediator's fees equally.</p>
+
+        <h3>15.3 JAMS Arbitration</h3>
+        <p>If mediation fails, the dispute shall be resolved by binding arbitration in Indianapolis, Indiana under the JAMS Comprehensive Arbitration Rules and Procedures. The arbitration shall be governed by the following provisions:</p>
+        <ul>
+          <li>A single arbitrator shall be selected in accordance with JAMS rules;</li>
+          <li>The arbitrator shall have authority to award all remedies available at law or in equity;</li>
+          <li>The arbitration hearing shall be conducted in Indianapolis, Indiana;</li>
+          <li>The prevailing party shall be entitled to recover reasonable attorney's fees and costs;</li>
+          <li>The arbitrator's decision shall be final and binding and may be enforced in any court of competent jurisdiction.</li>
+        </ul>
+
+        <h3>15.4 Costs</h3>
+        <p>Each party shall bear its own attorney's fees and costs, except as awarded by the mediator, arbitrator, or court. JAMS filing fees and arbitrator compensation shall be divided equally between the parties unless the arbitrator determines that one party's position was substantially unreasonable.</p>
+
+        <h3>15.5 Exceptions to Arbitration</h3>
+        <p>Notwithstanding the above, either party may seek injunctive or equitable relief in court without submitting to arbitration if the dispute involves:</p>
+        <ul>
+          <li>Alleged breach of confidentiality or non-solicitation obligations;</li>
+          <li>Alleged infringement of intellectual property rights;</li>
+          <li>Alleged fraud or criminal conduct.</li>
+        </ul>
+
+        <h3>15.6 Class Action Waiver</h3>
+        <p>CONTRACTOR WAIVES THE RIGHT TO PARTICIPATE IN ANY CLASS ACTION, COLLECTIVE ACTION, OR REPRESENTATIVE PROCEEDING AGAINST CLAIMSHIELD. ALL DISPUTES SHALL BE RESOLVED INDIVIDUALLY, AND THE ARBITRATOR SHALL HAVE NO AUTHORITY TO CONSOLIDATE CLAIMS OF MULTIPLE PARTIES OR TO AWARD RELIEF ON A CLASS-WIDE BASIS.</p>
+      </section>
+
+      <!-- Section 16: Modifications -->
+      <section id="section-16">
+        <h2>16. Modifications</h2>
+
+        <h3>16.1 Amendment Authority</h3>
+        <p>This Agreement may be amended, modified, or supplemented only by a written instrument signed by authorized representatives of both ClaimShield and Contractor. No course of dealing, course of performance, or trade practice shall be effective to modify this Agreement unless expressly adopted in writing.</p>
+
+        <h3>16.2 Changes to Terms</h3>
+        <p>ClaimShield reserves the right to change the terms and conditions of this Agreement, including Platform Fees, upon thirty (30) days' written notice to Contractor. Changes shall apply to new Job Assignments submitted thirty (30) days or more after the notice date.</p>
+
+        <h3>16.3 Acceptance of Changes</h3>
+        <p>Contractor's continued use of the Platform following the effective date of any changes shall constitute acceptance of the modified terms. If Contractor does not accept the changes, Contractor shall terminate this Agreement in accordance with Section 11.</p>
+
+        <h3>16.4 Platform Policy Changes</h3>
+        <p>ClaimShield may modify Platform policies, procedures, and features at any time without notice. Such modifications shall be binding on Contractor as they are incorporated into the Platform's operation.</p>
+      </section>
+
+      <!-- Section 17: Entire Agreement and Severability -->
+      <section id="section-17">
+        <h2>17. Entire Agreement and Severability</h2>
+
+        <h3>17.1 Entire Agreement</h3>
+        <p>This Agreement, including all exhibits and incorporated documents, constitutes the entire agreement between the parties regarding the subject matter and supersedes all prior negotiations, representations, and agreements, whether written or oral. No other agreements or understandings are valid unless incorporated herein or made in a subsequent written amendment.</p>
+
+        <h3>17.2 No Additional Representations</h3>
+        <p>Contractor acknowledges that it has not relied upon any representations, warranties, or agreements other than those expressly set forth in this Agreement. ClaimShield disclaims all implied warranties, including merchantability and fitness for a particular purpose.</p>
+
+        <h3>17.3 Severability</h3>
+        <p>If any provision of this Agreement is found to be invalid, illegal, or unenforceable by a court of competent jurisdiction, such provision shall be severed, and the remaining provisions shall remain in full force and effect. If a provision is partially invalid, the valid portion shall be enforced to the maximum extent permitted by law.</p>
+
+        <h3>17.4 Waiver</h3>
+        <p>The failure of either party to enforce any right or provision of this Agreement shall not constitute a waiver of such right or provision. No waiver shall be effective unless made in writing and signed by the party against whom it is sought to be enforced. A single waiver of any provision shall not constitute a waiver of any other violation of the same or different provision.</p>
+
+        <h3>17.5 Successors and Assigns</h3>
+        <p>This Agreement shall bind and inure to the benefit of the parties and their respective successors and permitted assigns. Contractor may not assign this Agreement without prior written consent of ClaimShield. ClaimShield may assign this Agreement to any successor in interest or affiliate without notice to Contractor.</p>
+      </section>
+
+      <!-- Signature Section -->
+      <section class="signature-section">
+        <h2>Agreement Acknowledgment</h2>
+        <p>By accepting this Agreement, you acknowledge that you have:</p>
+        <div class="checklist-item">
+          <input type="checkbox" id="item1"> Read and understood all terms and conditions of this Contractor Partner Agreement;
+        </div>
+        <div class="checklist-item">
+          <input type="checkbox" id="item2"> Verified that you maintain all required licenses, insurance, and credentials;
+        </div>
+        <div class="checklist-item">
+          <input type="checkbox" id="item3"> Agreed to comply with all Platform policies and applicable laws;
+        </div>
+        <div class="checklist-item">
+          <input type="checkbox" id="item4"> Understood the non-solicitation restrictions and confidentiality obligations;
+        </div>
+        <div class="checklist-item">
+          <input type="checkbox" id="item5"> Had the opportunity to review this Agreement with legal counsel.
+        </div>
+
+        <h3 style="margin-top: var(--sp-8); margin-bottom: var(--sp-4);">Online Agreement Acceptance</h3>
+        <p>By clicking "Accept" on the ClaimShield Platform, you hereby accept all terms and conditions of this Contractor Partner Agreement and acknowledge that you are electronically signing this Agreement. Your electronic acceptance shall have the same legal effect as a handwritten signature.</p>
+
+        <h3 style="margin-top: var(--sp-8); margin-bottom: var(--sp-4);">Printed and Signed Agreement</h3>
+        <p>Alternatively, if you prefer to execute a printed version of this Agreement, you may do so below:</p>
+
+        <div style="margin-top: var(--sp-6);">
+          <p style="margin-bottom: var(--sp-2); color: var(--slate); font-size: 0.9rem;">Contractor Signature</p>
+          <div class="signature-line"></div>
+          <p class="signature-label">Signature</p>
+        </div>
+
+        <div style="margin-top: var(--sp-6);">
+          <p style="margin-bottom: var(--sp-2); color: var(--slate); font-size: 0.9rem;">Contractor Name (Printed)</p>
+          <div class="signature-line"></div>
+          <p class="signature-label">Name</p>
+        </div>
+
+        <div style="margin-top: var(--sp-6);">
+          <p style="margin-bottom: var(--sp-2); color: var(--slate); font-size: 0.9rem;">Business Name</p>
+          <div class="signature-line"></div>
+          <p class="signature-label">Business Name</p>
+        </div>
+
+        <div style="margin-top: var(--sp-6);">
+          <p style="margin-bottom: var(--sp-2); color: var(--slate); font-size: 0.9rem;">License Number</p>
+          <div class="signature-line"></div>
+          <p class="signature-label">Professional License Number</p>
+        </div>
+
+        <div style="margin-top: var(--sp-6);">
+          <p style="margin-bottom: var(--sp-2); color: var(--slate); font-size: 0.9rem;">Date Signed</p>
+          <div class="signature-line"></div>
+          <p class="signature-label">Date</p>
+        </div>
+      </section>
+
+      <!-- Contact Information -->
+      <div class="contact-box">
+        <h3 style="color: var(--amber); margin-top: 0;">Contact Information</h3>
+        <p style="margin-bottom: var(--sp-2);"><strong>ClaimShield</strong></p>
+        <p style="margin-bottom: var(--sp-2);">Stellar Edge Services</p>
+        <p style="margin-bottom: var(--sp-2);">Indianapolis, Indiana</p>
+        <p style="margin-bottom: var(--sp-4);"><strong>Contact:</strong> Dustin Stohler</p>
+        <p style="margin-bottom: 0;"><strong>Email:</strong> <a href="mailto:dustinstohler1@gmail.com">dustinstohler1@gmail.com</a></p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer id="site-footer"></footer>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+</body>
+</html>

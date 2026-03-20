@@ -292,6 +292,15 @@
     async function init() {
       try {
         currentUser = await Auth.requireAuth();
+
+        // Demo mode: if user is null and demo mode is enabled, load demo data
+        if (!currentUser && CONFIG.DEMO_MODE) {
+          loadDemoData();
+          render();
+          gtag('event', 'page_view', { page_title: 'Bid Dashboard', page_path: '/bids.html' });
+          return;
+        }
+
         if (!currentUser) return;
 
         await loadClaimData();
@@ -352,6 +361,227 @@
         render();
         // Could trigger notification sound / badge here
       }
+    }
+
+    function loadDemoData() {
+      // Demo claim object
+      currentClaim = {
+        id: 'demo-claim-001',
+        user_id: 'demo-user',
+        claim_type: 'roof_damage',
+        property_address: '1234 Maple Street, Indianapolis, IN 46201',
+        description: 'Storm damage to roof - hail damage affecting approximately 40% of roof surface',
+        claim_status: 'bidding_open',
+        created_at: '2026-03-15T14:22:00Z'
+      };
+
+      // Demo contractors
+      const demoContractors = {
+        'contractor-001': {
+          id: 'contractor-001',
+          company_name: 'Hoosier Roofing Co.',
+          owner_name: 'Michael Thompson',
+          owner_photo_url: null,
+          bio: 'Trusted Indianapolis roofing specialists with 15 years of experience in residential and commercial projects.',
+          years_in_business: 15,
+          service_area: 'Indianapolis, IN and surrounding counties',
+          license_number: 'RCO-47392-B',
+          license_verified: true,
+          gl_insurance: true,
+          wc_insurance: true,
+          google_reviews_url: 'https://google.com/maps/search/hoosier+roofing',
+          google_rating: 4.8,
+          bbb_url: 'https://bbb.org',
+          bbb_rating: 'A+',
+          angi_url: 'https://angi.com',
+          yelp_url: null,
+          certifications: JSON.stringify(['GAF Master Elite', 'Owens Corning Preferred Contractor']),
+          why_choose_us: 'We take pride in quality workmanship and timely project completion. Our team uses only premium materials and stands behind every installation with an extended warranty.',
+          photo_gallery: JSON.stringify(['https://via.placeholder.com/300x200?text=Roof+1', 'https://via.placeholder.com/300x200?text=Roof+2']),
+          team_size: 8,
+          uses_subcontractors: false,
+          crew_certifications: 'All crew members are certified and trained on the latest roofing techniques.',
+          avg_first_contact_hours: 2,
+          avg_bid_response_hours: 4,
+          total_claimshield_jobs: 47,
+          claimshield_rating: 4.9,
+          testimonials: JSON.stringify([
+            { text: 'Professional team, fast installation, excellent warranty coverage.', author: 'Sarah K.', date: '2026-02-15' },
+            { text: 'Highly recommend. They handled the insurance claim process perfectly.', author: 'James M.', date: '2026-01-22' }
+          ])
+        },
+        'contractor-002': {
+          id: 'contractor-002',
+          company_name: 'Circle City Contractors',
+          owner_name: 'David Patel',
+          owner_photo_url: null,
+          bio: 'Full-service roofing and home repair contractor serving the Indianapolis metro area.',
+          years_in_business: 12,
+          service_area: 'Indianapolis, Carmel, Fishers, Noblesville',
+          license_number: 'RCO-51028-A',
+          license_verified: true,
+          gl_insurance: true,
+          wc_insurance: true,
+          google_reviews_url: 'https://google.com/maps/search/circle+city+contractors',
+          google_rating: 4.6,
+          bbb_url: 'https://bbb.org',
+          bbb_rating: 'A',
+          angi_url: 'https://angi.com',
+          yelp_url: 'https://yelp.com',
+          certifications: JSON.stringify(['CertainTeed Select Shingle Master', 'NRCA Roofing Member']),
+          why_choose_us: 'We offer competitive pricing without sacrificing quality. Fast turnaround times and transparent communication throughout your project.',
+          photo_gallery: JSON.stringify(['https://via.placeholder.com/300x200?text=Roof+3', 'https://via.placeholder.com/300x200?text=Roof+4']),
+          team_size: 6,
+          uses_subcontractors: true,
+          crew_certifications: 'Licensed contractors and trained installers.',
+          avg_first_contact_hours: 3,
+          avg_bid_response_hours: 6,
+          total_claimshield_jobs: 32,
+          claimshield_rating: 4.7,
+          testimonials: JSON.stringify([
+            { text: 'Great communication and fair pricing. Roof looks fantastic!', author: 'Robert H.', date: '2026-01-30' }
+          ])
+        },
+        'contractor-003': {
+          id: 'contractor-003',
+          company_name: 'Indy Storm Repair',
+          owner_name: 'Jessica Williams',
+          owner_photo_url: null,
+          bio: 'Specializing in storm damage repair and insurance claim work.',
+          years_in_business: 8,
+          service_area: 'Indianapolis metro area',
+          license_number: 'RCO-48756-C',
+          license_verified: true,
+          gl_insurance: true,
+          wc_insurance: true,
+          google_reviews_url: 'https://google.com/maps/search/indy+storm+repair',
+          google_rating: 4.7,
+          bbb_url: 'https://bbb.org',
+          bbb_rating: 'A+',
+          angi_url: null,
+          yelp_url: 'https://yelp.com',
+          certifications: JSON.stringify(['GAF Master Elite', 'Storm Damage Specialist']),
+          why_choose_us: 'Experts in insurance claim work. We handle the paperwork so you don\'t have to. Dedicated to fast, quality repairs.',
+          photo_gallery: JSON.stringify(['https://via.placeholder.com/300x200?text=Roof+5']),
+          team_size: 5,
+          uses_subcontractors: false,
+          crew_certifications: 'All crew certified in storm damage assessment and repair.',
+          avg_first_contact_hours: 1,
+          avg_bid_response_hours: 3,
+          total_claimshield_jobs: 58,
+          claimshield_rating: 4.8,
+          testimonials: JSON.stringify([
+            { text: 'They really helped us navigate the insurance process. Highly professional.', author: 'Amanda L.', date: '2026-02-08' },
+            { text: 'Fast, reliable, and they warranty their work. Best decision!', author: 'Tom C.', date: '2026-01-15' }
+          ])
+        },
+        'contractor-004': {
+          id: 'contractor-004',
+          company_name: 'Heritage Roofing Solutions',
+          owner_name: 'Richard Martinez',
+          owner_photo_url: null,
+          bio: 'Premium roofing services with a focus on durability and long-term value.',
+          years_in_business: 18,
+          service_area: 'Marion County and surrounding areas',
+          license_number: 'RCO-46521-A',
+          license_verified: true,
+          gl_insurance: true,
+          wc_insurance: true,
+          google_reviews_url: 'https://google.com/maps/search/heritage+roofing+solutions',
+          google_rating: 4.9,
+          bbb_url: 'https://bbb.org',
+          bbb_rating: 'A+',
+          angi_url: 'https://angi.com',
+          yelp_url: null,
+          certifications: JSON.stringify(['Owens Corning Duration Platinum Preferred', 'GAF Master Elite', 'NRCA Certified']),
+          why_choose_us: 'We provide the highest quality materials and craftsmanship. Our extended warranty and attention to detail ensure your roof lasts for decades.',
+          photo_gallery: JSON.stringify(['https://via.placeholder.com/300x200?text=Roof+6', 'https://via.placeholder.com/300x200?text=Roof+7', 'https://via.placeholder.com/300x200?text=Roof+8']),
+          team_size: 10,
+          uses_subcontractors: false,
+          crew_certifications: 'All team members are master craftspeople with 10+ years experience.',
+          avg_first_contact_hours: 2,
+          avg_bid_response_hours: 5,
+          total_claimshield_jobs: 63,
+          claimshield_rating: 4.95,
+          testimonials: JSON.stringify([
+            { text: 'Premium quality at premium service. Worth every penny.', author: 'Elizabeth R.', date: '2026-02-20' },
+            { text: 'Best roof in the neighborhood. Timely, professional, and thorough.', author: 'George B.', date: '2026-02-01' }
+          ])
+        }
+      };
+
+      // Demo bids with varying details
+      bids = [
+        {
+          id: 'bid-001',
+          claim_id: 'demo-claim-001',
+          contractor_id: 'contractor-001',
+          total_price: 19500,
+          estimated_start_date: '2026-03-25',
+          estimated_completion_time: '5-7 days',
+          brand: 'GAF',
+          product_line: 'Timberline HDZ',
+          workmanship_warranty_years: 10,
+          manufacturer_warranty_years: 30,
+          contractor_message: 'We can start within 10 days and will complete your roof with top-quality materials and craftsmanship. Let us know if you have any questions!',
+          status: 'pending',
+          created_at: '2026-03-16T08:00:00Z',
+          contractors: demoContractors['contractor-001']
+        },
+        {
+          id: 'bid-002',
+          claim_id: 'demo-claim-001',
+          contractor_id: 'contractor-002',
+          total_price: 18500,
+          estimated_start_date: '2026-03-28',
+          estimated_completion_time: '6-8 days',
+          brand: 'CertainTeed',
+          product_line: 'Landmark',
+          workmanship_warranty_years: 5,
+          manufacturer_warranty_years: 25,
+          contractor_message: 'Best value for your budget. Our team is ready to start early next week.',
+          status: 'pending',
+          created_at: '2026-03-16T10:30:00Z',
+          contractors: demoContractors['contractor-002']
+        },
+        {
+          id: 'bid-003',
+          claim_id: 'demo-claim-001',
+          contractor_id: 'contractor-003',
+          total_price: 20200,
+          estimated_start_date: '2026-03-24',
+          estimated_completion_time: '4-6 days',
+          brand: 'GAF',
+          product_line: 'Timberline HDZ',
+          workmanship_warranty_years: 15,
+          manufacturer_warranty_years: 30,
+          contractor_message: 'Fast turnaround is our specialty. We can begin immediately upon approval.',
+          status: 'pending',
+          created_at: '2026-03-16T14:15:00Z',
+          contractors: demoContractors['contractor-003']
+        },
+        {
+          id: 'bid-004',
+          claim_id: 'demo-claim-001',
+          contractor_id: 'contractor-004',
+          total_price: 24000,
+          estimated_start_date: '2026-03-26',
+          estimated_completion_time: '5 days',
+          brand: 'Owens Corning',
+          product_line: 'Duration',
+          workmanship_warranty_years: 20,
+          manufacturer_warranty_years: 30,
+          contractor_message: 'Premium installation with our extended warranty coverage. Your roof will be built to last.',
+          status: 'pending',
+          created_at: '2026-03-16T16:45:00Z',
+          contractors: demoContractors['contractor-004']
+        }
+      ];
+
+      // Populate contractors lookup
+      Object.keys(demoContractors).forEach(contractorId => {
+        contractors[contractorId] = demoContractors[contractorId];
+      });
     }
 
     // ── Render ──

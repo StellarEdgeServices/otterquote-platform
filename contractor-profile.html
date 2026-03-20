@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contractor Profile - ClaimShield</title>
+
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-JNQ6XR3LX2');
+    </script>
+
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+    <style>
+        :root {
+            --navy: #0B1929;
+            --navy-2: #0F2440;
+            --navy-3: #132D50;
+            --amber: #F59E0B;
+            --white: #FFFFFF;
+            --slate: #94A3B8;
+            --light: #E2E8F0;
+            --sp-1: 0.25rem;
+            --sp-2: 0.5rem;
+            --sp-3: 0.75rem;
+            --sp-4: 1rem;
+            --sp-6: 1.5rem;
+            --sp-8: 2rem;
+            --sp-12: 3rem;
+            --sp-16: 4rem;
+            --sp-24: 6rem;
+            --radius-sm: 0.375rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            --radius-xl: 1rem;
+            --font-body: 'DM Sans', sans-serif;
+            --font-heading: 'Playfair Display', serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-body);
+            color: var(--navy);
+            background-color: var(--light);
+            line-height: 1.6;
+        }
+
+        main {
+            min-height: calc(100vh - 120px);
+        }
+
+        /* Header Section */
+        .header-section {
+            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+            color: var(--white);
+            padding: var(--sp-24) var(--sp-6);
+        }
+
+        .header-section h1 {
+            font-family: var(--font-heading);
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: var(--sp-4);
+        }
+
+        .header-section p {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: var(--sp-12) var(--sp-6);
+        }
+
+        /* Card Styles */
+        .profile-card {
+            background: var(--white);
+            padding: var(--sp-12);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--sp-12);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid var(--light);
+        }
+
+        .profile-card h2 {
+            font-family: var(--font-heading);
+            font-size: 1.75rem;
+            color: var(--navy);
+            margin-bottom: var(--sp-8);
+            display: flex;
+            align-items: center;
+            gap: var(--sp-3);
+        }
+
+        .card-icon {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            background-color: rgba(245, 158, 11, 0.1);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        /* Edit Mode */
+        .edit-toggle {
+            display: flex;
+            gap: var(--sp-4);
+            margin-bottom: var(--sp-8);
+        }
+
+        .btn {
+            padding: var(--sp-3) var(--sp-6);
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: var(--font-body);
+        }
+
+        .btn-primary {
+            background-color: var(--amber);
+            color: var(--navy);
+        }
+
+        .btn-primary:hover {
+            background-color: #DC2626;
+            color: var(--white);
+        }
+
+        .btn-secondary {
+            background-color: var(--light);
+            color: var(--navy);
+            border: 1px solid var(--slate);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--navy);
+            color: var(--white);
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: var(--sp-6);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--sp-6);
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: var(--sp-2);
+            font-size: 0.95rem;
+        }
+
+        .form-input,
+        .form-select,
+        textarea {
+            width: 100%;
+            padding: var(--sp-3) var(--sp-4);
+            border: 1px solid var(--light);
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--amber);
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .view-field {
+            padding: var(--sp-4);
+            background-color: var(--light);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--sp-4);
+        }
+
+        .view-field label {
+            font-weight: 600;
+            color: var(--slate);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: var(--sp-2);
+        }
+
+        .view-field-value {
+            font-size: 1rem;
+            color: var(--navy);
+        }
+
+        /* Badge Styles */
+        .badge {
+            display: inline-block;
+            padding: var(--sp-2) var(--sp-4);
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-right: var(--sp-3);
+            margin-bottom: var(--sp-3);
+        }
+
+        .badge-verified {
+            background-color: #D1FAE5;
+            color: #065F46;
+            border: 1px solid #6EE7B7;
+        }
+
+        .badge-pending {
+            background-color: #FEF3C7;
+            color: #92400E;
+            border: 1px solid #FCD34D;
+        }
+
+        .badge-hidden {
+            display: none;
+        }
+
+        /* Image Upload */
+        .image-upload {
+            position: relative;
+            width: 100%;
+        }
+
+        .image-upload input[type="file"] {
+            display: none;
+        }
+
+        .upload-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--sp-3);
+            padding: var(--sp-8);
+            border: 2px dashed var(--light);
+            border-radius: var(--radius-md);
+            background-color: rgba(11, 25, 41, 0.02);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .upload-label:hover {
+            border-color: var(--amber);
+            background-color: rgba(245, 158, 11, 0.05);
+        }
+
+        .image-preview {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: var(--radius-md);
+            margin-bottom: var(--sp-4);
+        }
+
+        /* Gallery Grid */
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: var(--sp-6);
+            margin-top: var(--sp-6);
+        }
+
+        .gallery-item {
+            position: relative;
+            width: 100%;
+            padding-bottom: 100%;
+            background-color: var(--light);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+
+        .gallery-item img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .gallery-item-remove {
+            position: absolute;
+            top: var(--sp-2);
+            right: var(--sp-2);
+            background-color: rgba(239, 68, 68, 0.9);
+            color: var(--white);
+            border: none;
+            border-radius: var(--radius-sm);
+            padding: var(--sp-2) var(--sp-3);
+            cursor: pointer;
+            font-size: 0.85rem;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .gallery-item:hover .gallery-item-remove {
+            opacity: 1;
+        }
+
+        /* Certification List */
+        .certification-list {
+            display: grid;
+            gap: var(--sp-4);
+            margin-top: var(--sp-6);
+        }
+
+        .certification-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--sp-4);
+            background-color: var(--light);
+            border-radius: var(--radius-md);
+        }
+
+        .certification-item-remove {
+            background-color: #EF4444;
+            color: var(--white);
+            border: none;
+            border-radius: var(--radius-sm);
+            padding: var(--sp-2) var(--sp-3);
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--sp-6);
+            margin-top: var(--sp-6);
+        }
+
+        .stat-item {
+            background-color: var(--light);
+            padding: var(--sp-6);
+            border-radius: var(--radius-md);
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--slate);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: var(--sp-2);
+        }
+
+        .stat-value {
+            font-family: var(--font-heading);
+            font-size: 2rem;
+            color: var(--navy);
+            font-weight: 700;
+        }
+
+        /* Info Box */
+        .info-box {
+            background-color: rgba(11, 25, 41, 0.05);
+            border-left: 4px solid var(--amber);
+            padding: var(--sp-6);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--sp-6);
+            font-size: 0.95rem;
+            color: var(--navy);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header-section h1 {
+                font-size: 1.75rem;
+            }
+
+            .container {
+                padding: var(--sp-8) var(--sp-4);
+            }
+
+            .profile-card {
+                padding: var(--sp-6);
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .gallery-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-auth="false"></header>
+
+    <main>
+        <!-- Header -->
+        <section class="header-section">
+            <div class="container">
+                <h1>Your Contractor Profile</h1>
+                <p>This is what homeowners see when comparing bids.</p>
+            </div>
+        </section>
+
+        <!-- Profile Content -->
+        <div class="container">
+            <!-- Company Info Card -->
+            <div class="profile-card">
+                <h2><span class="card-icon">🏢</span>Company Information</h2>
+
+                <div class="edit-toggle" id="companyEditToggle">
+                    <button class="btn btn-primary" onclick="toggleEdit('company')">Edit Company Info</button>
+                </div>
+
+                <!-- View Mode -->
+                <div id="companyView">
+                    <div class="view-field">
+                        <label>Business Name</label>
+                        <div class="view-field-value" id="viewBusinessName">Stohler Roofing</div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="view-field">
+                            <label>Owner Name</label>
+                            <div class="view-field-value" id="viewOwnerName">Dustin Stohler</div>
+                        </div>
+                        <div class="view-field">
+                            <label>Phone</label>
+                            <div class="view-field-value" id="viewPhone">(317) 530-3054</div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="view-field">
+                            <label>Email</label>
+                            <div class="view-field-value" id="viewEmail">Dustin@StohlerRoof.com</div>
+                        </div>
+                        <div class="view-field">
+                            <label>Website</label>
+                            <div class="view-field-value" id="viewWebsite"><a href="#" style="color: var(--amber);">www.stohlerroofing.com</a></div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="view-field">
+                            <label>Years in Business</label>
+                            <div class="view-field-value" id="viewYearsInBusiness">15</div>
+                        </div>
+                        <div class="view-field">
+                            <label>Team Size</label>
+                            <div class="view-field-value" id="viewTeamSize">12</div>
+                        </div>
+                    </div>
+
+                    <div class="view-field">
+                        <label>About Us</label>
+                        <div class="view-field-value" id="viewAboutUs">Family-owned roofing company serving Central Indiana since 2010. Specializing in residential roof replacements and repairs with a focus on quality craftsmanship and customer satisfaction.</div>
+                    </div>
+
+                    <div class="view-field">
+                        <label>Why Choose Us</label>
+                        <div class="view-field-value" id="viewWhyChoose">Licensed, insured, and dedicated to the highest standards in workmanship. We stand behind every job.</div>
+                    </div>
+                </div>
+
+                <!-- Edit Mode -->
+                <div id="companyEdit" style="display: none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="editBusinessName" class="form-label">Business Name</label>
+                            <input type="text" id="editBusinessName" class="form-input" value="Stohler Roofing">
+                        </div>
+                        <div class="form-group">
+                            <label for="editOwnerName" class="form-label">Owner Name</label>
+                            <input type="text" id="editOwnerName" class="form-input" value="Dustin Stohler">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="editPhone" class="form-label">Phone</label>
+                            <input type="tel" id="editPhone" class="form-input" value="(317) 530-3054">
+                        </div>
+                        <div class="form-group">
+                            <label for="editEmail" class="form-label">Email</label>
+                            <input type="email" id="editEmail" class="form-input" value="Dustin@StohlerRoof.com">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editWebsite" class="form-label">Website (optional)</label>
+                        <input type="url" id="editWebsite" class="form-input" value="www.stohlerroofing.com" placeholder="https://example.com">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="editYearsInBusiness" class="form-label">Years in Business</label>
+                            <input type="number" id="editYearsInBusiness" class="form-input" value="15" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="editTeamSize" class="form-label">Team Size</label>
+                            <input type="number" id="editTeamSize" class="form-input" value="12" min="1">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editAboutUs" class="form-label">About Us (500 characters max)</label>
+                        <textarea id="editAboutUs" maxlength="500">Family-owned roofing company serving Central Indiana since 2010. Specializing in residential roof replacements and repairs with a focus on quality craftsmanship and customer satisfaction.</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editWhyChoose" class="form-label">Why Choose Us (300 characters max)</label>
+                        <textarea id="editWhyChoose" maxlength="300">Licensed, insured, and dedicated to the highest standards in workmanship. We stand behind every job.</textarea>
+                    </div>
+
+                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-8);">
+                        <button class="btn btn-primary" onclick="saveProfile('company')">Save Changes</button>
+                        <button class="btn btn-secondary" onclick="toggleEdit('company')">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Photos Card -->
+            <div class="profile-card">
+                <h2><span class="card-icon">📸</span>Photos</h2>
+
+                <div class="edit-toggle">
+                    <button class="btn btn-primary" onclick="toggleEdit('photos')">Edit Photos</button>
+                </div>
+
+                <!-- View Mode -->
+                <div id="photosView">
+                    <div class="form-group">
+                        <label class="form-label">Owner Photo</label>
+                        <div style="width: 200px; height: 200px; background-color: var(--light); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; color: var(--slate); margin-bottom: var(--sp-6);">
+                            📷 No photo
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Project Gallery (0 of 10 photos)</label>
+                        <div style="padding: var(--sp-6); text-align: center; color: var(--slate); background-color: var(--light); border-radius: var(--radius-md);">
+                            No photos uploaded yet
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Edit Mode -->
+                <div id="photosEdit" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">Owner Photo</label>
+                        <div class="image-upload">
+                            <input type="file" id="ownerPhotoInput" accept="image/*">
+                            <label for="ownerPhotoInput" class="upload-label">
+                                📸 Click to upload owner photo or drag and drop
+                            </label>
+                        </div>
+                        <div id="ownerPhotoPreview"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Project Gallery (up to 10 photos)</label>
+                        <div class="image-upload">
+                            <input type="file" id="galleryInput" accept="image/*" multiple>
+                            <label for="galleryInput" class="upload-label">
+                                📸 Click to upload project photos or drag and drop
+                            </label>
+                        </div>
+                        <div class="gallery-grid" id="galleryPreview"></div>
+                    </div>
+
+                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-8);">
+                        <button class="btn btn-primary" onclick="saveProfile('photos')">Save Photos</button>
+                        <button class="btn btn-secondary" onclick="toggleEdit('photos')">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Credentials Card -->
+            <div class="profile-card">
+                <h2><span class="card-icon">✓</span>Credentials & Verification</h2>
+
+                <!-- View Mode -->
+                <div id="credentialsView">
+                    <div class="form-group">
+                        <label class="form-label">Contractor License</label>
+                        <div>
+                            <span style="font-weight: 600; color: var(--navy);">License #12345</span>
+                            <span class="badge badge-verified">Verified</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Workers Compensation Insurance</label>
+                        <div>
+                            <span style="font-weight: 600; color: var(--navy);">Policy #WC123456</span>
+                            <span class="badge badge-verified">Verified</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">General Liability Insurance</label>
+                        <div>
+                            <span style="font-weight: 600; color: var(--navy);">Policy #GL123456 ($1,000,000)</span>
+                            <span class="badge badge-verified">Verified</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Certifications</label>
+                        <div id="viewCertifications" style="color: var(--slate);">No certifications added</div>
+                    </div>
+                </div>
+
+                <div class="edit-toggle">
+                    <button class="btn btn-primary" onclick="toggleEdit('credentials')">Add Certification</button>
+                </div>
+
+                <!-- Edit Mode -->
+                <div id="credentialsEdit" style="display: none;">
+                    <div class="form-group">
+                        <label for="certificationName" class="form-label">Certification Name</label>
+                        <input type="text" id="certificationName" class="form-input" placeholder="e.g., GAF Master Elite Contractor">
+                    </div>
+
+                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-6);">
+                        <button class="btn btn-primary" onclick="addCertification()">Add Certification</button>
+                        <button class="btn btn-secondary" onclick="toggleEdit('credentials')">Cancel</button>
+                    </div>
+
+                    <div class="certification-list" id="certificationsList"></div>
+                </div>
+            </div>
+
+            <!-- Reviews & Ratings Card -->
+            <div class="profile-card">
+                <h2><span class="card-icon">⭐</span>Reviews & Ratings</h2>
+
+                <div class="edit-toggle">
+                    <button class="btn btn-primary" onclick="toggleEdit('reviews')">Edit Review Links</button>
+                </div>
+
+                <!-- View Mode -->
+                <div id="reviewsView">
+                    <div class="view-field">
+                        <label>Google Reviews</label>
+                        <div class="view-field-value">
+                            <a href="#" style="color: var(--amber); text-decoration: none;">View on Google</a>
+                        </div>
+                    </div>
+
+                    <div class="view-field">
+                        <label>Better Business Bureau (BBB)</label>
+                        <div class="view-field-value">
+                            <a href="#" style="color: var(--amber); text-decoration: none;">View on BBB</a>
+                        </div>
+                    </div>
+
+                    <div class="view-field">
+                        <label>Angi (Formerly Angie's List)</label>
+                        <div class="view-field-value">
+                            <a href="#" style="color: var(--amber); text-decoration: none;">View on Angi</a>
+                        </div>
+                    </div>
+
+                    <div class="view-field">
+                        <label>Yelp</label>
+                        <div class="view-field-value">
+                            <a href="#" style="color: var(--amber); text-decoration: none;">View on Yelp</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Edit Mode -->
+                <div id="reviewsEdit" style="display: none;">
+                    <div class="form-group">
+                        <label for="googleReviewsUrl" class="form-label">Google Reviews URL</label>
+                        <input type="url" id="googleReviewsUrl" class="form-input" placeholder="https://google.com/...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="bbbUrl" class="form-label">BBB URL</label>
+                        <input type="url" id="bbbUrl" class="form-input" placeholder="https://bbb.org/...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="angiUrl" class="form-label">Angi URL</label>
+                        <input type="url" id="angiUrl" class="form-input" placeholder="https://angi.com/...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="yelpUrl" class="form-label">Yelp URL</label>
+                        <input type="url" id="yelpUrl" class="form-input" placeholder="https://yelp.com/...">
+                    </div>
+
+                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-6);">
+                        <button class="btn btn-primary" onclick="saveProfile('reviews')">Save Links</button>
+                        <button class="btn btn-secondary" onclick="toggleEdit('reviews')">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Service Area Card -->
+            <div class="profile-card">
+                <h2><span class="card-icon">📍</span>Service Area & Trades</h2>
+
+                <div class="view-field">
+                    <label>Primary Trades</label>
+                    <div class="view-field-value" id="viewTrades">Roofing, Gutters, Siding</div>
+                </div>
+
+                <div class="view-field">
+                    <label>Preferred Shingle Brands</label>
+                    <div class="view-field-value" id="viewBrands">GAF, Owens Corning</div>
+                </div>
+
+                <div class="view-field">
+                    <label>Service Area</label>
+                    <div class="view-field-value" id="viewServiceArea">Hamilton, Hendricks, Boone, and surrounding counties</div>
+                </div>
+
+                <div style="margin-top: var(--sp-8);">
+                    <button class="btn btn-secondary" disabled>Update Service Area (Coming Soon)</button>
+                </div>
+            </div>
+
+            <!-- Platform Stats Card -->
+            <div class="profile-card">
+                <h2><span class="card-icon">📊</span>Platform Statistics</h2>
+
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">ClaimShield Jobs</div>
+                        <div class="stat-value" id="statJobs">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Platform Rating</div>
+                        <div class="stat-value" id="statRating">—</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Avg. First Contact</div>
+                        <div class="stat-value" id="statFirstContact">—</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Avg. Bid Response</div>
+                        <div class="stat-value" id="statBidResponse">—</div>
+                    </div>
+                </div>
+
+                <div class="info-box" style="margin-top: var(--sp-8);">
+                    Complete your first job with ClaimShield to unlock performance metrics and recommendations algorithms.
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+
+    <script>
+        // Demo data
+        const demoProfile = {
+            businessName: 'Stohler Roofing',
+            ownerName: 'Dustin Stohler',
+            phone: '(317) 530-3054',
+            email: 'Dustin@StohlerRoof.com',
+            website: 'www.stohlerroofing.com',
+            yearsInBusiness: 15,
+            teamSize: 12,
+            aboutUs: 'Family-owned roofing company serving Central Indiana since 2010. Specializing in residential roof replacements and repairs with a focus on quality craftsmanship and customer satisfaction.',
+            whyChoose: 'Licensed, insured, and dedicated to the highest standards in workmanship. We stand behind every job.',
+            trades: ['Roofing', 'Gutters', 'Siding'],
+            brands: ['GAF', 'Owens Corning'],
+            serviceArea: 'Hamilton, Hendricks, Boone, and surrounding counties',
+            totalJobs: 0,
+            rating: null,
+            avgFirstContact: null,
+            avgBidResponse: null,
+            certifications: []
+        };
+
+        // Toggle edit mode
+        function toggleEdit(section) {
+            const viewEl = document.getElementById(section + 'View');
+            const editEl = document.getElementById(section + 'Edit');
+
+            if (viewEl && editEl) {
+                viewEl.style.display = viewEl.style.display === 'none' ? 'block' : 'none';
+                editEl.style.display = editEl.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        // Save profile changes
+        function saveProfile(section) {
+            if (section === 'company') {
+                const businessName = document.getElementById('editBusinessName').value;
+                const ownerName = document.getElementById('editOwnerName').value;
+                const phone = document.getElementById('editPhone').value;
+                const email = document.getElementById('editEmail').value;
+                const website = document.getElementById('editWebsite').value;
+                const yearsInBusiness = document.getElementById('editYearsInBusiness').value;
+                const teamSize = document.getElementById('editTeamSize').value;
+                const aboutUs = document.getElementById('editAboutUs').value;
+                const whyChoose = document.getElementById('editWhyChoose').value;
+
+                // Update view
+                document.getElementById('viewBusinessName').textContent = businessName;
+                document.getElementById('viewOwnerName').textContent = ownerName;
+                document.getElementById('viewPhone').textContent = phone;
+                document.getElementById('viewEmail').textContent = email;
+                document.getElementById('viewWebsite').innerHTML = `<a href="${website}" target="_blank" style="color: var(--amber);">${website}</a>`;
+                document.getElementById('viewYearsInBusiness').textContent = yearsInBusiness;
+                document.getElementById('viewTeamSize').textContent = teamSize;
+                document.getElementById('viewAboutUs').textContent = aboutUs;
+                document.getElementById('viewWhyChoose').textContent = whyChoose;
+
+                // In demo mode, just toggle
+                if (window.CONFIG && window.CONFIG.DEMO_MODE) {
+                    alert('Changes saved (demo mode)');
+                    toggleEdit('company');
+                }
+            } else if (section === 'reviews') {
+                // Handle review links
+                toggleEdit('reviews');
+            }
+        }
+
+        // Add certification
+        function addCertification() {
+            const certName = document.getElementById('certificationName').value;
+            if (certName.trim()) {
+                demoProfile.certifications.push(certName);
+                document.getElementById('certificationName').value = '';
+                renderCertifications();
+                alert('Certification added (demo mode)');
+            }
+        }
+
+        // Render certifications
+        function renderCertifications() {
+            const list = document.getElementById('certificationsList');
+            const view = document.getElementById('viewCertifications');
+
+            if (demoProfile.certifications.length === 0) {
+                view.textContent = 'No certifications added';
+                list.innerHTML = '';
+            } else {
+                view.innerHTML = demoProfile.certifications
+                    .map(cert => `<div style="margin-bottom: var(--sp-2);">• ${cert}</div>`)
+                    .join('');
+
+                list.innerHTML = demoProfile.certifications
+                    .map((cert, idx) => `
+                        <div class="certification-item">
+                            <span>${cert}</span>
+                            <button class="certification-item-remove" onclick="removeCertification(${idx})">Remove</button>
+                        </div>
+                    `)
+                    .join('');
+            }
+        }
+
+        // Remove certification
+        function removeCertification(idx) {
+            demoProfile.certifications.splice(idx, 1);
+            renderCertifications();
+        }
+
+        // Initialize
+        renderCertifications();
+    </script>
+</body>
+</html>

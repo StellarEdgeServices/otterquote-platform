@@ -721,6 +721,28 @@
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 currentUser = await Auth.requireAuth();
+
+                // Demo mode: if no user and DEMO_MODE is true, set up minimal demo state
+                if (!currentUser && CONFIG.DEMO_MODE) {
+                    currentProfile = {
+                        first_name: 'Demo',
+                        last_name: 'User',
+                        phone: '(555) 123-4567'
+                    };
+                    currentClaim = {
+                        id: 'demo-claim-123',
+                        claim_number: 'CLM-2024-00001',
+                        carrier_id: null,
+                        adjuster_name: 'John Smith',
+                        adjuster_email: 'john.smith@insurance.com',
+                        adjuster_phone: '(317) 555-1234'
+                    };
+                    // Page content is already visible, just set up listeners
+                    prefillAdjusterInfo();
+                    setupListeners();
+                    return;
+                }
+
                 if (!currentUser) return;
 
                 currentProfile = await Auth.getProfile();
@@ -828,7 +850,7 @@
                 const hoverResult = await Services.createHoverOrder({
                     claim_id: currentClaim?.id,
                     user_id: currentUser?.id,
-                    address: [currentProfile?.address_street, currentProfile?.address_city, currentProfile?.address_state, currentProfile?.address_zip].filter(Boolean).join(', ') || '',
+                    address: currentProfile?.address || '',
                     amount_charged: 79.00,
                 });
 
@@ -861,7 +883,7 @@
         function updateEmailPreview() {
             const adjName = document.getElementById('adjusterName').value || '[Adjuster Name]';
             const homeownerName = currentProfile
-                ? (currentProfile.full_name || '').trim()
+                ? `${currentProfile.first_name || ''} ${currentProfile.last_name || ''}`.trim()
                 : 'the homeowner';
             const homeownerPhone = currentProfile?.phone || '';
 
@@ -892,7 +914,7 @@
                 const adjusterEmail = document.getElementById('adjusterEmail').value.trim();
                 const adjusterPhone = document.getElementById('adjusterPhone').value.trim();
                 const homeownerName = currentProfile
-                    ? (currentProfile.full_name || '').trim()
+                    ? `${currentProfile.first_name || ''} ${currentProfile.last_name || ''}`.trim()
                     : '';
 
                 // Save adjuster info

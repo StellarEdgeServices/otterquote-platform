@@ -287,6 +287,10 @@
           <a href="terms.html">Terms of Service</a> and
           <a href="privacy.html">Privacy Policy</a>.
         </p>
+
+        <p class="text-sm text-center" style="color: var(--gray); margin-top: var(--sp-4);">
+          Are you a contractor? <a href="contractor-login.html" style="color: var(--amber); font-weight: 600;">Sign in to the contractor portal</a>
+        </p>
       </form>
 
       <!-- Magic Link Sent -->
@@ -441,10 +445,14 @@
         referral_source: referralSource || 'web',
         referring_agent_name: refName || null,
         referring_agent_email: refEmail || null,
+        role: 'homeowner',
       }));
 
-      // 3. Send magic link
-      await Auth.sendMagicLink(email);
+      // Store the intended role for post-auth routing
+      sessionStorage.setItem('cs_auth_role', 'homeowner');
+
+      // 3. Send magic link (homeowner role)
+      await Auth.sendMagicLink(email, 'homeowner');
 
       // 4. Show success state
       form.classList.add('hidden');
@@ -481,13 +489,16 @@
     }
   });
 
-  // Check if user is already logged in
-  Auth.getUser().then(user => {
+  // Check if user is already logged in — route to appropriate dashboard
+  Auth.getUser().then(async user => {
     if (user) {
-      window.location.href = '/dashboard.html';
+      await Auth.redirectToDashboard();
     }
   });
 })();
 </script>
+
+<footer id="site-footer"></footer>
+
 </body>
 </html>

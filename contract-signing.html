@@ -1098,7 +1098,13 @@
     document.addEventListener('DOMContentLoaded', async () => {
       // Check auth
       const user = await Auth.requireAuth();
-      if (!user) return;
+
+      // Demo mode: if user is null and CONFIG.DEMO_MODE is true, load demo data
+      if (!user && CONFIG.DEMO_MODE) {
+        loadDemoData();
+      } else if (!user) {
+        return;
+      }
 
       // Render nav
       Nav.renderHeader();
@@ -1107,19 +1113,49 @@
       const params = new URLSearchParams(window.location.search);
       state.claimId = params.get('claim_id');
 
-      if (!state.claimId) {
+      if (!state.claimId && !CONFIG.DEMO_MODE) {
         console.error('No claim_id provided');
         showMessage('No claim found. Redirecting...', 'error');
         setTimeout(() => window.location.href = '/dashboard.html', 2000);
         return;
       }
 
-      // Load claim data
-      await loadClaimData();
-
-      // Setup event listeners
-      setupEventListeners();
+      // Load claim data (or demo data if in demo mode)
+      if (CONFIG.DEMO_MODE && !user) {
+        // Demo data already loaded
+        setupEventListeners();
+      } else {
+        await loadClaimData();
+        setupEventListeners();
+      }
     });
+
+    // ── Load Demo Data ──
+    function loadDemoData() {
+      state.claimId = 'demo-claim-001';
+      state.claim = {
+        id: 'demo-claim-001',
+        selected_contractor_id: 'demo-contractor-001',
+        selected_bid_amount: 19850,
+        material_type: 'GAF Timberline HDZ Architectural Shingles',
+        warranty_months: 30,
+        estimated_start_date: '2026-04-15',
+        job_type: 'replacement',
+        deductible_amount: 2500,
+      };
+
+      state.contractor = {
+        id: 'demo-contractor-001',
+        name: 'Hoosier Roofing Co.',
+        rating: 4.9,
+        years_in_business: 15,
+        avatar_emoji: '🏗️',
+        preferred_brand: 'GAF',
+      };
+
+      // Render contractor card
+      renderContractorCard();
+    }
 
     // ── Load Claim Data ──
     async function loadClaimData() {

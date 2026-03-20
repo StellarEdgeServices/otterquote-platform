@@ -831,7 +831,17 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
-            await Auth.requireAuth();
+            const currentUser = await Auth.requireAuth();
+
+            // Demo mode: if no user and DEMO_MODE is true, just continue rendering
+            if (!currentUser && CONFIG.DEMO_MODE) {
+                renderNav();
+                checkUrlParams();
+                return;
+            }
+
+            if (!currentUser) return;
+
             renderNav();
             checkUrlParams();
         });
@@ -1040,6 +1050,15 @@
             button.classList.add('loading');
 
             try {
+                // Demo mode: skip database save and just redirect
+                if (CONFIG.DEMO_MODE && !sb) {
+                    showMessage('Selection confirmed (demo mode). Redirecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html?material=saved';
+                    }, 1000);
+                    return;
+                }
+
                 // Get current user
                 const { data: { user } } = await sb.auth.getUser();
                 if (!user) throw new Error('Not authenticated');

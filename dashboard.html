@@ -601,17 +601,64 @@
       let isEditingClaim = false;
       let uploadsInProgress = {};
 
+      // ── Demo Mode ──
+      let isDemo = false;
+
+      function loadDemoData() {
+        isDemo = true;
+        currentProfile = {
+          first_name: 'Sarah',
+          last_name: 'Mitchell',
+          phone: '(317) 555-0142',
+          address: '4821 Meridian Hills Blvd, Indianapolis, IN 46208',
+        };
+        carriers = [
+          { id: '1', name: 'State Farm' },
+          { id: '2', name: 'Allstate' },
+          { id: '3', name: 'Liberty Mutual' },
+          { id: '4', name: 'Erie Insurance' },
+          { id: '5', name: 'Indiana Farm Bureau' },
+          { id: '6', name: 'USAA' },
+          { id: '7', name: 'Nationwide' },
+          { id: '8', name: 'American Family' },
+          { id: '9', name: 'Farmers Insurance' },
+          { id: '10', name: 'Progressive' },
+        ];
+        currentClaim = {
+          id: 'demo-001',
+          status: 'draft',
+          carrier_id: '1',
+          claim_number: 'SF-2026-4821-7R',
+          date_of_loss: '2026-03-02',
+          damage_type: 'Roof — Hail & Wind',
+          deductible_amount: 2500.00,
+          adjuster_name: 'Mike Reynolds',
+          adjuster_email: 'mreynolds@statefarm.com',
+          adjuster_phone: '(317) 555-0198',
+          has_estimate: false,
+          has_measurements: false,
+          selected_material: null,
+          estimate_filename: null,
+          measurements_filename: null,
+          ready_for_bids: false,
+        };
+      }
+
       // ── Main Initialization ──
       async function init() {
         try {
-          // 1. Require auth
+          // 1. Check auth
           currentUser = await Auth.requireAuth();
-          if (!currentUser) return;
 
-          // 2. Load profile and claim data
-          await loadProfileData();
-          await loadCarriers();
-          await loadClaimData();
+          if (!currentUser) {
+            // Demo mode: show realistic sample data for review
+            loadDemoData();
+          } else {
+            // Live mode: load real data
+            await loadProfileData();
+            await loadCarriers();
+            await loadClaimData();
+          }
 
           // 3. Render UI
           renderWelcome();
@@ -640,28 +687,14 @@
         if (!currentProfile) {
           // Create default profile if doesn't exist
           const signupData = JSON.parse(sessionStorage.getItem('cs_signup') || '{}');
-          const fullName = signupData.first_name
-            ? `${signupData.first_name} ${signupData.last_name || ''}`.trim()
-            : currentUser.user_metadata?.full_name || '';
           currentProfile = {
             id: currentUser.id,
-            full_name: fullName || null,
-            email: currentUser.email || signupData.email || null,
-            phone: signupData.phone || null,
-            address_street: signupData.address || signupData.address_street || null,
-            address_city: signupData.address_city || null,
-            address_state: signupData.address_state || 'IN',
-            address_zip: signupData.address_zip || null,
-            referral_source: signupData.referral_source || null,
-            referring_agent_name: signupData.referring_agent_name || null,
-            referring_agent_email: signupData.referring_agent_email || null,
+            first_name: signupData.first_name || currentUser.user_metadata?.full_name?.split(' ')[0] || 'there',
+            last_name: signupData.last_name || currentUser.user_metadata?.full_name?.split(' ')[1] || '',
+            phone: signupData.phone || '',
+            address: signupData.address || '',
           };
-          try {
-            await Auth.updateProfile(currentProfile);
-          } catch (err) {
-            console.warn('Could not save profile defaults:', err);
-            // Continue with local defaults — don't crash the dashboard
-          }
+          await Auth.updateProfile(currentProfile);
         }
       }
 
@@ -670,8 +703,8 @@
         try {
           const { data, error } = await sb
             .from('carrier_profiles')
-            .select('id, carrier_name')
-            .order('carrier_name');
+            .select('id, name')
+            .order('name');
           if (!error && data) {
             carriers = data;
           }
@@ -730,20 +763,8 @@
 
       // ── UI Rendering ──
       function renderWelcome() {
-        const firstName = currentProfile?.full_name
-          ? currentProfile.full_name.split(' ')[0]
-          : 'there';
-        document.getElementById('user-first-name').textContent = firstName;
-
-        // Build address string from components
-        const parts = [
-          currentProfile?.address_street,
-          currentProfile?.address_city,
-          currentProfile?.address_state,
-          currentProfile?.address_zip
-        ].filter(Boolean);
-        document.getElementById('user-address').textContent =
-          parts.length > 0 ? parts.join(', ') : 'Address not set';
+        document.getElementById('user-first-name').textContent = currentProfile?.first_name || 'there';
+        document.getElementById('user-address').textContent = currentProfile?.address || 'Address not set';
       }
 
       function renderClaimInfo() {
@@ -771,7 +792,7 @@
           // Special handling for carrier_id
           if (field.key === 'carrier_id' && currentClaim[field.key]) {
             const carrier = carriers.find(c => c.id === currentClaim[field.key]);
-            value = carrier?.carrier_name || value;
+            value = carrier?.name || value;
           }
 
           // Format currency
@@ -797,7 +818,7 @@
               <select class="form-select" name="${field.key}">
                 <option value="">Select carrier...</option>
                 ${carriers.map(c => `
-                  <option value="${c.id}" ${c.id === value ? 'selected' : ''}>${c.carrier_name}</option>
+                  <option value="${c.id}" ${c.id === value ? 'selected' : ''}>${c.name}</option>
                 `).join('')}
               </select>
             `;
@@ -826,7 +847,7 @@
             title: 'Insurance Estimate',
             required: true,
             status: currentClaim.has_estimate ? 'uploaded' : 'pending',
-            filename: currentClaim.estimate_filename || null,
+            filename: currentClaim.estimate_filename,
             description: 'Upload your insurance adjuster\'s estimate or preliminary damage report.',
             buttons: [
               { label: 'Upload', action: 'upload', data: 'estimate' },
@@ -839,7 +860,7 @@
             title: 'Measurements',
             required: false,
             status: currentClaim.has_measurements ? 'uploaded' : 'pending',
-            filename: currentClaim.measurements_filename || null,
+            filename: currentClaim.measurements_filename,
             description: 'Optional but recommended. Upload photos, measurements, or inspection reports.',
             note: 'Optional but recommended for more accurate bids.',
             buttons: [
@@ -852,13 +873,11 @@
             id: 'material',
             title: 'Material Selection',
             required: true,
-            status: currentClaim.has_material_selection ? 'selected' : 'pending',
-            filename: currentClaim.material_category
-              ? [currentClaim.material_category, currentClaim.shingle_type, currentClaim.impact_class].filter(Boolean).join(' — ')
-              : null,
+            status: currentClaim.selected_material ? 'selected' : 'pending',
+            filename: currentClaim.selected_material,
             description: 'Choose the roofing material and specifications for your project.',
             buttons: [
-              currentClaim.has_material_selection
+              currentClaim.selected_material
                 ? { label: 'Change Material', action: 'navigate', data: 'help-materials.html' }
                 : { label: 'Choose Material', action: 'navigate', data: 'help-materials.html' }
             ],
@@ -929,7 +948,7 @@
 
         if (currentClaim?.has_estimate) completed++;
         if (currentClaim?.has_measurements) completed++;
-        if (currentClaim?.has_material_selection) completed++;
+        if (currentClaim?.selected_material) completed++;
 
         const percent = Math.round((completed / total) * 100);
         document.getElementById('progress-percent').textContent = percent;
@@ -941,7 +960,7 @@
         const hint = document.getElementById('submit-hint');
 
         const hasEstimate = currentClaim?.has_estimate;
-        const hasMaterial = currentClaim?.has_material_selection;
+        const hasMaterial = currentClaim?.selected_material;
         const isReady = hasEstimate && hasMaterial;
 
         btn.disabled = !isReady;
@@ -1095,31 +1114,17 @@
 
           // Update claim record
           const updateField = type === 'estimate' ? 'has_estimate' : 'has_measurements';
-          const updateData = { [updateField]: true };
-
-          // Store filename if column exists (added in v4 migration)
           const filenameField = type === 'estimate' ? 'estimate_filename' : 'measurements_filename';
-          updateData[filenameField] = file.name;
 
-          let { data, error: updateError } = await sb
+          const { data, error: updateError } = await sb
             .from('claims')
-            .update(updateData)
+            .update({
+              [updateField]: true,
+              [filenameField]: file.name,
+            })
             .eq('id', currentClaim.id)
             .select()
             .single();
-
-          // If filename column doesn't exist yet, retry without it
-          if (updateError && updateError.code === 'PGRST204') {
-            const fallback = { [updateField]: true };
-            const result = await sb
-              .from('claims')
-              .update(fallback)
-              .eq('id', currentClaim.id)
-              .select()
-              .single();
-            data = result.data;
-            updateError = result.error;
-          }
 
           if (updateError) throw updateError;
 

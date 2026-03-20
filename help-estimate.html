@@ -762,6 +762,25 @@
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 currentUser = await Auth.requireAuth();
+
+                // Demo mode: if no user and DEMO_MODE is true, set up minimal demo state
+                if (!currentUser && CONFIG.DEMO_MODE) {
+                    currentProfile = {
+                        first_name: 'Demo',
+                        last_name: 'User',
+                        phone: '(555) 123-4567'
+                    };
+                    currentClaim = {
+                        id: 'demo-claim-123',
+                        claim_number: 'CLM-2024-00001',
+                        carrier_id: null
+                    };
+                    // Page content is already visible, just set up listeners
+                    setupEmailListeners();
+                    updateEmailPreview();
+                    return;
+                }
+
                 if (!currentUser) return;
 
                 currentProfile = await Auth.getProfile();
@@ -853,11 +872,11 @@
             const title = document.getElementById('carrierTipsTitle');
             const list = document.getElementById('carrierTipsList');
 
-            title.textContent = `Tips for ${carrierData.carrier_name}`;
+            title.textContent = `Tips for ${carrierData.name}`;
 
             const tips = [];
             if (carrierData.claims_portal_url) {
-                tips.push(`Check your online portal: <a href="${carrierData.claims_portal_url}" target="_blank" style="color:#b8860b;">${carrierData.carrier_name} Claims Portal</a>`);
+                tips.push(`Check your online portal: <a href="${carrierData.claims_portal_url}" target="_blank" style="color:#b8860b;">${carrierData.name} Claims Portal</a>`);
             }
             if (carrierData.claims_email) {
                 tips.push(`Email their claims department: <strong>${carrierData.claims_email}</strong>`);
@@ -872,7 +891,7 @@
                 tips.push(carrierData.special_instructions);
             }
             if (carrierData.typical_estimate_days) {
-                tips.push(`${carrierData.carrier_name} typically sends estimates within <strong>${carrierData.typical_estimate_days} business days</strong> after inspection.`);
+                tips.push(`${carrierData.name} typically sends estimates within <strong>${carrierData.typical_estimate_days} business days</strong> after inspection.`);
             }
 
             if (tips.length > 0) {
@@ -909,7 +928,7 @@
             const adjName = document.getElementById('adjusterName').value || '[Adjuster Name]';
             const adjEmail = document.getElementById('adjusterEmail').value || '[adjuster@email.com]';
             const homeownerName = currentProfile
-                ? (currentProfile.full_name || '').trim()
+                ? `${currentProfile.first_name || ''} ${currentProfile.last_name || ''}`.trim()
                 : 'the homeowner';
             const homeownerPhone = currentProfile?.phone || '';
             const claimNumber = currentClaim?.claim_number || '';
@@ -962,7 +981,7 @@
                 const adjusterPhone = document.getElementById('adjusterPhone').value.trim();
                 const alsoMeasurements = document.getElementById('alsoRequestMeasurements').checked;
                 const homeownerName = currentProfile
-                    ? (currentProfile.full_name || '').trim()
+                    ? `${currentProfile.first_name || ''} ${currentProfile.last_name || ''}`.trim()
                     : '';
 
                 // Save adjuster info to claim

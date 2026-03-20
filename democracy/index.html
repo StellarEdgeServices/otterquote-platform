@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join the Effort — Defend the Constitutional Republic</title>
+    <meta name="robots" content="noindex, nofollow">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            background: #fafaf8;
+            color: #1a1a1a;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: #1b2a4a;
+            color: #fff;
+            padding: 60px 20px 50px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.2rem;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+            margin-bottom: 16px;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .header .subtitle {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 1.05rem;
+            font-weight: 300;
+            color: #c4cdd9;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.7;
+        }
+
+        .quote-bar {
+            background: #f0ece4;
+            border-left: 4px solid #8b7d5e;
+            padding: 24px 32px;
+            max-width: 740px;
+            margin: -24px auto 0;
+            position: relative;
+            z-index: 1;
+            font-style: italic;
+            font-size: 1.05rem;
+            color: #3a3a3a;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+
+        .quote-bar .attribution {
+            font-style: normal;
+            font-size: 0.9rem;
+            color: #6b6b6b;
+            margin-top: 8px;
+        }
+
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 48px 20px;
+        }
+
+        .mission-text {
+            font-size: 1.05rem;
+            color: #2a2a2a;
+            margin-bottom: 40px;
+            line-height: 1.8;
+        }
+
+        .mission-text p { margin-bottom: 16px; }
+
+        .mission-text strong { color: #1b2a4a; }
+
+        .form-section {
+            background: #fff;
+            border: 1px solid #e0ddd6;
+            border-radius: 4px;
+            padding: 40px 36px;
+            margin-bottom: 32px;
+        }
+
+        .form-section h2 {
+            font-size: 1.4rem;
+            font-weight: 400;
+            color: #1b2a4a;
+            margin-bottom: 8px;
+        }
+
+        .form-section .section-note {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.9rem;
+            color: #777;
+            margin-bottom: 28px;
+        }
+
+        .form-row {
+            margin-bottom: 20px;
+        }
+
+        .form-row label {
+            display: block;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #444;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 6px;
+        }
+
+        .form-row label .optional {
+            font-weight: 400;
+            color: #999;
+            text-transform: none;
+            font-size: 0.8rem;
+        }
+
+        .form-row input,
+        .form-row select,
+        .form-row textarea {
+            width: 100%;
+            padding: 12px 14px;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            background: #fafaf8;
+            color: #1a1a1a;
+            transition: border-color 0.2s;
+        }
+
+        .form-row input:focus,
+        .form-row select:focus,
+        .form-row textarea:focus {
+            outline: none;
+            border-color: #1b2a4a;
+            background: #fff;
+        }
+
+        .form-row textarea { resize: vertical; min-height: 80px; }
+
+        .inferred-info {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.85rem;
+            color: #5a8a5a;
+            margin-top: 4px;
+            display: none;
+        }
+
+        .form-row-inline {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .survey-section h3 {
+            font-size: 1.1rem;
+            font-weight: 400;
+            color: #1b2a4a;
+            margin-bottom: 16px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .checkbox-group label {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.95rem;
+            color: #333;
+            text-transform: none;
+            letter-spacing: 0;
+            font-weight: 400;
+            cursor: pointer;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-top: 2px;
+            flex-shrink: 0;
+            accent-color: #1b2a4a;
+        }
+
+        .submit-btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: #1b2a4a;
+            color: #fff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 1.05rem;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .submit-btn:hover { background: #2a3d66; }
+        .submit-btn:disabled { background: #999; cursor: not-allowed; }
+
+        .success-message {
+            display: none;
+            text-align: center;
+            padding: 48px 20px;
+        }
+
+        .success-message h2 {
+            font-size: 1.6rem;
+            color: #1b2a4a;
+            margin-bottom: 16px;
+        }
+
+        .success-message p {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 1.05rem;
+            color: #444;
+            max-width: 520px;
+            margin: 0 auto 16px;
+            line-height: 1.7;
+        }
+
+        .success-message .next-step {
+            background: #f0ece4;
+            border-radius: 4px;
+            padding: 24px;
+            max-width: 500px;
+            margin: 24px auto 0;
+            text-align: left;
+        }
+
+        .success-message .next-step h3 {
+            font-size: 1rem;
+            color: #1b2a4a;
+            margin-bottom: 8px;
+        }
+
+        .success-message .next-step p {
+            font-size: 0.95rem;
+            margin-bottom: 0;
+        }
+
+        .error-message {
+            background: #fdf0f0;
+            border: 1px solid #e8c4c4;
+            color: #8b3a3a;
+            padding: 12px 16px;
+            border-radius: 3px;
+            margin-bottom: 16px;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 32px 20px;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.8rem;
+            color: #999;
+            border-top: 1px solid #e8e6e0;
+        }
+
+        @media (max-width: 600px) {
+            .header { padding: 40px 16px 36px; }
+            .header h1 { font-size: 1.6rem; }
+            .quote-bar { margin: -16px 16px 0; padding: 20px 20px; }
+            .form-section { padding: 28px 20px; }
+            .form-row-inline { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Defending the Constitutional Republic</h1>
+    <p class="subtitle">
+        A growing coalition of attorneys and professionals committed to
+        protecting the constitutional order. No party. No platform. The Constitution.
+    </p>
+</div>
+
+<div class="quote-bar">
+    "The Constitution is not an instrument for the government to restrain the people;
+    it is an instrument for the people to restrain the government."
+    <div class="attribution">— Patrick Henry</div>
+</div>
+
+<div class="container">
+    <div class="mission-text">
+        <p>
+            You are here because someone you trust believes, as you do, that the
+            constitutional republic is under pressure — and that professionals with
+            influence have a responsibility to act.
+        </p>
+        <p>
+            This is not a partisan effort. It is an effort grounded in one principle:
+            <strong>fidelity to the Constitution of the United States.</strong>
+            Separation of powers. Rule of law. Individual rights. The structures that
+            keep the republic intact apply to every administration, every party, every era.
+        </p>
+        <p>
+            We are building a network of attorneys and influential professionals who are
+            prepared to exercise their collective voice and economic influence to defend
+            these principles. If you're ready to be counted, register below.
+        </p>
+    </div>
+
+    <div id="registration-form">
+        <form id="joinForm" onsubmit="handleSubmit(event)">
+            <div class="form-section">
+                <h2>Register</h2>
+                <p class="section-note">Takes about 60 seconds. All information is kept confidential.</p>
+
+                <div class="error-message" id="errorMsg"></div>
+
+                <div class="form-row-inline">
+                    <div class="form-row">
+                        <label for="firstName">First Name</label>
+                        <input type="text" id="firstName" name="firstName" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="lastName">Last Name</label>
+                        <input type="text" id="lastName" name="lastName" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required
+                           oninput="inferFromEmail(this.value)">
+                    <div class="inferred-info" id="inferredInfo"></div>
+                </div>
+
+                <div class="form-row-inline">
+                    <div class="form-row">
+                        <label for="organization">Organization / Firm <span class="optional">(optional)</span></label>
+                        <input type="text" id="organization" name="organization"
+                               placeholder="Auto-detected from email when possible">
+                    </div>
+                    <div class="form-row">
+                        <label for="title">Title / Role <span class="optional">(optional)</span></label>
+                        <input type="text" id="title" name="title" placeholder="e.g., Partner, GC, VP">
+                    </div>
+                </div>
+
+                <div class="form-row-inline">
+                    <div class="form-row">
+                        <label for="phone">Phone <span class="optional">(optional)</span></label>
+                        <input type="tel" id="phone" name="phone">
+                    </div>
+                    <div class="form-row">
+                        <label for="state">State</label>
+                        <select id="state" name="state" required>
+                            <option value="">Select state...</option>
+                            <option value="AL">Alabama</option><option value="AK">Alaska</option>
+                            <option value="AZ">Arizona</option><option value="AR">Arkansas</option>
+                            <option value="CA">California</option><option value="CO">Colorado</option>
+                            <option value="CT">Connecticut</option><option value="DE">Delaware</option>
+                            <option value="DC">District of Columbia</option>
+                            <option value="FL">Florida</option><option value="GA">Georgia</option>
+                            <option value="HI">Hawaii</option><option value="ID">Idaho</option>
+                            <option value="IL">Illinois</option><option value="IN">Indiana</option>
+                            <option value="IA">Iowa</option><option value="KS">Kansas</option>
+                            <option value="KY">Kentucky</option><option value="LA">Louisiana</option>
+                            <option value="ME">Maine</option><option value="MD">Maryland</option>
+                            <option value="MA">Massachusetts</option><option value="MI">Michigan</option>
+                            <option value="MN">Minnesota</option><option value="MS">Mississippi</option>
+                            <option value="MO">Missouri</option><option value="MT">Montana</option>
+                            <option value="NE">Nebraska</option><option value="NV">Nevada</option>
+                            <option value="NH">New Hampshire</option><option value="NJ">New Jersey</option>
+                            <option value="NM">New Mexico</option><option value="NY">New York</option>
+                            <option value="NC">North Carolina</option><option value="ND">North Dakota</option>
+                            <option value="OH">Ohio</option><option value="OK">Oklahoma</option>
+                            <option value="OR">Oregon</option><option value="PA">Pennsylvania</option>
+                            <option value="RI">Rhode Island</option><option value="SC">South Carolina</option>
+                            <option value="SD">South Dakota</option><option value="TN">Tennessee</option>
+                            <option value="TX">Texas</option><option value="UT">Utah</option>
+                            <option value="VT">Vermont</option><option value="VA">Virginia</option>
+                            <option value="WA">Washington</option><option value="WV">West Virginia</option>
+                            <option value="WI">Wisconsin</option><option value="WY">Wyoming</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label for="referredBy">Who Referred You?</label>
+                    <input type="text" id="referredBy" name="referredBy" required
+                           placeholder="Name or email of the person who sent you here">
+                </div>
+            </div>
+
+            <div class="form-section survey-section">
+                <h2>How Would You Like to Contribute?</h2>
+                <p class="section-note">Check all that apply. No commitment — this helps us understand the group's capacity.</p>
+
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" name="contribute" value="executive_team">
+                        Serve on a steering or executive committee
+                    </label>
+                    <label>
+                        <input type="checkbox" name="contribute" value="lead_local">
+                        Lead or host local meetings in my area
+                    </label>
+                    <label>
+                        <input type="checkbox" name="contribute" value="donate_time">
+                        Donate professional time (pro bono legal work, strategy, outreach)
+                    </label>
+                    <label>
+                        <input type="checkbox" name="contribute" value="donate_money">
+                        Contribute financially when the time comes
+                    </label>
+                    <label>
+                        <input type="checkbox" name="contribute" value="public_advocacy">
+                        Willing to be publicly named as a supporter
+                    </label>
+                    <label>
+                        <input type="checkbox" name="contribute" value="anonymous_support">
+                        Prefer to remain anonymous but supportive
+                    </label>
+                    <label>
+                        <input type="checkbox" name="contribute" value="recruit">
+                        Recruit others — I'll forward to 5 more people I trust
+                    </label>
+                    <label>
+                        <input type="checkbox" name="contribute" value="economic_influence">
+                        I hold a position of economic or institutional influence and am willing to use it
+                    </label>
+                </div>
+
+                <div class="form-row">
+                    <label for="topConcern">What Is Your Top Constitutional Concern Right Now?
+                        <span class="optional">(optional)</span>
+                    </label>
+                    <textarea id="topConcern" name="topConcern"
+                              placeholder="One or two sentences is perfect."></textarea>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">Register & Join the Effort</button>
+        </form>
+    </div>
+
+    <div class="success-message" id="successMsg">
+        <h2>You're In.</h2>
+        <p>
+            Thank you for standing up. Your registration has been recorded,
+            and you'll hear from us as the group takes shape.
+        </p>
+        <div class="next-step">
+            <h3>Your Next Step:</h3>
+            <p>
+                Forward the email that brought you here to <strong>five attorneys or
+                professionals</strong> you trust who share this concern. The strength
+                of this effort is the network. Every person you bring in multiplies
+                our collective influence.
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="footer">
+    This initiative is organized by private citizens exercising their First Amendment rights
+    to assemble, speak, and petition their government.
+</div>
+
+<script>
+    // ============================================================
+    // SUPABASE CONFIGURATION
+    // Using the same Supabase project as ClaimShield, separate table
+    // ============================================================
+    const SUPABASE_URL = 'https://yeszghaspzwwstvsrioa.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_mKmYIsRMc6dCG8ZrGGbyyw_l_MOTwZP';
+
+    // ============================================================
+    // Known email domain → organization mapping
+    // ============================================================
+    const DOMAIN_MAP = {
+        'kirkland.com': 'Kirkland & Ellis',
+        'lw.com': 'Latham & Watkins',
+        'skadden.com': 'Skadden, Arps, Slate, Meagher & Flom',
+        'sullcrom.com': 'Sullivan & Cromwell',
+        'davispolk.com': 'Davis Polk & Wardwell',
+        'cravath.com': 'Cravath, Swaine & Moore',
+        'wachtell.com': 'Wachtell, Lipton, Rosen & Katz',
+        'jonesday.com': 'Jones Day',
+        'gibsondunn.com': 'Gibson, Dunn & Crutcher',
+        'sidley.com': 'Sidley Austin',
+        'morganlewis.com': 'Morgan, Lewis & Bockius',
+        'whitecase.com': 'White & Case',
+        'weil.com': 'Weil, Gotshal & Manges',
+        'debevoise.com': 'Debevoise & Plimpton',
+        'paulweiss.com': 'Paul, Weiss, Rifkind, Wharton & Garrison',
+        'milbank.com': 'Milbank',
+        'clearygottlieb.com': 'Cleary Gottlieb',
+        'cooley.com': 'Cooley',
+        'wilmerhale.com': 'WilmerHale',
+        'goodwinlaw.com': 'Goodwin Procter',
+        'dlapiper.com': 'DLA Piper',
+        'bakermckenzie.com': 'Baker McKenzie',
+        'dentons.com': 'Dentons',
+        'hoganlovells.com': 'Hogan Lovells',
+        'nortonrosefulbright.com': 'Norton Rose Fulbright',
+        'mwe.com': 'McDermott Will & Emery',
+        'winston.com': 'Winston & Strawn',
+        'kslaw.com': 'King & Spalding',
+        'orrick.com': 'Orrick, Herrington & Sutcliffe',
+        'ropesgray.com': 'Ropes & Gray',
+        'mayerbrown.com': 'Mayer Brown',
+        'pillsburylaw.com': 'Pillsbury Winthrop Shaw Pittman',
+        'alston.com': 'Alston & Bird',
+        'arnoldporter.com': 'Arnold & Porter',
+        'venable.com': 'Venable',
+        'perkinscole.com': 'Perkins Coie',
+        'foley.com': 'Foley & Lardner',
+        'polsinelli.com': 'Polsinelli',
+        'seyfarth.com': 'Seyfarth Shaw',
+        'littler.com': 'Littler Mendelson',
+        'ogletree.com': 'Ogletree Deakins',
+        'fisherphillips.com': 'Fisher Phillips',
+        'jacksonlewis.com': 'Jackson Lewis',
+        'faegredrinker.com': 'Faegre Drinker',
+        'icemiller.com': 'Ice Miller',
+        'btlaw.com': 'Barnes & Thornburg',
+        'taftlaw.com': 'Taft Stettinius & Hollister',
+        'frost.com': 'Frost Brown Todd',
+    };
+
+    function inferFromEmail(email) {
+        const infoEl = document.getElementById('inferredInfo');
+        const orgField = document.getElementById('organization');
+
+        if (!email || !email.includes('@')) {
+            infoEl.style.display = 'none';
+            return;
+        }
+
+        const domain = email.split('@')[1]?.toLowerCase();
+        if (!domain) return;
+
+        const consumerDomains = ['gmail.com','yahoo.com','hotmail.com','outlook.com',
+                                  'aol.com','icloud.com','me.com','live.com',
+                                  'msn.com','protonmail.com','proton.me','pm.me'];
+
+        if (consumerDomains.includes(domain)) {
+            infoEl.style.display = 'none';
+            return;
+        }
+
+        if (DOMAIN_MAP[domain]) {
+            orgField.value = DOMAIN_MAP[domain];
+            infoEl.textContent = '\u2713 Recognized: ' + DOMAIN_MAP[domain];
+            infoEl.style.display = 'block';
+        } else {
+            const domainName = domain.split('.')[0];
+            const formatted = domainName.charAt(0).toUpperCase() + domainName.slice(1);
+            orgField.placeholder = 'Looks like: ' + formatted + '? Edit if needed.';
+            infoEl.style.display = 'none';
+        }
+    }
+
+    async function handleSubmit(event) {
+        event.preventDefault();
+
+        const btn = document.getElementById('submitBtn');
+        const errorEl = document.getElementById('errorMsg');
+        errorEl.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Registering...';
+
+        const contributions = [];
+        document.querySelectorAll('input[name="contribute"]:checked').forEach(cb => {
+            contributions.push(cb.value);
+        });
+
+        const data = {
+            first_name: document.getElementById('firstName').value.trim(),
+            last_name: document.getElementById('lastName').value.trim(),
+            email: document.getElementById('email').value.trim().toLowerCase(),
+            organization: document.getElementById('organization').value.trim() || null,
+            title: document.getElementById('title').value.trim() || null,
+            phone: document.getElementById('phone').value.trim() || null,
+            state: document.getElementById('state').value,
+            referred_by: document.getElementById('referredBy').value.trim(),
+            contributions: contributions,
+            top_concern: document.getElementById('topConcern').value.trim() || null,
+            registered_at: new Date().toISOString(),
+            email_domain: document.getElementById('email').value.split('@')[1]?.toLowerCase() || null
+        };
+
+        try {
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/members`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                if (errText.includes('members_email_key') || errText.includes('duplicate')) {
+                    throw new Error('This email is already registered. Thank you for your commitment.');
+                }
+                throw new Error('Registration failed. Please try again or contact the person who referred you.');
+            }
+
+            document.getElementById('registration-form').style.display = 'none';
+            document.getElementById('successMsg').style.display = 'block';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        } catch (err) {
+            errorEl.textContent = err.message;
+            errorEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Register & Join the Effort';
+        }
+    }
+</script>
+
+</body>
+</html>

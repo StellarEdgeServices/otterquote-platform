@@ -46,6 +46,11 @@ const CONFIG = {
   SITE_NAME: 'ClaimShield',
   SITE_URL:  'https://stellaredgeservices.com',
   SUPPORT_EMAIL: 'support@stellaredgeservices.com',
+
+  // ── Demo Mode ──
+  // When true, pages show sample data without requiring Supabase auth.
+  // Set to false before production launch.
+  DEMO_MODE: true,
 };
 
 // ── Initialize Supabase Client ──

@@ -58,13 +58,22 @@ const Nav = {
 
     const user = await Auth.getUser();
     if (user) {
+      // Determine which dashboard to link to based on role
+      const role = await Auth.getRole();
+      const dashboardUrl = role === 'contractor'
+        ? '/contractor-dashboard.html'
+        : '/dashboard.html';
+      const dashboardLabel = role === 'contractor'
+        ? 'Contractor Portal'
+        : 'My Dashboard';
       slot.innerHTML = `
-        <a href="/dashboard.html" class="btn btn-sm btn-primary">My Dashboard</a>
+        <a href="${dashboardUrl}" class="btn btn-sm btn-primary">${dashboardLabel}</a>
         <button class="btn btn-sm btn-ghost" onclick="Auth.signOut()">Sign Out</button>
       `;
     } else {
       slot.innerHTML = `
         <a href="/get-started.html" class="btn btn-sm btn-primary">Get Started</a>
+        <a href="/contractor-login.html" class="btn btn-sm btn-ghost">Contractor Login</a>
       `;
     }
   },
@@ -92,8 +101,9 @@ const Nav = {
           </div>
           <div class="footer-col">
             <h4 class="footer-heading">Contractors</h4>
-            <a href="/contractor-join.html">Join Our Network</a>
             <a href="/contractor-login.html">Contractor Login</a>
+            <a href="/contractor-join.html">Join Our Network</a>
+            <a href="/contractor-agreement.html">Partner Agreement</a>
           </div>
           <div class="footer-col">
             <h4 class="footer-heading">Legal</h4>

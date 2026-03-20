@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contractor Dashboard — ClaimShield</title>
+
+    <!-- GA4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-JNQ6XR3LX2');
+    </script>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+
+    <!-- Design System & Navigation -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <!-- Page-Specific Styles -->
+    <style>
+        main {
+            padding: var(--sp-8) var(--sp-4);
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .dashboard-hero {
+            margin-bottom: var(--sp-12);
+        }
+
+        .dashboard-hero h1 {
+            font-family: var(--font-heading);
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: var(--sp-2);
+            line-height: 1.1;
+        }
+
+        .dashboard-hero p {
+            font-family: var(--font-body);
+            font-size: 1.125rem;
+            color: var(--slate);
+            margin: 0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--sp-6);
+            margin-bottom: var(--sp-12);
+        }
+
+        .stat-card {
+            background: var(--white);
+            border: 1px solid #E5E7EB;
+            border-radius: var(--radius-lg);
+            padding: var(--sp-6);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .stat-card:hover {
+            border-color: var(--amber);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.1);
+        }
+
+        .stat-card-label {
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--slate);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: var(--sp-3);
+            display: block;
+        }
+
+        .stat-card-value {
+            font-family: var(--font-heading);
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: var(--sp-3);
+            display: block;
+        }
+
+        .stat-card-link {
+            display: inline-block;
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--amber);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .stat-card-link:hover {
+            color: #D97706;
+        }
+
+        .section-header {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: var(--sp-6);
+            margin-top: var(--sp-8);
+        }
+
+        .leads-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--white);
+            border: 1px solid #E5E7EB;
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            margin-bottom: var(--sp-12);
+        }
+
+        .leads-table thead {
+            background: #F9FAFB;
+            border-bottom: 2px solid #E5E7EB;
+        }
+
+        .leads-table th {
+            padding: var(--sp-4);
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--navy);
+            text-align: left;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .leads-table td {
+            padding: var(--sp-4);
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            color: #374151;
+            border-bottom: 1px solid #E5E7EB;
+        }
+
+        .leads-table tbody tr:hover {
+            background: #F9FAFB;
+        }
+
+        .lead-id {
+            font-family: var(--font-body);
+            font-weight: 600;
+            color: var(--navy);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: var(--sp-2) var(--sp-4);
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .status-new {
+            background: #DFF0FF;
+            color: #0284C7;
+        }
+
+        .status-submitted {
+            background: #FEF3C7;
+            color: #92400E;
+        }
+
+        .status-won {
+            background: #DCFCE7;
+            color: #15803D;
+        }
+
+        .status-lost {
+            background: #FEE2E2;
+            color: #991B1B;
+        }
+
+        .action-btn {
+            display: inline-block;
+            padding: var(--sp-2) var(--sp-4);
+            background: var(--amber);
+            color: var(--white);
+            border: none;
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .action-btn:hover {
+            background: #D97706;
+        }
+
+        .action-btn:disabled {
+            background: #D1D5DB;
+            cursor: not-allowed;
+        }
+
+        .activity-feed {
+            background: var(--white);
+            border: 1px solid #E5E7EB;
+            border-radius: var(--radius-lg);
+            padding: var(--sp-6);
+            margin-bottom: var(--sp-12);
+        }
+
+        .activity-item {
+            display: flex;
+            gap: var(--sp-4);
+            padding-bottom: var(--sp-6);
+            border-bottom: 1px solid #E5E7EB;
+        }
+
+        .activity-item:last-child {
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .activity-dot {
+            width: 12px;
+            height: 12px;
+            background: var(--amber);
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+
+        .activity-content {
+            flex: 1;
+        }
+
+        .activity-text {
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            color: var(--navy);
+            font-weight: 500;
+            margin-bottom: var(--sp-1);
+        }
+
+        .activity-time {
+            font-family: var(--font-body);
+            font-size: 0.8rem;
+            color: var(--slate);
+        }
+
+        .nav-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: var(--sp-6);
+            margin-bottom: var(--sp-12);
+        }
+
+        .nav-card {
+            background: var(--white);
+            border: 2px solid #E5E7EB;
+            border-radius: var(--radius-lg);
+            padding: var(--sp-8);
+            text-align: center;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .nav-card:hover {
+            border-color: var(--amber);
+            box-shadow: 0 8px 20px rgba(245, 158, 11, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .nav-card-icon {
+            font-size: 2.5rem;
+            margin-bottom: var(--sp-4);
+            display: block;
+        }
+
+        .nav-card-title {
+            font-family: var(--font-heading);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin: 0;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: var(--sp-12);
+            color: var(--slate);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: var(--sp-4);
+            display: block;
+        }
+
+        .empty-state-title {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: var(--sp-2);
+        }
+
+        .empty-state-text {
+            font-family: var(--font-body);
+            font-size: 1rem;
+            color: var(--slate);
+            margin-bottom: var(--sp-6);
+        }
+
+        @media (max-width: 768px) {
+            main {
+                padding: var(--sp-4) var(--sp-3);
+            }
+
+            .dashboard-hero h1 {
+                font-size: 1.75rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: var(--sp-4);
+            }
+
+            .leads-table {
+                font-size: 0.85rem;
+            }
+
+            .leads-table th,
+            .leads-table td {
+                padding: var(--sp-3);
+            }
+
+            .nav-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-auth="false"></header>
+
+    <main>
+        <div class="dashboard-hero">
+            <h1 id="welcomeText">Welcome back, Stohler Roofing</h1>
+            <p id="serviceAreaText">Service area: Indianapolis, Carmel, Brownsburg, Fishers, Zionsville</p>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span class="stat-card-label">Available Leads</span>
+                <span class="stat-card-value" id="availableLeadsCount">7</span>
+                <a href="contractor-leads.html" class="stat-card-link">View All →</a>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card-label">Active Bids</span>
+                <span class="stat-card-value" id="activeBidsCount">3</span>
+                <a href="contractor-leads.html" class="stat-card-link">Manage →</a>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card-label">Won Jobs</span>
+                <span class="stat-card-value" id="wonJobsCount">2</span>
+                <a href="#" class="stat-card-link">Details →</a>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card-label">Month Earnings</span>
+                <span class="stat-card-value" id="earningsAmount">$3,850</span>
+                <a href="#" class="stat-card-link">Summary →</a>
+            </div>
+        </div>
+
+        <!-- Active Leads -->
+        <h2 class="section-header">Active Leads</h2>
+        <table class="leads-table" id="leadsTable">
+            <thead>
+                <tr>
+                    <th>Lead ID</th>
+                    <th>Location</th>
+                    <th>Damage Type</th>
+                    <th>Material</th>
+                    <th>Est. Value</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="leadsTableBody">
+                <!-- Populated by JavaScript -->
+            </tbody>
+        </table>
+
+        <!-- Recent Activity -->
+        <h2 class="section-header">Recent Activity</h2>
+        <div class="activity-feed" id="activityFeed">
+            <!-- Populated by JavaScript -->
+        </div>
+
+        <!-- Quick Navigation -->
+        <h2 class="section-header">Quick Links</h2>
+        <div class="nav-grid">
+            <a href="contractor-leads.html" class="nav-card">
+                <span class="nav-card-icon">📋</span>
+                <h3 class="nav-card-title">Available Leads</h3>
+            </a>
+            <a href="contractor-profile.html" class="nav-card">
+                <span class="nav-card-icon">👤</span>
+                <h3 class="nav-card-title">My Profile</h3>
+            </a>
+            <a href="contractor-settings.html" class="nav-card">
+                <span class="nav-card-icon">⚙️</span>
+                <h3 class="nav-card-title">Settings</h3>
+            </a>
+            <a href="contractor-agreement.html" class="nav-card">
+                <span class="nav-card-icon">📄</span>
+                <h3 class="nav-card-title">Partner Agreement</h3>
+            </a>
+        </div>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+
+    <script>
+        // Demo data for contractor dashboard
+        const demoLeads = [
+            {
+                id: 'CS-2026-0048',
+                location: 'Indianapolis, 46208',
+                damageType: 'Roof — Hail & Wind',
+                material: 'GAF Architectural Class 4',
+                estimatedValue: '$18,500 - $22,000',
+                status: 'New'
+            },
+            {
+                id: 'CS-2026-0042',
+                location: 'Brownsburg, 46112',
+                damageType: 'Roof — Wind',
+                material: 'OC Duration',
+                estimatedValue: '$14,000 - $17,000',
+                status: 'Bid Submitted'
+            },
+            {
+                id: 'CS-2026-0039',
+                location: 'Carmel, 46032',
+                damageType: 'Roof — Hail',
+                material: 'GAF Timberline HDZ',
+                estimatedValue: '$22,000 - $26,000',
+                status: 'New'
+            }
+        ];
+
+        const demoActivity = [
+            {
+                text: 'New lead available — 46208, Roof Hail Damage, ~$18,500',
+                time: '2 hours ago'
+            },
+            {
+                text: 'Bid submitted — Lead #CS-2026-0042',
+                time: '1 day ago'
+            },
+            {
+                text: 'Contract signed — Deborah Arvin, Brownsburg',
+                time: '3 days ago'
+            }
+        ];
+
+        function initDashboard() {
+            // Check if in demo mode
+            if (CONFIG.DEMO_MODE && !window.currentUser) {
+                populateDemoData();
+            }
+        }
+
+        function populateDemoData() {
+            // Update welcome text
+            document.getElementById('welcomeText').textContent = 'Welcome back, Stohler Roofing';
+
+            // Populate leads table
+            const leadsBody = document.getElementById('leadsTableBody');
+            leadsBody.innerHTML = demoLeads.map(lead => `
+                <tr>
+                    <td class="lead-id">${lead.id}</td>
+                    <td>${lead.location}</td>
+                    <td>${lead.damageType}</td>
+                    <td>${lead.material}</td>
+                    <td>${lead.estimatedValue}</td>
+                    <td><span class="status-badge status-${lead.status.toLowerCase().replace(/\s+/g, '')}">${lead.status}</span></td>
+                    <td><a href="contractor-bid-form.html?lead=${lead.id}" class="action-btn">Submit Bid</a></td>
+                </tr>
+            `).join('');
+
+            // Populate activity feed
+            const activityFeed = document.getElementById('activityFeed');
+            activityFeed.innerHTML = demoActivity.map(activity => `
+                <div class="activity-item">
+                    <div class="activity-dot"></div>
+                    <div class="activity-content">
+                        <div class="activity-text">${activity.text}</div>
+                        <div class="activity-time">${activity.time}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', initDashboard);
+    </script>
+</body>
+</html>
