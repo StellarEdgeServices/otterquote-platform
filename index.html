@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClaimShield — Your Storm Claim, Your Terms</title>
+<meta name="description" content="ClaimShield helps Indiana homeowners get the best deal from their contractor after a storm. Upload your claim documents, pick your materials, and let contractors compete for your job — at zero cost to you.">
+
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-JNQ6XR3LX2');
+</script>
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Shared Styles -->
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+/* ── Hero ── */
+.hero {
+  position: relative;
+  padding: var(--sp-24) 0 var(--sp-20);
+  overflow: hidden;
+  text-align: center;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(245,158,11,0.08) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: rgba(245,158,11,0.1);
+  border: 1px solid rgba(245,158,11,0.3);
+  border-radius: var(--radius-full);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--amber);
+  margin-bottom: var(--sp-6);
+  animation: fadeUp 0.6s var(--ease) both;
+}
+
+.hero h1 {
+  max-width: 800px;
+  margin: 0 auto var(--sp-6);
+  animation: fadeUp 0.6s var(--ease) 0.1s both;
+}
+
+.hero h1 em {
+  font-style: italic;
+  color: var(--amber);
+}
+
+.hero-subtitle {
+  font-size: 1.2rem;
+  color: var(--slate);
+  max-width: 600px;
+  margin: 0 auto var(--sp-8);
+  line-height: 1.7;
+  animation: fadeUp 0.6s var(--ease) 0.2s both;
+}
+
+.hero-cta {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  animation: fadeUp 0.6s var(--ease) 0.3s both;
+}
+
+.hero-trust {
+  margin-top: var(--sp-10);
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-8);
+  flex-wrap: wrap;
+  animation: fadeUp 0.6s var(--ease) 0.4s both;
+}
+
+.trust-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 0.9rem;
+  color: var(--gray);
+}
+
+.trust-icon {
+  font-size: 1.25rem;
+}
+
+/* ── How It Works ── */
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-6);
+  counter-reset: step;
+}
+
+.step-card {
+  text-align: center;
+  padding: var(--sp-8) var(--sp-6);
+  counter-increment: step;
+  position: relative;
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--amber);
+  color: var(--navy);
+  font-weight: 800;
+  font-size: 1.25rem;
+  margin-bottom: var(--sp-4);
+}
+
+.step-card h3 {
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: var(--sp-3);
+  color: var(--white);
+}
+
+.step-card p {
+  font-size: 0.95rem;
+  color: var(--slate);
+}
+
+/* ── Value Props ── */
+.value-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--sp-6);
+}
+
+.value-card {
+  padding: var(--sp-8);
+}
+
+.value-icon {
+  font-size: 2rem;
+  margin-bottom: var(--sp-4);
+}
+
+.value-card h3 {
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+/* ── CTA Section ── */
+.cta-section {
+  text-align: center;
+  background: linear-gradient(180deg, transparent, rgba(245,158,11,0.05));
+  padding: var(--sp-20) 0 var(--sp-24);
+}
+
+.cta-section h2 {
+  margin-bottom: var(--sp-4);
+}
+
+.cta-section p {
+  max-width: 500px;
+  margin: 0 auto var(--sp-8);
+  font-size: 1.1rem;
+}
+
+/* ── Guarantee Banner ── */
+.guarantee-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-6);
+  background: rgba(16,185,129,0.08);
+  border: 1px solid rgba(16,185,129,0.2);
+  border-radius: var(--radius-lg);
+  max-width: 700px;
+  margin: var(--sp-8) auto 0;
+}
+
+.guarantee-banner p {
+  color: var(--green);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .hero { padding: var(--sp-16) 0 var(--sp-12); }
+  .hero-trust { gap: var(--sp-4); }
+  .guarantee-banner { flex-direction: column; text-align: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header id="site-header" data-active="home"></header>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-badge">Serving Indiana Homeowners</div>
+    <h1>Your storm claim. <em>Your terms.</em></h1>
+    <p class="hero-subtitle">
+      Your insurance agent or realtor sent you here because we help homeowners like you
+      get the best deal from qualified contractors — at zero cost to you.
+    </p>
+    <div class="hero-cta">
+      <a href="get-started.html" class="btn btn-primary btn-lg">Get Started Free</a>
+      <a href="how-it-works.html" class="btn btn-secondary btn-lg">How It Works</a>
+    </div>
+    <div class="hero-trust">
+      <div class="trust-item">
+        <span class="trust-icon">&#x2705;</span>
+        <span>100% Free for Homeowners</span>
+      </div>
+      <div class="trust-item">
+        <span class="trust-icon">&#x1F3E0;</span>
+        <span>Indiana Licensed Contractors</span>
+      </div>
+      <div class="trust-item">
+        <span class="trust-icon">&#x1F6E1;</span>
+        <span>Switch Contractors Anytime</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="section">
+  <div class="container">
+    <h2 class="text-center" style="margin-bottom: var(--sp-4);">How It Works</h2>
+    <p class="text-center" style="max-width: 600px; margin: 0 auto var(--sp-12);">
+      Four simple steps from storm damage to a signed contract with a contractor you trust.
+    </p>
+    <div class="steps-grid">
+      <div class="step-card card">
+        <div class="step-number">1</div>
+        <h3>Tell Us About Your Claim</h3>
+        <p>Enter your name and address. We'll help you gather everything else — your insurance estimate, measurements, and material preferences.</p>
+      </div>
+      <div class="step-card card">
+        <div class="step-number">2</div>
+        <h3>We Match You With Contractors</h3>
+        <p>Your claim package goes to vetted, licensed contractors in your area. They compete for your business with their best bid.</p>
+      </div>
+      <div class="step-card card">
+        <div class="step-number">3</div>
+        <h3>Compare & Choose</h3>
+        <p>Review bids side-by-side. See pricing, warranty, reviews, and insurance verification. Pick the contractor that's right for you.</p>
+      </div>
+      <div class="step-card card">
+        <div class="step-number">4</div>
+        <h3>Sign & Relax</h3>
+        <p>Sign your contract electronically. Your contractor reaches out within 48 hours. We follow up to make sure everything goes smoothly.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Value Props -->
+<section class="section" style="background: var(--navy-2);">
+  <div class="container">
+    <h2 class="text-center" style="margin-bottom: var(--sp-12);">Why Homeowners Choose ClaimShield</h2>
+    <div class="value-grid">
+      <div class="value-card card">
+        <div class="value-icon">&#x1F4B0;</div>
+        <h3>Contractors Compete for You</h3>
+        <p>Multiple licensed contractors bid on your job. Competition means better pricing, better warranties, and better service — for you.</p>
+      </div>
+      <div class="value-card card">
+        <div class="value-icon">&#x1F4CB;</div>
+        <h3>We Handle the Paperwork</h3>
+        <p>Don't have your insurance estimate yet? We'll help you get it. Need measurements? We've got that covered too. Our "Help Me" tools walk you through everything step by step.</p>
+      </div>
+      <div class="value-card card">
+        <div class="value-icon">&#x1F50D;</div>
+        <h3>Vetted, Licensed Contractors</h3>
+        <p>Every contractor in our network is licensed, insured, and verified. See their insurance certificates, reviews, and years of experience before you commit.</p>
+      </div>
+      <div class="value-card card">
+        <div class="value-icon">&#x1F504;</div>
+        <h3>Switch Contractors Anytime</h3>
+        <p>Not happy with your choice? Switch to another ClaimShield contractor at no cost up to 3 days before installation. No hassle, no penalty.</p>
+      </div>
+      <div class="value-card card">
+        <div class="value-icon">&#x1F3E0;</div>
+        <h3>Your Property, On File</h3>
+        <p>Get professional 3D measurements of your property. Keep your Hover report forever — use it for future projects like siding, gutters, or windows.</p>
+      </div>
+      <div class="value-card card">
+        <div class="value-icon">&#x1F4F1;</div>
+        <h3>We Follow Up For You</h3>
+        <p>After you sign, we check in at every milestone — scheduling, installation, completion. If something goes wrong, one tap brings us back in to help.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="container">
+    <h2>Ready to Get the Best Deal on Your Repair?</h2>
+    <p>It takes less than 2 minutes to get started. We'll walk you through the rest.</p>
+    <a href="get-started.html" class="btn btn-primary btn-lg">Get Started Free</a>
+    <div class="guarantee-banner">
+      <span style="font-size: 1.5rem;">&#x1F6E1;</span>
+      <p>
+        <strong>Our guarantee:</strong> You can switch to a different ClaimShield contractor at no cost
+        up to 3 days before your installation date.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer id="site-footer"></footer>
+
+<!-- Scripts -->
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+</body>
+</html>

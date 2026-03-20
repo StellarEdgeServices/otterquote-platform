@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submit for Bid — ClaimShield</title>
+  <meta name="description" content="Review and submit your claim package for competitive bids from qualified contractors.">
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+
+  <style>
+    /* Page-specific layout */
+    .dashboard-layout {
+      min-height: calc(100vh - 64px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dashboard-main {
+      flex: 1;
+      padding: var(--sp-12) 0;
+    }
+
+    /* Welcome header */
+    .welcome-section {
+      margin-bottom: var(--sp-12);
+    }
+
+    .welcome-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--sp-8);
+      margin-bottom: var(--sp-6);
+    }
+
+    .welcome-text h1 {
+      font-size: clamp(1.5rem, 4vw, 2.5rem);
+      margin-bottom: var(--sp-2);
+    }
+
+    .welcome-address {
+      color: var(--slate);
+      font-size: 1.1rem;
+      margin-bottom: var(--sp-4);
+    }
+
+    .welcome-progress {
+      max-width: 400px;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--sp-2);
+      font-size: 0.9rem;
+    }
+
+    .progress-percent {
+      font-weight: 700;
+      color: var(--amber);
+    }
+
+    /* Status banner (for submitted claims) */
+    .status-banner {
+      display: none;
+      background: var(--green-light);
+      color: #065F46;
+      padding: var(--sp-6);
+      border-radius: var(--radius-lg);
+      border-left: 4px solid var(--green);
+      margin-bottom: var(--sp-12);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .status-banner.active {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-banner-text {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      flex: 1;
+    }
+
+    .status-banner-icon {
+      font-size: 1.5rem;
+    }
+
+    /* Section layout */
+    .dashboard-section {
+      background: var(--navy-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--sp-6);
+      padding-bottom: var(--sp-6);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 1.25rem;
+    }
+
+    /* Claim info section */
+    .claim-info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--sp-6);
+      margin-bottom: var(--sp-6);
+    }
+
+    .claim-field {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+
+    .claim-field-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+    }
+
+    .claim-field-value {
+      font-size: 1.1rem;
+      color: var(--white);
+      font-weight: 600;
+    }
+
+    .claim-info-edit-btn {
+      align-self: flex-start;
+      margin-top: var(--sp-4);
+    }
+
+    /* Edit mode styles */
+    .claim-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--sp-6);
+      margin-bottom: var(--sp-6);
+    }
+
+    .claim-form-actions {
+      display: flex;
+      gap: var(--sp-3);
+      margin-top: var(--sp-6);
+    }
+
+    /* Checklist section */
+    .checklist-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-4);
+    }
+
+    .checklist-item-wrapper {
+      animation: slideIn 0.5s var(--ease);
+    }
+
+    .checklist-left {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .checklist-info {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+
+    .checklist-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--white);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+    }
+
+    .checklist-status {
+      font-size: 0.9rem;
+      color: var(--slate);
+    }
+
+    .checklist-status.uploaded {
+      color: var(--green);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+    }
+
+    .checklist-filename {
+      font-size: 0.85rem;
+      color: var(--gray);
+      font-family: var(--font-mono);
+      word-break: break-all;
+    }
+
+    .checklist-note {
+      font-size: 0.85rem;
+      color: var(--slate);
+      font-style: italic;
+    }
+
+    .checklist-material-selection {
+      padding: var(--sp-3);
+      background: rgba(245,158,11,0.05);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--amber);
+      font-size: 0.95rem;
+      color: var(--white);
+    }
+
+    /* Upload progress */
+    .upload-progress {
+      margin: var(--sp-3) 0 var(--sp-4) 0;
+      display: none;
+    }
+
+    .upload-progress.active {
+      display: block;
+    }
+
+    .upload-progress-bar {
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+      margin-bottom: var(--sp-2);
+    }
+
+    .upload-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--amber), var(--green));
+      border-radius: var(--radius-full);
+      width: 0%;
+      transition: width 0.3s var(--ease);
+    }
+
+    .upload-progress-text {
+      font-size: 0.8rem;
+      color: var(--slate);
+    }
+
+    /* File input (hidden) */
+    #file-input {
+      display: none;
+    }
+
+    /* Color selector (disabled state) */
+    .checklist-item.disabled {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .checklist-item.disabled .checklist-icon {
+      background: rgba(255,255,255,0.05);
+      opacity: 0.6;
+    }
+
+    .color-unavailable {
+      padding: var(--sp-3);
+      background: rgba(255,255,255,0.03);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--slate);
+      font-size: 0.95rem;
+      color: var(--gray);
+    }
+
+    /* Submit button section */
+    .submit-section {
+      margin-top: var(--sp-12);
+      padding: var(--sp-8);
+      background: rgba(245,158,11,0.05);
+      border: 1px solid var(--amber);
+      border-radius: var(--radius-lg);
+      text-align: center;
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .submit-section h3 {
+      margin-bottom: var(--sp-4);
+      color: var(--white);
+    }
+
+    .submit-section-hint {
+      font-size: 0.9rem;
+      color: var(--slate);
+      margin-bottom: var(--sp-6);
+    }
+
+    .submit-cta {
+      display: inline-block;
+    }
+
+    .submit-cta.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .submit-success {
+      display: none;
+      text-align: center;
+      padding: var(--sp-8);
+    }
+
+    .submit-success.active {
+      display: block;
+    }
+
+    .submit-success-icon {
+      font-size: 3rem;
+      margin-bottom: var(--sp-4);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .submit-success h2 {
+      margin-bottom: var(--sp-2);
+    }
+
+    .submit-success p {
+      margin-bottom: var(--sp-4);
+    }
+
+    /* Modal styles */
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-content {
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    /* Loading state */
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    /* Error message */
+    .error-message {
+      display: none;
+      background: var(--red-light);
+      color: #991B1B;
+      padding: var(--sp-4) var(--sp-6);
+      border-radius: var(--radius-md);
+      border-left: 4px solid var(--red);
+      margin-bottom: var(--sp-6);
+      animation: slideIn 0.4s var(--ease);
+    }
+
+    .error-message.active {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+    }
+
+    /* Success message */
+    .success-message {
+      display: none;
+      background: var(--green-light);
+      color: #065F46;
+      padding: var(--sp-4) var(--sp-6);
+      border-radius: var(--radius-md);
+      border-left: 4px solid var(--green);
+      margin-bottom: var(--sp-6);
+      animation: slideIn 0.4s var(--ease);
+    }
+
+    .success-message.active {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+    }
+
+    /* Help modal */
+    .help-text {
+      color: var(--slate);
+      margin-top: var(--sp-3);
+      line-height: 1.7;
+    }
+
+    .help-link {
+      color: var(--amber);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .dashboard-main {
+        padding: var(--sp-8) 0;
+      }
+
+      .welcome-header {
+        flex-direction: column;
+      }
+
+      .welcome-progress {
+        max-width: 100%;
+      }
+
+      .claim-info-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .claim-form {
+        grid-template-columns: 1fr;
+      }
+
+      .checklist-item {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .checklist-actions {
+        width: 100%;
+        flex-direction: column;
+      }
+
+      .checklist-actions .btn {
+        width: 100%;
+      }
+
+      .status-banner {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .status-banner-text {
+        flex-direction: column;
+        margin-bottom: var(--sp-3);
+      }
+
+      .submit-section {
+        padding: var(--sp-6);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header id="site-header" data-active=""></header>
+
+  <div class="dashboard-layout">
+    <div class="dashboard-main">
+      <div class="container">
+        <!-- Error message -->
+        <div id="error-message" class="error-message">
+          <span>⚠️</span>
+          <span id="error-text"></span>
+        </div>
+
+        <!-- Success message -->
+        <div id="success-message" class="success-message">
+          <span>✓</span>
+          <span id="success-text"></span>
+        </div>
+
+        <!-- Welcome section -->
+        <div class="welcome-section">
+          <div class="welcome-header">
+            <div class="welcome-text">
+              <h1>Welcome back, <span id="user-first-name">there</span></h1>
+              <div class="welcome-address" id="user-address">Loading address...</div>
+            </div>
+            <div class="welcome-progress">
+              <div class="progress-label">
+                <span>Claim Package Complete</span>
+                <span class="progress-percent"><span id="progress-percent">0</span>%</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status banner (shown when claim is submitted) -->
+        <div id="status-banner" class="status-banner">
+          <div class="status-banner-text">
+            <div class="status-banner-icon">✓</div>
+            <div>
+              <strong>Your claim is live!</strong>
+              <p style="margin: 0; font-size: 0.95rem;">Contractors are reviewing your package. You'll get notified of incoming bids.</p>
+            </div>
+          </div>
+          <a href="bids.html" class="btn btn-sm btn-secondary">View Bids</a>
+        </div>
+
+        <!-- Claim Info Section -->
+        <div class="dashboard-section">
+          <div class="section-header">
+            <h2>Claim Information</h2>
+            <button class="btn btn-sm btn-ghost" id="toggle-claim-edit">Edit</button>
+          </div>
+
+          <!-- Display mode -->
+          <div id="claim-display" class="claim-info-grid">
+            <!-- Populated by JS -->
+          </div>
+
+          <!-- Edit mode -->
+          <form id="claim-edit-form" class="claim-form" style="display: none;">
+            <!-- Populated by JS -->
+          </form>
+
+          <div id="claim-form-actions" class="claim-form-actions" style="display: none;">
+            <button type="button" class="btn btn-primary" id="claim-save-btn">Save Changes</button>
+            <button type="button" class="btn btn-ghost" id="claim-cancel-btn">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Checklist Section -->
+        <div class="dashboard-section" id="checklist-section">
+          <div class="section-header">
+            <h2>Complete Your Claim Package</h2>
+          </div>
+
+          <div class="checklist-section" id="checklist-container">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Submit section -->
+        <div id="submit-ready-section" class="submit-section">
+          <h3>Ready to Get Bids?</h3>
+          <p class="submit-section-hint" id="submit-hint">Complete the required items above to submit your claim for bids.</p>
+          <div class="submit-cta">
+            <button class="btn btn-primary btn-lg" id="submit-btn" disabled>
+              Submit for Bids
+            </button>
+          </div>
+        </div>
+
+        <!-- Submit success state -->
+        <div id="submit-success" class="submit-success">
+          <div class="submit-success-icon">✓</div>
+          <h2>Claim Submitted Successfully!</h2>
+          <p>Your claim package is now live. Contractors are reviewing your information and will send you bids.</p>
+          <a href="bids.html" class="btn btn-primary btn-lg">View Bids</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden file input -->
+  <input type="file" id="file-input" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+
+  <!-- Modal for help text -->
+  <div id="help-modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="help-modal-title">Help</h2>
+        <button class="modal-close" onclick="document.getElementById('help-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-content" id="help-modal-content">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <footer id="site-footer"></footer>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+
+  <script>
+    (function() {
+      'use strict';
+
+      // ── State ──
+      let currentUser = null;
+      let currentProfile = null;
+      let currentClaim = null;
+      let carriers = [];
+      let isEditingClaim = false;
+      let uploadsInProgress = {};
+
+      // ── Main Initialization ──
+      async function init() {
+        try {
+          // 1. Require auth
+          currentUser = await Auth.requireAuth();
+          if (!currentUser) return;
+
+          // 2. Load profile and claim data
+          await loadProfileData();
+          await loadCarriers();
+          await loadClaimData();
+
+          // 3. Render UI
+          renderWelcome();
+          renderClaimInfo();
+          renderChecklist();
+          updateSubmitButton();
+          updateProgressBar();
+
+          // 4. Set up event listeners
+          setupEventListeners();
+
+          // GA4 event
+          gtag('event', 'page_view', {
+            page_title: 'Submit for Bid Dashboard',
+            page_path: '/dashboard.html'
+          });
+        } catch (err) {
+          console.error('Dashboard init error:', err);
+          showError('Failed to load dashboard. Please refresh the page.');
+        }
+      }
+
+      // ── Data Loading ──
+      async function loadProfileData() {
+        currentProfile = await Auth.getProfile();
+        if (!currentProfile) {
+          // Create default profile if doesn't exist
+          const signupData = JSON.parse(sessionStorage.getItem('cs_signup') || '{}');
+          const fullName = signupData.first_name
+            ? `${signupData.first_name} ${signupData.last_name || ''}`.trim()
+            : currentUser.user_metadata?.full_name || '';
+          currentProfile = {
+            id: currentUser.id,
+            full_name: fullName || null,
+            email: currentUser.email || signupData.email || null,
+            phone: signupData.phone || null,
+            address_street: signupData.address || signupData.address_street || null,
+            address_city: signupData.address_city || null,
+            address_state: signupData.address_state || 'IN',
+            address_zip: signupData.address_zip || null,
+            referral_source: signupData.referral_source || null,
+            referring_agent_name: signupData.referring_agent_name || null,
+            referring_agent_email: signupData.referring_agent_email || null,
+          };
+          try {
+            await Auth.updateProfile(currentProfile);
+          } catch (err) {
+            console.warn('Could not save profile defaults:', err);
+            // Continue with local defaults — don't crash the dashboard
+          }
+        }
+      }
+
+      async function loadCarriers() {
+        if (!sb) return;
+        try {
+          const { data, error } = await sb
+            .from('carrier_profiles')
+            .select('id, carrier_name')
+            .order('carrier_name');
+          if (!error && data) {
+            carriers = data;
+          }
+        } catch (err) {
+          console.error('Error loading carriers:', err);
+        }
+      }
+
+      async function loadClaimData() {
+        if (!sb || !currentUser) return;
+        try {
+          // Fetch user's most recent claim
+          const { data, error } = await sb
+            .from('claims')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (error && error.code !== 'PGRST116') {
+            // PGRST116 = no rows found
+            console.error('Error loading claim:', error);
+            return;
+          }
+
+          if (data) {
+            currentClaim = data;
+          } else {
+            // Create new claim if doesn't exist
+            const { data: newClaim, error: createError } = await sb
+              .from('claims')
+              .insert({
+                user_id: currentUser.id,
+                status: 'draft',
+                damage_type: 'roof',
+              })
+              .select()
+              .single();
+
+            if (!createError && newClaim) {
+              currentClaim = newClaim;
+            }
+          }
+
+          // Show submitted state if applicable
+          if (currentClaim?.ready_for_bids) {
+            document.getElementById('status-banner').classList.add('active');
+            document.getElementById('checklist-section').style.display = 'none';
+            document.getElementById('submit-ready-section').style.display = 'none';
+          }
+        } catch (err) {
+          console.error('Error loading/creating claim:', err);
+        }
+      }
+
+      // ── UI Rendering ──
+      function renderWelcome() {
+        const firstName = currentProfile?.full_name
+          ? currentProfile.full_name.split(' ')[0]
+          : 'there';
+        document.getElementById('user-first-name').textContent = firstName;
+
+        // Build address string from components
+        const parts = [
+          currentProfile?.address_street,
+          currentProfile?.address_city,
+          currentProfile?.address_state,
+          currentProfile?.address_zip
+        ].filter(Boolean);
+        document.getElementById('user-address').textContent =
+          parts.length > 0 ? parts.join(', ') : 'Address not set';
+      }
+
+      function renderClaimInfo() {
+        if (!currentClaim) return;
+
+        const display = document.getElementById('claim-display');
+        const form = document.getElementById('claim-edit-form');
+
+        // Fields to display
+        const fields = [
+          { key: 'carrier_id', label: 'Insurance Carrier', type: 'select' },
+          { key: 'claim_number', label: 'Claim Number', type: 'text' },
+          { key: 'date_of_loss', label: 'Date of Loss', type: 'date' },
+          { key: 'damage_type', label: 'Damage Type', type: 'text' },
+          { key: 'deductible_amount', label: 'Deductible Amount', type: 'currency' },
+          { key: 'adjuster_name', label: 'Adjuster Name', type: 'text' },
+          { key: 'adjuster_email', label: 'Adjuster Email', type: 'email' },
+          { key: 'adjuster_phone', label: 'Adjuster Phone', type: 'tel' },
+        ];
+
+        // Display mode
+        display.innerHTML = fields.map(field => {
+          let value = currentClaim[field.key] || 'Not provided';
+
+          // Special handling for carrier_id
+          if (field.key === 'carrier_id' && currentClaim[field.key]) {
+            const carrier = carriers.find(c => c.id === currentClaim[field.key]);
+            value = carrier?.carrier_name || value;
+          }
+
+          // Format currency
+          if (field.type === 'currency' && value !== 'Not provided') {
+            value = '$' + parseFloat(value || 0).toFixed(2);
+          }
+
+          return `
+            <div class="claim-field">
+              <div class="claim-field-label">${field.label}</div>
+              <div class="claim-field-value">${value}</div>
+            </div>
+          `;
+        }).join('');
+
+        // Edit form
+        form.innerHTML = fields.map(field => {
+          const value = currentClaim[field.key] || '';
+          let input = '';
+
+          if (field.type === 'select' && field.key === 'carrier_id') {
+            input = `
+              <select class="form-select" name="${field.key}">
+                <option value="">Select carrier...</option>
+                ${carriers.map(c => `
+                  <option value="${c.id}" ${c.id === value ? 'selected' : ''}>${c.carrier_name}</option>
+                `).join('')}
+              </select>
+            `;
+          } else if (field.type === 'currency') {
+            input = `<input type="number" step="0.01" class="form-input" name="${field.key}" value="${value}" placeholder="0.00">`;
+          } else {
+            input = `<input type="${field.type}" class="form-input" name="${field.key}" value="${value}" placeholder="">`;
+          }
+
+          return `
+            <div class="form-group">
+              <label class="form-label">${field.label}</label>
+              ${input}
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderChecklist() {
+        if (!currentClaim) return;
+
+        const container = document.getElementById('checklist-container');
+        const items = [
+          {
+            id: 'estimate',
+            title: 'Insurance Estimate',
+            required: true,
+            status: currentClaim.has_estimate ? 'uploaded' : 'pending',
+            filename: currentClaim.estimate_filename || null,
+            description: 'Upload your insurance adjuster\'s estimate or preliminary damage report.',
+            buttons: [
+              { label: 'Upload', action: 'upload', data: 'estimate' },
+              { label: 'Help Me', action: 'help', data: 'estimate' }
+            ],
+            icon: '📄'
+          },
+          {
+            id: 'measurements',
+            title: 'Measurements',
+            required: false,
+            status: currentClaim.has_measurements ? 'uploaded' : 'pending',
+            filename: currentClaim.measurements_filename || null,
+            description: 'Optional but recommended. Upload photos, measurements, or inspection reports.',
+            note: 'Optional but recommended for more accurate bids.',
+            buttons: [
+              { label: 'Upload', action: 'upload', data: 'measurements' },
+              { label: 'Help Me', action: 'help', data: 'measurements' }
+            ],
+            icon: '📐'
+          },
+          {
+            id: 'material',
+            title: 'Material Selection',
+            required: true,
+            status: currentClaim.has_material_selection ? 'selected' : 'pending',
+            filename: currentClaim.material_category
+              ? [currentClaim.material_category, currentClaim.shingle_type, currentClaim.impact_class].filter(Boolean).join(' — ')
+              : null,
+            description: 'Choose the roofing material and specifications for your project.',
+            buttons: [
+              currentClaim.has_material_selection
+                ? { label: 'Change Material', action: 'navigate', data: 'help-materials.html' }
+                : { label: 'Choose Material', action: 'navigate', data: 'help-materials.html' }
+            ],
+            icon: '🎨'
+          },
+          {
+            id: 'color',
+            title: 'Color',
+            required: false,
+            status: 'unavailable',
+            filename: null,
+            description: 'Select a color once you\'ve chosen a contractor.',
+            note: 'Available after you select a contractor.',
+            buttons: [],
+            icon: '🌈',
+            disabled: true
+          }
+        ];
+
+        container.innerHTML = items.map(item => `
+          <div class="checklist-item-wrapper">
+            <div class="checklist-item ${item.status === 'uploaded' || item.status === 'selected' ? 'complete' : ''} ${item.required ? 'required' : ''} ${item.disabled ? 'disabled' : ''}">
+              <div class="checklist-left">
+                <div class="checklist-icon ${item.status === 'uploaded' || item.status === 'selected' ? 'done' : 'pending'}">
+                  ${item.status === 'uploaded' || item.status === 'selected' ? '✓' : item.icon}
+                </div>
+                <div class="checklist-info">
+                  <div class="checklist-title">${item.title}</div>
+                  ${item.status === 'uploaded' || item.status === 'selected' ? `
+                    <div class="checklist-status uploaded">
+                      ✓ ${item.status === 'uploaded' ? 'Uploaded' : 'Selected'}
+                      ${item.filename ? `<span class="checklist-filename">${item.filename}</span>` : ''}
+                    </div>
+                  ` : item.disabled ? `
+                    <div class="color-unavailable">${item.note}</div>
+                  ` : `
+                    <div class="checklist-status">${item.description}</div>
+                    ${item.note ? `<div class="checklist-note">${item.note}</div>` : ''}
+                  `}
+                </div>
+              </div>
+              <div class="checklist-actions">
+                ${item.buttons.map(btn => {
+                  if (btn.action === 'upload') {
+                    return `<button type="button" class="btn btn-sm btn-secondary" onclick="handleUpload('${btn.data}')">Upload</button>`;
+                  } else if (btn.action === 'help') {
+                    return `<button type="button" class="btn btn-sm btn-ghost" onclick="showHelpModal('${btn.data}')">Help Me</button>`;
+                  } else if (btn.action === 'navigate') {
+                    return `<a href="${btn.data}" class="btn btn-sm btn-secondary">${btn.label}</a>`;
+                  }
+                  return '';
+                }).join('')}
+              </div>
+              <div id="upload-progress-${item.id}" class="upload-progress">
+                <div class="upload-progress-bar">
+                  <div class="upload-progress-fill" id="progress-fill-${item.id}"></div>
+                </div>
+                <div class="upload-progress-text"><span id="progress-text-${item.id}">0</span>%</div>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      function updateProgressBar() {
+        let completed = 0;
+        const total = 3; // estimate, measurements, material
+
+        if (currentClaim?.has_estimate) completed++;
+        if (currentClaim?.has_measurements) completed++;
+        if (currentClaim?.has_material_selection) completed++;
+
+        const percent = Math.round((completed / total) * 100);
+        document.getElementById('progress-percent').textContent = percent;
+        document.getElementById('progress-fill').style.width = percent + '%';
+      }
+
+      function updateSubmitButton() {
+        const btn = document.getElementById('submit-btn');
+        const hint = document.getElementById('submit-hint');
+
+        const hasEstimate = currentClaim?.has_estimate;
+        const hasMaterial = currentClaim?.has_material_selection;
+        const isReady = hasEstimate && hasMaterial;
+
+        btn.disabled = !isReady;
+
+        if (!isReady) {
+          const missing = [];
+          if (!hasEstimate) missing.push('Insurance Estimate');
+          if (!hasMaterial) missing.push('Material Selection');
+          hint.textContent = `Complete the required items: ${missing.join(', ')}.`;
+        } else {
+          hint.textContent = 'Your claim package is complete. Submit it now to get competitive bids from qualified contractors.';
+        }
+      }
+
+      // ── Event Handlers ──
+      function setupEventListeners() {
+        // Claim edit toggle
+        document.getElementById('toggle-claim-edit').addEventListener('click', () => {
+          isEditingClaim = !isEditingClaim;
+          document.getElementById('claim-display').style.display = isEditingClaim ? 'none' : 'grid';
+          document.getElementById('claim-edit-form').style.display = isEditingClaim ? 'grid' : 'none';
+          document.getElementById('claim-form-actions').style.display = isEditingClaim ? 'flex' : 'none';
+          document.getElementById('toggle-claim-edit').textContent = isEditingClaim ? 'View' : 'Edit';
+        });
+
+        // Save claim changes
+        document.getElementById('claim-save-btn').addEventListener('click', async () => {
+          await saveClaimInfo();
+        });
+
+        // Cancel edit
+        document.getElementById('claim-cancel-btn').addEventListener('click', () => {
+          isEditingClaim = false;
+          document.getElementById('claim-display').style.display = 'grid';
+          document.getElementById('claim-edit-form').style.display = 'none';
+          document.getElementById('claim-form-actions').style.display = 'none';
+          document.getElementById('toggle-claim-edit').textContent = 'Edit';
+          renderClaimInfo(); // Reset form values
+        });
+
+        // Submit for bids
+        document.getElementById('submit-btn').addEventListener('click', async () => {
+          await submitForBids();
+        });
+
+        // File input change
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+          if (e.target.files.length > 0) {
+            const file = e.target.files[0];
+            const uploadType = e.target.dataset.uploadType;
+            await uploadFile(file, uploadType);
+            e.target.value = '';
+          }
+        });
+      }
+
+      // ── Claim Editing ──
+      async function saveClaimInfo() {
+        if (!sb || !currentClaim) return;
+
+        try {
+          const form = document.getElementById('claim-edit-form');
+          const formData = new FormData(form);
+          const updates = {};
+
+          for (let [key, value] of formData.entries()) {
+            if (value) {
+              updates[key] = value;
+            }
+          }
+
+          const { data, error } = await sb
+            .from('claims')
+            .update(updates)
+            .eq('id', currentClaim.id)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          currentClaim = data;
+          renderClaimInfo();
+          updateProgressBar();
+
+          // Close edit mode
+          isEditingClaim = false;
+          document.getElementById('claim-display').style.display = 'grid';
+          document.getElementById('claim-edit-form').style.display = 'none';
+          document.getElementById('claim-form-actions').style.display = 'none';
+          document.getElementById('toggle-claim-edit').textContent = 'Edit';
+
+          showSuccess('Claim information updated.');
+        } catch (err) {
+          console.error('Save error:', err);
+          showError('Failed to save changes. Please try again.');
+        }
+      }
+
+      // ── File Upload ──
+      window.handleUpload = function(type) {
+        const input = document.getElementById('file-input');
+        input.dataset.uploadType = type;
+        input.click();
+      };
+
+      async function uploadFile(file, type) {
+        if (!sb || !currentUser || !currentClaim) return;
+
+        const maxSize = 50 * 1024 * 1024; // 50MB
+        if (file.size > maxSize) {
+          showError('File is too large. Maximum size is 50MB.');
+          return;
+        }
+
+        const validTypes = ['image/jpeg', 'image/png', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (!validTypes.includes(file.type)) {
+          showError('Invalid file type. Please upload PDF, images, or Word documents.');
+          return;
+        }
+
+        try {
+          uploadsInProgress[type] = true;
+          const progressEl = document.getElementById(`upload-progress-${type}`);
+          const fillEl = document.getElementById(`progress-fill-${type}`);
+          const textEl = document.getElementById(`progress-text-${type}`);
+
+          if (progressEl) progressEl.classList.add('active');
+
+          // Simulate progress
+          let progress = 0;
+          const progressInterval = setInterval(() => {
+            progress = Math.min(progress + Math.random() * 30, 90);
+            if (fillEl) fillEl.style.width = progress + '%';
+            if (textEl) textEl.textContent = Math.round(progress);
+          }, 200);
+
+          // Upload to Supabase Storage
+          const filename = `${currentUser.id}/${currentClaim.id}/${Date.now()}-${file.name}`;
+          const { error: uploadError } = await sb.storage
+            .from('claim-documents')
+            .upload(filename, file, { upsert: true });
+
+          clearInterval(progressInterval);
+
+          if (uploadError) throw uploadError;
+
+          // Update progress to 100%
+          progress = 100;
+          if (fillEl) fillEl.style.width = '100%';
+          if (textEl) textEl.textContent = '100';
+
+          // Update claim record
+          const updateField = type === 'estimate' ? 'has_estimate' : 'has_measurements';
+          const updateData = { [updateField]: true };
+
+          // Store filename if column exists (added in v4 migration)
+          const filenameField = type === 'estimate' ? 'estimate_filename' : 'measurements_filename';
+          updateData[filenameField] = file.name;
+
+          let { data, error: updateError } = await sb
+            .from('claims')
+            .update(updateData)
+            .eq('id', currentClaim.id)
+            .select()
+            .single();
+
+          // If filename column doesn't exist yet, retry without it
+          if (updateError && updateError.code === 'PGRST204') {
+            const fallback = { [updateField]: true };
+            const result = await sb
+              .from('claims')
+              .update(fallback)
+              .eq('id', currentClaim.id)
+              .select()
+              .single();
+            data = result.data;
+            updateError = result.error;
+          }
+
+          if (updateError) throw updateError;
+
+          currentClaim = data;
+          renderChecklist();
+          updateProgressBar();
+          updateSubmitButton();
+
+          // Hide progress after delay
+          setTimeout(() => {
+            if (progressEl) progressEl.classList.remove('active');
+          }, 1000);
+
+          showSuccess(`${type === 'estimate' ? 'Estimate' : 'Measurements'} uploaded successfully.`);
+
+          gtag('event', 'file_upload', {
+            upload_type: type,
+            file_size: file.size,
+          });
+        } catch (err) {
+          console.error('Upload error:', err);
+          showError('Upload failed. Please try again.');
+          if (uploadsInProgress[type]) {
+            const progressEl = document.getElementById(`upload-progress-${type}`);
+            if (progressEl) progressEl.classList.remove('active');
+          }
+        } finally {
+          uploadsInProgress[type] = false;
+        }
+      }
+
+      // ── Help Modal ──
+      window.showHelpModal = function(type) {
+        const modal = document.getElementById('help-modal');
+        const title = document.getElementById('help-modal-title');
+        const content = document.getElementById('help-modal-content');
+
+        const helpContent = {
+          estimate: {
+            title: 'Insurance Estimate',
+            html: `
+              <div class="help-text">
+                <p>Your insurance adjuster should have provided an estimate or inspection report. This document helps contractors understand the scope of work and provides evidence of covered damage.</p>
+                <h4 style="margin-top: var(--sp-6); margin-bottom: var(--sp-3);">What to upload:</h4>
+                <ul style="margin-left: var(--sp-6); color: var(--slate);">
+                  <li>Insurance adjuster's official estimate</li>
+                  <li>Preliminary damage assessment</li>
+                  <li>Photos from the insurance inspection</li>
+                </ul>
+                <p style="margin-top: var(--sp-6);">If you don't have this document yet, contact your insurance company to request it. Most carriers provide estimates within 5-10 business days of filing a claim.</p>
+              </div>
+            `
+          },
+          measurements: {
+            title: 'Measurements',
+            html: `
+              <div class="help-text">
+                <p>While optional, measurements and photos help contractors provide more accurate bids. This can include square footage, roof pitch, material specifications, and damage photos.</p>
+                <h4 style="margin-top: var(--sp-6); margin-bottom: var(--sp-3);">What to upload:</h4>
+                <ul style="margin-left: var(--sp-6); color: var(--slate);">
+                  <li>Roof measurements (square footage, pitch)</li>
+                  <li>Photos of the damaged area</li>
+                  <li>Inspection reports from contractors</li>
+                  <li>Roof age or warranty information</li>
+                </ul>
+                <p style="margin-top: var(--sp-6);">Need help measuring? We recommend using a tape measure for ground-level measurements, or hiring a professional surveyor for precise roof measurements.</p>
+              </div>
+            `
+          }
+        };
+
+        const info = helpContent[type];
+        if (info) {
+          title.textContent = info.title;
+          content.innerHTML = info.html;
+          modal.classList.add('active');
+        }
+      };
+
+      // ── Submit for Bids ──
+      async function submitForBids() {
+        if (!sb || !currentClaim) return;
+
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.classList.add('btn-loading');
+
+        try {
+          const { data, error } = await sb
+            .from('claims')
+            .update({
+              ready_for_bids: true,
+              bids_submitted_at: new Date().toISOString(),
+              status: 'active',
+            })
+            .eq('id', currentClaim.id)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          currentClaim = data;
+
+          // Show success state
+          document.getElementById('submit-ready-section').style.display = 'none';
+          document.getElementById('checklist-section').style.display = 'none';
+          document.getElementById('submit-success').classList.add('active');
+          document.getElementById('status-banner').classList.add('active');
+
+          gtag('event', 'claim_submitted', {
+            claim_id: currentClaim.id,
+            has_measurements: currentClaim.has_measurements,
+          });
+        } catch (err) {
+          console.error('Submit error:', err);
+          showError('Failed to submit claim. Please try again.');
+          btn.disabled = false;
+          btn.classList.remove('btn-loading');
+        }
+      }
+
+      // ── Utility Functions ──
+      function showError(message) {
+        const el = document.getElementById('error-message');
+        document.getElementById('error-text').textContent = message;
+        el.classList.add('active');
+        setTimeout(() => {
+          el.classList.remove('active');
+        }, 5000);
+      }
+
+      function showSuccess(message) {
+        const el = document.getElementById('success-message');
+        document.getElementById('success-text').textContent = message;
+        el.classList.add('active');
+        setTimeout(() => {
+          el.classList.remove('active');
+        }, 4000);
+      }
+
+      // ── Init ──
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+
+</body>
+</html>

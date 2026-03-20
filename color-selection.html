@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Choose Your Color — ClaimShield</title>
+  <meta name="description" content="Select the perfect roof color for your home.">
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+
+  <style>
+    /* Page layout */
+    .color-page-layout {
+      min-height: calc(100vh - 64px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .color-page-main {
+      flex: 1;
+      padding: var(--sp-12) 0;
+    }
+
+    /* Header section */
+    .color-header {
+      margin-bottom: var(--sp-12);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .color-header h1 {
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      margin-bottom: var(--sp-2);
+    }
+
+    .color-header-subtitle {
+      color: var(--slate);
+      font-size: 1.1rem;
+      max-width: 600px;
+    }
+
+    /* No rush callout */
+    .no-rush-banner {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-left: 4px solid var(--green);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-6);
+      margin-bottom: var(--sp-12);
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-4);
+      animation: fadeUp 0.6s var(--ease) 0.1s both;
+    }
+
+    .no-rush-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+      color: var(--green);
+    }
+
+    .no-rush-text {
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .no-rush-text p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    /* Options grid */
+    .color-options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: var(--sp-8);
+      margin-bottom: var(--sp-12);
+    }
+
+    /* Option card */
+    .color-option-card {
+      background: var(--navy-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      display: flex;
+      flex-direction: column;
+      transition: all var(--duration) var(--ease);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .color-option-card:nth-child(2) {
+      animation-delay: 0.1s;
+    }
+
+    .color-option-card:nth-child(3) {
+      animation-delay: 0.2s;
+    }
+
+    .color-option-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--amber);
+      box-shadow: var(--shadow-glow);
+    }
+
+    .color-option-card.primary {
+      border-color: var(--amber);
+      box-shadow: var(--shadow-glow);
+    }
+
+    .color-option-icon {
+      font-size: 2.5rem;
+      margin-bottom: var(--sp-4);
+    }
+
+    .color-option-title {
+      font-size: 1.25rem;
+      font-family: var(--font-heading);
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: var(--sp-2);
+    }
+
+    .color-option-description {
+      color: var(--slate);
+      margin-bottom: var(--sp-6);
+      flex: 1;
+      line-height: 1.6;
+    }
+
+    .color-option-note {
+      font-size: 0.85rem;
+      color: var(--gray);
+      margin-bottom: var(--sp-4);
+      padding: var(--sp-3);
+      background: rgba(255,255,255,0.02);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid var(--amber);
+      padding-left: var(--sp-4);
+    }
+
+    .color-option-button {
+      width: 100%;
+    }
+
+    /* Visualizer section */
+    .visualizer-section {
+      background: var(--navy-3);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .visualizer-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--white);
+      margin-bottom: var(--sp-4);
+    }
+
+    .visualizer-placeholder {
+      text-align: center;
+      padding: var(--sp-12);
+      background: rgba(0,0,0,0.2);
+      border-radius: var(--radius-md);
+    }
+
+    .visualizer-placeholder-text {
+      color: var(--slate);
+      margin-bottom: var(--sp-4);
+    }
+
+    /* External link indicator */
+    .external-link-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      font-size: 0.85rem;
+      color: var(--gray);
+    }
+
+    .external-icon {
+      font-size: 0.9rem;
+    }
+
+    /* Color confirmation section */
+    .color-confirmation-section {
+      background: var(--navy-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-12);
+      animation: fadeUp 0.6s var(--ease) 0.3s both;
+    }
+
+    .confirmation-header {
+      margin-bottom: var(--sp-6);
+      padding-bottom: var(--sp-6);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .confirmation-header h2 {
+      font-size: 1.25rem;
+      margin: 0 0 var(--sp-2) 0;
+    }
+
+    .confirmation-subtitle {
+      color: var(--slate);
+      margin: 0;
+    }
+
+    .color-confirmation-form {
+      display: grid;
+      gap: var(--sp-6);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--sp-6);
+    }
+
+    @media (max-width: 768px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+
+      .color-options-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .color-info-display {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-md);
+      padding: var(--sp-4);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+    }
+
+    .color-info-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+    }
+
+    .color-info-value {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--white);
+    }
+
+    .confirmation-note {
+      font-size: 0.9rem;
+      color: var(--slate);
+      padding: var(--sp-4);
+      background: var(--amber-glow);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid var(--amber);
+      padding-left: var(--sp-4);
+    }
+
+    /* Color board request confirmation */
+    .color-board-confirmation {
+      display: none;
+      background: var(--green-light);
+      color: #065F46;
+      padding: var(--sp-6);
+      border-radius: var(--radius-lg);
+      border-left: 4px solid var(--green);
+      margin-top: var(--sp-6);
+    }
+
+    .color-board-confirmation.active {
+      display: block;
+      animation: fadeUp 0.4s var(--ease);
+    }
+
+    .color-board-confirmation-icon {
+      font-size: 1.5rem;
+      margin-right: var(--sp-2);
+    }
+
+    /* Loading states */
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Success states */
+    .success-state {
+      display: none;
+      background: var(--green-light);
+      color: #065F46;
+      padding: var(--sp-6);
+      border-radius: var(--radius-lg);
+      border-left: 4px solid var(--green);
+      margin-top: var(--sp-6);
+      animation: fadeUp 0.4s var(--ease);
+    }
+
+    .success-state.active {
+      display: block;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .color-page-main {
+        padding: var(--sp-8) 0;
+      }
+
+      .color-option-card {
+        padding: var(--sp-6);
+      }
+
+      .no-rush-banner {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <header id="site-header"></header>
+
+  <!-- Main content -->
+  <div class="color-page-layout">
+    <main class="color-page-main">
+      <div class="container-narrow">
+        <!-- Header -->
+        <div class="color-header">
+          <h1>Choose Your Color</h1>
+          <p class="color-header-subtitle" id="color-subtitle">
+            Your contractor uses [Brand]. Let's pick the perfect color for your home.
+          </p>
+        </div>
+
+        <!-- No rush callout -->
+        <div class="no-rush-banner">
+          <div class="no-rush-icon">⏳</div>
+          <div class="no-rush-text">
+            <p><strong>Take your time</strong> — your contract is already signed and your contractor has been notified. There's no rush to pick a color.</p>
+          </div>
+        </div>
+
+        <!-- Color selection options -->
+        <div class="color-options-grid" id="color-options-grid">
+          <!-- Populated by JavaScript -->
+        </div>
+
+        <!-- Visualizer section (for applicable brands) -->
+        <div class="visualizer-section" id="visualizer-section" style="display: none;">
+          <div class="visualizer-title">See It On Your House</div>
+          <div id="visualizer-container">
+            <!-- Brand-specific visualizer inserted here -->
+          </div>
+        </div>
+
+        <!-- Color confirmation section -->
+        <div class="color-confirmation-section" id="confirmation-section">
+          <div class="confirmation-header">
+            <h2>What Color Did You Choose?</h2>
+            <p class="confirmation-subtitle">Tell us the color you selected from the tool above or physical boards.</p>
+          </div>
+
+          <form class="color-confirmation-form" id="color-form" onsubmit="ColorSelection.handleColorConfirmation(event)">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="brand-display">Brand</label>
+                <div class="color-info-display">
+                  <div class="color-info-value" id="brand-display-value">—</div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="color-input">Color Name</label>
+                <input
+                  type="text"
+                  id="color-input"
+                  class="form-input"
+                  placeholder="e.g., Estate Gray, Charcoal, Weathered Wood"
+                  required
+                >
+              </div>
+            </div>
+
+            <div class="confirmation-note">
+              <strong>Note:</strong> Your color selection will be added to your contract as a separate addendum for signature.
+            </div>
+
+            <div style="display: flex; gap: var(--sp-4);">
+              <button type="submit" class="btn btn-primary btn-lg">Confirm My Color</button>
+              <a href="/dashboard.html" class="btn btn-secondary btn-lg">Back to Dashboard</a>
+            </div>
+
+            <div class="success-state" id="color-success">
+              <strong>✓ Color confirmed!</strong> We've saved your selection. You'll see the addendum on your next contract review.
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer id="site-footer"></footer>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+
+  <script>
+    /**
+     * Color Selection Page Logic
+     * Handles brand detection, visualizer embedding, and color confirmation
+     */
+
+    const ColorSelection = {
+      claimId: null,
+      contractorId: null,
+      brand: null,
+      contractorName: null,
+      userId: null,
+
+      /**
+       * Initialize page
+       */
+      async init() {
+        // Require authentication
+        const user = await Auth.requireAuth();
+        if (!user) return;
+        this.userId = user.id;
+
+        // Render navigation
+        Nav.renderHeader({ active: '' });
+        Nav.renderFooter();
+
+        // Get claim ID from URL
+        const params = new URLSearchParams(window.location.search);
+        this.claimId = params.get('claim_id');
+
+        if (!this.claimId) {
+          alert('No claim found. Redirecting to dashboard.');
+          window.location.href = '/dashboard.html';
+          return;
+        }
+
+        // Load claim data
+        await this.loadClaimData();
+
+        // Render options based on brand
+        this.renderColorOptions();
+
+        // Render visualizer if applicable
+        this.renderVisualizer();
+      },
+
+      /**
+       * Fetch claim data to get contractor info and brand
+       */
+      async loadClaimData() {
+        try {
+          const { data, error } = await sb
+            .from('claims')
+            .select(`
+              id,
+              homeowner_id,
+              selected_contractor_id,
+              contractor:contractors(id, name, preferred_brand),
+              color_brand,
+              color_name,
+              color_selected_at
+            `)
+            .eq('id', this.claimId)
+            .eq('homeowner_id', this.userId)
+            .single();
+
+          if (error) throw error;
+          if (!data) {
+            alert('Claim not found.');
+            window.location.href = '/dashboard.html';
+            return;
+          }
+
+          this.contractorId = data.selected_contractor_id;
+          this.contractorName = data.contractor?.name || 'Your Contractor';
+          this.brand = data.contractor?.preferred_brand || 'Owens Corning';
+
+          // Update subtitle
+          const subtitle = document.getElementById('color-subtitle');
+          if (subtitle) {
+            subtitle.textContent = `Your contractor ${this.contractorName} uses ${this.brand}. Let's pick the perfect color for your home.`;
+          }
+
+          // Update brand display
+          const brandDisplay = document.getElementById('brand-display-value');
+          if (brandDisplay) {
+            brandDisplay.textContent = this.brand;
+          }
+
+          // If color already selected, show it
+          if (data.color_name) {
+            document.getElementById('color-input').value = data.color_name;
+            this.showSuccessState();
+          }
+        } catch (err) {
+          console.error('Error loading claim:', err);
+          alert('Error loading claim data.');
+        }
+      },
+
+      /**
+       * Render color selection options based on brand
+       */
+      renderColorOptions() {
+        const grid = document.getElementById('color-options-grid');
+        if (!grid) return;
+
+        const options = [
+          {
+            id: 'visualize',
+            title: 'See It On Your House',
+            icon: '🏡',
+            description: this.getVisualizerDescription(),
+            primary: true,
+            hasVisualizer: ['Owens Corning', 'GAF', 'CertainTeed', 'TAMKO', 'Atlas', 'IKO'].includes(this.brand),
+          },
+          {
+            id: 'browse',
+            title: 'Browse Colors',
+            icon: '🎨',
+            description: 'See our color catalog and make your selection.',
+            primary: false,
+          },
+          {
+            id: 'inperson',
+            title: "I'd Rather See Colors In Person",
+            icon: '👁️',
+            description: 'Request physical color boards for a closer look at your options.',
+            primary: false,
+          }
+        ];
+
+        grid.innerHTML = options.map(opt => `
+          <div class="color-option-card ${opt.primary ? 'primary' : ''}">
+            <div class="color-option-icon">${opt.icon}</div>
+            <h3 class="color-option-title">${opt.title}</h3>
+            <p class="color-option-description">${opt.description}</p>
+            ${this.brand === 'GAF' || this.brand === 'CertainTeed' || this.brand === 'TAMKO' || this.brand === 'Atlas' || this.brand === 'IKO' ?
+              `<div class="color-option-note">
+                <span class="external-link-indicator">
+                  <span class="external-icon">↗</span> Opens in new tab
+                </span>
+              </div>` : ''}
+            <button class="btn btn-primary btn-full color-option-button" onclick="ColorSelection.handleOptionClick('${opt.id}')">
+              ${opt.id === 'visualize' ? 'Start Visualizing' : opt.id === 'browse' ? 'View Colors' : 'Request Visit'}
+            </button>
+          </div>
+        `).join('');
+      },
+
+      /**
+       * Get visualizer description based on brand
+       */
+      getVisualizerDescription() {
+        const descriptions = {
+          'Owens Corning': 'Upload a photo of your home and try on different Owens Corning colors in real time.',
+          'GAF': 'Use GAF\'s online design tool to visualize your roof with different color options.',
+          'CertainTeed': 'Explore CertainTeed colors with their interactive visualizer.',
+          'TAMKO': 'See TAMKO shingle colors on your home with their visualization tool.',
+          'Atlas': 'Try Atlas shingle colors and see how they look on your roof.',
+          'IKO': 'Use IKO\'s roofing visualizer to preview different colors and styles.',
+          'default': 'Upload a photo and try different colors to see what works best for your home.'
+        };
+        return descriptions[this.brand] || descriptions['default'];
+      },
+
+      /**
+       * Handle option click
+       */
+      handleOptionClick(optionId) {
+        if (optionId === 'visualize') {
+          window.scrollTo(0, document.getElementById('visualizer-section').offsetTop - 100);
+          gtag('event', 'color_option_click', { option: 'visualize', brand: this.brand });
+        } else if (optionId === 'browse') {
+          gtag('event', 'color_option_click', { option: 'browse', brand: this.brand });
+        } else if (optionId === 'inperson') {
+          this.requestColorBoardVisit();
+        }
+      },
+
+      /**
+       * Render brand-specific visualizer
+       */
+      renderVisualizer() {
+        const section = document.getElementById('visualizer-section');
+        if (!section) return;
+
+        // Show visualizer section only for brands with tools
+        const hasVisualizer = ['Owens Corning', 'GAF', 'CertainTeed', 'TAMKO', 'Atlas', 'IKO'].includes(this.brand);
+        if (!hasVisualizer) {
+          section.style.display = 'none';
+          return;
+        }
+
+        section.style.display = 'block';
+        const container = document.getElementById('visualizer-container');
+
+        switch (this.brand) {
+          case 'Owens Corning':
+            this.renderOCVisualizer(container);
+            break;
+          case 'GAF':
+            this.renderGAFLink(container);
+            break;
+          case 'CertainTeed':
+            this.renderCertainTeedLink(container);
+            break;
+          case 'TAMKO':
+            this.renderTAMKOLink(container);
+            break;
+          case 'Atlas':
+            this.renderAtlasLink(container);
+            break;
+          case 'IKO':
+            this.renderIKOLink(container);
+            break;
+        }
+      },
+
+      /**
+       * Owens Corning Design EyeQ embed
+       */
+      renderOCVisualizer(container) {
+        container.innerHTML = `
+          <div style="margin-bottom: var(--sp-4);">
+            <p style="color: var(--slate); margin-bottom: var(--sp-4);">Upload a photo of your home and try on different Owens Corning colors in real time.</p>
+            <iframe
+              src="https://designeyeq.owenscorning.com/"
+              style="width: 100%; height: 600px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.1);"
+              allow="camera"
+            ></iframe>
+          </div>
+          <div class="color-option-note">
+            <strong>After visualizing:</strong> Once you've tried on colors you like, come back here and enter your selection in the form below.
+          </div>
+        `;
+      },
+
+      /**
+       * GAF external link
+       */
+      renderGAFLink(container) {
+        container.innerHTML = `
+          <div style="padding: var(--sp-6); background: rgba(255,255,255,0.03); border-radius: var(--radius-md);">
+            <p style="color: var(--slate); margin-bottom: var(--sp-4);">Use GAF's comprehensive design tool to visualize your roof with different color and style options.</p>
+            <a href="https://www.gaf.com/en-us/plan-design/design-your-roof" target="_blank" rel="noopener" class="btn btn-primary">
+              Open GAF Design Tool
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
+            </a>
+            <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
+              <strong>After designing:</strong> Come back here and enter the color you selected.
+            </div>
+          </div>
+        `;
+      },
+
+      /**
+       * CertainTeed external link
+       */
+      renderCertainTeedLink(container) {
+        container.innerHTML = `
+          <div style="padding: var(--sp-6); background: rgba(255,255,255,0.03); border-radius: var(--radius-md);">
+            <p style="color: var(--slate); margin-bottom: var(--sp-4);">Explore CertainTeed color options with their interactive ColorView visualizer.</p>
+            <a href="https://colorview.certainteed.com" target="_blank" rel="noopener" class="btn btn-primary">
+              Open CertainTeed ColorView
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
+            </a>
+            <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
+              <strong>After selecting:</strong> Come back here and enter the color you chose.
+            </div>
+          </div>
+        `;
+      },
+
+      /**
+       * TAMKO external link
+       */
+      renderTAMKOLink(container) {
+        container.innerHTML = `
+          <div style="padding: var(--sp-6); background: rgba(255,255,255,0.03); border-radius: var(--radius-md);">
+            <p style="color: var(--slate); margin-bottom: var(--sp-4);">Try TAMKO shingle colors on your home with their RenoWorks visualizer.</p>
+            <a href="https://tamko.renoworks.com/" target="_blank" rel="noopener" class="btn btn-primary">
+              Open TAMKO Visualizer
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
+            </a>
+            <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
+              <strong>After visualizing:</strong> Come back here and enter your color selection.
+            </div>
+          </div>
+        `;
+      },
+
+      /**
+       * Atlas external link
+       */
+      renderAtlasLink(container) {
+        container.innerHTML = `
+          <div style="padding: var(--sp-6); background: rgba(255,255,255,0.03); border-radius: var(--radius-md);">
+            <p style="color: var(--slate); margin-bottom: var(--sp-4);">Visualize Atlas shingle colors and see how they look on your roof.</p>
+            <a href="https://www.atlasroofing.com/visualizer" target="_blank" rel="noopener" class="btn btn-primary">
+              Open Atlas Visualizer
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
+            </a>
+            <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
+              <strong>After selecting:</strong> Come back here and enter the color you selected.
+            </div>
+          </div>
+        `;
+      },
+
+      /**
+       * IKO external link
+       */
+      renderIKOLink(container) {
+        container.innerHTML = `
+          <div style="padding: var(--sp-6); background: rgba(255,255,255,0.03); border-radius: var(--radius-md);">
+            <p style="color: var(--slate); margin-bottom: var(--sp-4);">Use IKO's RoofViewer to preview different colors and styles on your home.</p>
+            <a href="https://www.iko.com/na/roofviewer/" target="_blank" rel="noopener" class="btn btn-primary">
+              Open IKO RoofViewer
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
+            </a>
+            <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
+              <strong>After visualizing:</strong> Come back here and enter your color selection.
+            </div>
+          </div>
+        `;
+      },
+
+      /**
+       * Request color board visit
+       */
+      async requestColorBoardVisit() {
+        try {
+          // Check if already requested
+          const { data: existing } = await sb
+            .from('notifications')
+            .select('id')
+            .eq('claim_id', this.claimId)
+            .eq('type', 'color_board_request')
+            .maybeSingle();
+
+          if (existing) {
+            alert('You\'ve already requested a color board visit. Your contractor will reach out soon.');
+            return;
+          }
+
+          // Create notification record
+          const { error } = await sb
+            .from('notifications')
+            .insert({
+              claim_id: this.claimId,
+              contractor_id: this.contractorId,
+              type: 'color_board_request',
+              status: 'pending',
+              created_at: new Date().toISOString()
+            });
+
+          if (error) throw error;
+
+          // Show confirmation
+          const confirmElement = document.getElementById('confirmation-section');
+          const messageEl = document.createElement('div');
+          messageEl.className = 'color-board-confirmation active';
+          messageEl.innerHTML = `
+            <strong>✓ Color board visit requested!</strong> We've notified ${this.contractorName} to schedule a visit with physical color boards. They'll reach out to you within 48 hours.
+          `;
+          confirmElement.insertBefore(messageEl, confirmElement.firstChild);
+
+          gtag('event', 'color_board_request', { claim_id: this.claimId, contractor: this.contractorName });
+        } catch (err) {
+          console.error('Error requesting color board visit:', err);
+          alert('Error requesting color board visit. Please try again.');
+        }
+      },
+
+      /**
+       * Handle color confirmation form submission
+       */
+      async handleColorConfirmation(event) {
+        event.preventDefault();
+
+        const colorInput = document.getElementById('color-input');
+        const colorName = colorInput.value.trim();
+
+        if (!colorName) {
+          alert('Please enter a color name.');
+          return;
+        }
+
+        try {
+          const button = event.target.querySelector('button[type="submit"]');
+          button.disabled = true;
+          button.textContent = 'Saving...';
+
+          // Save color to claims table
+          const { error } = await sb
+            .from('claims')
+            .update({
+              color_brand: this.brand,
+              color_name: colorName,
+              color_selected_at: new Date().toISOString()
+            })
+            .eq('id', this.claimId)
+            .eq('homeowner_id', this.userId);
+
+          if (error) throw error;
+
+          // Show success state
+          this.showSuccessState();
+
+          // Track in GA4
+          gtag('event', 'color_confirmed', {
+            claim_id: this.claimId,
+            brand: this.brand,
+            color: colorName
+          });
+
+          button.disabled = false;
+          button.textContent = 'Confirm My Color';
+        } catch (err) {
+          console.error('Error saving color:', err);
+          alert('Error saving color. Please try again.');
+          const button = event.target.querySelector('button[type="submit"]');
+          button.disabled = false;
+          button.textContent = 'Confirm My Color';
+        }
+      },
+
+      /**
+       * Show success state
+       */
+      showSuccessState() {
+        const successEl = document.getElementById('color-success');
+        if (successEl) {
+          successEl.classList.add('active');
+        }
+        const form = document.getElementById('color-form');
+        if (form) {
+          const button = form.querySelector('button[type="submit"]');
+          if (button) {
+            button.disabled = true;
+            button.textContent = 'Color Confirmed ✓';
+          }
+        }
+      }
+    };
+
+    // Initialize when DOM is ready
+    document.addEventListener('DOMContentLoaded', () => ColorSelection.init());
+  </script>
+</body>
+</html>

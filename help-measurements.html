@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Measurements Help — ClaimShield</title>
+    <meta name="description" content="Get property measurements for your claim. Purchase a Hover 3D report or request measurements from your adjuster.">
+
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-JNQ6XR3LX2');
+    </script>
+
+    <style>
+        body {
+            font-family: 'DM Sans', sans-serif;
+            color: #1a1a1a;
+            background-color: #f8f8f8;
+            line-height: 1.6;
+        }
+
+        .page-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .page-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 2rem;
+            color: #001f4d;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle { color: #666; font-size: 1rem; }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #b8860b;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+            white-space: nowrap;
+        }
+        .back-link:hover { color: #001f4d; }
+
+        /* Path Selection */
+        .path-intro {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .path-intro h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            color: #001f4d;
+            margin-bottom: 0.75rem;
+        }
+
+        .path-intro p { color: #666; font-size: 1rem; }
+
+        .path-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .path-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 16px;
+            padding: 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .path-card:hover {
+            border-color: #b8860b;
+            box-shadow: 0 6px 20px rgba(184, 134, 11, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .path-card.selected {
+            border-color: #b8860b;
+            background: linear-gradient(135deg, rgba(184, 134, 11, 0.04) 0%, rgba(0, 31, 77, 0.04) 100%);
+            box-shadow: 0 0 20px rgba(184, 134, 11, 0.15);
+        }
+
+        .path-card-badge {
+            position: absolute;
+            top: -10px;
+            right: 16px;
+            background: #2d5016;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+        }
+
+        .path-card-badge.premium {
+            background: #b8860b;
+        }
+
+        .path-card-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: #f0f4ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.75rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .path-card h3 {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #001f4d;
+            margin-bottom: 0.5rem;
+        }
+
+        .path-card-price {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #b8860b;
+            margin-bottom: 0.75rem;
+        }
+
+        .path-card p {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+
+        .path-card-features {
+            list-style: none;
+            padding: 0;
+        }
+
+        .path-card-features li {
+            color: #555;
+            font-size: 0.9rem;
+            padding: 0.3rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .path-card-features li::before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #10B981;
+            font-weight: 700;
+        }
+
+        .path-card .select-btn {
+            display: block;
+            width: 100%;
+            margin-top: 1.5rem;
+            background: #001f4d;
+            color: white;
+            border: none;
+            padding: 0.85rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .path-card .select-btn:hover {
+            background: #b8860b;
+        }
+
+        .path-card.selected .select-btn {
+            background: #b8860b;
+        }
+
+        /* Flow Sections */
+        .flow-section {
+            display: none;
+            animation: slideIn 0.4s ease forwards;
+        }
+        .flow-section.active { display: block; }
+
+        .section-card {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .section-card h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.3rem;
+            color: #001f4d;
+            margin-bottom: 1rem;
+        }
+
+        .section-card p {
+            color: #555;
+            line-height: 1.7;
+            margin-bottom: 1rem;
+        }
+
+        /* Hover Steps */
+        .hover-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .hover-step {
+            display: flex;
+            gap: 1.25rem;
+            align-items: flex-start;
+        }
+
+        .hover-step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #001f4d;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+
+        .hover-step-number.done {
+            background: #10B981;
+        }
+
+        .hover-step-content h4 {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #001f4d;
+            margin-bottom: 0.3rem;
+        }
+
+        .hover-step-content p {
+            color: #666;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        /* Rebate callout */
+        .rebate-callout {
+            background: linear-gradient(135deg, #d4edda 0%, #e8f5e9 100%);
+            border-left: 4px solid #10B981;
+            border-radius: 6px;
+            padding: 1.25rem 1.5rem;
+            margin: 1.5rem 0;
+            font-size: 0.95rem;
+            color: #155724;
+            line-height: 1.6;
+        }
+
+        .rebate-callout strong { color: #065F46; }
+
+        /* Info callout */
+        .info-callout {
+            background: #f0f4ff;
+            border-left: 4px solid #3B82F6;
+            border-radius: 6px;
+            padding: 1.25rem 1.5rem;
+            margin: 1.5rem 0;
+            font-size: 0.95rem;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .info-callout strong { color: #001f4d; }
+
+        /* Adjuster email section */
+        .adjuster-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #001f4d;
+            margin-bottom: 0.4rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.6rem 0.8rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #b8860b;
+            box-shadow: 0 0 0 3px rgba(184, 134, 11, 0.1);
+        }
+
+        .required-star { color: #e74c3c; }
+
+        /* Email preview */
+        .email-preview {
+            background: #fafafa;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            color: #555;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        /* Buttons */
+        .action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            background: #001f4d;
+            color: white;
+            border: none;
+            padding: 0.85rem 1.75rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .action-btn:hover:not(:disabled) {
+            background: #b8860b;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(184, 134, 11, 0.2);
+            color: white;
+        }
+
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .action-btn.btn-amber { background: #b8860b; }
+        .action-btn.btn-amber:hover:not(:disabled) { background: #d4af37; }
+
+        .action-btn.btn-outline {
+            background: transparent;
+            border: 2px solid #b8860b;
+            color: #b8860b;
+        }
+        .action-btn.btn-outline:hover {
+            background: rgba(184, 134, 11, 0.08);
+            color: #b8860b;
+        }
+
+        .action-btn.btn-green { background: #10B981; }
+        .action-btn.btn-green:hover:not(:disabled) { background: #059669; }
+
+        .button-row {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        /* Followup note */
+        .followup-note {
+            background: #fef9ee;
+            border: 1px solid #f0e4c8;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: #555;
+            line-height: 1.6;
+        }
+        .followup-note strong { color: #001f4d; }
+
+        /* Success State */
+        .success-state {
+            text-align: center;
+            padding: 3rem 2rem;
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            margin: 0 auto 1.5rem;
+        }
+
+        .success-state h2 {
+            font-family: 'Playfair Display', serif;
+            color: #001f4d;
+            margin-bottom: 0.75rem;
+        }
+
+        .success-state p {
+            color: #666;
+            max-width: 550px;
+            margin: 0 auto 1.5rem;
+        }
+
+        /* Status message */
+        .status-message {
+            padding: 1rem 1.25rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            display: none;
+        }
+
+        .status-message.success {
+            display: block;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .status-message.error {
+            display: block;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        /* Spinner */
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .page-container { padding: 1.5rem; }
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+            .page-title { font-size: 1.5rem; }
+            .path-cards { grid-template-columns: 1fr; }
+            .adjuster-form { grid-template-columns: 1fr; }
+            .button-row { flex-direction: column; }
+            .button-row .action-btn { width: 100%; }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <nav id="navbar"></nav>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Measurements</h1>
+                <p class="page-subtitle">Help Me: Get property measurements for your claim</p>
+            </div>
+            <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="statusMessage" class="status-message"></div>
+
+        <!-- Path Selection -->
+        <div id="pathSelection">
+            <div class="path-intro">
+                <h2>How would you like to get measurements?</h2>
+                <p>Accurate measurements help contractors provide more precise bids. Choose the option that works best for you.</p>
+            </div>
+
+            <div class="path-cards">
+                <!-- Path B: Ask Adjuster (FREE) — Lead with this per D-036 -->
+                <div class="path-card" onclick="selectPath('adjuster')">
+                    <div class="path-card-badge">Recommended</div>
+                    <div class="path-card-icon">📬</div>
+                    <h3>Ask Your Adjuster</h3>
+                    <div class="path-card-price">Free</div>
+                    <p>Request measurements from your insurance adjuster. Many adjusters take measurements during their inspection and can share them at no cost.</p>
+                    <ul class="path-card-features">
+                        <li>No cost to you</li>
+                        <li>We send a professional email on your behalf</li>
+                        <li>Auto-captured when adjuster replies</li>
+                        <li>May not always be available</li>
+                    </ul>
+                    <button class="select-btn">Choose This Option</button>
+                </div>
+
+                <!-- Path A: Hover (PAID) -->
+                <div class="path-card" onclick="selectPath('hover')">
+                    <div class="path-card-badge premium">Premium</div>
+                    <div class="path-card-icon">📐</div>
+                    <h3>Hover 3D Measurement</h3>
+                    <div class="path-card-price">$79 (rebated if you use a ClaimShield contractor)</div>
+                    <p>Get a professional 3D measurement report by taking photos of your home with your phone. Hover's technology creates accurate measurements from your photos.</p>
+                    <ul class="path-card-features">
+                        <li>Precise, professional-grade measurements</li>
+                        <li>3D model of your property</li>
+                        <li>Ready in 24-48 hours</li>
+                        <li>Cost rebated when using a ClaimShield contractor</li>
+                    </ul>
+                    <button class="select-btn">Choose This Option</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PATH A: Hover Purchase Flow -->
+        <div id="hoverSection" class="flow-section">
+            <div class="section-card">
+                <h3>Hover 3D Measurement Report</h3>
+                <p>Hover uses advanced technology to create a 3D model of your property from photos you take with your phone. The result is a professional measurement report accurate enough for contractors to quote from.</p>
+
+                <div class="rebate-callout">
+                    <strong>Rebate guarantee:</strong> If you select a contractor through ClaimShield, the $79 Hover fee will be fully rebated to you. You only pay if you don't use our platform.
+                </div>
+
+                <div class="hover-steps">
+                    <div class="hover-step">
+                        <div class="hover-step-number">1</div>
+                        <div class="hover-step-content">
+                            <h4>Purchase Your Report</h4>
+                            <p>Pay the $79 fee securely through Stripe. This covers Hover's processing and report generation.</p>
+                        </div>
+                    </div>
+                    <div class="hover-step">
+                        <div class="hover-step-number">2</div>
+                        <div class="hover-step-content">
+                            <h4>Take Photos of Your Home</h4>
+                            <p>We'll send you a link to Hover's guided photo capture. Their app walks you through taking 8-10 photos from around your home — it checks photo quality as you go.</p>
+                        </div>
+                    </div>
+                    <div class="hover-step">
+                        <div class="hover-step-number">3</div>
+                        <div class="hover-step-content">
+                            <h4>Receive Your Report</h4>
+                            <p>Hover processes your photos (usually 24-48 hours) and creates a detailed measurement report. It's automatically attached to your claim — you'll get a notification when it's ready.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-callout">
+                    <strong>What you'll need:</strong> A smartphone with a decent camera and the ability to walk around the outside of your home. Hover's guided process handles the rest.
+                </div>
+
+                <div class="button-row">
+                    <button class="action-btn btn-green" id="purchaseHoverBtn" onclick="purchaseHover()">
+                        Purchase Hover Report — $79
+                    </button>
+                    <button class="action-btn btn-outline" onclick="goBack()">← Choose Different Option</button>
+                </div>
+            </div>
+
+            <!-- Hover Payment Success -->
+            <div id="hoverSuccessSection" class="flow-section">
+                <div class="section-card">
+                    <div class="success-state">
+                        <div class="success-icon">📐</div>
+                        <h2>Hover Report Ordered</h2>
+                        <p>Your Hover 3D measurement report has been ordered. Check your email and text messages for a link to take photos of your property.</p>
+
+                        <div class="info-callout" style="text-align: left;">
+                            <strong>Next steps:</strong> Open the Hover link on your phone, walk around the outside of your home, and follow the guided photo capture. The report is usually ready in 24-48 hours.
+                        </div>
+
+                        <div class="button-row" style="justify-content: center;">
+                            <a href="dashboard.html" class="action-btn btn-amber">Return to Dashboard</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PATH B: Ask Adjuster Flow -->
+        <div id="adjusterSection" class="flow-section">
+            <div class="section-card">
+                <h3>Request Measurements from Your Adjuster</h3>
+                <p id="adjusterIntro">We'll send a professional email to your adjuster requesting any property measurements they have on file from their inspection.</p>
+            </div>
+
+            <!-- Check if estimate email already sent -->
+            <div id="alreadySentEstimateNote" class="info-callout" style="display: none;">
+                <strong>Good news:</strong> We already sent an email to your adjuster requesting your insurance estimate. Since that email also requested measurements, you don't need to send another one. We'll capture any measurements they include in their response.
+            </div>
+
+            <!-- Adjuster Info -->
+            <div id="adjusterFormSection" class="section-card">
+                <h3>Adjuster Information</h3>
+                <p>Enter your adjuster's details. If you already provided this on the estimate page, it's pre-filled.</p>
+
+                <div class="adjuster-form">
+                    <div class="form-group">
+                        <label>Adjuster Name <span class="required-star">*</span></label>
+                        <input type="text" id="adjusterName" placeholder="e.g., John Smith">
+                    </div>
+                    <div class="form-group">
+                        <label>Adjuster Email <span class="required-star">*</span></label>
+                        <input type="email" id="adjusterEmail" placeholder="e.g., john.smith@insurance.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Adjuster Phone</label>
+                        <input type="tel" id="adjusterPhone" placeholder="e.g., (317) 555-1234">
+                    </div>
+                </div>
+
+                <!-- Email Preview -->
+                <h4 style="font-size: 1rem; font-weight: 600; color: #001f4d; margin-bottom: 0.75rem;">Email Preview</h4>
+                <div class="email-preview" id="emailPreview">Loading...</div>
+
+                <div class="followup-note">
+                    <strong>What happens next:</strong> If your adjuster doesn't respond within 48 hours, we'll text you with a recommended call script so you can follow up directly.
+                </div>
+
+                <div class="button-row">
+                    <button class="action-btn btn-amber" id="sendMeasurementEmailBtn" onclick="sendMeasurementEmail()" disabled>Send Request to Adjuster</button>
+                    <button class="action-btn btn-outline" onclick="goBack()">← Choose Different Option</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- EMAIL SUCCESS STATE -->
+        <div id="emailSuccessSection" class="flow-section">
+            <div class="section-card">
+                <div class="success-state">
+                    <div class="success-icon">✓</div>
+                    <h2>Measurement Request Sent</h2>
+                    <p>We've emailed your adjuster requesting property measurements. When they reply, we'll automatically capture the documents and attach them to your claim.</p>
+
+                    <div class="followup-note">
+                        <strong>48-Hour Follow-Up:</strong> If we don't hear back within 48 hours, we'll text you with a call script to follow up directly with your adjuster.
+                    </div>
+
+                    <div class="button-row" style="justify-content: center;">
+                        <a href="dashboard.html" class="action-btn btn-amber">Return to Dashboard</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/services.js"></script>
+
+    <script>
+        // ── State ──
+        let currentUser = null;
+        let currentProfile = null;
+        let currentClaim = null;
+
+        // ── Init ──
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                currentUser = await Auth.requireAuth();
+                if (!currentUser) return;
+
+                currentProfile = await Auth.getProfile();
+                await loadClaimData();
+                prefillAdjusterInfo();
+                setupListeners();
+                checkExistingEstimateRequest();
+
+                gtag('event', 'page_view', {
+                    page_title: 'Help Me - Measurements',
+                    page_path: '/help-measurements.html'
+                });
+            } catch (err) {
+                console.error('Init error:', err);
+                showMessage('Failed to load page. Please refresh.', 'error');
+            }
+        });
+
+        async function loadClaimData() {
+            if (!sb || !currentUser) return;
+            const { data } = await sb
+                .from('claims')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (data) currentClaim = data;
+        }
+
+        function prefillAdjusterInfo() {
+            if (!currentClaim) return;
+            if (currentClaim.adjuster_name) document.getElementById('adjusterName').value = currentClaim.adjuster_name;
+            if (currentClaim.adjuster_email) document.getElementById('adjusterEmail').value = currentClaim.adjuster_email;
+            if (currentClaim.adjuster_phone) document.getElementById('adjusterPhone').value = currentClaim.adjuster_phone;
+            updateEmailPreview();
+            validateForm();
+        }
+
+        async function checkExistingEstimateRequest() {
+            if (!sb || !currentClaim) return;
+            // Check if we already sent an estimate request with "also request measurements"
+            const { data } = await sb
+                .from('adjuster_email_requests')
+                .select('*')
+                .eq('claim_id', currentClaim.id)
+                .eq('request_type', 'both')
+                .limit(1)
+                .maybeSingle();
+
+            if (data) {
+                document.getElementById('alreadySentEstimateNote').style.display = 'block';
+            }
+        }
+
+        // ── Path Selection ──
+        function selectPath(path) {
+            document.querySelectorAll('.path-card').forEach(c => c.classList.remove('selected'));
+            event.currentTarget.closest('.path-card').classList.add('selected');
+
+            setTimeout(() => {
+                document.getElementById('pathSelection').style.display = 'none';
+                document.querySelectorAll('.flow-section').forEach(s => s.classList.remove('active'));
+
+                if (path === 'hover') {
+                    document.getElementById('hoverSection').classList.add('active');
+                } else {
+                    document.getElementById('adjusterSection').classList.add('active');
+                }
+
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 200);
+
+            gtag('event', 'measurement_path_selected', { path });
+        }
+
+        function goBack() {
+            document.querySelectorAll('.flow-section').forEach(s => s.classList.remove('active'));
+            document.getElementById('pathSelection').style.display = 'block';
+            document.querySelectorAll('.path-card').forEach(c => c.classList.remove('selected'));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // ── Hover Purchase ──
+        async function purchaseHover() {
+            const btn = document.getElementById('purchaseHoverBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Processing...';
+
+            try {
+                // Create payment intent
+                const paymentResult = await Services.createHoverPaymentIntent({
+                    claim_id: currentClaim?.id,
+                    amount: 7900, // $79 in cents
+                    description: 'Hover 3D Measurement Report',
+                });
+
+                if (paymentResult.placeholder) {
+                    // Stripe not yet configured — show placeholder success
+                    showMessage('Payment processing is not yet configured. Your order has been recorded.', 'success');
+                }
+
+                // Create Hover order
+                const hoverResult = await Services.createHoverOrder({
+                    claim_id: currentClaim?.id,
+                    user_id: currentUser?.id,
+                    address: [currentProfile?.address_street, currentProfile?.address_city, currentProfile?.address_state, currentProfile?.address_zip].filter(Boolean).join(', ') || '',
+                    amount_charged: 79.00,
+                });
+
+                // Show success
+                document.getElementById('hoverSection').querySelector('.section-card').style.display = 'none';
+                document.getElementById('hoverSuccessSection').classList.add('active');
+
+                gtag('event', 'hover_purchased', {
+                    claim_id: currentClaim?.id,
+                    amount: 79,
+                });
+            } catch (err) {
+                console.error('Hover purchase error:', err);
+                showMessage('Something went wrong with your purchase. Your order has been saved — our team will follow up.', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // ── Adjuster Email ──
+        function setupListeners() {
+            ['adjusterName', 'adjusterEmail'].forEach(id => {
+                document.getElementById(id).addEventListener('input', () => {
+                    updateEmailPreview();
+                    validateForm();
+                });
+            });
+        }
+
+        function updateEmailPreview() {
+            const adjName = document.getElementById('adjusterName').value || '[Adjuster Name]';
+            const homeownerName = currentProfile
+                ? (currentProfile.full_name || '').trim()
+                : 'the homeowner';
+            const homeownerPhone = currentProfile?.phone || '';
+
+            let preview = `Hi ${adjName},\n\n`;
+            preview += `I'm following up on my recent property inspection. Could you please share any property measurements you have on file? These would help me get accurate repair estimates.\n\n`;
+            preview += `You can reply directly to this email with the documents attached.\n\n`;
+            preview += `Thank you,\n${homeownerName}`;
+            if (homeownerPhone) preview += `\n${homeownerPhone}`;
+
+            document.getElementById('emailPreview').textContent = preview;
+        }
+
+        function validateForm() {
+            const name = document.getElementById('adjusterName').value.trim();
+            const email = document.getElementById('adjusterEmail').value.trim();
+            const isValid = name.length > 0 && email.includes('@') && email.includes('.');
+            document.getElementById('sendMeasurementEmailBtn').disabled = !isValid;
+        }
+
+        async function sendMeasurementEmail() {
+            const btn = document.getElementById('sendMeasurementEmailBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Sending...';
+
+            try {
+                const adjusterName = document.getElementById('adjusterName').value.trim();
+                const adjusterEmail = document.getElementById('adjusterEmail').value.trim();
+                const adjusterPhone = document.getElementById('adjusterPhone').value.trim();
+                const homeownerName = currentProfile
+                    ? (currentProfile.full_name || '').trim()
+                    : '';
+
+                // Save adjuster info
+                if (currentClaim) {
+                    await sb.from('claims').update({
+                        adjuster_name: adjusterName,
+                        adjuster_email: adjusterEmail,
+                        adjuster_phone: adjusterPhone || null,
+                    }).eq('id', currentClaim.id);
+                }
+
+                // Auto-fill adjuster knowledge base
+                await Services.findOrCreateAdjuster({
+                    adjuster_name: adjusterName,
+                    adjuster_email: adjusterEmail,
+                    adjuster_phone: adjusterPhone || null,
+                    carrier_id: currentClaim?.carrier_id || null,
+                });
+
+                // Send email
+                const result = await Services.sendAdjusterEmail({
+                    claim_id: currentClaim?.id,
+                    adjuster_name: adjusterName,
+                    adjuster_email: adjusterEmail,
+                    homeowner_name: homeownerName,
+                    homeowner_phone: currentProfile?.phone || '',
+                    claim_number: currentClaim?.claim_number || '',
+                    request_type: 'measurements',
+                });
+
+                if (result.success) {
+                    document.querySelectorAll('.flow-section').forEach(s => s.classList.remove('active'));
+                    document.getElementById('emailSuccessSection').classList.add('active');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                    gtag('event', 'measurement_email_sent', {
+                        edge_function_pending: result.edge_function_pending || false,
+                    });
+                }
+            } catch (err) {
+                console.error('Send error:', err);
+                showMessage('Something went wrong. Your request has been saved.', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // ── Utility ──
+        function showMessage(text, type) {
+            const el = document.getElementById('statusMessage');
+            el.textContent = text;
+            el.className = `status-message ${type}`;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get Started — ClaimShield</title>
+<meta name="description" content="Create your free ClaimShield account and start getting competitive bids from qualified contractors for your storm damage repair.">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.gs-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: calc(100vh - 64px);
+}
+
+.gs-left {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-12) var(--sp-8);
+}
+
+.gs-form-wrap {
+  width: 100%;
+  max-width: 440px;
+}
+
+.gs-form-wrap h1 {
+  font-size: 2rem;
+  margin-bottom: var(--sp-2);
+}
+
+.gs-form-wrap .subtitle {
+  color: var(--slate);
+  font-size: 1rem;
+  margin-bottom: var(--sp-8);
+  line-height: 1.6;
+}
+
+.gs-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.gs-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+
+.gs-form .referral-section {
+  padding: var(--sp-4);
+  background: rgba(255,255,255,0.03);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.gs-form .referral-section legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--slate);
+  margin-bottom: var(--sp-3);
+}
+
+.referral-options {
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+
+.referral-chip {
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255,255,255,0.15);
+  background: transparent;
+  color: var(--slate);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  font-family: var(--font-body);
+}
+
+.referral-chip:hover { border-color: var(--amber); color: var(--amber); }
+.referral-chip.active {
+  background: var(--amber);
+  color: var(--navy);
+  border-color: var(--amber);
+  font-weight: 700;
+}
+
+.referral-name-row {
+  display: none;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+.referral-name-row.visible { display: grid; grid-template-columns: 1fr 1fr; }
+
+.gs-right {
+  background: var(--navy-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-12) var(--sp-8);
+  border-left: 1px solid rgba(255,255,255,0.06);
+}
+
+.gs-benefits {
+  max-width: 380px;
+}
+
+.gs-benefits h2 {
+  font-size: 1.5rem;
+  margin-bottom: var(--sp-8);
+}
+
+.benefit-item {
+  display: flex;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
+}
+
+.benefit-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--amber-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.benefit-text h4 {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: var(--sp-1);
+}
+.benefit-text p { font-size: 0.85rem; }
+
+/* ── Magic link sent state ── */
+.magic-link-sent {
+  display: none;
+  text-align: center;
+  padding: var(--sp-8) 0;
+}
+
+.magic-link-sent.active { display: block; }
+.gs-form.hidden { display: none; }
+
+.magic-link-icon {
+  font-size: 3rem;
+  margin-bottom: var(--sp-4);
+}
+
+.magic-link-sent h2 {
+  font-size: 1.5rem;
+  margin-bottom: var(--sp-3);
+}
+
+.magic-link-sent p { max-width: 340px; margin: 0 auto; }
+
+.magic-link-email {
+  display: inline-block;
+  background: var(--amber-glow);
+  color: var(--amber);
+  font-weight: 700;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-sm);
+  margin: var(--sp-3) 0;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+/* ── Loading ── */
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+}
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(11,25,41,0.3);
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .gs-layout { grid-template-columns: 1fr; }
+  .gs-right { display: none; }
+  .gs-left { padding: var(--sp-8) var(--sp-6); }
+  .gs-form .form-row { grid-template-columns: 1fr; }
+  .referral-name-row.visible { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active=""></header>
+
+<div class="gs-layout">
+  <!-- Left: Form -->
+  <div class="gs-left">
+    <div class="gs-form-wrap">
+      <h1>Get Started</h1>
+      <p class="subtitle">Create your free account and start getting competitive bids from qualified contractors.</p>
+
+      <!-- Form -->
+      <form class="gs-form" id="gs-form" novalidate>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="first-name">First Name</label>
+            <input type="text" id="first-name" class="form-input" required autocomplete="given-name" placeholder="Jane">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="last-name">Last Name</label>
+            <input type="text" id="last-name" class="form-input" required autocomplete="family-name" placeholder="Smith">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="email">Email</label>
+          <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com">
+          <span class="form-hint">We'll send you a secure login link — no password needed.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="phone">Phone</label>
+          <input type="tel" id="phone" class="form-input" required autocomplete="tel" placeholder="(317) 555-1234">
+          <span class="form-hint">For bid notifications and updates via text.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="address">Property Address</label>
+          <input type="text" id="address" class="form-input" required autocomplete="street-address" placeholder="123 Main St, Indianapolis, IN 46201">
+          <span class="form-hint">The address where the storm damage occurred.</span>
+        </div>
+
+        <!-- Referral Source -->
+        <fieldset class="referral-section">
+          <legend>How did you hear about us?</legend>
+          <div class="referral-options">
+            <button type="button" class="referral-chip" data-value="insurance_agent">Insurance Agent</button>
+            <button type="button" class="referral-chip" data-value="realtor">Realtor</button>
+            <button type="button" class="referral-chip" data-value="friend">Friend/Family</button>
+            <button type="button" class="referral-chip" data-value="web">Found Online</button>
+          </div>
+          <div class="referral-name-row" id="referral-name-row">
+            <div class="form-group">
+              <label class="form-label" for="ref-name">Their Name</label>
+              <input type="text" id="ref-name" class="form-input" placeholder="Agent / Realtor name">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="ref-email">Their Email (optional)</label>
+              <input type="email" id="ref-email" class="form-input" placeholder="agent@company.com">
+            </div>
+          </div>
+          <input type="hidden" id="referral-source" name="referral_source">
+        </fieldset>
+
+        <div id="form-error" class="form-error" style="display:none;"></div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">
+          Create My Free Account
+        </button>
+
+        <p class="text-sm text-center" style="color: var(--gray);">
+          By creating an account, you agree to our
+          <a href="terms.html">Terms of Service</a> and
+          <a href="privacy.html">Privacy Policy</a>.
+        </p>
+      </form>
+
+      <!-- Magic Link Sent -->
+      <div class="magic-link-sent" id="magic-link-sent">
+        <div class="magic-link-icon">&#x2709;&#xFE0F;</div>
+        <h2>Check Your Email</h2>
+        <p>We sent a secure login link to:</p>
+        <div class="magic-link-email" id="sent-email"></div>
+        <p style="margin-top: var(--sp-4);">Click the link in your email to access your dashboard. The link expires in 1 hour.</p>
+        <p style="margin-top: var(--sp-6);"><a href="#" id="resend-link">Didn't get it? Send again</a></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Benefits -->
+  <div class="gs-right">
+    <div class="gs-benefits">
+      <h2>What Happens Next</h2>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">&#x2709;&#xFE0F;</div>
+        <div class="benefit-text">
+          <h4>Check your email</h4>
+          <p>We'll send a secure magic link. Click it to log in — no password to remember.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">&#x1F4C4;</div>
+        <div class="benefit-text">
+          <h4>Build your claim package</h4>
+          <p>Upload your documents or use our "Help Me" tools. We'll guide you through everything.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">&#x1F3AF;</div>
+        <div class="benefit-text">
+          <h4>Contractors compete</h4>
+          <p>Licensed contractors in your area bid on your job. You compare and choose the best deal.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">&#x1F4B0;</div>
+        <div class="benefit-text">
+          <h4>Always free for you</h4>
+          <p>ClaimShield is 100% free for homeowners. Contractors pay to earn your business, not you.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+(function() {
+  const form = document.getElementById('gs-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const errorEl = document.getElementById('form-error');
+  const sentSection = document.getElementById('magic-link-sent');
+  const sentEmail = document.getElementById('sent-email');
+
+  // Referral chip selection
+  document.querySelectorAll('.referral-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.referral-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      document.getElementById('referral-source').value = chip.dataset.value;
+
+      const nameRow = document.getElementById('referral-name-row');
+      if (['insurance_agent', 'realtor'].includes(chip.dataset.value)) {
+        nameRow.classList.add('visible');
+      } else {
+        nameRow.classList.remove('visible');
+      }
+    });
+  });
+
+  // Phone formatting
+  const phoneInput = document.getElementById('phone');
+  phoneInput.addEventListener('input', () => {
+    let v = phoneInput.value.replace(/\D/g, '');
+    if (v.length > 0) {
+      if (v.length <= 3) v = `(${v}`;
+      else if (v.length <= 6) v = `(${v.slice(0,3)}) ${v.slice(3)}`;
+      else v = `(${v.slice(0,3)}) ${v.slice(3,6)}-${v.slice(6,10)}`;
+    }
+    phoneInput.value = v;
+  });
+
+  // Form submission
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.style.display = 'none';
+
+    const firstName = document.getElementById('first-name').value.trim();
+    const lastName = document.getElementById('last-name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const address = document.getElementById('address').value.trim();
+    const referralSource = document.getElementById('referral-source').value;
+    const refName = document.getElementById('ref-name').value.trim();
+    const refEmail = document.getElementById('ref-email').value.trim();
+
+    // Validation
+    if (!firstName || !lastName || !email || !phone || !address) {
+      errorEl.textContent = 'Please fill in all required fields.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errorEl.textContent = 'Please enter a valid email address.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    // Loading state
+    submitBtn.classList.add('btn-loading');
+    submitBtn.disabled = true;
+
+    try {
+      // 1. Save lead to profiles table (upsert)
+      // The magic link will create the auth user; we store profile data separately
+      const { error: profileError } = await sb
+        .from('leads')
+        .insert({
+          full_name: `${firstName} ${lastName}`,
+          email: email,
+          phone: phone,
+          source: referralSource || 'web',
+          notes: JSON.stringify({
+            address,
+            referring_agent_name: refName || null,
+            referring_agent_email: refEmail || null,
+          }),
+          created_at: new Date().toISOString(),
+        });
+
+      // Profile error is non-fatal (lead capture is best-effort)
+
+      // 2. Store profile data in sessionStorage for post-auth profile creation
+      sessionStorage.setItem('cs_signup', JSON.stringify({
+        first_name: firstName,
+        last_name: lastName,
+        phone,
+        address,
+        referral_source: referralSource || 'web',
+        referring_agent_name: refName || null,
+        referring_agent_email: refEmail || null,
+      }));
+
+      // 3. Send magic link
+      await Auth.sendMagicLink(email);
+
+      // 4. Show success state
+      form.classList.add('hidden');
+      sentEmail.textContent = email;
+      sentSection.classList.add('active');
+
+      // GA4 event
+      gtag('event', 'sign_up', {
+        method: 'magic_link',
+        referral_source: referralSource || 'web',
+      });
+
+    } catch (err) {
+      console.error('Signup error:', err);
+      errorEl.textContent = 'Something went wrong. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL;
+      errorEl.style.display = 'block';
+    } finally {
+      submitBtn.classList.remove('btn-loading');
+      submitBtn.disabled = false;
+    }
+  });
+
+  // Resend link
+  document.getElementById('resend-link').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = sentEmail.textContent;
+    if (email) {
+      try {
+        await Auth.sendMagicLink(email);
+        alert('Magic link resent! Check your email.');
+      } catch (err) {
+        alert('Could not resend. Please try again in a moment.');
+      }
+    }
+  });
+
+  // Check if user is already logged in
+  Auth.getUser().then(user => {
+    if (user) {
+      window.location.href = '/dashboard.html';
+    }
+  });
+})();
+</script>
+</body>
+</html>

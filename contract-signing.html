@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Contract — ClaimShield</title>
+  <meta name="description" content="Review and sign your contractor agreement.">
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+
+  <style>
+    /* ── Page Layout ── */
+    .contract-page-layout {
+      min-height: calc(100vh - 64px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .contract-page-main {
+      flex: 1;
+      padding: var(--sp-12) 0;
+    }
+
+    /* ── Progress Indicator ── */
+    .progress-indicator {
+      margin-bottom: var(--sp-12);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .progress-steps {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      max-width: 600px;
+    }
+
+    .progress-step {
+      flex: 1;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .progress-step-number {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--navy-3);
+      border: 2px solid rgba(255,255,255,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: var(--sp-2);
+      transition: all var(--duration) var(--ease);
+      font-size: 1.1rem;
+    }
+
+    .progress-step.active .progress-step-number {
+      background: var(--amber);
+      border-color: var(--amber);
+      color: var(--navy);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+    }
+
+    .progress-step.completed .progress-step-number {
+      background: var(--green);
+      border-color: var(--green);
+      color: var(--white);
+    }
+
+    .progress-step-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+    }
+
+    .progress-step.active .progress-step-label,
+    .progress-step.completed .progress-step-label {
+      color: var(--white);
+    }
+
+    .progress-connector {
+      position: absolute;
+      top: 24px;
+      left: -50%;
+      width: 100%;
+      height: 2px;
+      background: rgba(255,255,255,0.1);
+      z-index: -1;
+    }
+
+    .progress-step:first-child .progress-connector { display: none; }
+
+    .progress-step.completed .progress-connector {
+      background: var(--green);
+    }
+
+    /* ── Header ── */
+    .contract-header {
+      margin-bottom: var(--sp-12);
+      animation: fadeUp 0.6s var(--ease) 0.1s both;
+    }
+
+    .contract-header h1 {
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      margin-bottom: var(--sp-2);
+    }
+
+    .contract-header-subtitle {
+      color: var(--slate);
+      font-size: 1.1rem;
+      max-width: 600px;
+    }
+
+    /* ── Step Sections ── */
+    .step-section {
+      display: none;
+    }
+
+    .step-section.active {
+      display: block;
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    /* ── Contractor Card ── */
+    .contractor-card {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, transparent 100%);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: var(--sp-6);
+      align-items: start;
+    }
+
+    .contractor-avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: var(--radius-lg);
+      background: var(--navy-3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      flex-shrink: 0;
+    }
+
+    .contractor-info {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-3);
+    }
+
+    .contractor-name {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--white);
+    }
+
+    .contractor-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      flex-wrap: wrap;
+      color: var(--slate);
+      font-size: 0.95rem;
+    }
+
+    .contractor-meta-item {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1);
+    }
+
+    .contractor-meta-icon {
+      color: var(--amber);
+      font-size: 1rem;
+    }
+
+    .contractor-badge {
+      background: var(--amber-glow);
+      color: var(--amber);
+      padding: var(--sp-1) var(--sp-3);
+      border-radius: var(--radius-full);
+      font-size: 0.85rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .contractor-bid {
+      text-align: right;
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-1);
+    }
+
+    .contractor-bid-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+    }
+
+    .contractor-bid-amount {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--amber);
+    }
+
+    /* ── Contract Summary ── */
+    .contract-section {
+      background: var(--navy-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+    }
+
+    .contract-section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: var(--sp-6);
+      color: var(--white);
+    }
+
+    .contract-placeholder {
+      background: var(--navy-3);
+      border: 1px dashed rgba(255,255,255,0.1);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+      text-align: center;
+      color: var(--slate);
+      font-size: 0.95rem;
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .contract-scroll {
+      max-height: 300px;
+      overflow-y: auto;
+      padding: var(--sp-6);
+      background: var(--navy-3);
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.9rem;
+      line-height: 1.8;
+      margin-bottom: var(--sp-6);
+    }
+
+    /* ── Key Terms Grid ── */
+    .key-terms-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--sp-6);
+      margin-bottom: var(--sp-8);
+    }
+
+    .key-term-item {
+      background: var(--navy-3);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-md);
+      padding: var(--sp-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+
+    .key-term-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+    }
+
+    .key-term-value {
+      font-size: 1.05rem;
+      color: var(--white);
+      font-weight: 600;
+    }
+
+    .key-term-value.highlight {
+      color: var(--amber);
+    }
+
+    /* ── Callout Boxes ── */
+    .callout {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-left: 4px solid var(--green);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-6);
+      margin-bottom: var(--sp-8);
+      display: flex;
+      gap: var(--sp-4);
+      animation: fadeUp 0.6s var(--ease) 0.2s both;
+    }
+
+    .callout-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+      color: var(--green);
+    }
+
+    .callout-text {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+
+    .callout-title {
+      font-weight: 600;
+      color: var(--white);
+    }
+
+    .callout-description {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 0.95rem;
+    }
+
+    /* ── Checkbox ── */
+    .checkbox-container {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-4);
+      margin-bottom: var(--sp-8);
+      animation: fadeUp 0.6s var(--ease) 0.3s both;
+    }
+
+    .checkbox-input {
+      width: 24px;
+      height: 24px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin-top: 2px;
+      transition: all var(--duration) var(--ease);
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    .checkbox-input:hover {
+      border-color: rgba(255,255,255,0.5);
+    }
+
+    .checkbox-input:checked {
+      background: var(--amber);
+      border-color: var(--amber);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%230B1929' d='M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 11-1.06-1.06l7.25-7.25a.75.75 0 011.06 0z'/%3E%3Cpath fill='%230B1929' d='M2.22 9.28a.75.75 0 001.06 1.06L6.5 6.56l.72.72a.75.75 0 101.06-1.06l-1.28-1.28a.75.75 0 00-1.06 0L2.22 9.28z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 14px;
+    }
+
+    .checkbox-label {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-1);
+      cursor: pointer;
+      flex: 1;
+    }
+
+    .checkbox-label-text {
+      color: var(--white);
+      font-weight: 500;
+    }
+
+    .checkbox-label-hint {
+      color: var(--slate);
+      font-size: 0.9rem;
+    }
+
+    /* ── Deductible Section ── */
+    .deductible-card {
+      background: var(--navy-3);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+    }
+
+    .deductible-header {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      margin-bottom: var(--sp-4);
+    }
+
+    .deductible-icon {
+      font-size: 1.5rem;
+    }
+
+    .deductible-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--white);
+    }
+
+    .deductible-description {
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: var(--sp-6);
+      line-height: 1.8;
+    }
+
+    .deductible-amount-display {
+      background: var(--navy-2);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: var(--radius-md);
+      padding: var(--sp-4);
+      margin-bottom: var(--sp-6);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .deductible-amount-label {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-1);
+    }
+
+    .deductible-amount-label-text {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+    }
+
+    .deductible-amount-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--amber);
+    }
+
+    .payment-form-placeholder {
+      background: var(--navy-2);
+      border: 1px dashed rgba(255,255,255,0.1);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+      margin-bottom: var(--sp-6);
+      text-align: center;
+      color: var(--slate);
+    }
+
+    /* ── Confirmation Screen ── */
+    .confirmation-wrapper {
+      text-align: center;
+      padding: var(--sp-8) 0;
+    }
+
+    .confirmation-icon {
+      font-size: 4rem;
+      margin-bottom: var(--sp-4);
+      animation: scaleUp 0.6s var(--ease);
+    }
+
+    .confirmation-title {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: var(--sp-4);
+    }
+
+    .confirmation-subtitle {
+      color: var(--slate);
+      font-size: 1.1rem;
+      margin-bottom: var(--sp-10);
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .next-steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--sp-6);
+      margin-bottom: var(--sp-10);
+    }
+
+    .next-step-card {
+      background: var(--navy-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-6);
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-4);
+      text-align: left;
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .next-step-card:nth-child(2) {
+      animation-delay: 0.1s;
+    }
+
+    .next-step-card:nth-child(3) {
+      animation-delay: 0.2s;
+    }
+
+    .next-step-number {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--amber);
+    }
+
+    .next-step-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--white);
+    }
+
+    .next-step-description {
+      color: var(--slate);
+      font-size: 0.95rem;
+    }
+
+    .next-step-link {
+      color: var(--amber);
+      text-decoration: none;
+      font-weight: 600;
+      transition: all var(--duration) var(--ease);
+      margin-top: var(--sp-2);
+      display: inline-block;
+    }
+
+    .next-step-link:hover {
+      color: var(--amber-2);
+    }
+
+    /* ── Buttons ── */
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--sp-2);
+      padding: var(--sp-3) var(--sp-6);
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--duration) var(--ease);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .button-primary {
+      background: var(--amber);
+      color: var(--navy);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+    }
+
+    .button-primary:hover:not(:disabled) {
+      background: var(--amber-2);
+      transform: translateY(-2px);
+      box-shadow: 0 0 30px rgba(245, 158, 11, 0.4);
+    }
+
+    .button-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .button-secondary {
+      background: var(--navy-3);
+      color: var(--white);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .button-secondary:hover:not(:disabled) {
+      border-color: rgba(255,255,255,0.2);
+      background: var(--navy-2);
+    }
+
+    .button-secondary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .button-large {
+      padding: var(--sp-4) var(--sp-8);
+      font-size: 1.1rem;
+    }
+
+    /* ── Actions ── */
+    .step-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      margin-top: var(--sp-8);
+      flex-wrap: wrap;
+    }
+
+    .step-actions-primary {
+      display: flex;
+      gap: var(--sp-4);
+      flex: 1;
+      flex-wrap: wrap;
+    }
+
+    .step-actions-secondary {
+      display: flex;
+      gap: var(--sp-4);
+    }
+
+    .back-link {
+      color: var(--slate);
+      text-decoration: none;
+      font-weight: 500;
+      transition: all var(--duration) var(--ease);
+    }
+
+    .back-link:hover {
+      color: var(--white);
+    }
+
+    /* ── DocuSign Modal ── */
+    .docusign-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: var(--sp-4);
+    }
+
+    .docusign-modal.active {
+      display: flex;
+      animation: fadeUp 0.3s var(--ease);
+    }
+
+    .docusign-modal-content {
+      background: var(--navy);
+      border-radius: var(--radius-lg);
+      max-width: 500px;
+      width: 100%;
+      padding: var(--sp-8);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .docusign-modal-close {
+      position: absolute;
+      top: var(--sp-4);
+      right: var(--sp-4);
+      background: none;
+      border: none;
+      color: var(--slate);
+      font-size: 1.5rem;
+      cursor: pointer;
+      transition: all var(--duration) var(--ease);
+    }
+
+    .docusign-modal-close:hover {
+      color: var(--white);
+    }
+
+    .docusign-placeholder {
+      background: var(--navy-2);
+      border: 1px dashed rgba(255,255,255,0.1);
+      border-radius: var(--radius-md);
+      padding: var(--sp-10);
+      text-align: center;
+      margin-bottom: var(--sp-6);
+      min-height: 250px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--sp-4);
+    }
+
+    .docusign-placeholder-icon {
+      font-size: 3rem;
+      color: var(--amber);
+    }
+
+    .docusign-placeholder-text {
+      color: var(--slate);
+      font-size: 1rem;
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes scaleUp {
+      from {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .progress-steps {
+        flex-wrap: wrap;
+      }
+
+      .progress-step {
+        flex: 0 1 calc(50% - var(--sp-2));
+      }
+
+      .progress-step:nth-child(3),
+      .progress-step:nth-child(4) {
+        flex: 0 1 calc(50% - var(--sp-2));
+      }
+
+      .progress-connector {
+        display: none;
+      }
+
+      .contractor-card {
+        grid-template-columns: 1fr;
+        gap: var(--sp-4);
+      }
+
+      .contractor-avatar {
+        width: 64px;
+        height: 64px;
+      }
+
+      .contractor-bid {
+        text-align: left;
+      }
+
+      .step-actions {
+        flex-direction: column;
+      }
+
+      .step-actions-primary {
+        flex: none;
+        width: 100%;
+      }
+
+      .step-actions-secondary {
+        width: 100%;
+      }
+
+      .button {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .deductible-amount-display {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+
+    /* ── Container ── */
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 var(--sp-4);
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <header id="site-header"></header>
+
+  <!-- Main Content -->
+  <div class="contract-page-layout">
+    <main class="contract-page-main">
+      <div class="container">
+
+        <!-- Progress Indicator -->
+        <div class="progress-indicator">
+          <div class="progress-steps">
+            <div class="progress-step active" data-step="1">
+              <div class="progress-step-number">1</div>
+              <div class="progress-step-label">Review</div>
+              <div class="progress-connector"></div>
+            </div>
+            <div class="progress-step" data-step="2">
+              <div class="progress-step-number">2</div>
+              <div class="progress-step-label">Sign</div>
+              <div class="progress-connector"></div>
+            </div>
+            <div class="progress-step" data-step="3">
+              <div class="progress-step-number">3</div>
+              <div class="progress-step-label">Payment</div>
+              <div class="progress-connector"></div>
+            </div>
+            <div class="progress-step" data-step="4">
+              <div class="progress-step-number">4</div>
+              <div class="progress-step-label">Done</div>
+              <div class="progress-connector"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Header -->
+        <div class="contract-header">
+          <h1>Contract Review & Signature</h1>
+          <p class="contract-header-subtitle">Review the terms of your contractor agreement and electronically sign. Your deductible will be collected afterward as a refundable deposit.</p>
+        </div>
+
+        <!-- STEP 1: Review Contract -->
+        <div class="step-section active" data-step="1">
+          <!-- Contractor Card -->
+          <div class="contractor-card">
+            <div class="contractor-avatar" id="contractorAvatar">🏗️</div>
+            <div class="contractor-info">
+              <div class="contractor-name" id="contractorName">Loading...</div>
+              <div class="contractor-meta">
+                <div class="contractor-meta-item">
+                  <span class="contractor-meta-icon">⭐</span>
+                  <span><span id="contractorRating">—</span> rating</span>
+                </div>
+                <div class="contractor-meta-item">
+                  <span class="contractor-meta-icon">📅</span>
+                  <span><span id="contractorYears">—</span> years</span>
+                </div>
+                <div class="contractor-meta-item" id="materialBadgeContainer">
+                  <span class="contractor-badge" id="materialBadge"></span>
+                </div>
+              </div>
+            </div>
+            <div class="contractor-bid">
+              <div class="contractor-bid-label">Bid Amount</div>
+              <div class="contractor-bid-amount" id="contractorBidAmount">$—</div>
+            </div>
+          </div>
+
+          <!-- Contract Summary -->
+          <div class="contract-section">
+            <h2 class="contract-section-title">Contract Summary</h2>
+            <div class="contract-placeholder">
+              <p>📄 In production, this section will display the full DocuSign document or a detailed summary of key contract terms. For now, you'll review key terms below.</p>
+            </div>
+          </div>
+
+          <!-- Key Terms -->
+          <div class="contract-section">
+            <h2 class="contract-section-title">Key Terms</h2>
+            <div class="key-terms-grid">
+              <div class="key-term-item">
+                <div class="key-term-label">Job Scope</div>
+                <div class="key-term-value" id="jobScope">Roof repair</div>
+              </div>
+              <div class="key-term-item">
+                <div class="key-term-label">Total Price</div>
+                <div class="key-term-value highlight" id="totalPrice">$—</div>
+              </div>
+              <div class="key-term-item">
+                <div class="key-term-label">Warranty</div>
+                <div class="key-term-value" id="warranty">—</div>
+              </div>
+              <div class="key-term-item">
+                <div class="key-term-label">Est. Start Date</div>
+                <div class="key-term-value" id="startDate">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cancellation Guarantee -->
+          <div class="callout">
+            <div class="callout-icon">✓</div>
+            <div class="callout-text">
+              <div class="callout-title">Cancellation Guarantee</div>
+              <div class="callout-description">Not sure? You can switch to another ClaimShield contractor at no cost up to 3 days before installation.</div>
+            </div>
+          </div>
+
+          <!-- Step 1 Actions -->
+          <div class="step-actions">
+            <div class="step-actions-primary">
+              <button class="button button-primary button-large" id="proceedToSignBtn">
+                Proceed to Sign →
+              </button>
+            </div>
+            <div class="step-actions-secondary">
+              <a href="/dashboard.html" class="back-link">← Back to Bids</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 2: E-Sign -->
+        <div class="step-section" data-step="2">
+          <div class="contract-section">
+            <h2 class="contract-section-title">Electronic Signature</h2>
+            <p style="color: var(--slate); margin-bottom: var(--sp-6);">Please review and sign the contract below. In production, DocuSign will open in a modal for full electronic signature.</p>
+
+            <!-- Checkbox -->
+            <div class="checkbox-container">
+              <input type="checkbox" id="agreeCheckbox" class="checkbox-input">
+              <label for="agreeCheckbox" class="checkbox-label">
+                <span class="checkbox-label-text">I have read and agree to the terms of this contract</span>
+                <span class="checkbox-label-hint">This is required to proceed</span>
+              </label>
+            </div>
+
+            <!-- DocuSign Section -->
+            <div style="background: var(--navy-3); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: var(--sp-6); margin-bottom: var(--sp-6);">
+              <div class="contract-scroll" id="contractScroll">
+                <strong>CONTRACTOR AGREEMENT</strong>
+
+                <p style="margin-top: var(--sp-4);">This Agreement is entered into as of the date of signing by and between the Homeowner (you) and the Contractor (as listed above).</p>
+
+                <p><strong>1. SCOPE OF WORK:</strong> The Contractor agrees to provide the services outlined in the bid for the job scope listed above.</p>
+
+                <p><strong>2. CONTRACT PRICE:</strong> The total price for the work is as stated in the bid. This price includes all labor, materials, and equipment necessary to complete the job.</p>
+
+                <p><strong>3. PAYMENT TERMS:</strong> The deductible will be collected as a refundable deposit. Upon completion, the Contractor will invoice your insurance company. Once the insurance claim is processed and funds are received, the deductible will be held in escrow and released to the Contractor after insurance payment.</p>
+
+                <p><strong>4. WARRANTY:</strong> All work is warranted as per the warranty terms listed in the key terms section above.</p>
+
+                <p><strong>5. TIMELINE:</strong> Work is expected to begin on or around the estimated start date. The Contractor will contact you within 48 hours of contract signature to confirm the schedule and introduce themselves.</p>
+
+                <p><strong>6. CHANGES:</strong> Any changes to the scope of work must be agreed upon in writing by both parties.</p>
+
+                <p><strong>7. INSURANCE & LIABILITY:</strong> The Contractor maintains appropriate insurance coverage for all work performed.</p>
+
+                <p><strong>8. DISPUTE RESOLUTION:</strong> Any disputes will be resolved according to ClaimShield's terms of service and applicable law.</p>
+
+                <p style="margin-top: var(--sp-6);"><em>By checking the box above and clicking "I Agree & Sign," you acknowledge that you have read this agreement, understand its terms, and agree to be bound by it.</em></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2 Actions -->
+          <div class="step-actions">
+            <div class="step-actions-primary">
+              <button class="button button-primary button-large" id="signContractBtn" disabled>
+                Open DocuSign & Sign →
+              </button>
+            </div>
+            <div class="step-actions-secondary">
+              <button class="button button-secondary" id="backToReviewBtn">
+                ← Back to Review
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 3: Payment -->
+        <div class="step-section" data-step="3">
+          <div class="deductible-card">
+            <div class="deductible-header">
+              <div class="deductible-icon">💳</div>
+              <div class="deductible-title">Deductible Payment</div>
+            </div>
+            <p class="deductible-description">To secure your contractor and prevent scheduling delays, we collect your insurance deductible as a refundable deposit. This amount will be held in escrow and released to your contractor after your insurance company issues the first payment.</p>
+
+            <!-- Amount Display -->
+            <div class="deductible-amount-display">
+              <div class="deductible-amount-label">
+                <div class="deductible-amount-label-text">Amount to Collect</div>
+              </div>
+              <div class="deductible-amount-value" id="deductibleAmount">$—</div>
+            </div>
+
+            <!-- Payment Form -->
+            <div class="payment-form-placeholder">
+              <p>💳 Stripe integration coming soon. For now, deductible collection will be handled manually.</p>
+              <p style="font-size: 0.9rem; margin-top: var(--sp-4); color: var(--slate);">In production, a full card payment form will appear here with real Stripe processing.</p>
+            </div>
+          </div>
+
+          <!-- Step 3 Actions -->
+          <div class="step-actions">
+            <div class="step-actions-primary">
+              <button class="button button-primary button-large" id="payDeductibleBtn">
+                Pay Deductible & Complete →
+              </button>
+            </div>
+            <div class="step-actions-secondary">
+              <button class="button button-secondary" id="backToSignBtn">
+                ← Back
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 4: Confirmation -->
+        <div class="step-section" data-step="4">
+          <div class="confirmation-wrapper">
+            <div class="confirmation-icon">✅</div>
+            <h2 class="confirmation-title">You're All Set!</h2>
+            <p class="confirmation-subtitle">Contract signed with <span id="confirmContractorName">your contractor</span>. They must contact you within 48 hours.</p>
+
+            <!-- Next Steps -->
+            <div class="next-steps-grid">
+              <div class="next-step-card">
+                <div class="next-step-number">1</div>
+                <div class="next-step-title">Pick Your Color</div>
+                <div class="next-step-description">Choose the perfect roof color that complements your home.</div>
+                <a href="#" id="colorSelectionLink" class="next-step-link">Select Color →</a>
+              </div>
+              <div class="next-step-card">
+                <div class="next-step-number">2</div>
+                <div class="next-step-title">Contractor Outreach</div>
+                <div class="next-step-description"><span id="confirmContractorName2">Your contractor</span> will reach out within 48 hours to introduce themselves and confirm scheduling.</div>
+              </div>
+              <div class="next-step-card">
+                <div class="next-step-number">3</div>
+                <div class="next-step-title">Milestone Support</div>
+                <div class="next-step-description">We'll check in at every milestone to make sure everything goes smoothly.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 4 Actions -->
+          <div class="step-actions">
+            <div class="step-actions-primary">
+              <a href="/dashboard.html" class="button button-primary button-large">
+                Go to My Dashboard →
+              </a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer id="site-footer"></footer>
+  </div>
+
+  <!-- DocuSign Modal -->
+  <div class="docusign-modal" id="docusignModal">
+    <div class="docusign-modal-content">
+      <button class="docusign-modal-close" id="docusignClose">&times;</button>
+      <div class="docusign-placeholder">
+        <div class="docusign-placeholder-icon">📝</div>
+        <div class="docusign-placeholder-text">
+          <p><strong>DocuSign E-Signature Window</strong></p>
+          <p style="margin-top: var(--sp-2); font-size: 0.9rem;">In production, DocuSign will open here for your electronic signature. You would sign and return the document.</p>
+        </div>
+      </div>
+      <button class="button button-primary button-large" id="docusignAgreeBtn" style="width: 100%;">
+        I Agree & Sign
+      </button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+
+  <script>
+    /**
+     * ClaimShield v2 — Contract Signing Flow
+     */
+
+    // State
+    const state = {
+      currentStep: 1,
+      claimId: null,
+      claim: null,
+      contractorId: null,
+      contractor: null,
+      agreeChecked: false,
+      contractSigned: false,
+      deductiblePaid: false,
+    };
+
+    // ── Initialization ──
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Check auth
+      const user = await Auth.requireAuth();
+      if (!user) return;
+
+      // Render nav
+      Nav.renderHeader();
+
+      // Get claim_id from URL params
+      const params = new URLSearchParams(window.location.search);
+      state.claimId = params.get('claim_id');
+
+      if (!state.claimId) {
+        console.error('No claim_id provided');
+        showMessage('No claim found. Redirecting...', 'error');
+        setTimeout(() => window.location.href = '/dashboard.html', 2000);
+        return;
+      }
+
+      // Load claim data
+      await loadClaimData();
+
+      // Setup event listeners
+      setupEventListeners();
+    });
+
+    // ── Load Claim Data ──
+    async function loadClaimData() {
+      try {
+        const { data, error } = await sb
+          .from('claims')
+          .select('*, contractors(id, name, rating, years_in_business, selected_bid, avatar_emoji), bids(id, contractor_id, amount, material_type, warranty_months)')
+          .eq('id', state.claimId)
+          .single();
+
+        if (error) throw error;
+        if (!data) throw new Error('Claim not found');
+
+        state.claim = data;
+        state.contractorId = data.selected_contractor_id;
+
+        // Load selected contractor/bid info
+        if (data.selected_contractor_id) {
+          const { data: contractorData, error: contractorError } = await sb
+            .from('contractors')
+            .select('*')
+            .eq('id', data.selected_contractor_id)
+            .single();
+
+          if (contractorError) throw contractorError;
+          state.contractor = contractorData;
+        }
+
+        // Render contractor card
+        renderContractorCard();
+      } catch (err) {
+        console.error('Error loading claim:', err);
+        showMessage('Error loading claim data: ' + err.message, 'error');
+      }
+    }
+
+    // ── Render Contractor Card ──
+    function renderContractorCard() {
+      if (!state.contractor) return;
+
+      const bid = state.claim.selected_bid_amount || 'N/A';
+      const material = state.claim.material_type || 'TBD';
+      const warranty = state.claim.warranty_months || 'Standard';
+      const startDate = state.claim.estimated_start_date || 'TBD';
+
+      document.getElementById('contractorName').textContent = state.contractor.name;
+      document.getElementById('contractorRating').textContent = state.contractor.rating || '5.0';
+      document.getElementById('contractorYears').textContent = state.contractor.years_in_business || '10+';
+      document.getElementById('contractorBidAmount').textContent = `$${parseInt(bid).toLocaleString()}`;
+      document.getElementById('contractorAvatar').textContent = state.contractor.avatar_emoji || '🏗️';
+
+      // Material badge
+      document.getElementById('materialBadge').textContent = material;
+
+      // Key terms
+      document.getElementById('jobScope').textContent = 'Roof ' + (state.claim.job_type || 'repair');
+      document.getElementById('totalPrice').textContent = `$${parseInt(bid).toLocaleString()}`;
+      document.getElementById('warranty').textContent = `${warranty} months`;
+      document.getElementById('startDate').textContent = startDate || 'TBD';
+
+      // Deductible
+      const deductible = state.claim.deductible_amount || 0;
+      document.getElementById('deductibleAmount').textContent = `$${parseInt(deductible).toLocaleString()}`;
+
+      // Confirmation
+      document.getElementById('confirmContractorName').textContent = state.contractor.name;
+      document.getElementById('confirmContractorName2').textContent = state.contractor.name;
+
+      // Color selection link
+      document.getElementById('colorSelectionLink').href = `/color-selection.html?claim_id=${state.claimId}`;
+    }
+
+    // ── Setup Event Listeners ──
+    function setupEventListeners() {
+      // Step 1 → 2
+      document.getElementById('proceedToSignBtn').addEventListener('click', () => {
+        goToStep(2);
+      });
+
+      // Step 2: Checkbox
+      document.getElementById('agreeCheckbox').addEventListener('change', (e) => {
+        state.agreeChecked = e.target.checked;
+        document.getElementById('signContractBtn').disabled = !state.agreeChecked;
+      });
+
+      // Step 2: Sign button
+      document.getElementById('signContractBtn').addEventListener('click', openDocuSignModal);
+
+      // Step 2: Back
+      document.getElementById('backToReviewBtn').addEventListener('click', () => {
+        goToStep(1);
+      });
+
+      // DocuSign modal
+      document.getElementById('docusignClose').addEventListener('click', () => {
+        document.getElementById('docusignModal').classList.remove('active');
+      });
+
+      document.getElementById('docusignAgreeBtn').addEventListener('click', signContractViaDocuSign);
+
+      // Step 3: Pay deductible
+      document.getElementById('payDeductibleBtn').addEventListener('click', payDeductible);
+
+      // Step 3: Back
+      document.getElementById('backToSignBtn').addEventListener('click', () => {
+        goToStep(2);
+      });
+    }
+
+    // ── Open DocuSign Modal ──
+    function openDocuSignModal() {
+      document.getElementById('docusignModal').classList.add('active');
+    }
+
+    // ── Sign Contract via DocuSign (Simulated) ──
+    async function signContractViaDocuSign() {
+      try {
+        document.getElementById('docusignAgreeBtn').disabled = true;
+        document.getElementById('docusignAgreeBtn').textContent = 'Processing...';
+
+        // Update claim: contract_signed_at and docusign_envelope_id
+        const { error } = await sb
+          .from('claims')
+          .update({
+            contract_signed_at: new Date().toISOString(),
+            docusign_envelope_id: 'placeholder_' + Math.random().toString(36).substr(2, 9),
+          })
+          .eq('id', state.claimId);
+
+        if (error) throw error;
+
+        state.contractSigned = true;
+
+        // Close modal and advance
+        document.getElementById('docusignModal').classList.remove('active');
+        document.getElementById('docusignAgreeBtn').disabled = false;
+        document.getElementById('docusignAgreeBtn').textContent = 'I Agree & Sign';
+
+        goToStep(3);
+      } catch (err) {
+        console.error('Error signing contract:', err);
+        showMessage('Error signing contract: ' + err.message, 'error');
+        document.getElementById('docusignAgreeBtn').disabled = false;
+        document.getElementById('docusignAgreeBtn').textContent = 'I Agree & Sign';
+      }
+    }
+
+    // ── Pay Deductible (Simulated) ──
+    async function payDeductible() {
+      try {
+        document.getElementById('payDeductibleBtn').disabled = true;
+        document.getElementById('payDeductibleBtn').textContent = 'Processing...';
+
+        // Update claim: deductible_collected = true
+        const { error } = await sb
+          .from('claims')
+          .update({
+            deductible_collected: true,
+            deductible_collected_at: new Date().toISOString(),
+          })
+          .eq('id', state.claimId);
+
+        if (error) throw error;
+
+        state.deductiblePaid = true;
+
+        // Update progress indicator
+        updateProgressIndicator(4);
+
+        // Go to confirmation
+        goToStep(4);
+
+        document.getElementById('payDeductibleBtn').disabled = false;
+        document.getElementById('payDeductibleBtn').textContent = 'Pay Deductible & Complete →';
+      } catch (err) {
+        console.error('Error processing deductible:', err);
+        showMessage('Error processing deductible: ' + err.message, 'error');
+        document.getElementById('payDeductibleBtn').disabled = false;
+        document.getElementById('payDeductibleBtn').textContent = 'Pay Deductible & Complete →';
+      }
+    }
+
+    // ── Navigate to Step ──
+    function goToStep(stepNum) {
+      state.currentStep = stepNum;
+
+      // Hide all sections
+      document.querySelectorAll('.step-section').forEach(s => s.classList.remove('active'));
+
+      // Show target section
+      document.querySelector(`.step-section[data-step="${stepNum}"]`).classList.add('active');
+
+      // Update progress indicator
+      updateProgressIndicator(stepNum);
+
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ── Update Progress Indicator ──
+    function updateProgressIndicator(activeStep) {
+      document.querySelectorAll('.progress-step').forEach((step, idx) => {
+        const stepNum = idx + 1;
+        step.classList.remove('active', 'completed');
+
+        if (stepNum === activeStep) {
+          step.classList.add('active');
+        } else if (stepNum < activeStep) {
+          step.classList.add('completed');
+        }
+      });
+    }
+
+    // ── Show Message ──
+    function showMessage(msg, type = 'info') {
+      console.log(`[${type.toUpperCase()}] ${msg}`);
+      // In production: show toast/alert
+    }
+  </script>
+</body>
+</html>

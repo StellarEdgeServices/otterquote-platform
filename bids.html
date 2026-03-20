@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Bids — ClaimShield</title>
+  <meta name="description" content="Compare contractor bids and select the best contractor for your insurance repair project.">
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+
+  <style>
+    .bids-layout { min-height: calc(100vh - 64px); display: flex; flex-direction: column; }
+    .bids-main { flex: 1; padding: var(--sp-12) 0; }
+
+    /* Page Header */
+    .bids-header { margin-bottom: var(--sp-10); }
+    .bids-header h1 { font-size: clamp(1.5rem, 4vw, 2.5rem); margin-bottom: var(--sp-2); }
+    .bids-header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-6); flex-wrap: wrap; }
+    .bids-status { display: flex; align-items: center; gap: var(--sp-3); color: var(--slate); font-size: 0.95rem; }
+    .bids-status-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .bids-status-dot.live { background: var(--green); animation: pulse 2s infinite; }
+    .bids-status-dot.closed { background: var(--slate); }
+
+    /* Tab Navigation */
+    .view-tabs { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-8); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: var(--sp-4); }
+    .view-tab { background: none; border: none; color: var(--slate); font-family: var(--font-body); font-size: 0.95rem; font-weight: 600; padding: var(--sp-2) var(--sp-4); cursor: pointer; border-radius: var(--radius-sm); transition: all 0.2s; }
+    .view-tab:hover { color: var(--white); background: rgba(255,255,255,0.05); }
+    .view-tab.active { color: var(--amber); background: var(--amber-glow); }
+
+    /* Empty State */
+    .empty-state { text-align: center; padding: var(--sp-20) var(--sp-8); }
+    .empty-state-icon { font-size: 4rem; margin-bottom: var(--sp-6); opacity: 0.4; }
+    .empty-state h2 { margin-bottom: var(--sp-4); }
+    .empty-state p { color: var(--slate); max-width: 500px; margin: 0 auto var(--sp-6); }
+
+    /* Waiting state */
+    .waiting-indicator { display: flex; align-items: center; gap: var(--sp-3); color: var(--amber); font-weight: 600; font-size: 1rem; margin-bottom: var(--sp-8); padding: var(--sp-4) var(--sp-6); background: var(--amber-glow); border-radius: var(--radius-md); }
+    .waiting-dots { display: flex; gap: 4px; }
+    .waiting-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); animation: dotPulse 1.4s infinite; }
+    .waiting-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .waiting-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dotPulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+
+    /* Bid Cards Grid (Comparison View) */
+    .bids-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--sp-6); }
+
+    .bid-card { background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-lg); padding: var(--sp-8); transition: all 0.3s var(--ease); animation: fadeUp 0.6s var(--ease) both; position: relative; }
+    .bid-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: rgba(255,255,255,0.12); }
+    .bid-card.lowest-price { border-color: var(--green); }
+    .bid-card.lowest-price::after { content: "Best Price"; position: absolute; top: var(--sp-3); right: var(--sp-4); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; background: var(--green); color: white; padding: 3px 10px; border-radius: var(--radius-full); }
+
+    /* Bid Card Header */
+    .bid-card-header { display: flex; align-items: center; gap: var(--sp-4); margin-bottom: var(--sp-6); padding-bottom: var(--sp-4); border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .bid-card-avatar { width: 48px; height: 48px; border-radius: var(--radius-md); background: var(--mid); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; color: var(--amber); flex-shrink: 0; overflow: hidden; }
+    .bid-card-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .bid-card-name { font-size: 1.1rem; font-weight: 700; color: var(--white); margin-bottom: 2px; }
+    .bid-card-meta { font-size: 0.85rem; color: var(--slate); display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+    /* Bid Metrics */
+    .bid-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); margin-bottom: var(--sp-6); }
+    .bid-metric { display: flex; flex-direction: column; gap: 2px; }
+    .bid-metric-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--slate); }
+    .bid-metric-value { font-size: 1rem; font-weight: 700; color: var(--white); }
+    .bid-metric-value.price { font-size: 1.35rem; color: var(--amber); }
+
+    /* Verification Badges */
+    .bid-badges { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-6); }
+    .bid-badge { font-size: 0.7rem; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-full); display: flex; align-items: center; gap: 4px; }
+    .bid-badge.verified { background: var(--green-light); color: #065F46; }
+    .bid-badge.info { background: var(--blue-light); color: #1E40AF; }
+    .bid-badge.warning { background: var(--amber-light); color: #92400E; }
+
+    /* Bid Message */
+    .bid-message { background: rgba(255,255,255,0.03); border-radius: var(--radius-sm); padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-6); font-size: 0.9rem; color: var(--slate); line-height: 1.6; font-style: italic; border-left: 3px solid var(--amber); }
+
+    /* Bid Card Actions */
+    .bid-card-actions { display: flex; gap: var(--sp-3); }
+    .bid-card-actions .btn { flex: 1; }
+
+    /* Cancellation Guarantee */
+    .guarantee-banner { display: flex; align-items: center; gap: var(--sp-4); background: var(--amber-glow); border: 1px solid var(--amber); border-radius: var(--radius-md); padding: var(--sp-4) var(--sp-6); margin-bottom: var(--sp-8); font-size: 0.9rem; color: var(--white); }
+    .guarantee-banner strong { color: var(--amber); }
+
+    /* ════════════════════════════════════════ */
+    /* CONTRACTOR PROFILE (Deep Dive) */
+    /* ════════════════════════════════════════ */
+    .profile-view { display: none; }
+    .profile-view.active { display: block; }
+
+    .profile-back { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--amber); font-weight: 600; cursor: pointer; margin-bottom: var(--sp-6); font-size: 0.95rem; background: none; border: none; font-family: var(--font-body); }
+    .profile-back:hover { color: var(--amber-2); }
+
+    .profile-hero { background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-lg); padding: var(--sp-10); margin-bottom: var(--sp-8); display: flex; gap: var(--sp-8); align-items: flex-start; }
+    .profile-avatar { width: 100px; height: 100px; border-radius: var(--radius-lg); background: var(--mid); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 700; color: var(--amber); flex-shrink: 0; overflow: hidden; }
+    .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .profile-hero-info h2 { margin-bottom: var(--sp-2); }
+    .profile-hero-info p { color: var(--slate); margin-bottom: var(--sp-4); }
+    .profile-hero-badges { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+
+    /* Profile Sections */
+    .profile-grid { display: grid; grid-template-columns: 2fr 1fr; gap: var(--sp-8); }
+    .profile-section { background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-lg); padding: var(--sp-8); margin-bottom: var(--sp-6); }
+    .profile-section h3 { font-size: 1.15rem; margin-bottom: var(--sp-6); padding-bottom: var(--sp-4); border-bottom: 1px solid rgba(255,255,255,0.06); }
+
+    /* Company Info */
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+    .info-item { display: flex; flex-direction: column; gap: 2px; }
+    .info-item-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate); }
+    .info-item-value { font-size: 1rem; font-weight: 600; color: var(--white); }
+
+    /* Why Choose Us */
+    .why-choose { color: var(--slate); line-height: 1.8; }
+
+    /* Reviews Links */
+    .review-links { display: flex; flex-direction: column; gap: var(--sp-3); }
+    .review-link { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-3) var(--sp-4); background: rgba(255,255,255,0.03); border-radius: var(--radius-sm); color: var(--white); text-decoration: none; font-weight: 600; font-size: 0.95rem; transition: all 0.2s; }
+    .review-link:hover { background: rgba(255,255,255,0.06); color: var(--amber); }
+    .review-link-rating { color: var(--amber); font-size: 0.9rem; }
+
+    /* Certifications */
+    .cert-list { display: flex; flex-direction: column; gap: var(--sp-3); }
+    .cert-item { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) 0; }
+    .cert-badge { width: 36px; height: 36px; border-radius: var(--radius-sm); background: var(--amber-glow); display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .cert-item-text { font-size: 0.9rem; color: var(--white); font-weight: 500; }
+
+    /* Response time stats */
+    .stats-row { display: flex; gap: var(--sp-6); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+    .stat-item { text-align: center; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--amber); display: block; }
+    .stat-label { font-size: 0.75rem; color: var(--slate); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* Testimonials */
+    .testimonial { background: rgba(255,255,255,0.03); border-radius: var(--radius-md); padding: var(--sp-5); margin-bottom: var(--sp-4); border-left: 3px solid var(--amber); }
+    .testimonial-text { color: var(--slate); font-style: italic; line-height: 1.7; margin-bottom: var(--sp-3); font-size: 0.95rem; }
+    .testimonial-author { color: var(--white); font-weight: 600; font-size: 0.85rem; }
+
+    /* Bid Summary in Profile */
+    .profile-bid-summary { background: var(--amber-glow); border: 1px solid var(--amber); border-radius: var(--radius-lg); padding: var(--sp-8); margin-bottom: var(--sp-6); }
+    .profile-bid-summary h3 { border: none; padding: 0; margin-bottom: var(--sp-4); color: var(--amber); }
+
+    /* Team info */
+    .team-info { display: flex; flex-direction: column; gap: var(--sp-3); }
+    .team-item { display: flex; align-items: center; gap: var(--sp-3); color: var(--slate); font-size: 0.95rem; }
+    .team-item strong { color: var(--white); }
+
+    /* Photo Gallery */
+    .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--sp-3); }
+    .gallery-item { aspect-ratio: 1; border-radius: var(--radius-sm); background: var(--mid); overflow: hidden; }
+    .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
+    .gallery-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--slate); font-size: 0.8rem; }
+
+    /* Select Contractor CTA */
+    .select-contractor-cta { text-align: center; padding: var(--sp-8); background: var(--navy-2); border: 2px solid var(--amber); border-radius: var(--radius-lg); margin-top: var(--sp-8); }
+    .select-contractor-cta h3 { margin-bottom: var(--sp-3); }
+    .select-contractor-cta p { margin-bottom: var(--sp-6); }
+
+    /* ════════════════════════════════════════ */
+    /* RESPONSIVE */
+    /* ════════════════════════════════════════ */
+    @media (max-width: 768px) {
+      .bids-main { padding: var(--sp-8) 0; }
+      .bids-header-row { flex-direction: column; }
+      .bids-grid { grid-template-columns: 1fr; }
+      .bid-metrics { grid-template-columns: 1fr; }
+      .bid-card-actions { flex-direction: column; }
+      .profile-hero { flex-direction: column; align-items: center; text-align: center; padding: var(--sp-6); }
+      .profile-hero-badges { justify-content: center; }
+      .profile-grid { grid-template-columns: 1fr; }
+      .info-grid { grid-template-columns: 1fr; }
+      .view-tabs { overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+
+  <header id="site-header" data-active=""></header>
+
+  <div class="bids-layout">
+    <div class="bids-main">
+      <div class="container">
+
+        <!-- ── COMPARISON VIEW ── -->
+        <div id="comparisonView">
+          <div class="bids-header">
+            <div class="bids-header-row">
+              <div>
+                <h1>Your Bids</h1>
+                <div class="bids-status">
+                  <span class="bids-status-dot live" id="statusDot"></span>
+                  <span id="statusText">Bidding open — contractors are reviewing your claim</span>
+                </div>
+              </div>
+              <a href="dashboard.html" class="btn btn-sm btn-ghost">← Dashboard</a>
+            </div>
+          </div>
+
+          <!-- Guarantee Banner -->
+          <div class="guarantee-banner">
+            <span style="font-size:1.3rem;">🛡</span>
+            <span><strong>ClaimShield Guarantee:</strong> Not sure? You can switch to another ClaimShield contractor at no cost up to 3 days before installation.</span>
+          </div>
+
+          <!-- Waiting Indicator -->
+          <div id="waitingIndicator" class="waiting-indicator" style="display:none;">
+            <div class="waiting-dots"><span></span><span></span><span></span></div>
+            <span id="waitingText">Contractors are reviewing your claim package...</span>
+          </div>
+
+          <!-- Bid Count / View Tabs -->
+          <div class="view-tabs" id="viewTabs" style="display:none;">
+            <button class="view-tab active" onclick="setView('grid')">Side-by-Side</button>
+            <button class="view-tab" onclick="setView('list')">List View</button>
+          </div>
+
+          <!-- Empty State -->
+          <div id="emptyState" class="empty-state" style="display:none;">
+            <div class="empty-state-icon">📋</div>
+            <h2>No Bids Yet</h2>
+            <p>Your claim is live and contractors have been notified. Bids typically start coming in within a few hours. We'll notify you via text and email when each bid arrives.</p>
+          </div>
+
+          <!-- Bids Grid -->
+          <div id="bidsGrid" class="bids-grid"></div>
+        </div>
+
+        <!-- ── CONTRACTOR PROFILE VIEW ── -->
+        <div id="profileView" class="profile-view">
+          <button class="profile-back" onclick="closeProfile()">← Back to All Bids</button>
+
+          <!-- Profile Hero -->
+          <div id="profileHero" class="profile-hero"></div>
+
+          <!-- Bid Summary -->
+          <div id="profileBidSummary" class="profile-bid-summary"></div>
+
+          <div class="profile-grid">
+            <div class="profile-main">
+              <!-- About / Why Choose Us -->
+              <div id="profileAbout" class="profile-section"></div>
+              <!-- Team Info -->
+              <div id="profileTeam" class="profile-section"></div>
+              <!-- Photo Gallery -->
+              <div id="profileGallery" class="profile-section"></div>
+              <!-- Testimonials -->
+              <div id="profileTestimonials" class="profile-section"></div>
+            </div>
+            <div class="profile-sidebar">
+              <!-- Response Stats -->
+              <div id="profileStats" class="profile-section"></div>
+              <!-- Reviews -->
+              <div id="profileReviews" class="profile-section"></div>
+              <!-- Certifications -->
+              <div id="profileCerts" class="profile-section"></div>
+              <!-- License & Insurance -->
+              <div id="profileLicense" class="profile-section"></div>
+            </div>
+          </div>
+
+          <!-- Select CTA -->
+          <div id="profileSelectCTA" class="select-contractor-cta"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <footer id="site-footer"></footer>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script src="js/services.js"></script>
+
+  <script>
+  (function() {
+    'use strict';
+
+    let currentUser = null;
+    let currentClaim = null;
+    let bids = [];
+    let contractors = {};  // keyed by contractor_id
+    let currentView = 'grid';
+
+    // ── Init ──
+    async function init() {
+      try {
+        currentUser = await Auth.requireAuth();
+        if (!currentUser) return;
+
+        await loadClaimData();
+        await loadBids();
+        render();
+
+        // Poll for new bids every 30 seconds
+        setInterval(pollForBids, 30000);
+
+        gtag('event', 'page_view', { page_title: 'Bid Dashboard', page_path: '/bids.html' });
+      } catch (err) {
+        console.error('Bids init error:', err);
+      }
+    }
+
+    async function loadClaimData() {
+      if (!sb || !currentUser) return;
+      const { data } = await sb
+        .from('claims')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) currentClaim = data;
+    }
+
+    async function loadBids() {
+      if (!sb || !currentClaim) return;
+      const { data, error } = await sb
+        .from('quotes')
+        .select(`
+          *,
+          contractors (
+            id, company_name, owner_name, owner_photo_url, bio, years_in_business,
+            service_area, license_number, license_verified, wc_insurance, gl_insurance,
+            google_reviews_url, google_rating, bbb_url, bbb_rating, angi_url, yelp_url,
+            certifications, why_choose_us, photo_gallery, team_size, uses_subcontractors,
+            crew_certifications, avg_first_contact_hours, avg_bid_response_hours,
+            total_claimshield_jobs, claimshield_rating, testimonials
+          )
+        `)
+        .eq('claim_id', currentClaim.id)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        bids = data;
+        data.forEach(bid => {
+          if (bid.contractors) contractors[bid.contractor_id] = bid.contractors;
+        });
+      }
+    }
+
+    async function pollForBids() {
+      const prevCount = bids.length;
+      await loadBids();
+      if (bids.length > prevCount) {
+        render();
+        // Could trigger notification sound / badge here
+      }
+    }
+
+    // ── Render ──
+    function render() {
+      if (bids.length === 0) {
+        document.getElementById('emptyState').style.display = 'block';
+        document.getElementById('waitingIndicator').style.display = 'flex';
+        document.getElementById('bidsGrid').innerHTML = '';
+        document.getElementById('viewTabs').style.display = 'none';
+      } else {
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('waitingIndicator').style.display = 'none';
+        document.getElementById('viewTabs').style.display = 'flex';
+        renderBids();
+      }
+
+      // Update status
+      const bidCount = bids.length;
+      const statusText = document.getElementById('statusText');
+      if (bidCount > 0) {
+        statusText.textContent = `${bidCount} bid${bidCount > 1 ? 's' : ''} received — bidding remains open`;
+      }
+    }
+
+    function renderBids() {
+      const grid = document.getElementById('bidsGrid');
+      const lowestPrice = Math.min(...bids.map(b => b.total_price || Infinity));
+
+      grid.innerHTML = bids.map((bid, idx) => {
+        const c = contractors[bid.contractor_id] || {};
+        const isLowest = bid.total_price === lowestPrice && bids.length > 1;
+        const initials = (c.company_name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+        const avatarHTML = c.owner_photo_url
+          ? `<img src="${c.owner_photo_url}" alt="${c.company_name}">`
+          : initials;
+
+        return `
+          <div class="bid-card ${isLowest ? 'lowest-price' : ''}" style="animation-delay:${idx * 0.1}s">
+            <div class="bid-card-header">
+              <div class="bid-card-avatar">${avatarHTML}</div>
+              <div>
+                <div class="bid-card-name">${esc(c.company_name || 'Contractor')}</div>
+                <div class="bid-card-meta">
+                  ${c.years_in_business ? `<span>${c.years_in_business} years in business</span>` : ''}
+                  ${c.google_rating ? `<span>★ ${c.google_rating}</span>` : ''}
+                </div>
+              </div>
+            </div>
+
+            <div class="bid-metrics">
+              <div class="bid-metric">
+                <span class="bid-metric-label">Total Price</span>
+                <span class="bid-metric-value price">$${(bid.total_price || 0).toLocaleString()}</span>
+              </div>
+              <div class="bid-metric">
+                <span class="bid-metric-label">Start Date</span>
+                <span class="bid-metric-value">${bid.estimated_start_date ? formatDate(bid.estimated_start_date) : 'TBD'}</span>
+              </div>
+              <div class="bid-metric">
+                <span class="bid-metric-label">Completion Time</span>
+                <span class="bid-metric-value">${esc(bid.estimated_completion_time || 'TBD')}</span>
+              </div>
+              <div class="bid-metric">
+                <span class="bid-metric-label">Warranty</span>
+                <span class="bid-metric-value">${formatWarranty(bid)}</span>
+              </div>
+              <div class="bid-metric">
+                <span class="bid-metric-label">Brand</span>
+                <span class="bid-metric-value">${esc(bid.brand || 'TBD')}</span>
+              </div>
+              <div class="bid-metric">
+                <span class="bid-metric-label">Product</span>
+                <span class="bid-metric-value">${esc(bid.product_line || 'TBD')}</span>
+              </div>
+            </div>
+
+            <div class="bid-badges">
+              ${c.license_verified ? '<span class="bid-badge verified">✓ Licensed</span>' : ''}
+              ${c.gl_insurance ? '<span class="bid-badge verified">✓ GL Insured</span>' : ''}
+              ${c.wc_insurance ? '<span class="bid-badge verified">✓ W/C Insured</span>' : ''}
+              ${c.certifications ? parseCerts(c.certifications).map(cert => `<span class="bid-badge info">${esc(cert)}</span>`).join('') : ''}
+            </div>
+
+            ${bid.contractor_message ? `<div class="bid-message">"${esc(bid.contractor_message)}"</div>` : ''}
+
+            <div class="bid-card-actions">
+              <button class="btn btn-sm btn-secondary" onclick="viewProfile('${bid.contractor_id}', '${bid.id}')">About This Contractor</button>
+              <button class="btn btn-sm btn-primary" onclick="selectContractor('${bid.id}')">Select This Contractor</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ── Profile View ──
+    window.viewProfile = function(contractorId, bidId) {
+      const c = contractors[contractorId];
+      const bid = bids.find(b => b.id === bidId);
+      if (!c) return;
+
+      // Hide comparison, show profile
+      document.getElementById('comparisonView').style.display = 'none';
+      document.getElementById('profileView').classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      const initials = (c.company_name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+      const avatarHTML = c.owner_photo_url
+        ? `<img src="${c.owner_photo_url}" alt="${c.company_name}">`
+        : initials;
+
+      // Hero
+      document.getElementById('profileHero').innerHTML = `
+        <div class="profile-avatar">${avatarHTML}</div>
+        <div class="profile-hero-info">
+          <h2>${esc(c.company_name)}</h2>
+          <p>${c.bio ? esc(c.bio) : `${c.company_name} is a licensed contractor serving ${esc(c.service_area || 'the local area')}.`}</p>
+          <div class="profile-hero-badges">
+            ${c.years_in_business ? `<span class="badge badge-amber">${c.years_in_business} Years in Business</span>` : ''}
+            ${c.license_verified ? '<span class="badge badge-green">✓ License Verified</span>' : ''}
+            ${c.gl_insurance ? '<span class="badge badge-green">✓ GL Insurance</span>' : ''}
+            ${c.wc_insurance ? '<span class="badge badge-green">✓ W/C Insurance</span>' : ''}
+          </div>
+        </div>
+      `;
+
+      // Bid Summary
+      document.getElementById('profileBidSummary').innerHTML = `
+        <h3>Their Bid for Your Project</h3>
+        <div class="bid-metrics">
+          <div class="bid-metric">
+            <span class="bid-metric-label">Total Price</span>
+            <span class="bid-metric-value price">$${(bid.total_price || 0).toLocaleString()}</span>
+          </div>
+          <div class="bid-metric">
+            <span class="bid-metric-label">Start Date</span>
+            <span class="bid-metric-value">${bid.estimated_start_date ? formatDate(bid.estimated_start_date) : 'TBD'}</span>
+          </div>
+          <div class="bid-metric">
+            <span class="bid-metric-label">Completion</span>
+            <span class="bid-metric-value">${esc(bid.estimated_completion_time || 'TBD')}</span>
+          </div>
+          <div class="bid-metric">
+            <span class="bid-metric-label">Warranty</span>
+            <span class="bid-metric-value">${formatWarranty(bid)}</span>
+          </div>
+          <div class="bid-metric">
+            <span class="bid-metric-label">Brand / Product</span>
+            <span class="bid-metric-value">${esc(bid.brand || '')} ${esc(bid.product_line || '')}</span>
+          </div>
+        </div>
+        ${bid.contractor_message ? `<div class="bid-message" style="margin-top:var(--sp-4);">"${esc(bid.contractor_message)}"</div>` : ''}
+      `;
+
+      // About / Why Choose Us
+      document.getElementById('profileAbout').innerHTML = `
+        <h3>About ${esc(c.company_name)}</h3>
+        <div class="info-grid" style="margin-bottom:var(--sp-6);">
+          <div class="info-item">
+            <span class="info-item-label">Owner</span>
+            <span class="info-item-value">${esc(c.owner_name || 'Not provided')}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-item-label">Years in Business</span>
+            <span class="info-item-value">${c.years_in_business || 'N/A'}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-item-label">Service Area</span>
+            <span class="info-item-value">${esc(c.service_area || 'Not specified')}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-item-label">License #</span>
+            <span class="info-item-value">${esc(c.license_number || 'On file')}</span>
+          </div>
+        </div>
+        ${c.why_choose_us ? `<h4 style="font-family:var(--font-body);font-size:1rem;font-weight:600;margin-bottom:var(--sp-3);">Why Choose Us</h4><div class="why-choose">${esc(c.why_choose_us)}</div>` : ''}
+      `;
+
+      // Team Info
+      document.getElementById('profileTeam').innerHTML = `
+        <h3>Team Information</h3>
+        <div class="team-info">
+          <div class="team-item"><strong>Team Size:</strong> ${c.team_size ? c.team_size + ' employees' : 'Not provided'}</div>
+          <div class="team-item"><strong>Subcontractors:</strong> ${c.uses_subcontractors === true ? 'Uses subcontractors for some work' : c.uses_subcontractors === false ? 'All work done by in-house crew' : 'Not specified'}</div>
+          ${c.crew_certifications ? `<div class="team-item"><strong>Crew Certifications:</strong> ${esc(c.crew_certifications)}</div>` : ''}
+        </div>
+      `;
+
+      // Gallery
+      const photos = parseJSON(c.photo_gallery) || [];
+      document.getElementById('profileGallery').innerHTML = `
+        <h3>Past Work</h3>
+        ${photos.length > 0 ? `
+          <div class="gallery-grid">
+            ${photos.map(url => `<div class="gallery-item"><img src="${esc(url)}" alt="Past work"></div>`).join('')}
+          </div>
+        ` : '<p style="color:var(--slate);">No photos uploaded yet. Photos will appear here as the contractor adds them to their profile.</p>'}
+      `;
+
+      // Testimonials
+      const testimonials = parseJSON(c.testimonials) || [];
+      document.getElementById('profileTestimonials').innerHTML = `
+        <h3>Customer Reviews</h3>
+        ${testimonials.length > 0 ? testimonials.map(t => `
+          <div class="testimonial">
+            <div class="testimonial-text">${esc(t.text)}</div>
+            <div class="testimonial-author">— ${esc(t.author || 'ClaimShield Customer')}${t.date ? `, ${t.date}` : ''}</div>
+          </div>
+        `).join('') : '<p style="color:var(--slate);">No ClaimShield reviews yet. Reviews from previous ClaimShield homeowners will appear here as the contractor completes projects.</p>'}
+      `;
+
+      // Stats
+      document.getElementById('profileStats').innerHTML = `
+        <h3>Response Stats</h3>
+        <div class="stats-row">
+          <div class="stat-item">
+            <span class="stat-value">${c.avg_first_contact_hours ? c.avg_first_contact_hours + 'h' : '--'}</span>
+            <span class="stat-label">Avg First Contact</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">${c.avg_bid_response_hours ? c.avg_bid_response_hours + 'h' : '--'}</span>
+            <span class="stat-label">Avg Bid Response</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value">${c.total_claimshield_jobs || '0'}</span>
+            <span class="stat-label">ClaimShield Jobs</span>
+          </div>
+        </div>
+        ${c.claimshield_rating ? `<div style="text-align:center;margin-top:var(--sp-4);"><span class="stat-value">${c.claimshield_rating}/5</span><br><span class="stat-label">ClaimShield Rating</span></div>` : ''}
+      `;
+
+      // Review Sites
+      document.getElementById('profileReviews').innerHTML = `
+        <h3>Review Sites</h3>
+        <div class="review-links">
+          ${c.google_reviews_url ? `<a href="${esc(c.google_reviews_url)}" target="_blank" rel="noopener" class="review-link"><span>Google Reviews</span><span class="review-link-rating">${c.google_rating ? '★ ' + c.google_rating : 'View →'}</span></a>` : ''}
+          ${c.bbb_url ? `<a href="${esc(c.bbb_url)}" target="_blank" rel="noopener" class="review-link"><span>BBB</span><span class="review-link-rating">${c.bbb_rating || 'View →'}</span></a>` : ''}
+          ${c.angi_url ? `<a href="${esc(c.angi_url)}" target="_blank" rel="noopener" class="review-link"><span>Angi</span><span class="review-link-rating">View →</span></a>` : ''}
+          ${c.yelp_url ? `<a href="${esc(c.yelp_url)}" target="_blank" rel="noopener" class="review-link"><span>Yelp</span><span class="review-link-rating">View →</span></a>` : ''}
+          ${!c.google_reviews_url && !c.bbb_url && !c.angi_url && !c.yelp_url ? '<p style="color:var(--slate);">No review links provided yet.</p>' : ''}
+        </div>
+      `;
+
+      // Certifications
+      const certs = parseCerts(c.certifications);
+      document.getElementById('profileCerts').innerHTML = `
+        <h3>Certifications</h3>
+        ${certs.length > 0 ? `
+          <div class="cert-list">
+            ${certs.map(cert => `
+              <div class="cert-item">
+                <div class="cert-badge">🏆</div>
+                <span class="cert-item-text">${esc(cert)}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<p style="color:var(--slate);">No certifications listed.</p>'}
+      `;
+
+      // License & Insurance
+      document.getElementById('profileLicense').innerHTML = `
+        <h3>License & Insurance</h3>
+        <div style="display:flex;flex-direction:column;gap:var(--sp-3);">
+          <div class="team-item">
+            <span class="bid-badge ${c.license_verified ? 'verified' : 'warning'}">${c.license_verified ? '✓ License Verified' : '⚠ Unverified'}</span>
+            ${c.license_number ? `<span style="color:var(--slate);font-size:0.85rem;margin-left:var(--sp-2);">#${esc(c.license_number)}</span>` : ''}
+          </div>
+          <div class="team-item">
+            <span class="bid-badge ${c.gl_insurance ? 'verified' : 'warning'}">${c.gl_insurance ? '✓ General Liability' : '⚠ GL Not Verified'}</span>
+          </div>
+          <div class="team-item">
+            <span class="bid-badge ${c.wc_insurance ? 'verified' : 'warning'}">${c.wc_insurance ? '✓ Workers Comp' : '⚠ W/C Not Verified'}</span>
+          </div>
+        </div>
+      `;
+
+      // Select CTA
+      document.getElementById('profileSelectCTA').innerHTML = `
+        <h3>Ready to Choose ${esc(c.company_name)}?</h3>
+        <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. Remember, you can switch to another ClaimShield contractor at no cost up to 3 days before installation.</p>
+        <button class="btn btn-primary btn-lg" onclick="selectContractor('${bid.id}')">Select ${esc(c.company_name)}</button>
+      `;
+
+      gtag('event', 'view_contractor_profile', {
+        contractor_id: contractorId,
+        company_name: c.company_name,
+      });
+    };
+
+    window.closeProfile = function() {
+      document.getElementById('profileView').classList.remove('active');
+      document.getElementById('comparisonView').style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // ── Select Contractor ──
+    window.selectContractor = async function(bidId) {
+      const bid = bids.find(b => b.id === bidId);
+      if (!bid) return;
+
+      const c = contractors[bid.contractor_id] || {};
+      const confirmed = confirm(`Select ${c.company_name || 'this contractor'}? This will begin the contract signing process.\n\nTotal Price: $${(bid.total_price || 0).toLocaleString()}\n\nYou can still switch to another ClaimShield contractor up to 3 days before installation.`);
+
+      if (!confirmed) return;
+
+      try {
+        // Update claim with selected contractor
+        await sb
+          .from('claims')
+          .update({
+            selected_contractor_id: bid.contractor_id,
+            selected_quote_id: bidId,
+            status: 'contractor_selected',
+          })
+          .eq('id', currentClaim.id);
+
+        // Update quote status
+        await sb
+          .from('quotes')
+          .update({ status: 'accepted' })
+          .eq('id', bidId);
+
+        // Mark other quotes as not selected
+        await sb
+          .from('quotes')
+          .update({ status: 'not_selected' })
+          .eq('claim_id', currentClaim.id)
+          .neq('id', bidId);
+
+        gtag('event', 'contractor_selected', {
+          bid_id: bidId,
+          contractor_id: bid.contractor_id,
+          price: bid.total_price,
+        });
+
+        // Redirect to contract signing
+        window.location.href = `contract-signing.html?bid=${bidId}`;
+      } catch (err) {
+        console.error('Selection error:', err);
+        alert('Something went wrong. Please try again.');
+      }
+    };
+
+    // ── View Toggle ──
+    window.setView = function(view) {
+      currentView = view;
+      document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+      // Future: implement list view layout
+      renderBids();
+    };
+
+    // ── Helpers ──
+    function esc(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatDate(dateStr) {
+      try {
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch { return dateStr; }
+    }
+
+    function formatWarranty(bid) {
+      const parts = [];
+      if (bid.workmanship_warranty_years) parts.push(`${bid.workmanship_warranty_years}yr workmanship`);
+      if (bid.manufacturer_warranty_years) parts.push(`${bid.manufacturer_warranty_years}yr manufacturer`);
+      return parts.length > 0 ? parts.join(' + ') : (bid.warranty_summary || 'TBD');
+    }
+
+    function parseCerts(certs) {
+      if (!certs) return [];
+      if (Array.isArray(certs)) return certs;
+      try { return JSON.parse(certs); } catch { return certs.split(',').map(s => s.trim()); }
+    }
+
+    function parseJSON(val) {
+      if (!val) return null;
+      if (Array.isArray(val)) return val;
+      try { return JSON.parse(val); } catch { return null; }
+    }
+
+    // ── Init ──
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+  </script>
+
+</body>
+</html>

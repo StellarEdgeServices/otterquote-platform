@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insurance Estimate Help — ClaimShield</title>
+    <meta name="description" content="Get help obtaining your insurance estimate. We'll guide you through the process or send a professional request to your adjuster.">
+
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-JNQ6XR3LX2');
+    </script>
+
+    <style>
+        body {
+            font-family: 'DM Sans', sans-serif;
+            color: #1a1a1a;
+            background-color: #f8f8f8;
+            line-height: 1.6;
+        }
+
+        .page-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .page-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 2rem;
+            color: #001f4d;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #b8860b;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+            white-space: nowrap;
+        }
+
+        .back-link:hover { color: #001f4d; }
+
+        /* Triage Section */
+        .triage-section {
+            margin-bottom: 3rem;
+        }
+
+        .triage-question {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            color: #001f4d;
+            margin-bottom: 1.5rem;
+        }
+
+        .triage-cards {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+
+        .triage-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        .triage-card:hover {
+            border-color: #b8860b;
+            box-shadow: 0 4px 12px rgba(184, 134, 11, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .triage-card.selected {
+            border-color: #b8860b;
+            background: linear-gradient(135deg, rgba(184, 134, 11, 0.04) 0%, rgba(0, 31, 77, 0.04) 100%);
+        }
+
+        .triage-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: #f0f4ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .triage-card-content h3 {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #001f4d;
+            margin-bottom: 0.25rem;
+        }
+
+        .triage-card-content p {
+            color: #666;
+            font-size: 0.9rem;
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        /* Content Sections */
+        .flow-section {
+            display: none;
+            animation: slideIn 0.4s ease forwards;
+        }
+
+        .flow-section.active { display: block; }
+
+        .section-card {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .section-card h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.3rem;
+            color: #001f4d;
+            margin-bottom: 1rem;
+        }
+
+        .section-card p {
+            color: #555;
+            line-height: 1.7;
+            margin-bottom: 1rem;
+        }
+
+        .section-card p:last-child { margin-bottom: 0; }
+
+        /* Carrier Tips */
+        .carrier-tips {
+            background: #f0f4ff;
+            border-left: 4px solid #b8860b;
+            border-radius: 6px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .carrier-tips h4 {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 1rem;
+            color: #001f4d;
+            margin-bottom: 0.75rem;
+        }
+
+        .carrier-tips ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .carrier-tips li {
+            color: #555;
+            padding: 0.4rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+            font-size: 0.95rem;
+        }
+
+        .carrier-tips li::before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: #b8860b;
+            font-weight: 600;
+        }
+
+        /* Email Composer */
+        .email-composer {
+            background: white;
+            border-radius: 12px;
+            border: 2px solid #e0e0e0;
+            overflow: hidden;
+            margin: 1.5rem 0;
+        }
+
+        .email-header {
+            background: #001f4d;
+            color: white;
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .email-fields {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .email-field {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+        }
+
+        .email-field-label {
+            font-weight: 600;
+            color: #001f4d;
+            font-size: 0.85rem;
+            min-width: 60px;
+            padding-top: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .email-field-value {
+            flex: 1;
+            font-size: 0.95rem;
+            color: #333;
+        }
+
+        .email-field-value input,
+        .email-field-value textarea {
+            width: 100%;
+            padding: 0.6rem 0.8rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.95rem;
+            color: #333;
+            transition: border-color 0.2s;
+        }
+
+        .email-field-value input:focus,
+        .email-field-value textarea:focus {
+            outline: none;
+            border-color: #b8860b;
+            box-shadow: 0 0 0 3px rgba(184, 134, 11, 0.1);
+        }
+
+        .email-field-value textarea {
+            resize: vertical;
+            min-height: 180px;
+            line-height: 1.7;
+        }
+
+        .email-divider {
+            height: 1px;
+            background: #e0e0e0;
+            margin: 0 1.5rem;
+        }
+
+        .email-body-area {
+            padding: 1.5rem;
+        }
+
+        /* Checkbox row */
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            background: #fef9ee;
+            border-top: 1px solid #e0e0e0;
+            cursor: pointer;
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            accent-color: #b8860b;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .checkbox-row label {
+            color: #555;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        /* Adjuster Info Form */
+        .adjuster-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #001f4d;
+            margin-bottom: 0.4rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.6rem 0.8rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #b8860b;
+            box-shadow: 0 0 0 3px rgba(184, 134, 11, 0.1);
+        }
+
+        .form-group .required-star {
+            color: #e74c3c;
+        }
+
+        /* Buttons */
+        .action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            background: #001f4d;
+            color: white;
+            border: none;
+            padding: 0.85rem 1.75rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover:not(:disabled) {
+            background: #b8860b;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(184, 134, 11, 0.2);
+        }
+
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .action-btn.btn-amber {
+            background: #b8860b;
+        }
+
+        .action-btn.btn-amber:hover:not(:disabled) {
+            background: #d4af37;
+        }
+
+        .action-btn.btn-outline {
+            background: transparent;
+            border: 2px solid #b8860b;
+            color: #b8860b;
+        }
+
+        .action-btn.btn-outline:hover {
+            background: rgba(184, 134, 11, 0.08);
+        }
+
+        .button-row {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        /* Info callout */
+        .info-callout {
+            background: #f0f4ff;
+            border-left: 4px solid #3B82F6;
+            border-radius: 6px;
+            padding: 1.25rem 1.5rem;
+            margin: 1.5rem 0;
+            font-size: 0.95rem;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .info-callout strong { color: #001f4d; }
+
+        /* Explainer */
+        .explainer-section {
+            margin-bottom: 2rem;
+        }
+
+        .explainer-section h4 {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #001f4d;
+            margin-bottom: 0.75rem;
+        }
+
+        .explainer-section p {
+            color: #555;
+            line-height: 1.7;
+        }
+
+        /* Success State */
+        .success-state {
+            text-align: center;
+            padding: 3rem 2rem;
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            margin: 0 auto 1.5rem;
+        }
+
+        .success-state h2 {
+            font-family: 'Playfair Display', serif;
+            color: #001f4d;
+            margin-bottom: 0.75rem;
+        }
+
+        .success-state p {
+            color: #666;
+            max-width: 500px;
+            margin: 0 auto 1.5rem;
+        }
+
+        /* Followup note */
+        .followup-note {
+            background: #fef9ee;
+            border: 1px solid #f0e4c8;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .followup-note strong { color: #001f4d; }
+
+        /* Messages */
+        .status-message {
+            padding: 1rem 1.25rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            display: none;
+        }
+
+        .status-message.success {
+            display: block;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .status-message.error {
+            display: block;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .page-container { padding: 1.5rem; }
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+            .page-title { font-size: 1.5rem; }
+            .email-field { flex-direction: column; gap: 0.25rem; }
+            .email-field-label { min-width: auto; padding-top: 0; }
+            .adjuster-form { grid-template-columns: 1fr; }
+            .button-row { flex-direction: column; }
+            .button-row .action-btn { width: 100%; }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <nav id="navbar"></nav>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Insurance Estimate</h1>
+                <p class="page-subtitle">Help Me: Get your insurance estimate</p>
+            </div>
+            <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="statusMessage" class="status-message"></div>
+
+        <!-- TRIAGE: Do you have your estimate? -->
+        <div id="triageSection" class="triage-section">
+            <h2 class="triage-question">Do you have your insurance estimate?</h2>
+            <div class="triage-cards">
+                <div class="triage-card" onclick="selectTriage('have-it')">
+                    <div class="triage-icon">📄</div>
+                    <div class="triage-card-content">
+                        <h3>Yes, but I can't find it</h3>
+                        <p>I received an estimate from my insurance company but need help locating it.</p>
+                    </div>
+                </div>
+                <div class="triage-card" onclick="selectTriage('not-sent')">
+                    <div class="triage-icon">📬</div>
+                    <div class="triage-card-content">
+                        <h3>My adjuster hasn't sent it yet</h3>
+                        <p>I've had an inspection but haven't received my estimate.</p>
+                    </div>
+                </div>
+                <div class="triage-card" onclick="selectTriage('what-is-this')">
+                    <div class="triage-icon">❓</div>
+                    <div class="triage-card-content">
+                        <h3>What is an insurance estimate?</h3>
+                        <p>I'm not sure what this document is or why I need it.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PATH 1: "Yes, but I can't find it" — Carrier-Specific Search Tips -->
+        <div id="findItSection" class="flow-section">
+            <div class="section-card">
+                <h3>Finding Your Insurance Estimate</h3>
+                <p>Your insurance company likely sent your estimate in one of these ways. Here are some common places to check.</p>
+
+                <!-- Carrier-specific tips (loaded dynamically if carrier is known) -->
+                <div id="carrierTips" class="carrier-tips" style="display: none;">
+                    <h4 id="carrierTipsTitle">Tips for Your Insurance Carrier</h4>
+                    <ul id="carrierTipsList"></ul>
+                </div>
+
+                <!-- General tips -->
+                <div class="carrier-tips">
+                    <h4>General Tips</h4>
+                    <ul>
+                        <li>Check your email inbox (and spam/junk folders) for messages from your insurance company or adjuster</li>
+                        <li>Log into your insurance company's online portal or mobile app — many carriers post estimates there</li>
+                        <li>Check for physical mail — some carriers still send paper estimates</li>
+                        <li>Look for an email from your adjuster directly (they may have sent it as a PDF attachment)</li>
+                        <li>Call your insurance company's claims department and ask them to resend it</li>
+                    </ul>
+                </div>
+
+                <p>Still can't find it? We can send a professional request to your adjuster on your behalf.</p>
+
+                <div class="button-row">
+                    <button class="action-btn" onclick="switchToEmailFlow()">Request from Adjuster</button>
+                    <a href="dashboard.html" class="action-btn btn-outline">I Found It — Upload Now</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- PATH 2: "Adjuster hasn't sent it" — Assisted Email Composer -->
+        <div id="emailFlowSection" class="flow-section">
+            <div class="section-card">
+                <h3>Request Your Estimate from Your Adjuster</h3>
+                <p>We'll send a professional email to your adjuster requesting your insurance estimate. You review and approve the email before it's sent.</p>
+            </div>
+
+            <!-- Adjuster Info -->
+            <div class="section-card">
+                <h3>Adjuster Information</h3>
+                <p>Enter your adjuster's contact details. If you're not sure, check your claim paperwork or call your insurance company.</p>
+
+                <div class="adjuster-form" id="adjusterForm">
+                    <div class="form-group">
+                        <label>Adjuster Name <span class="required-star">*</span></label>
+                        <input type="text" id="adjusterName" placeholder="e.g., John Smith" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Adjuster Email <span class="required-star">*</span></label>
+                        <input type="email" id="adjusterEmail" placeholder="e.g., john.smith@insurance.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Adjuster Phone</label>
+                        <input type="tel" id="adjusterPhone" placeholder="e.g., (317) 555-1234">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Preview -->
+            <div class="section-card">
+                <h3>Preview Your Email</h3>
+                <p>Review the email below. You can edit the message if you'd like, then approve it to send.</p>
+
+                <div class="email-composer" id="emailComposer">
+                    <div class="email-header">✉ Email Preview</div>
+                    <div class="email-fields">
+                        <div class="email-field">
+                            <span class="email-field-label">To:</span>
+                            <span class="email-field-value" id="emailTo">Enter adjuster info above</span>
+                        </div>
+                        <div class="email-field">
+                            <span class="email-field-label">From:</span>
+                            <span class="email-field-value">ClaimShield (on behalf of <span id="emailFromName">you</span>)</span>
+                        </div>
+                        <div class="email-field">
+                            <span class="email-field-label">Subject:</span>
+                            <span class="email-field-value" id="emailSubject">Request for Insurance Estimate</span>
+                        </div>
+                    </div>
+                    <div class="email-divider"></div>
+                    <div class="email-body-area">
+                        <textarea id="emailBody" rows="8">Loading...</textarea>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="alsoRequestMeasurements">
+                        <label for="alsoRequestMeasurements">Also request measurements if available (saves a second email later)</label>
+                    </div>
+                </div>
+
+                <div class="followup-note">
+                    <strong>What happens next:</strong> If your adjuster doesn't respond within 48 hours, we'll text you with a recommended call script so you can follow up directly. We won't send a second email — we respect your adjuster's time.
+                </div>
+
+                <div class="button-row">
+                    <button class="action-btn btn-amber" id="sendEmailBtn" onclick="sendEmail()" disabled>Review & Send Email</button>
+                    <button class="action-btn btn-outline" onclick="goBack()">← Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PATH 3: "What is this?" — Explainer -->
+        <div id="explainerSection" class="flow-section">
+            <div class="section-card">
+                <h3>What Is an Insurance Estimate?</h3>
+
+                <div class="explainer-section">
+                    <p>An insurance estimate (also called a "scope of loss" or "loss sheet") is a detailed document from your insurance company that lists all the damage they've agreed to cover and how much they'll pay for repairs.</p>
+                </div>
+
+                <div class="explainer-section">
+                    <h4>Why Do Contractors Need It?</h4>
+                    <p>Contractors use your estimate to understand exactly what work the insurance company has approved. This lets them give you accurate bids based on the actual scope of work — not guesswork. Without an estimate, contractors are bidding blind, which usually means higher prices or change orders later.</p>
+                </div>
+
+                <div class="explainer-section">
+                    <h4>How Do I Get One?</h4>
+                    <p>After you file a claim, your insurance company sends an adjuster to inspect the damage. The adjuster writes up the estimate and sends it to you — usually by email, through your insurance company's online portal, or by mail. This typically takes 5 to 15 business days after the inspection.</p>
+                </div>
+
+                <div class="info-callout">
+                    <strong>Haven't filed a claim yet?</strong> You'll need to contact your insurance company to file a claim and schedule an inspection first. Once the adjuster completes their inspection, you'll receive your estimate.
+                </div>
+
+                <div class="explainer-section">
+                    <h4>What Does It Look Like?</h4>
+                    <p>It's usually a multi-page PDF document with line items listing each repair (e.g., "Remove and replace shingles — 24 squares"), quantities, and dollar amounts. Common formats include Xactimate or Symbility reports.</p>
+                </div>
+
+                <div class="button-row">
+                    <button class="action-btn" onclick="switchToEmailFlow()">Help Me Get My Estimate</button>
+                    <a href="dashboard.html" class="action-btn btn-outline">I Have It — Upload Now</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUCCESS STATE -->
+        <div id="successSection" class="flow-section">
+            <div class="section-card">
+                <div class="success-state">
+                    <div class="success-icon">✓</div>
+                    <h2>Email Sent Successfully</h2>
+                    <p>We've sent a professional request to your adjuster. When they reply with your estimate, we'll automatically capture it and add it to your claim.</p>
+
+                    <div class="followup-note">
+                        <strong>48-Hour Follow-Up:</strong> If we don't receive a response within 48 hours, we'll text you with a simple call script to follow up with your adjuster directly.
+                    </div>
+
+                    <div class="button-row" style="justify-content: center;">
+                        <a href="dashboard.html" class="action-btn btn-amber">Return to Dashboard</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/services.js"></script>
+
+    <script>
+        // ── State ──
+        let currentUser = null;
+        let currentProfile = null;
+        let currentClaim = null;
+        let carrierData = null;
+
+        // ── Init ──
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                currentUser = await Auth.requireAuth();
+                if (!currentUser) return;
+
+                currentProfile = await Auth.getProfile();
+                await loadClaimData();
+                await loadCarrierData();
+                prefillAdjusterInfo();
+                setupEmailListeners();
+                updateEmailPreview();
+
+                gtag('event', 'page_view', {
+                    page_title: 'Help Me - Insurance Estimate',
+                    page_path: '/help-estimate.html'
+                });
+            } catch (err) {
+                console.error('Init error:', err);
+                showMessage('Failed to load page. Please refresh.', 'error');
+            }
+        });
+
+        // ── Data Loading ──
+        async function loadClaimData() {
+            if (!sb || !currentUser) return;
+            const { data } = await sb
+                .from('claims')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (data) currentClaim = data;
+        }
+
+        async function loadCarrierData() {
+            if (!currentClaim?.carrier_id) return;
+            carrierData = await Services.getCarrierHelp(currentClaim.carrier_id);
+        }
+
+        // ── Triage Selection ──
+        function selectTriage(path) {
+            // Highlight selected card
+            document.querySelectorAll('.triage-card').forEach(c => c.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+
+            // Hide all flow sections
+            document.querySelectorAll('.flow-section').forEach(s => s.classList.remove('active'));
+
+            // Show appropriate section
+            setTimeout(() => {
+                document.getElementById('triageSection').style.display = 'none';
+                if (path === 'have-it') {
+                    showSection('findItSection');
+                } else if (path === 'not-sent') {
+                    showSection('emailFlowSection');
+                } else if (path === 'what-is-this') {
+                    showSection('explainerSection');
+                }
+            }, 200);
+
+            gtag('event', 'estimate_triage', { triage_path: path });
+        }
+
+        function showSection(id) {
+            const section = document.getElementById(id);
+            section.classList.add('active');
+            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            // Show carrier-specific tips if available
+            if (id === 'findItSection' && carrierData) {
+                showCarrierTips();
+            }
+        }
+
+        function switchToEmailFlow() {
+            document.querySelectorAll('.flow-section').forEach(s => s.classList.remove('active'));
+            showSection('emailFlowSection');
+        }
+
+        function goBack() {
+            document.querySelectorAll('.flow-section').forEach(s => s.classList.remove('active'));
+            document.getElementById('triageSection').style.display = 'block';
+            document.querySelectorAll('.triage-card').forEach(c => c.classList.remove('selected'));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // ── Carrier Tips ──
+        function showCarrierTips() {
+            if (!carrierData) return;
+            const tipsContainer = document.getElementById('carrierTips');
+            const title = document.getElementById('carrierTipsTitle');
+            const list = document.getElementById('carrierTipsList');
+
+            title.textContent = `Tips for ${carrierData.carrier_name}`;
+
+            const tips = [];
+            if (carrierData.claims_portal_url) {
+                tips.push(`Check your online portal: <a href="${carrierData.claims_portal_url}" target="_blank" style="color:#b8860b;">${carrierData.carrier_name} Claims Portal</a>`);
+            }
+            if (carrierData.claims_email) {
+                tips.push(`Email their claims department: <strong>${carrierData.claims_email}</strong>`);
+            }
+            if (carrierData.claims_phone) {
+                tips.push(`Call claims directly: <strong>${carrierData.claims_phone}</strong>`);
+            }
+            if (carrierData.process_notes) {
+                tips.push(carrierData.process_notes);
+            }
+            if (carrierData.special_instructions) {
+                tips.push(carrierData.special_instructions);
+            }
+            if (carrierData.typical_estimate_days) {
+                tips.push(`${carrierData.carrier_name} typically sends estimates within <strong>${carrierData.typical_estimate_days} business days</strong> after inspection.`);
+            }
+
+            if (tips.length > 0) {
+                list.innerHTML = tips.map(t => `<li>${t}</li>`).join('');
+                tipsContainer.style.display = 'block';
+            }
+        }
+
+        // ── Adjuster Info Pre-Fill ──
+        function prefillAdjusterInfo() {
+            if (!currentClaim) return;
+            if (currentClaim.adjuster_name) document.getElementById('adjusterName').value = currentClaim.adjuster_name;
+            if (currentClaim.adjuster_email) document.getElementById('adjusterEmail').value = currentClaim.adjuster_email;
+            if (currentClaim.adjuster_phone) document.getElementById('adjusterPhone').value = currentClaim.adjuster_phone;
+        }
+
+        // ── Email Preview ──
+        function setupEmailListeners() {
+            const nameInput = document.getElementById('adjusterName');
+            const emailInput = document.getElementById('adjusterEmail');
+            const measurementsCheck = document.getElementById('alsoRequestMeasurements');
+
+            [nameInput, emailInput].forEach(input => {
+                input.addEventListener('input', () => {
+                    updateEmailPreview();
+                    validateEmailForm();
+                });
+            });
+
+            measurementsCheck.addEventListener('change', updateEmailPreview);
+        }
+
+        function updateEmailPreview() {
+            const adjName = document.getElementById('adjusterName').value || '[Adjuster Name]';
+            const adjEmail = document.getElementById('adjusterEmail').value || '[adjuster@email.com]';
+            const homeownerName = currentProfile
+                ? (currentProfile.full_name || '').trim()
+                : 'the homeowner';
+            const homeownerPhone = currentProfile?.phone || '';
+            const claimNumber = currentClaim?.claim_number || '';
+            const alsoMeasurements = document.getElementById('alsoRequestMeasurements').checked;
+
+            // Update To field
+            document.getElementById('emailTo').textContent = adjEmail !== '[adjuster@email.com]' ? `${adjName} <${adjEmail}>` : 'Enter adjuster info above';
+
+            // Update From name
+            document.getElementById('emailFromName').textContent = homeownerName;
+
+            // Update Subject
+            let subject = alsoMeasurements ? 'Request for Insurance Estimate & Measurements' : 'Request for Insurance Estimate';
+            if (claimNumber) subject += ` — ${homeownerName}, Claim #${claimNumber}`;
+            else subject += ` — ${homeownerName}`;
+            document.getElementById('emailSubject').textContent = subject;
+
+            // Update Body
+            let body = `Hi ${adjName},\n\n`;
+            body += `I'm following up on my recent property inspection. Could you please send me a copy of my insurance estimate (scope of loss) at your earliest convenience?\n\n`;
+
+            if (alsoMeasurements) {
+                body += `I would also appreciate any property measurements you have on file from the inspection, if available.\n\n`;
+            }
+
+            body += `You can reply directly to this email with the documents attached.\n\n`;
+            body += `Thank you,\n${homeownerName}`;
+            if (homeownerPhone) body += `\n${homeownerPhone}`;
+
+            document.getElementById('emailBody').value = body;
+        }
+
+        function validateEmailForm() {
+            const name = document.getElementById('adjusterName').value.trim();
+            const email = document.getElementById('adjusterEmail').value.trim();
+            const isValid = name.length > 0 && email.includes('@') && email.includes('.');
+            document.getElementById('sendEmailBtn').disabled = !isValid;
+        }
+
+        // ── Send Email ──
+        async function sendEmail() {
+            const btn = document.getElementById('sendEmailBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Sending...';
+
+            try {
+                const adjusterName = document.getElementById('adjusterName').value.trim();
+                const adjusterEmail = document.getElementById('adjusterEmail').value.trim();
+                const adjusterPhone = document.getElementById('adjusterPhone').value.trim();
+                const alsoMeasurements = document.getElementById('alsoRequestMeasurements').checked;
+                const homeownerName = currentProfile
+                    ? (currentProfile.full_name || '').trim()
+                    : '';
+
+                // Save adjuster info to claim
+                if (currentClaim) {
+                    await sb
+                        .from('claims')
+                        .update({
+                            adjuster_name: adjusterName,
+                            adjuster_email: adjusterEmail,
+                            adjuster_phone: adjusterPhone || null,
+                        })
+                        .eq('id', currentClaim.id);
+                }
+
+                // Auto-fill adjuster knowledge base (D-046)
+                await Services.findOrCreateAdjuster({
+                    adjuster_name: adjusterName,
+                    adjuster_email: adjusterEmail,
+                    adjuster_phone: adjusterPhone || null,
+                    carrier_id: currentClaim?.carrier_id || null,
+                });
+
+                // Send via Services
+                const result = await Services.sendAdjusterEmail({
+                    claim_id: currentClaim?.id,
+                    adjuster_name: adjusterName,
+                    adjuster_email: adjusterEmail,
+                    homeowner_name: homeownerName,
+                    homeowner_phone: currentProfile?.phone || '',
+                    claim_number: currentClaim?.claim_number || '',
+                    request_type: alsoMeasurements ? 'both' : 'estimate',
+                });
+
+                if (result.success) {
+                    // Show success state
+                    document.querySelectorAll('.flow-section').forEach(s => s.classList.remove('active'));
+                    showSection('successSection');
+
+                    gtag('event', 'adjuster_email_sent', {
+                        request_type: alsoMeasurements ? 'both' : 'estimate',
+                        edge_function_pending: result.edge_function_pending || false,
+                    });
+                } else {
+                    throw new Error('Failed to send email');
+                }
+            } catch (err) {
+                console.error('Send email error:', err);
+                showMessage('Something went wrong. Your request has been saved — please try again or contact support.', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // ── Utility ──
+        function showMessage(text, type) {
+            const el = document.getElementById('statusMessage');
+            el.textContent = text;
+            el.className = `status-message ${type}`;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            if (type === 'success') {
+                setTimeout(() => { el.className = 'status-message'; }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>

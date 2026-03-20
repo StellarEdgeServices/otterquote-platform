@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Material Selection - ClaimShield</title>
+
+    <!-- Design System CSS -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-JNQ6XR3LX2');
+    </script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            color: #1a1a1a;
+            background-color: #f8f8f8;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header Section */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .page-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5rem;
+            color: #001f4d;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #b8860b;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: #001f4d;
+        }
+
+        /* Progress Indicator */
+        .progress-container {
+            margin-bottom: 3rem;
+        }
+
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .progress-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+            position: relative;
+        }
+
+        .progress-step::after {
+            content: '';
+            position: absolute;
+            top: 1.5rem;
+            left: 50%;
+            width: calc(100% - 2rem);
+            height: 2px;
+            background-color: #e0e0e0;
+            z-index: 0;
+        }
+
+        .progress-step:last-child::after {
+            display: none;
+        }
+
+        .progress-circle {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            background-color: #e0e0e0;
+            color: #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            position: relative;
+            z-index: 1;
+            transition: all 0.3s;
+        }
+
+        .progress-step.active .progress-circle {
+            background-color: #b8860b;
+            color: white;
+        }
+
+        .progress-step.completed .progress-circle {
+            background-color: #001f4d;
+            color: white;
+        }
+
+        .progress-label {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 0.5rem;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .progress-step.active .progress-label {
+            color: #b8860b;
+            font-weight: 600;
+        }
+
+        /* Main Content Area */
+        .content-area {
+            min-height: 400px;
+        }
+
+        /* Section Headers */
+        .section-header {
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.75rem;
+            color: #001f4d;
+            margin-bottom: 0.5rem;
+        }
+
+        .section-description {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        /* Category Cards */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .card {
+            background-color: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            border-color: #b8860b;
+            box-shadow: 0 4px 12px rgba(184, 134, 11, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .card.selected {
+            border-color: #b8860b;
+            background: linear-gradient(135deg, rgba(184, 134, 11, 0.05) 0%, rgba(0, 31, 77, 0.05) 100%);
+            box-shadow: 0 0 20px rgba(184, 134, 11, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #001f4d;
+            margin-bottom: 0;
+        }
+
+        .card-badge {
+            display: inline-block;
+            background-color: #b8860b;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .card-badge.premium {
+            background-color: #d4af37;
+        }
+
+        .card-badge.basic {
+            background-color: #999;
+        }
+
+        .card-badge.recommended {
+            background-color: #2d5016;
+        }
+
+        .card-description {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-details {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-button {
+            display: inline-block;
+            background-color: #001f4d;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.95rem;
+        }
+
+        .card-button:hover {
+            background-color: #b8860b;
+            transform: translateX(2px);
+        }
+
+        .card.selected .card-button {
+            background-color: #b8860b;
+        }
+
+        /* Impact/Material Selection */
+        .options-group {
+            background-color: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .options-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #001f4d;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .option-card {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: #fafafa;
+        }
+
+        .option-card:hover {
+            border-color: #b8860b;
+            background-color: #fff;
+            box-shadow: 0 2px 8px rgba(184, 134, 11, 0.1);
+        }
+
+        .option-card.selected {
+            border-color: #b8860b;
+            background-color: #fff;
+            box-shadow: 0 0 15px rgba(184, 134, 11, 0.2);
+        }
+
+        .option-card.selected .option-circle {
+            background-color: #b8860b;
+            color: white;
+        }
+
+        .option-circle {
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 50%;
+            border: 2px solid #e0e0e0;
+            display: inline-block;
+            margin-right: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .option-label {
+            font-weight: 600;
+            color: #001f4d;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .option-description {
+            font-size: 0.85rem;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        /* Info Notes */
+        .info-note {
+            background-color: #f0f4ff;
+            border-left: 4px solid #b8860b;
+            padding: 1.5rem;
+            border-radius: 6px;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .info-note strong {
+            color: #001f4d;
+        }
+
+        /* Pricing Guidance */
+        .pricing-guidance {
+            background-color: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+
+        .pricing-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #001f4d;
+            margin-bottom: 1.5rem;
+        }
+
+        .pricing-items {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .pricing-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background-color: #fafafa;
+            border-radius: 8px;
+            border-left: 3px solid #b8860b;
+        }
+
+        .pricing-item-name {
+            font-weight: 600;
+            color: #001f4d;
+        }
+
+        .pricing-item-value {
+            color: #666;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+
+        /* Confirmation Section */
+        .confirmation-card {
+            background: linear-gradient(135deg, #001f4d 0%, #003366 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 2.5rem;
+            margin-bottom: 3rem;
+            box-shadow: 0 8px 24px rgba(0, 31, 77, 0.15);
+        }
+
+        .confirmation-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .confirmation-summary {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-left: 3px solid #b8860b;
+            padding: 1.5rem;
+            border-radius: 6px;
+            margin-bottom: 2rem;
+            line-height: 1.8;
+        }
+
+        .confirmation-item {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 0.8rem;
+            align-items: flex-start;
+        }
+
+        .confirmation-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .confirmation-label {
+            font-weight: 600;
+            min-width: 120px;
+            color: #b8860b;
+        }
+
+        .confirmation-value {
+            color: white;
+        }
+
+        .confirm-button {
+            background-color: #b8860b;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .confirm-button:hover:not(:disabled) {
+            background-color: #d4af37;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(184, 134, 11, 0.3);
+        }
+
+        .confirm-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* Hidden Sections */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Loading State */
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1.5rem;
+            }
+
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                margin-bottom: 2rem;
+            }
+
+            .page-title {
+                font-size: 1.75rem;
+            }
+
+            .cards-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+
+            .options-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .progress-bar {
+                flex-wrap: wrap;
+            }
+
+            .progress-step::after {
+                display: none;
+            }
+
+            .confirmation-card {
+                padding: 1.5rem;
+            }
+        }
+
+        /* Animations */
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section-header,
+        .cards-grid,
+        .options-group,
+        .confirmation-card {
+            animation: slideIn 0.4s ease forwards;
+        }
+
+        /* State Messages */
+        .success-message {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 2rem;
+        }
+
+        .error-message {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <nav id="navbar"></nav>
+
+    <div class="container">
+        <!-- Header -->
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Material Selection</h1>
+                <p class="page-subtitle">Help Me Decide: Choose your roofing material</p>
+            </div>
+            <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
+        </div>
+
+        <!-- Messages -->
+        <div id="messageContainer"></div>
+
+        <!-- Progress Indicator -->
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-step active" id="step1">
+                    <div class="progress-circle">1</div>
+                    <div class="progress-label">Category</div>
+                </div>
+                <div class="progress-step" id="step2">
+                    <div class="progress-circle">2</div>
+                    <div class="progress-label">Type</div>
+                </div>
+                <div class="progress-step" id="step3">
+                    <div class="progress-circle">3</div>
+                    <div class="progress-label">Details</div>
+                </div>
+                <div class="progress-step" id="step4">
+                    <div class="progress-circle">4</div>
+                    <div class="progress-label">Confirm</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content-area">
+            <!-- Step 1: Category Selection -->
+            <div id="categorySection" class="step-section">
+                <div class="section-header">
+                    <h2 class="section-title">What type of roofing material interests you?</h2>
+                    <p class="section-description">Choose between shingles (most common) or metal roofing.</p>
+                </div>
+
+                <div class="cards-grid">
+                    <div class="card" data-category="shingles">
+                        <div class="card-header">
+                            <h3 class="card-title">Shingles</h3>
+                        </div>
+                        <p class="card-description">The most popular choice. Easier installation, good durability, and widely supported by insurance policies.</p>
+                        <button class="card-button" onclick="selectCategory('shingles')">Explore Shingles</button>
+                    </div>
+
+                    <div class="card" data-category="metal">
+                        <div class="card-header">
+                            <h3 class="card-title">Metal Roofing</h3>
+                        </div>
+                        <p class="card-description">Premium durability with 40+ year lifespan. Higher upfront cost but long-term value. Multiple styles available.</p>
+                        <button class="card-button" onclick="selectCategory('metal')">Explore Metal</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Shingle Type Selection -->
+            <div id="shingleTypeSection" class="step-section hidden">
+                <div class="section-header">
+                    <h2 class="section-title">Which shingle type works for you?</h2>
+                    <p class="section-description">Select your preferred style and durability level.</p>
+                </div>
+
+                <div class="cards-grid">
+                    <div class="card" data-shingle-type="architectural">
+                        <div class="card-header">
+                            <h3 class="card-title">Architectural Shingle</h3>
+                            <span class="card-badge">Most Popular</span>
+                        </div>
+                        <p class="card-description">The most popular choice. Dimensional look, 130+ mph wind rating. Included in most insurance claims at no additional cost.</p>
+                        <button class="card-button" onclick="selectShingleType('architectural')">Select Architectural</button>
+                    </div>
+
+                    <div class="card" data-shingle-type="designer">
+                        <div class="card-header">
+                            <h3 class="card-title">Designer Shingle</h3>
+                            <span class="card-badge premium">Premium Upgrade</span>
+                        </div>
+                        <p class="card-description">Premium appearance mimicking slate, cedar, or tile. Expect to pay the difference out of pocket.</p>
+                        <button class="card-button" onclick="selectShingleType('designer')">Select Designer</button>
+                    </div>
+
+                    <div class="card" data-shingle-type="3-tab">
+                        <div class="card-header">
+                            <h3 class="card-title">3-Tab Shingle</h3>
+                            <span class="card-badge basic">Basic</span>
+                        </div>
+                        <p class="card-description">Basic, flat appearance. Rarely used on new installations.</p>
+                        <button class="card-button" onclick="selectShingleType('3-tab')">Select 3-Tab</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Metal Type Selection -->
+            <div id="metalTypeSection" class="step-section hidden">
+                <div class="section-header">
+                    <h2 class="section-title">Which metal roofing style interests you?</h2>
+                    <p class="section-description">Choose between premium standing seam or budget-friendly exposed fastener.</p>
+                </div>
+
+                <div class="cards-grid">
+                    <div class="card" data-metal-type="standing-seam">
+                        <div class="card-header">
+                            <h3 class="card-title">Standing Seam</h3>
+                            <span class="card-badge premium">Premium</span>
+                        </div>
+                        <p class="card-description">Premium concealed-fastener metal roof. 40+ year lifespan. Significant upgrade cost.</p>
+                        <p class="card-details">24-gauge steel standard</p>
+                        <button class="card-button" onclick="selectMetalType('standing-seam')">Select Standing Seam</button>
+                    </div>
+
+                    <div class="card" data-metal-type="exposed-fastener">
+                        <div class="card-header">
+                            <h3 class="card-title">Exposed Fastener</h3>
+                            <span class="card-badge basic">Budget Metal</span>
+                        </div>
+                        <p class="card-description">Budget metal option with visible fasteners. Typically used on outbuildings but available for homes.</p>
+                        <button class="card-button" onclick="selectMetalType('exposed-fastener')">Select Exposed Fastener</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Impact Class Selection (for Shingles) -->
+            <div id="impactClassSection" class="step-section hidden">
+                <div class="options-group">
+                    <div class="options-title">
+                        <span>Step 3: Select Impact Class (Hail Resistance)</span>
+                    </div>
+                    <div class="options-grid">
+                        <div class="option-card" data-impact="none" onclick="selectImpactClass('none')">
+                            <div class="option-label">
+                                <span class="option-circle"></span>
+                                None
+                            </div>
+                            <div class="option-description">Standard hail resistance</div>
+                        </div>
+                        <div class="option-card" data-impact="class-3" onclick="selectImpactClass('class-3')">
+                            <div class="option-label">
+                                <span class="option-circle"></span>
+                                Class 3
+                            </div>
+                            <div class="option-description">Enhanced hail protection. Withstands 1.75-inch steel ball impact.</div>
+                        </div>
+                        <div class="option-card" data-impact="class-4" onclick="selectImpactClass('class-4')">
+                            <div class="option-label">
+                                <span class="option-circle"></span>
+                                Class 4
+                            </div>
+                            <div class="option-description">Maximum hail protection with SBS polymer-modified asphalt. Withstands 2-inch impact. Often qualifies for insurance premium discounts.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="designerNote" class="info-note hidden">
+                    <strong>Next Step:</strong> After selecting a contractor, you'll choose a specific designer product and color from the manufacturer's catalog.
+                </div>
+            </div>
+
+            <!-- Step 3: Metal Material Selection -->
+            <div id="metalMaterialSection" class="step-section hidden">
+                <div class="options-group">
+                    <div class="options-title">
+                        <span>Step 3: Select Metal Material</span>
+                    </div>
+                    <div class="options-grid">
+                        <div class="option-card" data-metal-material="steel" onclick="selectMetalMaterial('steel')">
+                            <div class="option-label">
+                                <span class="option-circle"></span>
+                                Steel (Galvalume)
+                            </div>
+                            <div class="option-description">Standard for residential. Durable, cost-effective.</div>
+                        </div>
+                        <div class="option-card" data-metal-material="aluminum" onclick="selectMetalMaterial('aluminum')">
+                            <div class="option-label">
+                                <span class="option-circle"></span>
+                                Aluminum
+                            </div>
+                            <div class="option-description">Lightweight, corrosion-resistant. Best for coastal or high-moisture areas.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pricing Guidance -->
+            <div id="pricingSection" class="pricing-guidance hidden">
+                <div class="pricing-title">Relative Pricing Guidance</div>
+                <div class="pricing-items">
+                    <div class="pricing-item" id="pricingArchitectural">
+                        <span class="pricing-item-name">Architectural Shingle</span>
+                        <span class="pricing-item-value">Included in most insurance claims at no additional cost</span>
+                    </div>
+                    <div class="pricing-item" id="pricingDesigner" class="hidden">
+                        <span class="pricing-item-name">Designer Shingle</span>
+                        <span class="pricing-item-value">Premium upgrade — expect out-of-pocket cost</span>
+                    </div>
+                    <div class="pricing-item" id="pricingMetalExposed" class="hidden">
+                        <span class="pricing-item-name">Exposed Fastener Metal</span>
+                        <span class="pricing-item-value">Budget metal — typically an upgrade over architectural</span>
+                    </div>
+                    <div class="pricing-item" id="pricingMetalStanding" class="hidden">
+                        <span class="pricing-item-name">Standing Seam Metal</span>
+                        <span class="pricing-item-value">Premium metal — significant upgrade, 40+ year lifespan</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Confirmation Section -->
+            <div id="confirmationSection" class="confirmation-card hidden">
+                <h3 class="confirmation-title">Review Your Selection</h3>
+                <div class="confirmation-summary">
+                    <div class="confirmation-item">
+                        <span class="confirmation-label">Category:</span>
+                        <span class="confirmation-value" id="confirmCategory">-</span>
+                    </div>
+                    <div class="confirmation-item" id="confirmTypeItem">
+                        <span class="confirmation-label">Type:</span>
+                        <span class="confirmation-value" id="confirmType">-</span>
+                    </div>
+                    <div class="confirmation-item" id="confirmDetailsItem">
+                        <span class="confirmation-label">Details:</span>
+                        <span class="confirmation-value" id="confirmDetails">-</span>
+                    </div>
+                </div>
+                <button class="confirm-button" id="confirmButton" onclick="submitSelection()">Confirm My Selection</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+
+    <script>
+        // State Management
+        const state = {
+            category: null,
+            shingleType: null,
+            metalType: null,
+            impactClass: null,
+            metalMaterial: null
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            await Auth.requireAuth();
+            renderNav();
+            checkUrlParams();
+        });
+
+        // Check for success message from URL
+        function checkUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('material') === 'saved') {
+                showMessage('Material selection saved successfully! Redirecting...', 'success');
+                setTimeout(() => {
+                    window.location.href = 'dashboard.html';
+                }, 2000);
+            }
+        }
+
+        // Show message
+        function showMessage(text, type) {
+            const container = document.getElementById('messageContainer');
+            const className = type === 'success' ? 'success-message' : 'error-message';
+            container.innerHTML = `<div class="${className}">${text}</div>`;
+        }
+
+        // Update Progress
+        function updateProgress(step) {
+            document.querySelectorAll('.progress-step').forEach((el, idx) => {
+                el.classList.remove('active', 'completed');
+                if (idx + 1 < step) el.classList.add('completed');
+                if (idx + 1 === step) el.classList.add('active');
+            });
+        }
+
+        // Category Selection
+        function selectCategory(category) {
+            state.category = category;
+
+            // Update UI
+            document.querySelectorAll('[data-category]').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.querySelector(`[data-category="${category}"]`).classList.add('selected');
+
+            // Show appropriate type section
+            document.getElementById('categorySection').classList.add('hidden');
+            if (category === 'shingles') {
+                document.getElementById('shingleTypeSection').classList.remove('hidden');
+            } else {
+                document.getElementById('metalTypeSection').classList.remove('hidden');
+            }
+
+            updateProgress(2);
+        }
+
+        // Shingle Type Selection
+        function selectShingleType(type) {
+            state.shingleType = type;
+
+            // Update UI
+            document.querySelectorAll('[data-shingle-type]').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.querySelector(`[data-shingle-type="${type}"]`).classList.add('selected');
+
+            // Show impact class section (skip for 3-tab)
+            document.getElementById('shingleTypeSection').classList.add('hidden');
+
+            if (type === '3-tab') {
+                // 3-tab skips impact class, go straight to confirmation
+                showPricing();
+                showConfirmation();
+                updateProgress(4);
+            } else {
+                document.getElementById('impactClassSection').classList.remove('hidden');
+                if (type === 'designer') {
+                    document.getElementById('designerNote').classList.remove('hidden');
+                } else {
+                    document.getElementById('designerNote').classList.add('hidden');
+                }
+                updateProgress(3);
+            }
+        }
+
+        // Metal Type Selection
+        function selectMetalType(type) {
+            state.metalType = type;
+
+            // Update UI
+            document.querySelectorAll('[data-metal-type]').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.querySelector(`[data-metal-type="${type}"]`).classList.add('selected');
+
+            // Show metal material section
+            document.getElementById('metalTypeSection').classList.add('hidden');
+            document.getElementById('metalMaterialSection').classList.remove('hidden');
+            updateProgress(3);
+        }
+
+        // Impact Class Selection
+        function selectImpactClass(impactClass) {
+            state.impactClass = impactClass;
+
+            // Update UI
+            document.querySelectorAll('[data-impact]').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.querySelector(`[data-impact="${impactClass}"]`).classList.add('selected');
+
+            showPricing();
+            showConfirmation();
+            updateProgress(4);
+        }
+
+        // Metal Material Selection
+        function selectMetalMaterial(material) {
+            state.metalMaterial = material;
+
+            // Update UI
+            document.querySelectorAll('[data-metal-material]').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.querySelector(`[data-metal-material="${material}"]`).classList.add('selected');
+
+            showPricing();
+            showConfirmation();
+            updateProgress(4);
+        }
+
+        // Show Pricing Section
+        function showPricing() {
+            const pricingSection = document.getElementById('pricingSection');
+            pricingSection.classList.remove('hidden');
+
+            // Hide all pricing items
+            document.querySelectorAll('.pricing-item').forEach(item => {
+                item.classList.add('hidden');
+            });
+
+            // Show relevant pricing items
+            if (state.category === 'shingles') {
+                document.getElementById('pricingArchitectural').classList.remove('hidden');
+                if (state.shingleType === 'designer') {
+                    document.getElementById('pricingDesigner').classList.remove('hidden');
+                }
+            } else if (state.category === 'metal') {
+                if (state.metalType === 'exposed-fastener') {
+                    document.getElementById('pricingMetalExposed').classList.remove('hidden');
+                } else if (state.metalType === 'standing-seam') {
+                    document.getElementById('pricingMetalStanding').classList.remove('hidden');
+                }
+            }
+        }
+
+        // Show Confirmation Section
+        function showConfirmation() {
+            const confirmSection = document.getElementById('confirmationSection');
+            confirmSection.classList.remove('hidden');
+
+            // Build summary
+            const confirmCategory = document.getElementById('confirmCategory');
+            const confirmTypeItem = document.getElementById('confirmTypeItem');
+            const confirmType = document.getElementById('confirmType');
+            const confirmDetailsItem = document.getElementById('confirmDetailsItem');
+            const confirmDetails = document.getElementById('confirmDetails');
+
+            confirmCategory.textContent = state.category === 'shingles' ? 'Shingles' : 'Metal Roofing';
+
+            if (state.category === 'shingles') {
+                const shingleNames = {
+                    'architectural': 'Architectural Shingle',
+                    'designer': 'Designer Shingle',
+                    '3-tab': '3-Tab Shingle'
+                };
+                confirmType.textContent = shingleNames[state.shingleType];
+
+                if (state.impactClass) {
+                    const impactNames = {
+                        'none': 'No Impact Class',
+                        'class-3': 'Class 3 Hail Resistance',
+                        'class-4': 'Class 4 Hail Resistance (Recommended)'
+                    };
+                    confirmDetails.textContent = impactNames[state.impactClass];
+                    confirmDetailsItem.classList.remove('hidden');
+                } else {
+                    confirmDetailsItem.classList.add('hidden');
+                }
+            } else {
+                const metalNames = {
+                    'standing-seam': 'Standing Seam',
+                    'exposed-fastener': 'Exposed Fastener'
+                };
+                confirmType.textContent = metalNames[state.metalType];
+
+                const materialNames = {
+                    'steel': 'Steel (Galvalume)',
+                    'aluminum': 'Aluminum'
+                };
+                confirmDetails.textContent = materialNames[state.metalMaterial];
+                confirmDetailsItem.classList.remove('hidden');
+            }
+        }
+
+        // Submit Selection
+        async function submitSelection() {
+            const button = document.getElementById('confirmButton');
+            button.disabled = true;
+            button.classList.add('loading');
+
+            try {
+                // Get current user
+                const { data: { user } } = await sb.auth.getUser();
+                if (!user) throw new Error('Not authenticated');
+
+                // Prepare data
+                const updateData = {
+                    material_category: state.category,
+                    has_material_selection: true
+                };
+
+                if (state.category === 'shingles') {
+                    updateData.shingle_type = state.shingleType;
+                    if (state.impactClass) {
+                        updateData.impact_class = state.impactClass;
+                    }
+                } else {
+                    updateData.metal_type = state.metalType;
+                    updateData.metal_material = state.metalMaterial;
+                }
+
+                // Save to database
+                const { error } = await sb
+                    .from('claims')
+                    .update(updateData)
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                if (error) throw error;
+
+                // Redirect with success message
+                window.location.href = 'dashboard.html?material=saved';
+            } catch (error) {
+                console.error('Error saving selection:', error);
+                showMessage('Error saving selection. Please try again.', 'error');
+                button.disabled = false;
+                button.classList.remove('loading');
+            }
+        }
+    </script>
+</body>
+</html>

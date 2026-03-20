@@ -1,0 +1,15 @@
+# Secrets — never commit
+.env
+.env.*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Node
+node_modules/
+supabase/.temp/

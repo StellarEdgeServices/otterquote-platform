@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAQ — ClaimShield</title>
+<meta name="description" content="Frequently asked questions about ClaimShield — how it works, what it costs, and how we help Indiana homeowners after storm damage.">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(245,158,11,0.06) 0%, transparent 60%);
+}
+.page-hero h1 { margin-bottom: var(--sp-4); }
+.page-hero p { max-width: 600px; margin: 0 auto; font-size: 1.1rem; }
+
+.faq-list {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.faq-item {
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.faq-question {
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: left;
+  padding: var(--sp-6) 0;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-4);
+  transition: color var(--duration) var(--ease);
+}
+
+.faq-question:hover { color: var(--amber); }
+
+.faq-arrow {
+  font-size: 1.2rem;
+  transition: transform 0.3s var(--ease);
+  flex-shrink: 0;
+}
+
+.faq-item.open .faq-arrow { transform: rotate(180deg); }
+
+.faq-answer {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s var(--ease), padding 0.3s var(--ease);
+}
+
+.faq-item.open .faq-answer {
+  max-height: 500px;
+  padding-bottom: var(--sp-6);
+}
+
+.faq-answer p {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--slate);
+}
+
+.faq-answer p + p { margin-top: var(--sp-3); }
+
+.faq-category {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+  margin-top: var(--sp-10);
+  margin-bottom: var(--sp-2);
+  padding-bottom: var(--sp-2);
+  border-bottom: 2px solid var(--amber);
+  display: inline-block;
+}
+
+.cta-bottom {
+  text-align: center;
+  padding: var(--sp-16) 0 var(--sp-20);
+}
+.cta-bottom h2 { margin-bottom: var(--sp-4); }
+.cta-bottom p { max-width: 500px; margin: 0 auto var(--sp-8); font-size: 1.1rem; }
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active="faq"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Frequently Asked Questions</h1>
+    <p>Everything you need to know about how ClaimShield works.</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="faq-list">
+
+      <div class="faq-category">Getting Started</div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          What does ClaimShield cost?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>ClaimShield is 100% free for homeowners. You will never pay us a dime. Contractors pay a small platform fee when you sign their contract. That's how we make money — by making contractors earn your business.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          How did I get here?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>Most likely your insurance agent or realtor referred you to us because they trust us to take care of you after storm damage. If you found us on your own, welcome! We're here to help either way.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          Do I need to have filed an insurance claim already?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. ClaimShield helps after you've already filed your claim with your insurance company and an adjuster has inspected your property. We do not file claims on your behalf or represent you to your insurance company — we help you get the best contractor deal once your claim is in process.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          What information do I need to get started?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>Just your name, email, phone number, and address. That's it to create an account. After that, we'll walk you through gathering everything else — your insurance estimate, property measurements, and material preferences. If you don't have something, our "Help Me" tools will guide you through getting it.</p>
+        </div>
+      </div>
+
+      <div class="faq-category">The Process</div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          What is a "Help Me" tool?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>For each document we need, you'll see two buttons: "Upload" (if you already have it) or "Help Me" (if you don't). The Help Me tools walk you through getting what you need. For example, if you don't have your insurance estimate yet, we can send a professional email to your adjuster requesting it — and automatically capture their response when they reply.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          What is a Hover measurement report?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>Hover creates a professional 3D model of your property from smartphone photos. This gives contractors accurate measurements for their bids. You take a few photos following Hover's guided instructions, and the report comes back within 24-48 hours. It's optional but gives you more accurate bids. If you use a ClaimShield contractor, we rebate the measurement fee. Either way, you keep the report forever for future projects.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          How many contractors will bid on my job?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>Up to 5-6 contractors will see your claim and have the opportunity to bid. Not every contractor bids on every job, but competition is the whole point — more bids means a better deal for you.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          How long does the bidding process take?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>Most bids come in within 24-48 hours. The bidding window stays open until you select a contractor — there's no deadline. Take your time and compare. We'll text you every time a new bid arrives.</p>
+        </div>
+      </div>
+
+      <div class="faq-category">After You Choose</div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          What happens after I select a contractor?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>You sign the contractor's agreement electronically (e-sign). Your contractor is required to contact you within 48 hours. After signing, you'll pick your shingle or metal color — we'll show you the manufacturer's color options and you can even see them on your actual house using their visualization tools. Or you can request a contractor visit with physical color boards.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          Can I switch contractors after signing?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes — within the ClaimShield network. Up to 3 days before your scheduled installation, you can switch to a different ClaimShield contractor at no cost. The first contractor is rebated, and the replacement contractor takes over. However, if you leave the ClaimShield platform entirely, you are bound by the contract you signed with your chosen contractor.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          Do I have to pick a shingle color before signing?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>No. You sign the contract first with your material type selected (e.g., architectural shingle, Class 4 impact resistant). Color is picked separately afterward — no rush. The contractor will work with you on timing, but the contract doesn't depend on your color choice.</p>
+        </div>
+      </div>
+
+      <div class="faq-category">Trust & Safety</div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          Are the contractors vetted?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. Every contractor in our network provides proof of licensing, workers' compensation insurance, and general liability insurance. We display verification badges so you can see their credentials before you choose. You'll also see their years in business, customer reviews, and ratings.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          Is my information secure?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>Your data is stored securely with enterprise-grade encryption. Contractors only see the information they need to bid on your job — they don't get your full claim file or property report. We never sell your personal information.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="cta-bottom">
+  <div class="container">
+    <h2>Still Have Questions?</h2>
+    <p>We're here to help. Get started and we'll walk you through everything.</p>
+    <a href="get-started.html" class="btn btn-primary btn-lg">Get Started Free</a>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+// FAQ accordion
+document.querySelectorAll('.faq-question').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const item = btn.closest('.faq-item');
+    const wasOpen = item.classList.contains('open');
+    // Close all
+    document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
+    // Toggle clicked
+    if (!wasOpen) item.classList.add('open');
+  });
+});
+</script>
+</body>
+</html>
