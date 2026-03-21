@@ -444,6 +444,81 @@
     <script src="js/nav.js"></script>
 
     <script>
+        // State
+        let currentUser = null;
+        let currentContractor = null;
+        let allLeads = [];
+        let allActivity = [];
+
+        // Initialize
+        async function init() {
+          currentUser = await Auth.requireAuth('contractor');
+
+          if (!currentUser && !CONFIG.DEMO_MODE) {
+            // Already redirected
+            return;
+          }
+
+          // Load contractor profile
+          if (currentUser && !CONFIG.DEMO_MODE && sb) {
+            try {
+              const { data: contractor } = await sb
+                .from('contractors')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .single();
+
+              if (contractor) {
+                currentContractor = contractor;
+                document.getElementById('welcomeText').textContent = `Welcome back, ${contractor.company_name}`;
+
+                // Load opportunities count
+                const { count: oppCount } = await sb
+                  .from('claims')
+                  .select('id', { count: 'exact', head: true })
+                  .in('status', ['pending', 'bidding']);
+                document.getElementById('availableLeadsCount').textContent = oppCount || 0;
+
+                // Load active bids count
+                const { count: bidCount } = await sb
+                  .from('quotes')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('contractor_id', currentUser.id)
+                  .in('status', ['submitted']);
+                document.getElementById('activeBidsCount').textContent = bidCount || 0;
+
+                // Load recent claims for contractor's service area
+                const { data: recentClaims } = await sb
+                  .from('claims')
+                  .select('*')
+                  .in('status', ['pending', 'bidding', 'awarded'])
+                  .order('created_at', { ascending: false })
+                  .limit(10);
+
+                if (recentClaims) {
+                  allLeads = recentClaims.map(claim => ({
+                    id: claim.id,
+                    location: claim.property_address || 'Unknown',
+                    damageType: claim.damage_type || 'Unknown',
+                    material: claim.material_product || 'Not specified',
+                    estimatedValue: claim.rcv_amount ? '$' + claim.rcv_amount.toLocaleString() : 'Unknown',
+                    status: claim.status === 'pending' ? 'New' : (claim.status === 'bidding' ? 'Bidding' : 'Awarded'),
+                  }));
+                }
+              }
+            } catch (err) {
+              console.error('Error loading contractor data:', err);
+            }
+          }
+
+          if (CONFIG.DEMO_MODE || !allLeads.length) {
+            allLeads = demoLeads;
+            allActivity = demoActivity;
+          }
+
+          populateDashboard();
+        }
+
         // Demo data for contractor dashboard
         const demoLeads = [
             {
@@ -487,20 +562,25 @@
             }
         ];
 
-        function initDashboard() {
-            // Check if in demo mode
-            if (CONFIG.DEMO_MODE && !window.currentUser) {
-                populateDemoData();
+        const demoActivity = [
+            {
+                text: 'New opportunity available — 46208, Roof Hail Damage, ~$18,500',
+                time: '2 hours ago'
+            },
+            {
+                text: 'Bid submitted — Project #CS-2026-0042',
+                time: '1 day ago'
+            },
+            {
+                text: 'Contract signed — Deborah Arvin, Brownsburg',
+                time: '3 days ago'
             }
-        }
+        ];
 
-        function populateDemoData() {
-            // Update welcome text
-            document.getElementById('welcomeText').textContent = 'Welcome back, Stohler Roofing';
-
+        function populateDashboard() {
             // Populate leads table
             const leadsBody = document.getElementById('leadsTableBody');
-            leadsBody.innerHTML = demoLeads.map(lead => `
+            leadsBody.innerHTML = allLeads.map(lead => `
                 <tr>
                     <td class="lead-id">${lead.id}</td>
                     <td>${lead.location}</td>
@@ -508,13 +588,13 @@
                     <td>${lead.material}</td>
                     <td>${lead.estimatedValue}</td>
                     <td><span class="status-badge status-${lead.status.toLowerCase().replace(/\s+/g, '')}">${lead.status}</span></td>
-                    <td><a href="contractor-bid-form.html?lead=${lead.id}" class="action-btn">Submit Bid</a></td>
+                    <td><a href="contractor-bid-form.html?claim_id=${lead.id}" class="action-btn">Submit Bid</a></td>
                 </tr>
             `).join('');
 
             // Populate activity feed
             const activityFeed = document.getElementById('activityFeed');
-            activityFeed.innerHTML = demoActivity.map(activity => `
+            activityFeed.innerHTML = allActivity.map(activity => `
                 <div class="activity-item">
                     <div class="activity-dot"></div>
                     <div class="activity-content">
@@ -526,7 +606,7 @@
         }
 
         // Initialize on load
-        document.addEventListener('DOMContentLoaded', initDashboard);
+        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>

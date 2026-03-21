@@ -250,7 +250,7 @@
 
         <div class="form-group">
           <label class="form-label" for="address">Property Address</label>
-          <input type="text" id="address" class="form-input" required autocomplete="street-address" placeholder="123 Main St, Indianapolis, IN 46201">
+          <input type="text" id="address" class="form-input" required autocomplete="street-address" placeholder="123 Main St, Anytown, ST 12345">
           <span class="form-hint">The address where the storm damage occurred.</span>
         </div>
 
@@ -495,6 +495,9 @@
       await Auth.redirectToDashboard();
     }
   });
+
+  // Set up auth state listener for post-auth profile creation
+  Auth.onAuthStateChangeListener();
 })();
 </script>
 

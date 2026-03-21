@@ -136,5 +136,112 @@ const Auth = {
       .single();
     if (error) throw error;
     return data;
+  },
+
+  /**
+   * Handle post-auth profile creation and routing.
+   * Call this when user logs in via magic link to create their profile from signup data.
+   */
+  async handleAuthCallback() {
+    const user = await this.getUser();
+    if (!user) return;
+
+    const role = sessionStorage.getItem('cs_auth_role') || 'homeowner';
+
+    // Handle homeowner signup data
+    const signupData = sessionStorage.getItem('cs_signup');
+    if (signupData) {
+      try {
+        const data = JSON.parse(signupData);
+        const fullName = `${data.first_name} ${data.last_name}`.trim();
+
+        // Create or update profile
+        await this.updateProfile({
+          full_name: fullName,
+          phone: data.phone || null,
+          address_line1: data.address || null,
+          role: data.role || 'homeowner',
+        });
+
+        sessionStorage.removeItem('cs_signup');
+      } catch (err) {
+        console.error('Error creating profile from signup data:', err);
+      }
+    }
+
+    // Handle contractor signup data
+    const contractorSignupData = sessionStorage.getItem('cs_contractor_signup');
+    if (contractorSignupData) {
+      try {
+        const data = JSON.parse(contractorSignupData);
+
+        // Create or update profile for contractor
+        await this.updateProfile({
+          full_name: data.contact_name,
+          phone: data.phone || null,
+          address_line1: data.address_line1 || null,
+          role: 'contractor',
+        });
+
+        // Create contractor record if it doesn't exist
+        if (sb) {
+          const { data: existing } = await sb
+            .from('contractors')
+            .select('id')
+            .eq('user_id', user.id)
+            .single();
+
+          if (!existing) {
+            await sb.from('contractors').insert({
+              user_id: user.id,
+              company_name: data.company_name,
+              contact_name: data.contact_name,
+              email: data.email,
+              phone: data.phone,
+              address_line1: data.address_line1,
+              address_city: data.address_city,
+              address_state: data.address_state,
+              address_zip: data.address_zip,
+              website_url: data.website_url,
+              years_in_business: data.years_in_business,
+              num_employees: data.num_employees,
+              no_license_required: data.no_license_required,
+            });
+
+            // Insert licenses if provided
+            if (data.licenses && data.licenses.length > 0) {
+              const licenseRecords = data.licenses.map(lic => ({
+                contractor_id: user.id,
+                municipality: lic.municipality,
+                license_number: lic.number,
+                expiration_date: lic.expDate,
+              }));
+              await sb.from('contractor_licenses').insert(licenseRecords);
+            }
+          }
+        }
+
+        sessionStorage.removeItem('cs_contractor_signup');
+      } catch (err) {
+        console.error('Error creating contractor profile:', err);
+      }
+    }
+
+    // Route to appropriate dashboard
+    await this.redirectToDashboard();
+  },
+
+  /**
+   * Set up listener for auth state changes.
+   * Handles post-auth profile creation when user logs in.
+   */
+  onAuthStateChangeListener() {
+    if (!sb) return;
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        // User just signed in, create profile if needed
+        await this.handleAuthCallback();
+      }
+    });
   }
 };

@@ -191,6 +191,79 @@
     <script src="js/nav.js"></script>
 
     <script>
+        // State
+        let currentUser = null;
+        let allOpportunities = [];
+        let currentContractor = null;
+
+        // Initialize
+        async function init() {
+          currentUser = await Auth.requireAuth('contractor');
+          if (!currentUser && !CONFIG.DEMO_MODE) {
+            // Already redirected
+            return;
+          }
+
+          // Load contractor profile for filtering by service area
+          if (currentUser && !CONFIG.DEMO_MODE && sb) {
+            try {
+              const { data } = await sb
+                .from('contractors')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .single();
+
+              if (data) currentContractor = data;
+            } catch (err) {
+              console.error('Error loading contractor:', err);
+            }
+          }
+
+          // Load opportunities
+          if (CONFIG.DEMO_MODE) {
+            allOpportunities = demoOpportunities;
+          } else if (sb) {
+            try {
+              const { data, error } = await sb
+                .from('claims')
+                .select('*')
+                .in('status', ['pending', 'bidding'])
+                .order('created_at', { ascending: false });
+
+              if (!error && data) {
+                allOpportunities = data.map(claim => ({
+                  id: claim.id,
+                  location: claim.property_address?.split(',')[0] || 'Unknown',
+                  zip: claim.property_address?.match(/\d{5}/)?.[0] || '',
+                  jobType: claim.job_type || 'insurance_rcv',
+                  damageType: claim.damage_type || 'Unknown',
+                  damageDetail: claim.damage_description || '',
+                  insuranceCarrier: claim.insurance_carrier || 'Unknown',
+                  material: claim.material_product || null,
+                  estimatedValue: claim.rcv_amount || null,
+                  roofSquares: claim.roof_squares || null,
+                  repairSquares: claim.repair_squares || null,
+                  totalSquares: null,
+                  existingShingle: claim.existing_shingle_brand ? `${claim.existing_shingle_brand} - ${claim.existing_shingle_color}` : null,
+                  estimateAvailable: claim.estimate_filename ? true : false,
+                  measurementsAvailable: claim.measurements_filename ? true : false,
+                  claimFiledDate: claim.created_at,
+                  distance: 0,
+                  urgency: claim.urgency || 'flexible',
+                  urgencyDeadline: claim.urgency_deadline,
+                  urgencyReason: claim.urgency_reason,
+                  homeownerNotes: claim.homeowner_notes
+                }));
+              }
+            } catch (err) {
+              console.error('Error loading claims:', err);
+              allOpportunities = demoOpportunities;
+            }
+          }
+
+          applyFilters();
+        }
+
         const demoOpportunities = [
             {
                 id: 'CS-2026-0048', location: 'Indianapolis', zip: '46220', jobType: 'insurance_rcv',
@@ -329,7 +402,7 @@
         }
 
         function applyFilters() {
-            let f = [...demoOpportunities];
+            let f = [...allOpportunities];
             const jt = document.getElementById('jobTypeFilter').value;
             if (jt) f = f.filter(o => o.jobType === jt);
             const dt = document.getElementById('damageTypeFilter').value;
@@ -347,9 +420,10 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            applyFilters();
-            ['jobTypeFilter','damageTypeFilter','materialFilter','distanceFilter','sortFilter'].forEach(id => {
-                document.getElementById(id).addEventListener('change', applyFilters);
+            init().then(() => {
+              ['jobTypeFilter','damageTypeFilter','materialFilter','distanceFilter','sortFilter'].forEach(id => {
+                  document.getElementById(id).addEventListener('change', applyFilters);
+              });
             });
         });
     </script>

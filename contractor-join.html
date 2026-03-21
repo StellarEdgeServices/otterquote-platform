@@ -459,7 +459,8 @@
                             <div class="form-group">
                                 <label for="businessState" class="form-label required">State</label>
                                 <select id="businessState" name="businessState" class="form-select" required>
-                                    <option value="IN" selected>Indiana</option>
+                                    <option value="" selected>Select state</option>
+                                    <option value="IN">Indiana</option>
                                     <option value="AL">Alabama</option>
                                     <option value="AK">Alaska</option>
                                     <option value="AZ">Arizona</option>
@@ -541,7 +542,7 @@
                         <div class="form-group">
                             <label class="form-label">Municipal Contractor Licenses</label>
                             <p style="font-size: 0.85rem; color: #6B7280; margin-bottom: var(--sp-3);">
-                                Indiana does not require a state-level contractor license. Licensing is at the city/county level and is not mandatory in all municipalities. Add each license you hold.
+                                Many areas do not require a state-level contractor license. Licensing requirements vary by municipality. Add each license you hold.
                             </p>
                             <div id="licensesContainer">
                                 <div class="license-entry" data-index="0">
@@ -692,7 +693,7 @@
                         <h3><span></span>Service Area & Trades</h3>
 
                         <div class="form-group">
-                            <label class="form-label required">Service Area (Indiana Counties)</label>
+                            <label class="form-label required">Service Area (Counties)</label>
                             <div class="checkbox-group">
                                 <div class="checkbox-item">
                                     <input type="checkbox" id="county-adams" name="counties" value="Adams">
@@ -1205,14 +1206,61 @@
                     return;
                 }
 
-                // In production, would save to Supabase
-                console.log('Application data:', data);
+                // In production mode: send magic link and store data
+                if (!window.Auth) {
+                    throw new Error('Auth module not loaded');
+                }
+
+                // 1. Send magic link
+                await Auth.sendMagicLink(data.businessEmail, 'contractor');
+
+                // 2. Store contractor data in sessionStorage for post-auth profile creation
+                sessionStorage.setItem('cs_contractor_signup', JSON.stringify({
+                    company_name: data.businessName,
+                    contact_name: data.ownerFirstName + ' ' + data.ownerLastName,
+                    email: data.businessEmail,
+                    phone: data.businessPhone,
+                    address_line1: data.businessAddress,
+                    address_city: data.businessCity,
+                    address_state: data.businessState,
+                    address_zip: data.businessZip,
+                    website_url: data.websiteUrl,
+                    years_in_business: data.yearsInBusiness,
+                    num_employees: data.numEmployees,
+                    no_license_required: data.noLicenseRequired,
+                    service_counties: data.counties,
+                    trade_types: data.trades,
+                    shingle_brands: data.shingleBrands,
+                    offers_color_selection: data.colorSelection,
+                    offers_scheduling: data.scheduling,
+                    insurance_wc_carrier: data.wcCarrier,
+                    insurance_wc_policy: data.wcPolicyNumber,
+                    insurance_wc_expdate: data.wcExpDate,
+                    insurance_gl_carrier: data.glCarrier,
+                    insurance_gl_policy: data.glPolicyNumber,
+                    insurance_gl_amount: data.glAmount,
+                    insurance_gl_expdate: data.glExpDate,
+                    licenses: data.licenses,
+                    role: 'contractor',
+                }));
+
+                // Set auth role for post-auth routing
+                sessionStorage.setItem('cs_auth_role', 'contractor');
+
+                // 3. Show success and hide form
                 document.getElementById('successMessage').classList.add('show');
                 document.getElementById('contractorForm').style.display = 'none';
                 window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                // GA4 event
+                gtag('event', 'contractor_signup', {
+                  company: data.businessName,
+                  service_counties: data.counties.length,
+                });
+
             } catch (error) {
                 console.error('Error submitting application:', error);
-                alert('An error occurred. Please try again.');
+                alert('An error occurred. Please try again: ' + (error.message || 'Unknown error'));
             }
         });
 
@@ -1259,6 +1307,11 @@
             document.getElementById('licensesContainer').style.opacity = checked ? '0.4' : '1';
             document.getElementById('licensesContainer').style.pointerEvents = checked ? 'none' : 'auto';
             document.getElementById('addLicenseBtn').style.display = checked ? 'none' : 'block';
+        }
+
+        // Set up auth state listener for post-auth profile creation
+        if (window.Auth && window.Auth.onAuthStateChangeListener) {
+            Auth.onAuthStateChangeListener();
         }
     </script>
 </body>

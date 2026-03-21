@@ -663,12 +663,94 @@
       deductibleCollection: true
     };
 
+    // State
+    let currentUser = null;
+    let currentClaim = null;
+    let currentContractor = null;
+
     const priceInput = document.getElementById('totalPrice');
     const charCountEl = document.getElementById('charCount');
     const messageInput = document.getElementById('homeownerMessage');
     const bidForm = document.getElementById('bidForm');
     const submitBtn = document.getElementById('submitBtn');
     const successState = document.getElementById('successState');
+
+    // Init function
+    async function init() {
+      // Check auth
+      currentUser = await Auth.requireAuth('contractor');
+
+      if (!currentUser && !CONFIG.DEMO_MODE) {
+        // Not authenticated and not demo mode
+        return;
+      }
+
+      // Load claim from URL param
+      const urlParams = new URLSearchParams(window.location.search);
+      const claimId = urlParams.get('claim_id');
+
+      if (claimId && !CONFIG.DEMO_MODE && sb) {
+        try {
+          const { data, error } = await sb
+            .from('claims')
+            .select('*')
+            .eq('id', claimId)
+            .single();
+
+          if (!error && data) {
+            currentClaim = data;
+            // Populate claim summary from real data
+            updateClaimSummary();
+          }
+        } catch (err) {
+          console.error('Error loading claim:', err);
+        }
+      }
+
+      // Load contractor profile
+      if (currentUser && !CONFIG.DEMO_MODE && sb) {
+        try {
+          const { data, error } = await sb
+            .from('contractors')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .single();
+
+          if (!error && data) {
+            currentContractor = data;
+          }
+        } catch (err) {
+          console.error('Error loading contractor:', err);
+        }
+      }
+    }
+
+    function updateClaimSummary() {
+      if (!currentClaim) return;
+
+      // Update the project summary section with real claim data
+      const summaryGrid = document.querySelector('.summary-grid');
+      if (summaryGrid) {
+        summaryGrid.innerHTML = `
+          <div class="summary-item">
+            <div class="summary-label">Location</div>
+            <div class="summary-value">${currentClaim.property_address || 'Not provided'}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Damage Type</div>
+            <div class="summary-value">${currentClaim.damage_type || 'Not specified'}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Insurance Carrier</div>
+            <div class="summary-value">${currentClaim.insurance_carrier_id || 'Not specified'}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Material Selected</div>
+            <div class="summary-value">${currentClaim.material_product || 'Not selected'}</div>
+          </div>
+        `;
+      }
+    }
 
     // Update fee calculator
     function updateFeeCalculator() {
@@ -711,7 +793,7 @@
     priceInput.addEventListener('input', updateFeeCalculator);
 
     // Form submission
-    bidForm.addEventListener('submit', (e) => {
+    bidForm.addEventListener('submit', async (e) => {
       e.preventDefault();
 
       // Validate form
@@ -720,22 +802,61 @@
         return;
       }
 
-      // Show success state
       submitBtn.disabled = true;
       submitBtn.textContent = 'Submitting...';
 
-      setTimeout(() => {
+      try {
+        const formData = new FormData(bidForm);
+
+        if (CONFIG.DEMO_MODE) {
+          // Demo mode: just show success
+          await new Promise(resolve => setTimeout(resolve, 800));
+        } else if (sb && currentUser && currentClaim) {
+          // Real mode: insert quote to database
+          const quoteData = {
+            claim_id: currentClaim.id,
+            contractor_id: currentUser.id,
+            amount: parseFloat(formData.get('totalPrice')),
+            warranty_years: parseInt(formData.get('workmanshipWarranty')),
+            start_date: formData.get('startDate'),
+            notes: formData.get('homeownerMessage'),
+            decking_price_per_sheet: parseFloat(formData.get('deckingPricePerSheet')),
+            full_redeck_price: parseFloat(formData.get('fullRedeckPrice')),
+            supplement_acknowledged: formData.get('supplementAcknowledged') === 'on',
+          };
+
+          const { error } = await sb
+            .from('quotes')
+            .insert(quoteData);
+
+          if (error) throw error;
+
+          gtag('event', 'bid_submitted', {
+            claim_id: currentClaim.id,
+            bid_amount: quoteData.amount,
+          });
+        }
+
+        // Show success state
         bidForm.style.display = 'none';
         successState.classList.add('show');
-      }, 800);
+      } catch (err) {
+        console.error('Error submitting bid:', err);
+        alert('Error submitting bid: ' + (err.message || 'Unknown error'));
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Bid';
+      }
     });
 
-    // Initial calculation
-    updateFeeCalculator();
+    // Initialize page
+    (async () => {
+      await init();
+      updateFeeCalculator();
 
-    // Set default start date to today
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('startDate').value = today;
+      // Set default start date to today
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('startDate').value = today;
+    })();
   </script>
 </body>
 </html>

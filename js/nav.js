@@ -1,16 +1,29 @@
 /**
  * ClaimShield v2 — Navigation Component
  * Renders consistent header/footer across all pages.
+ * Detects contractor pages and shows contractor-specific nav links.
  */
 
 const Nav = {
+  /** Detect if current page is a contractor page */
+  _isContractorPage() {
+    const path = window.location.pathname;
+    return path.includes('contractor');
+  },
+
   /** Render the site header */
   renderHeader(options = {}) {
     const { active = '', showAuth = true } = options;
     const nav = document.getElementById('site-header');
     if (!nav) return;
 
-    const links = [
+    const isContractor = this._isContractorPage();
+
+    const links = isContractor ? [
+      { href: '/index.html',                    label: 'Home',         id: 'home' },
+      { href: '/contractor-how-it-works.html',   label: 'How It Works', id: 'how-it-works' },
+      { href: '/contractor-faq.html',            label: 'FAQ',          id: 'faq' },
+    ] : [
       { href: '/index.html',        label: 'Home',         id: 'home' },
       { href: '/how-it-works.html',  label: 'How It Works', id: 'how-it-works' },
       { href: '/faq.html',           label: 'FAQ',          id: 'faq' },
@@ -83,6 +96,8 @@ const Nav = {
     const footer = document.getElementById('site-footer');
     if (!footer) return;
 
+    const isContractor = this._isContractorPage();
+
     footer.innerHTML = `
       <div class="footer-inner container">
         <div class="footer-grid">
@@ -91,19 +106,34 @@ const Nav = {
               <span class="nav-logo-icon">&#x1F6E1;</span>
               <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
             </div>
-            <p class="footer-tagline">Helping Indiana homeowners get the best deal on storm damage repairs.</p>
+            <p class="footer-tagline">${isContractor
+              ? 'Your sales team — without the truck, the manager, or the advance.'
+              : 'Helping homeowners get the best deal on storm damage repairs.'
+            }</p>
           </div>
           <div class="footer-col">
-            <h4 class="footer-heading">Platform</h4>
-            <a href="/how-it-works.html">How It Works</a>
-            <a href="/faq.html">FAQ</a>
-            <a href="/get-started.html">Get Started</a>
+            <h4 class="footer-heading">${isContractor ? 'Contractor Portal' : 'Platform'}</h4>
+            ${isContractor ? `
+              <a href="/contractor-how-it-works.html">How It Works</a>
+              <a href="/contractor-faq.html">FAQ</a>
+              <a href="/contractor-opportunities.html">Browse Opportunities</a>
+            ` : `
+              <a href="/how-it-works.html">How It Works</a>
+              <a href="/faq.html">FAQ</a>
+              <a href="/get-started.html">Get Started</a>
+            `}
           </div>
           <div class="footer-col">
-            <h4 class="footer-heading">Contractors</h4>
-            <a href="/contractor-login.html">Contractor Login</a>
-            <a href="/contractor-join.html">Join Our Network</a>
-            <a href="/contractor-agreement.html">Partner Agreement</a>
+            <h4 class="footer-heading">${isContractor ? 'Your Account' : 'Contractors'}</h4>
+            ${isContractor ? `
+              <a href="/contractor-dashboard.html">Dashboard</a>
+              <a href="/contractor-profile.html">Company Profile</a>
+              <a href="/contractor-agreement.html">Partner Agreement</a>
+            ` : `
+              <a href="/contractor-login.html">Contractor Login</a>
+              <a href="/contractor-join.html">Join Our Network</a>
+              <a href="/contractor-agreement.html">Partner Agreement</a>
+            `}
           </div>
           <div class="footer-col">
             <h4 class="footer-heading">Legal</h4>
