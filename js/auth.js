@@ -1,5 +1,5 @@
 /**
- * ClaimShield v2 — Auth Helpers
+ * OtterQuote — Auth Helpers
  * Magic link authentication via Supabase Auth
  * Role-based routing: homeowner vs contractor
  */

@@ -1,5 +1,5 @@
 -- ============================================================
--- ClaimShield v5 Migration — Session 14: Job Types, Urgency,
+-- OtterQuote v5 Migration — Session 14: Job Types, Urgency,
 -- Decking Contingency, Multi-License, Homeowner Notes
 -- ============================================================
 -- Run in Supabase SQL Editor

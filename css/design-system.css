@@ -1,21 +1,21 @@
 /**
- * ClaimShield v2 — Design System
- * Navy/amber palette, DM Sans + Playfair Display, evolved from v0.1.7
+ * OtterQuote — Design System
+ * Deep teal palette, DM Sans + Playfair Display
  */
 
 /* ── Design Tokens ── */
 :root {
-  /* Primary palette */
-  --navy:       #0B1929;
-  --navy-2:     #0F2440;
-  --navy-3:     #132D50;
-  --mid:        #1E3A5F;
+  /* Primary palette — deep ocean teal */
+  --navy:       #0A1E2C;
+  --navy-2:     #0E2A3B;
+  --navy-3:     #12354A;
+  --mid:        #1A4560;
 
-  /* Accent */
-  --amber:      #F59E0B;
-  --amber-2:    #D97706;
-  --amber-light:#FEF3C7;
-  --amber-glow: rgba(245, 158, 11, 0.15);
+  /* Accent — teal (primary) */
+  --amber:      #14B8A6;
+  --amber-2:    #0D9488;
+  --amber-light:#CCFBF1;
+  --amber-glow: rgba(20, 184, 166, 0.15);
 
   /* Neutrals */
   --white:      #FFFFFF;

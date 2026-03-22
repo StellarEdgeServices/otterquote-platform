@@ -1,5 +1,5 @@
 /**
- * ClaimShield Edge Function: create-docusign-envelope
+ * OtterQuote Edge Function: create-docusign-envelope
  * Creates a DocuSign envelope for contract signing with JWT Grant auth flow.
  * Auto-populates contractor templates with claim data using anchor-based tabs.
  * Rate-limited via Supabase check_rate_limit() RPC.
@@ -413,7 +413,7 @@ serve(async (req) => {
     const envelopeDefinition = {
       emailSubject: `${
         document_type === "contract" ? "Repair Contract" : "Color Confirmation"
-      } — ClaimShield (Claim ${claim_id.slice(0, 8)})`,
+      } — OtterQuote (Claim ${claim_id.slice(0, 8)})`,
       documents: [
         {
           documentBase64: templateBase64,
@@ -495,7 +495,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          returnUrl: "https://stellaredgeservices.com/contract-signing.html?signed=true",
+          returnUrl: "https://otterquote.com/contract-signing.html?signed=true",
           authenticationMethod: "none",
           email: signer.email,
           userName: signer.name,

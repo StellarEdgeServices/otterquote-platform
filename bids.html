@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Bids — ClaimShield</title>
+<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+  <title>Your Bids — OtterQuote</title>
   <meta name="description" content="Compare contractor bids and select the best contractor for your insurance repair project.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -204,7 +205,7 @@
           <!-- Guarantee Banner -->
           <div class="guarantee-banner">
             <span style="font-size:1.3rem;">🛡</span>
-            <span><strong>ClaimShield Guarantee:</strong> Not sure? You can switch to another ClaimShield contractor at no cost up to 3 days before installation.</span>
+            <span><strong>OtterQuote Guarantee:</strong> Not sure? You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</span>
           </div>
 
           <!-- RCV Disclaimer -->
@@ -347,7 +348,7 @@
             google_reviews_url, google_rating, bbb_url, bbb_rating, angi_url, yelp_url,
             certifications, why_choose_us, photo_gallery, team_size, uses_subcontractors,
             crew_certifications, avg_first_contact_hours, avg_bid_response_hours,
-            total_claimshield_jobs, claimshield_rating, testimonials
+            total_otterquote_jobs, otterquote_rating, testimonials
           )
         `)
         .eq('claim_id', currentClaim.id)
@@ -411,8 +412,8 @@
           crew_certifications: 'All crew members are certified and trained on the latest roofing techniques.',
           avg_first_contact_hours: 2,
           avg_bid_response_hours: 4,
-          total_claimshield_jobs: 47,
-          claimshield_rating: 4.9,
+          total_otterquote_jobs: 47,
+          otterquote_rating: 4.9,
           testimonials: JSON.stringify([
             { text: 'Professional team, fast installation, excellent warranty coverage.', author: 'Sarah K.', date: '2026-02-15' },
             { text: 'Highly recommend. They handled the insurance claim process perfectly.', author: 'James M.', date: '2026-01-22' }
@@ -444,8 +445,8 @@
           crew_certifications: 'Licensed contractors and trained installers.',
           avg_first_contact_hours: 3,
           avg_bid_response_hours: 6,
-          total_claimshield_jobs: 32,
-          claimshield_rating: 4.7,
+          total_otterquote_jobs: 32,
+          otterquote_rating: 4.7,
           testimonials: JSON.stringify([
             { text: 'Great communication and fair pricing. Roof looks fantastic!', author: 'Robert H.', date: '2026-01-30' }
           ])
@@ -476,8 +477,8 @@
           crew_certifications: 'All crew certified in storm damage assessment and repair.',
           avg_first_contact_hours: 1,
           avg_bid_response_hours: 3,
-          total_claimshield_jobs: 58,
-          claimshield_rating: 4.8,
+          total_otterquote_jobs: 58,
+          otterquote_rating: 4.8,
           testimonials: JSON.stringify([
             { text: 'They really helped us navigate the insurance process. Highly professional.', author: 'Amanda L.', date: '2026-02-08' },
             { text: 'Fast, reliable, and they warranty their work. Best decision!', author: 'Tom C.', date: '2026-01-15' }
@@ -509,8 +510,8 @@
           crew_certifications: 'All team members are master craftspeople with 10+ years experience.',
           avg_first_contact_hours: 2,
           avg_bid_response_hours: 5,
-          total_claimshield_jobs: 63,
-          claimshield_rating: 4.95,
+          total_otterquote_jobs: 63,
+          otterquote_rating: 4.95,
           testimonials: JSON.stringify([
             { text: 'Premium quality at premium service. Worth every penny.', author: 'Elizabeth R.', date: '2026-02-20' },
             { text: 'Best roof in the neighborhood. Timely, professional, and thorough.', author: 'George B.', date: '2026-02-01' }
@@ -831,9 +832,9 @@
         ${testimonials.length > 0 ? testimonials.map(t => `
           <div class="testimonial">
             <div class="testimonial-text">${esc(t.text)}</div>
-            <div class="testimonial-author">— ${esc(t.author || 'ClaimShield Customer')}${t.date ? `, ${t.date}` : ''}</div>
+            <div class="testimonial-author">— ${esc(t.author || 'OtterQuote Customer')}${t.date ? `, ${t.date}` : ''}</div>
           </div>
-        `).join('') : '<p style="color:var(--slate);">No ClaimShield reviews yet. Reviews from previous ClaimShield homeowners will appear here as the contractor completes projects.</p>'}
+        `).join('') : '<p style="color:var(--slate);">No OtterQuote reviews yet. Reviews from previous OtterQuote homeowners will appear here as the contractor completes projects.</p>'}
       `;
 
       // Stats
@@ -849,11 +850,11 @@
             <span class="stat-label">Avg Bid Response</span>
           </div>
           <div class="stat-item">
-            <span class="stat-value">${c.total_claimshield_jobs || '0'}</span>
-            <span class="stat-label">ClaimShield Jobs</span>
+            <span class="stat-value">${c.total_otterquote_jobs || '0'}</span>
+            <span class="stat-label">OtterQuote Jobs</span>
           </div>
         </div>
-        ${c.claimshield_rating ? `<div style="text-align:center;margin-top:var(--sp-4);"><span class="stat-value">${c.claimshield_rating}/5</span><br><span class="stat-label">ClaimShield Rating</span></div>` : ''}
+        ${c.otterquote_rating ? `<div style="text-align:center;margin-top:var(--sp-4);"><span class="stat-value">${c.otterquote_rating}/5</span><br><span class="stat-label">OtterQuote Rating</span></div>` : ''}
       `;
 
       // Review Sites
@@ -904,7 +905,7 @@
       // Select CTA
       document.getElementById('profileSelectCTA').innerHTML = `
         <h3>Ready to Choose ${esc(c.company_name)}?</h3>
-        <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. Remember, you can switch to another ClaimShield contractor at no cost up to 3 days before installation.</p>
+        <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. Remember, you can switch to another OtterQuote contractor at no cost up to 3 days before installation.</p>
         <button class="btn btn-primary btn-lg" onclick="selectContractor('${bid.id}')">Select ${esc(c.company_name)}</button>
       `;
 
@@ -926,7 +927,7 @@
       if (!bid) return;
 
       const c = contractors[bid.contractor_id] || {};
-      const confirmed = confirm(`Select ${c.company_name || 'this contractor'}? This will begin the contract signing process.\n\nTotal Price: $${(bid.total_price || 0).toLocaleString()}\n\nYou can still switch to another ClaimShield contractor up to 3 days before installation.`);
+      const confirmed = confirm(`Select ${c.company_name || 'this contractor'}? This will begin the contract signing process.\n\nTotal Price: $${(bid.total_price || 0).toLocaleString()}\n\nYou can still switch to another OtterQuote contractor up to 3 days before installation.`);
 
       if (!confirmed) return;
 

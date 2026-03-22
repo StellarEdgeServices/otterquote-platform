@@ -1,5 +1,5 @@
 /**
- * ClaimShield v2 — Navigation Component
+ * OtterQuote — Navigation Component
  * Renders consistent header/footer across all pages.
  * Detects contractor pages and shows contractor-specific nav links.
  */
@@ -32,7 +32,7 @@ const Nav = {
     nav.innerHTML = `
       <div class="nav-inner container">
         <a href="/index.html" class="nav-logo">
-          <span class="nav-logo-icon">&#x1F6E1;</span>
+          <img src="/img/otter-logo.svg" alt="OtterQuote" class="nav-logo-icon" style="width:32px;height:32px;">
           <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
         </a>
         <div class="nav-links" id="nav-links">
@@ -103,7 +103,7 @@ const Nav = {
         <div class="footer-grid">
           <div class="footer-col">
             <div class="footer-logo">
-              <span class="nav-logo-icon">&#x1F6E1;</span>
+              <img src="/img/otter-logo.svg" alt="OtterQuote" class="nav-logo-icon" style="width:32px;height:32px;">
               <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
             </div>
             <p class="footer-tagline">${isContractor

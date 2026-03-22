@@ -1,0 +1,46 @@
+<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <!-- Otter head background -->
+  <circle cx="24" cy="26" r="20" fill="#14B8A6"/>
+
+  <!-- Left ear -->
+  <circle cx="14" cy="10" r="5" fill="#14B8A6"/>
+
+  <!-- Right ear -->
+  <circle cx="34" cy="10" r="5" fill="#14B8A6"/>
+
+  <!-- Inner ear left -->
+  <circle cx="14" cy="10" r="2.5" fill="white"/>
+
+  <!-- Inner ear right -->
+  <circle cx="34" cy="10" r="2.5" fill="white"/>
+
+  <!-- Eyes left -->
+  <circle cx="18" cy="22" r="2.5" fill="white"/>
+
+  <!-- Eyes right -->
+  <circle cx="30" cy="22" r="2.5" fill="white"/>
+
+  <!-- Nose -->
+  <ellipse cx="24" cy="28" rx="2" ry="2.5" fill="white"/>
+
+  <!-- Mouth - slight smile -->
+  <path d="M 24 28 Q 20 31 18 30" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <path d="M 24 28 Q 28 31 30 30" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Left whiskers -->
+  <line x1="10" y1="24" x2="5" y2="23" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="10" y1="27" x2="5" y2="28" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="10" y1="30" x2="4" y2="33" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Right whiskers -->
+  <line x1="38" y1="24" x2="43" y2="23" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="38" y1="27" x2="43" y2="28" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="38" y1="30" x2="44" y2="33" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Chest/chin area for depth -->
+  <ellipse cx="24" cy="42" rx="16" ry="8" fill="#14B8A6" opacity="0.8"/>
+
+  <!-- Cheek circles for friendliness -->
+  <circle cx="12" cy="28" r="2.5" fill="white" opacity="0.3"/>
+  <circle cx="36" cy="28" r="2.5" fill="white" opacity="0.3"/>
+</svg>

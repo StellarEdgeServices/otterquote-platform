@@ -1,5 +1,5 @@
 -- ============================================================
--- ClaimShield v3 Migration: Role-Based Authentication
+-- OtterQuote v3 Migration: Role-Based Authentication
 -- Run this in the Supabase SQL Editor.
 -- ============================================================
 

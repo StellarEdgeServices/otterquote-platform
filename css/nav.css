@@ -1,5 +1,5 @@
 /**
- * ClaimShield v2 — Navigation & Footer Styles
+ * OtterQuote — Navigation & Footer Styles
  */
 
 /* ── Header ── */
@@ -7,7 +7,7 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(11, 25, 41, 0.95);
+  background: rgba(10, 30, 44, 0.95);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }

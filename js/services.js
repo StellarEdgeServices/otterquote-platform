@@ -1,5 +1,5 @@
 /**
- * ClaimShield v2 — Service Integration Helpers
+ * OtterQuote — Service Integration Helpers
  * Mailgun (email), Twilio (SMS), Stripe (payments), DocuSign (e-sign)
  *
  * NOTE: These are client-side helper functions that prepare data
@@ -197,8 +197,8 @@ const Services = {
     const { homeowner_phone, adjuster_name, adjuster_phone, user_id, claim_id } = params;
 
     const message = adjuster_phone
-      ? `Hi! We haven't received your insurance documents yet. We'd recommend giving your adjuster ${adjuster_name} a call at ${adjuster_phone}. When you call, just say: "Hi, this is [your name]. I'm following up on my claim — could you send me my estimate and any measurements you have?" - ClaimShield`
-      : `Hi! We haven't received your insurance documents yet. We'd recommend calling your adjuster ${adjuster_name} directly. Just ask for your estimate and any property measurements. - ClaimShield`;
+      ? `Hi! We haven't received your insurance documents yet. We'd recommend giving your adjuster ${adjuster_name} a call at ${adjuster_phone}. When you call, just say: "Hi, this is [your name]. I'm following up on my claim — could you send me my estimate and any measurements you have?" - OtterQuote`
+      : `Hi! We haven't received your insurance documents yet. We'd recommend calling your adjuster ${adjuster_name} directly. Just ask for your estimate and any property measurements. - OtterQuote`;
 
     return this.sendSMS({
       to: homeowner_phone,

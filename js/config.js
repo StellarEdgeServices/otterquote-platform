@@ -1,5 +1,5 @@
 /**
- * ClaimShield v2 — Global Configuration
+ * OtterQuote — Global Configuration
  * All environment-specific values in one place.
  */
 
@@ -14,7 +14,7 @@ const CONFIG = {
   // ── Mailgun (inbound email parsing) ──
   MAILGUN_DOMAIN:  'sandboxd2b099fad357409b845e5f4c5e8bd74e.mailgun.org',
   MAILGUN_API_URL: 'https://api.mailgun.net',
-  INGEST_EMAIL_DOMAIN: 'claims.stellaredgeservices.com', // Production domain — sandbox for now
+  INGEST_EMAIL_DOMAIN: 'claims.otterquote.com', // Production domain — sandbox for now
   // NOTE: MAILGUN_API_KEY is server-side only (Edge Functions), never exposed in frontend
 
   // ── Twilio (SMS notifications) ──
@@ -43,9 +43,9 @@ const CONFIG = {
   CANCELLATION_DAYS_BEFORE: 3,     // D-041
 
   // ── Site Info ──
-  SITE_NAME: 'ClaimShield',
-  SITE_URL:  'https://stellaredgeservices.com',
-  SUPPORT_EMAIL: 'support@stellaredgeservices.com',
+  SITE_NAME: 'OtterQuote',
+  SITE_URL:  'https://otterquote.com',
+  SUPPORT_EMAIL: 'support@otterquote.com',
 
   // ── Demo Mode ──
   // When true, pages show sample data without requiring Supabase auth.
