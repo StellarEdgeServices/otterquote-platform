@@ -50,7 +50,7 @@ const CONFIG = {
   // ── Demo Mode ──
   // When true, pages show sample data without requiring Supabase auth.
   // Set to false before production launch.
-  DEMO_MODE: true,
+  DEMO_MODE: false,
 };
 
 // ── Initialize Supabase Client ──
