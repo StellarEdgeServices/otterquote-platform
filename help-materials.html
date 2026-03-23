@@ -1057,11 +1057,13 @@
                 updateProgress(4);
             } else if (type === 'designer') {
                 // Designer: show product selection (loads from catalog)
+                document.getElementById('impactClassSection').classList.add('hidden');
                 loadDesignerProducts();
                 document.getElementById('designerProductSection').classList.remove('hidden');
                 updateProgress(3);
             } else {
                 // Architectural: show impact class selection
+                document.getElementById('designerProductSection').classList.add('hidden');
                 document.getElementById('impactClassSection').classList.remove('hidden');
                 document.getElementById('designerNote').classList.add('hidden');
                 updateProgress(3);
