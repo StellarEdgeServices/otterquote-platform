@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+<title>Insurance Referral — OtterQuote | Free Contractor Matching</title>
+<meta name="description" content="Your insurance agent referred you to OtterQuote. Get the best contractor for your storm damage claim — 100% free for homeowners.">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+/* ── Hero Section ── */
+.hero {
+  padding: var(--sp-12) var(--sp-8);
+  background: var(--navy);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  text-align: center;
+}
+
+.hero-content {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  background: rgba(20, 184, 166, 0.12);
+  border: 1px solid rgba(20, 184, 166, 0.3);
+  border-radius: var(--radius-full);
+  padding: var(--sp-2) var(--sp-5);
+  margin-bottom: var(--sp-6);
+  font-size: 0.9rem;
+  color: var(--amber);
+}
+
+.agent-photo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--amber-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--amber);
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.agent-photo img {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+}
+
+.hero h1 {
+  font-size: clamp(1.75rem, 5vw, 2.8rem);
+  margin-bottom: var(--sp-4);
+  line-height: 1.2;
+}
+
+.hero-subtitle {
+  font-size: 1.05rem;
+  color: var(--slate);
+  line-height: 1.7;
+  margin-bottom: var(--sp-8);
+}
+
+.hero-cta {
+  display: inline-block;
+}
+
+.hero-cta .btn {
+  font-size: 1.05rem;
+  padding: var(--sp-4) var(--sp-10);
+}
+
+/* ── How It Works ── */
+.section {
+  padding: var(--sp-12) var(--sp-8);
+  background: var(--navy);
+}
+
+.section.alt-bg {
+  background: var(--navy-2);
+}
+
+.section-title {
+  text-align: center;
+  max-width: 720px;
+  margin: 0 auto var(--sp-10);
+}
+
+.section-title h2 {
+  margin-bottom: var(--sp-3);
+}
+
+.hiw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-8);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.hiw-card {
+  padding: var(--sp-6);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg);
+}
+
+.hiw-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--amber-glow);
+  border-radius: var(--radius-full);
+  color: var(--amber);
+  font-weight: 700;
+  font-size: 1.25rem;
+  margin-bottom: var(--sp-4);
+}
+
+.hiw-card h3 {
+  font-size: 1.15rem;
+  margin-bottom: var(--sp-3);
+}
+
+.hiw-card p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--slate);
+}
+
+/* ── Trust Signals Bar ── */
+.trust-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--sp-6);
+  padding: var(--sp-10) var(--sp-8);
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.trust-signal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+.trust-signal-icon {
+  font-size: 1.75rem;
+}
+
+.trust-signal-text {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--white);
+}
+
+.trust-signal p {
+  font-size: 0.85rem;
+  color: var(--slate);
+  margin: 0;
+}
+
+/* ── What Makes Us Different ── */
+.diff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-8);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.diff-card {
+  padding: var(--sp-8);
+  background: var(--navy-2);
+  border: 1px solid rgba(20, 184, 166, 0.2);
+  border-radius: var(--radius-lg);
+  position: relative;
+}
+
+.diff-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.diff-card h3 {
+  font-size: 1.1rem;
+  margin-bottom: var(--sp-4);
+}
+
+.diff-card p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--slate);
+}
+
+/* ── Form Section ── */
+.form-section {
+  padding: var(--sp-12) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.form-wrapper {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.form-title {
+  text-align: center;
+  margin-bottom: var(--sp-8);
+}
+
+.form-title h2 {
+  font-size: 1.75rem;
+  margin-bottom: var(--sp-3);
+}
+
+.form-title p {
+  font-size: 0.95rem;
+  color: var(--slate);
+}
+
+.signup-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+
+.form-row.full {
+  grid-template-columns: 1fr;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.form-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--white);
+}
+
+.form-input {
+  padding: var(--sp-3) var(--sp-4);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  transition: all var(--duration) var(--ease);
+}
+
+.form-input::placeholder {
+  color: var(--gray);
+}
+
+.form-input:focus {
+  outline: none;
+  background: rgba(255,255,255,0.08);
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: var(--gray);
+  margin-top: var(--sp-1);
+}
+
+.form-error {
+  padding: var(--sp-3) var(--sp-4);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--red);
+  font-size: 0.9rem;
+  display: none;
+}
+
+.form-error.show {
+  display: block;
+}
+
+.form-submit {
+  margin-top: var(--sp-4);
+}
+
+/* ── Magic Link Sent State ── */
+.magic-link-sent {
+  display: none;
+  text-align: center;
+  padding: var(--sp-8) 0;
+}
+
+.magic-link-sent.active {
+  display: block;
+}
+
+.signup-form.hidden {
+  display: none;
+}
+
+.magic-link-icon {
+  font-size: 3rem;
+  margin-bottom: var(--sp-4);
+}
+
+.magic-link-sent h2 {
+  font-size: 1.5rem;
+  margin-bottom: var(--sp-3);
+}
+
+.magic-link-sent p {
+  color: var(--slate);
+  margin-bottom: var(--sp-4);
+}
+
+.magic-link-email {
+  display: inline-block;
+  background: var(--amber-glow);
+  color: var(--amber);
+  font-weight: 700;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-sm);
+  margin: var(--sp-3) 0;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+/* ── FAQ Section ── */
+.faq-section {
+  padding: var(--sp-12) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.faq-wrapper {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.faq-item {
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-6);
+  background: rgba(255,255,255,0.03);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-md);
+}
+
+.faq-item h3 {
+  font-size: 1.05rem;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  user-select: none;
+}
+
+.faq-item p {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--slate);
+}
+
+/* ── Loading button ── */
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: var(--white);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes spin {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .hero {
+    padding: var(--sp-8) var(--sp-6);
+  }
+
+  .hero h1 {
+    font-size: 1.5rem;
+  }
+
+  .hero-subtitle {
+    font-size: 0.95rem;
+  }
+
+  .section {
+    padding: var(--sp-8) var(--sp-6);
+  }
+
+  .section-title {
+    margin-bottom: var(--sp-8);
+  }
+
+  .hiw-grid {
+    gap: var(--sp-6);
+  }
+
+  .trust-bar {
+    gap: var(--sp-4);
+    padding: var(--sp-8) var(--sp-6);
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-badge {
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+}
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active=""></header>
+
+<!-- Hero Section -->
+<section class="hero">
+  <div class="hero-content">
+    <!-- Agent Badge (Personalized or Generic) -->
+    <div id="agent-badge" class="agent-badge" style="display:none;">
+      <div class="agent-photo" id="agent-photo">👤</div>
+      <span>Referred by <strong id="agent-name"></strong>, <span id="agent-company"></span></span>
+    </div>
+
+    <h1>Your Insurance Claim. The Best Contractor. Zero Hassle.</h1>
+    <p class="hero-subtitle">Your insurance agent sent you here because we help homeowners like you get the best deal on storm damage repairs. Multiple contractors compete for your job — and you pay nothing.</p>
+
+    <div class="hero-cta">
+      <button class="btn btn-primary btn-lg" id="hero-cta-btn">Start Your Claim</button>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="section alt-bg">
+  <div class="section-title">
+    <h2>How It Works</h2>
+    <p>Four simple steps to find your contractor and get started on repairs.</p>
+  </div>
+
+  <div class="hiw-grid">
+    <div class="hiw-card">
+      <div class="hiw-number">1</div>
+      <h3>Tell Us About Your Claim</h3>
+      <p>Enter your name and address. We'll help you gather everything else.</p>
+    </div>
+
+    <div class="hiw-card">
+      <div class="hiw-number">2</div>
+      <h3>We Help With the Paperwork</h3>
+      <p>Don't have your insurance estimate? We'll help you request it. Need measurements? We've got that covered. Our guided tools walk you through everything.</p>
+    </div>
+
+    <div class="hiw-card">
+      <div class="hiw-number">3</div>
+      <h3>Contractors Compete for Your Job</h3>
+      <p>Your claim package goes to vetted, licensed contractors. They compete with their best bids.</p>
+    </div>
+
+    <div class="hiw-card">
+      <div class="hiw-number">4</div>
+      <h3>Compare, Choose & Relax</h3>
+      <p>Review bids side-by-side. Sign your contract electronically. Your contractor reaches out within 48 hours.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Trust Signals -->
+<section class="section">
+  <div class="trust-bar">
+    <div class="trust-signal">
+      <div class="trust-signal-icon">✓</div>
+      <div class="trust-signal-text">100% Free for Homeowners</div>
+    </div>
+    <div class="trust-signal">
+      <div class="trust-signal-icon">✓</div>
+      <div class="trust-signal-text">Vetted Local Contractors</div>
+    </div>
+    <div class="trust-signal">
+      <div class="trust-signal-icon">✓</div>
+      <div class="trust-signal-text">Switch Contractors Anytime</div>
+    </div>
+    <div class="trust-signal">
+      <div class="trust-signal-icon">✓</div>
+      <div class="trust-signal-text">We Handle the Paperwork</div>
+    </div>
+  </div>
+</section>
+
+<!-- What Makes Us Different -->
+<section class="section alt-bg">
+  <div class="section-title">
+    <h2>What Makes Us Different</h2>
+  </div>
+
+  <div class="diff-grid">
+    <div class="diff-card">
+      <h3>We're Not a Lead Service</h3>
+      <p>We don't sell your name to contractors. We deliver a fully executed contract to the contractor YOU choose.</p>
+    </div>
+
+    <div class="diff-card">
+      <h3>Works With Your Insurance</h3>
+      <p>RCV or ACV policy, we adapt. Our tools help you understand your coverage and what you'll pay out-of-pocket.</p>
+    </div>
+
+    <div class="diff-card">
+      <h3>Your Agent Trusts Us</h3>
+      <p>Your insurance agent recommended OtterQuote because they know we handle the contractor side professionally and transparently.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Signup Form -->
+<section class="form-section" id="form-section">
+  <div class="form-wrapper">
+    <div class="form-title">
+      <h2>Get Started</h2>
+      <p>Start your search for the perfect contractor — it only takes a minute.</p>
+    </div>
+
+    <!-- Signup Form -->
+    <form class="signup-form" id="signup-form" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="first-name">First Name</label>
+          <input type="text" id="first-name" class="form-input" required placeholder="John">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="last-name">Last Name</label>
+          <input type="text" id="last-name" class="form-input" required placeholder="Doe">
+        </div>
+      </div>
+
+      <div class="form-group form-row full">
+        <label class="form-label" for="email">Email Address</label>
+        <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="you@example.com">
+      </div>
+
+      <div class="form-group form-row full">
+        <label class="form-label" for="phone">Phone Number</label>
+        <input type="tel" id="phone" class="form-input" required autocomplete="tel" placeholder="(555) 123-4567">
+      </div>
+
+      <div class="form-group form-row full">
+        <label class="form-label" for="address">Property Address</label>
+        <input type="text" id="address" class="form-input" required placeholder="123 Main St, Springfield, IL 62701">
+      </div>
+
+      <div id="form-error" class="form-error"></div>
+
+      <div class="form-submit">
+        <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">Get Started — It's Free</button>
+        <span class="form-hint" style="display:block; text-align:center;">We'll send you a secure login link. No password needed.</span>
+      </div>
+
+      <!-- Hidden fields -->
+      <input type="hidden" id="referral-code" name="referral_code" value="">
+      <input type="hidden" id="landing-page" name="landing_page" value="ref-insurance">
+    </form>
+
+    <!-- Magic Link Sent -->
+    <div class="magic-link-sent" id="magic-link-sent">
+      <div class="magic-link-icon">✉️</div>
+      <h2>Check Your Email</h2>
+      <p>We sent a secure login link to:</p>
+      <div class="magic-link-email" id="sent-email"></div>
+      <p style="margin-top: var(--sp-4); color: var(--slate);">Click the link in your email to access your claim. The link expires in 1 hour.</p>
+      <p style="margin-top: var(--sp-6);"><a href="#" id="resend-link">Didn't get it? Send again</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq-section">
+  <div class="faq-wrapper">
+    <h2 style="text-align: center; margin-bottom: var(--sp-10);">Frequently Asked Questions</h2>
+
+    <div class="faq-item">
+      <h3>What does it cost me?</h3>
+      <p>Nothing. OtterQuote is 100% free for homeowners. Contractors pay a small platform fee when they win your job.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>Do you handle my insurance claim?</h3>
+      <p>No. We're not a public adjuster. You file your own claim with your insurance company. We help you find the best contractor after you have a claim.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>What if I don't have my insurance estimate yet?</h3>
+      <p>No problem. We have a guided "Help Me" tool that walks you through requesting your estimate from your adjuster.</p>
+    </div>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+(function() {
+  const form = document.getElementById('signup-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const errorEl = document.getElementById('form-error');
+  const sentSection = document.getElementById('magic-link-sent');
+  const sentEmail = document.getElementById('sent-email');
+  const agentBadge = document.getElementById('agent-badge');
+  const referralCodeInput = document.getElementById('referral-code');
+  const heroCtaBtn = document.getElementById('hero-cta-btn');
+
+  // Scroll to form when CTA clicked
+  heroCtaBtn.addEventListener('click', () => {
+    const formSection = document.getElementById('form-section');
+    formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // ── Read and personalize from URL ──
+  async function personalizeFromReferralCode() {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+
+    if (!ref) {
+      // No referral code — show generic badge
+      return;
+    }
+
+    referralCodeInput.value = ref;
+
+    // Try to look up agent from referral_agents table
+    try {
+      const { data, error } = await sb
+        .from('referral_agents')
+        .select('*')
+        .eq('referral_code', ref)
+        .single();
+
+      if (!error && data) {
+        // Found agent — personalize
+        document.getElementById('agent-name').textContent = data.first_name || 'Your Agent';
+        document.getElementById('agent-company').textContent = data.company_name || 'Your Insurance Company';
+
+        // Show photo if available
+        if (data.photo_url) {
+          const photoEl = document.getElementById('agent-photo');
+          photoEl.innerHTML = `<img src="${data.photo_url}" alt="${data.first_name}">`;
+        }
+
+        agentBadge.style.display = 'flex';
+
+        // Record referral click (GA4)
+        gtag('event', 'referral_page_view', {
+          referral_code: ref,
+          agent_name: data.first_name,
+          landing_page: 'ref-insurance',
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching referral agent:', err);
+      // Silently fail — page works without agent personalization
+    }
+  }
+
+  // Form submission
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.classList.remove('show');
+    errorEl.textContent = '';
+
+    const firstName = document.getElementById('first-name').value.trim();
+    const lastName = document.getElementById('last-name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const address = document.getElementById('address').value.trim();
+
+    // Validate
+    if (!firstName || !lastName) {
+      errorEl.textContent = 'Please enter your first and last name.';
+      errorEl.classList.add('show');
+      return;
+    }
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errorEl.textContent = 'Please enter a valid email address.';
+      errorEl.classList.add('show');
+      return;
+    }
+
+    if (!phone || !/^[\d\s\-\+\(\)]{10,}$/.test(phone)) {
+      errorEl.textContent = 'Please enter a valid phone number.';
+      errorEl.classList.add('show');
+      return;
+    }
+
+    if (!address) {
+      errorEl.textContent = 'Please enter your property address.';
+      errorEl.classList.add('show');
+      return;
+    }
+
+    submitBtn.classList.add('btn-loading');
+    submitBtn.disabled = true;
+
+    try {
+      // Store referral data in sessionStorage for post-auth
+      sessionStorage.setItem('cs_referral_code', referralCodeInput.value);
+      sessionStorage.setItem('cs_landing_page', 'ref-insurance');
+      sessionStorage.setItem('cs_homeowner_data', JSON.stringify({
+        first_name: firstName,
+        last_name: lastName,
+        email: email,
+        phone: phone,
+        address: address,
+      }));
+
+      // Send magic link as homeowner
+      await Auth.sendMagicLink(email, 'homeowner');
+
+      // Show success state
+      form.classList.add('hidden');
+      sentEmail.textContent = email;
+      sentSection.classList.add('active');
+
+      // GA4 event
+      gtag('event', 'lead_signup', {
+        source: 'ref-insurance',
+        referral_code: referralCodeInput.value || '(none)',
+      });
+
+    } catch (err) {
+      console.error('Signup error:', err);
+      errorEl.textContent = 'Something went wrong. Please try again or email ' + CONFIG.SUPPORT_EMAIL;
+      errorEl.classList.add('show');
+    } finally {
+      submitBtn.classList.remove('btn-loading');
+      submitBtn.disabled = false;
+    }
+  });
+
+  // Resend link
+  document.getElementById('resend-link').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = sentEmail.textContent;
+    if (email) {
+      try {
+        await Auth.sendMagicLink(email, 'homeowner');
+        alert('Login link resent! Check your email.');
+      } catch (err) {
+        alert('Could not resend. Please try again in a moment.');
+      }
+    }
+  });
+
+  // Check if already logged in — redirect
+  Auth.getUser().then(user => {
+    if (user) {
+      window.location.href = '/dashboard.html';
+    }
+  });
+
+  // Initialize
+  personalizeFromReferralCode();
+})();
+</script>
+
+</body>
+</html>

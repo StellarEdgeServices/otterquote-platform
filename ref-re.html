@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+<title>Get Your Exterior Quotes — OtterQuote</title>
+<meta name="description" content="Get accurate contractor quotes for roofing, siding, gutters, windows and more. Referred by a trusted real estate agent.">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+/* ── Referral Badge (Personalized Hero) ── */
+.ref-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: rgba(20, 184, 166, 0.1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-full);
+  margin-bottom: var(--sp-6);
+  font-size: 0.9rem;
+  color: var(--amber);
+}
+
+.ref-badge.hidden {
+  display: none;
+}
+
+.ref-badge-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--amber-glow);
+  object-fit: cover;
+  border: 2px solid var(--amber);
+}
+
+.ref-badge-text {
+  line-height: 1.4;
+}
+
+.ref-badge-text strong {
+  color: var(--white);
+  display: block;
+}
+
+/* ── Hero Section ── */
+.hero-section {
+  padding: var(--sp-16) var(--sp-8);
+  text-align: center;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.hero-section h1 {
+  margin-bottom: var(--sp-4);
+  color: var(--white);
+}
+
+.hero-subtitle {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: var(--slate);
+  margin-bottom: var(--sp-8);
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-cta {
+  display: inline-block;
+  padding: var(--sp-3) var(--sp-6);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  font-family: var(--font-body);
+  text-decoration: none;
+}
+
+.hero-cta:hover {
+  background: var(--amber-2);
+  transform: translateY(-2px);
+}
+
+/* ── How It Works ── */
+.how-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.how-container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.how-section h2 {
+  text-align: center;
+  margin-bottom: var(--sp-12);
+  color: var(--white);
+}
+
+.how-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-8);
+}
+
+.how-item {
+  text-align: center;
+}
+
+.how-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--amber);
+  margin-bottom: var(--sp-3);
+  font-family: var(--font-heading);
+}
+
+.how-item h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+  font-size: 1.25rem;
+}
+
+.how-item p {
+  color: var(--slate);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* ── Trust Signals ── */
+.trust-section {
+  padding: var(--sp-10) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.trust-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-6);
+}
+
+.trust-item {
+  padding: var(--sp-4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  background: rgba(20, 184, 166, 0.05);
+  text-align: center;
+}
+
+.trust-item strong {
+  color: var(--amber);
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+/* ── Form Section ── */
+.form-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+}
+
+.form-container {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.form-container h2 {
+  text-align: center;
+  margin-bottom: var(--sp-2);
+  color: var(--white);
+  font-size: 1.75rem;
+}
+
+.form-subtitle {
+  text-align: center;
+  color: var(--slate);
+  margin-bottom: var(--sp-8);
+  font-size: 0.95rem;
+}
+
+.ref-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+
+.form-row.full {
+  grid-template-columns: 1fr;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.form-group input {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  transition: all var(--duration) var(--ease);
+}
+
+.form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
+.form-submit {
+  padding: var(--sp-3) var(--sp-6);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  font-family: var(--font-body);
+  margin-top: var(--sp-2);
+}
+
+.form-submit:hover:not(:disabled) {
+  background: var(--amber-2);
+  transform: translateY(-2px);
+}
+
+.form-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-note {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--slate);
+  margin-top: var(--sp-3);
+}
+
+/* ── FAQ Section ── */
+.faq-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.faq-container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.faq-section h2 {
+  text-align: center;
+  margin-bottom: var(--sp-10);
+  color: var(--white);
+}
+
+.faq-item {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--sp-5);
+  overflow: hidden;
+}
+
+.faq-header {
+  padding: var(--sp-4);
+  background: rgba(20, 184, 166, 0.05);
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--white);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background var(--duration) var(--ease);
+  font-family: var(--font-body);
+}
+
+.faq-header:hover {
+  background: rgba(20, 184, 166, 0.1);
+}
+
+.faq-toggle {
+  font-size: 1.2rem;
+  color: var(--amber);
+  transition: transform var(--duration) var(--ease);
+  display: inline-block;
+}
+
+.faq-item.open .faq-toggle {
+  transform: rotate(180deg);
+}
+
+.faq-content {
+  display: none;
+  padding: var(--sp-4);
+  color: var(--slate);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.faq-item.open .faq-content {
+  display: block;
+}
+
+/* ── Footer ── */
+.footer {
+  padding: var(--sp-8) var(--sp-6);
+  text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--navy);
+}
+
+.footer-text {
+  font-size: 0.85rem;
+  color: var(--slate);
+}
+
+.footer-links {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-6);
+  margin-top: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.footer-links a {
+  font-size: 0.85rem;
+  color: var(--amber);
+}
+
+.footer-links a:hover {
+  color: var(--amber-2);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .hero-section {
+    padding: var(--sp-10) var(--sp-5);
+  }
+
+  .hero-section h1 {
+    font-size: 1.5rem;
+  }
+
+  .hero-subtitle {
+    font-size: 1rem;
+  }
+
+  .how-section {
+    padding: var(--sp-10) var(--sp-5);
+  }
+
+  .how-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trust-grid {
+    grid-template-columns: 1fr;
+    gap: var(--sp-4);
+  }
+
+  .trust-item {
+    padding: var(--sp-3);
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ref-badge {
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .footer-links {
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ── Header ── -->
+<header id="header"></header>
+
+<!-- ── Main Content ── -->
+<main>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div id="refBadgeContainer"></div>
+
+    <h1>Get Accurate Contractor Quotes in 48 Hours</h1>
+    <p class="hero-subtitle">
+      Whether you're buying, selling, or planning repairs, OtterQuote gets you real bids from competing contractors using professional measurements. No tire-kickers, no runaround.
+    </p>
+
+    <button class="hero-cta" onclick="document.getElementById('signup-form').scrollIntoView({behavior:'smooth'})">
+      Get Your Quote
+    </button>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-section">
+    <div class="how-container">
+      <h2>How It Works</h2>
+      <div class="how-grid">
+        <div class="how-item">
+          <div class="how-number">1</div>
+          <h3>Get Professional Measurements</h3>
+          <p>Purchase a Hover measurement of the property. Takes 15 minutes of photos, and you get a professional 3D report within days.</p>
+        </div>
+        <div class="how-item">
+          <div class="how-number">2</div>
+          <h3>Select What You Need Quoted</h3>
+          <p>Roofing, siding, gutters, windows — choose the trades you need bids on.</p>
+        </div>
+        <div class="how-item">
+          <div class="how-number">3</div>
+          <h3>Contractors Compete for Your Job</h3>
+          <p>Licensed, vetted contractors bid on your project with real measurements in hand. Compare bids side-by-side and choose.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trust Signals -->
+  <section class="trust-section">
+    <div class="trust-container">
+      <div class="trust-grid">
+        <div class="trust-item">
+          <strong>100% Free for Homeowners</strong>
+        </div>
+        <div class="trust-item">
+          <strong>Vetted Local Contractors</strong>
+        </div>
+        <div class="trust-item">
+          <strong>Professional Hover Measurements</strong>
+        </div>
+        <div class="trust-item">
+          <strong>Switch Contractors Anytime</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Signup Form Section -->
+  <section class="form-section" id="signup-form">
+    <div class="form-container">
+      <h2>Get Started</h2>
+      <p class="form-subtitle">Join hundreds of homeowners getting competing bids</p>
+
+      <form class="ref-form" id="referralForm">
+        <!-- First & Last Name (one row) -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" name="firstName" required placeholder="John">
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" name="lastName" required placeholder="Doe">
+          </div>
+        </div>
+
+        <!-- Email -->
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required placeholder="john@example.com">
+        </div>
+
+        <!-- Phone -->
+        <div class="form-group">
+          <label for="phone">Phone</label>
+          <input type="tel" id="phone" name="phone" required placeholder="(555) 123-4567">
+        </div>
+
+        <!-- Property Address -->
+        <div class="form-group">
+          <label for="propertyAddress">Property Address</label>
+          <input type="text" id="propertyAddress" name="propertyAddress" required placeholder="123 Main St, City, ST 12345">
+        </div>
+
+        <!-- Hidden fields -->
+        <input type="hidden" id="referralCode" name="referralCode" value="">
+        <input type="hidden" id="landingPage" name="landingPage" value="ref-re">
+
+        <!-- Submit Button -->
+        <button type="submit" class="form-submit" id="submitBtn">
+          Get Started — It's Free
+        </button>
+
+        <!-- Note -->
+        <p class="form-note">
+          We'll send you a secure login link. No password needed.
+        </p>
+      </form>
+    </div>
+  </section>
+
+  <!-- FAQ Section -->
+  <section class="faq-section">
+    <div class="faq-container">
+      <h2>Questions?</h2>
+
+      <!-- FAQ Item 1 -->
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>What does it cost?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          The Hover measurement costs <strong>$79</strong>. It's rebated if you use an OtterQuote contractor. Everything else is 100% free — there are no hidden fees.
+        </div>
+      </div>
+
+      <!-- FAQ Item 2 -->
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Who can take the Hover photos?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          You, your real estate agent, or anyone with a smartphone at the property. Hover's app walks you through exactly which photos to take. It's that simple.
+        </div>
+      </div>
+
+      <!-- FAQ Item 3 -->
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>How fast do I get quotes?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Most homeowners receive their first contractor bid within 24-48 hours of submitting their project. The timeline depends on the complexity of your project and contractor availability.
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Footer ── -->
+<footer class="footer" id="footer"></footer>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+/**
+ * REF-RE Landing Page: Real Estate Referral
+ * Reads referral code from URL, personalizes with agent info, handles form submission.
+ */
+
+let referralAgentData = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // Initialize header/footer
+  if (typeof initNav === 'function') {
+    initNav();
+  }
+
+  // Get referral code from URL
+  const params = new URLSearchParams(window.location.search);
+  const refCode = params.get('ref');
+
+  if (refCode) {
+    // Store in hidden field and localStorage
+    document.getElementById('referralCode').value = refCode;
+    localStorage.setItem('ref_code', refCode);
+    localStorage.setItem('ref_timestamp', new Date().toISOString());
+
+    // Look up agent in Supabase
+    try {
+      const { data, error } = await sb
+        .from('referral_agents')
+        .select('*')
+        .eq('unique_code', refCode)
+        .single();
+
+      if (data && !error) {
+        referralAgentData = data;
+        personalizeHero(data);
+      }
+    } catch (err) {
+      console.error('Error fetching referral agent:', err);
+    }
+
+    // Record 'clicked' event in referrals table
+    try {
+      await sb.from('referrals').insert({
+        referral_code: refCode,
+        event_type: 'clicked',
+        landing_page: 'ref-re',
+        user_agent: navigator.userAgent,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Error recording referral click:', err);
+    }
+  }
+
+  // Attach form submission handler
+  document.getElementById('referralForm').addEventListener('submit', handleFormSubmit);
+});
+
+/**
+ * Personalize hero with agent info (name, company, photo)
+ */
+function personalizeHero(agentData) {
+  const badgeContainer = document.getElementById('refBadgeContainer');
+
+  const badge = document.createElement('div');
+  badge.className = 'ref-badge';
+
+  let html = '<div class="ref-badge-text">';
+
+  if (agentData.photo_url) {
+    html = `<img class="ref-badge-avatar" src="${agentData.photo_url}" alt="${agentData.first_name || 'Agent'}">` + html;
+  }
+
+  html += `<strong>${agentData.first_name || 'Your Agent'}</strong>`;
+  if (agentData.company_name) {
+    html += `<span>${agentData.company_name}</span>`;
+  }
+  html += '</div>';
+
+  badge.innerHTML = html;
+  badgeContainer.appendChild(badge);
+}
+
+/**
+ * Toggle FAQ accordion
+ */
+function toggleFaq(headerElement) {
+  const item = headerElement.parentElement;
+  item.classList.toggle('open');
+}
+
+/**
+ * Handle form submission
+ * - Create Supabase auth user with magic link
+ * - Store referral_code on user profile
+ * - Send magic link email
+ */
+async function handleFormSubmit(e) {
+  e.preventDefault();
+
+  const firstName = document.getElementById('firstName').value.trim();
+  const lastName = document.getElementById('lastName').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const propertyAddress = document.getElementById('propertyAddress').value.trim();
+  const referralCode = document.getElementById('referralCode').value || null;
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Sending secure link...';
+
+  try {
+    // 1. Send magic link via Supabase Auth
+    const { error: authError } = await sb.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${CONFIG.SITE_URL}/dashboard.html`,
+      },
+    });
+
+    if (authError) {
+      throw new Error(authError.message);
+    }
+
+    // 2. Create or update profile with referral code (will be linked after auth)
+    // For now, store in localStorage so it can be added to profile on first login
+    const profileData = {
+      first_name: firstName,
+      last_name: lastName,
+      phone,
+      property_address: propertyAddress,
+      referral_code: referralCode,
+      landing_page: 'ref-re',
+    };
+    localStorage.setItem('pending_profile', JSON.stringify(profileData));
+
+    // 3. Record the signup event
+    try {
+      await sb.from('referrals').insert({
+        referral_code: referralCode,
+        email,
+        event_type: 'signup',
+        landing_page: 'ref-re',
+        user_agent: navigator.userAgent,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Error recording signup event:', err);
+      // Non-blocking, don't fail the form
+    }
+
+    // Show success message
+    submitBtn.textContent = '✓ Check your email';
+    submitBtn.style.background = 'var(--green)';
+    submitBtn.disabled = true;
+
+    // Optional: scroll to confirmation or show modal
+    setTimeout(() => {
+      alert(`Check your email for a secure login link. We'll get you set up in minutes.`);
+    }, 500);
+
+  } catch (error) {
+    console.error('Form submission error:', error);
+    alert(`Error: ${error.message}`);
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Get Started — It\'s Free';
+  }
+}
+</script>
+
+</body>
+</html>

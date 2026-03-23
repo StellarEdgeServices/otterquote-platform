@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+    <title>Insurance Agent Partner Program - OtterQuote</title>
+
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-JNQ6XR3LX2');
+    </script>
+
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <style>
+        /* Override with design system colors */
+        :root {
+            --navy:       #0A1E2C;
+            --navy-2:     #0E2A3B;
+            --navy-3:     #12354A;
+            --amber:      #14B8A6;
+            --white:      #FFFFFF;
+            --offwhite:   #F8FAFC;
+            --light:      #E2E8F0;
+            --slate:      #94A3B8;
+            --gray:       #64748B;
+            --green:      #10B981;
+            --green-light:#D1FAE5;
+            --red:        #EF4444;
+        }
+
+        /* Base */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--navy);
+            color: var(--white);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        main {
+            min-height: calc(100vh - 120px);
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+            color: var(--white);
+            padding: 96px 24px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-family: var(--font-heading);
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 700;
+            margin-bottom: 24px;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            max-width: 700px;
+            margin: 0 auto 40px;
+            color: rgba(255, 255, 255, 0.85);
+            line-height: 1.7;
+        }
+
+        .hero .cta {
+            display: inline-block;
+            background: var(--amber);
+            color: var(--navy);
+            padding: 16px 40px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .hero .cta:hover {
+            background: var(--amber-2);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(20, 184, 166, 0.3);
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        .section {
+            padding: 96px 24px;
+        }
+
+        /* How It Works */
+        .how-it-works {
+            background: var(--navy);
+            padding: 96px 24px;
+        }
+
+        .how-it-works h2 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 32px;
+            margin-bottom: 0;
+        }
+
+        .step-card {
+            background: var(--navy-3);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            border-radius: 16px;
+            padding: 40px 32px;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .step-card:hover {
+            border-color: var(--amber);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(20, 184, 166, 0.15);
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 48px;
+            height: 48px;
+            background: var(--amber);
+            color: var(--navy);
+            border-radius: 50%;
+            line-height: 48px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .step-card h3 {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            color: var(--white);
+            margin-bottom: 16px;
+        }
+
+        .step-card p {
+            color: var(--slate);
+            line-height: 1.7;
+        }
+
+        /* Value Cards */
+        .value-section {
+            background: var(--navy);
+            padding: 96px 24px;
+        }
+
+        .value-section h2 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .value-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 32px;
+        }
+
+        .card {
+            background: var(--navy-2);
+            border: 1px solid rgba(20, 184, 166, 0.15);
+            border-left: 4px solid var(--amber);
+            border-radius: 12px;
+            padding: 32px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--amber);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(20, 184, 166, 0.15);
+        }
+
+        .card h3 {
+            font-family: var(--font-heading);
+            font-size: 1.4rem;
+            color: var(--white);
+            margin-bottom: 12px;
+        }
+
+        .card p {
+            color: var(--slate);
+            line-height: 1.7;
+        }
+
+        /* Commission Details */
+        .commission-section {
+            background: var(--navy-3);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            border-radius: 16px;
+            padding: 48px 40px;
+            margin-bottom: 60px;
+        }
+
+        .commission-section h3 {
+            font-family: var(--font-heading);
+            font-size: 1.8rem;
+            color: var(--white);
+            margin-bottom: 32px;
+        }
+
+        .commission-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 32px;
+        }
+
+        .commission-item {
+            text-align: center;
+        }
+
+        .commission-amount {
+            display: inline-block;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--amber);
+            margin-bottom: 12px;
+        }
+
+        .commission-item p {
+            color: var(--slate);
+            line-height: 1.7;
+        }
+
+        /* Features Section */
+        .features-section {
+            background: var(--navy);
+        }
+
+        .features-section h2 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .features-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+        }
+
+        .feature-item {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .feature-icon {
+            display: inline-flex;
+            width: 28px;
+            height: 28px;
+            background: rgba(20, 184, 166, 0.2);
+            border-radius: 8px;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 2px;
+            color: var(--amber);
+            font-weight: 700;
+        }
+
+        .feature-item h4 {
+            font-family: var(--font-heading);
+            font-size: 1.1rem;
+            color: var(--white);
+            margin-bottom: 4px;
+        }
+
+        .feature-item p {
+            color: var(--slate);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Form Section */
+        .form-section {
+            background: var(--navy);
+            padding: 96px 24px;
+        }
+
+        .form-section h2 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .form-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .form-container {
+            background: var(--navy-2);
+            border: 1px solid rgba(20, 184, 166, 0.15);
+            padding: 40px;
+            border-radius: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .form-row .form-group {
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: var(--white);
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .form-label.required::after {
+            content: ' *';
+            color: var(--red);
+        }
+
+        .form-input,
+        .form-select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            font-family: var(--font-body);
+            font-size: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--white);
+            transition: all 0.3s ease;
+        }
+
+        .form-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+            outline: none;
+            border-color: var(--amber);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15);
+        }
+
+        .form-input::-webkit-autofill {
+            -webkit-box-shadow: 0 0 0 1000px rgba(10, 30, 44, 0.8) inset;
+            -webkit-text-fill-color: var(--white);
+        }
+
+        .form-hint {
+            font-size: 0.85rem;
+            color: var(--slate);
+            margin-top: 6px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--amber);
+        }
+
+        .checkbox-item label {
+            cursor: pointer;
+            color: var(--slate);
+            font-size: 0.95rem;
+        }
+
+        .file-upload {
+            position: relative;
+        }
+
+        .file-upload input[type="file"] {
+            display: none;
+        }
+
+        .file-upload-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 24px;
+            border: 2px dashed rgba(20, 184, 166, 0.3);
+            border-radius: 10px;
+            background: rgba(20, 184, 166, 0.05);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            color: var(--slate);
+            text-align: center;
+        }
+
+        .file-upload-label:hover {
+            border-color: var(--amber);
+            background: rgba(20, 184, 166, 0.1);
+            color: var(--white);
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 32px;
+            border-radius: 10px;
+            font-family: var(--font-body);
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: var(--amber);
+            color: var(--navy);
+            width: 100%;
+            padding: 16px 32px;
+            font-size: 1.05rem;
+            margin-top: 32px;
+        }
+
+        .btn-primary:hover {
+            background: var(--amber-2);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(20, 184, 166, 0.3);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        /* Benefits Sidebar */
+        .benefits-sidebar {
+            background: var(--navy-3);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            border-radius: 12px;
+            padding: 40px 32px;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+        }
+
+        .benefits-sidebar h3 {
+            font-family: var(--font-heading);
+            font-size: 1.3rem;
+            color: var(--white);
+            margin-bottom: 24px;
+        }
+
+        .benefit-item {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            align-items: flex-start;
+        }
+
+        .benefit-check {
+            display: inline-flex;
+            width: 24px;
+            height: 24px;
+            background: var(--amber);
+            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+            color: var(--navy);
+            font-weight: 700;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .benefit-item p {
+            color: var(--slate);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* Success Message */
+        .success-message {
+            display: none;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--green);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 32px;
+            text-align: center;
+            color: var(--green-light);
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .success-message h3 {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            color: var(--green);
+            margin-bottom: 16px;
+        }
+
+        .referral-link-box {
+            background: rgba(20, 184, 166, 0.1);
+            border: 1px solid var(--amber);
+            border-radius: 10px;
+            padding: 24px;
+            margin-top: 24px;
+            text-align: center;
+        }
+
+        .referral-link-label {
+            color: var(--slate);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+        }
+
+        .referral-link-text {
+            background: rgba(10, 30, 44, 0.5);
+            border: 1px solid rgba(20, 184, 166, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--white);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            word-break: break-all;
+            margin-bottom: 12px;
+        }
+
+        .copy-btn {
+            background: var(--amber);
+            color: var(--navy);
+            padding: 10px 24px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: var(--amber-2);
+            transform: translateY(-2px);
+        }
+
+        .copy-btn.copied {
+            background: var(--green);
+            color: var(--white);
+        }
+
+        /* FAQ Section */
+        .faq-section {
+            background: var(--navy);
+            padding: 96px 24px;
+        }
+
+        .faq-section h2 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .faq-container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .faq-item {
+            background: var(--navy-2);
+            border: 1px solid rgba(20, 184, 166, 0.15);
+            border-radius: 12px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .faq-question {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 24px;
+            cursor: pointer;
+            background: var(--navy-3);
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(20, 184, 166, 0.1);
+        }
+
+        .faq-question:hover {
+            background: rgba(20, 184, 166, 0.1);
+        }
+
+        .faq-question h4 {
+            font-family: var(--font-heading);
+            font-size: 1.1rem;
+            color: var(--white);
+            margin: 0;
+            flex: 1;
+        }
+
+        .faq-toggle {
+            display: inline-flex;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(20, 184, 166, 0.2);
+            align-items: center;
+            justify-content: center;
+            color: var(--amber);
+            font-weight: 700;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+            margin-left: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .faq-item.active .faq-toggle {
+            transform: rotate(180deg);
+        }
+
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            background: var(--navy-2);
+            padding: 0 24px;
+        }
+
+        .faq-item.active .faq-answer {
+            max-height: 500px;
+            padding: 24px;
+        }
+
+        .faq-answer p {
+            color: var(--slate);
+            line-height: 1.8;
+            margin-bottom: 12px;
+        }
+
+        .faq-answer p:last-child {
+            margin-bottom: 0;
+        }
+
+        .legal-flag {
+            background: rgba(239, 68, 68, 0.1);
+            border-left: 4px solid var(--red);
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: rgba(239, 68, 68, 0.9);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero {
+                padding: 60px 20px;
+            }
+
+            .hero h1 {
+                margin-bottom: 20px;
+            }
+
+            .hero p {
+                font-size: 1rem;
+                margin-bottom: 30px;
+            }
+
+            .section {
+                padding: 60px 20px;
+            }
+
+            .how-it-works,
+            .value-section,
+            .features-section,
+            .form-section,
+            .faq-section {
+                padding: 60px 20px;
+            }
+
+            .steps-grid,
+            .value-cards,
+            .features-list {
+                gap: 20px;
+            }
+
+            .form-wrapper {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .benefits-sidebar {
+                position: static;
+                top: auto;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .commission-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .step-card,
+            .card,
+            .form-container {
+                padding: 24px;
+            }
+
+            h2 {
+                margin-bottom: 40px;
+            }
+
+            .faq-question {
+                padding: 16px;
+            }
+
+            .faq-question h4 {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-active=""></header>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="container">
+                <h1>Give Your Policyholders a Better Claims Experience</h1>
+                <p>When your policyholders file a storm damage claim, OtterQuote handles the contractor side — getting competing bids, managing paperwork, and delivering a fully executed contract. Your client gets a better outcome, and you look like a hero.</p>
+                <a href="#signup" class="cta">Become a Partner — It's Free</a>
+            </div>
+        </section>
+
+        <!-- How It Works -->
+        <section class="how-it-works">
+            <div class="container">
+                <h2>How It Works</h2>
+                <div class="steps-grid">
+                    <div class="step-card">
+                        <div class="step-number">1</div>
+                        <h3>Sign Up & Get Your Link</h3>
+                        <p>Free partner account, unique referral link in seconds. No vetting process, no setup fees.</p>
+                    </div>
+                    <div class="step-card">
+                        <div class="step-number">2</div>
+                        <h3>Share With Your Policyholders</h3>
+                        <p>When a client files a claim, send them your link. OtterQuote walks them through gathering their estimate, getting measurements, and selecting materials. Contractors compete for the job.</p>
+                    </div>
+                    <div class="step-card">
+                        <div class="step-number">3</div>
+                        <h3>Earn $250 Per Job</h3>
+                        <p>When the job completes (over $10,000), you earn $250. Track everything in your dashboard.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Why Insurance Agents Love OtterQuote -->
+        <section class="value-section">
+            <div class="container">
+                <h2>Why Insurance Agents Love OtterQuote</h2>
+                <div class="value-cards">
+                    <div class="card">
+                        <h3>Better Client Retention</h3>
+                        <p>Clients who have a smooth claims experience stay with their agent. OtterQuote makes you part of the solution, not just the policy.</p>
+                    </div>
+                    <div class="card">
+                        <h3>Zero Extra Work</h3>
+                        <p>You share a link. We handle everything else — estimate gathering, measurements, contractor matching, contracts, follow-up.</p>
+                    </div>
+                    <div class="card">
+                        <h3>Transparent Process</h3>
+                        <p>Your clients see competing bids side-by-side with pricing, warranties, and contractor credentials. No shady door-knockers.</p>
+                    </div>
+                    <div class="card">
+                        <h3>Works for All Claim Types</h3>
+                        <p>RCV, ACV, retail, and repair. OtterQuote adapts the process to the policy type automatically.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Commission Details -->
+        <section class="section">
+            <div class="container">
+                <h2 style="font-family: var(--font-heading); font-size: clamp(1.5rem, 3.5vw, 2.5rem); text-align: center; margin-bottom: 60px; color: var(--white);">Commission Details</h2>
+
+                <div class="commission-section">
+                    <h3>Your Earnings</h3>
+                    <div class="commission-grid">
+                        <div class="commission-item">
+                            <div class="commission-amount">$250</div>
+                            <p>Per completed job over $10,000</p>
+                        </div>
+                        <div class="commission-item">
+                            <div class="commission-amount">Paid</div>
+                            <p>After job completion</p>
+                        </div>
+                        <div class="commission-item">
+                            <div class="commission-amount">Tracked</div>
+                            <p>Real-time in your dashboard</p>
+                        </div>
+                    </div>
+                </div>
+
+                <p style="text-align: center; color: var(--slate); margin-bottom: 0; font-size: 0.95rem;">For smaller jobs: your value is a better client experience, stronger retention, and a portfolio of wins.</p>
+            </div>
+        </section>
+
+        <!-- What You Get -->
+        <section class="features-section">
+            <div class="container">
+                <h2>What You Get</h2>
+                <div class="features-list">
+                    <div class="feature-item">
+                        <div class="feature-icon">✓</div>
+                        <div>
+                            <h4>Unique Referral Link</h4>
+                            <p>With your name on the landing page for your policyholders.</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">✓</div>
+                        <div>
+                            <h4>Partner Dashboard</h4>
+                            <p>Real-time tracking of referrals and commissions.</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">✓</div>
+                        <div>
+                            <h4>Co-Branded Guide</h4>
+                            <p>"What to Do After Storm Damage" guide for policyholders.</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">✓</div>
+                        <div>
+                            <h4>Send to Client Button</h4>
+                            <p>One-click to share your referral link with policyholders.</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">✓</div>
+                        <div>
+                            <h4>Embeddable Widget</h4>
+                            <p>"File a Claim" widget for your website.</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">✓</div>
+                        <div>
+                            <h4>Monthly Reports</h4>
+                            <p>Portfolio reports on your referrals and outcomes.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Signup Form -->
+        <section class="form-section" id="signup">
+            <div class="container">
+                <h2>Join the OtterQuote Partner Network</h2>
+
+                <div class="form-wrapper">
+                    <!-- Form -->
+                    <div>
+                        <div class="form-container">
+                            <div id="successMessage" class="success-message">
+                                <h3>Welcome to the OtterQuote Network!</h3>
+                                <p>Your partner account has been created. Here's your unique referral link:</p>
+                                <div class="referral-link-box">
+                                    <div class="referral-link-label">Your Referral Link:</div>
+                                    <div class="referral-link-text" id="referralLink">Loading...</div>
+                                    <button class="copy-btn" id="copyBtn">Copy Link</button>
+                                </div>
+                                <p style="margin-top: 20px; color: var(--slate);">Share this link with your policyholders when they file a storm damage claim. You'll start earning $250 per completed job.</p>
+                            </div>
+
+                            <form id="insuranceAgentForm">
+                                <!-- Personal Information -->
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="firstName" class="form-label required">First Name</label>
+                                        <input type="text" id="firstName" name="firstName" class="form-input" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="lastName" class="form-label required">Last Name</label>
+                                        <input type="text" id="lastName" name="lastName" class="form-input" required>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="email" class="form-label required">Email</label>
+                                    <input type="email" id="email" name="email" class="form-input" required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="phone" class="form-label required">Phone</label>
+                                    <input type="tel" id="phone" name="phone" class="form-input" required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="agencyName" class="form-label required">Agency / Carrier Name</label>
+                                    <input type="text" id="agencyName" name="agencyName" class="form-input" required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="licenseNumber" class="form-label">License Number (optional)</label>
+                                    <input type="text" id="licenseNumber" name="licenseNumber" class="form-input" placeholder="For credibility on your profile">
+                                    <div class="form-hint">Insurance license number (if comfortable sharing)</div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="serviceArea" class="form-label required">Service Area</label>
+                                    <input type="text" id="serviceArea" name="serviceArea" class="form-input" placeholder="e.g., Indiana, Illinois, Midwest" required>
+                                    <div class="form-hint">State(s) or region(s) you serve</div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="headshotUrl" class="form-label">Headshot (optional)</label>
+                                    <div class="file-upload">
+                                        <input type="file" id="headshotUrl" name="headshotUrl" accept="image/jpeg,image/png,image/jpg">
+                                        <label for="headshotUrl" class="file-upload-label">📷 Upload headshot</label>
+                                    </div>
+                                    <div class="form-hint">Professional photo for your partner profile</div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="websiteUrl" class="form-label">Website URL (optional)</label>
+                                    <input type="url" id="websiteUrl" name="websiteUrl" class="form-input" placeholder="https://example.com">
+                                </div>
+
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="agreeToTerms" name="agreeToTerms" required>
+                                    <label for="agreeToTerms">I agree to OtterQuote's Partner Terms</label>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary">Create My Partner Account</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Benefits Sidebar -->
+                    <div class="benefits-sidebar">
+                        <h3>What You Get</h3>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Your clients get competing bids at zero cost</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Works with all policy types (RCV, ACV, retail)</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Track referrals and commissions in real-time</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Takes 2 minutes to sign up</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Free to join, zero setup fees</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAQ -->
+        <section class="faq-section">
+            <div class="container">
+                <h2>Frequently Asked Questions</h2>
+                <div class="faq-container">
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <h4>How does my policyholder get started?</h4>
+                            <div class="faq-toggle">+</div>
+                        </div>
+                        <div class="faq-answer">
+                            <p>They click your link, enter their info, and OtterQuote helps them gather their insurance estimate, measurements, and material preferences. Contractors then compete for the job. The entire process is digital and takes about 10-15 minutes for the homeowner.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <h4>Does OtterQuote represent my client in their claim?</h4>
+                            <div class="faq-toggle">+</div>
+                        </div>
+                        <div class="faq-answer">
+                            <p>No. OtterQuote is NOT a public adjuster. We don't file claims, negotiate with carriers, or handle settlements. We help homeowners get the best contractor after they've filed their own claim. Your clients remain in control throughout the entire process.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <h4>Will this create any compliance issues?</h4>
+                            <div class="faq-toggle">+</div>
+                        </div>
+                        <div class="faq-answer">
+                            <p>OtterQuote's referral program is designed for transparency. Commissions are paid for completed jobs, not for steering clients. However, we recommend reviewing the program terms with your compliance team.</p>
+                            <div class="legal-flag">⚠️ Legal Flag D-021: Indiana anti-rebating laws. Requires attorney review before participation in Indiana.</div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <h4>What if my client doesn't have their insurance estimate yet?</h4>
+                            <div class="faq-toggle">+</div>
+                        </div>
+                        <div class="faq-answer">
+                            <p>No problem. OtterQuote has a "Help Me" flow that assists homeowners in requesting their estimate from their adjuster. We guide them through the process so they can continue without waiting.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <h4>Do my clients pay anything?</h4>
+                            <div class="faq-toggle">+</div>
+                        </div>
+                        <div class="faq-answer">
+                            <p>Hover measurements are optional and paid upfront (rebated if they use an OtterQuote contractor). The bidding and contract process is 100% free. Your clients pay nothing unless they choose to add measurements, which helps contractors provide more accurate bids.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+
+    <script>
+        // FAQ Accordion
+        document.querySelectorAll('.faq-question').forEach(question => {
+            question.addEventListener('click', function() {
+                const faqItem = this.closest('.faq-item');
+                faqItem.classList.toggle('active');
+            });
+        });
+
+        // Smooth scroll to signup
+        document.querySelectorAll('a[href="#signup"]').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.getElementById('signup').scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+
+        // Handle form submission
+        document.getElementById('insuranceAgentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData(document.getElementById('insuranceAgentForm'));
+            const data = {
+                firstName: formData.get('firstName'),
+                lastName: formData.get('lastName'),
+                email: formData.get('email'),
+                phone: formData.get('phone'),
+                agencyName: formData.get('agencyName'),
+                licenseNumber: formData.get('licenseNumber') || null,
+                serviceArea: formData.get('serviceArea'),
+                websiteUrl: formData.get('websiteUrl') || null,
+                agreeToTerms: formData.get('agreeToTerms') === 'on',
+                submittedAt: new Date().toISOString(),
+                agent_type: 'insurance_agent'
+            };
+
+            try {
+                // Check if in demo mode
+                if (window.CONFIG && window.CONFIG.DEMO_MODE) {
+                    // Generate a demo referral link
+                    const referralCode = Math.random().toString(36).substring(2, 9).toUpperCase();
+                    const referralLink = `${window.location.origin}/claims?ref=${referralCode}`;
+
+                    document.getElementById('referralLink').textContent = referralLink;
+                    document.getElementById('successMessage').classList.add('show');
+                    document.getElementById('insuranceAgentForm').style.display = 'none';
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                    gtag('event', 'insurance_agent_signup', {
+                        agency: data.agencyName,
+                        service_area: data.serviceArea,
+                    });
+                    return;
+                }
+
+                // Production mode: send magic link and store data
+                if (!window.Auth) {
+                    throw new Error('Auth module not loaded');
+                }
+
+                // 1. Send magic link
+                await Auth.sendMagicLink(data.email, 'insurance_agent');
+
+                // 2. Store agent data in sessionStorage for post-auth profile creation
+                sessionStorage.setItem('cs_insurance_agent_signup', JSON.stringify({
+                    first_name: data.firstName,
+                    last_name: data.lastName,
+                    email: data.email,
+                    phone: data.phone,
+                    agency_name: data.agencyName,
+                    license_number: data.licenseNumber,
+                    service_area: data.serviceArea,
+                    website_url: data.websiteUrl,
+                    role: 'insurance_agent',
+                }));
+
+                // Set auth role for post-auth routing
+                sessionStorage.setItem('cs_auth_role', 'insurance_agent');
+
+                // 3. Show success and hide form
+                document.getElementById('successMessage').classList.add('show');
+                document.getElementById('insuranceAgentForm').style.display = 'none';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                // GA4 event
+                gtag('event', 'insurance_agent_signup', {
+                    agency: data.agencyName,
+                    service_area: data.serviceArea,
+                });
+
+            } catch (error) {
+                console.error('Error submitting application:', error);
+                alert('An error occurred. Please try again: ' + (error.message || 'Unknown error'));
+            }
+        });
+
+        // Copy referral link
+        document.getElementById('copyBtn').addEventListener('click', function() {
+            const referralLink = document.getElementById('referralLink').textContent;
+            navigator.clipboard.writeText(referralLink).then(() => {
+                const btn = this;
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        });
+
+        // Handle file upload label display
+        document.querySelectorAll('.file-upload input[type="file"]').forEach(input => {
+            input.addEventListener('change', function() {
+                const label = this.nextElementSibling;
+                const fileName = this.files[0]?.name || 'File selected';
+                label.textContent = '✓ ' + fileName;
+            });
+        });
+
+        // Set up auth state listener for post-auth profile creation
+        if (window.Auth && window.Auth.onAuthStateChangeListener) {
+            Auth.onAuthStateChangeListener();
+        }
+    </script>
+</body>
+</html>

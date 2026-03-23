@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+  <title>Refer a Friend — Earn $250 — OtterQuote</title>
+  <meta name="description" content="Share your unique referral link and earn $250 for every friend who completes a job over $10K through OtterQuote.">
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+
+  <style>
+    /* Layout */
+    .refer-wrapper { min-height: calc(100vh - 64px); display: flex; flex-direction: column; }
+    .refer-main { flex: 1; padding: var(--sp-12) 0; }
+    .refer-section { margin-bottom: var(--sp-20); }
+    .refer-section:last-child { margin-bottom: 0; }
+
+    /* Hero Section */
+    .hero-section {
+      background: linear-gradient(135deg, var(--navy-2) 0%, var(--navy-3) 100%);
+      padding: var(--sp-16) var(--sp-8);
+      text-align: center;
+      margin-bottom: var(--sp-20);
+      border-bottom: 1px solid rgba(20, 184, 166, 0.1);
+    }
+    .hero-section h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      margin-bottom: var(--sp-4);
+      color: var(--white);
+    }
+    .hero-section .subtitle {
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      color: var(--slate);
+      max-width: 700px;
+      margin: 0 auto;
+      line-height: 1.8;
+    }
+
+    /* Referral Link Card */
+    .referral-link-card {
+      background: var(--navy-2);
+      border: 2px solid var(--amber-glow);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-10);
+      margin-bottom: var(--sp-16);
+      text-align: center;
+    }
+    .referral-link-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--amber);
+      margin-bottom: var(--sp-3);
+    }
+    .referral-link-display {
+      background: var(--navy);
+      border: 1px solid rgba(20, 184, 166, 0.2);
+      border-radius: var(--radius-md);
+      padding: var(--sp-4) var(--sp-6);
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      color: var(--amber);
+      word-break: break-all;
+      margin-bottom: var(--sp-6);
+    }
+    .referral-link-actions {
+      display: flex;
+      gap: var(--sp-4);
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .referral-link-qr {
+      text-align: center;
+      margin-top: var(--sp-8);
+      padding-top: var(--sp-8);
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .referral-link-qr h4 {
+      font-size: 0.9rem;
+      margin-bottom: var(--sp-4);
+      color: var(--slate);
+    }
+    #qr-code {
+      display: inline-block;
+      padding: var(--sp-4);
+      background: white;
+      border-radius: var(--radius-md);
+    }
+    #qr-code img { display: block; }
+
+    /* Share Grid */
+    .share-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: var(--sp-8);
+      margin-bottom: var(--sp-16);
+    }
+    .share-card {
+      background: var(--navy-2);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      transition: all 0.3s var(--ease);
+    }
+    .share-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(20, 184, 166, 0.3);
+      box-shadow: var(--shadow-lg);
+    }
+    .share-card-header {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      margin-bottom: var(--sp-6);
+    }
+    .share-card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      background: var(--amber-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+    .share-card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--white);
+      margin: 0;
+    }
+    .share-card-description {
+      font-size: 0.9rem;
+      color: var(--slate);
+      margin-bottom: var(--sp-6);
+      line-height: 1.6;
+    }
+    .share-actions {
+      display: flex;
+      gap: var(--sp-3);
+      flex-wrap: wrap;
+    }
+
+    /* Before/After Photo Section */
+    .photo-upload-section {
+      background: var(--navy);
+      border: 1px solid rgba(20, 184, 166, 0.2);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+      margin-top: var(--sp-6);
+    }
+    .photo-upload-section h5 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--amber);
+      margin-bottom: var(--sp-4);
+      text-transform: uppercase;
+    }
+    .photo-upload-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--sp-4);
+      margin-bottom: var(--sp-6);
+    }
+    .upload-zone {
+      border: 2px dashed rgba(20, 184, 166, 0.3);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(20, 184, 166, 0.05);
+    }
+    .upload-zone:hover {
+      border-color: var(--amber);
+      background: var(--amber-glow);
+    }
+    .upload-zone label {
+      cursor: pointer;
+      display: block;
+    }
+    .upload-zone-icon {
+      font-size: 2rem;
+      margin-bottom: var(--sp-3);
+    }
+    .upload-zone-text {
+      font-size: 0.85rem;
+      color: var(--slate);
+      margin-bottom: var(--sp-2);
+    }
+    .upload-zone input {
+      display: none;
+    }
+    .photo-preview {
+      width: 100%;
+      height: 200px;
+      border-radius: var(--radius-md);
+      object-fit: cover;
+      margin-bottom: var(--sp-3);
+    }
+    .photo-preview-container {
+      text-align: center;
+    }
+    .photo-preview-container p {
+      font-size: 0.8rem;
+      color: var(--slate);
+      margin-top: var(--sp-2);
+    }
+
+    /* Card Preview */
+    .card-preview {
+      background: var(--navy-2);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+      margin-bottom: var(--sp-6);
+      text-align: center;
+    }
+    #preview-canvas {
+      width: 100%;
+      max-width: 400px;
+      height: auto;
+      border-radius: var(--radius-md);
+      margin: 0 auto var(--sp-4);
+      display: block;
+    }
+
+    /* Message Box */
+    .message-box {
+      background: var(--navy);
+      border: 1px solid rgba(20, 184, 166, 0.2);
+      border-radius: var(--radius-md);
+      padding: var(--sp-4);
+      margin: var(--sp-4) 0;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--slate);
+      word-break: break-word;
+      line-height: 1.6;
+    }
+
+    /* Badge Preview */
+    .badge-preview {
+      background: var(--navy);
+      border: 1px solid rgba(20, 184, 166, 0.2);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+      margin: var(--sp-4) 0;
+      text-align: center;
+    }
+    .badge-html {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      background: var(--navy-2);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-sm);
+      padding: var(--sp-3);
+      margin-top: var(--sp-3);
+      color: var(--slate);
+      word-break: break-all;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    /* Referrals Table */
+    .referrals-section {
+      background: var(--navy-2);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+    }
+    .referrals-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--sp-8);
+      flex-wrap: wrap;
+      gap: var(--sp-4);
+    }
+    .referrals-header h3 {
+      margin: 0;
+    }
+    .referrals-summary {
+      display: flex;
+      gap: var(--sp-8);
+    }
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+    .summary-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--slate);
+    }
+    .summary-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--amber);
+    }
+    .referrals-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    .referrals-table thead {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .referrals-table th {
+      text-align: left;
+      padding: var(--sp-4);
+      font-weight: 600;
+      color: var(--slate);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .referrals-table td {
+      padding: var(--sp-4);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      color: var(--white);
+    }
+    .referrals-table tbody tr:hover {
+      background: rgba(20, 184, 166, 0.05);
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-clicked { background: var(--blue-light); color: #1E40AF; }
+    .status-registered { background: var(--blue-light); color: #1E40AF; }
+    .status-submitted { background: var(--amber-light); color: #92400E; }
+    .status-in-progress { background: var(--amber-light); color: #92400E; }
+    .status-completed { background: var(--green-light); color: #065F46; }
+    .status-paid { background: var(--green-light); color: #065F46; }
+    .empty-referrals {
+      text-align: center;
+      padding: var(--sp-12);
+      color: var(--slate);
+    }
+    .empty-referrals p {
+      margin: 0;
+    }
+
+    /* How It Works */
+    .how-it-works {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--sp-8);
+      margin-bottom: var(--sp-16);
+    }
+    .how-step {
+      background: var(--navy-2);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      text-align: center;
+    }
+    .how-step-number {
+      width: 48px;
+      height: 48px;
+      background: var(--amber-glow);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--amber);
+      margin: 0 auto var(--sp-4);
+    }
+    .how-step h4 {
+      margin-bottom: var(--sp-3);
+      color: var(--white);
+    }
+    .how-step p {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    /* FAQ */
+    .faq-list { margin-bottom: var(--sp-16); }
+    .faq-item {
+      background: var(--navy-2);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--sp-4);
+      overflow: hidden;
+    }
+    .faq-question {
+      cursor: pointer;
+      padding: var(--sp-6);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      color: var(--white);
+      background: var(--navy-2);
+      transition: background 0.2s;
+      user-select: none;
+    }
+    .faq-question:hover {
+      background: var(--navy-3);
+    }
+    .faq-icon {
+      font-size: 1.2rem;
+      color: var(--amber);
+      transition: transform 0.3s;
+    }
+    .faq-item.open .faq-icon {
+      transform: rotate(180deg);
+    }
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s;
+      background: var(--navy);
+    }
+    .faq-item.open .faq-answer {
+      max-height: 500px;
+      padding: var(--sp-6);
+    }
+    .faq-answer p {
+      margin: 0;
+      line-height: 1.7;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: var(--sp-3) var(--sp-6);
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 0.95rem;
+      border: none;
+      cursor: pointer;
+      transition: all var(--duration) var(--ease);
+      font-family: var(--font-body);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--sp-2);
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: var(--amber);
+      color: var(--navy);
+      font-weight: 700;
+    }
+    .btn-primary:hover {
+      background: var(--amber-2);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+    .btn-primary.copied {
+      background: var(--green);
+    }
+    .btn-secondary {
+      background: var(--navy-3);
+      color: var(--white);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .btn-secondary:hover {
+      background: var(--mid);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .btn-sm {
+      padding: var(--sp-2) var(--sp-4);
+      font-size: 0.85rem;
+    }
+    .btn-block {
+      width: 100%;
+      justify-content: center;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .referral-link-actions {
+        flex-direction: column;
+      }
+      .referral-link-actions .btn {
+        width: 100%;
+      }
+      .photo-upload-grid {
+        grid-template-columns: 1fr;
+      }
+      .share-grid {
+        grid-template-columns: 1fr;
+      }
+      .referrals-summary {
+        flex-direction: column;
+        gap: var(--sp-4);
+      }
+      .referrals-table {
+        font-size: 0.85rem;
+      }
+      .referrals-table th,
+      .referrals-table td {
+        padding: var(--sp-2);
+      }
+    }
+
+    /* Animations */
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .share-card {
+      animation: fadeUp 0.5s var(--ease) both;
+    }
+    .share-card:nth-child(2) { animation-delay: 0.1s; }
+    .share-card:nth-child(3) { animation-delay: 0.2s; }
+    .share-card:nth-child(4) { animation-delay: 0.3s; }
+    .share-card:nth-child(5) { animation-delay: 0.4s; }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header id="site-header"></header>
+
+  <!-- Main Content -->
+  <main class="refer-wrapper">
+    <div class="refer-main container">
+
+      <!-- Hero Section -->
+      <section class="hero-section">
+        <h1>Love Your New Roof? Share the Love — and Earn $250</h1>
+        <p class="subtitle">For every friend you refer who completes a job over $10,000 through OtterQuote, you earn $250. Share your unique link and we'll handle the rest.</p>
+      </section>
+
+      <!-- Your Referral Link -->
+      <section class="refer-section">
+        <div class="referral-link-card">
+          <div class="referral-link-label">Your Unique Referral Link</div>
+          <div class="referral-link-display" id="referral-link-display">Loading...</div>
+          <div class="referral-link-actions">
+            <button class="btn btn-primary" id="copy-link-btn" onclick="copyToClipboard('referral-link-display', 'copy-link-btn')">
+              <span>📋</span> Copy Link
+            </button>
+            <button class="btn btn-secondary" id="share-link-btn" onclick="shareReferralLink()">
+              <span>↗</span> Share
+            </button>
+          </div>
+          <div class="referral-link-qr">
+            <h4>Or scan this QR code</h4>
+            <div id="qr-code"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Share Options -->
+      <section class="refer-section">
+        <h2 style="margin-bottom: var(--sp-8);">Share Your Referral</h2>
+        <div class="share-grid">
+
+          <!-- Facebook -->
+          <div class="share-card">
+            <div class="share-card-header">
+              <div class="share-card-icon">👍</div>
+              <h3 class="share-card-title">Share to Facebook</h3>
+            </div>
+            <p class="share-card-description">Post your referral link to your Facebook feed and reach friends and family.</p>
+            <div class="share-actions">
+              <button class="btn btn-primary btn-block" onclick="shareFacebook()">Share to Facebook</button>
+            </div>
+            <div class="photo-upload-section">
+              <h5>📸 Upload Before & After Photos (Optional)</h5>
+              <p style="font-size: 0.85rem; color: var(--slate); margin-bottom: var(--sp-4);">Add your roofing project photos to create a branded share card.</p>
+              <div class="photo-upload-grid">
+                <div class="upload-zone" onclick="document.getElementById('photo-before').click()">
+                  <label>
+                    <div class="upload-zone-icon">📷</div>
+                    <div class="upload-zone-text">Click to upload</div>
+                    <div class="upload-zone-text" style="font-size: 0.75rem;">or drag and drop</div>
+                    <div class="upload-zone-text" style="color: var(--amber); font-weight: 600;">Before Photo</div>
+                    <input type="file" id="photo-before" accept="image/*" onchange="handlePhotoUpload('before')">
+                  </label>
+                  <div id="before-preview" style="display: none;">
+                    <div class="photo-preview-container">
+                      <img id="before-img" class="photo-preview" src="" alt="Before">
+                      <p style="margin-bottom: var(--sp-2);">Before</p>
+                      <button class="btn btn-sm btn-secondary" onclick="document.getElementById('photo-before').click()">Change</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="upload-zone" onclick="document.getElementById('photo-after').click()">
+                  <label>
+                    <div class="upload-zone-icon">📷</div>
+                    <div class="upload-zone-text">Click to upload</div>
+                    <div class="upload-zone-text" style="font-size: 0.75rem;">or drag and drop</div>
+                    <div class="upload-zone-text" style="color: var(--amber); font-weight: 600;">After Photo</div>
+                    <input type="file" id="photo-after" accept="image/*" onchange="handlePhotoUpload('after')">
+                  </label>
+                  <div id="after-preview" style="display: none;">
+                    <div class="photo-preview-container">
+                      <img id="after-img" class="photo-preview" src="" alt="After">
+                      <p style="margin-bottom: var(--sp-2);">After</p>
+                      <button class="btn btn-sm btn-secondary" onclick="document.getElementById('photo-after').click()">Change</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div id="card-preview-section" style="display: none;">
+                <div class="card-preview">
+                  <p style="margin-bottom: var(--sp-4); color: var(--slate); font-size: 0.9rem;">Preview of your share card</p>
+                  <canvas id="preview-canvas" width="800" height="420"></canvas>
+                  <button class="btn btn-primary" onclick="downloadShareCard()">
+                    <span>⬇</span> Download Image
+                  </button>
+                  <p style="margin-top: var(--sp-3); color: var(--slate); font-size: 0.85rem;">Share the downloaded image on Facebook manually</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Text a Neighbor -->
+          <div class="share-card">
+            <div class="share-card-header">
+              <div class="share-card-icon">💬</div>
+              <h3 class="share-card-title">Text a Neighbor</h3>
+            </div>
+            <p class="share-card-description">Send an SMS message to friends and neighbors with your referral link.</p>
+            <div id="sms-message-display" class="message-box" style="display: none;"></div>
+            <div class="share-actions">
+              <button class="btn btn-primary btn-block" id="sms-btn" onclick="handleSMS()">Send Text</button>
+              <button class="btn btn-secondary btn-block" onclick="copyToClipboard('sms-message-display', event.target)" style="display: none;" id="sms-copy-btn">Copy Message</button>
+            </div>
+          </div>
+
+          <!-- NextDoor -->
+          <div class="share-card">
+            <div class="share-card-header">
+              <div class="share-card-icon">🏘</div>
+              <h3 class="share-card-title">Share on Nextdoor</h3>
+            </div>
+            <p class="share-card-description">Share your experience with neighbors on Nextdoor.</p>
+            <div class="message-box" id="nextdoor-message">Loading message...</div>
+            <div class="share-actions">
+              <button class="btn btn-primary btn-block" onclick="copyToClipboard('nextdoor-message', event.target)">Copy Post</button>
+              <a href="https://nextdoor.com/" target="_blank" class="btn btn-secondary btn-block">Open Nextdoor ↗</a>
+            </div>
+          </div>
+
+          <!-- Email -->
+          <div class="share-card">
+            <div class="share-card-header">
+              <div class="share-card-icon">✉️</div>
+              <h3 class="share-card-title">Email a Friend</h3>
+            </div>
+            <p class="share-card-description">Send an email with your referral link and a personal message.</p>
+            <div id="email-body-display" class="message-box"></div>
+            <div class="share-actions">
+              <button class="btn btn-primary btn-block" id="email-btn" onclick="sendEmail()">Send Email</button>
+              <button class="btn btn-secondary btn-block" onclick="copyToClipboard('email-body-display', event.target)">Copy Email Text</button>
+            </div>
+          </div>
+
+          <!-- Email Signature Badge -->
+          <div class="share-card">
+            <div class="share-card-header">
+              <div class="share-card-icon">🦦</div>
+              <h3 class="share-card-title">Email Signature Badge</h3>
+            </div>
+            <p class="share-card-description">Add a professional OtterQuote badge to your email signature.</p>
+            <div class="badge-preview">
+              <div style="display: inline-block; padding: var(--sp-4); background: white; border-radius: var(--radius-sm);">
+                <img src="/img/otter-logo.svg" alt="OtterQuote" style="width: 20px; height: 20px; margin-right: var(--sp-2); display: inline;">
+                <strong style="color: var(--navy);">I trust OtterQuote</strong>
+                <p style="font-size: 0.75rem; color: var(--slate); margin: 4px 0 0;">Get your free quote</p>
+              </div>
+            </div>
+            <div class="badge-html" id="badge-html-code"></div>
+            <div class="share-actions" style="margin-top: var(--sp-6);">
+              <button class="btn btn-primary btn-block" onclick="copyToClipboard('badge-html-code', event.target)">Copy HTML</button>
+            </div>
+            <div style="margin-top: var(--sp-6); padding: var(--sp-4); background: var(--navy); border-radius: var(--radius-sm); font-size: 0.85rem; color: var(--slate); line-height: 1.6;">
+              <strong style="color: var(--white);">How to add to your email signature:</strong>
+              <ul style="margin: var(--sp-3) 0 0; padding-left: var(--sp-6);">
+                <li><strong>Gmail:</strong> Settings → See all settings → Signature → Paste the HTML</li>
+                <li><strong>Outlook:</strong> File → Options → Mail → Signatures → Paste the HTML</li>
+              </ul>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Your Referrals (Dashboard) -->
+      <section class="refer-section">
+        <div class="referrals-section" id="referrals-dashboard" style="display: none;">
+          <div class="referrals-header">
+            <h3>Your Referrals</h3>
+            <div class="referrals-summary">
+              <div class="summary-item">
+                <span class="summary-label">Total Earned</span>
+                <span class="summary-value" id="total-earned">$0</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Pending Payments</span>
+                <span class="summary-value" id="total-pending">$0</span>
+              </div>
+            </div>
+          </div>
+          <div id="referrals-table-container">
+            <table class="referrals-table">
+              <thead>
+                <tr>
+                  <th>Friend's Name</th>
+                  <th>Date Referred</th>
+                  <th>Status</th>
+                  <th>Commission</th>
+                </tr>
+              </thead>
+              <tbody id="referrals-tbody">
+              </tbody>
+            </table>
+          </div>
+          <div class="empty-referrals" id="empty-referrals" style="display: none;">
+            <p>No referrals yet. Share your link above to start earning!</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- How It Works -->
+      <section class="refer-section">
+        <h2 style="margin-bottom: var(--sp-8);">How It Works</h2>
+        <div class="how-it-works">
+          <div class="how-step">
+            <div class="how-step-number">1</div>
+            <h4>Share Your Link</h4>
+            <p>Share your unique referral link with friends, family, or neighbors.</p>
+          </div>
+          <div class="how-step">
+            <div class="how-step-number">2</div>
+            <h4>They Get Competing Bids</h4>
+            <p>They receive competing bids from vetted contractors for their roofing project.</p>
+          </div>
+          <div class="how-step">
+            <div class="how-step-number">3</div>
+            <h4>You Earn $250</h4>
+            <p>When their job completes (over $10K), you earn $250 in commission.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- FAQ -->
+      <section class="refer-section">
+        <h2 style="margin-bottom: var(--sp-8);">Frequently Asked Questions</h2>
+        <div class="faq-list">
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFAQ(this)">
+              <span>When do I get paid?</span>
+              <span class="faq-icon">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>You'll receive payment within 14 days after the referred job is completed and the homeowner's contractor has been paid. We'll send payment via bank transfer or check, whichever you prefer.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFAQ(this)">
+              <span>Is there a limit to how many people I can refer?</span>
+              <span class="faq-icon">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>No limit! Refer as many people as you want. There's no cap on your referral earnings. The more friends and neighbors you share with, the more you can earn.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFAQ(this)">
+              <span>What if the job is under $10,000?</span>
+              <span class="faq-icon">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>Your referred friend still gets the full OtterQuote experience for free — multiple competing bids, easy comparison, and quality assurance. You won't receive a cash commission for jobs under $10K, but you're still helping them get great bids.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer id="site-footer"></footer>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+
+  <script>
+    // ── Global State ──
+    let sb; // Supabase instance
+    let currentUser = null;
+    let userReferralCode = null;
+    let photoBefore = null;
+    let photoAfter = null;
+
+    // ── Initialize ──
+    async function init() {
+      // Initialize Supabase
+      sb = window.supabase.createClient(
+        CONFIG.SUPABASE_URL,
+        CONFIG.SUPABASE_KEY
+      );
+
+      // Require authentication
+      const user = await Auth.requireAuth();
+      if (!user) return; // Redirect handled by Auth.requireAuth()
+      currentUser = user;
+
+      // Render nav
+      Nav.renderHeader({ active: 'refer' });
+      Nav.renderFooter();
+
+      // Fetch or create referral code
+      await fetchOrCreateReferralCode();
+
+      // Display referral link
+      displayReferralLink();
+
+      // Generate QR code
+      generateQRCode();
+
+      // Populate share messages
+      populateShareMessages();
+
+      // Load referrals if dashboard needed
+      await loadReferrals();
+    }
+
+    async function fetchOrCreateReferralCode() {
+      if (!currentUser) return;
+
+      // Check if user has a referral entry
+      const { data, error } = await sb
+        .from('referral_agents')
+        .select('code')
+        .eq('user_id', currentUser.id)
+        .eq('agent_type', 'customer')
+        .single();
+
+      if (data) {
+        userReferralCode = data.code;
+      } else {
+        // Create new referral entry with generated code
+        const code = generateCode();
+        const { data: newData, error: insertError } = await sb
+          .from('referral_agents')
+          .insert([{
+            user_id: currentUser.id,
+            code: code,
+            agent_type: 'customer'
+          }])
+          .select('code')
+          .single();
+
+        if (newData) {
+          userReferralCode = newData.code;
+        } else {
+          console.error('Failed to create referral code:', insertError);
+          userReferralCode = 'error';
+        }
+      }
+    }
+
+    function generateCode() {
+      // Generate a short, memorable code
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let code = '';
+      for (let i = 0; i < 8; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
+
+    function displayReferralLink() {
+      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      document.getElementById('referral-link-display').textContent = referralUrl;
+    }
+
+    function generateQRCode() {
+      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const qrContainer = document.getElementById('qr-code');
+      qrContainer.innerHTML = ''; // Clear existing
+      new QRCode(qrContainer, {
+        text: referralUrl,
+        width: 200,
+        height: 200,
+        colorDark: '#0A1E2C',
+        colorLight: '#FFFFFF',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    }
+
+    function populateShareMessages() {
+      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+
+      // Facebook message
+      window.facebookShareMessage = 'I just got my roof replaced through OtterQuote — multiple contractors competed for the job and I got a great deal. Check it out if you need any exterior work done!';
+
+      // SMS message
+      const smsMsg = `Hey! I just got my roof done through OtterQuote — they had multiple contractors compete for the job. If you need any exterior work done, check them out: ${referralUrl}`;
+      document.getElementById('sms-message-display').textContent = smsMsg;
+      window.smsMessage = smsMsg;
+
+      // NextDoor message
+      const nextdoorMsg = `Just got my roof replaced through OtterQuote. Four contractors competed for the job, and I got to compare bids side-by-side. If anyone in the neighborhood needs exterior work done (roof, siding, gutters), I'd recommend checking them out: ${referralUrl}`;
+      document.getElementById('nextdoor-message').textContent = nextdoorMsg;
+
+      // Email
+      const emailSubject = 'Check out OtterQuote — best way to get contractor quotes';
+      const emailBody = `Hi there!
+
+I recently used OtterQuote to get my roof replaced, and I wanted to share it with you. The platform is amazing — you get competing bids from multiple vetted contractors, which means you get the best deal and can compare options side-by-side.
+
+If you need any exterior work done (roof, siding, gutters, etc.), check out OtterQuote here: ${referralUrl}
+
+Best regards`;
+      document.getElementById('email-body-display').textContent = emailBody;
+      window.emailSubject = emailSubject;
+      window.emailBody = emailBody;
+
+      // Badge HTML
+      const badgeHtml = `<a href="${referralUrl}" target="_blank" style="display: inline-block; padding: 8px 12px; background: #14B8A6; color: #0A1E2C; text-decoration: none; border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600;">
+  <img src="${CONFIG.SITE_URL}/img/otter-logo.svg" alt="OtterQuote" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;">
+  <span>I trust OtterQuote</span>
+</a>`;
+      document.getElementById('badge-html-code').textContent = badgeHtml;
+      window.badgeHtml = badgeHtml;
+    }
+
+    function copyToClipboard(elementId, buttonEl) {
+      let text;
+      const el = document.getElementById(elementId);
+      if (el) {
+        text = el.textContent || el.innerText;
+      } else {
+        text = window[elementId] || '';
+      }
+
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = typeof buttonEl === 'string'
+          ? document.getElementById(buttonEl)
+          : buttonEl.target || buttonEl;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span>✓</span> Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.innerHTML = originalText;
+          btn.classList.remove('copied');
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy. Please try again.');
+      });
+    }
+
+    function shareReferralLink() {
+      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      if (navigator.share) {
+        navigator.share({
+          title: 'OtterQuote Referral',
+          text: 'Check out OtterQuote for getting competing contractor bids!',
+          url: referralUrl
+        }).catch(err => console.log('Share failed:', err));
+      } else {
+        copyToClipboard('referral-link-display');
+      }
+    }
+
+    function shareFacebook() {
+      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralUrl)}&quote=${encodeURIComponent(window.facebookShareMessage)}`;
+      window.open(fbUrl, 'facebook-share', 'width=600,height=400');
+    }
+
+    function handleSMS() {
+      const isMobile = /iPhone|iPad|Android|mobile/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.location.href = `sms:?body=${encodeURIComponent(window.smsMessage)}`;
+      } else {
+        document.getElementById('sms-message-display').style.display = 'block';
+        document.getElementById('sms-btn').style.display = 'none';
+        document.getElementById('sms-copy-btn').style.display = 'block';
+      }
+    }
+
+    function sendEmail() {
+      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const mailtoLink = `mailto:?subject=${encodeURIComponent(window.emailSubject)}&body=${encodeURIComponent(window.emailBody)}`;
+      window.location.href = mailtoLink;
+    }
+
+    function handlePhotoUpload(type) {
+      const input = document.getElementById(`photo-${type}`);
+      const file = input.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (type === 'before') {
+          photoBefore = e.target.result;
+          document.getElementById('before-img').src = photoBefore;
+          document.getElementById('before-preview').style.display = 'block';
+        } else {
+          photoAfter = e.target.result;
+          document.getElementById('after-img').src = photoAfter;
+          document.getElementById('after-preview').style.display = 'block';
+        }
+
+        // Show preview if both photos are loaded
+        if (photoBefore && photoAfter) {
+          document.getElementById('card-preview-section').style.display = 'block';
+          generateShareCard();
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function generateShareCard() {
+      const canvas = document.getElementById('preview-canvas');
+      const ctx = canvas.getContext('2d');
+      const width = 800;
+      const height = 420;
+
+      // White background
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
+
+      // Navy top bar with OtterQuote branding
+      ctx.fillStyle = '#0A1E2C';
+      ctx.fillRect(0, 0, width, 60);
+
+      // OtterQuote text in top-left
+      ctx.fillStyle = '#14B8A6';
+      ctx.font = 'bold 24px "DM Sans"';
+      ctx.fillText('OtterQuote', 20, 40);
+
+      // Load and draw photos side-by-side
+      const beforeImg = new Image();
+      const afterImg = new Image();
+      let imagesLoaded = 0;
+
+      beforeImg.onload = () => {
+        imagesLoaded++;
+        if (imagesLoaded === 2) drawPhotos();
+      };
+      afterImg.onload = () => {
+        imagesLoaded++;
+        if (imagesLoaded === 2) drawPhotos();
+      };
+
+      beforeImg.src = photoBefore;
+      afterImg.src = photoAfter;
+
+      function drawPhotos() {
+        const photoWidth = (width - 60) / 2;
+        const photoHeight = height - 130;
+        const photoY = 70;
+
+        // Before photo (left)
+        ctx.drawImage(beforeImg, 20, photoY, photoWidth, photoHeight);
+
+        // After photo (right)
+        ctx.drawImage(afterImg, photoWidth + 40, photoY, photoWidth, photoHeight);
+
+        // Labels
+        ctx.fillStyle = '#0A1E2C';
+        ctx.font = 'bold 14px "DM Sans"';
+        ctx.fillText('Before', 30, photoY + photoHeight + 20);
+        ctx.fillText('After', photoWidth + 50, photoY + photoHeight + 20);
+
+        // Bottom bar with branding and referral link
+        ctx.fillStyle = '#0A1E2C';
+        ctx.fillRect(0, height - 50, width, 50);
+
+        ctx.fillStyle = '#14B8A6';
+        ctx.font = '12px "DM Sans"';
+        ctx.fillText('Powered by OtterQuote', 20, height - 15);
+
+        const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+        ctx.font = 'bold 12px "DM Mono"';
+        ctx.fillText(referralUrl, width - 300, height - 15);
+      }
+    }
+
+    function downloadShareCard() {
+      const canvas = document.getElementById('preview-canvas');
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = 'otterquote-referral-card.png';
+      link.click();
+    }
+
+    async function loadReferrals() {
+      if (!currentUser || !sb) return;
+
+      const { data: referrals, error } = await sb
+        .from('referrals')
+        .select('*')
+        .eq('referrer_id', currentUser.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Failed to load referrals:', error);
+        return;
+      }
+
+      const dashboard = document.getElementById('referrals-dashboard');
+      if (referrals && referrals.length > 0) {
+        dashboard.style.display = 'block';
+        populateReferralsTable(referrals);
+        calculateSummary(referrals);
+      } else {
+        document.getElementById('empty-referrals').style.display = 'block';
+      }
+    }
+
+    function populateReferralsTable(referrals) {
+      const tbody = document.getElementById('referrals-tbody');
+      tbody.innerHTML = referrals.map(ref => `
+        <tr>
+          <td>${ref.referred_name || 'N/A'}</td>
+          <td>${new Date(ref.created_at).toLocaleDateString()}</td>
+          <td><span class="status-badge status-${(ref.status || 'clicked').toLowerCase()}">${formatStatus(ref.status)}</span></td>
+          <td>${ref.status === 'paid' ? '$250' : (ref.status === 'completed' ? 'Pending' : '—')}</td>
+        </tr>
+      `).join('');
+    }
+
+    function calculateSummary(referrals) {
+      let earned = 0;
+      let pending = 0;
+
+      referrals.forEach(ref => {
+        if (ref.status === 'paid') earned += 250;
+        if (ref.status === 'completed') pending += 250;
+      });
+
+      document.getElementById('total-earned').textContent = `$${earned}`;
+      document.getElementById('total-pending').textContent = `$${pending}`;
+    }
+
+    function formatStatus(status) {
+      const map = {
+        'clicked': 'Clicked',
+        'registered': 'Registered',
+        'submitted': 'Submitted',
+        'in_progress': 'In Progress',
+        'completed': 'Completed',
+        'paid': 'Paid'
+      };
+      return map[status] || status;
+    }
+
+    function toggleFAQ(btn) {
+      const item = btn.parentElement;
+      item.classList.toggle('open');
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

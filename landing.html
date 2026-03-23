@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OtterQuote - Get Contractors Competing for Your Storm Damage Repair Job</title>
+    <meta name="description" content="Storm damage? Upload your insurance claim and get vetted contractors bidding for your job. Compare quotes, pick the best deal, pay nothing. 100% free for homeowners.">
+    <meta name="keywords" content="storm damage repair, contractor quotes, insurance claim, home repair bidding">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+    <!-- Design System -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <!-- Google Analytics 4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-XXXXXXXXXX', {
+            'allow_google_signals': false,
+            'allow_ad_personalization_signals': false
+        });
+    </script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--navy);
+            color: var(--white);
+            font-family: 'DM Sans', sans-serif;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ===== HERO SECTION ===== */
+        .hero {
+            padding: 120px 20px 80px;
+            text-align: center;
+            background: linear-gradient(135deg, var(--navy) 0%, rgba(10, 30, 44, 0.95) 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(20, 184, 166, 0.05) 0%, transparent 70%);
+            border-radius: 50%;
+            z-index: 0;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 700;
+            color: var(--white);
+            line-height: 1.2;
+            margin-bottom: 20px;
+            letter-spacing: -0.5px;
+        }
+
+        .hero .subtitle {
+            font-size: clamp(1rem, 2vw, 1.25rem);
+            color: rgba(255, 255, 255, 0.85);
+            margin-bottom: 40px;
+            line-height: 1.6;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hero-ctas {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 50px;
+        }
+
+        .btn {
+            padding: 14px 32px;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .btn-primary {
+            background: var(--amber);
+            color: var(--navy);
+        }
+
+        .btn-primary:hover {
+            background: #0fa39e;
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(20, 184, 166, 0.3);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--amber);
+            border: 2px solid var(--amber);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(20, 184, 166, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .trust-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 30px;
+            margin-top: 60px;
+            padding-top: 40px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .trust-item {
+            text-align: center;
+        }
+
+        .trust-item .icon {
+            font-size: 1.5rem;
+            color: var(--amber);
+            margin-bottom: 10px;
+        }
+
+        .trust-item .label {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        /* ===== PROBLEM SECTION ===== */
+        .section {
+            padding: 80px 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .problem {
+            background: rgba(255, 255, 255, 0.02);
+            border-left: 4px solid var(--amber);
+            padding: 60px 40px;
+            border-radius: 8px;
+        }
+
+        .problem h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(1.8rem, 4vw, 2.5rem);
+            margin-bottom: 30px;
+            color: var(--white);
+        }
+
+        .problem-text {
+            font-size: 1.1rem;
+            line-height: 1.8;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 25px;
+        }
+
+        .problem-text strong {
+            color: var(--amber);
+        }
+
+        /* ===== HOW IT WORKS ===== */
+        .how-it-works {
+            background: linear-gradient(180deg, rgba(20, 184, 166, 0.05) 0%, transparent 100%);
+        }
+
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(1.8rem, 4vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .step {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(20, 184, 166, 0.3);
+            border-radius: 12px;
+            padding: 40px 30px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .step:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--amber);
+            transform: translateY(-5px);
+        }
+
+        .step-number {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: var(--amber);
+            color: var(--navy);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+
+        .step h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.4rem;
+            margin-bottom: 15px;
+            color: var(--white);
+            padding-right: 70px;
+        }
+
+        .step p {
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.7;
+            font-size: 0.95rem;
+        }
+
+        /* ===== VALUE PROPS ===== */
+        .why-otterquote {
+            background: rgba(10, 30, 44, 0.5);
+        }
+
+        .value-props {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 30px;
+        }
+
+        .value-card {
+            background: linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, rgba(20, 184, 166, 0.05) 100%);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            border-radius: 12px;
+            padding: 40px 30px;
+            transition: all 0.3s ease;
+        }
+
+        .value-card:hover {
+            background: linear-gradient(135deg, rgba(20, 184, 166, 0.15) 0%, rgba(20, 184, 166, 0.1) 100%);
+            border-color: var(--amber);
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(20, 184, 166, 0.1);
+        }
+
+        .value-card h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            color: var(--amber);
+        }
+
+        .value-card p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* ===== SITUATIONS ===== */
+        .situations {
+            background: linear-gradient(180deg, transparent 0%, rgba(20, 184, 166, 0.05) 100%);
+        }
+
+        .situations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+        }
+
+        .situation-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            border-radius: 10px;
+            padding: 35px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .situation-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--amber);
+            transform: translateY(-3px);
+        }
+
+        .situation-card h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.2rem;
+            color: var(--amber);
+            margin-bottom: 12px;
+        }
+
+        .situation-card p {
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        /* ===== TRUST SECTION ===== */
+        .trust-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            align-items: center;
+        }
+
+        .trust-content h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            margin-bottom: 25px;
+            color: var(--white);
+        }
+
+        .guarantee-item {
+            margin-bottom: 25px;
+            padding-bottom: 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .guarantee-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .guarantee-item .label {
+            color: var(--amber);
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .guarantee-item p {
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* ===== CTA SECTION ===== */
+        .cta-section {
+            text-align: center;
+            padding: 80px 20px;
+            background: linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, rgba(20, 184, 166, 0.05) 100%);
+            border-radius: 12px;
+            margin: 60px auto;
+            max-width: 700px;
+        }
+
+        .cta-section h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            margin-bottom: 30px;
+            color: var(--white);
+        }
+
+        .cta-section p {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.85);
+            margin-bottom: 40px;
+        }
+
+        /* ===== FAQ ===== */
+        .faq {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .faq-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .faq-item {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 25px 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .faq-item:last-child {
+            border-bottom: none;
+        }
+
+        .faq-question {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 1.05rem;
+            color: var(--white);
+        }
+
+        .faq-toggle {
+            color: var(--amber);
+            font-size: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .faq-item.active .faq-toggle {
+            transform: rotate(180deg);
+        }
+
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.7;
+            margin-top: 0;
+            font-size: 0.95rem;
+        }
+
+        .faq-item.active .faq-answer {
+            max-height: 500px;
+            margin-top: 20px;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .hero {
+                padding: 80px 20px 60px;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .hero .subtitle {
+                font-size: 1rem;
+            }
+
+            .hero-ctas {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                text-align: center;
+            }
+
+            .trust-bar {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .section {
+                padding: 60px 20px;
+            }
+
+            .problem {
+                padding: 40px 25px;
+            }
+
+            .steps-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .value-props {
+                grid-template-columns: 1fr;
+            }
+
+            .trust-section {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-section {
+                margin: 40px 0;
+                padding: 50px 20px;
+            }
+
+            .cta-section h2 {
+                font-size: 1.6rem;
+            }
+        }
+
+        /* ===== FOOTER (from nav.css) ===== */
+        footer {
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid rgba(20, 184, 166, 0.1);
+            padding: 40px 20px;
+            margin-top: 80px;
+        }
+
+        footer .content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+        }
+
+        footer h3 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--amber);
+            margin-bottom: 15px;
+        }
+
+        footer a {
+            display: block;
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            transition: color 0.3s ease;
+        }
+
+        footer a:hover {
+            color: var(--amber);
+        }
+
+        footer .copyright {
+            grid-column: 1 / -1;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 20px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation (from nav.js) -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <a href="index.html">OtterQuote</a>
+            </div>
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="index.html" class="nav-link">Home</a></li>
+                <li><a href="#how-it-works" class="nav-link">How It Works</a></li>
+                <li><a href="#faq" class="nav-link">FAQ</a></li>
+                <li><a href="#" class="nav-link" id="authLink">Sign In</a></li>
+            </ul>
+            <div class="hamburger" id="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- HERO SECTION -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Storm Damage? Get Contractors Competing for Your Job.</h1>
+            <p class="subtitle">
+                OtterQuote helps homeowners get the best deal on exterior repairs. Upload your insurance claim, and vetted contractors bid for your business. You compare, you choose, you pay nothing.
+            </p>
+            <div class="hero-ctas">
+                <a href="get-started.html" class="btn btn-primary" id="heroCtaPrimary">Get Started Free</a>
+                <button class="btn btn-secondary" id="heroCtaSecondary">See How It Works</button>
+            </div>
+            <div class="trust-bar">
+                <div class="trust-item">
+                    <div class="icon">✓</div>
+                    <div class="label">100% Free for Homeowners</div>
+                </div>
+                <div class="trust-item">
+                    <div class="icon">✓</div>
+                    <div class="label">Vetted Local Contractors</div>
+                </div>
+                <div class="trust-item">
+                    <div class="icon">✓</div>
+                    <div class="label">Switch Contractors Anytime</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PROBLEM SECTION -->
+    <section class="section">
+        <div class="problem">
+            <h2>The Problem: How Do You Know Who to Trust?</h2>
+            <p class="problem-text">
+                After a storm, you're bombarded. Door-knockers, cold calls, and pressure tactics from contractors you've never heard of. <strong>How do you know who to trust? How do you know if the price is fair?</strong>
+            </p>
+            <p class="problem-text">
+                <strong>OtterQuote flips the script.</strong> Instead of contractors chasing you, they compete for your job — transparently. You see multiple bids from vetted professionals in your area, all competing to earn your business with better prices, warranties, and customer service.
+            </p>
+        </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="section how-it-works" id="how-it-works">
+        <h2 class="section-title">How It Works</h2>
+        <div class="steps-grid">
+            <div class="step">
+                <div class="step-number">1</div>
+                <h3>Tell Us About Your Project</h3>
+                <p>Create a free account with your name, address, and what you need done. Takes 2 minutes.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <h3>We Help You Get Ready</h3>
+                <p>Don't have your insurance estimate? We'll help you request it. Need measurements? Purchase professional Hover measurements or we'll help you get them from your adjuster. Our guided tools walk you through everything.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <h3>Contractors Compete</h3>
+                <p>Your project goes to vetted, licensed contractors in your area. They see your measurements and materials — and submit their best bids. No pressure, no salespeople at your door.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <h3>You Choose, We Handle the Rest</h3>
+                <p>Compare bids side-by-side. See pricing, warranties, reviews, and credentials. Pick your contractor, sign electronically, and we follow up at every milestone.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- WHY OTTERQUOTE -->
+    <section class="section why-otterquote">
+        <h2 class="section-title">Why OtterQuote</h2>
+        <div class="value-props">
+            <div class="value-card">
+                <h3>Contractors Compete for You</h3>
+                <p>Multiple bids mean better pricing and better service. Contractors know they have to earn your business.</p>
+            </div>
+            <div class="value-card">
+                <h3>We Handle the Paperwork</h3>
+                <p>Insurance estimates, measurements, material selection — we guide you through all of it. No confusion, no surprises.</p>
+            </div>
+            <div class="value-card">
+                <h3>Vetted & Licensed</h3>
+                <p>Every contractor is verified with insurance certificates, licenses, and reviews. We do the vetting so you don't have to.</p>
+            </div>
+            <div class="value-card">
+                <h3>Not a Lead Service</h3>
+                <p>We don't sell your name. We deliver a fully executed contract to the contractor YOU choose. Your privacy is protected.</p>
+            </div>
+            <div class="value-card">
+                <h3>Your Property, On File</h3>
+                <p>Professional 3D measurements you keep forever for future projects and resale documentation.</p>
+            </div>
+            <div class="value-card">
+                <h3>We Follow Up</h3>
+                <p>Automated check-ins at every milestone. One tap to escalate if something goes wrong. You're never alone.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- WORKS FOR EVERY SITUATION -->
+    <section class="section">
+        <h2 class="section-title">Works for Every Situation</h2>
+        <div class="situations-grid">
+            <div class="situation-card">
+                <h3>Insurance Claim (RCV)</h3>
+                <p>Full replacement cost policy? Contractors compete on materials and warranty, not just price. You get the coverage you paid for.</p>
+            </div>
+            <div class="situation-card">
+                <h3>Insurance Claim (ACV)</h3>
+                <p>Actual cash value policy? We show you exactly what you'll pay out-of-pocket per bid, so you can make an informed choice.</p>
+            </div>
+            <div class="situation-card">
+                <h3>Retail / Cash Project</h3>
+                <p>No insurance? No problem. Get competing bids based on professional measurements and transparent pricing.</p>
+            </div>
+            <div class="situation-card">
+                <h3>Buying or Selling a Home?</h3>
+                <p>Need a quote for negotiation or repairs? Our Hover measurements get you real bids fast — perfect for closing the deal.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- TRUST & GUARANTEES -->
+    <section class="section">
+        <div class="trust-section">
+            <div class="trust-content">
+                <h3>Your Guarantee</h3>
+                <div class="guarantee-item">
+                    <span class="label">Contractor Switch Guarantee</span>
+                    <p>Change your mind? Switch to a different OtterQuote contractor at no cost up to 3 days before installation.</p>
+                </div>
+                <div class="guarantee-item">
+                    <span class="label">100% Free for Homeowners</span>
+                    <p>Contractors pay a small platform fee when they win. You never pay OtterQuote — ever. We're incentivized to find you the best deal.</p>
+                </div>
+                <div class="guarantee-item">
+                    <span class="label">Your Data is Protected</span>
+                    <p>We don't sell your information to lead aggregators. Only vetted contractors YOU choose see your project details.</p>
+                </div>
+            </div>
+            <div class="trust-content">
+                <h3>How Contractors Pay</h3>
+                <div class="guarantee-item">
+                    <span class="label">Transparent Platform Fee</span>
+                    <p>Contractors who win a job pay a percentage-based platform fee. This covers our vetting, matching, and support.</p>
+                </div>
+                <div class="guarantee-item">
+                    <span class="label">Better for Contractors, Better for You</span>
+                    <p>Contractors eliminate their customer acquisition costs. That means better pricing for homeowners and better service from motivated professionals.</p>
+                </div>
+                <div class="guarantee-item">
+                    <span class="label">No Subscription Required</span>
+                    <p>Contractors only pay when they win. No monthly fees, no bidding fees. Pure meritocracy.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="cta-section">
+        <h2>Ready to Get the Best Deal?</h2>
+        <p>Join thousands of homeowners who've saved time, money, and stress by letting contractors compete for their business.</p>
+        <a href="get-started.html" class="btn btn-primary" id="finalCtaButton">Get Started Free</a>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section faq" id="faq">
+        <h2 class="section-title">Frequently Asked Questions</h2>
+        <div class="faq-container">
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>Is OtterQuote really free?</span>
+                    <span class="faq-toggle">▼</span>
+                </div>
+                <div class="faq-answer">
+                    Yes, completely. OtterQuote is 100% free for homeowners. Contractors pay a platform fee when they win a job. We make money when we help contractors find customers — never by charging homeowners.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>How is this different from Angi or HomeAdvisor?</span>
+                    <span class="faq-toggle">▼</span>
+                </div>
+                <div class="faq-answer">
+                    Those platforms are lead services that sell your information to multiple contractors — you'll get flooded with calls and emails. OtterQuote is different. We manage the entire process end-to-end: vetting contractors, helping you compile estimates, facilitating transparent bidding, and delivering a signed contract. Your information is only shared with contractors YOU select.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>Do you handle my insurance claim?</span>
+                    <span class="faq-toggle">▼</span>
+                </div>
+                <div class="faq-answer">
+                    No, we're not a public adjuster. We don't negotiate with insurance companies. What we do is help you find the best contractor after you've filed your claim. We help you gather measurements and documentation so you can get the best bids. Some contractors can help with additional documentation, but the primary relationship is between you and your insurance company.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>What areas do you serve?</span>
+                    <span class="faq-toggle">▼</span>
+                </div>
+                <div class="faq-answer">
+                    We serve homeowners nationwide. OtterQuote is available across the United States. We're expanding our contractor network in every region, so availability is best in major metropolitan areas, though we cover rural areas too.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>How fast do I get bids?</span>
+                    <span class="faq-toggle">▼</span>
+                </div>
+                <div class="faq-answer">
+                    Most homeowners receive their first bid within 24-48 hours. Once you've uploaded your project details (measurements, photos, insurance estimate if available), contractors can start bidding immediately. The speed depends on your location and the complexity of your project, but we've optimized our process to get bids into your hands as fast as possible.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>What if I'm not happy with my contractor?</span>
+                    <span class="faq-toggle">▼</span>
+                </div>
+                <div class="faq-answer">
+                    You can switch to another OtterQuote contractor at no cost up to 3 days before installation. If you're not happy after installation starts, we have an escalation process to help resolve issues. Our goal is your satisfaction, and we'll work with you and the contractor to make it right.
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+        <div class="content">
+            <div>
+                <h3>Product</h3>
+                <a href="index.html">Home</a>
+                <a href="#how-it-works">How It Works</a>
+                <a href="#faq">FAQ</a>
+            </div>
+            <div>
+                <h3>Company</h3>
+                <a href="#">About Us</a>
+                <a href="#">Blog</a>
+                <a href="#">Careers</a>
+            </div>
+            <div>
+                <h3>Legal</h3>
+                <a href="#">Terms of Service</a>
+                <a href="#">Privacy Policy</a>
+                <a href="#">Contact</a>
+            </div>
+            <div class="copyright">
+                <p>&copy; 2026 OtterQuote. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Supabase CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Config & Auth -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+
+    <script>
+        // ===== UTM PARAMETER HANDLING =====
+        function getUTMParams() {
+            const params = new URLSearchParams(window.location.search);
+            const utm = {
+                source: params.get('utm_source') || '',
+                medium: params.get('utm_medium') || '',
+                campaign: params.get('utm_campaign') || '',
+                content: params.get('utm_content') || '',
+                term: params.get('utm_term') || ''
+            };
+
+            // Store in sessionStorage
+            sessionStorage.setItem('utm_params', JSON.stringify(utm));
+
+            return utm;
+        }
+
+        function buildGetStartedURL() {
+            const utm = JSON.parse(sessionStorage.getItem('utm_params') || '{}');
+            const params = new URLSearchParams();
+
+            if (utm.source) params.append('utm_source', utm.source);
+            if (utm.medium) params.append('utm_medium', utm.medium);
+            if (utm.campaign) params.append('utm_campaign', utm.campaign);
+            if (utm.content) params.append('utm_content', utm.content);
+            if (utm.term) params.append('utm_term', utm.term);
+
+            const queryString = params.toString();
+            return 'get-started.html' + (queryString ? '?' + queryString : '');
+        }
+
+        // ===== PAGE INITIALIZATION =====
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get and store UTM params
+            getUTMParams();
+
+            // Update CTA links with UTM params
+            const getStartedURL = buildGetStartedURL();
+            document.getElementById('heroCtaPrimary').href = getStartedURL;
+            document.getElementById('finalCtaButton').href = getStartedURL;
+
+            // Smooth scroll for "See How It Works"
+            document.getElementById('heroCtaSecondary').addEventListener('click', function(e) {
+                e.preventDefault();
+                const element = document.getElementById('how-it-works');
+                element.scrollIntoView({ behavior: 'smooth' });
+
+                // Track event
+                if (typeof gtag !== 'undefined') {
+                    gtag('event', 'click', {
+                        'event_category': 'engagement',
+                        'event_label': 'see_how_it_works'
+                    });
+                }
+            });
+
+            // ===== FAQ ACCORDION =====
+            const faqItems = document.querySelectorAll('.faq-item');
+            faqItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    // Close other open items
+                    faqItems.forEach(otherItem => {
+                        if (otherItem !== item) {
+                            otherItem.classList.remove('active');
+                        }
+                    });
+
+                    // Toggle current item
+                    this.classList.toggle('active');
+
+                    // Track event
+                    if (typeof gtag !== 'undefined') {
+                        const question = this.querySelector('.faq-question span').textContent;
+                        gtag('event', 'toggle_faq', {
+                            'event_category': 'engagement',
+                            'event_label': question
+                        });
+                    }
+                });
+            });
+
+            // ===== CTA TRACKING =====
+            document.getElementById('heroCtaPrimary').addEventListener('click', function() {
+                if (typeof gtag !== 'undefined') {
+                    gtag('event', 'click_cta', {
+                        'event_category': 'conversion',
+                        'event_label': 'hero_primary'
+                    });
+                }
+            });
+
+            document.getElementById('finalCtaButton').addEventListener('click', function() {
+                if (typeof gtag !== 'undefined') {
+                    gtag('event', 'click_cta', {
+                        'event_category': 'conversion',
+                        'event_label': 'final_cta'
+                    });
+                }
+            });
+
+            // Track page view
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'page_view', {
+                    'page_title': 'Landing Page - Organic',
+                    'page_path': '/landing.html'
+                });
+            }
+        });
+    </script>
+</body>
+</html>

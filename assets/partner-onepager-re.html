@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OtterQuote - Real Estate Agent Partner One-Pager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: #1f2937;
+            line-height: 1.6;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .print-button {
+            display: block;
+            margin: 0 auto 20px;
+            padding: 12px 24px;
+            background-color: #14B8A6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+
+        .print-button:hover {
+            background-color: #0d9488;
+        }
+
+        .container {
+            max-width: 8.5in;
+            height: 11in;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Top accent bar */
+        .accent-bar {
+            height: 6px;
+            background-color: #14B8A6;
+            width: 100%;
+        }
+
+        .content {
+            padding: 40px 35px;
+            height: calc(100% - 6px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #14B8A6;
+            padding-bottom: 15px;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0A1E2C;
+            letter-spacing: -0.5px;
+        }
+
+        .logo span {
+            font-size: 32px;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        .tagline {
+            font-size: 13px;
+            color: #14B8A6;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        /* Main headline */
+        .main-headline {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0A1E2C;
+            text-align: center;
+            margin: 18px 0 8px;
+            line-height: 1.2;
+        }
+
+        .subheadline {
+            font-size: 14px;
+            color: #4b5563;
+            text-align: center;
+            margin-bottom: 22px;
+            line-height: 1.5;
+        }
+
+        /* Steps section */
+        .steps {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .step {
+            text-align: center;
+            padding: 12px;
+            background-color: #f8fffe;
+            border: 1px solid #d1f2f0;
+            border-radius: 4px;
+        }
+
+        .step-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .step-number {
+            font-weight: 700;
+            color: #14B8A6;
+            font-size: 12px;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .step-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #0A1E2C;
+            margin-bottom: 6px;
+        }
+
+        .step-description {
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.4;
+        }
+
+        /* Benefits section */
+        .benefits-section {
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0A1E2C;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #14B8A6;
+            padding-bottom: 6px;
+        }
+
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 12px;
+            margin-bottom: 12px;
+        }
+
+        .benefit-item {
+            font-size: 12px;
+            color: #4b5563;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .benefit-item:before {
+            content: "✓";
+            color: #14B8A6;
+            font-weight: 700;
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+
+        /* What it works for */
+        .works-for {
+            background-color: #f0fffe;
+            border-left: 4px solid #14B8A6;
+            padding: 12px;
+            margin-bottom: 14px;
+            border-radius: 2px;
+        }
+
+        .works-for-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0A1E2C;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .works-for-text {
+            font-size: 12px;
+            color: #4b5563;
+            line-height: 1.5;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 12px;
+            margin-bottom: 8px;
+        }
+
+        .cta-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0A1E2C;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .qr-placeholder {
+            border: 2px solid #14B8A6;
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f8fffe;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #14B8A6;
+        }
+
+        .cta-link {
+            font-size: 12px;
+            color: #4b5563;
+            margin-bottom: 8px;
+        }
+
+        .cta-link code {
+            background-color: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 2px;
+            font-family: "Courier New", monospace;
+            color: #0A1E2C;
+            font-weight: 600;
+        }
+
+        /* Footer */
+        .footer {
+            border-top: 1px solid #e5e7eb;
+            padding-top: 8px;
+            text-align: center;
+            font-size: 11px;
+            color: #9ca3af;
+        }
+
+        .footer-line {
+            margin: 2px 0;
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .print-button {
+                display: none;
+            }
+
+            .container {
+                max-width: 100%;
+                height: 100%;
+                box-shadow: none;
+                margin: 0;
+                page-break-after: avoid;
+            }
+
+            @page {
+                margin: 0;
+                size: letter;
+            }
+
+            .content {
+                padding: 35px 30px;
+            }
+
+            /* Ensure content stays within one page */
+            .steps {
+                margin-bottom: 14px;
+            }
+
+            .benefits-grid {
+                margin-bottom: 8px;
+            }
+
+            .step {
+                padding: 10px;
+            }
+
+            .step-description {
+                font-size: 11px;
+            }
+
+            .main-headline {
+                font-size: 26px;
+                margin: 14px 0 6px;
+            }
+
+            .subheadline {
+                font-size: 13px;
+                margin-bottom: 16px;
+            }
+        }
+
+        /* Responsive adjustments for screen viewing */
+        @media (max-width: 900px) {
+            .container {
+                max-width: 100%;
+                height: auto;
+                box-shadow: none;
+            }
+
+            .steps {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="print-button" onclick="window.print()">🖨️ Print / Save as PDF</button>
+
+    <div class="container">
+        <!-- Top accent bar -->
+        <div class="accent-bar"></div>
+
+        <!-- Main content -->
+        <div class="content">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo"><span>🦦</span>OtterQuote</div>
+                <div class="tagline">Contractor Quotes Made Simple</div>
+            </div>
+
+            <!-- Main headline and subheadline -->
+            <div>
+                <div class="main-headline">Need a Contractor Quote? Skip the Runaround.</div>
+                <div class="subheadline">Your real estate agent has partnered with OtterQuote to get you fast, accurate contractor quotes — without the hassle.</div>
+            </div>
+
+            <!-- Steps section -->
+            <div class="steps">
+                <div class="step">
+                    <div class="step-icon">📏</div>
+                    <div class="step-number">Step 1</div>
+                    <div class="step-title">Get Professional Measurements</div>
+                    <div class="step-description">Purchase a quick Hover measurement of the property. Takes 15 minutes of smartphone photos.</div>
+                </div>
+
+                <div class="step">
+                    <div class="step-icon">🏗️</div>
+                    <div class="step-number">Step 2</div>
+                    <div class="step-title">Contractors Compete for Your Job</div>
+                    <div class="step-description">Licensed, vetted contractors bid on your project using real measurements. No tire-kickers, no runaround.</div>
+                </div>
+
+                <div class="step">
+                    <div class="step-icon">✅</div>
+                    <div class="step-number">Step 3</div>
+                    <div class="step-title">Compare & Choose</div>
+                    <div class="step-description">Review bids side-by-side. See pricing, warranties, and credentials. Pick the contractor that's right for you.</div>
+                </div>
+            </div>
+
+            <!-- Benefits section -->
+            <div class="benefits-section">
+                <div class="section-title">Why OtterQuote</div>
+                <div class="benefits-grid">
+                    <div class="benefit-item">100% free for homeowners</div>
+                    <div class="benefit-item">Professional Hover measurements</div>
+                    <div class="benefit-item">Multiple competing bids</div>
+                    <div class="benefit-item">Vetted, licensed contractors</div>
+                    <div class="benefit-item">Works for any exterior project</div>
+                    <div class="benefit-item">No pressure, no door-knockers</div>
+                </div>
+            </div>
+
+            <!-- What it works for -->
+            <div class="works-for">
+                <div class="works-for-title">Perfect For</div>
+                <div class="works-for-text">Roof repairs, siding, gutters, windows — any exterior project. Whether you're buying, selling, or just getting quotes for negotiation, OtterQuote gets you real numbers fast.</div>
+            </div>
+
+            <!-- CTA Section -->
+            <div class="cta-section">
+                <div class="cta-label">Get Started Now</div>
+                <div class="qr-placeholder">QR CODE</div>
+                <div class="cta-link">Or visit: <code>otterquote.com/ref/YOUR-CODE</code></div>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <div class="footer-line">Powered by OtterQuote — otterquote.com</div>
+                <div class="footer-line">Questions? support@otterquote.com</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

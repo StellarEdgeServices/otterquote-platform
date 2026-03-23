@@ -135,6 +135,15 @@ const Nav = {
               <a href="/contractor-agreement.html">Partner Agreement</a>
             `}
           </div>
+          ${!isContractor ? `
+          <div class="footer-col">
+            <h4 class="footer-heading">Partners</h4>
+            <a href="/partner-re.html">Real Estate Agents</a>
+            <a href="/partner-insurance.html">Insurance Agents</a>
+            <a href="/partner-dashboard.html">Partner Dashboard</a>
+            <a href="/refer-a-friend.html">Refer a Friend</a>
+          </div>
+          ` : ''}
           <div class="footer-col">
             <h4 class="footer-heading">Legal</h4>
             <a href="/terms.html">Terms of Service</a>

@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+<title>Become a Real Estate Partner — OtterQuote</title>
+<meta name="description" content="Sign up as an OtterQuote real estate partner and earn $250 per completed job. Get your unique referral link and start earning in minutes.">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+/* ── Hero Section ── */
+.hero {
+  padding: var(--sp-20) var(--sp-8);
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.hero-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hero h1 {
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+  margin-bottom: var(--sp-4);
+  color: var(--white);
+}
+
+.hero .subtitle {
+  font-size: 1.1rem;
+  color: var(--slate);
+  line-height: 1.8;
+  margin-bottom: var(--sp-8);
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero .btn {
+  margin-top: var(--sp-2);
+}
+
+/* ── How It Works Section ── */
+.how-it-works {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+}
+
+.section-header {
+  text-align: center;
+  margin-bottom: var(--sp-12);
+}
+
+.section-header h2 {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.section-header p {
+  font-size: 1.05rem;
+  color: var(--slate);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--sp-8);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.step-card {
+  padding: var(--sp-8);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-lg);
+  transition: all var(--duration) var(--ease);
+}
+
+.step-card:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(20, 184, 166, 0.2);
+}
+
+.step-number {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  background: var(--amber-glow);
+  border: 2px solid var(--amber);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--amber);
+  margin-bottom: var(--sp-4);
+}
+
+.step-card h3 {
+  font-size: 1.25rem;
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.step-card p {
+  color: var(--slate);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ── Value Props Section ── */
+.value-props {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.props-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.prop-card {
+  padding: var(--sp-6);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(20, 184, 166, 0.2);
+  border-radius: var(--radius-md);
+  transition: all var(--duration) var(--ease);
+}
+
+.prop-card:hover {
+  background: rgba(20, 184, 166, 0.08);
+  border-color: var(--amber);
+  transform: translateY(-2px);
+}
+
+.prop-icon {
+  font-size: 2.5rem;
+  margin-bottom: var(--sp-3);
+}
+
+.prop-card h3 {
+  font-size: 1.1rem;
+  color: var(--white);
+  margin-bottom: var(--sp-2);
+}
+
+.prop-card p {
+  font-size: 0.95rem;
+  color: var(--slate);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ── Commission Details Section ── */
+.commission-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.commission-card {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: var(--sp-10);
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, rgba(20, 184, 166, 0.05) 100%);
+  border: 2px solid var(--amber);
+  border-radius: var(--radius-lg);
+}
+
+.commission-card h3 {
+  color: var(--amber);
+  font-size: 1.5rem;
+  margin-bottom: var(--sp-4);
+}
+
+.commission-detail {
+  display: flex;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.detail-check {
+  color: var(--amber);
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.detail-text {
+  color: var(--white);
+  line-height: 1.6;
+}
+
+.detail-text p {
+  color: var(--slate);
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* ── Features Section ── */
+.features-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.features-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.feature-item {
+  display: flex;
+  gap: var(--sp-4);
+}
+
+.feature-check {
+  color: var(--amber);
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.feature-content h4 {
+  font-family: var(--font-body);
+  color: var(--white);
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-1);
+}
+
+.feature-content p {
+  color: var(--slate);
+  font-size: 0.9rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Signup Form Section ── */
+.signup-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.signup-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-12);
+  max-width: 1300px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+.signup-form-wrap {
+  max-width: 500px;
+}
+
+.signup-form-wrap h2 {
+  font-size: clamp(1.8rem, 3vw, 2.2rem);
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.signup-form-wrap .subtitle {
+  color: var(--slate);
+  font-size: 1rem;
+  margin-bottom: var(--sp-8);
+  line-height: 1.6;
+}
+
+.partner-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.form-label {
+  font-family: var(--font-body);
+  color: var(--white);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.form-input {
+  padding: var(--sp-3) var(--sp-4);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  transition: all var(--duration) var(--ease);
+}
+
+.form-input::placeholder {
+  color: rgba(255,255,255,0.4);
+}
+
+.form-input:focus {
+  outline: none;
+  background: rgba(255,255,255,0.06);
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: var(--slate);
+  margin-top: 2px;
+}
+
+.form-input[type="file"] {
+  padding: var(--sp-3);
+  cursor: pointer;
+}
+
+.form-checkbox-group {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0;
+}
+
+.form-checkbox {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin-top: 2px;
+  accent-color: var(--amber);
+  cursor: pointer;
+}
+
+.checkbox-label {
+  font-size: 0.9rem;
+  color: var(--slate);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.checkbox-label a {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.form-error {
+  padding: var(--sp-4);
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  color: #FECACA;
+  font-size: 0.9rem;
+  margin: var(--sp-3) 0;
+}
+
+.signup-benefits {
+  padding: var(--sp-8);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(20, 184, 166, 0.2);
+  border-radius: var(--radius-lg);
+  max-width: 500px;
+}
+
+.signup-benefits h3 {
+  color: var(--white);
+  font-size: 1.2rem;
+  margin-bottom: var(--sp-6);
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+
+.benefit-item {
+  display: flex;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+}
+
+.benefit-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--amber-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  color: var(--amber);
+}
+
+.benefit-text h4 {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: var(--sp-1);
+}
+
+.benefit-text p {
+  font-size: 0.85rem;
+  color: var(--slate);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Button styles ── */
+.btn {
+  padding: var(--sp-3) var(--sp-6);
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+}
+
+.btn-primary {
+  background: var(--amber);
+  color: var(--navy);
+}
+
+.btn-primary:hover {
+  background: var(--amber-2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(20, 184, 166, 0.3);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-lg {
+  padding: var(--sp-4) var(--sp-8);
+  font-size: 1rem;
+}
+
+.btn-full {
+  width: 100%;
+}
+
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(10, 30, 44, 0.3);
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* ── Success State ── */
+.success-message {
+  display: none;
+  text-align: center;
+  padding: var(--sp-12) var(--sp-8);
+}
+
+.success-message.active { display: block; }
+.partner-form.hidden { display: none; }
+
+.success-icon {
+  font-size: 3.5rem;
+  margin-bottom: var(--sp-4);
+  color: var(--amber);
+}
+
+.success-message h2 {
+  font-size: 1.8rem;
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.success-message p {
+  font-size: 1rem;
+  color: var(--slate);
+  margin-bottom: var(--sp-2);
+  line-height: 1.6;
+}
+
+.referral-link-box {
+  background: rgba(20, 184, 166, 0.15);
+  border: 2px solid var(--amber);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+}
+
+.referral-code {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  color: var(--amber);
+  font-weight: 600;
+  word-break: break-all;
+  margin: var(--sp-2) 0;
+}
+
+.copy-btn {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: var(--sp-3);
+  transition: all var(--duration) var(--ease);
+}
+
+.copy-btn:hover {
+  background: var(--amber-2);
+}
+
+/* ── FAQ Section ── */
+.faq-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.faq-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.faq-item {
+  margin-bottom: var(--sp-4);
+}
+
+.faq-question {
+  padding: var(--sp-5) var(--sp-6);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all var(--duration) var(--ease);
+  user-select: none;
+}
+
+.faq-question:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(20, 184, 166, 0.2);
+}
+
+.faq-question.active {
+  background: rgba(20, 184, 166, 0.1);
+  border-color: var(--amber);
+}
+
+.faq-text {
+  color: var(--white);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.faq-toggle {
+  color: var(--amber);
+  font-size: 1.3rem;
+  flex-shrink: 0;
+  transition: transform var(--duration) var(--ease);
+}
+
+.faq-question.active .faq-toggle {
+  transform: rotate(180deg);
+}
+
+.faq-answer {
+  display: none;
+  padding: var(--sp-6);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  color: var(--slate);
+  line-height: 1.7;
+  animation: slideDown var(--duration) var(--ease);
+}
+
+.faq-question.active + .faq-answer {
+  display: block;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .hero {
+    padding: var(--sp-12) var(--sp-6);
+  }
+
+  .hero h1 {
+    font-size: 1.8rem;
+  }
+
+  .hero .subtitle {
+    font-size: 0.95rem;
+  }
+
+  .steps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .props-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .features-list {
+    grid-template-columns: 1fr;
+  }
+
+  .signup-layout {
+    grid-template-columns: 1fr;
+    gap: var(--sp-8);
+  }
+
+  .signup-benefits {
+    max-width: 100%;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .section-header h2 {
+    font-size: 1.5rem;
+  }
+
+  .how-it-works,
+  .value-props,
+  .commission-section,
+  .features-section,
+  .signup-section,
+  .faq-section {
+    padding: var(--sp-10) var(--sp-6);
+  }
+
+  .step-card,
+  .prop-card {
+    padding: var(--sp-5);
+  }
+
+  .commission-card {
+    padding: var(--sp-6);
+  }
+}
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active=""></header>
+
+<!-- Hero Section -->
+<section class="hero">
+  <div class="hero-content">
+    <h1>Stop Burning Your Contractor Contacts on Tire-Kickers</h1>
+    <p class="subtitle">When your clients need contractor quotes for a real estate transaction, OtterQuote gets them real bids from competing contractors — without wasting anyone's time. The secret? Your client invests in professional measurements upfront, so contractors know they're serious.</p>
+    <button class="btn btn-primary btn-lg" id="hero-cta">Become a Partner — It's Free</button>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="how-it-works">
+  <div class="section-header">
+    <h2>How It Works for RE Agents</h2>
+  </div>
+
+  <div class="steps-grid">
+    <div class="step-card">
+      <div class="step-number">1</div>
+      <h3>Sign Up & Get Your Link</h3>
+      <p>Create your free partner account. Get a unique referral link in seconds.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-number">2</div>
+      <h3>Share With Your Clients</h3>
+      <p>Send your link to buyers, sellers, or homeowners who need exterior work quoted. They purchase professional Hover measurements, select what they need quoted, and contractors compete for the job.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-number">3</div>
+      <h3>Earn $250 Per Job</h3>
+      <p>When your referral's job completes (over $10,000), you earn $250. Track everything in your partner dashboard.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Value Props -->
+<section class="value-props">
+  <div class="section-header">
+    <h2>Why RE Agents Love OtterQuote</h2>
+  </div>
+
+  <div class="props-grid">
+    <div class="prop-card">
+      <div class="prop-icon">🎯</div>
+      <h3>No More Tire-Kickers</h3>
+      <p>The Hover measurement purchase filters out people who just want a number for negotiation. Contractors get serious prospects only.</p>
+    </div>
+    <div class="prop-card">
+      <div class="prop-icon">⚡</div>
+      <h3>Faster Closings</h3>
+      <p>Inspection reveals roof damage? Your client has a professional quote within 48 hours — no waiting weeks for contractor callbacks.</p>
+    </div>
+    <div class="prop-card">
+      <div class="prop-icon">😊</div>
+      <h3>Happy Clients, More Referrals</h3>
+      <p>Your clients get competing bids, transparent pricing, and a fully executed contract. They'll remember who sent them.</p>
+    </div>
+    <div class="prop-card">
+      <div class="prop-icon">🏠</div>
+      <h3>Works for Any Exterior Project</h3>
+      <p>Not just insurance claims. Pre-sale repairs, post-purchase improvements, inspection-driven fixes, retail quotes for negotiation leverage.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Commission Details -->
+<section class="commission-section">
+  <div class="section-header">
+    <h2>Commission Details</h2>
+  </div>
+
+  <div class="commission-card">
+    <h3>Simple, Transparent Payouts</h3>
+
+    <div class="commission-detail">
+      <div class="detail-check">✓</div>
+      <div class="detail-text">
+        <strong>$250 per completed job over $10,000</strong>
+        <p>Earned when your referral's job is complete and payment is processed.</p>
+      </div>
+    </div>
+
+    <div class="commission-detail">
+      <div class="detail-check">✓</div>
+      <div class="detail-text">
+        <strong>Paid after job completion</strong>
+        <p>Commissions are paid out within 10 business days of project completion.</p>
+      </div>
+    </div>
+
+    <div class="commission-detail">
+      <div class="detail-check">✓</div>
+      <div class="detail-text">
+        <strong>Jobs under $10K: Your value is faster closings & better service</strong>
+        <p>Not every client needs to earn commission — but they all get faster, better-managed projects.</p>
+      </div>
+    </div>
+
+    <div class="commission-detail">
+      <div class="detail-check">✓</div>
+      <div class="detail-text">
+        <strong>Track all referrals and commissions in real-time</strong>
+        <p>Your partner dashboard shows every referral status, earnings, and payout history.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features-section">
+  <div class="section-header">
+    <h2>What You Get</h2>
+    <p>Everything you need to start referring and earning immediately</p>
+  </div>
+
+  <div class="features-list">
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Unique referral link with your name</h4>
+        <p>Your link makes it easy to identify your referrals and builds trust with clients.</p>
+      </div>
+    </div>
+
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Partner dashboard with real-time tracking</h4>
+        <p>See every referral, their status, and your earned commissions at a glance.</p>
+      </div>
+    </div>
+
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Co-branded one-pager for packets</h4>
+        <p>Include OtterQuote in your buyer and seller packets with professional materials.</p>
+      </div>
+    </div>
+
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>"Send to Client" button with one click</h4>
+        <p>Personalized text or email sends your referral link directly from the dashboard.</p>
+      </div>
+    </div>
+
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Embeddable "Get a Quote" widget</h4>
+        <p>Add OtterQuote functionality directly to your website with minimal setup.</p>
+      </div>
+    </div>
+
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Monthly portfolio report</h4>
+        <p>Track your referral activity, earnings trends, and partner performance over time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Signup Form -->
+<section class="signup-section" id="signup-section">
+  <div class="section-header">
+    <h2>Join Our Partner Network</h2>
+  </div>
+
+  <div class="signup-layout">
+    <!-- Form Side -->
+    <div class="signup-form-wrap">
+      <h2>Create Your Partner Account</h2>
+      <p class="subtitle">Join hundreds of RE agents earning referral commissions while helping clients save time and money.</p>
+
+      <form class="partner-form" id="partner-form" novalidate>
+        <!-- Name Row -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="first-name">First Name</label>
+            <input type="text" id="first-name" class="form-input" required autocomplete="given-name" placeholder="Jane">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="last-name">Last Name</label>
+            <input type="text" id="last-name" class="form-input" required autocomplete="family-name" placeholder="Smith">
+          </div>
+        </div>
+
+        <!-- Email -->
+        <div class="form-group">
+          <label class="form-label" for="email">Email</label>
+          <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com">
+          <span class="form-hint">We'll send you a secure login link — no password needed.</span>
+        </div>
+
+        <!-- Phone -->
+        <div class="form-group">
+          <label class="form-label" for="phone">Phone</label>
+          <input type="tel" id="phone" class="form-input" required autocomplete="tel" placeholder="(317) 555-1234">
+          <span class="form-hint">For important partner updates and commission notifications.</span>
+        </div>
+
+        <!-- Brokerage -->
+        <div class="form-group">
+          <label class="form-label" for="brokerage">Brokerage / Agency Name</label>
+          <input type="text" id="brokerage" class="form-input" required placeholder="Your Real Estate Company">
+        </div>
+
+        <!-- Service Area -->
+        <div class="form-group">
+          <label class="form-label" for="service-area">Service Area</label>
+          <input type="text" id="service-area" class="form-input" required placeholder="e.g., Indianapolis, IN; Chicago Metro">
+          <span class="form-hint">Cities, counties, or regions where you work.</span>
+        </div>
+
+        <!-- Headshot (Optional) -->
+        <div class="form-group">
+          <label class="form-label" for="headshot">Headshot (Optional)</label>
+          <input type="file" id="headshot" class="form-input" accept="image/*">
+          <span class="form-hint">Used on your personalized referral landing page.</span>
+        </div>
+
+        <!-- Website URL (Optional) -->
+        <div class="form-group">
+          <label class="form-label" for="website">Your Website (Optional)</label>
+          <input type="url" id="website" class="form-input" autocomplete="url" placeholder="https://yourwebsite.com">
+          <span class="form-hint">For embedding the OtterQuote widget on your site.</span>
+        </div>
+
+        <!-- Terms Checkbox -->
+        <div class="form-checkbox-group">
+          <input type="checkbox" id="terms" class="form-checkbox" required>
+          <label for="terms" class="checkbox-label">
+            I agree to OtterQuote's <a href="terms.html">Partner Terms</a>
+          </label>
+        </div>
+
+        <div id="form-error" class="form-error" style="display:none;"></div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">
+          Create My Partner Account
+        </button>
+
+        <p class="text-sm text-center" style="color: var(--gray); margin-top: var(--sp-4); font-size: 0.85rem;">
+          Already a partner? <a href="partner-login.html" style="color: var(--amber); font-weight: 600;">Sign in to your dashboard</a>
+        </p>
+      </form>
+
+      <!-- Success State -->
+      <div class="success-message" id="success-message">
+        <div class="success-icon">🎉</div>
+        <h2>Welcome to OtterQuote!</h2>
+        <p>Your partner account has been created. Check your email for login details.</p>
+
+        <div class="referral-link-box">
+          <p style="color: var(--slate); margin: 0 0 var(--sp-2) 0;">Your Referral Link:</p>
+          <div class="referral-code" id="referral-code"></div>
+          <button type="button" class="copy-btn" id="copy-btn">Copy Link</button>
+        </div>
+
+        <p style="margin-top: var(--sp-6); color: var(--slate);">
+          You can start sharing this link with clients immediately. Visit your partner dashboard to customize your settings and track referrals.
+        </p>
+
+        <div style="margin-top: var(--sp-6);">
+          <button class="btn btn-primary" id="dashboard-btn">Go to Partner Dashboard</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Benefits Side -->
+    <div class="signup-benefits">
+      <h3>What Your Clients Get</h3>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">💰</div>
+        <div class="benefit-text">
+          <h4>Competing bids at zero cost</h4>
+          <p>Your clients get multiple quotes — contractors bid against each other for their business.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">📸</div>
+        <div class="benefit-text">
+          <h4>Professional Hover measurements</h4>
+          <p>Every project starts with accurate, professional aerial measurements — no guesswork.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">📊</div>
+        <div class="benefit-text">
+          <h4>Real-time tracking & transparency</h4>
+          <p>Your clients see every bid, track progress, and manage contracts in one place.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">⏱️</div>
+        <div class="benefit-text">
+          <h4>Takes 2 minutes to sign up</h4>
+          <p>Share your link — your clients can start the bidding process in minutes.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq-section">
+  <div class="section-header">
+    <h2>Frequently Asked Questions</h2>
+  </div>
+
+  <div class="faq-container">
+    <div class="faq-item">
+      <div class="faq-question" data-faq="1">
+        <span class="faq-text">How does my client get started?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>They click your referral link, create an account, and purchase Hover measurements of their property. Once the measurements are done, they select what needs quoting (roof, siding, windows, etc.), and OtterQuote automatically sends the job to competing contractors. Contractors submit bids, your client chooses one, and OtterQuote handles the contract and payment. You track it all in real-time.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" data-faq="2">
+        <span class="faq-text">What if my client already has measurements?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>They can upload existing measurements or adjuster-provided data instead of purchasing Hover measurements. This is especially useful for insurance claims where the insurer has already provided documentation. OtterQuote will work with those measurements to get bids from contractors.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" data-faq="3">
+        <span class="faq-text">Do my clients pay anything?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>They pay for Hover measurements upfront (typically $99–$299 depending on roof size). If they end up using one of the OtterQuote contractors for the work, we rebate that cost. The bidding, comparison, contract management, and payment processing are 100% free for homeowners — contractors pay to access quality leads through OtterQuote.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" data-faq="4">
+        <span class="faq-text">How do I track my referrals?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>Your partner dashboard shows every referral, their status (measurement in progress, bidding active, job awarded, completed), and your earned commissions in real-time. You'll also get email notifications when key milestones happen — job completion, commission earned, etc.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" data-faq="5">
+        <span class="faq-text">Can I refer clients who need insurance claim help?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>Absolutely. OtterQuote handles both insurance claims and retail/cash projects equally well. Storm damage claim? Post-purchase improvement? Inspection-driven repair? All earn referral commissions the same way. If the total project value is over $10,000 and completes, you earn $250.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+(function() {
+  const form = document.getElementById('partner-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const errorEl = document.getElementById('form-error');
+  const successMsg = document.getElementById('success-message');
+  const referralCode = document.getElementById('referral-code');
+  const copyBtn = document.getElementById('copy-btn');
+  const dashboardBtn = document.getElementById('dashboard-btn');
+  const heroCta = document.getElementById('hero-cta');
+  const signupSection = document.getElementById('signup-section');
+
+  // Smooth scroll to signup
+  heroCta.addEventListener('click', () => {
+    signupSection.scrollIntoView({ behavior: 'smooth' });
+  });
+
+  // Phone formatting
+  const phoneInput = document.getElementById('phone');
+  phoneInput.addEventListener('input', () => {
+    let v = phoneInput.value.replace(/\D/g, '');
+    if (v.length > 0) {
+      if (v.length <= 3) v = `(${v}`;
+      else if (v.length <= 6) v = `(${v.slice(0,3)}) ${v.slice(3)}`;
+      else v = `(${v.slice(0,3)}) ${v.slice(3,6)}-${v.slice(6,10)}`;
+    }
+    phoneInput.value = v;
+  });
+
+  // FAQ accordion
+  document.querySelectorAll('.faq-question').forEach(question => {
+    question.addEventListener('click', () => {
+      // Close other open items
+      document.querySelectorAll('.faq-question.active').forEach(other => {
+        if (other !== question) {
+          other.classList.remove('active');
+        }
+      });
+      // Toggle current
+      question.classList.toggle('active');
+    });
+  });
+
+  // Form submission
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.style.display = 'none';
+
+    const firstName = document.getElementById('first-name').value.trim();
+    const lastName = document.getElementById('last-name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const brokerage = document.getElementById('brokerage').value.trim();
+    const serviceArea = document.getElementById('service-area').value.trim();
+    const website = document.getElementById('website').value.trim();
+    const termsChecked = document.getElementById('terms').checked;
+    const headshotFile = document.getElementById('headshot').files[0];
+
+    // Validation
+    if (!firstName || !lastName || !email || !phone || !brokerage || !serviceArea) {
+      errorEl.textContent = 'Please fill in all required fields.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errorEl.textContent = 'Please enter a valid email address.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    if (!termsChecked) {
+      errorEl.textContent = 'Please agree to the Partner Terms to continue.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    // Loading state
+    submitBtn.classList.add('btn-loading');
+    submitBtn.disabled = true;
+
+    try {
+      // Generate a referral code (short unique code)
+      const refCode = 'ref_' + Math.random().toString(36).substring(2, 10).toUpperCase();
+
+      // Upload headshot if provided
+      let headshot_url = null;
+      if (headshotFile) {
+        try {
+          const fileName = `${refCode}_${headshotFile.name}`;
+          const { data: uploadData, error: uploadError } = await sb.storage
+            .from('partner-photos')
+            .upload(fileName, headshotFile, { upsert: false });
+
+          if (uploadError) throw uploadError;
+
+          // Get public URL
+          const { data: urlData } = sb.storage
+            .from('partner-photos')
+            .getPublicUrl(fileName);
+          headshot_url = urlData?.publicUrl;
+        } catch (err) {
+          console.error('Headshot upload error:', err);
+          // Non-fatal, continue without headshot
+        }
+      }
+
+      // Save lead to database
+      const { error: leadError } = await sb
+        .from('leads')
+        .insert({
+          full_name: `${firstName} ${lastName}`,
+          email: email,
+          phone: phone,
+          source: 're_agent',
+          notes: JSON.stringify({
+            brokerage,
+            service_area: serviceArea,
+            website: website || null,
+          }),
+          created_at: new Date().toISOString(),
+        });
+
+      // Insert into referral_agents table
+      const { data: agentData, error: agentError } = await sb
+        .from('referral_agents')
+        .insert({
+          first_name: firstName,
+          last_name: lastName,
+          email: email,
+          phone: phone,
+          brokerage: brokerage,
+          service_area: serviceArea,
+          website: website || null,
+          headshot_url: headshot_url,
+          referral_code: refCode,
+          agent_type: 're_agent',
+          created_at: new Date().toISOString(),
+        });
+
+      if (agentError) throw agentError;
+
+      // Store profile data in sessionStorage for post-auth
+      sessionStorage.setItem('cs_signup', JSON.stringify({
+        first_name: firstName,
+        last_name: lastName,
+        email: email,
+        phone: phone,
+        brokerage: brokerage,
+        service_area: serviceArea,
+        website: website || null,
+        referral_code: refCode,
+        role: 're_agent',
+      }));
+
+      sessionStorage.setItem('cs_auth_role', 're_agent');
+
+      // Send magic link
+      await Auth.sendMagicLink(email, 're_agent');
+
+      // Show success state
+      form.classList.add('hidden');
+      referralCode.textContent = `otterquote.com/ref/${refCode}`;
+      successMsg.classList.add('active');
+
+      // GA4 event
+      gtag('event', 'sign_up', {
+        method: 'magic_link',
+        user_type: 're_agent',
+      });
+
+    } catch (err) {
+      console.error('Signup error:', err);
+      errorEl.textContent = 'Something went wrong. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL;
+      errorEl.style.display = 'block';
+    } finally {
+      submitBtn.classList.remove('btn-loading');
+      submitBtn.disabled = false;
+    }
+  });
+
+  // Copy referral link
+  copyBtn.addEventListener('click', () => {
+    const link = referralCode.textContent;
+    navigator.clipboard.writeText(link).then(() => {
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => {
+        copyBtn.textContent = originalText;
+      }, 2000);
+    }).catch(() => {
+      alert('Could not copy. Please try again.');
+    });
+  });
+
+  // Dashboard button
+  dashboardBtn.addEventListener('click', () => {
+    window.location.href = '/partner-dashboard.html';
+  });
+
+  // Check if user is already logged in
+  Auth.getUser().then(async user => {
+    if (user) {
+      await Auth.redirectToDashboard();
+    }
+  });
+
+  // Set up auth state listener
+  Auth.onAuthStateChangeListener();
+})();
+</script>
+
+</body>
+</html>

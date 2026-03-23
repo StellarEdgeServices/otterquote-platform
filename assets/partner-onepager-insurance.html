@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What to Do After Storm Damage - OtterQuote</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.5;
+            color: #1f2937;
+            background: #f3f4f6;
+        }
+
+        .print-button {
+            display: flex;
+            justify-content: center;
+            padding: 16px;
+            background: #f3f4f6;
+        }
+
+        .print-button button {
+            padding: 8px 24px;
+            background: #14B8A6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .print-button button:hover {
+            background: #0d9488;
+        }
+
+        .page-container {
+            max-width: 850px;
+            margin: 16px auto;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .page {
+            width: 100%;
+            padding: 40px;
+            min-height: 1122px;
+        }
+
+        /* Header */
+        .header {
+            border-bottom: 3px solid #14B8A6;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .logo {
+            font-size: 32px;
+            font-weight: 700;
+            color: #0A1E2C;
+            margin-right: 12px;
+        }
+
+        .tagline {
+            font-size: 13px;
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        /* Main Headline */
+        .main-headline {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0A1E2C;
+            margin-bottom: 8px;
+        }
+
+        .subheading {
+            font-size: 14px;
+            color: #4b5563;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        /* Steps Section */
+        .steps {
+            margin-bottom: 28px;
+        }
+
+        .step {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+        }
+
+        .step:not(:last-child) {
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .step-icon {
+            font-size: 28px;
+            flex-shrink: 0;
+            line-height: 1;
+        }
+
+        .step-content h3 {
+            font-size: 15px;
+            font-weight: 600;
+            color: #0A1E2C;
+            margin-bottom: 4px;
+        }
+
+        .step-content p {
+            font-size: 13px;
+            color: #6b7280;
+            line-height: 1.5;
+        }
+
+        /* Benefits Section */
+        .benefits-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #0A1E2C;
+            margin-bottom: 12px;
+            margin-top: 20px;
+        }
+
+        .benefits {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px 20px;
+            margin-bottom: 20px;
+        }
+
+        .benefit-item {
+            display: flex;
+            gap: 8px;
+            font-size: 13px;
+            color: #374151;
+        }
+
+        .benefit-item::before {
+            content: "✓";
+            color: #14B8A6;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        /* Warning Box */
+        .warning-box {
+            border: 2px solid #f59e0b;
+            border-radius: 6px;
+            padding: 16px;
+            background: #fffbeb;
+            margin: 20px 0;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #654321;
+        }
+
+        .warning-box strong {
+            color: #0A1E2C;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            text-align: center;
+            margin: 20px 0;
+            padding: 16px;
+            background: #f0f9ff;
+            border-radius: 6px;
+            border: 1px solid #c7f0e8;
+        }
+
+        .cta-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #0A1E2C;
+            margin-bottom: 12px;
+        }
+
+        .qr-placeholder {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 12px;
+            border: 2px dashed #14B8A6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            border-radius: 4px;
+        }
+
+        .qr-text {
+            font-size: 11px;
+            color: #6b7280;
+        }
+
+        .visit-link {
+            font-size: 12px;
+            color: #0A1E2C;
+            margin-top: 8px;
+            font-weight: 600;
+        }
+
+        .visit-link .code {
+            color: #14B8A6;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Footer */
+        .footer {
+            border-top: 1px solid #e5e7eb;
+            padding-top: 12px;
+            margin-top: 20px;
+            font-size: 11px;
+            color: #6b7280;
+            text-align: center;
+        }
+
+        .footer-line {
+            margin: 4px 0;
+        }
+
+        .footer a {
+            color: #14B8A6;
+            text-decoration: none;
+        }
+
+        /* Print Styles */
+        @media print {
+            body {
+                background: white;
+            }
+
+            .print-button {
+                display: none;
+            }
+
+            .page-container {
+                max-width: 100%;
+                margin: 0;
+                box-shadow: none;
+                page-break-after: avoid;
+            }
+
+            .page {
+                min-height: auto;
+                padding: 40px;
+                box-shadow: none;
+            }
+
+            a {
+                color: inherit;
+                text-decoration: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page {
+                padding: 24px;
+            }
+
+            .main-headline {
+                font-size: 24px;
+            }
+
+            .benefits {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-button">
+        <button onclick="window.print()">Print One-Pager</button>
+    </div>
+
+    <div class="page-container">
+        <div class="page">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo-area">
+                    <div class="logo">🦦 OtterQuote</div>
+                </div>
+                <div class="tagline">Your partner in finding the right contractor</div>
+            </div>
+
+            <!-- Main Headline -->
+            <h1 class="main-headline">What to Do After Storm Damage</h1>
+            <p class="subheading">Your insurance agent has partnered with OtterQuote to help you find the best contractor for your repair — at no cost to you.</p>
+
+            <!-- Steps Section -->
+            <div class="steps">
+                <div class="step">
+                    <div class="step-icon">📋</div>
+                    <div class="step-content">
+                        <h3>File Your Claim</h3>
+                        <p>Contact your insurance company to file a claim. Your agent can help with this.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-icon">📄</div>
+                    <div class="step-content">
+                        <h3>Get Your Estimate</h3>
+                        <p>Your adjuster will inspect the damage and provide an estimate. Don't have it yet? OtterQuote can help you request it.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-icon">🏗️</div>
+                    <div class="step-content">
+                        <h3>Let Contractors Compete</h3>
+                        <p>Upload your estimate to OtterQuote. Vetted, licensed contractors compete for your job with their best bids.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-icon">✅</div>
+                    <div class="step-content">
+                        <h3>Compare & Choose</h3>
+                        <p>Review bids side-by-side. See pricing, warranties, and contractor credentials. Pick the one that's right for you.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Benefits Title -->
+            <div class="benefits-title">Why Use OtterQuote?</div>
+
+            <!-- Benefits Grid -->
+            <div class="benefits">
+                <div class="benefit-item">100% free for homeowners</div>
+                <div class="benefit-item">Multiple competing bids</div>
+                <div class="benefit-item">We help gather your paperwork</div>
+                <div class="benefit-item">Vetted, licensed contractors</div>
+                <div class="benefit-item">Works with RCV and ACV policies</div>
+                <div class="benefit-item">No pressure, no door-knockers</div>
+            </div>
+
+            <!-- Warning Box -->
+            <div class="warning-box">
+                <strong>⚠️ Beware of storm chasers.</strong> After a storm, you may be approached by door-to-door salespeople pressuring you to sign immediately. OtterQuote puts YOU in control — you compare multiple bids transparently and choose on your timeline.
+            </div>
+
+            <!-- CTA Section -->
+            <div class="cta-section">
+                <div class="cta-label">Scan to Get Started</div>
+                <div class="qr-placeholder">
+                    <div class="qr-text">[QR Code]</div>
+                </div>
+                <div class="visit-link">Or visit: otterquote.com/ref/<span class="code">YOUR-CODE</span></div>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <div class="footer-line"><strong>Powered by OtterQuote</strong> — otterquote.com</div>
+                <div class="footer-line">Questions? <a href="mailto:support@otterquote.com">support@otterquote.com</a></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OtterQuote - Referral Router</title>
+    <link rel="stylesheet" href="css/design-system.css">
+    <style>
+        body {
+            background-color: var(--navy, #0A1E2C);
+            color: var(--white, #FFFFFF);
+            font-family: inherit;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .referral-container {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 2rem;
+            background-color: var(--amber, #14B8A6);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: auto;
+            margin-right: auto;
+            font-weight: bold;
+            font-size: 32px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(20, 184, 166, 0.2);
+            border-top: 3px solid var(--amber, #14B8A6);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message {
+            font-size: 18px;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+
+        .error-message {
+            color: var(--white, #FFFFFF);
+            margin-top: 2rem;
+        }
+
+        .error-message h2 {
+            color: var(--amber, #14B8A6);
+            margin-bottom: 1rem;
+        }
+
+        .error-message a {
+            color: var(--amber, #14B8A6);
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+
+        .error-message a:hover {
+            opacity: 0.8;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="referral-container">
+        <div id="loading-state">
+            <div class="logo">OQ</div>
+            <div class="spinner"></div>
+            <p class="message">Redirecting you...</p>
+        </div>
+
+        <div id="error-state" class="hidden error-message">
+            <h2>Referral link not found</h2>
+            <p>This referral code doesn't exist or has expired.</p>
+            <p><a href="/">← Return to OtterQuote</a></p>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        async function handleReferral() {
+            try {
+                // Get the referral code from URL parameters
+                const params = new URLSearchParams(window.location.search);
+                const code = params.get('code');
+
+                // If no code provided, redirect to main page
+                if (!code) {
+                    window.location.href = '/index.html';
+                    return;
+                }
+
+                // Initialize Supabase client
+                const { createClient } = window.supabase;
+                const supabaseUrl = window.SUPABASE_URL;
+                const supabaseKey = window.SUPABASE_ANON_KEY;
+
+                if (!supabaseUrl || !supabaseKey) {
+                    console.error('Supabase configuration missing');
+                    showError();
+                    return;
+                }
+
+                const supabase = createClient(supabaseUrl, supabaseKey);
+
+                // Query the referral_agents table
+                const { data, error } = await supabase
+                    .from('referral_agents')
+                    .select('agent_type')
+                    .eq('code', code)
+                    .single();
+
+                if (error || !data) {
+                    console.error('Referral code not found:', error);
+                    showError();
+                    return;
+                }
+
+                // Determine redirect URL based on agent type
+                let redirectUrl = '/ref-re.html';
+
+                switch (data.agent_type) {
+                    case 're_agent':
+                        redirectUrl = '/ref-re.html';
+                        break;
+                    case 'insurance_agent':
+                        redirectUrl = '/ref-insurance.html';
+                        break;
+                    case 'home_inspector':
+                        redirectUrl = '/ref-re.html';
+                        break;
+                    case 'customer':
+                        redirectUrl = '/ref-re.html';
+                        break;
+                    default:
+                        redirectUrl = '/ref-re.html';
+                }
+
+                // Redirect to the appropriate page with the referral code
+                window.location.href = `${redirectUrl}?ref=${encodeURIComponent(code)}`;
+
+            } catch (err) {
+                console.error('Referral router error:', err);
+                showError();
+            }
+        }
+
+        function showError() {
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('error-state').classList.remove('hidden');
+        }
+
+        // Load Supabase and start the referral process
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.0/dist/module.js';
+        script.type = 'module';
+        script.onload = () => {
+            import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.0/dist/module.js').then(() => {
+                handleReferral();
+            });
+        };
+        script.onerror = () => {
+            console.error('Failed to load Supabase library');
+            showError();
+        };
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>
