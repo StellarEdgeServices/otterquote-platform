@@ -123,7 +123,7 @@ const Nav = {
             </div>
             <p class="footer-tagline">${isContractor
               ? 'Your sales team — without the truck, the manager, or the advance.'
-              : 'Helping homeowners get the best deal on storm damage repairs.'
+              : 'Helping homeowners get the best deal on roofing and exterior projects.'
             }</p>
           </div>
           <div class="footer-col">

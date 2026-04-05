@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
   <title>Submit for Bid — OtterQuote</title>
-  <meta name="description" content="Review and submit your claim package for competitive bids from qualified contractors.">
+  <meta name="description" content="Review and submit your project details for competitive bids from qualified contractors.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
@@ -69,7 +69,7 @@
       color: var(--amber);
     }
 
-    /* Status banner (for submitted claims) */
+    /* Status banner (for submitted projects) */
     .status-banner {
       display: none;
       background: var(--green-light);
@@ -122,7 +122,7 @@
       font-size: 1.25rem;
     }
 
-    /* Claim info section */
+    /* Project info section */
     .claim-info-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -575,7 +575,7 @@
             </div>
             <div class="welcome-progress">
               <div class="progress-label">
-                <span>Claim Package Complete</span>
+                <span>Project Details Complete</span>
                 <span class="progress-percent"><span id="progress-percent">0</span>%</span>
               </div>
               <div class="progress-bar">
@@ -585,22 +585,22 @@
           </div>
         </div>
 
-        <!-- Status banner (shown when claim is submitted) -->
+        <!-- Status banner (shown when project is submitted) -->
         <div id="status-banner" class="status-banner">
           <div class="status-banner-text">
             <div class="status-banner-icon">✓</div>
             <div>
-              <strong>Your claim is live!</strong>
-              <p style="margin: 0; font-size: 0.95rem;">Contractors are reviewing your package. You'll get notified of incoming bids.</p>
+              <strong>Your project is live!</strong>
+              <p style="margin: 0; font-size: 0.95rem;">Contractors are reviewing your details. You'll get notified of incoming bids.</p>
             </div>
           </div>
           <a href="bids.html" class="btn btn-sm btn-secondary">View Bids</a>
         </div>
 
-        <!-- Claim Info Section -->
+        <!-- Project Info Section -->
         <div class="dashboard-section">
           <div class="section-header">
-            <h2>Claim Information</h2>
+            <h2>Project Information</h2>
             <button class="btn btn-sm btn-ghost" id="toggle-claim-edit">Edit</button>
           </div>
 
@@ -754,7 +754,7 @@
         <!-- Checklist Section -->
         <div class="dashboard-section" id="checklist-section">
           <div class="section-header">
-            <h2>Complete Your Claim Package</h2>
+            <h2>Complete Your Project Details</h2>
           </div>
 
           <div class="checklist-section" id="checklist-container">
@@ -765,7 +765,7 @@
         <!-- Submit section -->
         <div id="submit-ready-section" class="submit-section">
           <h3>Ready to Get Bids?</h3>
-          <p class="submit-section-hint" id="submit-hint">Complete the required items above to submit your claim for bids.</p>
+          <p class="submit-section-hint" id="submit-hint">Complete the required items above to submit your project for bids.</p>
           <div class="submit-cta">
             <button class="btn btn-primary btn-lg" id="submit-btn" disabled>
               Submit for Bids
@@ -776,8 +776,8 @@
         <!-- Submit success state -->
         <div id="submit-success" class="submit-success">
           <div class="submit-success-icon">✓</div>
-          <h2>Claim Submitted Successfully!</h2>
-          <p>Your claim package is now live. Contractors are reviewing your information and will send you bids.</p>
+          <h2>Project Submitted Successfully!</h2>
+          <p>Your project details are now live. Contractors are reviewing your information and will send you bids.</p>
           <a href="bids.html" class="btn btn-primary btn-lg">View Bids</a>
         </div>
       </div>
@@ -1251,7 +1251,7 @@
           if (!hasMaterial) missing.push('Material Selection');
           hint.textContent = `Complete the required items: ${missing.join(', ')}.`;
         } else {
-          hint.textContent = 'Your claim package is complete. Submit it now to get competitive bids from qualified contractors.';
+          hint.textContent = 'Your project details are complete. Submit them now to get competitive bids from qualified contractors.';
         }
       }
 

@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
     <title>Measurements Help — OtterQuote</title>
-    <meta name="description" content="Get property measurements for your claim. Purchase a Hover 3D report or request measurements from your adjuster.">
+    <meta name="description" content="Get property measurements for your roofing project. Purchase a Hover 3D report or request measurements from your adjuster.">
     <link rel="canonical" href="https://otterquote.com/help-measurements.html">
     <meta property="og:title" content="Measurements Help — OtterQuote">
-    <meta property="og:description" content="Get property measurements for your claim. Purchase a Hover 3D report or request measurements from your adjuster.">
+    <meta property="og:description" content="Get property measurements for your roofing project. Purchase a Hover 3D report or request measurements from your adjuster.">
     <meta property="og:url" content="https://otterquote.com/help-measurements.html">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="OtterQuote">
@@ -531,7 +531,7 @@
         <div class="page-header">
             <div>
                 <h1 class="page-title">Measurements</h1>
-                <p class="page-subtitle">Help Me: Get property measurements for your claim</p>
+                <p class="page-subtitle">Help Me: Get property measurements for your project</p>
             </div>
             <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
         </div>
@@ -547,9 +547,25 @@
             </div>
 
             <div class="path-cards">
-                <!-- Path B: Ask Adjuster (FREE) — Lead with this per D-036 -->
+                <!-- Path A: Hover (PAID) — Primary for cash/retail customers -->
+                <div class="path-card" onclick="selectPath('hover')">
+                    <div class="path-card-badge">Recommended for Most</div>
+                    <div class="path-card-icon">📐</div>
+                    <h3>Hover 3D Measurement</h3>
+                    <div class="path-card-price">$79 (rebated if you use a OtterQuote contractor)</div>
+                    <p>Get a professional 3D measurement report by taking photos of your home with your phone. Hover's technology creates accurate measurements from your photos. This is your best option if you're paying out of pocket.</p>
+                    <ul class="path-card-features">
+                        <li>Precise, professional-grade measurements</li>
+                        <li>3D model of your property</li>
+                        <li>Ready in 24-48 hours</li>
+                        <li>Cost rebated when using a OtterQuote contractor</li>
+                    </ul>
+                    <button class="select-btn">Choose This Option</button>
+                </div>
+
+                <!-- Path B: Ask Adjuster (FREE) — For insurance customers -->
                 <div class="path-card" onclick="selectPath('adjuster')">
-                    <div class="path-card-badge">Recommended</div>
+                    <div class="path-card-badge">Recommended for Insurance</div>
                     <div class="path-card-icon">📬</div>
                     <h3>Ask Your Adjuster</h3>
                     <div class="path-card-price">Free</div>
@@ -562,22 +578,6 @@
                     </ul>
                     <button class="select-btn">Choose This Option</button>
                 </div>
-
-                <!-- Path A: Hover (PAID) -->
-                <div class="path-card" onclick="selectPath('hover')">
-                    <div class="path-card-badge premium">Premium</div>
-                    <div class="path-card-icon">📐</div>
-                    <h3>Hover 3D Measurement</h3>
-                    <div class="path-card-price">$79 (rebated if you use a OtterQuote contractor)</div>
-                    <p>Get a professional 3D measurement report by taking photos of your home with your phone. Hover's technology creates accurate measurements from your photos.</p>
-                    <ul class="path-card-features">
-                        <li>Precise, professional-grade measurements</li>
-                        <li>3D model of your property</li>
-                        <li>Ready in 24-48 hours</li>
-                        <li>Cost rebated when using a OtterQuote contractor</li>
-                    </ul>
-                    <button class="select-btn">Choose This Option</button>
-                </div>
             </div>
         </div>
 
@@ -585,7 +585,7 @@
         <div id="hoverSection" class="flow-section">
             <div class="section-card">
                 <h3>Hover 3D Measurement Report</h3>
-                <p>Hover uses advanced technology to create a 3D model of your property from photos you take with your phone. The result is a professional measurement report accurate enough for contractors to quote from.</p>
+                <p>Hover uses advanced technology to create a 3D model of your property from photos you take with your phone. The result is a professional measurement report accurate enough for contractors to provide detailed, precise bids.</p>
 
                 <div class="rebate-callout">
                     <strong>Rebate guarantee:</strong> If you select a contractor through OtterQuote, the $79 Hover fee will be fully rebated to you. You only pay if you don't use our platform.
@@ -610,7 +610,7 @@
                         <div class="hover-step-number">3</div>
                         <div class="hover-step-content">
                             <h4>Receive Your Report</h4>
-                            <p>Hover processes your photos (usually 24-48 hours) and creates a detailed measurement report. It's automatically attached to your claim — you'll get a notification when it's ready.</p>
+                            <p>Hover processes your photos (usually 24-48 hours) and creates a detailed measurement report. We'll save it in your account — you'll get a notification when it's ready.</p>
                         </div>
                     </div>
                 </div>
@@ -651,7 +651,7 @@
         <div id="adjusterSection" class="flow-section">
             <div class="section-card">
                 <h3>Request Measurements from Your Adjuster</h3>
-                <p id="adjusterIntro">We'll send a professional email to your adjuster requesting any property measurements they have on file from their inspection.</p>
+                <p id="adjusterIntro">If you're working with an insurance claim, we can request property measurements from your adjuster. Many adjusters take measurements during their inspection and can share them at no cost. (If you're paying out of pocket, Hover is your best option.)</p>
             </div>
 
             <!-- Check if estimate email already sent -->
