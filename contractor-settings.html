@@ -1022,6 +1022,10 @@
 
     // ── Initialize ──
     document.addEventListener('DOMContentLoaded', () => {
+      // Ensure Supabase client is initialized (fixes race condition with config.js)
+      if (!sb && typeof supabase !== 'undefined') {
+        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+      }
       initSettings();
       updateAutoBidUI();
     });

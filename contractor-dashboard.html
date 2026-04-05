@@ -328,6 +328,80 @@
             margin-bottom: var(--sp-6);
         }
 
+        .completeness-banner {
+            background: #FFFBEB;
+            border-left: 4px solid var(--amber);
+            border-radius: var(--radius-md);
+            padding: var(--sp-6);
+            margin-bottom: var(--sp-8);
+            display: none;
+        }
+
+        .completeness-banner.visible {
+            display: block;
+        }
+
+        .completeness-banner-content {
+            display: flex;
+            align-items: center;
+            gap: var(--sp-6);
+            justify-content: space-between;
+        }
+
+        .completeness-banner-text {
+            flex: 1;
+        }
+
+        .completeness-banner-title {
+            font-family: var(--font-heading);
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: var(--sp-2);
+        }
+
+        .completeness-banner-progress {
+            width: 100%;
+            height: 6px;
+            background: rgba(11, 25, 41, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: var(--sp-3);
+        }
+
+        .completeness-banner-fill {
+            height: 100%;
+            background: var(--amber);
+            transition: width 0.3s ease;
+        }
+
+        .completeness-banner-percent {
+            font-family: var(--font-body);
+            font-size: 0.8rem;
+            color: var(--slate);
+            margin-bottom: 0;
+        }
+
+        .completeness-banner-link {
+            display: inline-block;
+            padding: var(--sp-2) var(--sp-4);
+            background: var(--amber);
+            color: var(--white);
+            border: none;
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .completeness-banner-link:hover {
+            background: #D97706;
+        }
+
         @media (max-width: 768px) {
             main {
                 padding: var(--sp-4) var(--sp-3);
@@ -366,6 +440,20 @@
             <p id="serviceAreaText">Service area: Indianapolis, Carmel, Brownsburg, Fishers, Zionsville</p>
         </div>
 
+        <!-- Profile Completeness Banner -->
+        <div class="completeness-banner" id="completenessBanner">
+            <div class="completeness-banner-content">
+                <div class="completeness-banner-text">
+                    <div class="completeness-banner-title">Your profile is <span id="completenessPercent">0</span>% complete</div>
+                    <div class="completeness-banner-progress">
+                        <div class="completeness-banner-fill" id="completenessFill" style="width: 0%"></div>
+                    </div>
+                    <p class="completeness-banner-percent"><span id="completenessCount">0</span> of 7 steps done</p>
+                </div>
+                <a href="contractor-onboarding.html" class="completeness-banner-link">Complete Profile →</a>
+            </div>
+        </div>
+
         <!-- Quick Stats -->
         <div class="stats-grid">
             <div class="stat-card">
@@ -381,12 +469,12 @@
             <div class="stat-card">
                 <span class="stat-card-label">Won Jobs</span>
                 <span class="stat-card-value" id="wonJobsCount">2</span>
-                <a href="#" class="stat-card-link">Details →</a>
+                <span class="stat-card-link" style="color: var(--slate);">—</span>
             </div>
             <div class="stat-card">
                 <span class="stat-card-label">Month Earnings</span>
                 <span class="stat-card-value" id="earningsAmount">$3,850</span>
-                <a href="#" class="stat-card-link">Summary →</a>
+                <span class="stat-card-link" style="color: var(--slate);">—</span>
             </div>
         </div>
 
@@ -473,6 +561,16 @@
                 currentContractor = contractor;
                 document.getElementById('welcomeText').textContent = `Welcome back, ${contractor.company_name}`;
 
+                // Service area from profile
+                const counties = contractor.service_counties || [];
+                if (counties.length > 0) {
+                  // Handle both old format ("Hamilton") and new format ("IN:Hamilton")
+                  const displayNames = counties.map(c => c.includes(':') ? c.split(':')[1] : c);
+                  document.getElementById('serviceAreaText').textContent = 'Service area: ' + displayNames.join(', ');
+                } else {
+                  document.getElementById('serviceAreaText').textContent = 'Service area: Not configured — update your profile';
+                }
+
                 // Load opportunities count
                 const { count: oppCount } = await sb
                   .from('claims')
@@ -487,6 +585,26 @@
                   .eq('contractor_id', currentUser.id)
                   .in('status', ['submitted']);
                 document.getElementById('activeBidsCount').textContent = bidCount || 0;
+
+                // Won Jobs count
+                const { count: wonCount } = await sb
+                  .from('quotes')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('contractor_id', currentUser.id)
+                  .in('status', ['awarded', 'completed']);
+                document.getElementById('wonJobsCount').textContent = wonCount || 0;
+
+                // Month earnings
+                const now = new Date();
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+                const { data: earnData } = await sb
+                  .from('quotes')
+                  .select('amount')
+                  .eq('contractor_id', currentUser.id)
+                  .in('status', ['awarded', 'completed'])
+                  .gte('created_at', monthStart);
+                const totalEarnings = (earnData || []).reduce((sum, q) => sum + (q.amount || 0), 0);
+                document.getElementById('earningsAmount').textContent = '$' + totalEarnings.toLocaleString();
 
                 // Load recent claims for contractor's service area
                 const { data: recentClaims } = await sb
@@ -512,102 +630,107 @@
             }
           }
 
-          if (CONFIG.DEMO_MODE || !allLeads.length) {
-            allLeads = demoLeads;
-            allActivity = demoActivity;
-          }
-
           populateDashboard();
         }
 
-        // Demo data for contractor dashboard
-        const demoLeads = [
-            {
-                id: 'CS-2026-0048',
-                location: 'Indianapolis, 46208',
-                damageType: 'Roof — Hail & Wind',
-                material: 'GAF Architectural Class 4',
-                estimatedValue: '$18,500 - $22,000',
-                status: 'New'
-            },
-            {
-                id: 'CS-2026-0042',
-                location: 'Brownsburg, 46112',
-                damageType: 'Roof — Wind',
-                material: 'OC Duration',
-                estimatedValue: '$14,000 - $17,000',
-                status: 'Bid Submitted'
-            },
-            {
-                id: 'CS-2026-0039',
-                location: 'Carmel, 46032',
-                damageType: 'Roof — Hail',
-                material: 'GAF Timberline HDZ',
-                estimatedValue: '$22,000 - $26,000',
-                status: 'New'
-            }
-        ];
+        function calculateProfileCompletion(contractor) {
+            const completionStatus = {
+                logo: !!(contractor.company_logo_url && contractor.company_logo_url.trim()),
+                photos: Array.isArray(contractor.gallery_photos) && contractor.gallery_photos.length > 0,
+                bio: !!(contractor.about_us && contractor.about_us.trim().length > 0),
+                reviews: !!(contractor.google_reviews_url && contractor.google_reviews_url.trim()),
+                servicearea: Array.isArray(contractor.service_counties) && contractor.service_counties.length > 0,
+                autobid: contractor.auto_bid_enabled === true,
+                contracts: false // Always incomplete for now
+            };
 
-        const demoActivity = [
-            {
-                text: 'New opportunity available — 46208, Roof Hail Damage, ~$18,500',
-                time: '2 hours ago'
-            },
-            {
-                text: 'Bid submitted — Project #CS-2026-0042',
-                time: '1 day ago'
-            },
-            {
-                text: 'Contract signed — Deborah Arvin, Brownsburg',
-                time: '3 days ago'
-            }
-        ];
+            const completedCount = Object.values(completionStatus).filter(v => v).length;
+            const totalSteps = 7;
+            const percentage = Math.round((completedCount / totalSteps) * 100);
 
-        const demoActivity = [
-            {
-                text: 'New opportunity available — 46208, Roof Hail Damage, ~$18,500',
-                time: '2 hours ago'
-            },
-            {
-                text: 'Bid submitted — Project #CS-2026-0042',
-                time: '1 day ago'
-            },
-            {
-                text: 'Contract signed — Deborah Arvin, Brownsburg',
-                time: '3 days ago'
+            return { completedCount, totalSteps, percentage };
+        }
+
+        function updateCompletenessBanner() {
+            if (!currentContractor) return;
+
+            const { completedCount, totalSteps, percentage } = calculateProfileCompletion(currentContractor);
+
+            // Show banner only if not 100% complete
+            const banner = document.getElementById('completenessBanner');
+            if (percentage < 100) {
+                banner.classList.add('visible');
+                document.getElementById('completenessPercent').textContent = percentage;
+                document.getElementById('completenessFill').style.width = `${percentage}%`;
+                document.getElementById('completenessCount').textContent = completedCount;
+            } else {
+                banner.classList.remove('visible');
             }
-        ];
+        }
 
         function populateDashboard() {
+            // Update completeness banner
+            updateCompletenessBanner();
+
             // Populate leads table
             const leadsBody = document.getElementById('leadsTableBody');
-            leadsBody.innerHTML = allLeads.map(lead => `
-                <tr>
-                    <td class="lead-id">${lead.id}</td>
-                    <td>${lead.location}</td>
-                    <td>${lead.damageType}</td>
-                    <td>${lead.material}</td>
-                    <td>${lead.estimatedValue}</td>
-                    <td><span class="status-badge status-${lead.status.toLowerCase().replace(/\s+/g, '')}">${lead.status}</span></td>
-                    <td><a href="contractor-bid-form.html?claim_id=${lead.id}" class="action-btn">Submit Bid</a></td>
-                </tr>
-            `).join('');
+            if (allLeads.length === 0) {
+                leadsBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: var(--sp-8);">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📭</div>
+                                <div class="empty-state-title">No Projects Yet</div>
+                                <div class="empty-state-text">Check back soon for new opportunities matching your service area.</div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                leadsBody.innerHTML = allLeads.map(lead => `
+                    <tr>
+                        <td class="lead-id">${lead.id}</td>
+                        <td>${lead.location}</td>
+                        <td>${lead.damageType}</td>
+                        <td>${lead.material}</td>
+                        <td>${lead.estimatedValue}</td>
+                        <td><span class="status-badge status-${lead.status.toLowerCase().replace(/\s+/g, '')}">${lead.status}</span></td>
+                        <td><a href="contractor-bid-form.html?claim_id=${lead.id}" class="action-btn">Submit Bid</a></td>
+                    </tr>
+                `).join('');
+            }
 
             // Populate activity feed
             const activityFeed = document.getElementById('activityFeed');
-            activityFeed.innerHTML = allActivity.map(activity => `
-                <div class="activity-item">
-                    <div class="activity-dot"></div>
-                    <div class="activity-content">
-                        <div class="activity-text">${activity.text}</div>
-                        <div class="activity-time">${activity.time}</div>
+            if (allActivity.length === 0) {
+                activityFeed.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔔</div>
+                        <div class="empty-state-title">No Activity Yet</div>
+                        <div class="empty-state-text">Your activity will appear here as you interact with opportunities.</div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            } else {
+                activityFeed.innerHTML = allActivity.map(activity => `
+                    <div class="activity-item">
+                        <div class="activity-dot"></div>
+                        <div class="activity-content">
+                            <div class="activity-text">${activity.text}</div>
+                            <div class="activity-time">${activity.time}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
         }
 
         // Initialize on load
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', () => {
+            // Ensure Supabase client is initialized (fixes race condition with config.js)
+            if (!sb && typeof supabase !== 'undefined') {
+              sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+            }
+            init();
+        });
     </script>
 </body>
 </html>

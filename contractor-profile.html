@@ -408,6 +408,174 @@
             color: var(--navy);
         }
 
+        /* Document Display Styles */
+        .document-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--sp-4);
+            background-color: var(--light);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--sp-4);
+        }
+
+        .document-info {
+            display: flex;
+            align-items: center;
+            gap: var(--sp-4);
+            flex: 1;
+        }
+
+        .document-icon {
+            font-size: 1.5rem;
+            width: 40px;
+            text-align: center;
+        }
+
+        .document-details {
+            display: flex;
+            flex-direction: column;
+            gap: var(--sp-1);
+        }
+
+        .document-name {
+            font-weight: 600;
+            color: var(--navy);
+            font-size: 0.95rem;
+        }
+
+        .document-date {
+            font-size: 0.85rem;
+            color: var(--slate);
+        }
+
+        .document-actions {
+            display: flex;
+            gap: var(--sp-3);
+            align-items: center;
+        }
+
+        .btn-small {
+            padding: var(--sp-2) var(--sp-3);
+            font-size: 0.85rem;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-small-primary {
+            background-color: var(--amber);
+            color: var(--navy);
+        }
+
+        .btn-small-primary:hover {
+            background-color: #DC2626;
+            color: var(--white);
+        }
+
+        .btn-small-secondary {
+            background-color: transparent;
+            color: var(--amber);
+            border: 1px solid var(--amber);
+        }
+
+        .btn-small-secondary:hover {
+            background-color: var(--amber);
+            color: var(--navy);
+        }
+
+        .template-slots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--sp-6);
+            margin-top: var(--sp-6);
+        }
+
+        .template-slot {
+            border: 1px solid var(--light);
+            border-radius: var(--radius-md);
+            padding: var(--sp-6);
+            background-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .template-slot-header {
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: var(--sp-2);
+            font-size: 0.95rem;
+        }
+
+        .template-slot-subtext {
+            font-size: 0.85rem;
+            color: var(--slate);
+            margin-bottom: var(--sp-4);
+        }
+
+        .template-file-display {
+            background-color: var(--light);
+            padding: var(--sp-3);
+            border-radius: var(--radius-sm);
+            margin-bottom: var(--sp-3);
+        }
+
+        .template-file-name {
+            font-weight: 500;
+            color: var(--navy);
+            font-size: 0.9rem;
+            word-break: break-word;
+            margin-bottom: var(--sp-2);
+        }
+
+        .template-file-date {
+            font-size: 0.8rem;
+            color: var(--slate);
+        }
+
+        .template-upload-box {
+            border: 2px dashed var(--light);
+            border-radius: var(--radius-md);
+            padding: var(--sp-4);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: rgba(11, 25, 41, 0.02);
+        }
+
+        .template-upload-box:hover {
+            border-color: var(--amber);
+            background-color: rgba(245, 158, 11, 0.05);
+        }
+
+        .template-upload-box input[type="file"] {
+            display: none;
+        }
+
+        .template-upload-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--sp-2);
+            cursor: pointer;
+        }
+
+        .template-upload-icon {
+            font-size: 1.5rem;
+        }
+
+        .template-upload-text {
+            font-size: 0.85rem;
+            color: var(--navy);
+            font-weight: 500;
+        }
+
+        .template-upload-hint {
+            font-size: 0.75rem;
+            color: var(--slate);
+            margin-top: var(--sp-2);
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .header-section h1 {
@@ -432,6 +600,21 @@
 
             .gallery-grid {
                 grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+
+            .template-slots-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .document-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .document-actions {
+                width: 100%;
+                margin-top: var(--sp-3);
+                justify-content: flex-start;
             }
         }
     </style>
@@ -678,6 +861,43 @@
                 </div>
             </div>
 
+            <!-- Your Documents Card (IMP-007) -->
+            <div class="profile-card">
+                <h2><span class="card-icon">📋</span>Your Documents</h2>
+
+                <p style="color: var(--slate); margin-bottom: var(--sp-6); font-size: 0.95rem;">
+                    Documents you uploaded during the contractor onboarding process. You can view or replace them here.
+                </p>
+
+                <!-- License Documents -->
+                <div class="form-group">
+                    <label class="form-label">Contractor License</label>
+                    <div id="licenseDocumentView" style="display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4); background-color: var(--light); border-radius: var(--radius-md);">
+                        <span style="color: var(--slate);">Loading...</span>
+                    </div>
+                </div>
+
+                <!-- Workers Comp Insurance -->
+                <div class="form-group">
+                    <label class="form-label">Workers Compensation Insurance</label>
+                    <div id="wcInsuranceDocumentView" style="display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4); background-color: var(--light); border-radius: var(--radius-md);">
+                        <span style="color: var(--slate);">Loading...</span>
+                    </div>
+                </div>
+
+                <!-- General Liability Insurance -->
+                <div class="form-group">
+                    <label class="form-label">General Liability Insurance</label>
+                    <div id="glInsuranceDocumentView" style="display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4); background-color: var(--light); border-radius: var(--radius-md);">
+                        <span style="color: var(--slate);">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="info-box" style="margin-top: var(--sp-8);">
+                    <strong>Note:</strong> Documents are stored securely and only visible to you. Contact support if you need to upload additional documents or if a file is missing.
+                </div>
+            </div>
+
             <!-- Reviews & Ratings Card -->
             <div class="profile-card">
                 <h2><span class="card-icon">⭐</span>Reviews & Ratings</h2>
@@ -770,7 +990,7 @@
                 </div>
             </div>
 
-            <!-- Contract Template Card -->
+            <!-- Contract Template Card (Legacy - Single Template) -->
             <div class="profile-card">
                 <h2><span class="card-icon">📄</span>Contract Template</h2>
 
@@ -820,6 +1040,22 @@
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--sp-3);">
                         Tip: Include these exact labels in your contract to enable auto-fill. Fields not found will be left blank for manual entry.
                     </p>
+                </div>
+            </div>
+
+            <!-- Contract Templates Card (IMP-009) -->
+            <div class="profile-card">
+                <h2><span class="card-icon">📑</span>Contract Templates</h2>
+
+                <p style="color: var(--slate); margin-bottom: var(--sp-2); font-size: 0.95rem;">
+                    Upload your contract template for each type of work. OtterQuote will auto-populate your company details and get it signed by the homeowner.
+                </p>
+
+                <div id="contractTemplatesGrid" style="display: grid; gap: var(--sp-6); margin-top: var(--sp-8);">
+                    <!-- Templates will be rendered here by JavaScript -->
+                    <div style="text-align: center; color: var(--slate); padding: var(--sp-8);">
+                        Loading templates...
+                    </div>
                 </div>
             </div>
 
@@ -1275,9 +1511,290 @@
             }
         }
 
+        // ── Load and Display Documents (IMP-007) ──
+        async function loadDocuments() {
+            if (!contractorRecord || !sb) {
+                // Show placeholder in demo mode
+                document.getElementById('licenseDocumentView').innerHTML = '<span style="color: var(--slate);">Not uploaded</span>';
+                document.getElementById('wcInsuranceDocumentView').innerHTML = '<span style="color: var(--slate);">Not uploaded</span>';
+                document.getElementById('glInsuranceDocumentView').innerHTML = '<span style="color: var(--slate);">Not uploaded</span>';
+                return;
+            }
+
+            const documentTypes = [
+                { type: 'license', label: 'Contractor License', elementId: 'licenseDocumentView' },
+                { type: 'wc_insurance', label: 'Workers Compensation Insurance', elementId: 'wcInsuranceDocumentView' },
+                { type: 'gl_insurance', label: 'General Liability Insurance', elementId: 'glInsuranceDocumentView' }
+            ];
+
+            try {
+                // Fetch documents from claim-documents bucket or contractor-documents bucket
+                // TODO: Verify correct bucket name and path structure with backend
+                // Currently querying contractor_documents table (if it exists) or falling back to storage listing
+
+                for (const doc of documentTypes) {
+                    try {
+                        // Try to get signed URL from Supabase Storage
+                        // Expected path: contractor-documents/{contractor_id}/{document_type}
+                        const storagePath = `${contractorRecord.id}/${doc.type}`;
+
+                        // List files in the contractor's document folder to find the document
+                        const { data: files, error: listError } = await sb.storage
+                            .from('contractor-documents')
+                            .list(`${contractorRecord.id}`, {
+                                limit: 100,
+                                offset: 0,
+                                sortBy: { column: 'name', order: 'asc' }
+                            });
+
+                        if (listError) throw listError;
+
+                        // Find the document for this type
+                        const docFile = files?.find(f => f.name.includes(doc.type));
+
+                        if (docFile) {
+                            // Create signed URL for viewing
+                            const { data: signedUrl, error: signError } = await sb.storage
+                                .from('contractor-documents')
+                                .createSignedUrl(`${contractorRecord.id}/${docFile.name}`, 3600); // 1 hour expiry
+
+                            if (signError) throw signError;
+
+                            const uploadDate = new Date(docFile.created_at).toLocaleDateString();
+                            document.getElementById(doc.elementId).innerHTML = `
+                                <div class="document-info">
+                                    <div class="document-icon">📄</div>
+                                    <div class="document-details">
+                                        <div class="document-name">${docFile.name}</div>
+                                        <div class="document-date">Uploaded: ${uploadDate}</div>
+                                    </div>
+                                </div>
+                                <div class="document-actions">
+                                    <a href="${signedUrl.signedUrl}" target="_blank" class="btn-small btn-small-primary">View</a>
+                                </div>
+                            `;
+                        } else {
+                            document.getElementById(doc.elementId).innerHTML = `
+                                <span style="color: var(--slate);">Not uploaded</span>
+                            `;
+                        }
+                    } catch (err) {
+                        console.error(`Error loading ${doc.type} document:`, err);
+                        // Show placeholder on error
+                        document.getElementById(doc.elementId).innerHTML = `
+                            <span style="color: var(--slate);">Error loading document</span>
+                        `;
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading documents:', err);
+            }
+        }
+
+        // ── Load and Display Contract Templates (IMP-009) ──
+        async function loadContractTemplates() {
+            const templateSlots = [
+                { trade: 'Roofing', fundingType: 'Insurance (full replacement)' },
+                { trade: 'Roofing', fundingType: 'Retail' },
+                { trade: 'Siding', fundingType: 'Insurance' },
+                { trade: 'Siding', fundingType: 'Retail' },
+                { trade: 'Gutters', fundingType: 'Insurance' },
+                { trade: 'Gutters', fundingType: 'Retail' },
+                { trade: 'Windows', fundingType: 'Insurance' },
+                { trade: 'Windows', fundingType: 'Retail' }
+            ];
+
+            const gridContainer = document.getElementById('contractTemplatesGrid');
+            let html = '<div class="template-slots-grid">';
+
+            for (const slot of templateSlots) {
+                const slotId = `template_${slot.trade.toLowerCase()}_${slot.fundingType.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '')}`;
+
+                if (contractorRecord && sb && !CONFIG.DEMO_MODE) {
+                    // Try to load the template from storage
+                    try {
+                        const { data: templates } = await sb.from('contractors')
+                            .select('contract_templates')
+                            .eq('id', contractorRecord.id)
+                            .single();
+
+                        const contractTemplates = templates?.contract_templates || [];
+                        const matchingTemplate = contractTemplates.find(t => t.trade === slot.trade && t.funding_type === slot.fundingType);
+
+                        if (matchingTemplate) {
+                            const uploadDate = new Date(matchingTemplate.uploaded_at).toLocaleDateString();
+                            html += `
+                                <div class="template-slot">
+                                    <div class="template-slot-header">${slot.trade} — ${slot.fundingType}</div>
+                                    <div class="template-file-display">
+                                        <div class="template-file-name">${matchingTemplate.file_name}</div>
+                                        <div class="template-file-date">Uploaded: ${uploadDate}</div>
+                                    </div>
+                                    <div style="display: flex; gap: var(--sp-3);">
+                                        <button class="btn-small btn-small-primary" onclick="viewContractTemplate('${matchingTemplate.file_url}')">View</button>
+                                        <button class="btn-small btn-small-secondary" onclick="replaceContractTemplate('${slotId}', '${slot.trade}', '${slot.fundingType}')">Replace</button>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            html += `
+                                <div class="template-slot">
+                                    <div class="template-slot-header">${slot.trade} — ${slot.fundingType}</div>
+                                    <div class="template-slot-subtext">No template uploaded</div>
+                                    <div class="template-upload-box" onclick="document.getElementById('${slotId}_input').click()">
+                                        <label for="${slotId}_input" class="template-upload-label">
+                                            <div class="template-upload-icon">📄</div>
+                                            <div class="template-upload-text">Upload Template</div>
+                                            <div class="template-upload-hint">PDF format, max 10MB</div>
+                                        </label>
+                                        <input type="file" id="${slotId}_input" accept=".pdf" onchange="uploadTemplateFile('${slot.trade}', '${slot.fundingType}', this)">
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    } catch (err) {
+                        console.error(`Error loading template ${slot.trade} - ${slot.fundingType}:`, err);
+                        // Show upload placeholder on error
+                        html += `
+                            <div class="template-slot">
+                                <div class="template-slot-header">${slot.trade} — ${slot.fundingType}</div>
+                                <div class="template-slot-subtext">Unable to load status</div>
+                                <div class="template-upload-box" onclick="document.getElementById('${slotId}_input').click()">
+                                    <label for="${slotId}_input" class="template-upload-label">
+                                        <div class="template-upload-icon">📄</div>
+                                        <div class="template-upload-text">Upload Template</div>
+                                        <div class="template-upload-hint">PDF format, max 10MB</div>
+                                    </label>
+                                    <input type="file" id="${slotId}_input" accept=".pdf" onchange="uploadTemplateFile('${slot.trade}', '${slot.fundingType}', this)">
+                                </div>
+                            </div>
+                        `;
+                    }
+                } else {
+                    // Demo mode: show upload placeholder for all slots
+                    html += `
+                        <div class="template-slot">
+                            <div class="template-slot-header">${slot.trade} — ${slot.fundingType}</div>
+                            <div class="template-slot-subtext">No template uploaded</div>
+                            <div class="template-upload-box" onclick="document.getElementById('${slotId}_input').click()">
+                                <label for="${slotId}_input" class="template-upload-label">
+                                    <div class="template-upload-icon">📄</div>
+                                    <div class="template-upload-text">Upload Template</div>
+                                    <div class="template-upload-hint">PDF format, max 10MB</div>
+                                </label>
+                                <input type="file" id="${slotId}_input" accept=".pdf" onchange="uploadTemplateFile('${slot.trade}', '${slot.fundingType}', this)">
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            html += '</div>';
+            gridContainer.innerHTML = html;
+        }
+
+        // View contract template
+        function viewContractTemplate(fileUrl) {
+            window.open(fileUrl, '_blank');
+        }
+
+        // Replace contract template
+        function replaceContractTemplate(slotId, trade, fundingType) {
+            const inputId = `${slotId}_input`;
+            // Check if input exists, if not create it
+            let input = document.getElementById(inputId);
+            if (!input) {
+                input = document.createElement('input');
+                input.type = 'file';
+                input.id = inputId;
+                input.accept = '.pdf';
+                input.style.display = 'none';
+                input.onchange = function() { uploadTemplateFile(trade, fundingType, this); };
+                document.body.appendChild(input);
+            }
+            input.click();
+        }
+
+        // Upload template file
+        async function uploadTemplateFile(trade, fundingType, inputElement) {
+            if (!inputElement.files.length) return;
+
+            const file = inputElement.files[0];
+            if (file.type !== 'application/pdf') {
+                alert('Please upload a PDF file.');
+                return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                alert('File too large. Maximum 10MB.');
+                return;
+            }
+
+            if (!contractorRecord || !sb) {
+                alert('Not connected to database.');
+                return;
+            }
+
+            try {
+                // Upload file to Supabase Storage
+                // Path: contractor-templates/{contractor_id}/{trade}_{funding_type}_{timestamp}.pdf
+                const timestamp = Date.now();
+                const safeFundingType = fundingType.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
+                const filePath = `${contractorRecord.id}/${trade.toLowerCase()}_${safeFundingType}_${timestamp}.pdf`;
+
+                const { error: uploadError } = await sb.storage
+                    .from('contractor-templates')
+                    .upload(filePath, file, { contentType: 'application/pdf' });
+
+                if (uploadError) throw uploadError;
+
+                // Get public URL
+                const { data: urlData } = sb.storage
+                    .from('contractor-templates')
+                    .getPublicUrl(filePath);
+
+                // Update contractors table with template metadata
+                const currentTemplates = contractorRecord.contract_templates || [];
+                const updatedTemplates = currentTemplates.filter(t => !(t.trade === trade && t.funding_type === fundingType));
+                updatedTemplates.push({
+                    trade: trade,
+                    funding_type: fundingType,
+                    file_url: urlData.publicUrl,
+                    file_name: file.name,
+                    uploaded_at: new Date().toISOString()
+                });
+
+                const { error: updateError } = await sb.from('contractors')
+                    .update({ contract_templates: updatedTemplates, updated_at: new Date().toISOString() })
+                    .eq('id', contractorRecord.id);
+
+                if (updateError) throw updateError;
+
+                // Update local state and reload templates
+                contractorRecord.contract_templates = updatedTemplates;
+                await loadContractTemplates();
+
+                alert('Contract template uploaded successfully!');
+            } catch (err) {
+                console.error('Error uploading template:', err);
+                alert('Failed to upload template. Please try again.');
+            }
+        }
+
         // Initialize on load
         document.addEventListener('DOMContentLoaded', () => {
+            // Ensure Supabase client is initialized (fixes race condition with config.js)
+            if (!sb && typeof supabase !== 'undefined') {
+              sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+            }
             initProfile();
+
+            // Load documents and templates after contractor record is loaded
+            const originalInitProfile = window.initProfile;
+            window.initProfile = async function() {
+                await originalInitProfile.call(this);
+                await loadDocuments();
+                await loadContractTemplates();
+            };
         });
     </script>
 </body>

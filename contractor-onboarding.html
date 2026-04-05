@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+    <title>Onboarding — OtterQuote Contractor Portal</title>
+
+    <!-- GA4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-JNQ6XR3LX2');
+    </script>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+
+    <!-- Design System & Navigation -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <!-- Page-Specific Styles -->
+    <style>
+        main {
+            padding: var(--sp-8) var(--sp-4);
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .onboarding-header {
+            text-align: center;
+            margin-bottom: var(--sp-12);
+        }
+
+        .onboarding-header h1 {
+            font-family: var(--font-heading);
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: var(--sp-4);
+            line-height: 1.1;
+        }
+
+        .onboarding-header p {
+            font-family: var(--font-body);
+            font-size: 1.125rem;
+            color: var(--slate);
+            margin: 0;
+        }
+
+        .progress-container {
+            margin-bottom: var(--sp-12);
+        }
+
+        .progress-label {
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--navy);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: var(--sp-3);
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #E5E7EB;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--amber);
+            transition: width 0.3s ease;
+        }
+
+        .steps-list {
+            display: flex;
+            flex-direction: column;
+            gap: var(--sp-6);
+            margin-bottom: var(--sp-12);
+        }
+
+        .step-item {
+            background: var(--white);
+            border: 1px solid #E5E7EB;
+            border-radius: var(--radius-lg);
+            padding: var(--sp-6);
+            display: flex;
+            gap: var(--sp-6);
+            align-items: flex-start;
+            transition: all 0.2s ease;
+        }
+
+        .step-item:hover {
+            border-color: var(--amber);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.1);
+        }
+
+        .step-item.completed {
+            background: #F9FEF7;
+            border-color: #DCFCE7;
+        }
+
+        .step-number {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-lg);
+            background: var(--amber);
+            color: var(--white);
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .step-item.completed .step-number {
+            background: #15803D;
+        }
+
+        .checkmark {
+            font-size: 1.5rem;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-title {
+            font-family: var(--font-heading);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: var(--sp-2);
+        }
+
+        .step-description {
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            color: var(--slate);
+            margin-bottom: var(--sp-4);
+        }
+
+        .step-action {
+            display: inline-block;
+            padding: var(--sp-3) var(--sp-6);
+            background: var(--amber);
+            color: var(--white);
+            border: none;
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .step-action:hover {
+            background: #D97706;
+        }
+
+        .step-item.completed .step-action {
+            display: none;
+        }
+
+        .step-checkmark {
+            display: none;
+            font-size: 0.875rem;
+            color: #15803D;
+            font-weight: 600;
+        }
+
+        .step-item.completed .step-checkmark {
+            display: inline-block;
+        }
+
+        .onboarding-footer {
+            text-align: center;
+            padding: var(--sp-8);
+            border-top: 1px solid #E5E7EB;
+            margin-top: var(--sp-12);
+        }
+
+        .skip-link {
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            color: var(--slate);
+            text-decoration: none;
+            transition: color 0.2s ease;
+            margin-right: var(--sp-4);
+        }
+
+        .skip-link:hover {
+            color: var(--navy);
+        }
+
+        .dashboard-btn {
+            display: inline-block;
+            padding: var(--sp-3) var(--sp-6);
+            background: var(--amber);
+            color: var(--white);
+            border: none;
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .dashboard-btn:hover {
+            background: #D97706;
+        }
+
+        .completion-banner {
+            background: #FFFBEB;
+            border-left: 4px solid var(--amber);
+            border-radius: var(--radius-md);
+            padding: var(--sp-6);
+            margin-bottom: var(--sp-8);
+            text-align: center;
+        }
+
+        .completion-banner h2 {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: var(--sp-3);
+        }
+
+        .completion-banner p {
+            font-family: var(--font-body);
+            font-size: 1rem;
+            color: var(--slate);
+            margin: 0;
+        }
+
+        @media (max-width: 768px) {
+            main {
+                padding: var(--sp-4) var(--sp-3);
+            }
+
+            .onboarding-header h1 {
+                font-size: 1.75rem;
+            }
+
+            .step-item {
+                flex-direction: column;
+                gap: var(--sp-4);
+            }
+
+            .step-number {
+                width: 40px;
+                height: 40px;
+                font-size: 1.25rem;
+            }
+
+            .step-title {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-auth="false"></header>
+
+    <main>
+        <div class="onboarding-header">
+            <h1>Welcome to OtterQuote</h1>
+            <p id="companyGreeting">Let's get your profile set up so you can start bidding on projects</p>
+        </div>
+
+        <div class="progress-container">
+            <span class="progress-label"><span id="progressCount">0</span> of 7 steps complete</span>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="steps-list" id="stepsList">
+            <!-- Populated by JavaScript -->
+        </div>
+
+        <div class="onboarding-footer">
+            <a href="#" class="skip-link" onclick="goToDashboard(); return false;">Skip for now</a>
+            <a href="contractor-dashboard.html" class="dashboard-btn">Go to Dashboard</a>
+        </div>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+
+    <script>
+        let currentUser = null;
+        let currentContractor = null;
+        let completionStatus = {};
+
+        const steps = [
+            {
+                id: 'logo',
+                title: 'Upload Your Logo',
+                description: 'Help homeowners recognize your brand',
+                link: 'contractor-profile.html'
+            },
+            {
+                id: 'photos',
+                title: 'Add Project Photos',
+                description: 'Show off your best work',
+                link: 'contractor-profile.html'
+            },
+            {
+                id: 'bio',
+                title: 'Complete Your Bio',
+                description: 'Tell homeowners about your company',
+                link: 'contractor-profile.html'
+            },
+            {
+                id: 'reviews',
+                title: 'Add Review Links',
+                description: 'Connect your Google, BBB, and Angi reviews',
+                link: 'contractor-profile.html'
+            },
+            {
+                id: 'servicearea',
+                title: 'Set Your Service Area',
+                description: 'Choose the counties you serve',
+                link: 'contractor-profile.html'
+            },
+            {
+                id: 'autobid',
+                title: 'Enable Auto-Bid',
+                description: 'Start receiving projects automatically',
+                link: 'contractor-settings.html'
+            },
+            {
+                id: 'contracts',
+                title: 'Upload Contract Templates',
+                description: 'Add your contract for each job type',
+                link: 'contractor-settings.html'
+            }
+        ];
+
+        async function init() {
+            currentUser = await Auth.requireAuth('contractor');
+
+            if (!currentUser && !CONFIG.DEMO_MODE) {
+                return;
+            }
+
+            if (currentUser && !CONFIG.DEMO_MODE && sb) {
+                try {
+                    const { data: contractor } = await sb
+                        .from('contractors')
+                        .select('*')
+                        .eq('user_id', currentUser.id)
+                        .single();
+
+                    if (contractor) {
+                        currentContractor = contractor;
+                        document.getElementById('companyGreeting').textContent = `Let's get ${contractor.company_name}'s profile set up so you can start bidding on projects`;
+
+                        // Check completion status
+                        checkCompletion(contractor);
+                    }
+                } catch (err) {
+                    console.error('Error loading contractor data:', err);
+                }
+            } else if (CONFIG.DEMO_MODE) {
+                // Demo mode
+                document.getElementById('companyGreeting').textContent = `Let's get your profile set up so you can start bidding on projects`;
+                completionStatus = {
+                    logo: true,
+                    photos: true,
+                    bio: true,
+                    reviews: false,
+                    servicearea: true,
+                    autobid: false,
+                    contracts: false
+                };
+            }
+
+            renderSteps();
+        }
+
+        function checkCompletion(contractor) {
+            completionStatus = {
+                logo: !!(contractor.company_logo_url && contractor.company_logo_url.trim()),
+                photos: Array.isArray(contractor.gallery_photos) && contractor.gallery_photos.length > 0,
+                bio: !!(contractor.about_us && contractor.about_us.trim().length > 0),
+                reviews: !!(contractor.google_reviews_url && contractor.google_reviews_url.trim()),
+                servicearea: Array.isArray(contractor.service_counties) && contractor.service_counties.length > 0,
+                autobid: contractor.auto_bid_enabled === true,
+                contracts: false // Always incomplete for now
+            };
+        }
+
+        function renderSteps() {
+            const stepsList = document.getElementById('stepsList');
+            const completedCount = Object.values(completionStatus).filter(v => v).length;
+            const totalSteps = 7;
+
+            // Update progress
+            document.getElementById('progressCount').textContent = completedCount;
+            document.getElementById('progressFill').style.width = `${(completedCount / totalSteps) * 100}%`;
+
+            // Render steps
+            stepsList.innerHTML = steps.map((step, index) => {
+                const isCompleted = completionStatus[step.id];
+                return `
+                    <div class="step-item ${isCompleted ? 'completed' : ''}">
+                        <div class="step-number">
+                            <span class="checkmark">${isCompleted ? '✓' : (index + 1)}</span>
+                        </div>
+                        <div class="step-content">
+                            <div class="step-title">${step.title}</div>
+                            <div class="step-description">${step.description}</div>
+                            <a href="${step.link}" class="step-action">Complete This Step →</a>
+                            <span class="step-checkmark">✓ Completed</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function goToDashboard() {
+            window.location.href = 'contractor-dashboard.html';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!sb && typeof supabase !== 'undefined') {
+                sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+            }
+            init();
+        });
+    </script>
+</body>
+</html>
