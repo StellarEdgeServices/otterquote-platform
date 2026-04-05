@@ -727,6 +727,10 @@
   <script src="js/nav.js"></script>
 
   <script>
+    // State
+    let currentUser = null;
+    let contractorRecord = null;
+
     // Fee calculation
     const COLOR_SELECTION_FEE = 0.03;
     const CONTRACT_SIGNING_FEE = 0.05;
@@ -736,18 +740,77 @@
 
     function updateFeeCalculation() {
       let totalFee = CONTRACT_SIGNING_FEE;
-
       if (colorToggle.checked) {
         totalFee += COLOR_SELECTION_FEE;
       }
-
       totalFee += DEDUCTIBLE_COLLECTION_FEE;
-
       const feePercent = (totalFee * 100).toFixed(1);
       document.getElementById('totalFeePercent').textContent = feePercent + '%';
     }
 
     colorToggle.addEventListener('change', updateFeeCalculation);
+
+    // ── Initialize: Load settings from Supabase ──
+    async function initSettings() {
+      currentUser = await Auth.requireAuth('contractor');
+      if (!currentUser && !CONFIG.DEMO_MODE) return;
+
+      if (currentUser && !CONFIG.DEMO_MODE && sb) {
+        try {
+          const { data, error } = await sb
+            .from('contractors')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .single();
+
+          if (error) { console.error('Error loading contractor:', error); return; }
+          contractorRecord = data;
+
+          // Populate color selection toggle
+          if (data.color_selection_enabled !== undefined && data.color_selection_enabled !== null) {
+            colorToggle.checked = data.color_selection_enabled;
+          }
+          updateFeeCalculation();
+
+          // Populate notification emails
+          const emails = data.notification_emails || [data.email];
+          const emailList = document.getElementById('emailList');
+          emailList.innerHTML = '';
+          emails.forEach(email => {
+            if (!email) return;
+            const item = document.createElement('div');
+            item.className = 'notification-item';
+            item.innerHTML = `<input type="text" placeholder="Email address" value="${email}" class="email-input"><button class="remove-btn">Remove</button>`;
+            emailList.appendChild(item);
+          });
+
+          // Populate notification phones
+          const phones = data.notification_phones || [data.phone];
+          const phoneList = document.getElementById('phoneList');
+          phoneList.innerHTML = '';
+          phones.forEach(phone => {
+            if (!phone) return;
+            const item = document.createElement('div');
+            item.className = 'notification-item';
+            item.innerHTML = `<input type="text" placeholder="Phone number" value="${phone}" class="phone-input"><button class="remove-btn">Remove</button>`;
+            phoneList.appendChild(item);
+          });
+
+          // Populate notification type checkboxes
+          const prefs = data.notification_preferences || {};
+          if (Object.keys(prefs).length > 0) {
+            if (prefs.new_opportunity !== undefined) document.getElementById('notifNewLead').checked = prefs.new_opportunity;
+            if (prefs.bid_accepted !== undefined) document.getElementById('notifBidAccepted').checked = prefs.bid_accepted;
+            if (prefs.contract_signed !== undefined) document.getElementById('notifContractSigned').checked = prefs.contract_signed;
+            if (prefs.color_complete !== undefined) document.getElementById('notifColorComplete').checked = prefs.color_complete;
+            if (prefs.deductible_collected !== undefined) document.getElementById('notifDeductibleCollected').checked = prefs.deductible_collected;
+            if (prefs.reminder_48h !== undefined) document.getElementById('notif48hReminder').checked = prefs.reminder_48h;
+          }
+        } catch (err) {
+          console.error('Error initializing settings:', err);
+        }
+      }
+    }
 
     // Add/Remove email and phone fields
     function addEmailField() {
@@ -780,32 +843,53 @@
       }
     });
 
-    // Save settings
-    function saveSettings() {
-      const button = event.target;
+    // ── Save settings to Supabase ──
+    async function saveSettings() {
+      const button = document.querySelector('.save-button');
       const originalText = button.textContent;
 
       // Collect settings
       const settings = {
-        colorSelection: colorToggle.checked,
-        emails: Array.from(document.querySelectorAll('.email-input')).map(el => el.value).filter(v => v),
-        phones: Array.from(document.querySelectorAll('.phone-input')).map(el => el.value).filter(v => v),
-        notifications: {
-          newLead: document.getElementById('notifNewLead').checked,
-          bidAccepted: document.getElementById('notifBidAccepted').checked,
-          contractSigned: document.getElementById('notifContractSigned').checked,
-          colorComplete: document.getElementById('notifColorComplete').checked,
-          deductibleCollected: document.getElementById('notifDeductibleCollected').checked,
-          reminder48h: document.getElementById('notif48hReminder').checked
-        }
+        color_selection_enabled: colorToggle.checked,
+        notification_emails: Array.from(document.querySelectorAll('.email-input')).map(el => el.value.trim()).filter(v => v),
+        notification_phones: Array.from(document.querySelectorAll('.phone-input')).map(el => el.value.trim()).filter(v => v),
+        notification_preferences: {
+          new_opportunity: document.getElementById('notifNewLead').checked,
+          bid_accepted: document.getElementById('notifBidAccepted').checked,
+          contract_signed: document.getElementById('notifContractSigned').checked,
+          color_complete: document.getElementById('notifColorComplete').checked,
+          deductible_collected: document.getElementById('notifDeductibleCollected').checked,
+          reminder_48h: document.getElementById('notif48hReminder').checked,
+        },
+        updated_at: new Date().toISOString(),
       };
 
-      // Show saving state
       button.textContent = 'Saving...';
       button.disabled = true;
 
-      // Simulate API call
-      setTimeout(() => {
+      if (!contractorRecord || !sb) {
+        // No database connection — show error
+        button.textContent = 'Error — Not Connected';
+        button.style.backgroundColor = '#EF4444';
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.style.backgroundColor = '';
+          button.disabled = false;
+        }, 2000);
+        return;
+      }
+
+      try {
+        const { error } = await sb
+          .from('contractors')
+          .update(settings)
+          .eq('id', contractorRecord.id);
+
+        if (error) throw error;
+
+        // Update local record
+        Object.assign(contractorRecord, settings);
+
         button.textContent = 'Saved!';
         button.style.backgroundColor = '#10B981';
 
@@ -814,11 +898,24 @@
           button.style.backgroundColor = '';
           button.disabled = false;
         }, 2000);
-      }, 600);
+      } catch (err) {
+        console.error('Error saving settings:', err);
+        button.textContent = 'Error — Try Again';
+        button.style.backgroundColor = '#EF4444';
+
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.style.backgroundColor = '';
+          button.disabled = false;
+        }, 2000);
+      }
     }
 
     // Initialize
-    updateFeeCalculation();
+    document.addEventListener('DOMContentLoaded', () => {
+      initSettings();
+      updateFeeCalculation();
+    });
   </script>
 </body>
 </html>

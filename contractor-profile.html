@@ -808,26 +808,142 @@
     <script src="js/nav.js"></script>
 
     <script>
-        // Demo data
-        const demoProfile = {
-            businessName: 'Stohler Roofing',
-            ownerName: 'Dustin Stohler',
-            phone: '(317) 530-3054',
-            email: 'Dustin@StohlerRoof.com',
-            website: 'www.stohlerroofing.com',
-            yearsInBusiness: 15,
-            teamSize: 12,
-            aboutUs: 'Family-owned roofing company serving Central Indiana since 2010. Specializing in residential roof replacements and repairs with a focus on quality craftsmanship and customer satisfaction.',
-            whyChoose: 'Licensed, insured, and dedicated to the highest standards in workmanship. We stand behind every job.',
-            trades: ['Roofing', 'Gutters', 'Siding'],
-            brands: ['GAF', 'Owens Corning'],
-            serviceArea: 'Hamilton, Hendricks, Boone, and surrounding counties',
-            totalJobs: 0,
-            rating: null,
-            avgFirstContact: null,
-            avgBidResponse: null,
-            certifications: []
-        };
+        // State
+        let currentUser = null;
+        let contractorRecord = null;
+        let contractorCertifications = [];
+
+        // ── Initialize: Load contractor data from Supabase ──
+        async function initProfile() {
+            currentUser = await Auth.requireAuth('contractor');
+            if (!currentUser && !CONFIG.DEMO_MODE) return;
+
+            if (currentUser && !CONFIG.DEMO_MODE && sb) {
+                try {
+                    // Load contractor record
+                    const { data, error } = await sb
+                        .from('contractors')
+                        .select('*')
+                        .eq('user_id', currentUser.id)
+                        .single();
+
+                    if (error) {
+                        console.error('Error loading contractor:', error);
+                        return;
+                    }
+
+                    contractorRecord = data;
+                    populateViewFromData(contractorRecord);
+                    populateEditFromData(contractorRecord);
+
+                    // Load certifications
+                    const certResult = await sb
+                        .from('contractor_certifications')
+                        .select('*')
+                        .eq('contractor_id', contractorRecord.id)
+                        .order('created_at', { ascending: true });
+
+                    if (certResult.data) {
+                        contractorCertifications = certResult.data;
+                    }
+
+                    // Load licenses for credentials display
+                    const licResult = await sb
+                        .from('contractor_licenses')
+                        .select('*')
+                        .eq('contractor_id', contractorRecord.id);
+
+                    if (licResult.data) {
+                        renderCredentials(licResult.data);
+                    }
+
+                    // Load platform stats
+                    const statsResult = await sb
+                        .from('quotes')
+                        .select('id', { count: 'exact' })
+                        .eq('contractor_id', contractorRecord.id);
+
+                    document.getElementById('statJobs').textContent = statsResult.count || '0';
+
+                } catch (err) {
+                    console.error('Error initializing profile:', err);
+                }
+            }
+
+            renderCertifications();
+        }
+
+        // ── Populate view fields from contractor data ──
+        function populateViewFromData(c) {
+            document.getElementById('viewBusinessName').textContent = c.company_name || '—';
+            document.getElementById('viewOwnerName').textContent = c.contact_name || '—';
+            document.getElementById('viewPhone').textContent = c.phone || '—';
+            document.getElementById('viewEmail').textContent = c.email || '—';
+            const website = c.website_url || '';
+            document.getElementById('viewWebsite').innerHTML = website
+                ? `<a href="${website.startsWith('http') ? website : 'https://' + website}" target="_blank" style="color: var(--amber);">${website}</a>`
+                : '—';
+            document.getElementById('viewYearsInBusiness').textContent = c.years_in_business || '—';
+            document.getElementById('viewTeamSize').textContent = c.num_employees || '—';
+            document.getElementById('viewAboutUs').textContent = c.about_us || 'Not yet provided.';
+            document.getElementById('viewWhyChoose').textContent = c.why_choose_us || 'Not yet provided.';
+
+            // Service area and trades
+            const trades = c.trades || [];
+            document.getElementById('viewTrades').textContent = trades.length ? trades.join(', ') : '—';
+            document.getElementById('viewBrands').textContent = c.preferred_brands ? c.preferred_brands.join(', ') : '—';
+            document.getElementById('viewServiceArea').textContent = c.service_area_description || c.service_counties ? (c.service_counties || []).join(', ') : '—';
+        }
+
+        // ── Populate edit fields from contractor data ──
+        function populateEditFromData(c) {
+            document.getElementById('editBusinessName').value = c.company_name || '';
+            document.getElementById('editOwnerName').value = c.contact_name || '';
+            document.getElementById('editPhone').value = c.phone || '';
+            document.getElementById('editEmail').value = c.email || '';
+            document.getElementById('editWebsite').value = c.website_url || '';
+            document.getElementById('editYearsInBusiness').value = c.years_in_business || '';
+            document.getElementById('editTeamSize').value = c.num_employees || '';
+            document.getElementById('editAboutUs').value = c.about_us || '';
+            document.getElementById('editWhyChoose').value = c.why_choose_us || '';
+
+            // Review links
+            document.getElementById('googleReviewsUrl').value = c.google_reviews_url || '';
+            document.getElementById('bbbUrl').value = c.bbb_url || '';
+            document.getElementById('angiUrl').value = c.angi_url || '';
+            document.getElementById('yelpUrl').value = c.yelp_url || '';
+        }
+
+        // ── Render credentials from licenses data ──
+        function renderCredentials(licenses) {
+            const container = document.getElementById('credentialsView');
+            let html = '';
+
+            if (licenses.length > 0) {
+                html += licenses.map(lic => `
+                    <div class="form-group">
+                        <label class="form-label">Contractor License — ${lic.municipality || 'General'}</label>
+                        <div>
+                            <span style="font-weight: 600; color: var(--navy);">${lic.license_number || 'On file'}</span>
+                            <span class="badge ${lic.verified ? 'badge-verified' : 'badge-pending'}">${lic.verified ? 'Verified' : 'Pending Verification'}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } else if (contractorRecord?.no_license_required) {
+                html += `<div class="form-group"><label class="form-label">Contractor License</label><div><span style="color: var(--slate);">No municipal license required in service area</span></div></div>`;
+            } else {
+                html += `<div class="form-group"><label class="form-label">Contractor License</label><div><span style="color: var(--slate);">No licenses on file</span></div></div>`;
+            }
+
+            html += `
+                <div class="form-group">
+                    <label class="form-label">Certifications</label>
+                    <div id="viewCertifications" style="color: var(--slate);">No certifications added</div>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
 
         // Toggle edit mode
         function toggleEdit(section) {
@@ -840,49 +956,143 @@
             }
         }
 
-        // Save profile changes
-        function saveProfile(section) {
+        // ── Save profile changes to Supabase ──
+        async function saveProfile(section) {
+            if (!contractorRecord || !sb) {
+                alert('Unable to save — not connected to database.');
+                return;
+            }
+
             if (section === 'company') {
-                const businessName = document.getElementById('editBusinessName').value;
-                const ownerName = document.getElementById('editOwnerName').value;
-                const phone = document.getElementById('editPhone').value;
-                const email = document.getElementById('editEmail').value;
-                const website = document.getElementById('editWebsite').value;
-                const yearsInBusiness = document.getElementById('editYearsInBusiness').value;
-                const teamSize = document.getElementById('editTeamSize').value;
-                const aboutUs = document.getElementById('editAboutUs').value;
-                const whyChoose = document.getElementById('editWhyChoose').value;
+                const updates = {
+                    company_name: document.getElementById('editBusinessName').value,
+                    contact_name: document.getElementById('editOwnerName').value,
+                    phone: document.getElementById('editPhone').value,
+                    email: document.getElementById('editEmail').value,
+                    website_url: document.getElementById('editWebsite').value,
+                    years_in_business: parseInt(document.getElementById('editYearsInBusiness').value) || null,
+                    num_employees: parseInt(document.getElementById('editTeamSize').value) || null,
+                    about_us: document.getElementById('editAboutUs').value,
+                    why_choose_us: document.getElementById('editWhyChoose').value,
+                    updated_at: new Date().toISOString(),
+                };
 
-                // Update view
-                document.getElementById('viewBusinessName').textContent = businessName;
-                document.getElementById('viewOwnerName').textContent = ownerName;
-                document.getElementById('viewPhone').textContent = phone;
-                document.getElementById('viewEmail').textContent = email;
-                document.getElementById('viewWebsite').innerHTML = `<a href="${website}" target="_blank" style="color: var(--amber);">${website}</a>`;
-                document.getElementById('viewYearsInBusiness').textContent = yearsInBusiness;
-                document.getElementById('viewTeamSize').textContent = teamSize;
-                document.getElementById('viewAboutUs').textContent = aboutUs;
-                document.getElementById('viewWhyChoose').textContent = whyChoose;
+                try {
+                    const { data, error } = await sb
+                        .from('contractors')
+                        .update(updates)
+                        .eq('id', contractorRecord.id)
+                        .select()
+                        .single();
 
-                // In demo mode, just toggle
-                if (window.CONFIG && window.CONFIG.DEMO_MODE) {
-                    alert('Changes saved (demo mode)');
+                    if (error) throw error;
+
+                    contractorRecord = data;
+                    populateViewFromData(contractorRecord);
                     toggleEdit('company');
+                } catch (err) {
+                    console.error('Error saving company info:', err);
+                    alert('Failed to save changes. Please try again.');
                 }
             } else if (section === 'reviews') {
-                // Handle review links
-                toggleEdit('reviews');
+                const updates = {
+                    google_reviews_url: document.getElementById('googleReviewsUrl').value || null,
+                    bbb_url: document.getElementById('bbbUrl').value || null,
+                    angi_url: document.getElementById('angiUrl').value || null,
+                    yelp_url: document.getElementById('yelpUrl').value || null,
+                    updated_at: new Date().toISOString(),
+                };
+
+                try {
+                    const { data, error } = await sb
+                        .from('contractors')
+                        .update(updates)
+                        .eq('id', contractorRecord.id)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    contractorRecord = data;
+
+                    // Update view mode links
+                    const reviewFields = [
+                        { id: 'googleReviewsUrl', viewLabel: 'Google Reviews' },
+                        { id: 'bbbUrl', viewLabel: 'Better Business Bureau (BBB)' },
+                        { id: 'angiUrl', viewLabel: 'Angi (Formerly Angie\'s List)' },
+                        { id: 'yelpUrl', viewLabel: 'Yelp' },
+                    ];
+                    const reviewsView = document.getElementById('reviewsView');
+                    reviewsView.innerHTML = reviewFields.map(f => {
+                        const val = document.getElementById(f.id).value;
+                        return `<div class="view-field"><label>${f.viewLabel}</label><div class="view-field-value">${val ? `<a href="${val}" target="_blank" style="color: var(--amber); text-decoration: none;">View</a>` : '<span style="color: var(--slate);">Not provided</span>'}</div></div>`;
+                    }).join('');
+
+                    toggleEdit('reviews');
+                } catch (err) {
+                    console.error('Error saving review links:', err);
+                    alert('Failed to save changes. Please try again.');
+                }
+            } else if (section === 'photos') {
+                // Handle photo uploads
+                const ownerPhotoInput = document.getElementById('ownerPhotoInput');
+                if (ownerPhotoInput.files.length > 0) {
+                    try {
+                        const file = ownerPhotoInput.files[0];
+                        const filePath = `${currentUser.id}/profile/${file.name}`;
+                        const { error: uploadError } = await sb.storage
+                            .from('contractor-documents')
+                            .upload(filePath, file, { contentType: file.type, upsert: true });
+
+                        if (uploadError) throw uploadError;
+
+                        // Get public URL and save to contractor record
+                        const { data: urlData } = sb.storage
+                            .from('contractor-documents')
+                            .getPublicUrl(filePath);
+
+                        await sb.from('contractors')
+                            .update({ owner_photo_url: urlData.publicUrl, updated_at: new Date().toISOString() })
+                            .eq('id', contractorRecord.id);
+
+                        contractorRecord.owner_photo_url = urlData.publicUrl;
+                    } catch (err) {
+                        console.error('Error uploading owner photo:', err);
+                        alert('Failed to upload photo. Please try again.');
+                    }
+                }
+                toggleEdit('photos');
             }
         }
 
-        // Add certification
-        function addCertification() {
-            const certName = document.getElementById('certificationName').value;
-            if (certName.trim()) {
-                demoProfile.certifications.push(certName);
+        // Add certification to database
+        async function addCertification() {
+            const certName = document.getElementById('certificationName').value.trim();
+            if (!certName) return;
+
+            if (!contractorRecord || !sb) {
+                alert('Unable to save — not connected to database.');
+                return;
+            }
+
+            try {
+                const { data, error } = await sb
+                    .from('contractor_certifications')
+                    .insert({
+                        contractor_id: contractorRecord.id,
+                        certification_name: certName,
+                    })
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                contractorCertifications.push(data);
                 document.getElementById('certificationName').value = '';
                 renderCertifications();
-                alert('Certification added (demo mode)');
+            } catch (err) {
+                console.error('Error adding certification:', err);
+                alert('Failed to add certification. Please try again.');
             }
         }
 
@@ -891,33 +1101,53 @@
             const list = document.getElementById('certificationsList');
             const view = document.getElementById('viewCertifications');
 
-            if (demoProfile.certifications.length === 0) {
+            if (!view) return;
+
+            if (contractorCertifications.length === 0) {
                 view.textContent = 'No certifications added';
-                list.innerHTML = '';
+                if (list) list.innerHTML = '';
             } else {
-                view.innerHTML = demoProfile.certifications
-                    .map(cert => `<div style="margin-bottom: var(--sp-2);">• ${cert}</div>`)
+                view.innerHTML = contractorCertifications
+                    .map(cert => `<div style="margin-bottom: var(--sp-2);">• ${cert.certification_name}</div>`)
                     .join('');
 
-                list.innerHTML = demoProfile.certifications
-                    .map((cert, idx) => `
-                        <div class="certification-item">
-                            <span>${cert}</span>
-                            <button class="certification-item-remove" onclick="removeCertification(${idx})">Remove</button>
-                        </div>
-                    `)
-                    .join('');
+                if (list) {
+                    list.innerHTML = contractorCertifications
+                        .map((cert, idx) => `
+                            <div class="certification-item">
+                                <span>${cert.certification_name}</span>
+                                <button class="certification-item-remove" onclick="removeCertification('${cert.id}', ${idx})">Remove</button>
+                            </div>
+                        `)
+                        .join('');
+                }
             }
         }
 
-        // Remove certification
-        function removeCertification(idx) {
-            demoProfile.certifications.splice(idx, 1);
-            renderCertifications();
+        // Remove certification from database
+        async function removeCertification(certId, idx) {
+            if (!sb) return;
+
+            try {
+                const { error } = await sb
+                    .from('contractor_certifications')
+                    .delete()
+                    .eq('id', certId);
+
+                if (error) throw error;
+
+                contractorCertifications.splice(idx, 1);
+                renderCertifications();
+            } catch (err) {
+                console.error('Error removing certification:', err);
+                alert('Failed to remove certification. Please try again.');
+            }
         }
 
-        // Initialize
-        renderCertifications();
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            initProfile();
+        });
     </script>
 </body>
 </html>

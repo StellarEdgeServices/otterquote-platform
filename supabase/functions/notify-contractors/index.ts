@@ -126,7 +126,7 @@ serve(async (req) => {
     // For now, select all active contractors. Will refine later with service area matching.
     const { data: contractors, error: contractorsError } = await supabase
       .from("contractors")
-      .select("id, user_id, email, phone, name")
+      .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, trades")
       .eq("status", "active")
       .limit(6); // Cap at 6 contractors per opportunity (D-030)
 
@@ -162,16 +162,43 @@ serve(async (req) => {
     const basicAuthMailgun = btoa(`api:${MAILGUN_API_KEY}`);
     const basicAuthTwilio = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
 
+    // ========== FILTER BY TRADE (if trade_types provided) ==========
+    let matchedContractors = contractors;
+    if (trade_types && trade_types.length > 0) {
+      const requestedTrades = trade_types.map((t: string) => t.toLowerCase());
+      matchedContractors = contractors.filter((c: any) => {
+        if (!c.trades || c.trades.length === 0) return true; // No trades set = show all
+        return c.trades.some((t: string) => requestedTrades.includes(t.toLowerCase()));
+      });
+    }
+
     // ========== NOTIFY EACH CONTRACTOR ==========
-    for (const contractor of contractors) {
+    for (const contractor of matchedContractors) {
       let emailSent = false;
       let smsSent = false;
-      const notificationResults = [];
 
-      // ===== SEND EMAIL =====
-      if (contractor.email) {
+      // Check notification preferences — skip if they opted out of new_opportunity
+      const prefs = contractor.notification_preferences || {};
+      if (prefs.new_opportunity === false) {
+        console.log("Contractor", contractor.id, "opted out of new_opportunity notifications");
+        notifiedContractors.push({ id: contractor.id, email_sent: false, sms_sent: false, skipped: true });
+        continue;
+      }
+
+      // Determine email recipients: use notification_emails if set, otherwise fall back to primary email
+      const emailRecipients = (contractor.notification_emails && contractor.notification_emails.length > 0)
+        ? contractor.notification_emails
+        : (contractor.email ? [contractor.email] : []);
+
+      // Determine SMS recipients: use notification_phones if set, otherwise fall back to primary phone
+      const phoneRecipients = (contractor.notification_phones && contractor.notification_phones.length > 0)
+        ? contractor.notification_phones
+        : (contractor.phone ? [contractor.phone] : []);
+
+      // ===== SEND EMAILS =====
+      for (const recipientEmail of emailRecipients) {
         try {
-          const emailBody = `Hi ${contractor.name || "Contractor"},
+          const emailBody = `Hi ${contractor.contact_name || "Contractor"},
 
 A new opportunity is available in ${claim_city}, ${claim_state} for ${job_type || "a new job"}.
 
@@ -185,24 +212,17 @@ OtterQuote Team`;
 
           const formData = new URLSearchParams();
           formData.append("from", fromAddress);
-          formData.append("to", contractor.email);
+          formData.append("to", recipientEmail);
           formData.append("subject", emailSubject);
           formData.append("text", emailBody);
 
-          console.log(
-            "Sending email to contractor:",
-            contractor.id,
-            "email:",
-            contractor.email
-          );
+          console.log("Sending email to contractor:", contractor.id, "email:", recipientEmail);
 
           const mailgunResponse = await fetch(
             `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
             {
               method: "POST",
-              headers: {
-                Authorization: `Basic ${basicAuthMailgun}`,
-              },
+              headers: { Authorization: `Basic ${basicAuthMailgun}` },
               body: formData,
             }
           );
@@ -210,65 +230,34 @@ OtterQuote Team`;
           if (mailgunResponse.ok) {
             const mailgunData = await mailgunResponse.json();
             emailSent = true;
-            console.log(
-              "Email sent to contractor:",
-              contractor.id,
-              "Mailgun ID:",
-              mailgunData.id
-            );
+            console.log("Email sent to contractor:", contractor.id, "Mailgun ID:", mailgunData.id);
 
-            // Log to notifications table
-            const { error: logError } = await supabase
-              .from("notifications")
-              .insert({
-                user_id: contractor.user_id,
-                claim_id: claim_id,
-                channel: "email",
-                notification_type: "new_opportunity",
-                recipient: contractor.email,
-                message_preview: `New opportunity in ${claim_city}, ${claim_state}`,
-              });
-
-            if (logError) {
-              console.error(
-                "Failed to log email notification:",
-                logError
-              );
-            }
+            await supabase.from("notifications").insert({
+              user_id: contractor.user_id,
+              claim_id: claim_id,
+              channel: "email",
+              notification_type: "new_opportunity",
+              recipient: recipientEmail,
+              message_preview: `New opportunity in ${claim_city}, ${claim_state}`,
+            });
           } else {
             const errorData = await mailgunResponse.text();
-            console.error(
-              "Mailgun email send failed for contractor",
-              contractor.id,
-              ":",
-              mailgunResponse.status,
-              errorData
-            );
+            console.error("Mailgun email send failed for contractor", contractor.id, ":", mailgunResponse.status, errorData);
           }
         } catch (error) {
-          console.error(
-            "Error sending email to contractor",
-            contractor.id,
-            ":",
-            error
-          );
+          console.error("Error sending email to contractor", contractor.id, ":", error);
         }
       }
 
       // ===== SEND SMS =====
-      if (contractor.phone) {
+      for (const recipientPhone of phoneRecipients) {
         try {
           const formData = new URLSearchParams();
-          formData.append("To", contractor.phone);
+          formData.append("To", recipientPhone);
           formData.append("From", TWILIO_PHONE_NUMBER);
           formData.append("Body", smsMessage);
 
-          console.log(
-            "Sending SMS to contractor:",
-            contractor.id,
-            "phone:",
-            contractor.phone
-          );
+          console.log("Sending SMS to contractor:", contractor.id, "phone:", recipientPhone);
 
           const twilioResponse = await fetch(
             `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
@@ -285,45 +274,22 @@ OtterQuote Team`;
           if (twilioResponse.ok) {
             const twilioData = await twilioResponse.json();
             smsSent = true;
-            console.log(
-              "SMS sent to contractor:",
-              contractor.id,
-              "SID:",
-              twilioData.sid
-            );
+            console.log("SMS sent to contractor:", contractor.id, "SID:", twilioData.sid);
 
-            // Log to notifications table
-            const { error: logError } = await supabase
-              .from("notifications")
-              .insert({
-                user_id: contractor.user_id,
-                claim_id: claim_id,
-                channel: "sms",
-                notification_type: "new_opportunity",
-                recipient: contractor.phone,
-                message_preview: `New opportunity in ${claim_city}, ${claim_state}`,
-              });
-
-            if (logError) {
-              console.error("Failed to log SMS notification:", logError);
-            }
+            await supabase.from("notifications").insert({
+              user_id: contractor.user_id,
+              claim_id: claim_id,
+              channel: "sms",
+              notification_type: "new_opportunity",
+              recipient: recipientPhone,
+              message_preview: `New opportunity in ${claim_city}, ${claim_state}`,
+            });
           } else {
             const errorData = await twilioResponse.text();
-            console.error(
-              "Twilio SMS send failed for contractor",
-              contractor.id,
-              ":",
-              twilioResponse.status,
-              errorData
-            );
+            console.error("Twilio SMS send failed for contractor", contractor.id, ":", twilioResponse.status, errorData);
           }
         } catch (error) {
-          console.error(
-            "Error sending SMS to contractor",
-            contractor.id,
-            ":",
-            error
-          );
+          console.error("Error sending SMS to contractor", contractor.id, ":", error);
         }
       }
 

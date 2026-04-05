@@ -226,40 +226,100 @@
             allOpportunities = demoOpportunities;
           } else if (sb) {
             try {
+              // Query claims that are ready for bids (status = 'active' or 'bidding')
+              // Also include 'pending' for claims that are freshly submitted
               const { data, error } = await sb
                 .from('claims')
                 .select('*')
-                .in('status', ['pending', 'bidding'])
-                .order('created_at', { ascending: false });
+                .eq('ready_for_bids', true)
+                .in('status', ['active', 'bidding', 'pending'])
+                .order('created_at', { ascending: false })
+                .limit(50);
 
               if (!error && data) {
-                allOpportunities = data.map(claim => ({
-                  id: claim.id,
-                  location: claim.property_address?.split(',')[0] || 'Unknown',
-                  zip: claim.property_address?.match(/\d{5}/)?.[0] || '',
-                  jobType: claim.job_type || 'insurance_rcv',
-                  damageType: claim.damage_type || 'Unknown',
-                  damageDetail: claim.damage_description || '',
-                  insuranceCarrier: claim.insurance_carrier || 'Unknown',
-                  material: claim.material_product || null,
-                  estimatedValue: claim.rcv_amount || null,
-                  roofSquares: claim.roof_squares || null,
-                  repairSquares: claim.repair_squares || null,
-                  totalSquares: null,
-                  existingShingle: claim.existing_shingle_brand ? `${claim.existing_shingle_brand} - ${claim.existing_shingle_color}` : null,
-                  estimateAvailable: claim.estimate_filename ? true : false,
-                  measurementsAvailable: claim.measurements_filename ? true : false,
-                  claimFiledDate: claim.created_at,
-                  distance: 0,
-                  urgency: claim.urgency || 'flexible',
-                  urgencyDeadline: claim.urgency_deadline,
-                  urgencyReason: claim.urgency_reason,
-                  homeownerNotes: claim.homeowner_notes
-                }));
+                allOpportunities = data.map(claim => {
+                  // Parse city and zip from property_address
+                  const addressParts = (claim.property_address || '').split(',');
+                  const city = claim.address_city || addressParts[0]?.trim() || 'Unknown';
+                  const zip = claim.address_zip || claim.property_address?.match(/\d{5}/)?.[0] || '';
+
+                  // Parse trades from claim
+                  const trades = claim.selected_trades || claim.trades || ['roofing'];
+
+                  return {
+                    id: claim.id,
+                    location: city,
+                    zip: zip,
+                    state: claim.address_state || 'IN',
+                    jobType: claim.job_type || 'insurance_rcv',
+                    trades: Array.isArray(trades) ? trades : [trades],
+                    damageType: claim.damage_type || 'Unknown',
+                    damageDetail: claim.damage_description || '',
+                    insuranceCarrier: claim.insurance_carrier || 'Unknown',
+                    material: claim.material_product || null,
+                    estimatedValue: claim.rcv_amount || null,
+                    acvPayout: claim.acv_amount || null,
+                    deductible: claim.deductible_amount || null,
+                    roofSquares: claim.roof_squares || null,
+                    repairSquares: claim.repair_squares || null,
+                    totalSquares: null,
+                    existingShingle: claim.existing_shingle_brand ? `${claim.existing_shingle_brand} - ${claim.existing_shingle_color}` : null,
+                    estimateAvailable: !!(claim.estimate_filename || claim.has_estimate),
+                    measurementsAvailable: !!(claim.measurements_filename || claim.has_measurements),
+                    claimFiledDate: claim.created_at,
+                    distance: 0, // TODO: Calculate from contractor address to claim address
+                    urgency: claim.urgency || 'flexible',
+                    urgencyDeadline: claim.urgency_deadline,
+                    urgencyReason: claim.urgency_reason,
+                    homeownerNotes: claim.homeowner_notes,
+                    fundingType: claim.funding_type || (claim.job_type?.startsWith('insurance') ? 'insurance' : 'cash'),
+                  };
+                });
+
+                // Filter by contractor's trades if we have a contractor profile
+                if (currentContractor && currentContractor.trades && currentContractor.trades.length > 0) {
+                  const contractorTrades = currentContractor.trades.map(t => t.toLowerCase());
+                  allOpportunities = allOpportunities.filter(opp => {
+                    // Show opportunity if ANY of the contractor's trades match ANY of the claim's trades
+                    return opp.trades.some(t => contractorTrades.includes(t.toLowerCase()));
+                  });
+                }
+
+                // Check how many bids already exist per opportunity and exclude those at max (6)
+                if (allOpportunities.length > 0) {
+                  const claimIds = allOpportunities.map(o => o.id);
+                  const { data: bidCounts } = await sb
+                    .from('quotes')
+                    .select('claim_id')
+                    .in('claim_id', claimIds);
+
+                  if (bidCounts) {
+                    const countMap = {};
+                    bidCounts.forEach(q => {
+                      countMap[q.claim_id] = (countMap[q.claim_id] || 0) + 1;
+                    });
+                    // Exclude opportunities that already have 6 bids (D-030)
+                    allOpportunities = allOpportunities.filter(o => (countMap[o.id] || 0) < 6);
+                  }
+                }
+
+                // Also exclude opportunities this contractor has already bid on
+                if (currentContractor) {
+                  const { data: myBids } = await sb
+                    .from('quotes')
+                    .select('claim_id')
+                    .eq('contractor_id', currentContractor.id);
+
+                  if (myBids && myBids.length > 0) {
+                    const myBidClaimIds = new Set(myBids.map(b => b.claim_id));
+                    allOpportunities = allOpportunities.filter(o => !myBidClaimIds.has(o.id));
+                  }
+                }
               }
             } catch (err) {
-              console.error('Error loading claims:', err);
-              allOpportunities = demoOpportunities;
+              console.error('Error loading opportunities:', err);
+              // Don't fall back to demo data in production — show empty state
+              allOpportunities = [];
             }
           }
 

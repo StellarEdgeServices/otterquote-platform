@@ -1600,6 +1600,40 @@
             claim_id: currentClaim.id,
             has_measurements: currentClaim.has_measurements,
           });
+
+          // ── Notify matching contractors via Edge Function ──
+          if (!CONFIG.DEMO_MODE) {
+            try {
+              const addressParts = (currentClaim.property_address || '').split(',');
+              const city = currentClaim.address_city || addressParts[0]?.trim() || 'Unknown';
+              const state = currentClaim.address_state || 'IN';
+              const zip = currentClaim.address_zip || currentClaim.property_address?.match(/\d{5}/)?.[0] || '';
+
+              const notifyPayload = {
+                claim_id: currentClaim.id,
+                claim_city: city,
+                claim_state: state,
+                claim_zip: zip,
+                trade_types: currentClaim.selected_trades || currentClaim.trades || ['roofing'],
+                job_type: currentClaim.job_type || 'insurance_rcv',
+                urgency: currentClaim.urgency || 'flexible',
+              };
+
+              // Fire-and-forget: don't block the success UI on notification delivery
+              fetch(`${CONFIG.SUPABASE_URL}/functions/v1/notify-contractors`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${CONFIG.SUPABASE_ANON}`,
+                },
+                body: JSON.stringify(notifyPayload),
+              }).then(resp => resp.json())
+                .then(result => console.log('Contractor notification result:', result))
+                .catch(notifyErr => console.error('Contractor notification error (non-blocking):', notifyErr));
+            } catch (notifyErr) {
+              console.error('Error preparing contractor notification:', notifyErr);
+            }
+          }
         } catch (err) {
           console.error('Submit error:', err);
           showError('Failed to submit claim. Please try again.');
