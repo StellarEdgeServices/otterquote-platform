@@ -717,7 +717,7 @@
 
       // Load claim from URL param
       const urlParams = new URLSearchParams(window.location.search);
-      const claimId = urlParams.get('claim_id');
+      const claimId = urlParams.get('claim_id') || urlParams.get('project');
 
       if (claimId && !CONFIG.DEMO_MODE && sb) {
         try {
