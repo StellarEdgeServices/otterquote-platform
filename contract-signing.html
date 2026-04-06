@@ -160,6 +160,13 @@
       flex-shrink: 0;
     }
 
+    .contractor-avatar img {
+      width: 100%;
+      height: 100%;
+      border-radius: var(--radius-lg);
+      object-fit: cover;
+    }
+
     .contractor-info {
       display: flex;
       flex-direction: column;
@@ -253,6 +260,14 @@
       justify-content: center;
     }
 
+    .contract-pdf-embed {
+      width: 100%;
+      min-height: 500px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-md);
+      background: #fff;
+    }
+
     .contract-scroll {
       max-height: 300px;
       overflow-y: auto;
@@ -314,10 +329,20 @@
       animation: fadeUp 0.6s var(--ease) 0.2s both;
     }
 
+    .callout.callout-info {
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-left: 4px solid #3b82f6;
+    }
+
     .callout-icon {
       font-size: 1.5rem;
       flex-shrink: 0;
       color: var(--green);
+    }
+
+    .callout.callout-info .callout-icon {
+      color: #3b82f6;
     }
 
     .callout-text {
@@ -634,75 +659,32 @@
       color: var(--white);
     }
 
-    /* ── DocuSign Modal ── */
-    .docusign-modal {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(4px);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-      padding: var(--sp-4);
-    }
-
-    .docusign-modal.active {
-      display: flex;
-      animation: fadeUp 0.3s var(--ease);
-    }
-
-    .docusign-modal-content {
-      background: var(--navy);
-      border-radius: var(--radius-lg);
-      max-width: 500px;
-      width: 100%;
-      padding: var(--sp-8);
-      box-shadow: var(--shadow-lg);
-    }
-
-    .docusign-modal-close {
-      position: absolute;
-      top: var(--sp-4);
-      right: var(--sp-4);
-      background: none;
-      border: none;
-      color: var(--slate);
-      font-size: 1.5rem;
-      cursor: pointer;
-      transition: all var(--duration) var(--ease);
-    }
-
-    .docusign-modal-close:hover {
-      color: var(--white);
-    }
-
-    .docusign-placeholder {
-      background: var(--navy-2);
-      border: 1px dashed rgba(255,255,255,0.1);
-      border-radius: var(--radius-md);
-      padding: var(--sp-10);
+    /* ── Loading / Error States ── */
+    .loading-state {
       text-align: center;
-      margin-bottom: var(--sp-6);
-      min-height: 250px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--sp-4);
+      padding: var(--sp-20) var(--sp-8);
     }
 
-    .docusign-placeholder-icon {
-      font-size: 3rem;
-      color: var(--amber);
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: var(--amber);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto var(--sp-6);
     }
 
-    .docusign-placeholder-text {
-      color: var(--slate);
-      font-size: 1rem;
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error-state {
+      text-align: center;
+      padding: var(--sp-12) var(--sp-8);
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: var(--radius-lg);
     }
 
     /* ── Animations ── */
@@ -814,243 +796,229 @@
     <main class="contract-page-main">
       <div class="container">
 
-        <!-- Progress Indicator -->
-        <div class="progress-indicator">
-          <div class="progress-steps">
-            <div class="progress-step active" data-step="1">
-              <div class="progress-step-number">1</div>
-              <div class="progress-step-label">Review</div>
-              <div class="progress-connector"></div>
-            </div>
-            <div class="progress-step" data-step="2">
-              <div class="progress-step-number">2</div>
-              <div class="progress-step-label">Sign</div>
-              <div class="progress-connector"></div>
-            </div>
-            <div class="progress-step" data-step="3">
-              <div class="progress-step-number">3</div>
-              <div class="progress-step-label">Payment</div>
-              <div class="progress-connector"></div>
-            </div>
-            <div class="progress-step" data-step="4">
-              <div class="progress-step-number">4</div>
-              <div class="progress-step-label">Done</div>
-              <div class="progress-connector"></div>
+        <!-- Loading State (shown initially) -->
+        <div id="pageLoading" class="loading-state">
+          <div class="loading-spinner"></div>
+          <p style="color: var(--white); font-weight: 600;">Loading contract details...</p>
+        </div>
+
+        <!-- Error State (hidden initially) -->
+        <div id="pageError" style="display: none;" class="error-state">
+          <div style="font-size: 2rem; margin-bottom: var(--sp-4);">&#x26A0;&#xFE0F;</div>
+          <p style="color: #ef4444; font-weight: 600; margin-bottom: var(--sp-2);" id="pageErrorTitle">Unable to load contract</p>
+          <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-6);" id="pageErrorDetail">Please try again or contact support.</p>
+          <a href="/dashboard.html" class="button button-primary">Back to Dashboard</a>
+        </div>
+
+        <!-- Main Content (hidden until loaded) -->
+        <div id="pageContent" style="display: none;">
+
+          <!-- Progress Indicator -->
+          <div class="progress-indicator">
+            <div class="progress-steps">
+              <div class="progress-step active" data-step="1">
+                <div class="progress-step-number">1</div>
+                <div class="progress-step-label">Review</div>
+                <div class="progress-connector"></div>
+              </div>
+              <div class="progress-step" data-step="2">
+                <div class="progress-step-number">2</div>
+                <div class="progress-step-label">Sign</div>
+                <div class="progress-connector"></div>
+              </div>
+              <div class="progress-step" data-step="3">
+                <div class="progress-step-number">3</div>
+                <div class="progress-step-label">Done</div>
+                <div class="progress-connector"></div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Header -->
-        <div class="contract-header">
-          <h1>Contract Review & Signature</h1>
-          <p class="contract-header-subtitle">Review the terms of your contractor agreement and electronically sign. Your deductible will be collected afterward as a refundable deposit.</p>
-        </div>
+          <!-- Header -->
+          <div class="contract-header">
+            <h1>Contract Review & Signature</h1>
+            <p class="contract-header-subtitle">Review your contractor's agreement and sign electronically via DocuSign.</p>
+          </div>
 
-        <!-- STEP 1: Review Contract -->
-        <div class="step-section active" data-step="1">
-          <!-- Contractor Card -->
-          <div class="contractor-card">
-            <div class="contractor-avatar" id="contractorAvatar">🏗️</div>
-            <div class="contractor-info">
-              <div class="contractor-name" id="contractorName">Loading...</div>
-              <div class="contractor-meta">
-                <div class="contractor-meta-item">
-                  <span class="contractor-meta-icon">⭐</span>
-                  <span><span id="contractorRating">—</span> rating</span>
+          <!-- STEP 1: Review Contract -->
+          <div class="step-section active" data-step="1">
+            <!-- Contractor Card -->
+            <div class="contractor-card">
+              <div class="contractor-avatar" id="contractorAvatar"></div>
+              <div class="contractor-info">
+                <div class="contractor-name" id="contractorName">Loading...</div>
+                <div class="contractor-meta">
+                  <div class="contractor-meta-item">
+                    <span class="contractor-meta-icon">&#x2B50;</span>
+                    <span><span id="contractorRating">&mdash;</span> rating</span>
+                  </div>
+                  <div class="contractor-meta-item">
+                    <span class="contractor-meta-icon">&#x1F4C5;</span>
+                    <span><span id="contractorYears">&mdash;</span> years</span>
+                  </div>
+                  <div class="contractor-meta-item" id="materialBadgeContainer">
+                    <span class="contractor-badge" id="materialBadge"></span>
+                  </div>
                 </div>
-                <div class="contractor-meta-item">
-                  <span class="contractor-meta-icon">📅</span>
-                  <span><span id="contractorYears">—</span> years</span>
+              </div>
+              <div class="contractor-bid">
+                <div class="contractor-bid-label">Bid Amount</div>
+                <div class="contractor-bid-amount" id="contractorBidAmount">$&mdash;</div>
+              </div>
+            </div>
+
+            <!-- Contract Template Preview -->
+            <div class="contract-section">
+              <h2 class="contract-section-title">Contract Preview</h2>
+              <div id="contractPreviewContainer">
+                <div class="contract-placeholder" id="contractPreviewPlaceholder">
+                  <p>Loading contract template...</p>
                 </div>
-                <div class="contractor-meta-item" id="materialBadgeContainer">
-                  <span class="contractor-badge" id="materialBadge"></span>
+              </div>
+            </div>
+
+            <!-- Key Terms -->
+            <div class="contract-section">
+              <h2 class="contract-section-title">Key Terms</h2>
+              <div class="key-terms-grid">
+                <div class="key-term-item">
+                  <div class="key-term-label">Job Scope</div>
+                  <div class="key-term-value" id="jobScope">Roof repair</div>
+                </div>
+                <div class="key-term-item">
+                  <div class="key-term-label">Total Price</div>
+                  <div class="key-term-value highlight" id="totalPrice">$&mdash;</div>
+                </div>
+                <div class="key-term-item">
+                  <div class="key-term-label">Warranty</div>
+                  <div class="key-term-value" id="warranty">&mdash;</div>
+                </div>
+                <div class="key-term-item">
+                  <div class="key-term-label">Est. Start Date</div>
+                  <div class="key-term-value" id="startDate">&mdash;</div>
                 </div>
               </div>
             </div>
-            <div class="contractor-bid">
-              <div class="contractor-bid-label">Bid Amount</div>
-              <div class="contractor-bid-amount" id="contractorBidAmount">$—</div>
-            </div>
-          </div>
 
-          <!-- Contract Summary -->
-          <div class="contract-section">
-            <h2 class="contract-section-title">Contract Summary</h2>
-            <div class="contract-placeholder">
-              <p>📄 Your contractor's contract will be pre-filled with your claim details and presented for electronic signature in the next step via DocuSign. Review the key terms below before proceeding.</p>
+            <!-- Cancellation Guarantee -->
+            <div class="callout">
+              <div class="callout-icon">&#x2713;</div>
+              <div class="callout-text">
+                <div class="callout-title">Cancellation Guarantee</div>
+                <div class="callout-description">Not sure? You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</div>
+              </div>
             </div>
-          </div>
 
-          <!-- Key Terms -->
-          <div class="contract-section">
-            <h2 class="contract-section-title">Key Terms</h2>
-            <div class="key-terms-grid">
-              <div class="key-term-item">
-                <div class="key-term-label">Job Scope</div>
-                <div class="key-term-value" id="jobScope">Roof repair</div>
+            <!-- Step 1 Actions -->
+            <div class="step-actions">
+              <div class="step-actions-primary">
+                <button class="button button-primary button-large" id="proceedToSignBtn">
+                  Proceed to Sign &rarr;
+                </button>
               </div>
-              <div class="key-term-item">
-                <div class="key-term-label">Total Price</div>
-                <div class="key-term-value highlight" id="totalPrice">$—</div>
-              </div>
-              <div class="key-term-item">
-                <div class="key-term-label">Warranty</div>
-                <div class="key-term-value" id="warranty">—</div>
-              </div>
-              <div class="key-term-item">
-                <div class="key-term-label">Est. Start Date</div>
-                <div class="key-term-value" id="startDate">—</div>
+              <div class="step-actions-secondary">
+                <a href="#" id="backToBidsLink" class="back-link">&larr; Back to Bids</a>
               </div>
             </div>
           </div>
 
-          <!-- Cancellation Guarantee -->
-          <div class="callout">
-            <div class="callout-icon">✓</div>
-            <div class="callout-text">
-              <div class="callout-title">Cancellation Guarantee</div>
-              <div class="callout-description">Not sure? You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</div>
-            </div>
-          </div>
+          <!-- STEP 2: E-Sign via DocuSign -->
+          <div class="step-section" data-step="2">
+            <div class="contract-section">
+              <h2 class="contract-section-title">Electronic Signature</h2>
+              <p style="color: var(--slate); margin-bottom: var(--sp-6);">Your contractor's contract has been pre-filled with your project details. Review and sign the document below using DocuSign.</p>
 
-          <!-- Step 1 Actions -->
-          <div class="step-actions">
-            <div class="step-actions-primary">
-              <button class="button button-primary button-large" id="proceedToSignBtn">
-                Proceed to Sign →
-              </button>
-            </div>
-            <div class="step-actions-secondary">
-              <a href="/dashboard.html" class="back-link">← Back to Bids</a>
-            </div>
-          </div>
-        </div>
-
-        <!-- STEP 2: E-Sign via DocuSign -->
-        <div class="step-section" data-step="2">
-          <div class="contract-section">
-            <h2 class="contract-section-title">Electronic Signature</h2>
-            <p style="color: var(--slate); margin-bottom: var(--sp-6);">Your contractor's contract has been pre-filled with your claim details. Review and sign the document below using DocuSign.</p>
-
-            <!-- DocuSign Loading State -->
-            <div id="docusignLoading" style="text-align: center; padding: var(--sp-10);">
-              <div style="font-size: 2rem; margin-bottom: var(--sp-4);">📝</div>
-              <p style="color: var(--white); font-weight: 600; margin-bottom: var(--sp-2);">Preparing your contract...</p>
-              <p style="color: var(--slate); font-size: 0.9rem;">This may take a few seconds.</p>
-            </div>
-
-            <!-- DocuSign Error State -->
-            <div id="docusignError" style="display: none; text-align: center; padding: var(--sp-8); background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md);">
-              <div style="font-size: 2rem; margin-bottom: var(--sp-4);">⚠️</div>
-              <p style="color: #ef4444; font-weight: 600; margin-bottom: var(--sp-2);" id="docusignErrorTitle">Unable to load contract</p>
-              <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-6);" id="docusignErrorDetail">Please try again or contact support.</p>
-              <button class="button button-primary" onclick="initDocuSign()">Retry</button>
-            </div>
-
-            <!-- DocuSign Embedded Signing iframe -->
-            <div id="docusignContainer" style="display: none;">
-              <iframe id="docusignFrame" style="width: 100%; min-height: 600px; border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md); background: #fff;" allow="geolocation"></iframe>
-            </div>
-
-            <!-- Signed Confirmation (shown after signing completes) -->
-            <div id="docusignSigned" style="display: none; text-align: center; padding: var(--sp-8); background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-md);">
-              <div style="font-size: 2rem; margin-bottom: var(--sp-4);">✅</div>
-              <p style="color: var(--green); font-weight: 600; margin-bottom: var(--sp-2);">Contract Signed Successfully</p>
-              <p style="color: var(--slate); font-size: 0.9rem;">Your signed contract has been recorded. Proceed to the next step.</p>
-            </div>
-          </div>
-
-          <!-- Step 2 Actions -->
-          <div class="step-actions">
-            <div class="step-actions-primary">
-              <button class="button button-primary button-large" id="signContractBtn" disabled>
-                Continue to Payment →
-              </button>
-            </div>
-            <div class="step-actions-secondary">
-              <button class="button button-secondary" id="backToReviewBtn">
-                ← Back to Review
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- STEP 3: Payment -->
-        <div class="step-section" data-step="3">
-          <div class="deductible-card">
-            <div class="deductible-header">
-              <div class="deductible-icon">💳</div>
-              <div class="deductible-title">Deductible Payment</div>
-            </div>
-            <p class="deductible-description">To secure your contractor and prevent scheduling delays, we collect your insurance deductible as a refundable deposit. This amount will be held in escrow and released to your contractor after your insurance company issues the first payment.</p>
-
-            <!-- Amount Display -->
-            <div class="deductible-amount-display">
-              <div class="deductible-amount-label">
-                <div class="deductible-amount-label-text">Amount to Collect</div>
+              <!-- DocuSign Loading State -->
+              <div id="docusignLoading" style="text-align: center; padding: var(--sp-10);">
+                <div class="loading-spinner"></div>
+                <p style="color: var(--white); font-weight: 600; margin-bottom: var(--sp-2);">Preparing your contract...</p>
+                <p style="color: var(--slate); font-size: 0.9rem;">This may take a few seconds.</p>
               </div>
-              <div class="deductible-amount-value" id="deductibleAmount">$—</div>
-            </div>
 
-            <!-- Payment Form -->
-            <div class="payment-form-placeholder">
-              <p>💳 Stripe integration coming soon. For now, deductible collection will be handled manually.</p>
-              <p style="font-size: 0.9rem; margin-top: var(--sp-4); color: var(--slate);">In production, a full card payment form will appear here with real Stripe processing.</p>
-            </div>
-          </div>
-
-          <!-- Step 3 Actions -->
-          <div class="step-actions">
-            <div class="step-actions-primary">
-              <button class="button button-primary button-large" id="payDeductibleBtn">
-                Pay Deductible & Complete →
-              </button>
-            </div>
-            <div class="step-actions-secondary">
-              <button class="button button-secondary" id="backToSignBtn">
-                ← Back
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- STEP 4: Confirmation -->
-        <div class="step-section" data-step="4">
-          <div class="confirmation-wrapper">
-            <div class="confirmation-icon">✅</div>
-            <h2 class="confirmation-title">You're All Set!</h2>
-            <p class="confirmation-subtitle">Contract signed with <span id="confirmContractorName">your contractor</span>. They must contact you within 48 hours.</p>
-
-            <!-- Next Steps -->
-            <div class="next-steps-grid">
-              <div class="next-step-card">
-                <div class="next-step-number">1</div>
-                <div class="next-step-title">Pick Your Color</div>
-                <div class="next-step-description">Choose the perfect roof color that complements your home.</div>
-                <a href="#" id="colorSelectionLink" class="next-step-link">Select Color →</a>
+              <!-- DocuSign Error State -->
+              <div id="docusignError" style="display: none; text-align: center; padding: var(--sp-8); background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md);">
+                <div style="font-size: 2rem; margin-bottom: var(--sp-4);">&#x26A0;&#xFE0F;</div>
+                <p style="color: #ef4444; font-weight: 600; margin-bottom: var(--sp-2);" id="docusignErrorTitle">Unable to load contract</p>
+                <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-6);" id="docusignErrorDetail">Please try again or contact support.</p>
+                <button class="button button-primary" onclick="initDocuSign()">Retry</button>
               </div>
-              <div class="next-step-card">
-                <div class="next-step-number">2</div>
-                <div class="next-step-title">Contractor Outreach</div>
-                <div class="next-step-description"><span id="confirmContractorName2">Your contractor</span> will reach out within 48 hours to introduce themselves and confirm scheduling.</div>
+
+              <!-- DocuSign Embedded Signing iframe -->
+              <div id="docusignContainer" style="display: none;">
+                <iframe id="docusignFrame" style="width: 100%; min-height: 600px; border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md); background: #fff;" allow="geolocation"></iframe>
               </div>
-              <div class="next-step-card">
-                <div class="next-step-number">3</div>
-                <div class="next-step-title">Milestone Support</div>
-                <div class="next-step-description">We'll check in at every milestone to make sure everything goes smoothly.</div>
+
+              <!-- Signed Confirmation (shown after signing completes) -->
+              <div id="docusignSigned" style="display: none; text-align: center; padding: var(--sp-8); background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-md);">
+                <div style="font-size: 2rem; margin-bottom: var(--sp-4);">&#x2705;</div>
+                <p style="color: var(--green); font-weight: 600; margin-bottom: var(--sp-2);">Contract Signed Successfully</p>
+                <p style="color: var(--slate); font-size: 0.9rem;">Your signed contract has been recorded.</p>
+              </div>
+            </div>
+
+            <!-- Step 2 Actions -->
+            <div class="step-actions">
+              <div class="step-actions-primary">
+                <button class="button button-primary button-large" id="signContractBtn" disabled>
+                  Continue &rarr;
+                </button>
+              </div>
+              <div class="step-actions-secondary">
+                <button class="button button-secondary" id="backToReviewBtn">
+                  &larr; Back to Review
+                </button>
               </div>
             </div>
           </div>
 
-          <!-- Step 4 Actions -->
-          <div class="step-actions">
-            <div class="step-actions-primary">
-              <a href="/dashboard.html" class="button button-primary button-large">
-                Go to My Dashboard →
-              </a>
+          <!-- STEP 3: Confirmation -->
+          <div class="step-section" data-step="3">
+            <div class="confirmation-wrapper">
+              <div class="confirmation-icon">&#x2705;</div>
+              <h2 class="confirmation-title">You're All Set!</h2>
+              <p class="confirmation-subtitle">Contract signed with <span id="confirmContractorName">your contractor</span>. They must contact you within 48 hours.</p>
+
+              <!-- Deductible Coming Soon -->
+              <div class="callout callout-info" style="text-align: left; max-width: 600px; margin: 0 auto var(--sp-10);">
+                <div class="callout-icon">&#x1F4B3;</div>
+                <div class="callout-text">
+                  <div class="callout-title">Deductible Collection Coming Soon</div>
+                  <div class="callout-description">In a future update, your insurance deductible will be collected here as a refundable deposit to secure your contractor. For now, your contractor will coordinate deductible payment directly.</div>
+                </div>
+              </div>
+
+              <!-- Next Steps -->
+              <div class="next-steps-grid">
+                <div class="next-step-card">
+                  <div class="next-step-number">1</div>
+                  <div class="next-step-title">Pick Your Color</div>
+                  <div class="next-step-description">Choose the perfect roof color that complements your home.</div>
+                  <a href="#" id="colorSelectionLink" class="next-step-link">Select Color &rarr;</a>
+                </div>
+                <div class="next-step-card">
+                  <div class="next-step-number">2</div>
+                  <div class="next-step-title">Contractor Outreach</div>
+                  <div class="next-step-description"><span id="confirmContractorName2">Your contractor</span> will reach out within 48 hours to introduce themselves and confirm scheduling.</div>
+                </div>
+                <div class="next-step-card">
+                  <div class="next-step-number">3</div>
+                  <div class="next-step-title">Milestone Support</div>
+                  <div class="next-step-description">We'll check in at every milestone to make sure everything goes smoothly.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 3 Actions -->
+            <div class="step-actions">
+              <div class="step-actions-primary">
+                <a href="/dashboard.html" class="button button-primary button-large">
+                  Go to My Dashboard &rarr;
+                </a>
+              </div>
             </div>
           </div>
-        </div>
+
+        </div><!-- /pageContent -->
 
       </div>
     </main>
@@ -1059,8 +1027,6 @@
     <footer id="site-footer"></footer>
   </div>
 
-  <!-- DocuSign modal removed — embedded signing now uses inline iframe -->
-
   <!-- Scripts -->
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
@@ -1068,8 +1034,16 @@
 
   <script>
     /**
-     * OtterQuote v2 — Contract Signing Flow
-     * Step 2 uses real DocuSign embedded signing via iframe.
+     * OtterQuote v2 — Contract Signing Flow (End-to-End)
+     *
+     * Accepts URL params:
+     *   ?bid=XXX                           (from bids.html — looks up claim + contractor from bid)
+     *   ?claim_id=XXX&contractor_id=YYY    (direct link)
+     *
+     * Flow:
+     *   Step 1: Review contract template + key terms
+     *   Step 2: DocuSign embedded signing iframe
+     *   Step 3: Confirmation (deductible placeholder)
      */
 
     // ── Iframe Detection ──
@@ -1086,17 +1060,18 @@
       }
     }
 
-    // State
+    // ── State ──
     const state = {
       currentStep: 1,
       claimId: null,
       claim: null,
       contractorId: null,
       contractor: null,
+      bid: null,
       currentUser: null,
       envelopeId: null,
       contractSigned: false,
-      deductiblePaid: false,
+      templateUrl: null,
     };
 
     // ── Initialization ──
@@ -1104,174 +1079,294 @@
       // Skip init if we're inside the DocuSign iframe
       if (_isInIframe) return;
 
+      // Render nav immediately
+      if (typeof Nav !== 'undefined') Nav.renderHeader();
+
       // Check auth
       const user = await Auth.requireAuth();
-
-      // Demo mode: if user is null and CONFIG.DEMO_MODE is true, load demo data
-      if (!user && CONFIG.DEMO_MODE) {
-        loadDemoData();
-      } else if (!user) {
-        return;
-      }
-
+      if (!user) return;
       state.currentUser = user;
 
-      // Render nav
-      Nav.renderHeader();
-
-      // Get URL params
+      // Parse URL params
       const params = new URLSearchParams(window.location.search);
-      state.claimId = params.get('claim_id');
+      const bidParam = params.get('bid');
+      const claimIdParam = params.get('claim_id');
+      const contractorIdParam = params.get('contractor_id');
 
-      // Check if returning from DocuSign signing
+      // Check if returning from DocuSign signing (redirect-based completion)
       const signed = params.get('signed');
       const event = params.get('event');
 
-      if (!state.claimId && !CONFIG.DEMO_MODE) {
-        console.error('No claim_id provided');
-        showMessage('No claim found. Redirecting...', 'error');
-        setTimeout(() => window.location.href = '/dashboard.html', 2000);
-        return;
-      }
-
-      // Load claim data (or demo data if in demo mode)
-      if (CONFIG.DEMO_MODE && !user) {
-        setupEventListeners();
-      } else {
-        await loadClaimData();
-        setupEventListeners();
-
-        // If returning from DocuSign with signed=true, advance to step 3
-        if (signed === 'true' || event === 'signing_complete') {
-          state.contractSigned = true;
-          onSigningComplete();
-        }
-      }
-    });
-
-    // ── Load Demo Data ──
-    function loadDemoData() {
-      state.claimId = 'demo-claim-001';
-      state.claim = {
-        id: 'demo-claim-001',
-        selected_contractor_id: 'demo-contractor-001',
-        selected_bid_amount: 19850,
-        material_type: 'GAF Timberline HDZ Architectural Shingles',
-        warranty_months: 30,
-        estimated_start_date: '2026-04-15',
-        job_type: 'replacement',
-        deductible_amount: 2500,
-      };
-
-      state.contractor = {
-        id: 'demo-contractor-001',
-        name: 'Hoosier Roofing Co.',
-        rating: 4.9,
-        years_in_business: 15,
-        avatar_emoji: '🏗️',
-        preferred_brand: 'GAF',
-      };
-
-      // Render contractor card
-      renderContractorCard();
-    }
-
-    // ── Load Claim Data ──
-    async function loadClaimData() {
       try {
-        const { data, error } = await sb
+        // ── Resolve claim_id and contractor_id from URL params ──
+        if (bidParam) {
+          // Came from bids.html with ?bid=XXX — look up the bid
+          const { data: bidData, error: bidError } = await sb
+            .from('quotes')
+            .select('*')
+            .eq('id', bidParam)
+            .single();
+
+          if (bidError || !bidData) throw new Error('Bid not found. Please go back and try again.');
+
+          state.bid = bidData;
+          state.claimId = bidData.claim_id;
+          state.contractorId = bidData.contractor_id;
+
+        } else if (claimIdParam && contractorIdParam) {
+          // Direct link with ?claim_id=XXX&contractor_id=YYY
+          state.claimId = claimIdParam;
+          state.contractorId = contractorIdParam;
+
+        } else if (claimIdParam) {
+          // Legacy: ?claim_id=XXX only — get contractor from claim
+          state.claimId = claimIdParam;
+
+        } else {
+          throw new Error('Missing required URL parameters. Please return to your bids page.');
+        }
+
+        // ── Load claim data ──
+        const { data: claimData, error: claimError } = await sb
           .from('claims')
           .select('*')
           .eq('id', state.claimId)
           .single();
 
-        if (error) throw error;
-        if (!data) throw new Error('Claim not found');
+        if (claimError || !claimData) throw new Error('Claim not found.');
+        state.claim = claimData;
 
-        state.claim = data;
-        state.contractorId = data.selected_contractor_id;
-
-        // Load selected contractor info
-        if (data.selected_contractor_id) {
-          const { data: contractorData, error: contractorError } = await sb
-            .from('contractors')
-            .select('*')
-            .eq('id', data.selected_contractor_id)
-            .single();
-
-          if (contractorError) throw contractorError;
-          state.contractor = contractorData;
-          // Normalize name field
-          if (!state.contractor.name && state.contractor.company_name) {
-            state.contractor.name = state.contractor.company_name;
-          }
+        // If contractor_id wasn't in URL, get it from claim
+        if (!state.contractorId) {
+          state.contractorId = claimData.selected_contractor_id;
+        }
+        if (!state.contractorId) {
+          throw new Error('No contractor selected for this claim. Please go back and select a contractor first.');
         }
 
-        // Load the accepted bid for this claim/contractor
-        if (data.selected_contractor_id) {
+        // ── Load contractor data ──
+        const { data: contractorData, error: contractorError } = await sb
+          .from('contractors')
+          .select('*')
+          .eq('id', state.contractorId)
+          .single();
+
+        if (contractorError || !contractorData) throw new Error('Contractor not found.');
+        state.contractor = contractorData;
+
+        // Normalize name
+        if (!state.contractor.name && state.contractor.company_name) {
+          state.contractor.name = state.contractor.company_name;
+        }
+
+        // ── Load bid data (if not already loaded from ?bid= param) ──
+        if (!state.bid) {
           const { data: bidData } = await sb
             .from('quotes')
             .select('*')
             .eq('claim_id', state.claimId)
-            .eq('contractor_id', data.selected_contractor_id)
+            .eq('contractor_id', state.contractorId)
+            .order('created_at', { ascending: false })
             .limit(1)
             .single();
 
-          if (bidData) {
-            state.claim.selected_bid_amount = bidData.amount || state.claim.selected_bid_amount;
-            state.claim.material_type = bidData.brand || bidData.material_type || state.claim.material_type;
-            state.claim.warranty_months = bidData.warranty_months || state.claim.warranty_months;
-            state.claim.estimated_start_date = bidData.estimated_start_date || state.claim.estimated_start_date;
-          }
+          if (bidData) state.bid = bidData;
         }
 
-        // Render contractor card
+        // ── Render the page ──
         renderContractorCard();
+        await loadContractTemplate();
+        setupEventListeners();
+
+        // Show content, hide loading
+        document.getElementById('pageLoading').style.display = 'none';
+        document.getElementById('pageContent').style.display = 'block';
+
+        // Set back link
+        document.getElementById('backToBidsLink').href = `/bids.html?claim_id=${state.claimId}`;
+
+        // If returning from DocuSign with signed=true, advance to done
+        if (signed === 'true' || event === 'signing_complete') {
+          state.contractSigned = true;
+          await onSigningComplete();
+        }
 
         // If claim already has contract signed, reflect that
-        if (data.contract_signed_at) {
+        if (claimData.contract_signed_at && !state.contractSigned) {
           state.contractSigned = true;
+          goToStep(3);
+          updateProgressIndicator(3);
         }
+
       } catch (err) {
-        console.error('Error loading claim:', err);
-        showMessage('Error loading claim data: ' + err.message, 'error');
+        console.error('Initialization error:', err);
+        document.getElementById('pageLoading').style.display = 'none';
+        document.getElementById('pageErrorDetail').textContent = err.message;
+        document.getElementById('pageError').style.display = 'block';
       }
-    }
+    });
 
     // ── Render Contractor Card ──
     function renderContractorCard() {
-      if (!state.contractor) return;
+      const c = state.contractor;
+      const b = state.bid;
+      const cl = state.claim;
+      if (!c) return;
 
-      const bid = state.claim.selected_bid_amount || 'N/A';
-      const material = state.claim.material_type || 'TBD';
-      const warranty = state.claim.warranty_months || 'Standard';
-      const startDate = state.claim.estimated_start_date || 'TBD';
+      // Avatar
+      const avatarEl = document.getElementById('contractorAvatar');
+      if (c.owner_photo_url) {
+        avatarEl.innerHTML = `<img src="${esc(c.owner_photo_url)}" alt="${esc(c.company_name || c.name)}">`;
+      } else {
+        const initials = (c.company_name || c.name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+        avatarEl.textContent = initials;
+        avatarEl.style.fontSize = '1.5rem';
+        avatarEl.style.fontWeight = '700';
+        avatarEl.style.color = 'var(--amber)';
+      }
 
-      document.getElementById('contractorName').textContent = state.contractor.name;
-      document.getElementById('contractorRating').textContent = state.contractor.rating || '5.0';
-      document.getElementById('contractorYears').textContent = state.contractor.years_in_business || '10+';
-      document.getElementById('contractorBidAmount').textContent = `$${parseInt(bid).toLocaleString()}`;
-      document.getElementById('contractorAvatar').textContent = state.contractor.avatar_emoji || '🏗️';
+      document.getElementById('contractorName').textContent = c.company_name || c.name || 'Contractor';
+      document.getElementById('contractorRating').textContent = c.google_rating || c.rating || '5.0';
+      document.getElementById('contractorYears').textContent = c.years_in_business || '—';
+
+      // Bid amount
+      const bidAmount = b?.total_price || b?.amount || cl?.selected_bid_amount || 0;
+      document.getElementById('contractorBidAmount').textContent = bidAmount ? `$${Number(bidAmount).toLocaleString()}` : '$—';
 
       // Material badge
-      document.getElementById('materialBadge').textContent = material;
+      const material = b?.brand || cl?.material_type || cl?.material_product || '';
+      const badgeEl = document.getElementById('materialBadge');
+      if (material) {
+        badgeEl.textContent = material;
+        document.getElementById('materialBadgeContainer').style.display = '';
+      } else {
+        document.getElementById('materialBadgeContainer').style.display = 'none';
+      }
 
       // Key terms
-      document.getElementById('jobScope').textContent = 'Roof ' + (state.claim.job_type || 'repair');
-      document.getElementById('totalPrice').textContent = `$${parseInt(bid).toLocaleString()}`;
-      document.getElementById('warranty').textContent = `${warranty} months`;
-      document.getElementById('startDate').textContent = startDate || 'TBD';
+      const trades = cl?.selected_trades || [];
+      const jobType = cl?.job_type || cl?.damage_type || 'replacement';
+      const tradeLabel = trades.length ? trades.join(', ') : 'Roofing';
+      document.getElementById('jobScope').textContent = `${tradeLabel} ${jobType}`;
 
-      // Deductible
-      const deductible = state.claim.deductible_amount || 0;
-      document.getElementById('deductibleAmount').textContent = `$${parseInt(deductible).toLocaleString()}`;
+      document.getElementById('totalPrice').textContent = bidAmount ? `$${Number(bidAmount).toLocaleString()}` : '$—';
 
-      // Confirmation
-      document.getElementById('confirmContractorName').textContent = state.contractor.name;
-      document.getElementById('confirmContractorName2').textContent = state.contractor.name;
+      const warrantyYears = b?.workmanship_warranty_years || b?.warranty_years;
+      const warrantyMfr = b?.manufacturer_warranty_years;
+      let warrantyText = '—';
+      if (warrantyYears && warrantyMfr) {
+        warrantyText = `${warrantyYears}yr workmanship + ${warrantyMfr}yr manufacturer`;
+      } else if (warrantyYears) {
+        warrantyText = `${warrantyYears} year workmanship`;
+      } else if (b?.warranty_summary) {
+        warrantyText = b.warranty_summary;
+      }
+      document.getElementById('warranty').textContent = warrantyText;
 
-      // Color selection link
+      const startDate = b?.estimated_start_date || cl?.estimated_start_date;
+      document.getElementById('startDate').textContent = startDate
+        ? new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : 'TBD';
+
+      // Confirmation section
+      document.getElementById('confirmContractorName').textContent = c.company_name || c.name || 'your contractor';
+      document.getElementById('confirmContractorName2').textContent = c.company_name || c.name || 'Your contractor';
       document.getElementById('colorSelectionLink').href = `/color-selection.html?claim_id=${state.claimId}`;
+    }
+
+    // ── Load Contract Template Preview ──
+    async function loadContractTemplate() {
+      const container = document.getElementById('contractPreviewContainer');
+      const placeholder = document.getElementById('contractPreviewPlaceholder');
+
+      try {
+        // Determine trade and funding type from claim to match the right template
+        const cl = state.claim;
+        const trades = cl.selected_trades || [];
+        const trade = trades.length ? trades[0].toLowerCase() : 'roofing';
+
+        // Determine funding type: insurance vs retail (cash)
+        let fundingType = 'insurance';
+        if (cl.funding_type) {
+          fundingType = cl.funding_type.toLowerCase();
+        } else if (cl.job_type === 'retail' || cl.job_type === 'cash') {
+          fundingType = 'retail';
+        }
+
+        // Look up contractor's contract_templates JSONB for a matching template
+        const templates = state.contractor.contract_templates || [];
+        let matchingTemplate = templates.find(t =>
+          t.trade && t.trade.toLowerCase() === trade &&
+          t.funding_type && t.funding_type.toLowerCase() === fundingType
+        );
+
+        // Fallback: try matching trade only (any funding type)
+        if (!matchingTemplate) {
+          matchingTemplate = templates.find(t => t.trade && t.trade.toLowerCase() === trade);
+        }
+
+        // Fallback: try the legacy contract_pdf_url on the contractor record
+        if (!matchingTemplate && state.contractor.contract_pdf_url) {
+          matchingTemplate = { file_url: state.contractor.contract_pdf_url, file_name: 'contract.pdf' };
+        }
+
+        if (matchingTemplate && matchingTemplate.file_url) {
+          // We have a template URL — try to get a signed URL for display
+          // Extract the storage path from the public URL if possible
+          const fileUrl = matchingTemplate.file_url;
+
+          // If it's a Supabase storage public URL, create a signed URL for embed
+          if (fileUrl.includes('contractor-templates')) {
+            // Extract path after /contractor-templates/
+            const pathMatch = fileUrl.match(/contractor-templates\/(.+)$/);
+            if (pathMatch) {
+              const storagePath = decodeURIComponent(pathMatch[1]);
+              const { data: signedUrlData, error: signedUrlError } = await sb.storage
+                .from('contractor-templates')
+                .createSignedUrl(storagePath, 3600); // 1 hour expiry
+
+              if (!signedUrlError && signedUrlData?.signedUrl) {
+                state.templateUrl = signedUrlData.signedUrl;
+                container.innerHTML = `
+                  <iframe src="${esc(signedUrlData.signedUrl)}" class="contract-pdf-embed" title="Contract Template Preview"></iframe>
+                  <p style="color: var(--slate); font-size: 0.85rem; margin-top: var(--sp-2); text-align: center;">
+                    This is ${esc(state.contractor.company_name || 'your contractor')}'s contract template. It will be auto-filled with your project details during signing.
+                  </p>
+                `;
+                return;
+              }
+            }
+          }
+
+          // Fallback: use the URL directly
+          state.templateUrl = fileUrl;
+          container.innerHTML = `
+            <iframe src="${esc(fileUrl)}" class="contract-pdf-embed" title="Contract Template Preview"></iframe>
+            <p style="color: var(--slate); font-size: 0.85rem; margin-top: var(--sp-2); text-align: center;">
+              This is ${esc(state.contractor.company_name || 'your contractor')}'s contract template.
+            </p>
+          `;
+          return;
+        }
+
+        // No template found — show informational placeholder
+        placeholder.innerHTML = `
+          <div style="display: flex; flex-direction: column; align-items: center; gap: var(--sp-4);">
+            <div style="font-size: 2rem;">&#x1F4DD;</div>
+            <p>${esc(state.contractor.company_name || 'Your contractor')}'s contract will be pre-filled with your project details and presented for electronic signature in the next step via DocuSign.</p>
+            <p style="font-size: 0.85rem;">Review the key terms below before proceeding.</p>
+          </div>
+        `;
+
+      } catch (err) {
+        console.error('Error loading contract template:', err);
+        placeholder.innerHTML = `
+          <div style="display: flex; flex-direction: column; align-items: center; gap: var(--sp-4);">
+            <div style="font-size: 2rem;">&#x1F4C4;</div>
+            <p>Your contractor's contract will be presented for review and signature in the next step via DocuSign.</p>
+          </div>
+        `;
+      }
     }
 
     // ── Setup Event Listeners ──
@@ -1290,14 +1385,6 @@
       // Step 2: Back
       document.getElementById('backToReviewBtn').addEventListener('click', () => {
         goToStep(1);
-      });
-
-      // Step 3: Pay deductible
-      document.getElementById('payDeductibleBtn').addEventListener('click', payDeductible);
-
-      // Step 3: Back
-      document.getElementById('backToSignBtn').addEventListener('click', () => {
-        goToStep(2);
       });
 
       // Listen for DocuSign iframe message events (signing complete)
@@ -1328,7 +1415,12 @@
       try {
         // Get the user's session for auth header
         const { data: { session } } = await sb.auth.getSession();
-        if (!session) throw new Error('Not authenticated');
+        if (!session) throw new Error('Not authenticated. Please refresh and try again.');
+
+        // Build signer info
+        const signerName = state.claim.homeowner_name
+          || state.currentUser.user_metadata?.full_name
+          || state.currentUser.email;
 
         // Call create-docusign-envelope Edge Function
         const response = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/create-docusign-envelope`, {
@@ -1336,7 +1428,7 @@
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`,
-            'apikey': CONFIG.SUPABASE_ANON_KEY,
+            'apikey': CONFIG.SUPABASE_ANON,
           },
           body: JSON.stringify({
             claim_id: state.claimId,
@@ -1344,9 +1436,8 @@
             contractor_id: state.contractorId,
             signer: {
               email: state.currentUser.email,
-              name: state.claim.homeowner_name || state.currentUser.user_metadata?.full_name || state.currentUser.email,
+              name: signerName,
             },
-            // Fields are auto-populated by the Edge Function from claim/contractor/bid data
           }),
         });
 
@@ -1363,6 +1454,12 @@
         containerEl.style.display = 'block';
         document.getElementById('docusignFrame').src = result.signing_url;
 
+        gtag('event', 'docusign_envelope_created', {
+          claim_id: state.claimId,
+          contractor_id: state.contractorId,
+          envelope_id: result.envelope_id,
+        });
+
       } catch (err) {
         console.error('DocuSign initialization error:', err);
         loadingEl.style.display = 'none';
@@ -1373,7 +1470,6 @@
 
     // ── Handle DocuSign iframe postMessage events ──
     function handleDocuSignMessage(event) {
-      // DocuSign sends postMessage when signing is complete
       if (event.data && typeof event.data === 'string') {
         try {
           const data = JSON.parse(event.data);
@@ -1381,7 +1477,7 @@
             onSigningComplete();
           }
         } catch (e) {
-          // Not a JSON message, check for URL-based completion
+          // Not a JSON message — check for URL-based completion
           if (event.data.includes('signed=true') || event.data.includes('signing_complete')) {
             onSigningComplete();
           }
@@ -1390,7 +1486,7 @@
     }
 
     // ── Called when signing is confirmed complete ──
-    function onSigningComplete() {
+    async function onSigningComplete() {
       state.contractSigned = true;
 
       // Update UI
@@ -1400,50 +1496,33 @@
       document.getElementById('docusignSigned').style.display = 'block';
       document.getElementById('signContractBtn').disabled = false;
 
-      // Update claim with signing timestamp
+      // Update claim status in Supabase
       if (sb && state.claimId) {
-        sb.from('claims')
-          .update({ contract_signed_at: new Date().toISOString() })
-          .eq('id', state.claimId)
-          .then(({ error }) => {
-            if (error) console.error('Error updating claim signing timestamp:', error);
-          });
+        try {
+          const { error } = await sb
+            .from('claims')
+            .update({
+              status: 'contract_signed',
+              contract_signed_at: new Date().toISOString(),
+            })
+            .eq('id', state.claimId);
+
+          if (error) console.error('Error updating claim status:', error);
+        } catch (err) {
+          console.error('Error updating claim:', err);
+        }
       }
-    }
 
-    // ── Pay Deductible (Simulated) ──
-    async function payDeductible() {
-      try {
-        document.getElementById('payDeductibleBtn').disabled = true;
-        document.getElementById('payDeductibleBtn').textContent = 'Processing...';
+      gtag('event', 'contract_signed', {
+        claim_id: state.claimId,
+        contractor_id: state.contractorId,
+        envelope_id: state.envelopeId,
+      });
 
-        // Update claim: deductible_collected = true
-        const { error } = await sb
-          .from('claims')
-          .update({
-            deductible_collected: true,
-            deductible_collected_at: new Date().toISOString(),
-          })
-          .eq('id', state.claimId);
-
-        if (error) throw error;
-
-        state.deductiblePaid = true;
-
-        // Update progress indicator
-        updateProgressIndicator(4);
-
-        // Go to confirmation
-        goToStep(4);
-
-        document.getElementById('payDeductibleBtn').disabled = false;
-        document.getElementById('payDeductibleBtn').textContent = 'Pay Deductible & Complete →';
-      } catch (err) {
-        console.error('Error processing deductible:', err);
-        showMessage('Error processing deductible: ' + err.message, 'error');
-        document.getElementById('payDeductibleBtn').disabled = false;
-        document.getElementById('payDeductibleBtn').textContent = 'Pay Deductible & Complete →';
-      }
+      // Auto-advance to confirmation after a brief pause
+      setTimeout(() => {
+        goToStep(3);
+      }, 1500);
     }
 
     // ── Navigate to Step ──
@@ -1454,7 +1533,8 @@
       document.querySelectorAll('.step-section').forEach(s => s.classList.remove('active'));
 
       // Show target section
-      document.querySelector(`.step-section[data-step="${stepNum}"]`).classList.add('active');
+      const target = document.querySelector(`.step-section[data-step="${stepNum}"]`);
+      if (target) target.classList.add('active');
 
       // Update progress indicator
       updateProgressIndicator(stepNum);
@@ -1477,10 +1557,12 @@
       });
     }
 
-    // ── Show Message ──
-    function showMessage(msg, type = 'info') {
-      console.log(`[${type.toUpperCase()}] ${msg}`);
-      // In production: show toast/alert
+    // ── Escape HTML ──
+    function esc(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = String(str);
+      return div.innerHTML;
     }
   </script>
 </body>
