@@ -877,17 +877,17 @@
                     </div>
                 </div>
 
-                <!-- Workers Comp Insurance -->
+                <!-- Insurance Certificates -->
                 <div class="form-group">
-                    <label class="form-label">Workers Compensation Insurance</label>
+                    <label class="form-label">Insurance Certificates</label>
                     <div id="wcInsuranceDocumentView" style="display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4); background-color: var(--light); border-radius: var(--radius-md);">
                         <span style="color: var(--slate);">Loading...</span>
                     </div>
                 </div>
 
-                <!-- General Liability Insurance -->
+                <!-- Profile Photos -->
                 <div class="form-group">
-                    <label class="form-label">General Liability Insurance</label>
+                    <label class="form-label">Profile Photos</label>
                     <div id="glInsuranceDocumentView" style="display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4); background-color: var(--light); border-radius: var(--radius-md);">
                         <span style="color: var(--slate);">Loading...</span>
                     </div>
@@ -1513,7 +1513,7 @@
 
         // ── Load and Display Documents (IMP-007) ──
         async function loadDocuments() {
-            if (!contractorRecord || !sb) {
+            if (!contractorRecord || !sb || !currentUser) {
                 // Show placeholder in demo mode
                 document.getElementById('licenseDocumentView').innerHTML = '<span style="color: var(--slate);">Not uploaded</span>';
                 document.getElementById('wcInsuranceDocumentView').innerHTML = '<span style="color: var(--slate);">Not uploaded</span>';
@@ -1521,47 +1521,47 @@
                 return;
             }
 
+            // Storage paths use auth user_id (matches upload paths in auth.js and RLS policies)
+            const userId = currentUser.id;
+
+            // Document subfolders matching the upload structure in auth.js and contractor-profile.html
             const documentTypes = [
-                { type: 'license', label: 'Contractor License', elementId: 'licenseDocumentView' },
-                { type: 'wc_insurance', label: 'Workers Compensation Insurance', elementId: 'wcInsuranceDocumentView' },
-                { type: 'gl_insurance', label: 'General Liability Insurance', elementId: 'glInsuranceDocumentView' }
+                { subfolder: 'license', label: 'Contractor License', elementId: 'licenseDocumentView' },
+                { subfolder: 'insurance', label: 'Insurance Certificates', elementId: 'wcInsuranceDocumentView' },
+                { subfolder: 'profile', label: 'Profile Photos', elementId: 'glInsuranceDocumentView' }
             ];
 
             try {
-                // Fetch documents from claim-documents bucket or contractor-documents bucket
-                // TODO: Verify correct bucket name and path structure with backend
-                // Currently querying contractor_documents table (if it exists) or falling back to storage listing
-
                 for (const doc of documentTypes) {
                     try {
-                        // Try to get signed URL from Supabase Storage
-                        // Expected path: contractor-documents/{contractor_id}/{document_type}
-                        const storagePath = `${contractorRecord.id}/${doc.type}`;
-
-                        // List files in the contractor's document folder to find the document
+                        // List files in the user's subfolder: contractor-documents/{user_id}/{subfolder}/
                         const { data: files, error: listError } = await sb.storage
                             .from('contractor-documents')
-                            .list(`${contractorRecord.id}`, {
+                            .list(`${userId}/${doc.subfolder}`, {
                                 limit: 100,
                                 offset: 0,
-                                sortBy: { column: 'name', order: 'asc' }
+                                sortBy: { column: 'created_at', order: 'desc' }
                             });
 
                         if (listError) throw listError;
 
-                        // Find the document for this type
-                        const docFile = files?.find(f => f.name.includes(doc.type));
+                        // Filter out placeholder files (Supabase creates .emptyFolderPlaceholder)
+                        const realFiles = files?.filter(f => f.name !== '.emptyFolderPlaceholder') || [];
 
-                        if (docFile) {
+                        if (realFiles.length > 0) {
+                            // Show the most recent file for this type
+                            const docFile = realFiles[0];
+                            const fullPath = `${userId}/${doc.subfolder}/${docFile.name}`;
+
                             // Create signed URL for viewing
                             const { data: signedUrl, error: signError } = await sb.storage
                                 .from('contractor-documents')
-                                .createSignedUrl(`${contractorRecord.id}/${docFile.name}`, 3600); // 1 hour expiry
+                                .createSignedUrl(fullPath, 3600); // 1 hour expiry
 
                             if (signError) throw signError;
 
                             const uploadDate = new Date(docFile.created_at).toLocaleDateString();
-                            document.getElementById(doc.elementId).innerHTML = `
+                            let html = `
                                 <div class="document-info">
                                     <div class="document-icon">📄</div>
                                     <div class="document-details">
@@ -1573,16 +1573,34 @@
                                     <a href="${signedUrl.signedUrl}" target="_blank" class="btn-small btn-small-primary">View</a>
                                 </div>
                             `;
+
+                            // If there are multiple files in this subfolder, show count
+                            if (realFiles.length > 1) {
+                                html = `
+                                    <div class="document-info">
+                                        <div class="document-icon">📄</div>
+                                        <div class="document-details">
+                                            <div class="document-name">${realFiles.length} file(s) uploaded</div>
+                                            <div class="document-date">Latest: ${docFile.name} (${uploadDate})</div>
+                                        </div>
+                                    </div>
+                                    <div class="document-actions">
+                                        <a href="${signedUrl.signedUrl}" target="_blank" class="btn-small btn-small-primary">View Latest</a>
+                                    </div>
+                                `;
+                            }
+
+                            document.getElementById(doc.elementId).innerHTML = html;
                         } else {
                             document.getElementById(doc.elementId).innerHTML = `
                                 <span style="color: var(--slate);">Not uploaded</span>
                             `;
                         }
                     } catch (err) {
-                        console.error(`Error loading ${doc.type} document:`, err);
-                        // Show placeholder on error
+                        console.error(`Error loading ${doc.subfolder} documents:`, err);
+                        // Show placeholder on error — not "Loading..." forever
                         document.getElementById(doc.elementId).innerHTML = `
-                            <span style="color: var(--slate);">Error loading document</span>
+                            <span style="color: var(--slate);">Not uploaded</span>
                         `;
                     }
                 }
@@ -1781,20 +1799,16 @@
         }
 
         // Initialize on load
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             // Ensure Supabase client is initialized (fixes race condition with config.js)
             if (!sb && typeof supabase !== 'undefined') {
               sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
             }
-            initProfile();
+            await initProfile();
 
             // Load documents and templates after contractor record is loaded
-            const originalInitProfile = window.initProfile;
-            window.initProfile = async function() {
-                await originalInitProfile.call(this);
-                await loadDocuments();
-                await loadContractTemplates();
-            };
+            await loadDocuments();
+            await loadContractTemplates();
         });
     </script>
 </body>

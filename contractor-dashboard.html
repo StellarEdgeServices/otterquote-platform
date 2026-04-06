@@ -603,12 +603,64 @@
                   document.getElementById('serviceAreaText').textContent = 'Service area: Not configured — update your profile';
                 }
 
-                // Load opportunities count
-                const { count: oppCount } = await sb
-                  .from('claims')
-                  .select('id', { count: 'exact', head: true })
-                  .in('status', ['pending', 'bidding']);
-                document.getElementById('availableLeadsCount').textContent = oppCount || 0;
+                // Load opportunities count — must match contractor-opportunities.html logic exactly
+                let availableCount = 0;
+                try {
+                  const { data: oppClaims } = await sb
+                    .from('claims')
+                    .select('id, selected_trades, trades')
+                    .eq('ready_for_bids', true)
+                    .in('status', ['active', 'bidding', 'pending'])
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+
+                  if (oppClaims && oppClaims.length > 0) {
+                    let filteredOpps = oppClaims;
+
+                    // Filter by contractor's trades (same as opportunities page)
+                    if (contractor.trades && contractor.trades.length > 0) {
+                      const contractorTrades = contractor.trades.map(t => t.toLowerCase());
+                      filteredOpps = filteredOpps.filter(claim => {
+                        const claimTrades = claim.selected_trades || claim.trades || ['roofing'];
+                        const tradesArr = Array.isArray(claimTrades) ? claimTrades : [claimTrades];
+                        return tradesArr.some(t => contractorTrades.includes(t.toLowerCase()));
+                      });
+                    }
+
+                    // Exclude claims at max bids (6) per D-030
+                    if (filteredOpps.length > 0) {
+                      const claimIds = filteredOpps.map(o => o.id);
+                      const { data: bidCounts } = await sb
+                        .from('quotes')
+                        .select('claim_id')
+                        .in('claim_id', claimIds);
+
+                      if (bidCounts) {
+                        const countMap = {};
+                        bidCounts.forEach(q => {
+                          countMap[q.claim_id] = (countMap[q.claim_id] || 0) + 1;
+                        });
+                        filteredOpps = filteredOpps.filter(o => (countMap[o.id] || 0) < 6);
+                      }
+                    }
+
+                    // Exclude claims this contractor already bid on
+                    const { data: myBids } = await sb
+                      .from('quotes')
+                      .select('claim_id')
+                      .eq('contractor_id', contractor.id);
+
+                    if (myBids && myBids.length > 0) {
+                      const myBidClaimIds = new Set(myBids.map(b => b.claim_id));
+                      filteredOpps = filteredOpps.filter(o => !myBidClaimIds.has(o.id));
+                    }
+
+                    availableCount = filteredOpps.length;
+                  }
+                } catch (err) {
+                  console.error('Error loading opportunity count:', err);
+                }
+                document.getElementById('availableLeadsCount').textContent = availableCount;
 
                 // Load active bids count
                 const { count: bidCount } = await sb

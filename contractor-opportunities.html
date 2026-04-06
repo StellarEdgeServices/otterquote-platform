@@ -248,6 +248,7 @@
 
                   return {
                     id: claim.id,
+                    propertyAddress: claim.property_address || null,
                     location: city,
                     zip: zip,
                     state: claim.address_state || 'IN',
@@ -467,7 +468,7 @@
 
                 return '<div class="opportunity-card' + (isUrgent?' urgent-card':'') + '">'
                     + '<div class="opportunity-header"><div>'
-                    + '<h2 class="opportunity-id">' + o.id + '</h2>'
+                    + '<h2 class="opportunity-id">' + (o.propertyAddress || 'Project #' + String(o.id).substring(0,8)) + '</h2>'
                     + '<p class="opportunity-location">' + o.location + ', ' + o.zip + ' &mdash; ' + o.distance + ' mi away</p>'
                     + '</div><div class="header-badges">' + getJobTypeBadge(o.jobType) + getMultiTradeBadge(o.trades) + getUrgentBadge(o) + '</div></div>'
                     + '<div class="badge-group" style="margin-bottom:var(--sp-4)">' + getTradeBadges(o.trades) + '</div>'
