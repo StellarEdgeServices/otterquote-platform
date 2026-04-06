@@ -641,7 +641,7 @@
                 // Load won/active projects — quotes this contractor won, joined with claim details
                 const { data: wonQuotes } = await sb
                   .from('quotes')
-                  .select('id, claim_id, amount, status, created_at, claims(id, property_address, damage_type, material_product, rcv_amount)')
+                  .select('id, claim_id, total_price, status, created_at, claims(id, address_line1, address_city, address_state, address_zip, damage_type, material_product, rcv_amount)')
                   .eq('contractor_id', currentUser.id)
                   .in('status', ['awarded', 'completed'])
                   .order('created_at', { ascending: false })
@@ -653,10 +653,10 @@
                     return {
                       id: claim.id ? String(claim.id).slice(0, 8) : q.claim_id?.slice(0, 8) || '—',
                       fullId: q.claim_id,
-                      location: claim.property_address || 'Unknown',
+                      location: [claim.address_line1, claim.address_city, claim.address_state, claim.address_zip].filter(Boolean).join(', ') || 'Unknown',
                       damageType: claim.damage_type || 'Unknown',
                       material: claim.material_product || 'Not specified',
-                      estimatedValue: q.amount ? '$' + Number(q.amount).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
+                      estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
                       status: q.status === 'completed' ? 'Completed' : 'Won',
                     };
                   });

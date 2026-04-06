@@ -168,10 +168,10 @@ window.Auth = {
     const user = await this.getUser();
     if (!user) return;
 
-    const role = sessionStorage.getItem('cs_auth_role') || 'homeowner';
+    const role = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role') || 'homeowner';
 
-    // Handle homeowner signup data
-    const signupData = sessionStorage.getItem('cs_signup');
+    // Handle homeowner signup data (check localStorage first, fall back to sessionStorage)
+    const signupData = localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup');
     if (signupData) {
       try {
         const data = JSON.parse(signupData);
@@ -185,6 +185,7 @@ window.Auth = {
           role: data.role || 'homeowner',
         });
 
+        localStorage.removeItem('cs_signup');
         sessionStorage.removeItem('cs_signup');
       } catch (err) {
         console.error('Error creating profile from signup data:', err);
@@ -192,7 +193,7 @@ window.Auth = {
     }
 
     // Handle contractor signup data
-    const contractorSignupData = sessionStorage.getItem('cs_contractor_signup');
+    const contractorSignupData = localStorage.getItem('cs_contractor_signup') || sessionStorage.getItem('cs_contractor_signup');
     if (contractorSignupData) {
       try {
         const data = JSON.parse(contractorSignupData);
@@ -275,6 +276,7 @@ window.Auth = {
           }
         }
 
+        localStorage.removeItem('cs_contractor_signup');
         sessionStorage.removeItem('cs_contractor_signup');
       } catch (err) {
         console.error('Error creating contractor profile:', err);

@@ -49,11 +49,14 @@ BEGIN
     SELECT
         NEW.contractor_id,
         'bid_submitted',
-        'Bid submitted for ' || COALESCE(c.property_address, 'a project'),
+        'Bid submitted for ' || COALESCE(
+            NULLIF(CONCAT_WS(', ', c.address_line1, c.address_city, c.address_state, c.address_zip), ''),
+            'a project'
+        ),
         jsonb_build_object(
             'claim_id', NEW.claim_id,
             'quote_id', NEW.id,
-            'amount', NEW.amount
+            'amount', NEW.total_price
         )
     FROM claims c
     WHERE c.id = NEW.claim_id;
@@ -76,11 +79,14 @@ BEGIN
         SELECT
             NEW.contractor_id,
             'bid_accepted',
-            'Your bid was accepted for ' || COALESCE(c.property_address, 'a project'),
+            'Your bid was accepted for ' || COALESCE(
+                NULLIF(CONCAT_WS(', ', c.address_line1, c.address_city, c.address_state, c.address_zip), ''),
+                'a project'
+            ),
             jsonb_build_object(
                 'claim_id', NEW.claim_id,
                 'quote_id', NEW.id,
-                'amount', NEW.amount
+                'amount', NEW.total_price
             )
         FROM claims c
         WHERE c.id = NEW.claim_id;
