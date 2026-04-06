@@ -356,13 +356,16 @@
 
     async function loadClaimData() {
       if (!sb || !currentUser) return;
-      const { data } = await sb
-        .from('claims')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // If claim_id is in URL, use it (still verify ownership via user_id)
+      const urlParams = new URLSearchParams(window.location.search);
+      const claimIdParam = urlParams.get('claim_id');
+      let query = sb.from('claims').select('*').eq('user_id', currentUser.id);
+      if (claimIdParam) {
+        query = query.eq('id', claimIdParam);
+      } else {
+        query = query.order('created_at', { ascending: false }).limit(1);
+      }
+      const { data } = await query.maybeSingle();
       if (data) currentClaim = data;
     }
 
@@ -373,12 +376,10 @@
         .select(`
           *,
           contractors (
-            id, company_name, owner_name, owner_photo_url, bio, years_in_business,
-            service_area, license_number, license_verified, wc_insurance, gl_insurance,
-            google_reviews_url, google_rating, bbb_url, bbb_rating, angi_url, yelp_url,
-            certifications, why_choose_us, photo_gallery, team_size, uses_subcontractors,
-            crew_certifications, avg_first_contact_hours, avg_bid_response_hours,
-            total_otterquote_jobs, otterquote_rating, testimonials
+            id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
+            service_area_description, service_counties, license_number, verified,
+            google_reviews_url, rating, review_count, bbb_url, angi_url, yelp_url,
+            specialties, why_choose_us, num_employees, trades, website_url
           )
         `)
         .eq('claim_id', currentClaim.id)
@@ -695,7 +696,7 @@
                 <div class="bid-card-name">${esc(c.company_name || 'Contractor')}</div>
                 <div class="bid-card-meta">
                   ${c.years_in_business ? `<span>${c.years_in_business} years in business</span>` : ''}
-                  ${c.google_rating ? `<span>★ ${c.google_rating}</span>` : ''}
+                  ${c.rating ? `<span>★ ${c.rating}</span>` : ''}
                 </div>
               </div>
             </div>
@@ -734,10 +735,8 @@
             </div>
 
             <div class="bid-badges">
-              ${c.license_verified ? '<span class="bid-badge verified">✓ Licensed</span>' : ''}
-              ${c.gl_insurance ? '<span class="bid-badge verified">✓ GL Insured</span>' : ''}
-              ${c.wc_insurance ? '<span class="bid-badge verified">✓ W/C Insured</span>' : ''}
-              ${c.certifications ? parseCerts(c.certifications).map(cert => `<span class="bid-badge info">${esc(cert)}</span>`).join('') : ''}
+              ${c.verified ? '<span class="bid-badge verified">✓ Licensed</span>' : ''}
+              ${c.specialties ? parseCerts(c.specialties).map(cert => `<span class="bid-badge info">${esc(cert)}</span>`).join('') : ''}
             </div>
 
             ${bid.contractor_message ? `<div class="bid-message">"${esc(bid.contractor_message)}"</div>` : ''}
@@ -772,12 +771,10 @@
         <div class="profile-avatar">${avatarHTML}</div>
         <div class="profile-hero-info">
           <h2>${esc(c.company_name)}</h2>
-          <p>${c.bio ? esc(c.bio) : `${c.company_name} is a licensed contractor serving ${esc(c.service_area || 'the local area')}.`}</p>
+          <p>${c.about_us ? esc(c.about_us) : `${c.company_name} is a licensed contractor serving ${esc(c.service_area_description || 'the local area')}.`}</p>
           <div class="profile-hero-badges">
             ${c.years_in_business ? `<span class="badge badge-amber">${c.years_in_business} Years in Business</span>` : ''}
-            ${c.license_verified ? '<span class="badge badge-green">✓ License Verified</span>' : ''}
-            ${c.gl_insurance ? '<span class="badge badge-green">✓ GL Insurance</span>' : ''}
-            ${c.wc_insurance ? '<span class="badge badge-green">✓ W/C Insurance</span>' : ''}
+            ${c.verified ? '<span class="badge badge-green">✓ Verified</span>' : ''}
           </div>
         </div>
       `;
@@ -815,8 +812,8 @@
         <h3>About ${esc(c.company_name)}</h3>
         <div class="info-grid" style="margin-bottom:var(--sp-6);">
           <div class="info-item">
-            <span class="info-item-label">Owner</span>
-            <span class="info-item-value">${esc(c.owner_name || 'Not provided')}</span>
+            <span class="info-item-label">Contact</span>
+            <span class="info-item-value">${esc(c.contact_name || 'Not provided')}</span>
           </div>
           <div class="info-item">
             <span class="info-item-label">Years in Business</span>
@@ -824,7 +821,7 @@
           </div>
           <div class="info-item">
             <span class="info-item-label">Service Area</span>
-            <span class="info-item-value">${esc(c.service_area || 'Not specified')}</span>
+            <span class="info-item-value">${esc(c.service_area_description || 'Not specified')}</span>
           </div>
           <div class="info-item">
             <span class="info-item-label">License #</span>
@@ -838,61 +835,48 @@
       document.getElementById('profileTeam').innerHTML = `
         <h3>Team Information</h3>
         <div class="team-info">
-          <div class="team-item"><strong>Team Size:</strong> ${c.team_size ? c.team_size + ' employees' : 'Not provided'}</div>
-          <div class="team-item"><strong>Subcontractors:</strong> ${c.uses_subcontractors === true ? 'Uses subcontractors for some work' : c.uses_subcontractors === false ? 'All work done by in-house crew' : 'Not specified'}</div>
-          ${c.crew_certifications ? `<div class="team-item"><strong>Crew Certifications:</strong> ${esc(c.crew_certifications)}</div>` : ''}
+          <div class="team-item"><strong>Team Size:</strong> ${c.num_employees ? c.num_employees + ' employees' : 'Not provided'}</div>
         </div>
       `;
 
       // Gallery
-      const photos = parseJSON(c.photo_gallery) || [];
+      // Gallery placeholder — photo_gallery column not yet available
       document.getElementById('profileGallery').innerHTML = `
         <h3>Past Work</h3>
-        ${photos.length > 0 ? `
-          <div class="gallery-grid">
-            ${photos.map(url => `<div class="gallery-item"><img src="${esc(url)}" alt="Past work"></div>`).join('')}
-          </div>
-        ` : '<p style="color:var(--slate);">No photos uploaded yet. Photos will appear here as the contractor adds them to their profile.</p>'}
+        <p style="color:var(--slate);">No photos uploaded yet. Photos will appear here as the contractor adds them to their profile.</p>
       `;
 
-      // Testimonials
-      const testimonials = parseJSON(c.testimonials) || [];
+      // Testimonials placeholder — testimonials column not yet available
       document.getElementById('profileTestimonials').innerHTML = `
         <h3>Customer Reviews</h3>
-        ${testimonials.length > 0 ? testimonials.map(t => `
-          <div class="testimonial">
-            <div class="testimonial-text">${esc(t.text)}</div>
-            <div class="testimonial-author">— ${esc(t.author || 'OtterQuote Customer')}${t.date ? `, ${t.date}` : ''}</div>
-          </div>
-        `).join('') : '<p style="color:var(--slate);">No OtterQuote reviews yet. Reviews from previous OtterQuote homeowners will appear here as the contractor completes projects.</p>'}
+        <p style="color:var(--slate);">No OtterQuote reviews yet. Reviews from previous OtterQuote homeowners will appear here as the contractor completes projects.</p>
       `;
 
       // Stats
       document.getElementById('profileStats').innerHTML = `
-        <h3>Response Stats</h3>
+        <h3>Contractor Info</h3>
         <div class="stats-row">
           <div class="stat-item">
-            <span class="stat-value">${c.avg_first_contact_hours ? c.avg_first_contact_hours + 'h' : '--'}</span>
-            <span class="stat-label">Avg First Contact</span>
+            <span class="stat-value">${c.years_in_business || '--'}</span>
+            <span class="stat-label">Years in Business</span>
           </div>
           <div class="stat-item">
-            <span class="stat-value">${c.avg_bid_response_hours ? c.avg_bid_response_hours + 'h' : '--'}</span>
-            <span class="stat-label">Avg Bid Response</span>
+            <span class="stat-value">${c.rating ? '★ ' + c.rating : '--'}</span>
+            <span class="stat-label">Rating</span>
           </div>
           <div class="stat-item">
-            <span class="stat-value">${c.total_otterquote_jobs || '0'}</span>
-            <span class="stat-label">OtterQuote Jobs</span>
+            <span class="stat-value">${c.review_count || '0'}</span>
+            <span class="stat-label">Reviews</span>
           </div>
         </div>
-        ${c.otterquote_rating ? `<div style="text-align:center;margin-top:var(--sp-4);"><span class="stat-value">${c.otterquote_rating}/5</span><br><span class="stat-label">OtterQuote Rating</span></div>` : ''}
       `;
 
       // Review Sites
       document.getElementById('profileReviews').innerHTML = `
         <h3>Review Sites</h3>
         <div class="review-links">
-          ${c.google_reviews_url ? `<a href="${esc(c.google_reviews_url)}" target="_blank" rel="noopener" class="review-link"><span>Google Reviews</span><span class="review-link-rating">${c.google_rating ? '★ ' + c.google_rating : 'View →'}</span></a>` : ''}
-          ${c.bbb_url ? `<a href="${esc(c.bbb_url)}" target="_blank" rel="noopener" class="review-link"><span>BBB</span><span class="review-link-rating">${c.bbb_rating || 'View →'}</span></a>` : ''}
+          ${c.google_reviews_url ? `<a href="${esc(c.google_reviews_url)}" target="_blank" rel="noopener" class="review-link"><span>Google Reviews</span><span class="review-link-rating">${c.rating ? '★ ' + c.rating : 'View →'}</span></a>` : ''}
+          ${c.bbb_url ? `<a href="${esc(c.bbb_url)}" target="_blank" rel="noopener" class="review-link"><span>BBB</span><span class="review-link-rating">View →</span></a>` : ''}
           ${c.angi_url ? `<a href="${esc(c.angi_url)}" target="_blank" rel="noopener" class="review-link"><span>Angi</span><span class="review-link-rating">View →</span></a>` : ''}
           ${c.yelp_url ? `<a href="${esc(c.yelp_url)}" target="_blank" rel="noopener" class="review-link"><span>Yelp</span><span class="review-link-rating">View →</span></a>` : ''}
           ${!c.google_reviews_url && !c.bbb_url && !c.angi_url && !c.yelp_url ? '<p style="color:var(--slate);">No review links provided yet.</p>' : ''}
@@ -900,7 +884,7 @@
       `;
 
       // Certifications
-      const certs = parseCerts(c.certifications);
+      const certs = parseCerts(c.specialties);
       document.getElementById('profileCerts').innerHTML = `
         <h3>Certifications</h3>
         ${certs.length > 0 ? `
@@ -917,17 +901,11 @@
 
       // License & Insurance
       document.getElementById('profileLicense').innerHTML = `
-        <h3>License & Insurance</h3>
+        <h3>License & Verification</h3>
         <div style="display:flex;flex-direction:column;gap:var(--sp-3);">
           <div class="team-item">
-            <span class="bid-badge ${c.license_verified ? 'verified' : 'warning'}">${c.license_verified ? '✓ License Verified' : '⚠ Unverified'}</span>
+            <span class="bid-badge ${c.verified ? 'verified' : 'warning'}">${c.verified ? '✓ Verified Contractor' : '⚠ Pending Verification'}</span>
             ${c.license_number ? `<span style="color:var(--slate);font-size:0.85rem;margin-left:var(--sp-2);">#${esc(c.license_number)}</span>` : ''}
-          </div>
-          <div class="team-item">
-            <span class="bid-badge ${c.gl_insurance ? 'verified' : 'warning'}">${c.gl_insurance ? '✓ General Liability' : '⚠ GL Not Verified'}</span>
-          </div>
-          <div class="team-item">
-            <span class="bid-badge ${c.wc_insurance ? 'verified' : 'warning'}">${c.wc_insurance ? '✓ Workers Comp' : '⚠ W/C Not Verified'}</span>
           </div>
         </div>
       `;
