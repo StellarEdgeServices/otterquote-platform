@@ -858,7 +858,7 @@
 
           const quoteData = {
             claim_id: currentClaim.id,
-            contractor_id: currentUser.id,
+            contractor_id: currentContractor ? currentContractor.id : currentUser.id,
             total_price: totalPrice,
             fee_percentage: feePercentage,
             fee_amount: totalPrice * (feePercentage / 100),
