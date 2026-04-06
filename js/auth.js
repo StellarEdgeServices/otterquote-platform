@@ -121,7 +121,23 @@ window.Auth = {
     if (role === 'contractor') {
       window.location.href = '/contractor-dashboard.html';
     } else {
-      // Route homeowners to trade selector if they haven't made selections yet
+      // Check if homeowner already has a claim in Supabase — if so, skip trade selector
+      try {
+        const { data: existingClaim } = await sb
+          .from('claims')
+          .select('id, status')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        if (existingClaim) {
+          window.location.href = '/dashboard.html';
+          return;
+        }
+      } catch (e) {
+        // No existing claim — fall through to trade selector
+      }
+      // No claim yet — route to trade selector for new intake
       const tradeSelections = sessionStorage.getItem('oq_trade_selections');
       if (!tradeSelections) {
         window.location.href = '/trade-selector.html';
