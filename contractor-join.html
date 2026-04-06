@@ -926,7 +926,7 @@
                 await Auth.sendMagicLink(data.businessEmail, 'contractor');
 
                 // 3. Store contractor data in sessionStorage for post-auth profile creation
-                sessionStorage.setItem('cs_contractor_signup', JSON.stringify({
+                localStorage.setItem('cs_contractor_signup', JSON.stringify({
                     company_name: data.businessName,
                     contact_name: data.ownerFirstName + ' ' + data.ownerLastName,
                     email: data.businessEmail,
@@ -955,7 +955,7 @@
                 }));
 
                 // Set auth role for post-auth routing
-                sessionStorage.setItem('cs_auth_role', 'contractor');
+                localStorage.setItem('cs_auth_role', 'contractor');
 
                 // 3. Show success and hide form
                 document.getElementById('successMessage').classList.add('show');

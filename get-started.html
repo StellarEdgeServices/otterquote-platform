@@ -458,7 +458,7 @@
       // Profile error is non-fatal (lead capture is best-effort)
 
       // 2. Store profile data in sessionStorage for post-auth profile creation
-      sessionStorage.setItem('cs_signup', JSON.stringify({
+      localStorage.setItem('cs_signup', JSON.stringify({
         first_name: firstName,
         last_name: lastName,
         phone,
@@ -470,7 +470,7 @@
       }));
 
       // Store the intended role for post-auth routing
-      sessionStorage.setItem('cs_auth_role', 'homeowner');
+      localStorage.setItem('cs_auth_role', 'homeowner');
 
       // 3. Send magic link (homeowner role)
       await Auth.sendMagicLink(email, 'homeowner');
