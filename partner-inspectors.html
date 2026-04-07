@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+<title>Become a Home Inspector Partner — OtterQuote</title>
+<meta name="description" content="Give your clients a real answer when you find damage. Sign up as an OtterQuote partner and earn $250 per completed job.">
+<link rel="canonical" href="https://otterquote.com/partner-inspectors.html">
+<meta property="og:title" content="Become a Home Inspector Partner — OtterQuote">
+<meta property="og:description" content="Give your clients a real answer when you find damage. Sign up as an OtterQuote partner and earn $250 per completed job.">
+<meta property="og:url" content="https://otterquote.com/partner-inspectors.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OtterQuote">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+/* ── Hero Section ── */
+.hero {
+  padding: var(--sp-20) var(--sp-8);
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.hero-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hero-badge {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-5);
+  background: rgba(20, 184, 166, 0.1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--amber);
+  letter-spacing: 0.04em;
+  margin-bottom: var(--sp-6);
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+  margin-bottom: var(--sp-4);
+  color: var(--white);
+}
+
+.hero .subtitle {
+  font-size: 1.1rem;
+  color: var(--slate);
+  line-height: 1.8;
+  margin-bottom: var(--sp-8);
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-cta-group {
+  display: flex;
+  gap: var(--sp-4);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── How It Works Section ── */
+.how-it-works {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+}
+
+.section-header {
+  text-align: center;
+  margin-bottom: var(--sp-12);
+}
+
+.section-header h2 {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.section-header p {
+  font-size: 1.05rem;
+  color: var(--slate);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-8);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.step-card {
+  padding: var(--sp-8);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-lg);
+  transition: all var(--duration) var(--ease);
+}
+
+.step-card:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(20, 184, 166, 0.2);
+}
+
+.step-number {
+  width: 48px;
+  height: 48px;
+  background: var(--amber-glow);
+  border: 2px solid var(--amber);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--amber);
+  margin-bottom: var(--sp-4);
+}
+
+.step-card h3 {
+  font-size: 1.15rem;
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.step-card p {
+  font-size: 0.95rem;
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+/* ── Value Props ── */
+.value-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.value-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.value-card {
+  padding: var(--sp-6);
+  background: rgba(20, 184, 166, 0.04);
+  border: 1px solid rgba(20, 184, 166, 0.12);
+  border-radius: var(--radius-md);
+}
+
+.value-card h3 {
+  font-size: 1.05rem;
+  color: var(--amber);
+  margin-bottom: var(--sp-3);
+}
+
+.value-card p {
+  font-size: 0.9rem;
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+/* ── Commission Callout ── */
+.commission-section {
+  padding: var(--sp-14) var(--sp-8);
+  background: var(--navy);
+  text-align: center;
+}
+
+.commission-box {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--sp-10) var(--sp-8);
+  background: var(--amber-glow);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-lg);
+}
+
+.commission-amount {
+  font-size: clamp(3rem, 7vw, 5rem);
+  font-weight: 900;
+  color: var(--amber);
+  font-family: var(--font-heading);
+  line-height: 1;
+  margin-bottom: var(--sp-3);
+}
+
+.commission-label {
+  font-size: 1.1rem;
+  color: var(--white);
+  font-weight: 600;
+  margin-bottom: var(--sp-4);
+}
+
+.commission-note {
+  font-size: 0.85rem;
+  color: var(--slate);
+  line-height: 1.6;
+}
+
+/* ── Signup Form Section ── */
+.form-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.form-container {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.form-container h2 {
+  text-align: center;
+  margin-bottom: var(--sp-2);
+  color: var(--white);
+  font-size: 1.9rem;
+}
+
+.form-subtitle {
+  text-align: center;
+  color: var(--slate);
+  margin-bottom: var(--sp-8);
+  font-size: 0.95rem;
+}
+
+.partner-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.form-group input, .form-group select {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  transition: all var(--duration) var(--ease);
+}
+
+.form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.form-group input:focus, .form-group select:focus {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
+.form-group select option {
+  background: var(--navy);
+  color: var(--white);
+}
+
+.optional-label {
+  font-weight: 400;
+  color: var(--slate);
+  font-size: 0.8rem;
+}
+
+.form-submit {
+  padding: var(--sp-4) var(--sp-6);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  font-family: var(--font-body);
+  margin-top: var(--sp-2);
+}
+
+.form-submit:hover:not(:disabled) {
+  background: var(--amber-2);
+  transform: translateY(-2px);
+}
+
+.form-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-note {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--slate);
+  margin-top: var(--sp-2);
+  line-height: 1.6;
+}
+
+/* ── Partner Toolkit (post-signup) ── */
+.toolkit-wrapper {
+  display: none;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.toolkit-header {
+  text-align: center;
+  margin-bottom: var(--sp-8);
+}
+
+.toolkit-header h3 {
+  color: var(--amber);
+  font-size: 1.75rem;
+  margin-bottom: var(--sp-3);
+}
+
+.toolkit-header p {
+  color: var(--slate);
+  font-size: 0.95rem;
+}
+
+.toolkit-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-5);
+}
+
+.toolkit-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.toolkit-card-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.toolkit-card h4 {
+  color: var(--white);
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.toolkit-hint {
+  font-size: 0.82rem;
+  color: var(--slate);
+  margin-bottom: var(--sp-3);
+  line-height: 1.5;
+}
+
+.ref-link-display {
+  padding: var(--sp-3) var(--sp-4);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--white);
+  word-break: break-all;
+  margin-bottom: var(--sp-3);
+}
+
+.template-box {
+  padding: var(--sp-4);
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--slate);
+  white-space: pre-wrap;
+  line-height: 1.7;
+  margin-bottom: var(--sp-3);
+  font-family: var(--font-body);
+}
+
+.copy-btn {
+  padding: var(--sp-2) var(--sp-4);
+  background: transparent;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  color: var(--amber);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all var(--duration) var(--ease);
+}
+
+.copy-btn:hover {
+  background: var(--amber-glow);
+}
+
+.toolkit-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+.stat-box {
+  background: rgba(20, 184, 166, 0.06);
+  border: 1px solid rgba(20, 184, 166, 0.15);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  text-align: center;
+}
+
+.stat-number {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--amber);
+  font-family: var(--font-heading);
+  line-height: 1;
+  margin-bottom: var(--sp-2);
+}
+
+.stat-label {
+  font-size: 0.78rem;
+  color: var(--slate);
+  line-height: 1.4;
+}
+
+/* ── FAQ Section ── */
+.faq-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.faq-container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.faq-section h2 {
+  text-align: center;
+  margin-bottom: var(--sp-10);
+  color: var(--white);
+}
+
+.faq-item {
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--sp-5);
+  overflow: hidden;
+}
+
+.faq-header {
+  padding: var(--sp-4) var(--sp-5);
+  background: rgba(20, 184, 166, 0.05);
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--white);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background var(--duration) var(--ease);
+  font-family: var(--font-body);
+}
+
+.faq-header:hover {
+  background: rgba(20, 184, 166, 0.1);
+}
+
+.faq-toggle {
+  font-size: 1.1rem;
+  color: var(--amber);
+  transition: transform var(--duration) var(--ease);
+  display: inline-block;
+  flex-shrink: 0;
+  margin-left: var(--sp-4);
+}
+
+.faq-item.open .faq-toggle {
+  transform: rotate(180deg);
+}
+
+.faq-content {
+  display: none;
+  padding: var(--sp-4) var(--sp-5);
+  color: var(--slate);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  background: rgba(255,255,255,0.02);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.faq-item.open .faq-content {
+  display: block;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .hero {
+    padding: var(--sp-12) var(--sp-5);
+  }
+
+  .steps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .value-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-cta-group {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ── Header ── -->
+<header id="header"></header>
+
+<main>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">Home Inspector Partner Program</div>
+      <h1>Give Your Clients a Real Answer When You Find Damage</h1>
+      <p class="subtitle">
+        You find the problem. Your clients ask "what do I do now?" OtterQuote is your answer — competing contractor bids, handled professionally, so your clients move forward and you get paid for the referral.
+      </p>
+      <div class="hero-cta-group">
+        <a href="#signup" class="btn btn-primary">Get My Referral Link</a>
+        <a href="#how-it-works" class="btn btn-secondary">See How It Works</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How It Works ── -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="section-header">
+      <h2>Simple as Four Steps</h2>
+      <p>Set it up once. Earn on every job that closes.</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-number">1</div>
+        <h3>Sign Up in 60 Seconds</h3>
+        <p>Enter your name, contact info, and company. We generate your unique referral link instantly — no approval process, no waiting.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">2</div>
+        <h3>Share Your Link When You Find Damage</h3>
+        <p>Add it to your inspection report, text it on-site, or email it to your client. Takes five seconds. Works for insurance claims and out-of-pocket repairs.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">3</div>
+        <h3>OtterQuote Handles Everything</h3>
+        <p>Your client gets matched with vetted local contractors who bid competitively. They compare bids, choose their contractor, and sign a contract — all through the platform.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">4</div>
+        <h3>You Earn $250</h3>
+        <p>When a job over $10,000 completes, you get paid. No chasing checks — we track every referral and pay automatically.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Why Inspectors Love This ── -->
+  <section class="value-section">
+    <div class="section-header">
+      <h2>Why It Works for Inspectors</h2>
+    </div>
+    <div class="value-grid">
+      <div class="value-card">
+        <h3>Your Clients Already Have Confirmed Damage</h3>
+        <p>You documented it. They trust your finding. That's the highest-intent lead in the industry — your clients aren't browsing, they have a real problem that needs fixing.</p>
+      </div>
+      <div class="value-card">
+        <h3>Your Clients Get a Better Experience Than Going It Alone</h3>
+        <p>OtterQuote gives contractors everything they need to bid accurately — measurements, material specs, insurance docs. Your clients get bids on exactly what they need. No high-pressure sales pitches, no being ghosted after a site visit. Just apples-to-apples bids and a simple signing process.</p>
+      </div>
+      <div class="value-card">
+        <h3>Covers Insurance and Out-of-Pocket</h3>
+        <p>Whether your client is filing a claim or paying out of pocket, OtterQuote handles both paths. You send one link and let the platform figure out the rest.</p>
+      </div>
+      <div class="value-card">
+        <h3>Adds Value to Your Report</h3>
+        <p>Your inspection report is more useful when it includes a clear next step. "Here's what I found, and here's where to go to get it fixed" is better service — and it closes more referrals.</p>
+      </div>
+      <div class="value-card">
+        <h3>You Don't Have to Manage Anything</h3>
+        <p>No contractor coordination. No follow-up. No chasing clients. You share the link and OtterQuote does the work. Your dashboard shows your referral status in real time.</p>
+      </div>
+      <div class="value-card">
+        <h3>Your Clients Are in Good Hands</h3>
+        <p>Every contractor on OtterQuote is vetted. Your clients compare multiple bids with a signed contract and deductible protection. You can refer with confidence that they'll be taken care of.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Commission Callout ── -->
+  <section class="commission-section">
+    <div class="commission-box">
+      <div class="commission-amount">$250</div>
+      <div class="commission-label">Per Completed Job Over $10,000</div>
+      <p class="commission-note">
+        Paid on job completion — not at contract signing. No volume minimums, no cap on earnings. One referral pays for a year of ASHI membership.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── Signup Form ── -->
+  <section class="form-section" id="signup">
+    <div class="form-container">
+      <h2>Get Your Referral Link</h2>
+      <p class="form-subtitle">Takes less than a minute. Free to join.</p>
+
+      <!-- Signup Form -->
+      <form class="partner-form" id="partnerForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" name="firstName" required placeholder="John">
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" name="lastName" required placeholder="Doe">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required placeholder="john@inspectionco.com">
+        </div>
+
+        <div class="form-group">
+          <label for="phone">Phone</label>
+          <input type="tel" id="phone" name="phone" required placeholder="(555) 123-4567">
+        </div>
+
+        <div class="form-group">
+          <label for="company">Company Name</label>
+          <input type="text" id="company" name="company" required placeholder="ABC Home Inspections">
+        </div>
+
+        <div class="form-group">
+          <label for="certification">
+            Certification <span class="optional-label">(optional)</span>
+          </label>
+          <select id="certification" name="certification">
+            <option value="">Select if applicable</option>
+            <option value="ashi">ASHI Member</option>
+            <option value="internachi">InterNACHI Member</option>
+            <option value="nahi">NAHI Member</option>
+            <option value="other">Other Certification</option>
+            <option value="none">Not Certified</option>
+          </select>
+        </div>
+
+        <button type="submit" class="form-submit" id="submitBtn">
+          Generate My Referral Link
+        </button>
+
+        <p class="form-note">
+          By signing up, you agree to our <a href="/terms.html" style="color:var(--amber)">Terms of Service</a>. Commission paid on jobs over $10,000 that complete through the platform.
+        </p>
+      </form>
+
+      <!-- Partner Toolkit (shown after successful signup) -->
+      <div class="toolkit-wrapper" id="toolkitWrapper">
+
+        <div class="toolkit-header">
+          <h3>You're In — Here's Your Toolkit</h3>
+          <p>Four ways to put your link to work. Use whichever fits your workflow.</p>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="toolkit-stats">
+          <div class="stat-box">
+            <div class="stat-number" id="statReferrals">0</div>
+            <div class="stat-label">Referrals Sent</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number" id="statJobs">0</div>
+            <div class="stat-label">Jobs Completed</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number" id="statEarned">$0</div>
+            <div class="stat-label">Commissions Earned</div>
+          </div>
+        </div>
+
+        <!-- 1. Your Link -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">🔗</span>
+            <h4>Your Referral Link</h4>
+          </div>
+          <p class="toolkit-hint">Every client you send through this link is tracked back to you.</p>
+          <div class="ref-link-display" id="refLinkDisplay"></div>
+          <button class="copy-btn" onclick="copyItem('link')">Copy Link</button>
+        </div>
+
+        <!-- 2. Text Message -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">💬</span>
+            <h4>Text Message Template</h4>
+          </div>
+          <p class="toolkit-hint">Edit the name, then paste into any text thread with your client. Works on iPhone and Android.</p>
+          <div class="template-box" id="textTemplate"></div>
+          <button class="copy-btn" onclick="copyItem('text')">Copy Text Message</button>
+        </div>
+
+        <!-- 3. Email Template -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">📧</span>
+            <h4>Email Template</h4>
+          </div>
+          <p class="toolkit-hint">Copy this, paste into a new email, fill in the bracketed fields, and send. Takes 30 seconds.</p>
+          <div class="template-box" id="emailTemplate"></div>
+          <button class="copy-btn" onclick="copyItem('email')">Copy Email</button>
+        </div>
+
+        <!-- 4. Report Insert -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">📋</span>
+            <h4>Inspection Report Insert</h4>
+          </div>
+          <p class="toolkit-hint">Paste this into your report template's "Recommended Next Steps" or "Contractor Resources" section so it appears automatically on every report.</p>
+          <div class="template-box" id="reportTemplate"></div>
+          <button class="copy-btn" onclick="copyItem('report')">Copy Report Text</button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FAQ ── -->
+  <section class="faq-section">
+    <div class="faq-container">
+      <h2>Questions</h2>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>What happens after I send a client my link?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Your client lands on a page that explains the OtterQuote process, confirms what you found, and walks them through getting competing contractor bids. They enter their info, and OtterQuote handles everything from there — matching them with vetted contractors, collecting bids, helping with their insurance estimate if needed, and getting a contract signed.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Do I need to do any follow-up?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          No. Once you share the link, OtterQuote takes it from there. You can check your partner dashboard to see the status of any referral, but you don't need to manage anything.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>When do I get paid?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Commissions are paid when the job completes — not when your client signs a contract. A job "completes" when the contractor finishes the work and the final payment clears. Payment is sent to you within 30 days of job completion.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>What types of jobs qualify?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Any exterior repair or replacement job over $10,000 that completes through OtterQuote — roofing, siding, gutters, windows. Insurance claims and out-of-pocket (retail) jobs both qualify. Jobs under $10,000 don't earn a cash commission, but we still handle your client professionally.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Is this allowed under my professional guidelines?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Home inspectors are not subject to the anti-rebating or anti-inducement regulations that govern insurance agents. This is a straightforward referral arrangement — you refer clients to a service, and you earn a commission when they complete a transaction. ASHI and InterNACHI both permit referral arrangements that don't compromise inspector independence or objectivity. You're referring clients to a contractor bidding platform, not influencing your inspection findings.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Does my client pay anything?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          OtterQuote is 100% free for homeowners. OtterQuote earns its fee from the contractor — not the homeowner. Your clients get a better outcome (competing bids, a signed contract, deductible protection) at no cost.
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Footer ── -->
+<footer class="footer" id="footer"></footer>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+/**
+ * Partner Inspectors Page
+ * Handles signup form submission: creates a record in referral_agents,
+ * generates a unique referral code, and displays the partner's link.
+ */
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof initNav === 'function') initNav();
+  document.getElementById('partnerForm').addEventListener('submit', handleSignup);
+});
+
+/**
+ * Generate a short unique referral code (8 chars, URL-safe)
+ */
+function generateRefCode(firstName, lastName) {
+  const base = (firstName.slice(0, 3) + lastName.slice(0, 3)).toLowerCase().replace(/[^a-z]/g, '');
+  const rand = Math.random().toString(36).slice(2, 6);
+  return base + rand;
+}
+
+/**
+ * Handle form submission
+ */
+async function handleSignup(e) {
+  e.preventDefault();
+
+  const firstName    = document.getElementById('firstName').value.trim();
+  const lastName     = document.getElementById('lastName').value.trim();
+  const email        = document.getElementById('email').value.trim();
+  const phone        = document.getElementById('phone').value.trim();
+  const company      = document.getElementById('company').value.trim();
+  const certification = document.getElementById('certification').value;
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Setting up your account...';
+
+  try {
+    const uniqueCode = generateRefCode(firstName, lastName);
+
+    const { data, error } = await sb
+      .from('referral_agents')
+      .insert({
+        agent_type:       'home_inspector',
+        first_name:       firstName,
+        last_name:        lastName,
+        email,
+        phone,
+        company_name:     company,
+        certification:    certification || null,
+        unique_code:      uniqueCode,
+        commission_earned: 0,
+        commission_paid:   0,
+        created_at:       new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    // Build the referral link and toolkit content
+    const refLink = `${CONFIG.SITE_URL}/ref-inspector.html?ref=${uniqueCode}`;
+    const fullName = `${firstName} ${lastName}`;
+
+    // Show toolkit, hide form
+    document.getElementById('partnerForm').style.display = 'none';
+    document.getElementById('toolkitWrapper').style.display = 'block';
+    document.getElementById('refLinkDisplay').textContent = refLink;
+
+    // Populate templates
+    populateTemplates(refLink, fullName, company);
+
+    // Track in GA
+    if (typeof gtag === 'function') {
+      gtag('event', 'partner_signup', { partner_type: 'home_inspector' });
+    }
+
+  } catch (err) {
+    console.error('Signup error:', err);
+    alert(`Something went wrong: ${err.message}. Please try again or email us at support@otterquote.com`);
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Generate My Referral Link';
+  }
+}
+
+/**
+ * Populate the text, email, and report templates with real data
+ */
+function populateTemplates(refLink, fullName, company) {
+  document.getElementById('textTemplate').textContent =
+`Hi [Client name], this is ${fullName} from ${company}. I mentioned OtterQuote during your inspection — they'll get you competing contractor bids on the repairs I found, so you can compare your options and sign a contract without the runaround. Here's my referral link: ${refLink}`;
+
+  document.getElementById('emailTemplate').textContent =
+`Subject: Next Steps for Your Home Inspection Repairs
+
+Hi [Client name],
+
+During the inspection at [property address], I identified items that need contractor attention. I wanted to send you a resource that makes the repair process straightforward.
+
+OtterQuote gives contractors everything they need to bid accurately on your project, so you get bids on exactly what you need — not ballpark numbers from a quick walk-around. No high-pressure sales pitches. No being ghosted after a site visit. Just clear, apples-to-apples bids from vetted local contractors and a simple contract signing process. It's free for homeowners.
+
+Get started here: ${refLink}
+
+Best,
+${fullName}
+${company}`;
+
+  document.getElementById('reportTemplate').textContent =
+`RECOMMENDED NEXT STEPS
+
+For the items noted above that require contractor work, I recommend getting competing bids before committing to any single contractor. OtterQuote is a platform that gives contractors professional measurements and documentation so they can provide accurate bids — not estimates based on a quick look. The result: clear, comparable bids and a straightforward contract signing process. Free for homeowners.
+
+Get started: ${refLink}
+Referred by ${fullName}, ${company}`;
+}
+
+/**
+ * Copy a specific item to clipboard
+ */
+function copyItem(type) {
+  let text = '';
+  let btnSelector = '';
+
+  if (type === 'link') {
+    text = document.getElementById('refLinkDisplay').textContent;
+    btnSelector = '[onclick="copyItem(\'link\')"]';
+  } else if (type === 'text') {
+    text = document.getElementById('textTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'text\')"]';
+  } else if (type === 'email') {
+    text = document.getElementById('emailTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'email\')"]';
+  } else if (type === 'report') {
+    text = document.getElementById('reportTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'report\')"]';
+  }
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector(btnSelector);
+    const original = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = original, 2000);
+  });
+}
+
+/**
+ * Toggle FAQ accordion
+ */
+function toggleFaq(headerElement) {
+  headerElement.parentElement.classList.toggle('open');
+}
+</script>
+
+</body>
+</html>

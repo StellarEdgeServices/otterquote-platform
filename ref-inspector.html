@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+<title>Your Inspector Found Damage — Here's What to Do Next</title>
+<meta name="description" content="Your home inspector found exterior damage. OtterQuote connects you with vetted local contractors who compete for your job. Free for homeowners.">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+/* ── Referral Badge ── */
+.ref-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: rgba(20, 184, 166, 0.1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-full);
+  margin-bottom: var(--sp-6);
+  font-size: 0.9rem;
+  color: var(--amber);
+}
+
+.ref-badge-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--amber-glow);
+  object-fit: cover;
+  border: 2px solid var(--amber);
+  flex-shrink: 0;
+}
+
+.ref-badge-text {
+  line-height: 1.4;
+}
+
+.ref-badge-text strong {
+  color: var(--white);
+  display: block;
+}
+
+/* ── Hero Section ── */
+.hero-section {
+  padding: var(--sp-16) var(--sp-8);
+  text-align: center;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.hero-section h1 {
+  margin-bottom: var(--sp-4);
+  color: var(--white);
+}
+
+.hero-subtitle {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: var(--slate);
+  margin-bottom: var(--sp-8);
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-cta {
+  display: inline-block;
+  padding: var(--sp-3) var(--sp-7);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  font-family: var(--font-body);
+  text-decoration: none;
+}
+
+.hero-cta:hover {
+  background: var(--amber-2);
+  transform: translateY(-2px);
+}
+
+/* ── Damage Confirmed Banner ── */
+.damage-banner {
+  background: rgba(20, 184, 166, 0.06);
+  border-top: 1px solid rgba(20, 184, 166, 0.15);
+  border-bottom: 1px solid rgba(20, 184, 166, 0.15);
+  padding: var(--sp-6) var(--sp-8);
+  text-align: center;
+}
+
+.damage-banner p {
+  color: var(--slate);
+  font-size: 0.95rem;
+  max-width: 700px;
+  margin: 0 auto;
+  line-height: 1.7;
+}
+
+.damage-banner strong {
+  color: var(--white);
+}
+
+/* ── No-Runaround Section ── */
+.no-runaround {
+  padding: var(--sp-14) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.no-runaround-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.no-runaround h2 {
+  color: var(--white);
+  font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+  margin-bottom: var(--sp-5);
+}
+
+.no-runaround p {
+  color: var(--slate);
+  font-size: 1.05rem;
+  line-height: 1.8;
+  margin-bottom: var(--sp-8);
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.three-points {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-5);
+}
+
+.point-item {
+  padding: var(--sp-5);
+  background: rgba(20, 184, 166, 0.05);
+  border: 1px solid rgba(20, 184, 166, 0.12);
+  border-radius: var(--radius-md);
+}
+
+.point-icon {
+  font-size: 1.6rem;
+  margin-bottom: var(--sp-3);
+  line-height: 1;
+}
+
+.point-item h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: var(--sp-2);
+}
+
+.point-item p {
+  font-size: 0.85rem;
+  color: var(--slate);
+  line-height: 1.6;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .three-points {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── How It Works ── */
+.how-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.how-container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.how-section h2 {
+  text-align: center;
+  margin-bottom: var(--sp-12);
+  color: var(--white);
+}
+
+.how-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-8);
+}
+
+.how-item {
+  text-align: center;
+}
+
+.how-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--amber);
+  margin-bottom: var(--sp-3);
+  font-family: var(--font-heading);
+}
+
+.how-item h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+  font-size: 1.2rem;
+}
+
+.how-item p {
+  color: var(--slate);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* ── Trust Signals ── */
+.trust-section {
+  padding: var(--sp-10) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.trust-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-5);
+}
+
+.trust-item {
+  padding: var(--sp-4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  background: rgba(20, 184, 166, 0.05);
+  text-align: center;
+}
+
+.trust-item strong {
+  color: var(--amber);
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* ── Form Section ── */
+.form-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+}
+
+.form-container {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.form-container h2 {
+  text-align: center;
+  margin-bottom: var(--sp-2);
+  color: var(--white);
+  font-size: 1.75rem;
+}
+
+.form-subtitle {
+  text-align: center;
+  color: var(--slate);
+  margin-bottom: var(--sp-8);
+  font-size: 0.95rem;
+}
+
+.ref-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.form-group input {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  transition: all var(--duration) var(--ease);
+}
+
+.form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
+.form-submit {
+  padding: var(--sp-3) var(--sp-6);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  font-family: var(--font-body);
+  margin-top: var(--sp-2);
+}
+
+.form-submit:hover:not(:disabled) {
+  background: var(--amber-2);
+  transform: translateY(-2px);
+}
+
+.form-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-note {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--slate);
+  margin-top: var(--sp-3);
+}
+
+/* ── FAQ Section ── */
+.faq-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.faq-container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.faq-section h2 {
+  text-align: center;
+  margin-bottom: var(--sp-10);
+  color: var(--white);
+}
+
+.faq-item {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--sp-5);
+  overflow: hidden;
+}
+
+.faq-header {
+  padding: var(--sp-4);
+  background: rgba(20, 184, 166, 0.05);
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--white);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background var(--duration) var(--ease);
+  font-family: var(--font-body);
+}
+
+.faq-header:hover {
+  background: rgba(20, 184, 166, 0.1);
+}
+
+.faq-toggle {
+  font-size: 1.1rem;
+  color: var(--amber);
+  transition: transform var(--duration) var(--ease);
+  display: inline-block;
+  flex-shrink: 0;
+  margin-left: var(--sp-4);
+}
+
+.faq-item.open .faq-toggle {
+  transform: rotate(180deg);
+}
+
+.faq-content {
+  display: none;
+  padding: var(--sp-4);
+  color: var(--slate);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.faq-item.open .faq-content {
+  display: block;
+}
+
+/* ── Footer ── */
+.footer {
+  padding: var(--sp-8) var(--sp-6);
+  text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--navy);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .hero-section {
+    padding: var(--sp-10) var(--sp-5);
+  }
+
+  .hero-section h1 {
+    font-size: 1.6rem;
+  }
+
+  .how-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trust-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ref-badge {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ── Header ── -->
+<header id="header"></header>
+
+<main>
+
+  <!-- ── Hero ── -->
+  <section class="hero-section">
+    <div id="refBadgeContainer"></div>
+
+    <h1>Your Inspector Found Damage.<br>Here's What to Do Next.</h1>
+    <p class="hero-subtitle">
+      OtterQuote gets competing bids from vetted local contractors — based on a professional measurement of your property, not a contractor's walk-around estimate. Free for homeowners.
+    </p>
+
+    <button class="hero-cta" onclick="document.getElementById('signup-form').scrollIntoView({behavior:'smooth'})">
+      Get Competing Bids — It's Free
+    </button>
+  </section>
+
+  <!-- ── Damage Confirmed Banner ── -->
+  <div class="damage-banner">
+    <p>
+      <strong>Your inspector documented the damage.</strong> That's the hard part done.
+      OtterQuote takes it from here — matching you with contractors who bid on real measurements
+      so you know you're getting a fair price, not a number pulled from the air.
+    </p>
+  </div>
+
+  <!-- ── No Runaround Section ── -->
+  <section class="no-runaround">
+    <div class="no-runaround-inner">
+      <h2>Bids on Exactly What You Need</h2>
+      <p>
+        We give contractors everything they need to bid accurately on your project — professional measurements, your insurance estimate, and your material preferences. So every bid you get is priced on the same scope of work. No contractor showing up to "take a look" and quoting from gut feel. No high-pressure sales pitch at your kitchen table. No being ghosted after a site visit.
+      </p>
+      <div class="three-points">
+        <div class="point-item">
+          <div class="point-icon">📐</div>
+          <h3>Professional Measurements</h3>
+          <p>Contractors bid on the same verified numbers — not their own estimates of your roof's size.</p>
+        </div>
+        <div class="point-item">
+          <div class="point-icon">⚖️</div>
+          <h3>Apples-to-Apples Bids</h3>
+          <p>Every contractor bids the same scope, so you can compare price, materials, and warranty side by side.</p>
+        </div>
+        <div class="point-item">
+          <div class="point-icon">✍️</div>
+          <h3>Simple Signing Process</h3>
+          <p>Choose your contractor, sign your contract through the platform. No back-and-forth, no paperwork chase.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How It Works ── -->
+  <section class="how-section">
+    <div class="how-container">
+      <h2>How It Works</h2>
+      <div class="how-grid">
+        <div class="how-item">
+          <div class="how-number">1</div>
+          <h3>Tell Us About Your Property</h3>
+          <p>Enter your address and contact info. We'll get professional measurements of the damaged areas — your inspector's report gives us a head start.</p>
+        </div>
+        <div class="how-item">
+          <div class="how-number">2</div>
+          <h3>Contractors Compete for Your Job</h3>
+          <p>Licensed, vetted local contractors bid on your project. Insurance claim or out-of-pocket repair — both paths are handled. You'll have bids in 24-48 hours.</p>
+        </div>
+        <div class="how-item">
+          <div class="how-number">3</div>
+          <h3>Compare, Choose, Sign</h3>
+          <p>Side-by-side bid comparison. Full contractor profiles with licenses, insurance, and reviews. Sign your contract through the platform — no runaround, no pressure.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Trust Signals ── -->
+  <section class="trust-section">
+    <div class="trust-container">
+      <div class="trust-grid">
+        <div class="trust-item">
+          <strong>100% Free for Homeowners</strong>
+        </div>
+        <div class="trust-item">
+          <strong>Damage Already Confirmed</strong>
+        </div>
+        <div class="trust-item">
+          <strong>Vetted Local Contractors</strong>
+        </div>
+        <div class="trust-item">
+          <strong>Insurance &amp; Out-of-Pocket</strong>
+        </div>
+        <div class="trust-item">
+          <strong>Switch Contractors Anytime</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Signup Form ── -->
+  <section class="form-section" id="signup-form">
+    <div class="form-container">
+      <h2>Get Started</h2>
+      <p class="form-subtitle">Takes 2 minutes. We'll have bids coming in within 24-48 hours.</p>
+
+      <form class="ref-form" id="referralForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" name="firstName" required placeholder="John">
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" name="lastName" required placeholder="Doe">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required placeholder="john@example.com">
+        </div>
+
+        <div class="form-group">
+          <label for="phone">Phone</label>
+          <input type="tel" id="phone" name="phone" required placeholder="(555) 123-4567">
+        </div>
+
+        <div class="form-group">
+          <label for="propertyAddress">Property Address</label>
+          <input type="text" id="propertyAddress" name="propertyAddress" required placeholder="123 Main St, City, ST 12345">
+        </div>
+
+        <!-- Hidden fields -->
+        <input type="hidden" id="referralCode" name="referralCode" value="">
+        <input type="hidden" id="landingPage" name="landingPage" value="ref-inspector">
+
+        <button type="submit" class="form-submit" id="submitBtn">
+          Get Started — It's Free
+        </button>
+
+        <p class="form-note">
+          We'll send you a secure login link. No password needed.
+        </p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ── FAQ ── -->
+  <section class="faq-section">
+    <div class="faq-container">
+      <h2>Questions?</h2>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Does this cost me anything?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          OtterQuote is 100% free for homeowners. We earn a fee from the contractor when a job completes — you pay nothing to use the platform.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>My inspector said it might be an insurance claim. Can OtterQuote help with that?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Yes. Once you're inside the platform, we'll ask whether this is an insurance claim or an out-of-pocket repair. If it's a claim, we help you get your insurance estimate and connect you with contractors experienced in working with insurance adjusters. If it's out of pocket, we skip the insurance steps entirely and go straight to bids.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Do I need professional measurements?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          For a full replacement, yes — contractors need accurate measurements to give you a real bid, not a ballpark. We use Hover, a professional measurement service. Either you take photos with their app (takes about 15 minutes) or your inspector or agent can do it. The cost is $79, which is rebated if you use an OtterQuote contractor. For smaller repairs, we may not need formal measurements.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>How fast will I get bids?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Most homeowners see their first contractor bid within 24-48 hours of submitting their project. Contractors in your area are notified immediately when a new project is available.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>What if I want to choose a contractor I already know?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          You're never locked in. You can compare the bids you receive and choose whoever you want — including a contractor you already have a relationship with, if they're in the OtterQuote network. You can also withdraw from the platform at any time before signing a contract.
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Footer ── -->
+<footer class="footer" id="footer"></footer>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+/**
+ * REF-INSPECTOR Landing Page: Home Inspector Referral
+ * Reads referral code from URL, personalizes hero with inspector info,
+ * handles form submission with referral attribution.
+ */
+
+let referralAgentData = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (typeof initNav === 'function') initNav();
+
+  // Get referral code from URL
+  const params = new URLSearchParams(window.location.search);
+  const refCode = params.get('ref');
+
+  if (refCode) {
+    document.getElementById('referralCode').value = refCode;
+    localStorage.setItem('ref_code', refCode);
+    localStorage.setItem('ref_timestamp', new Date().toISOString());
+
+    // Look up the inspector in referral_agents
+    try {
+      const { data, error } = await sb
+        .from('referral_agents')
+        .select('*')
+        .eq('unique_code', refCode)
+        .eq('agent_type', 'home_inspector')
+        .single();
+
+      if (data && !error) {
+        referralAgentData = data;
+        personalizeHero(data);
+      }
+    } catch (err) {
+      console.error('Error fetching referral agent:', err);
+    }
+
+    // Record the click event
+    try {
+      await sb.from('referrals').insert({
+        referral_code: refCode,
+        event_type:    'clicked',
+        landing_page:  'ref-inspector',
+        user_agent:    navigator.userAgent,
+        timestamp:     new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Error recording referral click:', err);
+    }
+  }
+
+  document.getElementById('referralForm').addEventListener('submit', handleFormSubmit);
+});
+
+/**
+ * Personalize the hero with the inspector's name and company
+ */
+function personalizeHero(agentData) {
+  const badgeContainer = document.getElementById('refBadgeContainer');
+  const badge = document.createElement('div');
+  badge.className = 'ref-badge';
+
+  let html = '';
+
+  if (agentData.photo_url) {
+    html += `<img class="ref-badge-avatar" src="${agentData.photo_url}" alt="${agentData.first_name || 'Inspector'}">`;
+  }
+
+  html += '<div class="ref-badge-text">';
+  html += `<strong>Referred by ${agentData.first_name || 'Your Inspector'}${agentData.last_name ? ' ' + agentData.last_name : ''}</strong>`;
+  if (agentData.company_name) {
+    html += `<span>${agentData.company_name}</span>`;
+  }
+  html += '</div>';
+
+  badge.innerHTML = html;
+  badgeContainer.appendChild(badge);
+}
+
+/**
+ * Handle form submission
+ */
+async function handleFormSubmit(e) {
+  e.preventDefault();
+
+  const firstName      = document.getElementById('firstName').value.trim();
+  const lastName       = document.getElementById('lastName').value.trim();
+  const email          = document.getElementById('email').value.trim();
+  const phone          = document.getElementById('phone').value.trim();
+  const propertyAddress = document.getElementById('propertyAddress').value.trim();
+  const referralCode   = document.getElementById('referralCode').value || null;
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Sending secure link...';
+
+  try {
+    // Send magic link
+    const { error: authError } = await sb.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${CONFIG.SITE_URL}/dashboard.html`,
+      },
+    });
+
+    if (authError) throw new Error(authError.message);
+
+    // Persist profile data to localStorage for post-auth pickup
+    const profileData = {
+      first_name:       firstName,
+      last_name:        lastName,
+      phone,
+      property_address: propertyAddress,
+      referral_code:    referralCode,
+      landing_page:     'ref-inspector',
+    };
+    localStorage.setItem('pending_profile', JSON.stringify(profileData));
+
+    // Record signup event
+    try {
+      await sb.from('referrals').insert({
+        referral_code: referralCode,
+        email,
+        event_type:    'signup',
+        landing_page:  'ref-inspector',
+        user_agent:    navigator.userAgent,
+        timestamp:     new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Error recording signup event:', err);
+    }
+
+    // Show success
+    submitBtn.textContent = '✓ Check your email';
+    submitBtn.style.background = 'var(--green)';
+
+    setTimeout(() => {
+      alert(`We've sent a secure login link to ${email}. Click it to access your account and start getting bids.`);
+    }, 400);
+
+  } catch (error) {
+    console.error('Form submission error:', error);
+    alert(`Something went wrong: ${error.message}. Please try again.`);
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Get Started — It\'s Free';
+  }
+}
+
+/**
+ * Toggle FAQ accordion
+ */
+function toggleFaq(headerElement) {
+  headerElement.parentElement.classList.toggle('open');
+}
+</script>
+
+</body>
+</html>
