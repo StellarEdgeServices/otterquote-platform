@@ -1413,7 +1413,7 @@
       containerEl.style.display = 'none';
 
       try {
-        // Get the user's session for auth header
+        // Verify user is authenticated before proceeding
         const { data: { session } } = await sb.auth.getSession();
         if (!session) throw new Error('Not authenticated. Please refresh and try again.');
 
@@ -1423,14 +1423,10 @@
           || state.currentUser.email;
 
         // Call create-docusign-envelope Edge Function
-        const response = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/create-docusign-envelope`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-            'apikey': CONFIG.SUPABASE_ANON,
-          },
-          body: JSON.stringify({
+        // Using sb.functions.invoke() instead of raw fetch() so the Supabase client
+        // handles auth headers correctly for both legacy HS256 and new ES256 JWTs.
+        const { data: result, error: invokeError } = await sb.functions.invoke('create-docusign-envelope', {
+          body: {
             claim_id: state.claimId,
             document_type: 'contract',
             contractor_id: state.contractorId,
@@ -1438,13 +1434,11 @@
               email: state.currentUser.email,
               name: signerName,
             },
-          }),
+          },
         });
 
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.error || `Server error: ${response.status}`);
+        if (invokeError) {
+          throw new Error(invokeError.message || 'Failed to create DocuSign envelope');
         }
 
         state.envelopeId = result.envelope_id;
