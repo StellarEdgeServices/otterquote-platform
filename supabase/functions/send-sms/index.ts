@@ -9,7 +9,8 @@
  * Environment variables:
  *   TWILIO_ACCOUNT_SID
  *   TWILIO_AUTH_TOKEN
- *   TWILIO_PHONE_NUMBER
+ *   TWILIO_MESSAGING_SERVICE_SID   ← preferred (A2P / TCR campaign)
+ *   TWILIO_PHONE_NUMBER             ← fallback only if messaging service not set
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -92,11 +93,18 @@ serve(async (req) => {
     // ========== GET TWILIO CREDENTIALS ==========
     const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID")!;
     const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-    const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER")!;
+    const TWILIO_MESSAGING_SERVICE_SID = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
+    const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
 
-    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
       throw new Error(
-        "Twilio credentials not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER."
+        "Twilio credentials not configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN."
+      );
+    }
+
+    if (!TWILIO_MESSAGING_SERVICE_SID && !TWILIO_PHONE_NUMBER) {
+      throw new Error(
+        "No Twilio sender configured. Set TWILIO_MESSAGING_SERVICE_SID (preferred) or TWILIO_PHONE_NUMBER."
       );
     }
 
@@ -105,10 +113,17 @@ serve(async (req) => {
 
     const formData = new URLSearchParams();
     formData.append("To", to);
-    formData.append("From", TWILIO_PHONE_NUMBER);
     formData.append("Body", message);
 
-    console.log("Sending SMS to:", to, "from:", TWILIO_PHONE_NUMBER);
+    // Use Messaging Service SID for A2P / TCR compliance when available.
+    // Fall back to a direct phone number only if the SID is not configured.
+    if (TWILIO_MESSAGING_SERVICE_SID) {
+      formData.append("MessagingServiceSid", TWILIO_MESSAGING_SERVICE_SID);
+      console.log("Sending SMS via MessagingServiceSid to:", to);
+    } else {
+      formData.append("From", TWILIO_PHONE_NUMBER!);
+      console.log("Sending SMS via phone number to:", to, "from:", TWILIO_PHONE_NUMBER);
+    }
 
     const twilioResponse = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
@@ -141,7 +156,7 @@ serve(async (req) => {
      *   sid: "SM...",
      *   account_sid: "AC...",
      *   to: "+13175551234",
-     *   from: "+12025551234",
+     *   from: "+18448753412",
      *   body: "...",
      *   status: "queued",
      *   date_created: "...",

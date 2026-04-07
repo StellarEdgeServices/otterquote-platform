@@ -1,20 +1,21 @@
 /**
  * OtterQuote Edge Function: notify-contractors
- * Notifies matching contractors via email (Mailgun) and SMS (Twilio) when a
- * new claim is submitted for bidding.
+ * Notifies matching contractors via email (Mailgun) and SMS (via send-sms Edge Function)
+ * when a new claim is submitted for bidding.
  * Rate-limited via Supabase check_rate_limit() RPC.
  *
  * Limits: 10/day, 30/month (D-030)
  * Capped at 6 contractors per opportunity.
+ *
+ * SMS is fire-and-forget per contractor: if the send-sms rate limit is exceeded
+ * for a given contractor (HTTP 429), SMS is skipped silently — email always fires.
  *
  * Environment variables:
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_ROLE_KEY
  *   MAILGUN_API_KEY
  *   MAILGUN_DOMAIN
- *   TWILIO_ACCOUNT_SID
- *   TWILIO_AUTH_TOKEN
- *   TWILIO_PHONE_NUMBER
+ *   (Twilio credentials are consumed by the send-sms Edge Function, not here)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -27,6 +28,30 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+/**
+ * Normalize a phone number to E.164 format (+1XXXXXXXXXX for US numbers).
+ * Returns null if the number cannot be normalized to 10 digits.
+ */
+function normalizePhone(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return null;
+}
+
+/**
+ * Build a human-readable trade label from an array of trade strings.
+ * e.g. ['roofing'] → 'roofing'
+ *      ['roofing', 'gutters'] → 'roofing & gutters'
+ *      ['roofing', 'gutters', 'siding'] → 'multiple trades'
+ */
+function buildTradeLabel(trades: string[]): string {
+  if (!trades || trades.length === 0) return "general";
+  if (trades.length === 1) return trades[0].toLowerCase();
+  if (trades.length === 2) return trades.map((t) => t.toLowerCase()).join(" & ");
+  return "multiple trades";
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -103,22 +128,13 @@ serve(async (req) => {
       );
     }
 
-    // ========== VALIDATE CREDENTIALS ==========
+    // ========== VALIDATE EMAIL CREDENTIALS ==========
     const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY");
     const MAILGUN_DOMAIN = Deno.env.get("MAILGUN_DOMAIN");
-    const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const TWILIO_PHONE_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER");
 
     if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
       throw new Error(
         "Mailgun credentials not configured. Set MAILGUN_API_KEY and MAILGUN_DOMAIN."
-      );
-    }
-
-    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-      throw new Error(
-        "Twilio credentials not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER."
       );
     }
 
@@ -152,15 +168,17 @@ serve(async (req) => {
       );
     }
 
-    // ========== PREPARE EMAIL AND SMS ==========
+    // ========== PREPARE NOTIFICATION CONTENT ==========
+    const tradeLabel = buildTradeLabel(trade_types || []);
     const emailSubject = `New Opportunity in ${claim_city}, ${claim_state}`;
-    const smsMessage = `New OtterQuote opportunity in ${claim_city}, ${claim_state}! Log in to view details: https://otterquote.com/contractor-opportunities.html`;
-    const opportunityLink =
-      "https://otterquote.com/contractor-opportunities.html";
+    const opportunityLink = "https://otterquote.com/contractor-opportunities.html";
+
+    // SMS message format per task spec:
+    // "New OtterQuote opportunity in [city, zip] — [trade type]. Log in to bid: <url>"
+    const smsMessage = `New OtterQuote opportunity in ${claim_city}, ${claim_zip} — ${tradeLabel}. Log in to bid: ${opportunityLink}`;
 
     const notifiedContractors = [];
     const basicAuthMailgun = btoa(`api:${MAILGUN_API_KEY}`);
-    const basicAuthTwilio = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
 
     // ========== FILTER BY TRADE (if trade_types provided) ==========
     let matchedContractors = contractors;
@@ -191,9 +209,14 @@ serve(async (req) => {
         : (contractor.email ? [contractor.email] : []);
 
       // Determine SMS recipients: use notification_phones if set, otherwise fall back to primary phone
-      const phoneRecipients = (contractor.notification_phones && contractor.notification_phones.length > 0)
+      const rawPhones = (contractor.notification_phones && contractor.notification_phones.length > 0)
         ? contractor.notification_phones
         : (contractor.phone ? [contractor.phone] : []);
+
+      // Normalize phone numbers to E.164; skip any that can't be normalized
+      const phoneRecipients = rawPhones
+        .map((p: string) => normalizePhone(p))
+        .filter((p: string | null): p is string => p !== null);
 
       // ===== SEND EMAILS =====
       for (const recipientEmail of emailRecipients) {
@@ -249,46 +272,55 @@ OtterQuote Team`;
         }
       }
 
-      // ===== SEND SMS =====
+      // ===== SEND SMS VIA send-sms EDGE FUNCTION =====
+      // Each phone fires through the send-sms function so its per-function rate limits
+      // (20/day, 100/month) are enforced. A 429 response means the limit is exceeded
+      // for this contractor — skip silently and let the email flow continue.
       for (const recipientPhone of phoneRecipients) {
         try {
-          const formData = new URLSearchParams();
-          formData.append("To", recipientPhone);
-          formData.append("From", TWILIO_PHONE_NUMBER);
-          formData.append("Body", smsMessage);
+          console.log("Requesting SMS for contractor:", contractor.id, "phone:", recipientPhone);
 
-          console.log("Sending SMS to contractor:", contractor.id, "phone:", recipientPhone);
-
-          const twilioResponse = await fetch(
-            `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+          const smsResponse = await fetch(
+            `${supabaseUrl}/functions/v1/send-sms`,
             {
               method: "POST",
               headers: {
-                Authorization: `Basic ${basicAuthTwilio}`,
-                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseKey}`,
               },
-              body: formData,
+              body: JSON.stringify({
+                to: recipientPhone,
+                message: smsMessage,
+              }),
             }
           );
 
-          if (twilioResponse.ok) {
-            const twilioData = await twilioResponse.json();
-            smsSent = true;
-            console.log("SMS sent to contractor:", contractor.id, "SID:", twilioData.sid);
-
-            await supabase.from("notifications").insert({
-              user_id: contractor.user_id,
-              claim_id: claim_id,
-              channel: "sms",
-              notification_type: "new_opportunity",
-              recipient: recipientPhone,
-              message_preview: `New opportunity in ${claim_city}, ${claim_state}`,
-            });
-          } else {
-            const errorData = await twilioResponse.text();
-            console.error("Twilio SMS send failed for contractor", contractor.id, ":", twilioResponse.status, errorData);
+          if (smsResponse.status === 429) {
+            // Rate limit exceeded — skip silently, email is unaffected
+            console.warn("SMS rate limit exceeded for contractor", contractor.id, "— skipping SMS silently");
+            continue;
           }
+
+          if (!smsResponse.ok) {
+            const errText = await smsResponse.text();
+            console.error("send-sms returned error for contractor", contractor.id, ":", smsResponse.status, errText);
+            continue;
+          }
+
+          const smsData = await smsResponse.json();
+          smsSent = true;
+          console.log("SMS dispatched for contractor:", contractor.id, "SID:", smsData.sid);
+
+          await supabase.from("notifications").insert({
+            user_id: contractor.user_id,
+            claim_id: claim_id,
+            channel: "sms",
+            notification_type: "new_opportunity",
+            recipient: recipientPhone,
+            message_preview: smsMessage.substring(0, 100),
+          });
         } catch (error) {
+          // Non-blocking — log the error but do not fail the contractor loop
           console.error("Error sending SMS to contractor", contractor.id, ":", error);
         }
       }
