@@ -977,10 +977,10 @@
           .eq('id', currentClaim.id);
         if (claimErr) throw claimErr;
 
-        // 2. Update winning quote status to 'selected'
+        // 2. Update winning quote status to 'awarded' (matches log_bid_accepted trigger)
         const { error: winErr } = await sb
           .from('quotes')
-          .update({ status: 'selected' })
+          .update({ status: 'awarded' })
           .eq('id', bidId);
         if (winErr) throw winErr;
 
