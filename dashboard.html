@@ -1359,6 +1359,48 @@
           document.getElementById('job-type-section').style.display = isEditingClaim ? 'block' : 'none';
           document.getElementById('claim-form-actions').style.display = isEditingClaim ? 'flex' : 'none';
           document.getElementById('toggle-claim-edit').textContent = isEditingClaim ? 'View' : 'Edit';
+
+          // Pre-populate job-type-section fields from currentClaim when opening edit mode
+          if (isEditingClaim && currentClaim) {
+            // Pre-select job type button
+            const jobType = currentClaim.job_type || (
+              currentClaim.funding_type === 'insurance'
+                ? (currentClaim.policy_type === 'acv' ? 'insurance_acv' : 'insurance_rcv')
+                : currentClaim.funding_type === 'cash' ? 'retail' : null
+            );
+            if (jobType) {
+              selectJobType(jobType);
+              // Pre-populate conditional fields
+              if (jobType === 'repair') {
+                if (currentClaim.repair_squares) document.querySelector('[name="repairSquares"]').value = currentClaim.repair_squares;
+                if (currentClaim.roof_squares) document.querySelector('[name="totalRoofSquares"]').value = currentClaim.roof_squares;
+                if (currentClaim.existing_shingle_brand) document.querySelector('[name="existingShingleBrand"]').value = currentClaim.existing_shingle_brand;
+                if (currentClaim.existing_shingle_product) document.querySelector('[name="existingShingleProduct"]').value = currentClaim.existing_shingle_product;
+                if (currentClaim.existing_shingle_color) document.querySelector('[name="existingShingleColor"]').value = currentClaim.existing_shingle_color;
+              } else if (jobType === 'insurance_acv') {
+                if (currentClaim.acv_amount) document.querySelector('[name="acvAmount"]').value = currentClaim.acv_amount;
+                if (currentClaim.rcv_amount) document.querySelector('[name="rcvAmount"]').value = currentClaim.rcv_amount;
+              } else if (jobType === 'retail') {
+                if (currentClaim.roof_squares) document.querySelector('[name="roofSquares"]').value = currentClaim.roof_squares;
+              }
+            }
+            // Pre-populate urgency
+            const urgencySel = document.querySelector('[name="urgency"]');
+            if (urgencySel && currentClaim.urgency) {
+              urgencySel.value = currentClaim.urgency;
+              if (currentClaim.urgency === 'asap') {
+                document.getElementById('urgencyDetails').style.display = 'block';
+                if (currentClaim.urgency_deadline) document.querySelector('[name="urgencyDeadline"]').value = currentClaim.urgency_deadline;
+                if (currentClaim.urgency_reason) document.querySelector('[name="urgencyReason"]').value = currentClaim.urgency_reason;
+              }
+            }
+            // Pre-populate homeowner notes
+            const notesField = document.querySelector('[name="homeownerNotes"]');
+            if (notesField) {
+              notesField.value = currentClaim.homeowner_notes || '';
+              notesField.nextElementSibling.textContent = (currentClaim.homeowner_notes || '').length + ' / 500';
+            }
+          }
         });
 
         // Save claim changes
@@ -1424,6 +1466,62 @@
             }
           }
 
+          // ── Collect fields from job-type-section (outside the <form> element) ──
+          // Job type buttons
+          const selectedType = window.selectedJobType
+            || document.querySelector('.job-type-btn.selected')?.dataset?.type;
+          if (selectedType) {
+            updates.job_type = selectedType;
+            if (selectedType === 'insurance_rcv') {
+              updates.funding_type = 'insurance';
+              updates.policy_type = 'rcv';
+            } else if (selectedType === 'insurance_acv') {
+              updates.funding_type = 'insurance';
+              updates.policy_type = 'acv';
+            } else if (selectedType === 'retail') {
+              updates.funding_type = 'cash';
+              updates.policy_type = null;
+            } else if (selectedType === 'repair') {
+              updates.funding_type = 'cash';
+              updates.policy_type = null;
+            }
+            // Conditional fields per job type
+            if (selectedType === 'repair') {
+              const repairSq = document.querySelector('[name="repairSquares"]')?.value;
+              const totalSq  = document.querySelector('[name="totalRoofSquares"]')?.value;
+              const brand    = document.querySelector('[name="existingShingleBrand"]')?.value;
+              const product  = document.querySelector('[name="existingShingleProduct"]')?.value;
+              const color    = document.querySelector('[name="existingShingleColor"]')?.value;
+              if (repairSq) updates.repair_squares = parseFloat(repairSq);
+              if (totalSq)  updates.roof_squares   = parseFloat(totalSq);
+              if (brand)    updates.existing_shingle_brand   = brand;
+              if (product)  updates.existing_shingle_product = product;
+              if (color)    updates.existing_shingle_color   = color;
+            } else if (selectedType === 'insurance_acv') {
+              const acv = document.querySelector('[name="acvAmount"]')?.value;
+              const rcv = document.querySelector('[name="rcvAmount"]')?.value;
+              if (acv) updates.acv_amount = parseFloat(acv);
+              if (rcv) updates.rcv_amount = parseFloat(rcv);
+            } else if (selectedType === 'retail') {
+              const roofSq = document.querySelector('[name="roofSquares"]')?.value;
+              if (roofSq) updates.roof_squares = parseFloat(roofSq);
+            }
+          }
+          // Urgency
+          const urgencyVal = document.querySelector('[name="urgency"]')?.value;
+          if (urgencyVal) {
+            updates.urgency = urgencyVal;
+            if (urgencyVal === 'asap') {
+              const deadline = document.querySelector('[name="urgencyDeadline"]')?.value;
+              const reason   = document.querySelector('[name="urgencyReason"]')?.value;
+              if (deadline) updates.urgency_deadline = deadline;
+              if (reason)   updates.urgency_reason   = reason;
+            }
+          }
+          // Homeowner notes (allow clearing — include even if empty)
+          const notesField = document.querySelector('[name="homeownerNotes"]');
+          if (notesField) updates.homeowner_notes = notesField.value || null;
+
           if (CONFIG.DEMO_MODE) {
             // Demo mode: update local object only
             Object.assign(currentClaim, updates);
@@ -1469,12 +1567,14 @@
 
           // Close edit mode
           isEditingClaim = false;
+          window.selectedJobType = null;
           document.getElementById('claim-display').style.display = 'grid';
           document.getElementById('claim-edit-form').style.display = 'none';
+          document.getElementById('job-type-section').style.display = 'none';
           document.getElementById('claim-form-actions').style.display = 'none';
           document.getElementById('toggle-claim-edit').textContent = 'Edit';
 
-          showSuccess('Claim information updated.');
+          showSuccess('Project information updated.');
         } catch (err) {
           console.error('Save error:', err);
           showError('Failed to save changes. Please try again.');
@@ -1490,6 +1590,12 @@
 
       async function uploadFile(file, type) {
         if (!currentClaim) return;
+
+        // Guard: claim must have a DB-backed ID before we can persist anything
+        if (!CONFIG.DEMO_MODE && !currentClaim.id) {
+          showError('Your project record is not ready. Please refresh the page and try again.');
+          return;
+        }
 
         // In DEMO_MODE, currentUser may be null, but we allow uploads for demo purposes
         if (!CONFIG.DEMO_MODE && (!sb || !currentUser)) return;

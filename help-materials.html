@@ -1351,13 +1351,25 @@
                     updateData.metal_material = state.metalMaterial;
                 }
 
+                // Fetch the most recent claim ID for this user, then update by ID.
+                // (PostgREST PATCH does not support ORDER BY / LIMIT — must use a subquery approach.)
+                const { data: claimRow, error: claimFetchErr } = await sb
+                    .from('claims')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                if (claimFetchErr || !claimRow) {
+                    throw claimFetchErr || new Error('Could not find your project record. Please return to the dashboard and try again.');
+                }
+
                 // Save to database
                 const { error } = await sb
                     .from('claims')
                     .update(updateData)
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false })
-                    .limit(1);
+                    .eq('id', claimRow.id);
 
                 if (error) throw error;
 
