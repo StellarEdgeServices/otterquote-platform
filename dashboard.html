@@ -1428,6 +1428,9 @@
             if (textEl) textEl.textContent = Math.round(progress);
           }, 200);
 
+          // Track the storage path so we can trigger parsing after upload
+          let uploadedStoragePath = null;
+
           // Upload to Supabase Storage (or skip in DEMO_MODE)
           if (!CONFIG.DEMO_MODE && sb && currentUser) {
             const filename = `${currentUser.id}/${currentClaim.id}/${Date.now()}-${file.name}`;
@@ -1436,6 +1439,7 @@
               .upload(filename, file, { upsert: true });
 
             if (uploadError) throw uploadError;
+            uploadedStoragePath = filename;
           }
 
           clearInterval(progressInterval);
@@ -1483,6 +1487,31 @@
             upload_type: type,
             file_size: file.size,
           });
+
+          // ── Background loss sheet parsing ──────────────────────────────
+          // Fire-and-forget: parse the estimate PDF in the background after upload.
+          // Only runs for PDF estimate uploads in live mode. Does not block the UI.
+          if (type === 'estimate' && !CONFIG.DEMO_MODE && uploadedStoragePath && file.type === 'application/pdf') {
+            (async () => {
+              try {
+                console.log('[dashboard] Triggering background loss sheet parse for claim:', currentClaim.id);
+                const parseResult = await sb.functions.invoke('parse-loss-sheet', {
+                  body: {
+                    claim_id: currentClaim.id,
+                    storage_path: uploadedStoragePath,
+                  },
+                });
+                if (parseResult.error) {
+                  console.warn('[dashboard] Loss sheet parse returned error:', parseResult.error);
+                } else {
+                  console.log('[dashboard] Loss sheet parsed successfully:', parseResult.data);
+                }
+              } catch (parseErr) {
+                // Non-fatal — homeowner UX is unaffected
+                console.warn('[dashboard] Loss sheet parse call failed (non-fatal):', parseErr);
+              }
+            })();
+          }
         } catch (err) {
           console.error('Upload error:', err);
           showError('Upload failed. Please try again.');
