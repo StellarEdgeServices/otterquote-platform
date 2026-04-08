@@ -21,14 +21,18 @@ window.Auth = {
   /**
    * Send magic link email with role-aware redirect.
    * @param {string} email
-   * @param {string} role - 'homeowner' (default) or 'contractor'
+   * @param {string} role - 'homeowner' (default), 'contractor', 're_agent',
+   *                        'insurance_agent', or 'home_inspector'
    */
   async sendMagicLink(email, role = 'homeowner') {
     if (!sb) throw new Error('Supabase not initialized');
     // Redirect URL depends on role — auth callback page handles final routing
+    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector'];
     const redirectPage = role === 'contractor'
       ? '/contractor-dashboard.html'
-      : '/trade-selector.html';
+      : partnerRoles.includes(role)
+        ? '/partner-dashboard.html'
+        : '/trade-selector.html';
     const { error } = await sb.auth.signInWithOtp({
       email,
       options: {
@@ -170,6 +174,29 @@ window.Auth = {
 
     const role = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role') || 'homeowner';
 
+    // Handle partner (referral agent) signup data
+    // After clicking magic link, link the referral_agents record to this auth user.
+    const partnerSignupRaw = localStorage.getItem('cs_partner_signup') || sessionStorage.getItem('cs_partner_signup');
+    if (partnerSignupRaw && sb) {
+      try {
+        const partnerData = JSON.parse(partnerSignupRaw);
+        // Update the referral_agents record (user_id IS NULL, email matches) with this user's id
+        // The RLS policy "Authenticated can claim unclaimed partner record" allows this.
+        const { error: linkError } = await sb
+          .from('referral_agents')
+          .update({ user_id: user.id })
+          .eq('email', partnerData.email)
+          .is('user_id', null);
+        if (linkError) {
+          console.error('Error linking partner user_id:', linkError);
+        }
+        localStorage.removeItem('cs_partner_signup');
+        sessionStorage.removeItem('cs_partner_signup');
+      } catch (err) {
+        console.error('Error handling partner signup callback:', err);
+      }
+    }
+
     // Handle homeowner signup data (check localStorage first, fall back to sessionStorage)
     const signupData = localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup');
     if (signupData) {
@@ -280,6 +307,22 @@ window.Auth = {
         sessionStorage.removeItem('cs_contractor_signup');
       } catch (err) {
         console.error('Error creating contractor profile:', err);
+      }
+    }
+
+    // Advance referral status to 'registered' if homeowner arrived via referral link
+    const referralId = localStorage.getItem('oq_referral_id') || sessionStorage.getItem('oq_referral_id');
+    if (referralId && sb) {
+      try {
+        await sb
+          .from('referrals')
+          .update({ status: 'registered', homeowner_email: user.email })
+          .eq('id', referralId)
+          .eq('status', 'clicked');
+        localStorage.removeItem('oq_referral_id');
+        sessionStorage.removeItem('oq_referral_id');
+      } catch (err) {
+        console.error('Error advancing referral status:', err);
       }
     }
 

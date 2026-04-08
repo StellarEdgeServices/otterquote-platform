@@ -918,6 +918,9 @@ Let me know if you have any questions!
 
         // Initialize
         async function init() {
+            // Handle post-magic-link auth callback (links user_id to referral_agents record)
+            if (Auth.onAuthStateChangeListener) Auth.onAuthStateChangeListener();
+
             currentUser = await Auth.requireAuth();
 
             if (!currentUser && !CONFIG.DEMO_MODE) {
@@ -927,19 +930,37 @@ Let me know if you have any questions!
             // Load partner profile
             if (currentUser && !CONFIG.DEMO_MODE && sb) {
                 try {
-                    const { data: partner } = await sb
+                    const { data: partner, error: partnerError } = await sb
                         .from('referral_agents')
                         .select('*')
                         .eq('user_id', currentUser.id)
                         .single();
 
-                    if (!partner) {
-                        // No partner record found - redirect to appropriate signup
-                        window.location.href = '/partner-signup.html';
-                        return;
+                    if (partnerError || !partner) {
+                        // user_id not linked yet — try looking up by email (just clicked magic link)
+                        const { data: partnerByEmail } = await sb
+                            .from('referral_agents')
+                            .select('*')
+                            .eq('email', currentUser.email)
+                            .is('user_id', null)
+                            .single();
+
+                        if (partnerByEmail) {
+                            // Link the record now
+                            await sb
+                                .from('referral_agents')
+                                .update({ user_id: currentUser.id })
+                                .eq('id', partnerByEmail.id);
+                            currentPartner = { ...partnerByEmail, user_id: currentUser.id };
+                        } else {
+                            // No partner record at all — redirect to signup chooser
+                            window.location.href = '/partner-re.html';
+                            return;
+                        }
+                    } else {
+                        currentPartner = partner;
                     }
 
-                    currentPartner = partner;
                     updateUI();
                     await loadReferrals();
                     await loadStats();
@@ -957,31 +978,30 @@ Let me know if you have any questions!
         function updateUI() {
             if (!currentPartner) return;
 
-            // Update welcome text
-            const agentName = currentPartner.name || 'Agent';
+            // Update welcome text (schema uses first_name + last_name)
+            const agentName = [currentPartner.first_name, currentPartner.last_name].filter(Boolean).join(' ') || 'Agent';
             document.getElementById('welcomeText').textContent = `Welcome back, ${agentName}`;
 
-            // Update partner badge
-            const partnerType = currentPartner.partner_type || 're_agent';
+            // Update partner badge (schema column: agent_type)
+            const partnerType = currentPartner.agent_type || 're_agent';
             const badgeText = {
                 're_agent': 'RE Agent',
                 'insurance_agent': 'Insurance Agent',
-                'home_inspector': 'Home Inspector'
+                'home_inspector': 'Home Inspector',
+                'customer': 'Partner'
             }[partnerType] || 'Partner';
             document.getElementById('partnerBadge').textContent = badgeText;
 
-            // Update referral link
-            const referralLink = currentPartner.referral_code
-                ? `https://otterquote.com/r/${currentPartner.referral_code}`
-                : `https://otterquote.com/r/${currentPartner.id}`;
+            // Update referral link (schema column: unique_code)
+            const uniqueCode = currentPartner.unique_code || currentPartner.id;
+            const referralLink = `https://otterquote.com/ref.html?code=${uniqueCode}`;
             document.getElementById('referralLink').textContent = referralLink;
 
             // Update landing page URL
-            document.getElementById('landingPageUrl').textContent =
-                `https://otterquote.com/partner/${currentPartner.referral_code || currentPartner.id}`;
+            document.getElementById('landingPageUrl').textContent = referralLink;
 
-            // Populate profile form
-            document.getElementById('profileName').value = currentPartner.name || '';
+            // Populate profile form (combined name field — split for display)
+            document.getElementById('profileName').value = agentName;
             document.getElementById('profileEmail').value = currentPartner.email || '';
             document.getElementById('profilePhone').value = currentPartner.phone || '';
             document.getElementById('profileCompany').value = currentPartner.company || '';
@@ -994,10 +1014,11 @@ Let me know if you have any questions!
             if (!currentPartner || !sb) return;
 
             try {
+                // referral_agent_id is the FK column name in the referrals table
                 const { data: referrals } = await sb
                     .from('referrals')
                     .select('*')
-                    .eq('agent_id', currentPartner.id)
+                    .eq('referral_agent_id', currentPartner.id)
                     .order('created_at', { ascending: false });
 
                 if (referrals) {
@@ -1014,23 +1035,34 @@ Let me know if you have any questions!
             if (!currentPartner || !sb) return;
 
             try {
+                // Use totals from the agent record itself (maintained by DB trigger)
+                // and also pull live referral counts for active/completed breakdown
                 const { data: referrals } = await sb
                     .from('referrals')
-                    .select('status, job_value, commission_earned')
-                    .eq('agent_id', currentPartner.id);
+                    .select('status, job_value, commission_amount')
+                    .eq('referral_agent_id', currentPartner.id);
 
                 if (referrals) {
-                    const total = referrals.length;
-                    const active = referrals.filter(r => ['registered', 'submitted', 'in_progress'].includes(r.status)).length;
-                    const completed = referrals.filter(r => r.status === 'completed').length;
-                    const earned = referrals
-                        .filter(r => r.status === 'paid')
-                        .reduce((sum, r) => sum + (r.commission_earned || 0), 0);
+                    const total = currentPartner.total_referrals || referrals.length;
+
+                    // Active = registered through contract_signed (not yet completed)
+                    const activeStatuses = ['registered', 'claim_submitted', 'bid_received', 'contract_signed'];
+                    const active = referrals.filter(r => activeStatuses.includes(r.status)).length;
+
+                    // Completed = job_completed or commission_paid
+                    const completed = referrals.filter(r =>
+                        ['job_completed', 'commission_paid'].includes(r.status)
+                    ).length;
+
+                    // Earned = sum of commission_amount on paid referrals
+                    const earned = currentPartner.total_commission_earned || referrals
+                        .filter(r => r.status === 'commission_paid')
+                        .reduce((sum, r) => sum + (r.commission_amount || 0), 0);
 
                     document.getElementById('totalReferrals').textContent = total;
                     document.getElementById('activeReferrals').textContent = active;
                     document.getElementById('completedJobs').textContent = completed;
-                    document.getElementById('totalEarned').textContent = `$${earned.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+                    document.getElementById('totalEarned').textContent = `$${Number(earned).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
 
                     document.getElementById('totalReferralsSubtext').textContent =
                         total === 1 ? '1 referral' : `${total} referrals`;
@@ -1101,26 +1133,41 @@ Let me know if you have any questions!
             emptyState.style.display = 'none';
 
             tbody.innerHTML = allReferrals.map(ref => {
+                // Map actual DB status values (v7 schema) to human-readable labels
                 const statusLabels = {
-                    'clicked': 'Clicked',
-                    'registered': 'Registered',
-                    'submitted': 'Submitted',
-                    'in_progress': 'In Progress',
-                    'completed': 'Completed',
-                    'paid': 'Paid'
+                    'clicked':          'Clicked',
+                    'registered':       'Registered',
+                    'claim_submitted':  'Submitted',
+                    'bid_received':     'Bid Received',
+                    'contract_signed':  'Contract Signed',
+                    'job_completed':    'Completed',
+                    'commission_paid':  'Paid'
                 };
+
+                // CSS status class mapping
+                const statusClass = {
+                    'clicked':          'status-clicked',
+                    'registered':       'status-registered',
+                    'claim_submitted':  'status-submitted',
+                    'bid_received':     'status-in-progress',
+                    'contract_signed':  'status-in-progress',
+                    'job_completed':    'status-completed',
+                    'commission_paid':  'status-paid'
+                }[ref.status] || 'status-clicked';
 
                 const dateObj = new Date(ref.created_at);
                 const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-                const jobValue = ref.job_value ? `$${ref.job_value.toLocaleString()}` : '—';
-                const commission = ref.commission_earned ? `$${ref.commission_earned.toLocaleString()}` : '—';
+                // Schema uses homeowner_name and commission_amount
+                const clientName = ref.homeowner_name || ref.homeowner_email || 'Visitor';
+                const jobValue = ref.job_value ? `$${Number(ref.job_value).toLocaleString()}` : '—';
+                const commission = ref.commission_amount ? `$${Number(ref.commission_amount).toLocaleString()}` : '—';
 
                 return `
                     <tr>
-                        <td>${ref.client_name || 'Unknown'}</td>
+                        <td>${clientName}</td>
                         <td>${dateStr}</td>
-                        <td><span class="status-badge status-${ref.status}">${statusLabels[ref.status] || ref.status}</span></td>
+                        <td><span class="status-badge ${statusClass}">${statusLabels[ref.status] || ref.status}</span></td>
                         <td>${jobValue}</td>
                         <td>${commission}</td>
                     </tr>
@@ -1280,7 +1327,7 @@ Let me know if you have any questions!`;
         document.getElementById('downloadPdfBtn').addEventListener('click', (e) => {
             if (!currentPartner) return;
 
-            const partnerType = currentPartner.partner_type || 're_agent';
+            const partnerType = currentPartner.agent_type || 're_agent';
             const pdfPath = {
                 're_agent': '/assets/partner-onepager-re.pdf',
                 'insurance_agent': '/assets/partner-onepager-insurance.pdf',
@@ -1310,20 +1357,26 @@ Let me know if you have any questions!`;
         document.getElementById('profileForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            if (!currentPartner || !sb) {
+                alert('Unable to save profile in demo mode');
+                return;
+            }
+
+            // The form has a single "Name" field. Split on first space to get first/last.
+            const fullName = (document.getElementById('profileName').value || '').trim();
+            const nameParts = fullName.split(/\s+/);
+            const firstName = nameParts[0] || '';
+            const lastName = nameParts.slice(1).join(' ') || '';
+
             const updates = {
-                name: document.getElementById('profileName').value,
-                email: document.getElementById('profileEmail').value,
+                first_name: firstName,
+                last_name: lastName,
                 phone: document.getElementById('profilePhone').value,
                 company: document.getElementById('profileCompany').value,
                 service_area: document.getElementById('profileServiceArea').value,
                 website: document.getElementById('profileWebsite').value,
                 bio: document.getElementById('profileBio').value
             };
-
-            if (!currentPartner || !sb) {
-                alert('Unable to save profile in demo mode');
-                return;
-            }
 
             try {
                 const { error } = await sb

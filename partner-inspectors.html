@@ -904,29 +904,44 @@ async function handleSignup(e) {
   try {
     const uniqueCode = generateRefCode(firstName, lastName);
 
+    // RLS: "Public can register as partner" allows anon insert where user_id IS NULL
     const { data, error } = await sb
       .from('referral_agents')
       .insert({
-        agent_type:       'home_inspector',
-        first_name:       firstName,
-        last_name:        lastName,
+        agent_type:  'home_inspector',
+        first_name:  firstName,
+        last_name:   lastName,
         email,
         phone,
-        company_name:     company,
-        certification:    certification || null,
-        unique_code:      uniqueCode,
-        commission_earned: 0,
-        commission_paid:   0,
-        created_at:       new Date().toISOString(),
+        company:     company,         // schema column is 'company' (not 'company_name')
+        unique_code: uniqueCode,
+        metadata:    { certification: certification || null },
+        // user_id intentionally NULL — linked post-magic-link in auth.js
+        // commission totals maintained by DB trigger — do NOT set manually
       })
-      .select()
+      .select('id, unique_code')
       .single();
 
     if (error) throw new Error(error.message);
 
-    // Build the referral link and toolkit content
-    const refLink = `${CONFIG.SITE_URL}/ref-inspector.html?ref=${uniqueCode}`;
+    // Use DB-returned unique_code (trigger may have changed it if there was a collision)
+    const finalCode = data?.unique_code || uniqueCode;
+
+    // Use ref.html?code= URL pattern (consistent with the rest of the system)
+    const refLink = `${CONFIG.SITE_URL}/ref.html?code=${finalCode}`;
     const fullName = `${firstName} ${lastName}`;
+
+    // Store data for post-auth user_id linking
+    localStorage.setItem('cs_partner_signup', JSON.stringify({
+      email: email,
+      unique_code: finalCode,
+    }));
+    localStorage.setItem('cs_auth_role', 'home_inspector');
+
+    // Send magic link so partner can access their dashboard
+    if (window.Auth) {
+      await Auth.sendMagicLink(email, 'home_inspector');
+    }
 
     // Show toolkit, hide form
     document.getElementById('partnerForm').style.display = 'none';

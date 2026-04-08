@@ -89,7 +89,7 @@
         <div id="loading-state">
             <div class="logo">OQ</div>
             <div class="spinner"></div>
-            <p class="message">Redirecting you...</p>
+            <p class="message">Setting up your referral...</p>
         </div>
 
         <div id="error-state" class="hidden error-message">
@@ -99,50 +99,93 @@
         </div>
     </div>
 
+    <!-- Supabase UMD (must come before config.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="js/config.js"></script>
+
     <script>
+        /**
+         * ref.html — Referral Router & Click Tracker
+         *
+         * Flow:
+         *  1. Read ?code= from URL
+         *  2. Look up agent in referral_agents by unique_code
+         *  3. Insert a 'clicked' record in the referrals table
+         *  4. Store referral_agent_id + referral_id in sessionStorage so they
+         *     can be attached to the homeowner's claim after registration
+         *  5. Redirect to the appropriate co-branded landing page
+         */
         async function handleReferral() {
             try {
-                // Get the referral code from URL parameters
+                // 1. Get code from URL
                 const params = new URLSearchParams(window.location.search);
                 const code = params.get('code');
 
-                // If no code provided, redirect to main page
                 if (!code) {
+                    // No code — send to homepage
                     window.location.href = '/index.html';
                     return;
                 }
 
-                // Initialize Supabase client
-                const { createClient } = window.supabase;
-                const supabaseUrl = window.SUPABASE_URL;
-                const supabaseKey = window.SUPABASE_ANON_KEY;
-
-                if (!supabaseUrl || !supabaseKey) {
-                    console.error('Supabase configuration missing');
+                // 2. Make sure global Supabase client is ready
+                if (!sb) {
+                    console.error('Supabase client not initialized');
                     showError();
                     return;
                 }
 
-                const supabase = createClient(supabaseUrl, supabaseKey);
-
-                // Query the referral_agents table
-                const { data, error } = await supabase
+                // 3. Look up the agent by unique_code (public read policy allows this)
+                const { data: agent, error: agentError } = await sb
                     .from('referral_agents')
-                    .select('agent_type')
-                    .eq('code', code)
+                    .select('id, agent_type, first_name, last_name, company, photo_url, status')
+                    .eq('unique_code', code)
+                    .eq('status', 'active')
                     .single();
 
-                if (error || !data) {
-                    console.error('Referral code not found:', error);
+                if (agentError || !agent) {
+                    console.error('Referral code not found:', agentError);
                     showError();
                     return;
                 }
 
-                // Determine redirect URL based on agent type
-                let redirectUrl = '/ref-re.html';
+                // 4. Insert a 'clicked' referral record
+                //    (public INSERT policy is in place via v16 migration)
+                const { data: referralRow, error: insertError } = await sb
+                    .from('referrals')
+                    .insert({
+                        referral_agent_id: agent.id,
+                        status: 'clicked',
+                        landing_page: window.location.href,
+                        utm_source: params.get('utm_source') || null,
+                        utm_medium: params.get('utm_medium') || null,
+                        utm_campaign: params.get('utm_campaign') || null,
+                    })
+                    .select('id')
+                    .single();
 
-                switch (data.agent_type) {
+                if (insertError) {
+                    // Non-fatal: click tracking failure shouldn't block the user
+                    console.warn('Click tracking insert failed:', insertError);
+                } else if (referralRow) {
+                    // 5a. Store referral IDs so get-started.html can attach them
+                    sessionStorage.setItem('oq_referral_agent_id', agent.id);
+                    sessionStorage.setItem('oq_referral_id', referralRow.id);
+                    sessionStorage.setItem('oq_referral_code', code);
+                    // Also persist to localStorage so it survives magic-link redirect
+                    localStorage.setItem('oq_referral_id', referralRow.id);
+                }
+
+                // 5b. Store agent display info for personalization on landing pages
+                sessionStorage.setItem('oq_referral_agent', JSON.stringify({
+                    name: `${agent.first_name} ${agent.last_name}`.trim(),
+                    company: agent.company || '',
+                    photo_url: agent.photo_url || '',
+                    agent_type: agent.agent_type,
+                }));
+
+                // 6. Redirect to co-branded landing page
+                let redirectUrl = '/ref-re.html';
+                switch (agent.agent_type) {
                     case 're_agent':
                         redirectUrl = '/ref-re.html';
                         break;
@@ -150,7 +193,7 @@
                         redirectUrl = '/ref-insurance.html';
                         break;
                     case 'home_inspector':
-                        redirectUrl = '/ref-re.html';
+                        redirectUrl = '/ref-inspector.html';
                         break;
                     case 'customer':
                         redirectUrl = '/ref-re.html';
@@ -159,8 +202,7 @@
                         redirectUrl = '/ref-re.html';
                 }
 
-                // Redirect to the appropriate page with the referral code
-                window.location.href = `${redirectUrl}?ref=${encodeURIComponent(code)}`;
+                window.location.href = `${redirectUrl}?code=${encodeURIComponent(code)}`;
 
             } catch (err) {
                 console.error('Referral router error:', err);
@@ -173,20 +215,8 @@
             document.getElementById('error-state').classList.remove('hidden');
         }
 
-        // Load Supabase and start the referral process
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.0/dist/module.js';
-        script.type = 'module';
-        script.onload = () => {
-            import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.43.0/dist/module.js').then(() => {
-                handleReferral();
-            });
-        };
-        script.onerror = () => {
-            console.error('Failed to load Supabase library');
-            showError();
-        };
-        document.head.appendChild(script);
+        // Run on load — sb is initialized by config.js above
+        document.addEventListener('DOMContentLoaded', handleReferral);
     </script>
 </body>
 </html>

@@ -457,17 +457,26 @@
 
       // Profile error is non-fatal (lead capture is best-effort)
 
-      // 2. Store profile data in sessionStorage for post-auth profile creation
+      // 2. Store profile data for post-auth profile creation
+      // Also carry any referral tracking so auth.js can advance the referral status.
+      const storedReferralId = sessionStorage.getItem('oq_referral_id') || localStorage.getItem('oq_referral_id') || null;
+      const storedReferralAgentId = sessionStorage.getItem('oq_referral_agent_id') || null;
+
       localStorage.setItem('cs_signup', JSON.stringify({
         first_name: firstName,
         last_name: lastName,
         phone,
         address,
-        referral_source: referralSource || 'web',
+        referral_source: referralSource || (storedReferralAgentId ? 'partner_link' : 'web'),
         referring_agent_name: refName || null,
         referring_agent_email: refEmail || null,
         role: 'homeowner',
       }));
+
+      // Persist referral_id to localStorage so auth.js can advance status after magic-link click
+      if (storedReferralId) {
+        localStorage.setItem('oq_referral_id', storedReferralId);
+      }
 
       // Store the intended role for post-auth routing
       localStorage.setItem('cs_auth_role', 'homeowner');

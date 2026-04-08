@@ -1213,45 +1213,44 @@
         });
 
       // Insert into referral_agents table
+      // RLS: "Public can register as partner" policy allows anon insert where user_id IS NULL
       const { data: agentData, error: agentError } = await sb
         .from('referral_agents')
         .insert({
-          first_name: firstName,
-          last_name: lastName,
-          email: email,
-          phone: phone,
-          brokerage: brokerage,
+          agent_type:   're_agent',
+          first_name:   firstName,
+          last_name:    lastName,
+          email:        email,
+          phone:        phone,
+          company:      brokerage,     // schema column is 'company', not 'brokerage'
           service_area: serviceArea,
-          website: website || null,
-          headshot_url: headshot_url,
-          referral_code: refCode,
-          agent_type: 're_agent',
-          created_at: new Date().toISOString(),
-        });
+          website:      website || null,
+          photo_url:    headshot_url || null,  // schema column is 'photo_url'
+          unique_code:  refCode,       // pre-generated; trigger only fires when null
+          // user_id intentionally NULL — linked after magic-link click by auth.js
+        })
+        .select('id, unique_code')
+        .single();
 
       if (agentError) throw agentError;
 
-      // Store profile data in sessionStorage for post-auth
-      sessionStorage.setItem('cs_signup', JSON.stringify({
-        first_name: firstName,
-        last_name: lastName,
+      // Use the DB-returned unique_code (may differ if trigger ran)
+      const finalCode = agentData?.unique_code || refCode;
+      const finalLink = `https://otterquote.com/ref.html?code=${finalCode}`;
+
+      // Store minimal data for post-auth linking (auth.js handleAuthCallback reads this)
+      localStorage.setItem('cs_partner_signup', JSON.stringify({
         email: email,
-        phone: phone,
-        brokerage: brokerage,
-        service_area: serviceArea,
-        website: website || null,
-        referral_code: refCode,
-        role: 're_agent',
+        unique_code: finalCode,
       }));
+      localStorage.setItem('cs_auth_role', 're_agent');
 
-      sessionStorage.setItem('cs_auth_role', 're_agent');
-
-      // Send magic link
+      // Send magic link → redirects to partner-dashboard.html
       await Auth.sendMagicLink(email, 're_agent');
 
-      // Show success state
+      // Show success state with real referral link
       form.classList.add('hidden');
-      referralCode.textContent = `otterquote.com/ref/${refCode}`;
+      referralCode.textContent = finalLink;
       successMsg.classList.add('active');
 
       // GA4 event
