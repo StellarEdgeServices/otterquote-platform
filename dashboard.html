@@ -1344,6 +1344,30 @@
 
             if (error) throw error;
             currentClaim = data;
+
+            // ── Adjuster Knowledge Base: upsert adjuster record (D-046) ──
+            // Non-critical: fire and forget — a failure here must not block the save
+            const adjName  = updates.adjuster_name  || currentClaim.adjuster_name;
+            const adjEmail = updates.adjuster_email || currentClaim.adjuster_email;
+            const adjPhone = updates.adjuster_phone || currentClaim.adjuster_phone;
+            const adjCarrierId = updates.carrier_id || currentClaim.carrier_id || null;
+            if (adjName) {
+              try {
+                const { data: adjData } = await sb.rpc('upsert_adjuster_from_claim', {
+                  p_adjuster_name:  adjName,
+                  p_adjuster_email: adjEmail || null,
+                  p_adjuster_phone: adjPhone || null,
+                  p_carrier_id:     adjCarrierId,
+                });
+                if (adjData) {
+                  // Link adjuster_id back to the claim (silent update)
+                  await sb.from('claims').update({ adjuster_id: adjData }).eq('id', currentClaim.id);
+                  currentClaim.adjuster_id = adjData;
+                }
+              } catch (adjErr) {
+                console.warn('Adjuster KB upsert failed (non-critical):', adjErr);
+              }
+            }
           }
 
           renderClaimInfo();

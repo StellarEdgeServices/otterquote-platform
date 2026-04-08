@@ -717,6 +717,41 @@
     </div>
 
     <!-- ═══════════════════════════════════════ -->
+    <!-- Repair Work Opt-In                      -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card">
+      <div class="settings-card-title">Repair Work</div>
+      <p style="color:var(--slate); margin-bottom:var(--sp-6); font-size:0.95rem;">
+        Repair jobs are smaller in scope than full replacements. They require shingle matching and on-site diagnostics. Opt in only if your crew is comfortable with repairs.
+      </p>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:var(--sp-4) var(--sp-6); background:rgba(255,255,255,0.04); border-radius:var(--radius-md); border:1px solid rgba(255,255,255,0.08);">
+        <div>
+          <div style="font-weight:600; color:var(--white);">Accept Repair Opportunities</div>
+          <div style="font-size:0.85rem; color:var(--slate); margin-top:0.25rem;">Appear in repair results and receive notifications for repair jobs in your service area</div>
+        </div>
+        <label style="display:flex; align-items:center; gap:var(--sp-3); cursor:pointer;">
+          <input type="checkbox" id="repairsToggle" style="width:1.1rem; height:1.1rem; accent-color:var(--amber);">
+          <span class="autobid-status inactive" id="repairsStatusBadge">OFF</span>
+        </label>
+      </div>
+
+      <div id="repairsDetails" class="hidden" style="margin-top:var(--sp-6); padding:var(--sp-6); background:rgba(245,158,11,0.06); border:1px solid rgba(245,158,11,0.2); border-radius:var(--radius-md);">
+        <p style="font-size:0.9rem; color:rgba(255,255,255,0.8); margin-bottom:var(--sp-4);">
+          <strong>Show-Up Guarantee Agreement</strong>
+        </p>
+        <p style="font-size:0.85rem; color:var(--slate); margin-bottom:var(--sp-4); line-height:1.6;">
+          By accepting repair work, you agree to the OtterQuote show-up guarantee: if you schedule a repair diagnostic visit and fail to appear without 24 hours notice, <strong>OtterQuote will pay the homeowner $100 and charge your account $250.</strong>
+        </p>
+        <label style="display:flex; align-items:flex-start; gap:var(--sp-3); cursor:pointer;">
+          <input type="checkbox" id="guaranteeCheck" style="width:1rem; height:1rem; margin-top:3px; accent-color:var(--amber); flex-shrink:0;">
+          <span style="font-size:0.85rem; color:rgba(255,255,255,0.8);">
+            I agree to the show-up guarantee terms. If I no-show a scheduled repair visit, I authorize OtterQuote to charge $250 to my payment method and disburse $100 to the homeowner.
+          </span>
+        </label>
+      </div>
+    </div>
+
     <!-- Notification Preferences                -->
     <!-- ═══════════════════════════════════════ -->
     <div class="settings-card">
@@ -848,6 +883,25 @@
 
     autoBidToggle.addEventListener('change', updateAutoBidUI);
 
+    // ── Repairs toggle ─────────────────────────────────────────────
+    const repairsToggle = document.getElementById('repairsToggle');
+    const repairsStatusBadge = document.getElementById('repairsStatusBadge');
+    const repairsDetails = document.getElementById('repairsDetails');
+
+    function updateRepairsUI() {
+      if (repairsToggle.checked) {
+        repairsDetails.classList.remove('hidden');
+        repairsStatusBadge.textContent = 'ON';
+        repairsStatusBadge.className = 'autobid-status active';
+      } else {
+        repairsDetails.classList.add('hidden');
+        repairsStatusBadge.textContent = 'OFF';
+        repairsStatusBadge.className = 'autobid-status inactive';
+      }
+    }
+
+    repairsToggle.addEventListener('change', updateRepairsUI);
+
     // ── Initialize: Load settings from Supabase ──
     async function initSettings() {
       currentUser = await Auth.requireAuth('contractor');
@@ -869,6 +923,15 @@
             autoBidToggle.checked = data.auto_bid_enabled;
           }
           updateAutoBidUI();
+
+          // Populate repairs toggle
+          if (data.repairs_accepted) {
+            repairsToggle.checked = true;
+          }
+          if (data.guarantee_accepted) {
+            document.getElementById('guaranteeCheck').checked = true;
+          }
+          updateRepairsUI();
 
           // Populate notification emails
           const emails = data.notification_emails || [data.email];
@@ -950,6 +1013,8 @@
       // Collect settings
       const settings = {
         auto_bid_enabled: autoBidToggle.checked,
+        repairs_accepted: repairsToggle.checked,
+        guarantee_accepted: repairsToggle.checked && document.getElementById('guaranteeCheck').checked,
         auto_bid_settings: {
           funding_type: 'insurance',
           scope: 'full_replacement',

@@ -435,6 +435,10 @@
       contractorId: null,
       brand: null,
       contractorName: null,
+      contractorPhone: null,
+      contractorEmail: null,
+      signerName: null,
+      signerEmail: null,
       userId: null,
 
       /**
@@ -507,13 +511,25 @@
        */
       async loadClaimData() {
         try {
+          // Also fetch homeowner profile for DocuSign signer info
+          const { data: profile } = await sb
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', this.userId)
+            .single();
+
+          if (profile) {
+            this.signerName = profile.full_name || 'Homeowner';
+            this.signerEmail = profile.email || '';
+          }
+
           const { data, error } = await sb
             .from('claims')
             .select(`
               id,
               homeowner_id,
               selected_contractor_id,
-              contractor:contractors(id, name, preferred_brand),
+              contractor:contractors(id, name, preferred_brand, phone, notification_phones, email),
               color_brand,
               color_name,
               color_selected_at
@@ -532,6 +548,10 @@
           this.contractorId = data.selected_contractor_id;
           this.contractorName = data.contractor?.name || 'Your Contractor';
           this.brand = data.contractor?.preferred_brand || 'Owens Corning';
+          // Primary contact phone: first notification_phone or fallback to phone
+          const phones = data.contractor?.notification_phones;
+          this.contractorPhone = (phones && phones.length > 0) ? phones[0] : (data.contractor?.phone || null);
+          this.contractorEmail = data.contractor?.email || null;
 
           // Update subtitle
           const subtitle = document.getElementById('color-subtitle');
@@ -833,10 +853,14 @@
 
           // Show confirmation
           const confirmElement = document.getElementById('confirmation-section');
+          const phoneHtml = this.contractorPhone
+            ? `<br><br>To reach them directly: <strong><a href="tel:${this.contractorPhone}" style="color:inherit;">${this.contractorPhone}</a></strong>`
+            : '';
+
           const messageEl = document.createElement('div');
           messageEl.className = 'color-board-confirmation active';
           messageEl.innerHTML = `
-            <strong>✓ Color board visit requested!</strong> We've notified ${this.contractorName} to schedule a visit with physical color boards. They'll reach out to you within 48 hours.
+            <strong>✓ Color board visit requested!</strong> We've notified ${this.contractorName} to schedule a visit with physical color boards. They'll reach out to you within 48 hours.${phoneHtml}
           `;
           confirmElement.insertBefore(messageEl, confirmElement.firstChild);
 
@@ -889,6 +913,10 @@
             color: colorName
           });
 
+          // Attempt to create DocuSign color addendum (D-058)
+          // Graceful fallback if contractor has no color_confirmation.pdf template
+          await this.createColorAddendum(colorName);
+
           button.disabled = false;
           button.textContent = 'Confirm My Color';
         } catch (err) {
@@ -898,6 +926,102 @@
           button.disabled = false;
           button.textContent = 'Confirm My Color';
         }
+      },
+
+      /**
+       * Create DocuSign color confirmation addendum (D-058)
+       * Called after color is saved to the claims table.
+       * Gracefully handles missing contractor template.
+       */
+      async createColorAddendum(colorName) {
+        if (!this.claimId || !this.contractorId || !this.signerEmail) {
+          console.warn('[ColorAddendum] Missing claimId, contractorId, or signerEmail — skipping');
+          return;
+        }
+
+        try {
+          const response = await sb.functions.invoke('create-docusign-envelope', {
+            body: {
+              claim_id: this.claimId,
+              contractor_id: this.contractorId,
+              document_type: 'color_confirmation',
+              signer: {
+                email: this.signerEmail,
+                name: this.signerName || 'Homeowner',
+              },
+            },
+          });
+
+          const data = response.data;
+          const fnError = response.error;
+
+          if (fnError || !data?.signing_url) {
+            // Graceful fallback — template may not exist yet
+            console.warn('[ColorAddendum] DocuSign addendum unavailable:', fnError || 'No signing_url returned');
+            this.showAddendumFallback();
+            return;
+          }
+
+          // Success — show embedded signing iframe
+          gtag('event', 'color_addendum_created', { claim_id: this.claimId });
+          this.showAddendumSigningIframe(data.signing_url);
+        } catch (err) {
+          console.warn('[ColorAddendum] Error creating addendum:', err);
+          this.showAddendumFallback();
+        }
+      },
+
+      /**
+       * Show embedded DocuSign iframe for color addendum signing
+       */
+      showAddendumSigningIframe(signingUrl) {
+        // Inject signing section below the success state
+        const form = document.getElementById('color-form');
+        if (!form) return;
+
+        // Remove existing addendum section if present
+        const existing = document.getElementById('color-addendum-section');
+        if (existing) existing.remove();
+
+        const section = document.createElement('div');
+        section.id = 'color-addendum-section';
+        section.style.cssText = 'margin-top:2rem; padding:1.5rem; background:rgba(20,184,166,0.08); border:1px solid rgba(20,184,166,0.3); border-left:4px solid var(--teal,#14B8A6); border-radius:0.75rem;';
+        section.innerHTML = `
+          <h3 style="color:var(--white,#fff); margin:0 0 0.75rem;">Sign Color Addendum</h3>
+          <p style="color:var(--slate,#94A3B8); margin:0 0 1rem;">
+            Almost done! Please sign the color addendum below to add your selected color to your contract.
+          </p>
+          <iframe
+            src="${signingUrl}"
+            style="width:100%; height:500px; border-radius:0.5rem; border:1px solid rgba(255,255,255,0.1);"
+            title="Color Addendum — DocuSign"
+          ></iframe>
+        `;
+        form.parentNode.insertBefore(section, form.nextSibling);
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
+
+      /**
+       * Fallback when no contractor color_confirmation.pdf template exists
+       */
+      showAddendumFallback() {
+        const form = document.getElementById('color-form');
+        if (!form) return;
+        const existing = document.getElementById('color-addendum-section');
+        if (existing) existing.remove();
+
+        const note = document.createElement('div');
+        note.id = 'color-addendum-section';
+        note.style.cssText = 'margin-top:1.5rem; padding:1rem 1.25rem; background:rgba(245,158,11,0.08); border-left:3px solid var(--amber,#F59E0B); border-radius:0.5rem;';
+        note.innerHTML = `
+          <p style="color:rgba(255,255,255,0.8); margin:0; font-size:0.9rem;">
+            <strong>Color saved.</strong> Your contractor will include the color selection in your final contract documents.
+            ${this.contractorPhone
+              ? `You can also confirm directly with <strong>${this.contractorName}</strong> at <a href="tel:${this.contractorPhone}" style="color:var(--amber,#F59E0B);">${this.contractorPhone}</a>.`
+              : `Contact your contractor, ${this.contractorName}, to confirm.`}
+          </p>
+        `;
+        form.parentNode.insertBefore(note, form.nextSibling);
       },
 
       /**

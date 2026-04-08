@@ -21,12 +21,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
     <!-- GA4 -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
         function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
-        gtag('config', 'G-XXXXXXXXXX');
+        gtag('config', 'G-JNQ6XR3LX2');
     </script>
 
     <style>
@@ -734,23 +734,23 @@
             <!-- Tier 3: AI Photo Identification -->
             <div class="accordion-item">
                 <button class="accordion-header">
-                    <span>🤖 Tier 3: AI Photo Identification <span class="tier-price">$25-40</span></span>
+                    <span>🤖 Tier 3: AI Photo Identification <span class="tier-price">Coming Soon</span></span>
                     <span class="accordion-toggle">▼</span>
                 </button>
                 <div class="accordion-content" id="tier3-content">
-                    <p>Our AI tool can identify your shingle from photos in seconds.</p>
+                    <p>Our AI tool will identify your shingle from photos in seconds using RoofPair and SAIGE AI — 90-97% accuracy, including color matching.</p>
                     <p>Take 7-8 clear photos from multiple angles — front texture, granule pattern, and the back of a shingle if accessible.</p>
-                    <div class="tier-option">
-                        <strong>💰 Starting at $25</strong> — refunded if you use an OtterQuote contractor
+                    <div style="background: rgba(245,158,11,0.1); border-left: 3px solid #F59E0B; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                        <strong>⚙️ AI integration coming soon.</strong> While we finish building this, use Tier 1, Tier 2, or Tier 4 to identify your material.
                     </div>
                     <div class="upload-zone" id="upload-zone-tier3">
                         <div class="emoji">📸</div>
-                        <p>Tap to take a photo or choose from gallery</p>
+                        <p>Upload photos now — we'll run AI analysis when available</p>
                         <input type="file" class="file-input" accept="image/*" capture="environment" multiple>
                     </div>
                     <div id="photos-tier3" class="photo-thumbnails"></div>
-                    <button class="btn btn-primary" id="btn-tier3" data-action="ai-identification">
-                        🤖 Identify My Shingle ($25)
+                    <button class="btn btn-primary" id="btn-tier3" data-action="ai-identification" disabled style="opacity:0.5;cursor:not-allowed;">
+                        🤖 AI Identification — Coming Soon
                     </button>
                 </div>
             </div>
@@ -781,9 +781,11 @@
                         <p style="font-size: 0.9rem; color: var(--text-light);">ITEL Sample Mailing Address:</p>
                         <p style="font-size: 0.9rem; margin-top: 0.5rem;">
                             ITEL Labs<br>
-                            123 Lab Street<br>
-                            Columbus, OH 43215
+                            7 Westport Court<br>
+                            Bloomington, IL 61704<br>
+                            Phone: (800) 783-4835
                         </p>
+                        <p style="font-size: 0.85rem; color: var(--text-light); margin-top: 0.5rem;">Mail 2–3 individual shingles. Include your name and claim number in the package.</p>
                     </div>
                     <button class="btn btn-primary" id="btn-tier4" data-action="itel-analysis">
                         🔬 Request ITEL Analysis ($75)
@@ -804,6 +806,13 @@
                     </button>
                 </div>
             </div>
+        </div>
+
+        <!-- Opted-in Contractor List (shown after submission) -->
+        <div class="section-container hidden" id="repair-contractors-section">
+            <h2>🔨 Contractors Available for Repairs</h2>
+            <p class="subtitle">These contractors have opted into repair work and will receive your project details.</p>
+            <div id="repair-contractors-list"></div>
         </div>
 
         <!-- Submit Section -->
@@ -845,8 +854,22 @@
     <script src="js/nav.js"></script>
 
     <script>
-        // Require authentication
-        Auth.requireAuth('homeowner');
+        // Initialize Supabase
+        let sb;
+
+        // Initialize page (called after auth check)
+        async function initPage() {
+            const user = await Auth.requireAuth();
+            if (!user) return;
+
+            // Init Supabase client
+            sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+            Nav.renderHeader({ active: 'dashboard' });
+            Nav.renderFooter();
+
+            init();
+        }
 
         // State management
         const state = {
@@ -1170,30 +1193,174 @@
             return brand || product || color;
         }
 
-        function submitForm() {
-            if (state.selectedRepairType && Object.values(state.uploadedPhotos).reduce((sum, arr) => sum + arr.length, 0) > 0) {
-                // Save to sessionStorage for now
-                const claim = {
-                    repairType: state.selectedRepairType,
+        async function submitForm() {
+            const photoCount = Object.values(state.uploadedPhotos).reduce((sum, arr) => sum + arr.length, 0);
+            if (!state.selectedRepairType || photoCount === 0) return;
+
+            const btn = document.getElementById('btn-submit');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+
+            try {
+                // ── Get authenticated user ──────────────────────────────────
+                const { data: { user }, error: authErr } = await sb.auth.getUser();
+                if (authErr || !user) {
+                    alert('Session expired. Please log in again.');
+                    window.location.href = '/get-started.html';
+                    return;
+                }
+
+                // ── Collect material data ───────────────────────────────────
+                const materialBrand   = document.querySelector('input[data-field="brand"]')?.value.trim() || null;
+                const materialProduct = document.querySelector('input[data-field="product"]')?.value.trim() || null;
+                const materialColor   = document.querySelector('input[data-field="color"]')?.value.trim() || null;
+                const repairNotes     = document.getElementById('issue-description')?.value.trim()
+                                     || document.getElementById('other-description')?.value.trim() || null;
+                const roofAge         = document.getElementById('roof-age')?.value.trim() || null;
+                const shinglesCount   = document.getElementById('shingles-count')?.value || null;
+
+                // ── Get claim_id from URL or sessionStorage ─────────────────
+                const params = new URLSearchParams(window.location.search);
+                let claimId = params.get('claim_id') || sessionStorage.getItem('oq_claim_id');
+
+                if (!claimId) {
+                    // Create a new repair claim if none exists
+                    const profile = await sb.from('profiles').select('full_name').eq('id', user.id).single();
+                    const { data: newClaim, error: insertErr } = await sb
+                        .from('claims')
+                        .insert({
+                            user_id: user.id,
+                            homeowner_id: user.id,
+                            job_type: 'repair',
+                            funding_type: 'insurance',
+                            status: 'draft',
+                            trades: [selectedTrade || 'roofing'],
+                            existing_shingle_brand: materialBrand,
+                            existing_shingle_product: materialProduct,
+                            existing_shingle_color: materialColor,
+                            homeowner_notes: repairNotes
+                        })
+                        .select('id')
+                        .single();
+
+                    if (insertErr || !newClaim) throw new Error(insertErr?.message || 'Failed to create claim');
+                    claimId = newClaim.id;
+                    sessionStorage.setItem('oq_claim_id', claimId);
+                } else {
+                    // Update existing claim with repair data
+                    const { error: updateErr } = await sb
+                        .from('claims')
+                        .update({
+                            job_type: 'repair',
+                            trades: [selectedTrade || 'roofing'],
+                            existing_shingle_brand: materialBrand,
+                            existing_shingle_product: materialProduct,
+                            existing_shingle_color: materialColor,
+                            homeowner_notes: repairNotes
+                        })
+                        .eq('id', claimId)
+                        .eq('user_id', user.id);
+
+                    if (updateErr) throw new Error(updateErr.message);
+                }
+
+                // ── Upload photos to Supabase Storage ──────────────────────
+                const allPhotos = Object.entries(state.uploadedPhotos).flatMap(([tier, files]) =>
+                    files.map(f => ({ tier, file: f }))
+                );
+
+                for (const { tier, file } of allPhotos) {
+                    const ext = file.name.split('.').pop() || 'jpg';
+                    const path = `${claimId}/repair-${tier}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                    const { error: uploadErr } = await sb.storage
+                        .from('claim-documents')
+                        .upload(path, file, { contentType: file.type, upsert: false });
+                    if (uploadErr) console.warn('Photo upload failed:', uploadErr.message);
+                }
+
+                // ── Mark claim as submitted ─────────────────────────────────
+                await sb.from('claims').update({
+                    status: 'submitted',
+                    submitted_at: new Date().toISOString()
+                }).eq('id', claimId).eq('user_id', user.id);
+
+                // ── GA4 ─────────────────────────────────────────────────────
+                gtag('event', 'repair_submitted', {
+                    claim_id: claimId,
                     trade: selectedTrade,
-                    photos: Object.keys(state.uploadedPhotos).map(tier => ({
-                        tier,
-                        count: state.uploadedPhotos[tier].length
-                    })),
-                    materials: state.materialData,
-                    timestamp: new Date().toISOString()
-                };
+                    repair_type: state.selectedRepairType,
+                    has_material: !!(materialBrand || materialProduct)
+                });
 
-                sessionStorage.setItem('oq_repair_claim', JSON.stringify(claim));
+                // ── Show opted-in contractors ────────────────────────────────
+                await showRepairContractors(selectedTrade || 'roofing');
 
-                // In real app, this would save to Supabase and redirect
-                alert('Claim submitted! In production, this would save to Supabase and redirect to dashboard.');
-                window.location.href = '/dashboard.html';
+                // Show success
+                btn.textContent = '✓ Submitted!';
+                document.getElementById('repair-contractors-section').classList.remove('hidden');
+                document.getElementById('repair-contractors-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            } catch (err) {
+                console.error('Repair submit error:', err);
+                alert('Something went wrong. Please try again.\n\n' + err.message);
+                btn.disabled = false;
+                btn.textContent = '✓ Submit for Contractor Review';
+            }
+        }
+
+        async function showRepairContractors(trade) {
+            const listEl = document.getElementById('repair-contractors-list');
+            if (!listEl) return;
+
+            listEl.innerHTML = '<p style="color:var(--text-light)">Loading available contractors...</p>';
+
+            try {
+                // Fetch contractors who have opted into repairs and serve this trade
+                const { data: contractors, error } = await sb
+                    .from('contractors')
+                    .select('id, name, years_in_business, rating, service_counties, phone, email')
+                    .eq('repairs_accepted', true)
+                    .eq('active', true)
+                    .contains('trades', [trade])
+                    .limit(10);
+
+                if (error || !contractors || contractors.length === 0) {
+                    listEl.innerHTML = `
+                        <div style="padding:1.5rem; background:#FFF7ED; border-left:3px solid #F59E0B; border-radius:6px;">
+                            <strong>No contractors have opted into repairs yet.</strong>
+                            <p style="margin-top:0.5rem; font-size:0.9rem; color:var(--text-light);">
+                                Your claim has been saved. Schedule an inspection and a contractor will diagnose the issue on site.
+                            </p>
+                            <a href="/schedule-inspection.html" class="btn btn-primary btn-sm" style="margin-top:1rem; display:inline-block;">
+                                📅 Schedule an Inspection
+                            </a>
+                        </div>
+                    `;
+                    return;
+                }
+
+                listEl.innerHTML = contractors.map(c => `
+                    <div style="padding:1.25rem; border:1px solid var(--border-gray); border-radius:8px; margin-bottom:1rem; background:white;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div>
+                                <strong style="font-size:1.05rem;">${c.name}</strong>
+                                ${c.years_in_business ? `<span style="margin-left:0.75rem; font-size:0.85rem; color:var(--text-light);">${c.years_in_business} yrs in business</span>` : ''}
+                            </div>
+                            ${c.rating ? `<span style="background:#FFF7ED; color:#D97706; padding:0.25rem 0.75rem; border-radius:4px; font-size:0.85rem; font-weight:600;">★ ${c.rating}</span>` : ''}
+                        </div>
+                        ${c.phone ? `<p style="margin:0.5rem 0 0; font-size:0.9rem;"><a href="tel:${c.phone}" style="color:var(--amber);">${c.phone}</a></p>` : ''}
+                        <p style="margin:0.25rem 0 0; font-size:0.85rem; color:var(--text-light);">✓ Accepts repair work</p>
+                    </div>
+                `).join('');
+
+            } catch (err) {
+                console.error('Error loading repair contractors:', err);
+                listEl.innerHTML = '<p style="color:var(--text-light);">Could not load contractors. Your claim has been saved.</p>';
             }
         }
 
         // Initialize on load
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', initPage);
     </script>
 </body>
 </html>
