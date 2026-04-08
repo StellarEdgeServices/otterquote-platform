@@ -842,19 +842,41 @@
                 </div>
 
                 <div class="edit-toggle">
-                    <button class="btn btn-primary" onclick="toggleEdit('credentials')">Add Certification</button>
+                    <button class="btn btn-primary" onclick="toggleEdit('credentials')">Edit Insurance &amp; Certifications</button>
                 </div>
 
                 <!-- Edit Mode -->
                 <div id="credentialsEdit" style="display: none;">
+
+                    <!-- Insurance Coverage Checkboxes -->
+                    <div class="form-group" style="background-color: var(--light); border-radius: var(--radius-md); padding: var(--sp-4); margin-bottom: var(--sp-6);">
+                        <label class="form-label" style="margin-bottom: var(--sp-3);">Insurance Coverage</label>
+                        <div style="display: flex; flex-direction: column; gap: var(--sp-3);">
+                            <label style="display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; font-weight: 500; color: var(--navy);">
+                                <input type="checkbox" id="editHasWorkersComp" style="width: 18px; height: 18px; accent-color: var(--amber); cursor: pointer;">
+                                Workers' Compensation Insurance
+                            </label>
+                            <label style="display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; font-weight: 500; color: var(--navy);">
+                                <input type="checkbox" id="editHasGeneralLiability" style="width: 18px; height: 18px; accent-color: var(--amber); cursor: pointer;">
+                                General Liability Insurance
+                            </label>
+                        </div>
+                        <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-4);">
+                            <button class="btn btn-primary" onclick="saveProfile('insurance')">Save Insurance Info</button>
+                        </div>
+                    </div>
+
+                    <hr style="border: none; border-top: 1px solid var(--light); margin: 0 0 var(--sp-6);">
+
+                    <!-- Certifications -->
                     <div class="form-group">
-                        <label for="certificationName" class="form-label">Certification Name</label>
+                        <label for="certificationName" class="form-label">Add Certification</label>
                         <input type="text" id="certificationName" class="form-input" placeholder="e.g., GAF Master Elite Contractor">
                     </div>
 
                     <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-6);">
                         <button class="btn btn-primary" onclick="addCertification()">Add Certification</button>
-                        <button class="btn btn-secondary" onclick="toggleEdit('credentials')">Cancel</button>
+                        <button class="btn btn-secondary" onclick="toggleEdit('credentials')">Close</button>
                     </div>
 
                     <div class="certification-list" id="certificationsList"></div>
@@ -1204,6 +1226,10 @@
             document.getElementById('bbbUrl').value = c.bbb_url || '';
             document.getElementById('angiUrl').value = c.angi_url || '';
             document.getElementById('yelpUrl').value = c.yelp_url || '';
+
+            // Insurance checkboxes
+            document.getElementById('editHasWorkersComp').checked = !!c.has_workers_comp;
+            document.getElementById('editHasGeneralLiability').checked = !!c.has_general_liability;
         }
 
         // ── Render credentials from licenses data ──
@@ -1226,6 +1252,31 @@
             } else {
                 html += `<div class="form-group"><label class="form-label">Contractor License</label><div><span style="color: var(--slate);">No licenses on file</span></div></div>`;
             }
+
+            // Insurance coverage (driven by has_workers_comp / has_general_liability on contractors table)
+            const hasWC = contractorRecord?.has_workers_comp;
+            const hasGL = contractorRecord?.has_general_liability;
+
+            html += `
+                <div class="form-group">
+                    <label class="form-label">Workers' Compensation Insurance</label>
+                    <div>
+                        ${hasWC
+                            ? `<span class="badge badge-verified">✓ On File</span>`
+                            : `<span class="badge badge-pending">Not on File</span>`
+                        }
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">General Liability Insurance</label>
+                    <div>
+                        ${hasGL
+                            ? `<span class="badge badge-verified">✓ On File</span>`
+                            : `<span class="badge badge-pending">Not on File</span>`
+                        }
+                    </div>
+                </div>
+            `;
 
             html += `
                 <div class="form-group">
@@ -1323,6 +1374,43 @@
                     toggleEdit('reviews');
                 } catch (err) {
                     console.error('Error saving review links:', err);
+                    alert('Failed to save changes. Please try again.');
+                }
+            } else if (section === 'insurance') {
+                const updates = {
+                    has_workers_comp: document.getElementById('editHasWorkersComp').checked,
+                    has_general_liability: document.getElementById('editHasGeneralLiability').checked,
+                    updated_at: new Date().toISOString(),
+                };
+
+                try {
+                    const { data, error } = await sb
+                        .from('contractors')
+                        .update(updates)
+                        .eq('id', contractorRecord.id)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    contractorRecord = data;
+
+                    // Reload licenses to re-render the credentials view with updated insurance badges
+                    const licResult = await sb
+                        .from('contractor_licenses')
+                        .select('*')
+                        .eq('contractor_id', contractorRecord.id);
+
+                    if (licResult.data) {
+                        renderCredentials(licResult.data);
+                    }
+
+                    // Re-run renderCertifications so viewCertifications element gets re-bound
+                    renderCertifications();
+
+                    alert('Insurance information saved.');
+                } catch (err) {
+                    console.error('Error saving insurance info:', err);
                     alert('Failed to save changes. Please try again.');
                 }
             } else if (section === 'photos') {
