@@ -734,6 +734,118 @@
           </div>
         </div>
 
+        <!-- Value Adds & Distinguishing Features (Insurance Jobs) -->
+        <div class="form-section" id="valueAddsSection" style="grid-column: 1 / -1; display: none;">
+          <h3 style="font-size: 1.1rem; margin-bottom: var(--sp-2);">What's Included With Your Bid?</h3>
+          <p style="font-size: 0.85rem; color: #6B7280; margin-bottom: var(--sp-4);">
+            For insurance jobs, homeowners often have identical bids at the same RCV price. This is your chance to stand out. Tell homeowners exactly what's included in your proposal at no extra cost, and what's available as an add-on.
+          </p>
+
+          <!-- Gutters -->
+          <div style="margin-bottom: var(--sp-6); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Gutters</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="gutterOption" value="none" checked> Not included / N/A
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="gutterOption" value="5inch_included"> 5&quot; gutters included (no out-of-pocket for homeowner)
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="gutterOption" value="6inch_included"> 6&quot; gutters included (no out-of-pocket for homeowner)
+              </label>
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="gutterOption" value="5inch_additional" style="margin-top: 3px;"> 5&quot; gutters available for an additional
+                <span style="display: flex; align-items: center; gap: 4px; margin-left: 4px;">$<input type="number" id="gutter5Cost" name="gutter5AdditionalCost" min="0" step="1" placeholder="0" style="width:80px; padding:2px 6px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></span>
+              </label>
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="gutterOption" value="6inch_additional" style="margin-top: 3px;"> 6&quot; gutters available for an additional
+                <span style="display: flex; align-items: center; gap: 4px; margin-left: 4px;">$<input type="number" id="gutter6Cost" name="gutter6AdditionalCost" min="0" step="1" placeholder="0" style="width:80px; padding:2px 6px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></span>
+              </label>
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="gutterOption" value="other" style="margin-top: 3px;"> Other:
+                <input type="text" id="gutterOtherText" name="gutterOtherText" placeholder="Describe your gutter offer..." style="margin-left: 4px; flex:1; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;">
+              </label>
+            </div>
+          </div>
+
+          <!-- Chimney Flashing -->
+          <div style="margin-bottom: var(--sp-6); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Chimney Flashing</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="chimneyFlashing" value="na" checked> N/A — no chimney
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="chimneyFlashing" value="reuse"> Reuse existing flashing (if in good condition)
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="chimneyFlashing" value="replace"> Replace with new flashing (included in bid)
+              </label>
+            </div>
+          </div>
+
+          <!-- Gutter Guards -->
+          <div style="margin-bottom: var(--sp-6); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Gutter Guards</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="gutterGuards" value="none" checked> Not offered
+              </label>
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer; flex-wrap: wrap;">
+                <input type="radio" name="gutterGuards" value="available" style="margin-top: 3px;"> Available — Type:
+                <select name="gutterGuardType" style="margin-left: 4px; padding: 2px 8px; border: 1px solid var(--light); border-radius: 4px; font-size: 0.875rem;">
+                  <option value="mesh">Mesh</option>
+                  <option value="screw_in">Screw-In</option>
+                  <option value="other">Other</option>
+                </select>
+                <input type="text" name="gutterGuardTypeOther" placeholder="Describe type..." style="margin-left: 4px; width: 160px; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem; display:none;" id="gutterGuardTypeOtherInput">
+                &nbsp;&nbsp;OOP price: $<input type="number" name="gutterGuardOopPrice" min="0" step="1" placeholder="0" style="width:80px; padding:2px 6px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;">
+              </label>
+            </div>
+          </div>
+
+          <!-- Skylights -->
+          <div style="margin-bottom: var(--sp-6); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Skylights</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="skylights" value="na" checked> N/A — no skylights
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="skylights" value="reflash"> Reflash skylights (included)
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="skylights" value="replace"> Replace skylights
+              </label>
+            </div>
+          </div>
+
+          <!-- Chimney Reflash -->
+          <div style="margin-bottom: var(--sp-6); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Chimney Reflash</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="chimneyReflash" value="na" checked> N/A
+              </label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="chimneyReflash" value="included"> Included at no additional cost
+              </label>
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;">
+                <input type="radio" name="chimneyReflash" value="oop" style="margin-top: 3px;"> Available at homeowner's out-of-pocket cost of
+                <span style="display: flex; align-items: center; gap: 4px; margin-left: 4px;">$<input type="number" name="chimneyReflashOopPrice" min="0" step="1" placeholder="0" style="width:90px; padding:2px 6px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Other Special Offers -->
+          <div style="margin-bottom: var(--sp-2); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: var(--sp-2); color: var(--navy);">Other Special Offers</h4>
+            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-3);">Anything else that sets your company apart — financing options, extended warranties, free inspections, etc.</p>
+            <textarea name="valueAddsOtherOffers" id="valueAddsOtherOffers" placeholder="e.g., We offer 0% financing for 12 months, free annual roof inspection for 5 years, and a complimentary gutter cleaning with every full replacement..." style="width:100%; min-height:100px; padding: var(--sp-3); border: 1px solid var(--light); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 0.875rem; resize: vertical;" maxlength="2000"></textarea>
+          </div>
+        </div>
+
         <div class="form-group" style="grid-column: 1 / -1;">
           <label for="homeownerMessage">Message to Homeowner</label>
           <textarea id="homeownerMessage" name="homeownerMessage" placeholder="Add a personal note for the homeowner (optional)" maxlength="500"></textarea>
@@ -877,6 +989,11 @@
             updateClaimSummary();
             // Render insurance line items if parsed data exists
             renderInsuranceLineItems();
+            // Show value adds section for insurance RCV jobs
+            if (data.job_type === 'insurance_rcv' || data.job_type === 'insurance_acv' || data.funding_type === 'insurance') {
+              const vas = document.getElementById('valueAddsSection');
+              if (vas) vas.style.display = 'block';
+            }
           }
         } catch (err) {
           console.error('Error loading claim:', err);
@@ -1145,6 +1262,15 @@
       charCountEl.textContent = e.target.value.length;
     });
 
+    // Gutter guard type "other" show/hide
+    const ggTypeSelect = document.querySelector('select[name="gutterGuardType"]');
+    const ggTypeOtherInput = document.getElementById('gutterGuardTypeOtherInput');
+    if (ggTypeSelect && ggTypeOtherInput) {
+      ggTypeSelect.addEventListener('change', () => {
+        ggTypeOtherInput.style.display = ggTypeSelect.value === 'other' ? 'inline-block' : 'none';
+      });
+    }
+
     // Price input listener
     priceInput.addEventListener('input', updateFeeCalculator);
 
@@ -1187,6 +1313,31 @@
             throw new Error('Your contractor profile could not be loaded. Please refresh the page and try again.');
           }
 
+          // Build value_adds JSON for distinguishing features
+          const gutterOption = formData.get('gutterOption') || 'none';
+          const gutterGuardsOption = formData.get('gutterGuards') || 'none';
+          const valueAdds = {
+            gutters: {
+              option: gutterOption,
+              additional_cost_5inch: gutterOption === '5inch_additional' ? (parseFloat(formData.get('gutter5AdditionalCost')) || null) : null,
+              additional_cost_6inch: gutterOption === '6inch_additional' ? (parseFloat(formData.get('gutter6AdditionalCost')) || null) : null,
+              other_text: gutterOption === 'other' ? (formData.get('gutterOtherText') || null) : null,
+            },
+            chimney_flashing: formData.get('chimneyFlashing') || 'na',
+            gutter_guards: {
+              option: gutterGuardsOption,
+              type: gutterGuardsOption === 'available' ? (formData.get('gutterGuardType') || 'mesh') : null,
+              type_other: gutterGuardsOption === 'available' && formData.get('gutterGuardType') === 'other' ? (formData.get('gutterGuardTypeOther') || null) : null,
+              oop_price: gutterGuardsOption === 'available' ? (parseFloat(formData.get('gutterGuardOopPrice')) || null) : null,
+            },
+            skylights: formData.get('skylights') || 'na',
+            chimney_reflash: {
+              option: formData.get('chimneyReflash') || 'na',
+              oop_price: formData.get('chimneyReflash') === 'oop' ? (parseFloat(formData.get('chimneyReflashOopPrice')) || null) : null,
+            },
+            other_offers: formData.get('valueAddsOtherOffers') || null,
+          };
+
           const quoteData = {
             claim_id: currentClaim.id,
             contractor_id: currentContractor.id,
@@ -1199,6 +1350,7 @@
             full_redeck_price: parseFloat(formData.get('fullRedeckPrice')) || null,
             supplement_acknowledged: formData.get('supplementAcknowledged') === 'on',
             trade_type: formData.get('tradeType') || 'roofing',
+            value_adds: valueAdds,
           };
 
           const { error } = await sb

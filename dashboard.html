@@ -594,7 +594,7 @@
               <p style="margin: 0; font-size: 0.95rem;">Contractors are reviewing your details. You'll get notified of incoming bids.</p>
             </div>
           </div>
-          <a href="bids.html" class="btn btn-sm btn-secondary">View Bids</a>
+          <a href="bids.html" class="btn btn-sm btn-secondary" id="viewBidsLinkTop">View Bids</a>
         </div>
 
         <!-- Project Info Section -->
@@ -778,7 +778,7 @@
           <div class="submit-success-icon">✓</div>
           <h2>Project Submitted Successfully!</h2>
           <p>Your project details are now live. Contractors are reviewing your information and will send you bids.</p>
-          <a href="bids.html" class="btn btn-primary btn-lg">View Bids</a>
+          <a href="bids.html" class="btn btn-primary btn-lg" id="viewBidsLinkSubmit">View Bids</a>
         </div>
       </div>
     </div>
@@ -1154,7 +1154,15 @@
             title: 'Material Selection',
             required: true,
             status: currentClaim.has_material_selection ? 'selected' : 'pending',
-            filename: currentClaim.material_type || currentClaim.selected_material || null,
+            filename: (() => {
+              // Build human-readable material label from actual DB columns
+              const cat = currentClaim.material_category;
+              const type = currentClaim.shingle_type;
+              if (cat === 'shingles' && type) return type.charAt(0).toUpperCase() + type.slice(1) + ' Shingles';
+              if (cat === 'metal' && currentClaim.metal_type) return currentClaim.metal_type.charAt(0).toUpperCase() + currentClaim.metal_type.slice(1) + ' Metal';
+              if (cat) return cat.charAt(0).toUpperCase() + cat.slice(1);
+              return null;
+            })(),
             description: 'Choose the roofing material and specifications for your project.',
             buttons: [
               currentClaim.has_material_selection
@@ -1233,6 +1241,15 @@
         const percent = Math.round((completed / total) * 100);
         document.getElementById('progress-percent').textContent = percent;
         document.getElementById('progress-fill').style.width = percent + '%';
+
+        // Update View Bids links to include claim_id so bids.html loads the right claim
+        if (currentClaim?.id) {
+          const bidsUrl = 'bids.html?claim_id=' + encodeURIComponent(currentClaim.id);
+          const topLink = document.getElementById('viewBidsLinkTop');
+          const submitLink = document.getElementById('viewBidsLinkSubmit');
+          if (topLink) topLink.href = bidsUrl;
+          if (submitLink) submitLink.href = bidsUrl;
+        }
       }
 
       function updateSubmitButton() {

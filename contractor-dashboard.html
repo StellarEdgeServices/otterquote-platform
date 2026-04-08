@@ -469,7 +469,7 @@
             <div class="stat-card">
                 <span class="stat-card-label">Active Bids</span>
                 <span class="stat-card-value" id="activeBidsCount">—</span>
-                <a href="#projectsTable" class="stat-card-link">Manage →</a>
+                <a href="#pendingBidsSection" class="stat-card-link">Manage →</a>
             </div>
             <div class="stat-card">
                 <span class="stat-card-label">Won Jobs</span>
@@ -483,8 +483,26 @@
             </div>
         </div>
 
-        <!-- Active Projects -->
-        <h2 class="section-header" id="projectsTable">Active Projects</h2>
+        <!-- Pending Bids (awaiting homeowner decision) -->
+        <h2 class="section-header" id="pendingBidsSection">Submitted Bids — Awaiting Decision</h2>
+        <table class="leads-table" id="pendingBidsTable">
+            <thead>
+                <tr>
+                    <th>Project Area</th>
+                    <th>Damage Type</th>
+                    <th>Your Bid</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="pendingBidsTableBody">
+                <!-- Populated by JavaScript -->
+            </tbody>
+        </table>
+
+        <!-- Active Projects (won/awarded/completed) -->
+        <h2 class="section-header" id="projectsTable" style="margin-top: var(--sp-10);">Active &amp; Won Projects</h2>
         <table class="leads-table" id="leadsTable">
             <thead>
                 <tr>
@@ -692,29 +710,71 @@
                 const totalEarnings = (earnData || []).reduce((sum, q) => sum + (parseFloat(q.fee_amount) || 0), 0);
                 document.getElementById('earningsAmount').textContent = '$' + totalEarnings.toLocaleString();
 
-                // Load all projects — submitted bids, won jobs, and completed jobs
+                // Load all quotes — pending bids and won/active/completed projects
+                // D-074: Full address hidden for submitted-only bids; revealed once bid is awarded.
                 const { data: allQuotes } = await sb
                   .from('quotes')
-                  .select('id, claim_id, total_price, status, created_at, claims(id, property_address, damage_type, material_product, rcv_amount)')
+                  .select('id, claim_id, total_price, status, created_at, claims(id, property_address, damage_type, material_category, shingle_type, rcv_amount)')
                   .eq('contractor_id', contractor.id)
                   .in('status', ['submitted', 'selected', 'awarded', 'completed'])
                   .order('created_at', { ascending: false })
-                  .limit(20);
+                  .limit(50);
 
                 if (allQuotes && allQuotes.length > 0) {
-                  allLeads = allQuotes.map(q => {
+                  // Helper: build location string with privacy control
+                  function buildLocation(claim, status) {
+                    const addr = claim.property_address || '';
+                    // For awarded/completed: show full address. For pending bids: city + zip only.
+                    if (status === 'awarded' || status === 'completed' || status === 'selected') {
+                      return addr || 'Unknown';
+                    }
+                    // city + zip only for pending bids
+                    const parts = addr.split(',');
+                    const city = parts.length >= 2 ? parts[1].trim() : (parts[0]?.trim() || 'Unknown');
+                    const zip = addr.match(/\d{5}/)?.[0] || '';
+                    return zip ? `${city}, IN ${zip}` : city || 'Unknown';
+                  }
+                  // Helper: build material label from correct DB columns
+                  function buildMaterial(claim) {
+                    if (!claim) return 'Not specified';
+                    const cat = claim.material_category;
+                    const type = claim.shingle_type;
+                    if (cat === 'shingles' && type) return type.charAt(0).toUpperCase() + type.slice(1) + ' Shingles';
+                    if (cat) return cat.charAt(0).toUpperCase() + cat.slice(1);
+                    return 'Not specified';
+                  }
+
+                  const pendingBids = [];
+                  const activeProjects = [];
+
+                  allQuotes.forEach(q => {
                     const claim = q.claims || {};
-                    const statusMap = { submitted: 'Bid Pending', selected: 'Won', awarded: 'Won', completed: 'Completed' };
-                    return {
-                      id: claim.id ? String(claim.id).slice(0, 8) : q.claim_id?.slice(0, 8) || '—',
-                      fullId: q.claim_id,
-                      location: claim.property_address || 'Unknown',
-                      damageType: claim.damage_type || 'Unknown',
-                      material: claim.material_product || 'Not specified',
-                      estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
-                      status: statusMap[q.status] || q.status,
-                    };
+                    if (q.status === 'submitted') {
+                      pendingBids.push({
+                        quoteId: q.id,
+                        claimId: q.claim_id,
+                        location: buildLocation(claim, q.status),
+                        damageType: claim.damage_type || 'Roofing',
+                        bidAmount: q.total_price ? '$' + Number(q.total_price).toLocaleString() : '—',
+                        submittedDate: new Date(q.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                        status: 'Pending Decision',
+                      });
+                    } else {
+                      const statusMap = { selected: 'Won', awarded: 'Won', completed: 'Completed' };
+                      activeProjects.push({
+                        id: claim.id ? String(claim.id).slice(0, 8) : q.claim_id?.slice(0, 8) || '—',
+                        fullId: q.claim_id,
+                        location: buildLocation(claim, q.status),
+                        damageType: claim.damage_type || 'Unknown',
+                        material: buildMaterial(claim),
+                        estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
+                        status: statusMap[q.status] || q.status,
+                      });
+                    }
                   });
+
+                  allLeads = activeProjects;
+                  window._pendingBids = pendingBids; // available for populateDashboard
                 }
 
                 // Load activity feed from activity_log
@@ -779,6 +839,34 @@
         function populateDashboard() {
             // Update completeness banner
             updateCompletenessBanner();
+
+            // Populate pending bids table
+            const pendingBids = window._pendingBids || [];
+            const pendingBody = document.getElementById('pendingBidsTableBody');
+            if (pendingBody) {
+              if (pendingBids.length === 0) {
+                pendingBody.innerHTML = `
+                  <tr>
+                    <td colspan="6" style="text-align: center; padding: var(--sp-8);">
+                      <div class="empty-state">
+                        <div class="empty-state-icon">📬</div>
+                        <div class="empty-state-title">No Pending Bids</div>
+                        <div class="empty-state-text">Bids you've submitted that are awaiting homeowner decisions will appear here.</div>
+                      </div>
+                    </td>
+                  </tr>`;
+              } else {
+                pendingBody.innerHTML = pendingBids.map(bid => `
+                  <tr>
+                    <td>${bid.location}</td>
+                    <td>${bid.damageType}</td>
+                    <td style="font-weight: 700;">${bid.bidAmount}</td>
+                    <td>${bid.submittedDate}</td>
+                    <td><span class="status-badge" style="background: var(--amber-light, #FFF3CD); color: var(--amber-dark, #856404);">${bid.status}</span></td>
+                    <td><a href="contractor-opportunities.html" class="btn btn-sm btn-secondary" style="font-size:0.8rem; padding: 4px 10px;">View Opportunities</a></td>
+                  </tr>`).join('');
+              }
+            }
 
             // Populate leads table
             const leadsBody = document.getElementById('leadsTableBody');
