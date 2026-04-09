@@ -586,6 +586,72 @@
       <p class="page-subtitle">Manage your auto-bid settings, notifications, and review how OtterQuote pricing works.</p>
     </div>
 
+    <!-- Notification Preferences                -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card">
+      <div class="settings-card-title">Notification Preferences</div>
+
+      <div class="notifications-section">
+        <div style="font-weight: 600; color: var(--navy); margin-bottom: var(--sp-4);">Email Addresses</div>
+        <div class="notification-list" id="emailList">
+          <div class="notification-item">
+            <input type="text" placeholder="Email address" value="Dustin@StohlerRoof.com" class="email-input">
+            <button class="remove-btn">Remove</button>
+          </div>
+        </div>
+        <button class="add-btn" onclick="addEmailField()">+ Add Email Address</button>
+      </div>
+
+      <div class="notifications-section">
+        <div style="font-weight: 600; color: var(--navy); margin-bottom: var(--sp-4);">Phone Numbers (SMS)</div>
+        <div class="notification-list" id="phoneList">
+          <div class="notification-item">
+            <input type="text" placeholder="Phone number" value="(317) 530-3054" class="phone-input">
+            <button class="remove-btn">Remove</button>
+          </div>
+        </div>
+        <button class="add-btn" onclick="addPhoneField()">+ Add Phone Number</button>
+      </div>
+
+      <div class="notifications-section">
+        <div style="font-weight: 600; color: var(--navy); margin-bottom: var(--sp-4);">Notification Types</div>
+        <div class="notification-types">
+          <div class="notification-checkbox">
+            <input type="checkbox" id="notifNewLead" checked>
+            <label for="notifNewLead">New opportunity available</label>
+          </div>
+          <div class="notification-checkbox">
+            <input type="checkbox" id="notifBidAccepted" checked>
+            <label for="notifBidAccepted">Bid accepted by homeowner</label>
+          </div>
+          <div class="notification-checkbox">
+            <input type="checkbox" id="notifContractSigned" checked>
+            <label for="notifContractSigned">Contract signed</label>
+          </div>
+          <div class="notification-checkbox" style="opacity:0.6;">
+            <input type="checkbox" id="notifColorComplete" disabled>
+            <label for="notifColorComplete">Color selection complete <span class="badge coming-soon" style="font-size:0.65rem;">Coming Soon</span></label>
+          </div>
+          <div class="notification-checkbox" style="opacity:0.6;">
+            <input type="checkbox" id="notifDeductibleCollected" disabled>
+            <label for="notifDeductibleCollected">Deductible collected <span class="badge coming-soon" style="font-size:0.65rem;">Coming Soon</span></label>
+          </div>
+          <div class="notification-checkbox">
+            <input type="checkbox" id="notif48hReminder" checked>
+            <label for="notif48hReminder">48-hour contact reminder</label>
+          </div>
+          <div class="notification-checkbox">
+            <input type="checkbox" id="notifAutoBid" checked>
+            <label for="notifAutoBid">Auto-bid placed on your behalf</label>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: var(--sp-6); border-top: 1px solid var(--light); padding-top: var(--sp-4);">
+        <button class="save-button" onclick="saveSettings()" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Save Notification Settings</button>
+      </div>
+    </div>
+
+
     <!-- ═══════════════════════════════════════ -->
     <!-- Auto-Bid Settings (LIVE — Insurance)   -->
     <!-- ═══════════════════════════════════════ -->
@@ -659,14 +725,24 @@
                   <div style="font-family:var(--font-mono); font-size:1.4rem; font-weight:700; color:var(--navy);">$[RCV + Supplements]</div>
                 </div>
               </div>
+              <div style="border-top:1px solid var(--light); padding-top:var(--sp-4); margin-top:var(--sp-4);">
+                <p style="font-size:0.85rem; color:#374151; line-height:1.7; margin-bottom:var(--sp-4);">
+                  Thank you for considering <strong id="previewCompanyNameIntro">your company</strong>. Our team will review your request and send an updated bid if we can do something that better meets your needs. In the meantime, here is our standard offer for full roof replacements covered by RCV insurance policies. If this offer meets your needs, please sign our agreement and we will call you within 48 hours to get you on our calendar and finalize any other details.
+                </p>
+                <p style="font-size:0.8rem; font-weight:700; color:#991B1B; margin-bottom:var(--sp-4); letter-spacing:0.3px;">THIS OFFER IS NOT VALID FOR ACV POLICIES OR OUT OF POCKET JOBS.</p>
+              </div>
               <div style="border-top:1px solid var(--light); padding-top:var(--sp-4);">
-                <div style="font-size:0.85rem; font-weight:600; color:var(--navy); margin-bottom:var(--sp-2);">What's Included:</div>
+                <div style="font-size:0.85rem; font-weight:600; color:var(--navy); margin-bottom:var(--sp-2);">WHAT'S INCLUDED:</div>
                 <div id="previewIncludesList" style="font-size:0.85rem; color:#374151; line-height:2;"></div>
               </div>
               <div id="previewWarrantySection" style="border-top:1px solid var(--light); padding-top:var(--sp-4); margin-top:var(--sp-4); display:none;">
                 <div style="font-size:0.85rem; font-weight:600; color:var(--navy); margin-bottom:var(--sp-2);">Warranty:</div>
                 <div id="previewWarrantyList" style="font-size:0.85rem; color:#374151; line-height:2;"></div>
                 <div style="font-size:0.75rem; color:var(--slate); margin-top:var(--sp-2); font-style:italic;" id="previewWarrantyDisclaimer"></div>
+              </div>
+              <div id="previewReviewsSection" style="border-top:1px solid var(--light); padding-top:var(--sp-4); margin-top:var(--sp-4); display:none;">
+                <div style="font-size:0.85rem; font-weight:600; color:var(--navy); margin-bottom:var(--sp-3);">What Our Customers Say:</div>
+                <div id="previewReviewsList" style="display:flex; flex-wrap:wrap; gap:var(--sp-3); font-size:0.85rem;"></div>
               </div>
               <div style="margin-top:var(--sp-4); padding:var(--sp-3); background:#FFFBEB; border-radius:var(--radius-sm); font-size:0.8rem; color:#92400E;">
                 ⚡ This bid is auto-generated at the RCV + supplements amount. Your contractor may adjust the bid after reviewing your specific claim details.
@@ -689,8 +765,6 @@
               <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="none" checked> Not included / N/A</label>
               <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="5inch_included"> 5&quot; gutters included (no out-of-pocket for homeowner)</label>
               <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="6inch_included"> 6&quot; gutters included (no out-of-pocket for homeowner)</label>
-              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="5inch_additional" style="margin-top:3px;"> 5&quot; gutters for additional $<input type="number" id="abGutter5Cost" name="abGutter5Cost" min="0" step="1" placeholder="0" style="width:80px; padding:2px 6px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></label>
-              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="6inch_additional" style="margin-top:3px;"> 6&quot; gutters for additional $<input type="number" id="abGutter6Cost" name="abGutter6Cost" min="0" step="1" placeholder="0" style="width:80px; padding:2px 6px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></label>
               <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="other" style="margin-top:3px;"> Other: <input type="text" name="abGutterOther" placeholder="Describe..." style="margin-left:4px; flex:1; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></label>
             </div>
           </div>
@@ -700,8 +774,7 @@
             <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Chimney Flashing</h4>
             <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
               <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abChimneyFlashing" value="na" checked> N/A</label>
-              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abChimneyFlashing" value="reuse"> Reuse existing</label>
-              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abChimneyFlashing" value="replace"> Replace (included)</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abChimneyFlashing" value="replace"> Replacement Included</label>
             </div>
           </div>
 
@@ -717,15 +790,6 @@
             </div>
           </div>
 
-          <!-- Skylights -->
-          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
-            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Skylights</h4>
-            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
-              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abSkylights" value="na" checked> N/A</label>
-              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abSkylights" value="reflash"> Reflash (included)</label>
-              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abSkylights" value="replace"> Replace</label>
-            </div>
-          </div>
 
           <!-- Chimney Reflash -->
           <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
@@ -750,10 +814,110 @@
                 <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-1);">Preferred Shingle Line / Product</label>
                 <input type="text" id="abPreferredShingleLine" name="abPreferredShingleLine" placeholder="e.g., Timberline HDZ, Duration, Landmark Pro..." style="width:100%; padding: var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem;">
               </div>
-              <div>
-                <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-1);">Other Materials / Upgrades Offered</label>
-                <textarea id="abOtherMaterials" name="abOtherMaterials" placeholder="e.g., synthetic underlayment, ice &amp; water shield, starter strip, ridge cap shingles, drip edge..." style="width:100%; min-height:70px; padding:var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem; resize:vertical;" maxlength="1000"></textarea>
+            </div>
+          </div>
+
+          <!-- Other Shingles Available at No Additional OOP -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-1); color: var(--navy);">Other Shingles Available at No Additional OOP</h4>
+            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-4); line-height:1.5;">Select every shingle you're willing to install at the insurance-covered price. Homeowners who prefer one of these shingles still receive your standard offer at no additional out-of-pocket cost to them.</p>
+            <!-- GAF -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">GAF</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Timberline HDZ" style="accent-color:var(--amber);"> Timberline HDZ</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Timberline UHDZ" style="accent-color:var(--amber);"> Timberline UHDZ</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Timberline CS" style="accent-color:var(--amber);"> Timberline CS (Cool Series)</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Camelot II" style="accent-color:var(--amber);"> Camelot II</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Grand Sequoia" style="accent-color:var(--amber);"> Grand Sequoia</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Grand Canyon" style="accent-color:var(--amber);"> Grand Canyon</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Sovereign" style="accent-color:var(--amber);"> Sovereign</label>
               </div>
+            </div>
+            <!-- Owens Corning -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">Owens Corning</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Duration" style="accent-color:var(--amber);"> Duration</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Duration FLEX" style="accent-color:var(--amber);"> Duration FLEX</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Duration Storm" style="accent-color:var(--amber);"> Duration Storm</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|TruDefinition Duration" style="accent-color:var(--amber);"> TruDefinition Duration</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Oakridge" style="accent-color:var(--amber);"> Oakridge</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Berkshire Collection" style="accent-color:var(--amber);"> Berkshire Collection</label>
+              </div>
+            </div>
+            <!-- CertainTeed -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">CertainTeed</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Landmark" style="accent-color:var(--amber);"> Landmark</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Landmark Pro" style="accent-color:var(--amber);"> Landmark Pro</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Landmark Premium" style="accent-color:var(--amber);"> Landmark Premium</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Landmark TL" style="accent-color:var(--amber);"> Landmark TL</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Grand Manor" style="accent-color:var(--amber);"> Grand Manor</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Carriage House" style="accent-color:var(--amber);"> Carriage House</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Presidential Shake TL" style="accent-color:var(--amber);"> Presidential Shake TL</label>
+              </div>
+            </div>
+            <!-- Atlas -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">Atlas</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Atlas|StormMaster Slate" style="accent-color:var(--amber);"> StormMaster Slate</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Atlas|StormMaster Shake" style="accent-color:var(--amber);"> StormMaster Shake</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Atlas|ProLam AR" style="accent-color:var(--amber);"> ProLam AR</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Atlas|Pinnacle Pristine" style="accent-color:var(--amber);"> Pinnacle Pristine</label>
+              </div>
+            </div>
+            <!-- Malarkey -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">Malarkey</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Malarkey|Legacy" style="accent-color:var(--amber);"> Legacy</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Malarkey|Vista" style="accent-color:var(--amber);"> Vista</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Malarkey|Windsor" style="accent-color:var(--amber);"> Windsor</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Malarkey|Highlander NEX" style="accent-color:var(--amber);"> Highlander NEX</label>
+              </div>
+            </div>
+            <!-- IKO -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">IKO</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="IKO|Dynasty" style="accent-color:var(--amber);"> Dynasty</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="IKO|Cambridge" style="accent-color:var(--amber);"> Cambridge</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="IKO|Nordic" style="accent-color:var(--amber);"> Nordic</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="IKO|Crowne Slate" style="accent-color:var(--amber);"> Crowne Slate</label>
+              </div>
+            </div>
+            <!-- TAMKO -->
+            <div>
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">TAMKO</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="TAMKO|Heritage" style="accent-color:var(--amber);"> Heritage</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="TAMKO|Heritage Vintage" style="accent-color:var(--amber);"> Heritage Vintage</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="TAMKO|Heritage Woodgate" style="accent-color:var(--amber);"> Heritage Woodgate</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="TAMKO|Elite Glass-Seal" style="accent-color:var(--amber);"> Elite Glass-Seal</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Underlayment -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Underlayment</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abUnderlayment" value="synthetic" checked style="accent-color:var(--amber);"> Synthetic</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abUnderlayment" value="felt" style="accent-color:var(--amber);"> Felt</label>
+            </div>
+          </div>
+
+          <!-- Starter Strip -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Starter Strip</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abStarterStrip" value="eaves" checked style="accent-color:var(--amber);"> Eaves</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abStarterStrip" value="rakes" style="accent-color:var(--amber);"> Rakes</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abStarterStrip" value="eaves_and_rakes" style="accent-color:var(--amber);"> Eaves and Rakes</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abStarterStrip" value="none" style="accent-color:var(--amber);"> None</label>
             </div>
           </div>
 
@@ -881,8 +1045,56 @@
             <textarea name="abOtherOffers" id="abOtherOffers" placeholder="e.g., 0% financing for 12 months, free annual inspection for 5 years..." style="width:100%; min-height:80px; padding: var(--sp-3); border:1px solid var(--light); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 0.875rem; resize: vertical;" maxlength="2000"></textarea>
           </div>
 
-          <div class="info-box" style="margin-top: var(--sp-4);">
-            We will review your request and provide an updated bid if needed, but homeowners can accept your auto-bid immediately. These offers give them even more confidence to sign right away.
+          <!-- Review Sites -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-1); color: var(--navy);">Your Reviews</h4>
+            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-4); line-height:1.5;">Enter your ratings and review links for each platform. These will appear on your bid so homeowners can verify your reputation before signing. Leave a row blank to hide that platform.</p>
+            <div style="display:grid;grid-template-columns:110px 70px 90px 1fr;gap:var(--sp-1);align-items:center;font-size:0.75rem;font-weight:600;color:var(--slate);margin-bottom:var(--sp-2);">
+              <span>Platform</span><span>Rating</span><span>Reviews</span><span>Link URL</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:var(--sp-2);">
+              <div style="display:grid;grid-template-columns:110px 70px 90px 1fr;gap:var(--sp-2);align-items:center;">
+                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">Google</span>
+                <input type="number" id="reviewGoogleRating" placeholder="4.7" min="1" max="5" step="0.1" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="number" id="reviewGoogleCount" placeholder="350" min="0" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="url" id="reviewGoogleUrl" placeholder="https://g.page/your-business" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+              </div>
+              <div style="display:grid;grid-template-columns:110px 70px 90px 1fr;gap:var(--sp-2);align-items:center;">
+                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">Yelp</span>
+                <input type="number" id="reviewYelpRating" placeholder="4.5" min="1" max="5" step="0.5" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="number" id="reviewYelpCount" placeholder="120" min="0" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="url" id="reviewYelpUrl" placeholder="https://yelp.com/biz/your-business" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+              </div>
+              <div style="display:grid;grid-template-columns:110px 70px 90px 1fr;gap:var(--sp-2);align-items:center;">
+                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">BBB</span>
+                <input type="text" id="reviewBbbRating" placeholder="A+" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="number" id="reviewBbbCount" placeholder="50" min="0" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="url" id="reviewBbbUrl" placeholder="https://bbb.org/us/..." style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+              </div>
+              <div style="display:grid;grid-template-columns:110px 70px 90px 1fr;gap:var(--sp-2);align-items:center;">
+                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">Facebook</span>
+                <input type="number" id="reviewFbRating" placeholder="4.8" min="1" max="5" step="0.1" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="number" id="reviewFbCount" placeholder="200" min="0" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="url" id="reviewFbUrl" placeholder="https://facebook.com/your-page" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+              </div>
+              <div style="display:grid;grid-template-columns:110px 70px 90px 1fr;gap:var(--sp-2);align-items:center;">
+                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">Angi</span>
+                <input type="number" id="reviewAngiRating" placeholder="4.6" min="1" max="5" step="0.1" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="number" id="reviewAngiCount" placeholder="80" min="0" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="url" id="reviewAngiUrl" placeholder="https://angi.com/companylist/..." style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+              </div>
+              <div style="display:grid;grid-template-columns:110px 70px 90px 1fr;gap:var(--sp-2);align-items:center;">
+                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">HomeAdvisor</span>
+                <input type="number" id="reviewHaRating" placeholder="4.5" min="1" max="5" step="0.1" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="number" id="reviewHaCount" placeholder="60" min="0" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+                <input type="url" id="reviewHaUrl" placeholder="https://homeadvisor.com/rated...." style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Section Save Button -->
+          <div style="margin-top:var(--sp-4); border-top:1px solid var(--light); padding-top:var(--sp-4);">
+            <button class="save-button" onclick="saveSettings()" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Save Auto-Bid Settings</button>
           </div>
         </div>
       </div>
@@ -972,36 +1184,13 @@
         <div class="pricing-fee">5%</div>
       </div>
 
-      <!-- Tier 2: Color Selection -->
-      <div class="pricing-tier">
-        <div class="pricing-icon blue">&#127912;</div>
-        <div class="pricing-content">
-          <div class="pricing-label">Color Selection Completed</div>
-          <div class="pricing-description">
-            If the homeowner selects their shingle colors through OtterQuote's online tools before you receive the project, this additional fee applies. If the homeowner prefers to pick colors in person with your team, you won't be charged for this tier.
-          </div>
-        </div>
-        <div class="pricing-fee">+3%</div>
-      </div>
-
-      <!-- Tier 3: Deductible Collection -->
-      <div class="pricing-tier">
-        <div class="pricing-icon purple">&#128176;</div>
-        <div class="pricing-content">
-          <div class="pricing-label">Deductible Collected</div>
-          <div class="pricing-description">
-            OtterQuote collects the homeowner's deductible and holds it in escrow on your behalf. Released to you after the ACV check is collected. This locks in the customer and protects both parties.
-          </div>
-        </div>
-        <div class="pricing-fee">+5%</div>
-      </div>
-
-      <!-- Fee range summary -->
+      <!-- Fee summary -->
       <div class="fee-summary">
         <div class="fee-summary-label">Your platform fee per project:</div>
-        <div class="fee-summary-amount">5% &ndash; 13% of job value</div>
-        <div class="fee-summary-note">Based on which services OtterQuote completes for each project</div>
+        <div class="fee-summary-amount">5% of job value</div>
+        <div class="fee-summary-note">Charged when a homeowner signs a contract with you through OtterQuote</div>
       </div>
+      <p style="font-size:0.8rem; color:var(--slate); margin-top:var(--sp-4); text-align:center;">Additional fee tiers (color selection, deductible collection) coming soon as those services roll out.</p>
 
       <!-- Future Tier Preview -->
       <div class="future-tier-card">
@@ -1021,13 +1210,13 @@
     <!-- ═══════════════════════════════════════ -->
     <div class="settings-card">
       <div class="settings-card-title">Repair Work</div>
-      <p style="color:var(--slate); margin-bottom:var(--sp-6); font-size:0.95rem;">
-        Repair jobs are smaller in scope than full replacements. They require shingle matching and on-site diagnostics. Opt in only if your crew is comfortable with repairs.
+      <p style="color:var(--navy); margin-bottom:var(--sp-6); font-size:0.95rem; line-height:1.6;">
+        Repair jobs are <strong>FREE LEADS</strong> that we provide to contractors who promise to: 1) send a technician capable of diagnosing and quoting a repair (not the canvasser you hired last month); and 2) show up on time.
       </p>
 
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:var(--sp-4) var(--sp-6); background:rgba(255,255,255,0.04); border-radius:var(--radius-md); border:1px solid rgba(255,255,255,0.08);">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:var(--sp-4) var(--sp-6); background:#F0F9FF; border-radius:var(--radius-md); border:1px solid #BAE6FD;">
         <div>
-          <div style="font-weight:600; color:var(--white);">Accept Repair Opportunities</div>
+          <div style="font-weight:600; color:var(--navy);">Opt In to Repair Work</div>
           <div style="font-size:0.85rem; color:var(--slate); margin-top:0.25rem;">Appear in repair results and receive notifications for repair jobs in your service area</div>
         </div>
         <label style="display:flex; align-items:center; gap:var(--sp-3); cursor:pointer;">
@@ -1036,80 +1225,45 @@
         </label>
       </div>
 
-      <div id="repairsDetails" class="hidden" style="margin-top:var(--sp-6); padding:var(--sp-6); background:rgba(245,158,11,0.06); border:1px solid rgba(245,158,11,0.2); border-radius:var(--radius-md);">
-        <p style="font-size:0.9rem; color:rgba(255,255,255,0.8); margin-bottom:var(--sp-4);">
+      <div id="repairsDetails" class="hidden" style="margin-top:var(--sp-6); padding:var(--sp-6); background:#FFFBEB; border:1px solid #F59E0B; border-radius:var(--radius-md);">
+        <p style="font-size:0.9rem; color:var(--navy); margin-bottom:var(--sp-4);">
           <strong>Show-Up Guarantee Agreement</strong>
         </p>
-        <p style="font-size:0.85rem; color:var(--slate); margin-bottom:var(--sp-4); line-height:1.6;">
+        <p style="font-size:0.85rem; color:#4B5563; margin-bottom:var(--sp-4); line-height:1.6;">
           By accepting repair work, you agree to the OtterQuote show-up guarantee: if you schedule a repair diagnostic visit and fail to appear without 24 hours notice, <strong>OtterQuote will pay the homeowner $100 and charge your account $250.</strong>
         </p>
-        <label style="display:flex; align-items:flex-start; gap:var(--sp-3); cursor:pointer;">
+        <label style="display:flex; align-items:flex-start; gap:var(--sp-3); cursor:pointer; margin-bottom:var(--sp-6);">
           <input type="checkbox" id="guaranteeCheck" style="width:1rem; height:1rem; margin-top:3px; accent-color:var(--amber); flex-shrink:0;">
-          <span style="font-size:0.85rem; color:rgba(255,255,255,0.8);">
+          <span style="font-size:0.85rem; color:var(--navy);">
             I agree to the show-up guarantee terms. If I no-show a scheduled repair visit, I authorize OtterQuote to charge $250 to my payment method and disburse $100 to the homeowner.
           </span>
         </label>
-      </div>
-    </div>
 
-    <!-- Notification Preferences                -->
-    <!-- ═══════════════════════════════════════ -->
-    <div class="settings-card">
-      <div class="settings-card-title">Notification Preferences</div>
-
-      <div class="notifications-section">
-        <div style="font-weight: 600; color: var(--navy); margin-bottom: var(--sp-4);">Email Addresses</div>
-        <div class="notification-list" id="emailList">
-          <div class="notification-item">
-            <input type="text" placeholder="Email address" value="Dustin@StohlerRoof.com" class="email-input">
-            <button class="remove-btn">Remove</button>
+        <!-- Diagnostic Fee -->
+        <div style="border-top:1px solid #F59E0B; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
+          <div style="font-weight:600; color:var(--navy); margin-bottom:var(--sp-3);">Diagnostic Fee?</div>
+          <div style="display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-4); font-size:0.875rem;">
+            <label style="display:flex; align-items:center; gap:var(--sp-2); cursor:pointer;">
+              <input type="radio" name="diagnosticFee" id="diagnosticFeeNo" value="no" checked style="accent-color:var(--amber);"> No
+            </label>
+            <label style="display:flex; align-items:center; gap:var(--sp-2); cursor:pointer;">
+              <input type="radio" name="diagnosticFee" id="diagnosticFeeYes" value="yes" style="accent-color:var(--amber);"> Yes
+            </label>
+            <span id="diagnosticFeeAmountWrap" style="display:none; align-items:center; gap:var(--sp-2);">
+              $<input type="number" id="diagnosticFeeAmount" min="0" step="1" placeholder="0" style="width:90px; padding:var(--sp-2) var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem; font-family:var(--font-body);">
+            </span>
           </div>
         </div>
-        <button class="add-btn" onclick="addEmailField()">+ Add Email Address</button>
-      </div>
 
-      <div class="notifications-section">
-        <div style="font-weight: 600; color: var(--navy); margin-bottom: var(--sp-4);">Phone Numbers (SMS)</div>
-        <div class="notification-list" id="phoneList">
-          <div class="notification-item">
-            <input type="text" placeholder="Phone number" value="(317) 530-3054" class="phone-input">
-            <button class="remove-btn">Remove</button>
-          </div>
+        <!-- Notes to the Customer -->
+        <div style="border-top:1px solid #F59E0B; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
+          <label style="font-size:0.875rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Notes to the Customer</label>
+          <p style="font-size:0.8rem; color:#6B7280; margin-bottom:var(--sp-2);">These notes will appear on your repair listing. Use them to set expectations, explain your diagnostic process, or highlight your expertise.</p>
+          <textarea id="repairNotesToCustomer" name="repairNotesToCustomer" placeholder="e.g., Our diagnostic technician will assess the damage, photograph all affected areas, and provide a written repair estimate on-site. No commitment required." style="width:100%; min-height:80px; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem; resize:vertical;" maxlength="1000"></textarea>
         </div>
-        <button class="add-btn" onclick="addPhoneField()">+ Add Phone Number</button>
-      </div>
 
-      <div class="notifications-section">
-        <div style="font-weight: 600; color: var(--navy); margin-bottom: var(--sp-4);">Notification Types</div>
-        <div class="notification-types">
-          <div class="notification-checkbox">
-            <input type="checkbox" id="notifNewLead" checked>
-            <label for="notifNewLead">New opportunity available</label>
-          </div>
-          <div class="notification-checkbox">
-            <input type="checkbox" id="notifBidAccepted" checked>
-            <label for="notifBidAccepted">Bid accepted by homeowner</label>
-          </div>
-          <div class="notification-checkbox">
-            <input type="checkbox" id="notifContractSigned" checked>
-            <label for="notifContractSigned">Contract signed</label>
-          </div>
-          <div class="notification-checkbox">
-            <input type="checkbox" id="notifColorComplete" checked>
-            <label for="notifColorComplete">Color selection complete</label>
-          </div>
-          <div class="notification-checkbox">
-            <input type="checkbox" id="notifDeductibleCollected" checked>
-            <label for="notifDeductibleCollected">Deductible collected</label>
-          </div>
-          <div class="notification-checkbox">
-            <input type="checkbox" id="notif48hReminder" checked>
-            <label for="notif48hReminder">48-hour contact reminder</label>
-          </div>
-          <div class="notification-checkbox">
-            <input type="checkbox" id="notifAutoBid" checked>
-            <label for="notifAutoBid">Auto-bid placed on your behalf</label>
-          </div>
+        <div style="border-top:1px solid #F59E0B; padding-top:var(--sp-4);">
+          <button class="save-button" onclick="saveSettings()" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Save Repair Settings</button>
         </div>
       </div>
     </div>
@@ -1423,6 +1577,14 @@
 
     repairsToggle.addEventListener('change', updateRepairsUI);
 
+    // Diagnostic fee radio show/hide
+    document.addEventListener('change', (e) => {
+      if (e.target.name === 'diagnosticFee') {
+        const wrap = document.getElementById('diagnosticFeeAmountWrap');
+        if (wrap) wrap.style.display = e.target.value === 'yes' ? 'flex' : 'none';
+      }
+    });
+
     // ── Initialize: Load settings from Supabase ──
     async function initSettings() {
       currentUser = await Auth.requireAuth('contractor');
@@ -1461,7 +1623,7 @@
               if (va.gutter_guards.type) { const s = document.querySelector('select[name="abGutterGuardType"]'); if (s) s.value = va.gutter_guards.type; }
               if (va.gutter_guards.other_text) { const el = document.querySelector('input[name="abGutterGuardsOther"]'); if (el) el.value = va.gutter_guards.other_text; }
             }
-            if (va.skylights) { const r = document.querySelector(`input[name="abSkylights"][value="${va.skylights}"]`); if (r) r.checked = true; }
+
             if (va.chimney_reflash?.option) {
               const r = document.querySelector(`input[name="abChimneyReflash"][value="${va.chimney_reflash.option}"]`); if (r) r.checked = true;
               if (va.chimney_reflash.oop_price) { const el = document.querySelector('input[name="abChimneyReflashOop"]'); if (el) el.value = va.chimney_reflash.oop_price; }
@@ -1471,7 +1633,33 @@
             if (va.preferred_shingle) {
               if (va.preferred_shingle.brand && document.getElementById('abPreferredShingleBrand')) document.getElementById('abPreferredShingleBrand').value = va.preferred_shingle.brand;
               if (va.preferred_shingle.line && document.getElementById('abPreferredShingleLine')) document.getElementById('abPreferredShingleLine').value = va.preferred_shingle.line;
-              if (va.preferred_shingle.other_materials && document.getElementById('abOtherMaterials')) document.getElementById('abOtherMaterials').value = va.preferred_shingle.other_materials;
+            }
+            if (va.other_shingles && Array.isArray(va.other_shingles)) {
+              va.other_shingles.forEach(v => {
+                const cb = document.querySelector(`input[name="abOtherShingles"][value="${v}"]`);
+                if (cb) cb.checked = true;
+              });
+            }
+            if (va.underlayment) { const r = document.querySelector(`input[name="abUnderlayment"][value="${va.underlayment}"]`); if (r) r.checked = true; }
+            if (va.starter_strip) { const r = document.querySelector(`input[name="abStarterStrip"][value="${va.starter_strip}"]`); if (r) r.checked = true; }
+            if (va.repair_settings) {
+              const rs = va.repair_settings;
+              if (rs.diagnostic_fee) {
+                const yesEl = document.getElementById('diagnosticFeeYes');
+                if (yesEl) { yesEl.checked = true; const w = document.getElementById('diagnosticFeeAmountWrap'); if (w) w.style.display = 'flex'; }
+                if (rs.diagnostic_fee_amount != null && document.getElementById('diagnosticFeeAmount')) document.getElementById('diagnosticFeeAmount').value = rs.diagnostic_fee_amount;
+              }
+              if (rs.notes_to_customer && document.getElementById('repairNotesToCustomer')) document.getElementById('repairNotesToCustomer').value = rs.notes_to_customer;
+            }
+            if (va.review_sites) {
+              const rv = va.review_sites;
+              const sr = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+              sr('reviewGoogleRating', rv.google?.rating); sr('reviewGoogleCount', rv.google?.count); sr('reviewGoogleUrl', rv.google?.url);
+              sr('reviewYelpRating', rv.yelp?.rating); sr('reviewYelpCount', rv.yelp?.count); sr('reviewYelpUrl', rv.yelp?.url);
+              sr('reviewBbbRating', rv.bbb?.rating); sr('reviewBbbCount', rv.bbb?.count); sr('reviewBbbUrl', rv.bbb?.url);
+              sr('reviewFbRating', rv.facebook?.rating); sr('reviewFbCount', rv.facebook?.count); sr('reviewFbUrl', rv.facebook?.url);
+              sr('reviewAngiRating', rv.angi?.rating); sr('reviewAngiCount', rv.angi?.count); sr('reviewAngiUrl', rv.angi?.url);
+              sr('reviewHaRating', rv.homeadvisor?.rating); sr('reviewHaCount', rv.homeadvisor?.count); sr('reviewHaUrl', rv.homeadvisor?.url);
             }
             if (va.ventilation) {
               if (va.ventilation.free_ridge_vent && document.getElementById('abVentRidgeUpgrade')) document.getElementById('abVentRidgeUpgrade').checked = va.ventilation.free_ridge_vent;
@@ -1614,15 +1802,14 @@
         updated_at: new Date().toISOString(),
       };
 
-      // Build auto_bid_value_adds from the distinguishing features fields
-      if (autoBidToggle.checked) {
+      // Always save auto_bid_value_adds (persists across auto-bid on/off toggles)
+      {
         const abGutterOpt = document.querySelector('input[name="abGutterOption"]:checked')?.value || 'none';
         const abGutterGuards = document.querySelector('input[name="abGutterGuards"]:checked')?.value || 'insurance_covered';
+        const diagFeeVal = document.querySelector('input[name="diagnosticFee"]:checked')?.value || 'no';
         settings.auto_bid_value_adds = {
           gutters: {
             option: abGutterOpt,
-            additional_cost_5inch: abGutterOpt === '5inch_additional' ? (parseFloat(document.getElementById('abGutter5Cost')?.value) || null) : null,
-            additional_cost_6inch: abGutterOpt === '6inch_additional' ? (parseFloat(document.getElementById('abGutter6Cost')?.value) || null) : null,
             other_text: abGutterOpt === 'other' ? (document.querySelector('input[name="abGutterOther"]')?.value || null) : null,
           },
           chimney_flashing: document.querySelector('input[name="abChimneyFlashing"]:checked')?.value || 'na',
@@ -1631,7 +1818,6 @@
             type: abGutterGuards === 'included' ? (document.querySelector('select[name="abGutterGuardType"]')?.value || 'mesh') : null,
             other_text: abGutterGuards === 'other' ? (document.querySelector('input[name="abGutterGuardsOther"]')?.value || null) : null,
           },
-          skylights: document.querySelector('input[name="abSkylights"]:checked')?.value || 'na',
           chimney_reflash: {
             option: document.querySelector('input[name="abChimneyReflash"]:checked')?.value || 'na',
             oop_price: document.querySelector('input[name="abChimneyReflash"]:checked')?.value === 'oop' ? (parseFloat(document.querySelector('input[name="abChimneyReflashOop"]')?.value) || null) : null,
@@ -1639,8 +1825,10 @@
           preferred_shingle: {
             brand: document.getElementById('abPreferredShingleBrand')?.value?.trim() || null,
             line: document.getElementById('abPreferredShingleLine')?.value?.trim() || null,
-            other_materials: document.getElementById('abOtherMaterials')?.value?.trim() || null,
           },
+          other_shingles: Array.from(document.querySelectorAll('input[name="abOtherShingles"]:checked')).map(cb => cb.value),
+          underlayment: document.querySelector('input[name="abUnderlayment"]:checked')?.value || 'synthetic',
+          starter_strip: document.querySelector('input[name="abStarterStrip"]:checked')?.value || 'eaves',
           ventilation: {
             free_ridge_vent: document.getElementById('abVentRidgeUpgrade')?.checked || false,
             other_check: document.getElementById('abVentOtherCheck')?.checked || false,
@@ -1666,6 +1854,19 @@
             notes: document.getElementById('abWarrNotes')?.value?.trim() || null,
           },
           other_offers: document.getElementById('abOtherOffers')?.value?.trim() || null,
+          repair_settings: {
+            diagnostic_fee: diagFeeVal === 'yes',
+            diagnostic_fee_amount: diagFeeVal === 'yes' ? (parseFloat(document.getElementById('diagnosticFeeAmount')?.value) || null) : null,
+            notes_to_customer: document.getElementById('repairNotesToCustomer')?.value?.trim() || null,
+          },
+          review_sites: {
+            google: { rating: document.getElementById('reviewGoogleRating')?.value || null, count: document.getElementById('reviewGoogleCount')?.value || null, url: document.getElementById('reviewGoogleUrl')?.value?.trim() || null },
+            yelp: { rating: document.getElementById('reviewYelpRating')?.value || null, count: document.getElementById('reviewYelpCount')?.value || null, url: document.getElementById('reviewYelpUrl')?.value?.trim() || null },
+            bbb: { rating: document.getElementById('reviewBbbRating')?.value || null, count: document.getElementById('reviewBbbCount')?.value || null, url: document.getElementById('reviewBbbUrl')?.value?.trim() || null },
+            facebook: { rating: document.getElementById('reviewFbRating')?.value || null, count: document.getElementById('reviewFbCount')?.value || null, url: document.getElementById('reviewFbUrl')?.value?.trim() || null },
+            angi: { rating: document.getElementById('reviewAngiRating')?.value || null, count: document.getElementById('reviewAngiCount')?.value || null, url: document.getElementById('reviewAngiUrl')?.value?.trim() || null },
+            homeadvisor: { rating: document.getElementById('reviewHaRating')?.value || null, count: document.getElementById('reviewHaCount')?.value || null, url: document.getElementById('reviewHaUrl')?.value?.trim() || null },
+          },
         };
       }
 
@@ -1737,6 +1938,8 @@
       // Company name
       const companyName = contractorRecord?.company_name || contractorRecord?.contact_name || 'Your Company';
       document.getElementById('previewCompanyName').textContent = companyName;
+      const introEl = document.getElementById('previewCompanyNameIntro');
+      if (introEl) introEl.textContent = companyName;
 
       const items = [];
       // Preferred shingle
@@ -1780,6 +1983,29 @@
       if (otherOffers) items.push('🎁 ' + otherOffers);
 
       document.getElementById('previewIncludesList').innerHTML = items.length ? items.map(i => '<div>' + i + '</div>').join('') : '<div style="color:var(--slate);">No items configured yet — fill out the sections above.</div>';
+
+      // Reviews in bid preview
+      const rvPlatforms = [
+        { name: 'Google', rating: document.getElementById('reviewGoogleRating')?.value, count: document.getElementById('reviewGoogleCount')?.value, url: document.getElementById('reviewGoogleUrl')?.value?.trim() },
+        { name: 'Yelp', rating: document.getElementById('reviewYelpRating')?.value, count: document.getElementById('reviewYelpCount')?.value, url: document.getElementById('reviewYelpUrl')?.value?.trim() },
+        { name: 'BBB', rating: document.getElementById('reviewBbbRating')?.value, count: document.getElementById('reviewBbbCount')?.value, url: document.getElementById('reviewBbbUrl')?.value?.trim() },
+        { name: 'Facebook', rating: document.getElementById('reviewFbRating')?.value, count: document.getElementById('reviewFbCount')?.value, url: document.getElementById('reviewFbUrl')?.value?.trim() },
+        { name: 'Angi', rating: document.getElementById('reviewAngiRating')?.value, count: document.getElementById('reviewAngiCount')?.value, url: document.getElementById('reviewAngiUrl')?.value?.trim() },
+        { name: 'HomeAdvisor', rating: document.getElementById('reviewHaRating')?.value, count: document.getElementById('reviewHaCount')?.value, url: document.getElementById('reviewHaUrl')?.value?.trim() },
+      ].filter(p => p.rating && String(p.rating).trim());
+      const rvSection = document.getElementById('previewReviewsSection');
+      const rvList = document.getElementById('previewReviewsList');
+      if (rvPlatforms.length && rvSection && rvList) {
+        rvSection.style.display = 'block';
+        rvList.innerHTML = rvPlatforms.map(p => {
+          const info = p.rating + (p.count ? ' (' + Number(p.count).toLocaleString() + ' reviews)' : '');
+          const inner = `<strong>${p.name}</strong> ${info}`;
+          const tag = p.url ? `<a href="${p.url}" target="_blank" rel="noopener" style="text-decoration:none;color:var(--navy);">${inner}</a>` : inner;
+          return `<span style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:6px 10px;display:inline-block;">${tag}</span>`;
+        }).join('');
+      } else if (rvSection) {
+        rvSection.style.display = 'none';
+      }
 
       // Warranty preview
       const warrantyItems = [];
