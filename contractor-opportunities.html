@@ -259,7 +259,7 @@
                 allOpportunities = data.map(claim => {
                   // Parse city and zip from property_address
                   const addressParts = (claim.property_address || '').split(',');
-                  const city = claim.address_city || addressParts[0]?.trim() || 'Unknown';
+                  const city = claim.address_city || addressParts[1]?.trim() || addressParts[0]?.trim() || 'Unknown';
                   const zip = claim.address_zip || claim.property_address?.match(/\d{5}/)?.[0] || '';
 
                   // Parse trades from claim
