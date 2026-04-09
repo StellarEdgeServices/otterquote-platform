@@ -976,15 +976,14 @@
             <div class="confirmation-wrapper">
               <div class="confirmation-icon">&#x2705;</div>
               <h2 class="confirmation-title">You're All Set!</h2>
-              <p class="confirmation-subtitle">Contract signed with <span id="confirmContractorName">your contractor</span>. They must contact you within 48 hours.</p>
+              <p class="confirmation-subtitle">Contract signed with <span id="confirmContractorName">your contractor</span>. They will contact you <span id="contactDeadlineText">within 48 hours</span>.</p>
 
-              <!-- Deductible Coming Soon -->
-              <div class="callout callout-info" style="text-align: left; max-width: 600px; margin: 0 auto var(--sp-10);">
-                <div class="callout-icon">&#x1F4B3;</div>
-                <div class="callout-text">
-                  <div class="callout-title">Deductible Collection Coming Soon</div>
-                  <div class="callout-description">In a future update, your insurance deductible will be collected here as a refundable deposit to secure your contractor. For now, your contractor will coordinate deductible payment directly.</div>
-                </div>
+              <!-- Nudge Button -->
+              <div style="margin: var(--sp-6) 0 var(--sp-10);">
+                <button class="button button-secondary" id="noContactBtn" onclick="sendContractorNudge()">
+                  Haven't heard from your contractor? Click here.
+                </button>
+                <p id="nudgeStatus" style="display:none; margin-top: var(--sp-3); font-size: 0.9rem;"></p>
               </div>
 
               <!-- Next Steps -->
@@ -998,12 +997,7 @@
                 <div class="next-step-card">
                   <div class="next-step-number">2</div>
                   <div class="next-step-title">Contractor Outreach</div>
-                  <div class="next-step-description"><span id="confirmContractorName2">Your contractor</span> will reach out within 48 hours to introduce themselves and confirm scheduling.</div>
-                </div>
-                <div class="next-step-card">
-                  <div class="next-step-number">3</div>
-                  <div class="next-step-title">Milestone Support</div>
-                  <div class="next-step-description">We'll check in at every milestone to make sure everything goes smoothly.</div>
+                  <div class="next-step-description"><span id="confirmContractorName2">Your contractor</span> will reach out <span id="contactDeadlineText2">within 48 hours</span> to introduce themselves and confirm scheduling.</div>
                 </div>
               </div>
             </div>
@@ -1533,6 +1527,9 @@
       // Update progress indicator
       updateProgressIndicator(stepNum);
 
+      // Set deadline text when confirmation screen loads
+      if (stepNum === 3) setContactDeadlineText();
+
       // Scroll to top
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -1549,6 +1546,69 @@
           step.classList.add('completed');
         }
       });
+    }
+
+    // ── Set contact deadline text (48 hrs or by Monday for weekends) ──
+    function setContactDeadlineText() {
+      const now = new Date();
+      const day = now.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+      const hour = now.getHours();
+      const isWeekend = day === 0 || day === 6 || (day === 5 && hour >= 17);
+      const text = isWeekend ? 'by Monday' : 'within 48 hours';
+      const el1 = document.getElementById('contactDeadlineText');
+      const el2 = document.getElementById('contactDeadlineText2');
+      if (el1) el1.textContent = text;
+      if (el2) el2.textContent = text;
+    }
+
+    // ── Send nudge to contractor + Dustin when homeowner hasn't heard back ──
+    async function sendContractorNudge() {
+      const btn = document.getElementById('noContactBtn');
+      const statusEl = document.getElementById('nudgeStatus');
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+
+      const c = state.contractor;
+      const cl = state.claim;
+      const contractorName = c?.company_name || c?.name || 'your contractor';
+      const homeownerName = cl?.homeowner_name || 'your homeowner';
+      const address = cl?.property_address || 'their property';
+      const signedDate = cl?.contract_signed_at
+        ? new Date(cl.contract_signed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : 'recently';
+
+      // Collect all contractor phone numbers
+      const phones = [];
+      if (Array.isArray(c?.notification_phones) && c.notification_phones.length) {
+        phones.push(...c.notification_phones.filter(Boolean));
+      }
+      if (c?.phone && !phones.includes(c.phone)) {
+        phones.push(c.phone);
+      }
+
+      const contractorMsg = `OtterQuote: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (317) 501-9215.`;
+      const dustinMsg = `OtterQuote Alert: ${homeownerName} (claim ${state.claimId || 'unknown'}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
+
+      const sends = phones.map(phone =>
+        sb.functions.invoke('send-sms', { body: { to: phone, message: contractorMsg } })
+      );
+      // Always notify Dustin
+      sends.push(sb.functions.invoke('send-sms', { body: { to: '+13175019215', message: dustinMsg } }));
+
+      try {
+        await Promise.all(sends);
+        btn.textContent = '✓ Message sent';
+        statusEl.textContent = `We've notified ${contractorName} and our team. You should hear back soon.`;
+        statusEl.style.color = 'var(--emerald, #10b981)';
+        statusEl.style.display = 'block';
+      } catch (err) {
+        console.error('Nudge error:', err);
+        btn.disabled = false;
+        btn.textContent = "Haven't heard from your contractor? Click here.";
+        statusEl.textContent = 'Message failed to send. Please call us directly at (317) 501-9215.';
+        statusEl.style.color = 'var(--red, #ef4444)';
+        statusEl.style.display = 'block';
+      }
     }
 
     // ── Escape HTML ──
