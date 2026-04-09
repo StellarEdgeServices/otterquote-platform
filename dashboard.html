@@ -1292,11 +1292,12 @@
 
         const status = currentClaim?.status;
 
-        // Contract already signed — highest priority message
+        // Contract already signed — highest priority message (always show banner regardless of ready_for_bids)
         if (status === 'contract_signed') {
+          if (banner) banner.classList.add('active');
           if (iconEl) iconEl.textContent = '🎉';
           if (titleEl) titleEl.textContent = 'Contract signed!';
-          if (textEl) textEl.textContent = 'Your contractor agreement has been signed. Your project is in progress.';
+          if (textEl) textEl.textContent = 'Your contract is signed. Your contractor will be in touch to schedule your project.';
           return;
         }
 

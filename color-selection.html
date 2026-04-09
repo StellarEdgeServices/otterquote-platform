@@ -842,23 +842,41 @@
             </div>
           `;
         } else {
+          // Lazy-init: show a launch button so the OC widget does NOT load on page init
+          // (apis.owenscorning.com blocks the main thread synchronously and freezes the tab)
           container.innerHTML = `
             <p style="color: var(--slate); margin-bottom: var(--sp-4);">Upload a photo of your home and try on different Owens Corning shingle colors in real time.</p>
-            <div id="oc-widget-container">
+            <div id="oc-widget-launcher" style="text-align: center; padding: var(--sp-6) 0;">
+              <button class="btn btn-primary" onclick="ColorSelection.launchOCWidget('${zip}')" style="font-size: 1.05rem; padding: var(--sp-3) var(--sp-8);">
+                🎨 Click to Preview Colors
+              </button>
+              <p style="color: var(--slate); font-size: 0.875rem; margin-top: var(--sp-3); margin-bottom: 0;">Opens an interactive visualizer — upload a photo of your home to see real shingle colors.</p>
+            </div>
+            <div id="oc-widget-container" style="display: none;">
               <div id="visualizer" data-zip="${zip}"></div>
             </div>
             <div class="color-option-note">
               <strong>After visualizing:</strong> Once you've found a color you like, enter it in the form below to lock it in.
             </div>
           `;
+          // Script is intentionally NOT injected here — loaded on demand via launchOCWidget()
+        }
+      },
 
-          // Inject the OC widget script once (guard against double-load)
-          if (!document.querySelector('script[src*="apis.owenscorning.com/client/widget.js"]')) {
-            const script = document.createElement('script');
-            script.src = 'https://apis.owenscorning.com/client/widget.js';
-            script.async = true;
-            document.body.appendChild(script);
-          }
+      /**
+       * Lazy-load the OC Design EyeQ widget on user click (B3 fix — avoids main-thread freeze)
+       */
+      launchOCWidget(zip) {
+        const launcher = document.getElementById('oc-widget-launcher');
+        const widgetContainer = document.getElementById('oc-widget-container');
+        if (launcher) launcher.style.display = 'none';
+        if (widgetContainer) widgetContainer.style.display = 'block';
+        // Inject the OC widget script once (guard against double-load)
+        if (!document.querySelector('script[src*="apis.owenscorning.com/client/widget.js"]')) {
+          const script = document.createElement('script');
+          script.src = 'https://apis.owenscorning.com/client/widget.js';
+          script.async = true;
+          document.body.appendChild(script);
         }
       },
 
