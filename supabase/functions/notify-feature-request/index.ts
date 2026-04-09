@@ -2,21 +2,35 @@
 // Supabase Edge Function: notify-feature-request
 //
 // Triggered by a Database Webhook on INSERT to feature_requests.
-// Sends an email to Dustin via Resend whenever a contractor
+// Sends an email to Dustin via Mailgun whenever a contractor
 // submits a feature request.
 //
-// Required secret (set via Supabase Dashboard or CLI):
-//   RESEND_API_KEY = your Resend API key
+// Required secrets (already set in Supabase Dashboard):
+//   MAILGUN_API_KEY
+//   MAILGUN_DOMAIN
 // ============================================================
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const NOTIFY_TO      = "dustinstohler1@gmail.com";
-const NOTIFY_FROM    = "OtterQuote <notifications@otterquote.com>";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 
 serve(async (req: Request) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+      },
+    });
+  }
+
   try {
+    const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY");
+    const MAILGUN_DOMAIN  = Deno.env.get("MAILGUN_DOMAIN");
+
+    if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
+      throw new Error("Mailgun credentials not configured. Set MAILGUN_API_KEY and MAILGUN_DOMAIN in Supabase secrets.");
+    }
+
     // Supabase Database Webhook sends the row as { type, table, record, old_record }
     const payload = await req.json();
     const record = payload.record ?? payload; // graceful fallback
@@ -75,36 +89,36 @@ serve(async (req: Request) => {
       </div>
     `;
 
-    // ── Send via Resend ──────────────────────────────────────
-    if (!RESEND_API_KEY) {
-      throw new Error("RESEND_API_KEY secret is not set. Add it in Supabase Dashboard → Settings → Edge Functions → Secrets.");
+    // ── Send via Mailgun ──────────────────────────────────────
+    const fromAddress = `OtterQuote <notifications@${MAILGUN_DOMAIN}>`;
+    const basicAuth   = btoa(`api:${MAILGUN_API_KEY}`);
+
+    const formData = new FormData();
+    formData.append("from",    fromAddress);
+    formData.append("to",      "dustinstohler1@gmail.com");
+    formData.append("subject", `🦦 Feature Request — ${contractorName}`);
+    formData.append("text",    textBody);
+    formData.append("html",    htmlBody);
+
+    const mgRes = await fetch(
+      `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
+      {
+        method:  "POST",
+        headers: { Authorization: `Basic ${basicAuth}` },
+        body:    formData,
+      }
+    );
+
+    if (!mgRes.ok) {
+      const errText = await mgRes.text();
+      throw new Error(`Mailgun error ${mgRes.status}: ${errText}`);
     }
 
-    const resendRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${RESEND_API_KEY}`,
-      },
-      body: JSON.stringify({
-        from:    NOTIFY_FROM,
-        to:      [NOTIFY_TO],
-        subject: `Feature Request — ${contractorName}`,
-        text:    textBody,
-        html:    htmlBody,
-      }),
-    });
-
-    if (!resendRes.ok) {
-      const errText = await resendRes.text();
-      throw new Error(`Resend API error ${resendRes.status}: ${errText}`);
-    }
-
-    const resendData = await resendRes.json();
-    console.log("Email sent:", resendData.id);
+    const mgData = await mgRes.json();
+    console.log("notify-feature-request: email sent, Mailgun ID:", mgData.id);
 
     return new Response(
-      JSON.stringify({ success: true, email_id: resendData.id }),
+      JSON.stringify({ success: true, mailgun_id: mgData.id }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
 
