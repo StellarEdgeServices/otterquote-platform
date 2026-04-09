@@ -689,23 +689,26 @@
                   .in('status', ['pending', 'submitted']);
                 document.getElementById('activeBidsCount').textContent = bidCount ?? 0;
 
-                // Won Jobs = quotes with status 'awarded'
+                // Won Jobs = quotes with status 'selected' or 'awarded'
+                // Both statuses represent a win: 'selected' = homeowner chose this contractor,
+                // 'awarded' = formally awarded (bids.html sets this). Counting both prevents
+                // undercounting when quotes carry either status after the contractor is selected.
                 const { count: wonCount } = await sb
                   .from('quotes')
                   .select('id', { count: 'exact', head: true })
                   .eq('contractor_id', contractor.id)
-                  .eq('status', 'awarded');
+                  .in('status', ['selected', 'awarded']);
                 document.getElementById('wonJobsCount').textContent = wonCount ?? 0;
 
-                // Monthly earnings = sum of fee_amount on awarded quotes for the current calendar month
-                // Uses updated_at (when the quote was awarded) rather than created_at (when it was submitted)
+                // Monthly earnings = sum of fee_amount on won quotes for the current calendar month
+                // Uses updated_at (when the quote was won) rather than created_at (when it was submitted)
                 const now = new Date();
                 const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
                 const { data: earnData } = await sb
                   .from('quotes')
                   .select('fee_amount')
                   .eq('contractor_id', contractor.id)
-                  .eq('status', 'awarded')
+                  .in('status', ['selected', 'awarded'])
                   .gte('updated_at', monthStart);
                 const totalEarnings = (earnData || []).reduce((sum, q) => sum + (parseFloat(q.fee_amount) || 0), 0);
                 document.getElementById('earningsAmount').textContent = '$' + totalEarnings.toLocaleString();
