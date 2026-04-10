@@ -1081,6 +1081,43 @@
                 </div>
             </div>
 
+            <!-- Project Confirmation Template Card -->
+            <div class="profile-card">
+                <h2><span class="card-icon">📋</span>Project Confirmation Template</h2>
+
+                <div class="info-box" style="margin-bottom: var(--sp-6);">
+                    Upload your project confirmation PDF template. After a homeowner signs the main contract, OtterQuote sends this document to capture full scope details — structures, colors, materials, skylights, and work authorizations. OtterQuote will auto-fill homeowner name and property address before sending for e-signature via DocuSign.
+                </div>
+
+                <!-- View Mode -->
+                <div id="confirmationTemplateView">
+                    <div class="view-field">
+                        <label>Current Project Confirmation Template</label>
+                        <div class="view-field-value" id="viewConfirmationTemplate">No template uploaded</div>
+                    </div>
+                </div>
+
+                <!-- Upload Section -->
+                <div style="margin-top: var(--sp-6);">
+                    <div class="form-group">
+                        <label class="form-label">Upload Project Confirmation Template PDF</label>
+                        <div class="template-upload-box" onclick="document.getElementById('confirmationTemplateInput').click()">
+                            <label for="confirmationTemplateInput" class="template-upload-label">
+                                <div class="template-upload-icon">📋</div>
+                                <div class="template-upload-text">Click to upload PDF</div>
+                                <div class="template-upload-hint">PDF format only, max 10MB</div>
+                            </label>
+                            <input type="file" id="confirmationTemplateInput" accept=".pdf" onchange="saveProfile('confirmation-template', this)">
+                        </div>
+                    </div>
+                    <div id="confirmationUploadStatus" style="display: none; padding: var(--sp-3); border-radius: 8px; margin-top: var(--sp-3);"></div>
+                </div>
+
+                <div class="info-box" style="margin-top: var(--sp-6); font-size: 0.85rem;">
+                    <strong>No template yet?</strong> Until you upload a template, project confirmation falls back to the current color addendum behavior — color data is captured and you contact the homeowner directly for remaining scope details. Upload your own template to unlock the full two-document flow.
+                </div>
+            </div>
+
             <!-- Platform Stats Card -->
             <div class="profile-card">
                 <h2><span class="card-icon">📊</span>Platform Statistics</h2>
@@ -1207,6 +1244,9 @@
 
             // Contract template
             updateContractTemplateView();
+
+            // Project confirmation template
+            updateConfirmationTemplateView();
         }
 
         // ── Populate edit fields from contractor data ──
@@ -1413,6 +1453,64 @@
                     console.error('Error saving insurance info:', err);
                     alert('Failed to save changes. Please try again.');
                 }
+            } else if (section === 'confirmation-template') {
+                // inputElement is passed as second arg when called from file input onchange
+                const inputElement = arguments[1];
+                if (!inputElement || !inputElement.files.length) return;
+
+                const file = inputElement.files[0];
+                if (file.type !== 'application/pdf') {
+                    alert('Please upload a PDF file.');
+                    return;
+                }
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('File too large. Maximum 10MB.');
+                    return;
+                }
+                if (!contractorRecord || !sb) {
+                    alert('Not connected to database.');
+                    return;
+                }
+
+                try {
+                    const timestamp = Date.now();
+                    const filePath = `${contractorRecord.id}/project_confirmation_template_${timestamp}.pdf`;
+
+                    const { error: uploadError } = await sb.storage
+                        .from('contractor-templates')
+                        .upload(filePath, file, { contentType: 'application/pdf' });
+
+                    if (uploadError) throw uploadError;
+
+                    const { data: urlData } = sb.storage
+                        .from('contractor-templates')
+                        .getPublicUrl(filePath);
+
+                    const { data, error: updateError } = await sb
+                        .from('contractors')
+                        .update({ color_confirmation_template: urlData.publicUrl, updated_at: new Date().toISOString() })
+                        .eq('id', contractorRecord.id)
+                        .select()
+                        .single();
+
+                    if (updateError) throw updateError;
+
+                    contractorRecord = data;
+                    updateConfirmationTemplateView();
+
+                    const statusEl = document.getElementById('confirmationUploadStatus');
+                    statusEl.style.display = 'block';
+                    statusEl.textContent = 'Project confirmation template uploaded successfully!';
+                    statusEl.style.background = 'rgba(16, 185, 129, 0.1)';
+                    statusEl.style.color = '#10b981';
+                } catch (err) {
+                    console.error('Error uploading confirmation template:', err);
+                    const statusEl = document.getElementById('confirmationUploadStatus');
+                    statusEl.style.display = 'block';
+                    statusEl.textContent = 'Failed to upload template. Please try again.';
+                    statusEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                    statusEl.style.color = '#ef4444';
+                }
             } else if (section === 'photos') {
                 // Handle photo uploads
                 const ownerPhotoInput = document.getElementById('ownerPhotoInput');
@@ -1517,6 +1615,17 @@
                 document.getElementById('contractAnchorHelp').style.display = 'block';
             } else {
                 el.textContent = 'No contract uploaded';
+            }
+        }
+
+        function updateConfirmationTemplateView() {
+            const el = document.getElementById('viewConfirmationTemplate');
+            if (!el) return;
+            if (contractorRecord && contractorRecord.color_confirmation_template) {
+                el.innerHTML = `<a href="${contractorRecord.color_confirmation_template}" target="_blank" style="color: var(--amber); text-decoration: none;">📋 View uploaded project confirmation template</a>
+                    <span style="font-size: 0.8rem; color: var(--slate); margin-left: var(--sp-2);">(Upload a new file to replace)</span>`;
+            } else {
+                el.textContent = 'No template uploaded';
             }
         }
 
