@@ -210,6 +210,40 @@
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── SMS Consent Checkbox ── */
+.form-checkbox {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--slate);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  flex-shrink: 0;
+}
+
+.form-checkbox:hover {
+  border-color: var(--amber);
+}
+
+.form-checkbox:checked {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+.form-checkbox:checked::after {
+  content: '✓';
+  color: var(--navy);
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .gs-layout { grid-template-columns: 1fr; }
@@ -262,6 +296,14 @@
           <label class="form-label" for="phone">Phone</label>
           <input type="tel" id="phone" class="form-input" required autocomplete="tel" placeholder="(317) 555-1234">
           <span class="form-hint">For bid notifications and updates via text.</span>
+        </div>
+
+        <!-- TWILIO MESSAGE_FLOW: "By providing your phone number and checking the SMS consent checkbox, you consent to receive SMS messages from OtterQuote about your project status, contractor updates, and bid notifications. Message & data rates may apply. Reply STOP to opt out. For more information, see our Privacy Policy and Terms of Service." -->
+        <div class="form-group">
+          <label style="display: flex; align-items: flex-start; gap: var(--sp-2); cursor: pointer; font-weight: 400;">
+            <input type="checkbox" id="sms-consent" class="form-checkbox" required style="margin-top: 2px; flex-shrink: 0;">
+            <span style="font-size: 0.9rem; line-height: 1.5;">By providing your phone number and checking this box, you consent to receive SMS messages from OtterQuote about your project status and contractor updates. Message & data rates may apply. Reply STOP to opt out. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</span>
+          </label>
         </div>
 
         <div class="form-group">
@@ -421,6 +463,7 @@
     const email = document.getElementById('email').value.trim();
     const phone = document.getElementById('phone').value.trim();
     const address = document.getElementById('address').value.trim();
+    const smsConsent = document.getElementById('sms-consent').checked;
     const referralSource = document.getElementById('referral-source').value;
     const refName = document.getElementById('ref-name').value.trim();
     const refEmail = document.getElementById('ref-email').value.trim();
@@ -428,6 +471,12 @@
     // Validation
     if (!firstName || !lastName || !email || !phone || !address) {
       errorEl.textContent = 'Please fill in all required fields.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    if (!smsConsent) {
+      errorEl.textContent = 'Please consent to SMS messages to continue.';
       errorEl.style.display = 'block';
       return;
     }
