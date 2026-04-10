@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+  <title>Project Confirmation — OtterQuote</title>
+  <meta name="description" content="Confirm your project scope and materials so your contractor can get started.">
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+
+  <style>
+    /* ── Page Layout ── */
+    .confirmation-page-layout {
+      min-height: calc(100vh - 64px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .confirmation-page-main {
+      flex: 1;
+      padding: var(--sp-12) 0;
+    }
+
+    /* ── Container ── */
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 var(--sp-4);
+    }
+
+    /* ── Progress Indicator ── */
+    .progress-indicator {
+      margin-bottom: var(--sp-12);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .progress-steps {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      max-width: 600px;
+    }
+
+    .progress-step {
+      flex: 1;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .progress-step-number {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--navy-3);
+      border: 2px solid rgba(255,255,255,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: var(--sp-2);
+      transition: all var(--duration) var(--ease);
+      font-size: 1.1rem;
+    }
+
+    .progress-step.active .progress-step-number {
+      background: var(--amber);
+      border-color: var(--amber);
+      color: var(--navy);
+      box-shadow: 0 0 20px rgba(20, 184, 166, 0.3);
+    }
+
+    .progress-step.completed .progress-step-number {
+      background: var(--green);
+      border-color: var(--green);
+      color: var(--white);
+    }
+
+    .progress-step-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+    }
+
+    .progress-step.active .progress-step-label,
+    .progress-step.completed .progress-step-label {
+      color: var(--white);
+    }
+
+    .progress-connector {
+      position: absolute;
+      top: 24px;
+      left: -50%;
+      width: 100%;
+      height: 2px;
+      background: rgba(255,255,255,0.1);
+      z-index: -1;
+    }
+
+    .progress-step:first-child .progress-connector { display: none; }
+
+    .progress-step.completed .progress-connector {
+      background: var(--green);
+    }
+
+    /* ── Header ── */
+    .page-header {
+      margin-bottom: var(--sp-10);
+      animation: fadeUp 0.6s var(--ease) 0.1s both;
+    }
+
+    .page-header h1 {
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      margin-bottom: var(--sp-2);
+    }
+
+    .page-header-subtitle {
+      color: var(--slate);
+      font-size: 1.1rem;
+      max-width: 640px;
+    }
+
+    /* ── Contractor Card ── */
+    .contractor-card {
+      background: linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, transparent 100%);
+      border: 1px solid rgba(20, 184, 166, 0.3);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-6);
+      margin-bottom: var(--sp-8);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-5);
+      animation: fadeUp 0.6s var(--ease) 0.15s both;
+    }
+
+    .contractor-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: var(--radius-lg);
+      background: var(--navy-3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.75rem;
+      flex-shrink: 0;
+    }
+
+    .contractor-avatar img {
+      width: 100%;
+      height: 100%;
+      border-radius: var(--radius-lg);
+      object-fit: cover;
+    }
+
+    .contractor-info { flex: 1; }
+
+    .contractor-name {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: var(--sp-1);
+    }
+
+    .contractor-meta {
+      color: var(--slate);
+      font-size: 0.9rem;
+    }
+
+    .contractor-badge {
+      background: var(--amber-glow);
+      color: var(--amber);
+      padding: var(--sp-1) var(--sp-3);
+      border-radius: var(--radius-full);
+      font-size: 0.8rem;
+      font-weight: 600;
+      white-space: nowrap;
+      margin-top: var(--sp-2);
+      display: inline-block;
+    }
+
+    /* ── Callout ── */
+    .callout {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-left: 4px solid var(--green);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-5) var(--sp-6);
+      margin-bottom: var(--sp-8);
+      display: flex;
+      gap: var(--sp-4);
+      animation: fadeUp 0.6s var(--ease) 0.2s both;
+    }
+
+    .callout.callout-info {
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-left: 4px solid #3b82f6;
+    }
+
+    .callout-icon {
+      font-size: 1.4rem;
+      flex-shrink: 0;
+      color: var(--green);
+    }
+
+    .callout.callout-info .callout-icon { color: #3b82f6; }
+
+    .callout-text { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+    .callout-title { font-weight: 600; color: var(--white); }
+
+    .callout-description { color: rgba(255,255,255,0.8); font-size: 0.95rem; }
+
+    /* ── Form Sections ── */
+    .form-section {
+      background: var(--navy-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--sp-6);
+      padding-bottom: var(--sp-5);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    .section-badge {
+      background: rgba(20, 184, 166, 0.1);
+      color: var(--amber);
+      padding: var(--sp-1) var(--sp-3);
+      border-radius: var(--radius-full);
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    /* ── Form Grid ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: var(--sp-6);
+    }
+
+    .form-grid-full {
+      grid-column: 1 / -1;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+
+    .form-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+    }
+
+    .form-label.required::after {
+      content: ' *';
+      color: #ef4444;
+    }
+
+    .form-input,
+    .form-select,
+    .form-textarea {
+      background: var(--navy-3);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-md);
+      color: var(--white);
+      font-family: inherit;
+      font-size: 1rem;
+      padding: var(--sp-3) var(--sp-4);
+      transition: border-color var(--duration) var(--ease);
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .form-input:focus,
+    .form-select:focus,
+    .form-textarea:focus {
+      outline: none;
+      border-color: var(--amber);
+    }
+
+    .form-input::placeholder,
+    .form-textarea::placeholder {
+      color: rgba(255,255,255,0.25);
+    }
+
+    .form-select {
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right var(--sp-3) center;
+      background-size: 18px;
+      padding-right: var(--sp-10);
+    }
+
+    .form-select option {
+      background: #0B1929;
+      color: var(--white);
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 100px;
+      line-height: 1.6;
+    }
+
+    .form-hint {
+      font-size: 0.85rem;
+      color: var(--slate);
+      margin-top: var(--sp-1);
+    }
+
+    /* ── Scope Line Items Table ── */
+    .scope-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    .scope-table th {
+      text-align: left;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+      padding: var(--sp-2) var(--sp-4);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .scope-table td {
+      padding: var(--sp-3) var(--sp-4);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      color: var(--white);
+      vertical-align: top;
+    }
+
+    .scope-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .scope-table tr:hover td {
+      background: rgba(255,255,255,0.02);
+    }
+
+    .scope-table .amount {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .scope-table .total-row td {
+      font-weight: 700;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      padding-top: var(--sp-4);
+      color: var(--amber);
+    }
+
+    .scope-empty {
+      background: var(--navy-3);
+      border: 1px dashed rgba(255,255,255,0.1);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+      text-align: center;
+      color: var(--slate);
+      font-size: 0.9rem;
+    }
+
+    /* ── Colors / Materials Preview ── */
+    .color-preview {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      margin-top: var(--sp-2);
+    }
+
+    .color-swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255,255,255,0.15);
+      background: var(--navy-3);
+      flex-shrink: 0;
+    }
+
+    /* ── Acknowledgment Checkboxes ── */
+    .ack-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-4);
+    }
+
+    .ack-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-3);
+    }
+
+    .ack-checkbox {
+      width: 22px;
+      height: 22px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin-top: 2px;
+      transition: all var(--duration) var(--ease);
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    .ack-checkbox:hover { border-color: rgba(255,255,255,0.5); }
+
+    .ack-checkbox:checked {
+      background: var(--amber);
+      border-color: var(--amber);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%230B1929' d='M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 11-1.06-1.06l7.25-7.25a.75.75 0 011.06 0z'/%3E%3Cpath fill='%230B1929' d='M2.22 9.28a.75.75 0 001.06 1.06L6.5 6.56l.72.72a.75.75 0 101.06-1.06l-1.28-1.28a.75.75 0 00-1.06 0L2.22 9.28z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 13px;
+    }
+
+    .ack-label {
+      flex: 1;
+      font-size: 0.95rem;
+      color: var(--white);
+      cursor: pointer;
+      line-height: 1.5;
+    }
+
+    .ack-label span {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--slate);
+      margin-top: var(--sp-1);
+    }
+
+    /* ── Buttons ── */
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--sp-2);
+      padding: var(--sp-3) var(--sp-6);
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--duration) var(--ease);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .button-primary {
+      background: var(--amber);
+      color: var(--navy);
+      box-shadow: 0 0 20px rgba(20, 184, 166, 0.3);
+    }
+
+    .button-primary:hover:not(:disabled) {
+      background: var(--amber-2);
+      transform: translateY(-2px);
+      box-shadow: 0 0 30px rgba(20, 184, 166, 0.4);
+    }
+
+    .button-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .button-secondary {
+      background: var(--navy-3);
+      color: var(--white);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .button-secondary:hover:not(:disabled) {
+      border-color: rgba(255,255,255,0.2);
+      background: var(--navy-2);
+    }
+
+    .button-large {
+      padding: var(--sp-4) var(--sp-8);
+      font-size: 1.1rem;
+    }
+
+    /* ── Form Actions ── */
+    .form-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      margin-top: var(--sp-8);
+      flex-wrap: wrap;
+    }
+
+    .back-link {
+      color: var(--slate);
+      text-decoration: none;
+      font-weight: 500;
+      transition: all var(--duration) var(--ease);
+    }
+
+    .back-link:hover { color: var(--white); }
+
+    /* ── Success Screen ── */
+    .success-wrapper {
+      text-align: center;
+      padding: var(--sp-12) var(--sp-4);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .success-icon {
+      font-size: 4rem;
+      margin-bottom: var(--sp-4);
+      animation: scaleUp 0.6s var(--ease);
+    }
+
+    .success-title {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: var(--sp-4);
+    }
+
+    .success-subtitle {
+      color: var(--slate);
+      font-size: 1.1rem;
+      margin-bottom: var(--sp-10);
+      max-width: 580px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* ── Loading / Error States ── */
+    .loading-state {
+      text-align: center;
+      padding: var(--sp-20) var(--sp-8);
+    }
+
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: var(--amber);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto var(--sp-6);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-state {
+      text-align: center;
+      padding: var(--sp-12) var(--sp-8);
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: var(--radius-lg);
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes scaleUp {
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .progress-steps {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        gap: var(--sp-2);
+        padding-bottom: var(--sp-2);
+        max-width: 100%;
+      }
+
+      .progress-step {
+        flex: 0 0 auto;
+        min-width: 70px;
+      }
+
+      .progress-step-number {
+        width: 36px;
+        height: 36px;
+        font-size: 0.9rem;
+      }
+
+      .progress-step-label { font-size: 0.7rem; }
+      .progress-connector { display: none; }
+
+      .contractor-card {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .form-actions { flex-direction: column; }
+
+      .button { width: 100%; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <header id="site-header"></header>
+
+  <!-- Main Content -->
+  <div class="confirmation-page-layout">
+    <main class="confirmation-page-main">
+      <div class="container">
+
+        <!-- Loading State -->
+        <div id="pageLoading" class="loading-state">
+          <div class="loading-spinner"></div>
+          <p style="color: var(--white); font-weight: 600;">Loading your project details...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="pageError" style="display: none;" class="error-state">
+          <div style="font-size: 2rem; margin-bottom: var(--sp-4);">&#x26A0;&#xFE0F;</div>
+          <p style="color: #ef4444; font-weight: 600; margin-bottom: var(--sp-2);" id="pageErrorTitle">Unable to load project</p>
+          <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-6);" id="pageErrorDetail">Please try again or contact support.</p>
+          <a href="/dashboard.html" class="button button-primary">Back to Dashboard</a>
+        </div>
+
+        <!-- Main Content -->
+        <div id="pageContent" style="display: none;">
+
+          <!-- Progress Indicator -->
+          <div class="progress-indicator">
+            <div class="progress-steps">
+              <div class="progress-step completed" data-step="1">
+                <div class="progress-step-number">&#x2713;</div>
+                <div class="progress-step-label">Contract</div>
+                <div class="progress-connector"></div>
+              </div>
+              <div class="progress-step active" data-step="2">
+                <div class="progress-step-number">2</div>
+                <div class="progress-step-label">Confirm</div>
+                <div class="progress-connector"></div>
+              </div>
+              <div class="progress-step" data-step="3">
+                <div class="progress-step-number">3</div>
+                <div class="progress-step-label">Done</div>
+                <div class="progress-connector"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Page Header -->
+          <div class="page-header">
+            <h1>Project Confirmation</h1>
+            <p class="page-header-subtitle">Your contract is signed. Now let's confirm the scope, materials, and any special details your contractor needs to get started.</p>
+          </div>
+
+          <!-- Contractor Card -->
+          <div class="contractor-card">
+            <div class="contractor-avatar" id="contractorAvatar">&#x1F3E0;</div>
+            <div class="contractor-info">
+              <div class="contractor-name" id="contractorName">Loading...</div>
+              <div class="contractor-meta" id="contractorMeta">&mdash;</div>
+              <div class="contractor-badge">&#x2705; Contract Signed</div>
+            </div>
+          </div>
+
+          <!-- Info Callout -->
+          <div class="callout callout-info">
+            <div class="callout-icon">&#x2139;&#xFE0F;</div>
+            <div class="callout-text">
+              <div class="callout-title">This information goes directly to your contractor.</div>
+              <div class="callout-description">Once submitted, your contractor receives a signed project confirmation document with everything below. Review it carefully before hitting Submit.</div>
+            </div>
+          </div>
+
+          <!-- FORM -->
+          <form id="confirmationForm" novalidate>
+
+            <!-- ── Section 1: Scope Line Items ── -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x1F4CB; Insurance Scope Items</h2>
+                <span class="section-badge">From Your Estimate</span>
+              </div>
+              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5);">These line items were parsed from your insurance estimate. Review and verify they match what's being replaced.</p>
+              <div id="scopeTableContainer">
+                <div class="scope-empty">&#x23F3; Loading scope items...</div>
+              </div>
+            </div>
+
+            <!-- ── Section 2: Structure & Trades ── -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x1F3D7;&#xFE0F; Structures &amp; Trade Scope</h2>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label required" for="numStructures">Number of Structures</label>
+                  <select id="numStructures" name="numStructures" class="form-select" required>
+                    <option value="">Select...</option>
+                    <option value="1">1 — House only</option>
+                    <option value="2">2 — House + detached garage</option>
+                    <option value="3">3 or more</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label required" for="structureNames">Structure Names</label>
+                  <input type="text" id="structureNames" name="structureNames" class="form-input" placeholder="e.g., Main house, Detached garage" required>
+                  <div class="form-hint">List each structure separated by commas</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="roofAsphaltScope">Roof (Asphalt) Scope</label>
+                  <select id="roofAsphaltScope" name="roofAsphaltScope" class="form-select">
+                    <option value="">N/A — Not part of this project</option>
+                    <option value="full_replacement">Full replacement</option>
+                    <option value="partial_replacement">Partial replacement</option>
+                    <option value="repair_only">Repair only</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="roofMetalScope">Roof (Metal) Scope</label>
+                  <select id="roofMetalScope" name="roofMetalScope" class="form-select">
+                    <option value="">N/A — Not part of this project</option>
+                    <option value="full_replacement">Full replacement</option>
+                    <option value="partial_replacement">Partial replacement</option>
+                    <option value="repair_only">Repair only</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="guttersScope">Gutters</label>
+                  <select id="guttersScope" name="guttersScope" class="form-select">
+                    <option value="">N/A</option>
+                    <option value="replace_all">Replace all</option>
+                    <option value="replace_partial">Replace partial</option>
+                    <option value="repair">Repair only</option>
+                    <option value="clean_only">Clean only</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="downspoutsScope">Downspouts</label>
+                  <select id="downspoutsScope" name="downspoutsScope" class="form-select">
+                    <option value="">N/A</option>
+                    <option value="replace_all">Replace all</option>
+                    <option value="replace_partial">Replace partial</option>
+                    <option value="repair">Repair only</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Section 3: Materials & Colors ── -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x1F3A8; Materials &amp; Colors</h2>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label" for="shingleManufacturer">Shingle Manufacturer</label>
+                  <select id="shingleManufacturer" name="shingleManufacturer" class="form-select">
+                    <option value="">Not yet selected</option>
+                    <option value="owens_corning">Owens Corning</option>
+                    <option value="gaf">GAF</option>
+                    <option value="certainteed">CertainTeed</option>
+                    <option value="tamko">TAMKO</option>
+                    <option value="atlas">Atlas</option>
+                    <option value="iko">IKO</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="shingleType">Shingle Type</label>
+                  <select id="shingleType" name="shingleType" class="form-select">
+                    <option value="">Not yet selected</option>
+                    <option value="3tab">3-Tab</option>
+                    <option value="architectural">Architectural / Laminate</option>
+                    <option value="designer">Designer / Premium</option>
+                    <option value="impact_class3">Architectural — Impact Class 3</option>
+                    <option value="impact_class4">Architectural — Impact Class 4</option>
+                    <option value="standing_seam_metal">Standing Seam Metal</option>
+                    <option value="exposed_fastener_metal">Exposed Fastener Metal</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="shingleColor">Shingle Color</label>
+                  <input type="text" id="shingleColor" name="shingleColor" class="form-input" placeholder="e.g., Weathered Wood, Estate Gray">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="dripEdgeColor">Drip Edge Color</label>
+                  <input type="text" id="dripEdgeColor" name="dripEdgeColor" class="form-input" placeholder="e.g., White, Brown, Black">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="valleyType">Valley Type</label>
+                  <select id="valleyType" name="valleyType" class="form-select">
+                    <option value="">Not specified</option>
+                    <option value="open">Open valley</option>
+                    <option value="closed_cut">Closed-cut valley</option>
+                    <option value="woven">Woven valley</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="gutterGuards">Gutter Guards</label>
+                  <select id="gutterGuards" name="gutterGuards" class="form-select">
+                    <option value="">Not applicable</option>
+                    <option value="included">Included (as covered by insurance)</option>
+                    <option value="available">Available (additional cost)</option>
+                    <option value="existing_reuse">Existing — reuse</option>
+                    <option value="existing_replace">Existing — replace with new</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Section 4: Skylights & Special Items ── -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x1FA9F; Skylights &amp; Special Items</h2>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label" for="skylightsAction">Skylights</label>
+                  <select id="skylightsAction" name="skylightsAction" class="form-select">
+                    <option value="none">None / N/A</option>
+                    <option value="reflash_only">Reflash only</option>
+                    <option value="replace">Replace</option>
+                    <option value="reflash_and_replace">Some reflash, some replace</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="skylightCount">Number of Skylights</label>
+                  <input type="number" id="skylightCount" name="skylightCount" class="form-input" placeholder="0" min="0" max="20">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="satelliteDish">Satellite Dish</label>
+                  <select id="satelliteDish" name="satelliteDish" class="form-select">
+                    <option value="none">None</option>
+                    <option value="leave_in_place">Leave in place</option>
+                    <option value="disconnect_reconnect">Disconnect and reconnect</option>
+                    <option value="remove_homeowner">Remove — homeowner handles</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="badDeckingExpected">Bad Decking</label>
+                  <select id="badDeckingExpected" name="badDeckingExpected" class="form-select">
+                    <option value="none_expected">None expected</option>
+                    <option value="some_expected">Some expected (per estimate)</option>
+                    <option value="unknown">Unknown — T&amp;M rate applies</option>
+                  </select>
+                </div>
+                <div class="form-group form-grid-full">
+                  <label class="form-label" for="workNotBeingDone">Work NOT Being Done</label>
+                  <input type="text" id="workNotBeingDone" name="workNotBeingDone" class="form-input" placeholder="e.g., Chimney cap, HVAC flashing, Siding">
+                  <div class="form-hint">List any line items from the estimate that are excluded from this scope</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Section 5: Chimney Details ── -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x1F6D6; Chimney Details</h2>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label" for="chimney1Material">Chimney 1 — Material</label>
+                  <select id="chimney1Material" name="chimney1Material" class="form-select">
+                    <option value="none">None / N/A</option>
+                    <option value="brick">Brick</option>
+                    <option value="stone">Stone</option>
+                    <option value="stucco">Stucco</option>
+                    <option value="siding">Siding-wrapped</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="chimney1Cricket">Chimney 1 — Cricket</label>
+                  <select id="chimney1Cricket" name="chimney1Cricket" class="form-select">
+                    <option value="no">Not needed</option>
+                    <option value="existing">Existing — keep</option>
+                    <option value="new">Install new cricket</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="chimney1ReflashOop">Chimney 1 — Reflash OOP?</label>
+                  <select id="chimney1ReflashOop" name="chimney1ReflashOop" class="form-select">
+                    <option value="no">No — covered by insurance</option>
+                    <option value="yes">Yes — homeowner OOP</option>
+                    <option value="na">Not applicable</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="chimney2Material">Chimney 2 — Material</label>
+                  <select id="chimney2Material" name="chimney2Material" class="form-select">
+                    <option value="none">None / N/A</option>
+                    <option value="brick">Brick</option>
+                    <option value="stone">Stone</option>
+                    <option value="stucco">Stucco</option>
+                    <option value="siding">Siding-wrapped</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="chimney2Cricket">Chimney 2 — Cricket</label>
+                  <select id="chimney2Cricket" name="chimney2Cricket" class="form-select">
+                    <option value="no">Not needed</option>
+                    <option value="existing">Existing — keep</option>
+                    <option value="new">Install new cricket</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="chimney2ReflashOop">Chimney 2 — Reflash OOP?</label>
+                  <select id="chimney2ReflashOop" name="chimney2ReflashOop" class="form-select">
+                    <option value="no">No — covered by insurance</option>
+                    <option value="yes">Yes — homeowner OOP</option>
+                    <option value="na">N/A — no second chimney</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Section 6: Financial Details ── -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x1F4B0; Financial Details</h2>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label" for="nonRecoverableDepreciation">Non-Recoverable Depreciation</label>
+                  <input type="number" id="nonRecoverableDepreciation" name="nonRecoverableDepreciation" class="form-input" placeholder="0.00" min="0" step="0.01">
+                  <div class="form-hint">Amount homeowner is responsible for (if ACV policy or partial)</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="deductibleAmount">Deductible Amount</label>
+                  <input type="number" id="deductibleAmount" name="deductibleAmount" class="form-input" placeholder="0.00" min="0" step="0.01" readonly>
+                  <div class="form-hint">Pulled from your claim — confirm with your contractor</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Section 7: Homeowner Notes ── -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x1F4AC; Notes for Your Contractor</h2>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="homeownerNotes">Additional Notes or Instructions</label>
+                <textarea id="homeownerNotes" name="homeownerNotes" class="form-textarea" rows="4" placeholder="e.g., Gate code is 1234. Dog in backyard — please call before entering. I work from home Tuesdays — prefer not to start before 9am."></textarea>
+                <div class="form-hint">This will appear on the project confirmation document sent to your contractor.</div>
+              </div>
+            </div>
+
+            <!-- ── Section 8: Acknowledgments ── -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x270F;&#xFE0F; Acknowledgments</h2>
+              </div>
+              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-6);">Please review and initial each item below before submitting your project confirmation.</p>
+              <div class="ack-group">
+                <div class="ack-item">
+                  <input type="checkbox" class="ack-checkbox" id="ackBadDecking" name="ackBadDecking">
+                  <label class="ack-label" for="ackBadDecking">
+                    I understand that bad decking discovered during installation will be billed at the contractor's stated per-sheet rate.
+                    <span>This is standard — the estimate accounts for known decking; unexpected damage is billed separately.</span>
+                  </label>
+                </div>
+                <div class="ack-item">
+                  <input type="checkbox" class="ack-checkbox" id="ackProjectChanges" name="ackProjectChanges">
+                  <label class="ack-label" for="ackProjectChanges">
+                    I understand that any changes to this project scope after submission may require a change order signed by both parties.
+                    <span>Material or scope changes after installation begins may affect cost and timeline.</span>
+                  </label>
+                </div>
+                <div class="ack-item">
+                  <input type="checkbox" class="ack-checkbox" id="ackNonRecoverable" name="ackNonRecoverable">
+                  <label class="ack-label" for="ackNonRecoverable">
+                    I acknowledge any non-recoverable depreciation amount listed above is my out-of-pocket responsibility.
+                    <span>If no depreciation applies, this acknowledgment still confirms I have reviewed the financial details.</span>
+                  </label>
+                </div>
+                <div class="ack-item">
+                  <input type="checkbox" class="ack-checkbox" id="ackPaymentTerms" name="ackPaymentTerms">
+                  <label class="ack-label" for="ackPaymentTerms">
+                    I agree to the payment terms outlined in the signed contractor agreement.
+                    <span>Payment is due per the schedule in the contract I signed in the previous step.</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Form Actions ── -->
+            <div class="form-actions">
+              <button type="submit" class="button button-primary button-large" id="submitBtn" disabled>
+                Submit Project Confirmation &rarr;
+              </button>
+              <a href="/contract-signing.html" id="backToContractLink" class="back-link">&larr; Back to Contract</a>
+            </div>
+
+          </form>
+
+          <!-- ── Success Screen (hidden until submit) ── -->
+          <div id="successScreen" style="display: none;">
+            <div class="success-wrapper">
+              <div class="success-icon">&#x2705;</div>
+              <h2 class="success-title">Confirmation Submitted!</h2>
+              <p class="success-subtitle">Confirmation submitted — your contractor will receive the details. They'll be in touch to confirm your installation schedule.</p>
+
+              <div style="margin-top: var(--sp-8);">
+                <a href="/dashboard.html" class="button button-primary button-large">Go to My Dashboard &rarr;</a>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /pageContent -->
+
+      </div>
+    </main>
+
+    <footer id="site-footer"></footer>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+
+  <script>
+    /**
+     * OtterQuote — Project Confirmation Page (D-110/D-111/D-112)
+     *
+     * URL params:
+     *   ?claim_id=XXX   — required; pulls claim + selected contractor + parsed_line_items
+     *
+     * Flow:
+     *   1. Auth check (homeowner only)
+     *   2. Load claim, contractor, parsed_line_items
+     *   3. Homeowner fills scope/material/notes form
+     *   4. On submit: save project_confirmation JSONB to claims table
+     *   5. Stub DocuSign call (Step 3 — Edge Function extension)
+     *
+     * DocuSign stub: console.log + success message.
+     * Real Edge Function call wired in Step 3 (ClickUp 86e0vc0hv).
+     */
+
+    // ── State ──
+    const state = {
+      claimId: null,
+      claim: null,
+      contractorId: null,
+      contractor: null,
+      currentUser: null,
+      parsedLineItems: [],
+    };
+
+    // ── Helpers ──
+    function showError(title, detail) {
+      document.getElementById('pageLoading').style.display = 'none';
+      document.getElementById('pageContent').style.display = 'none';
+      document.getElementById('pageErrorTitle').textContent = title;
+      document.getElementById('pageErrorDetail').textContent = detail;
+      document.getElementById('pageError').style.display = 'block';
+    }
+
+    function formatCurrency(val) {
+      if (val == null || val === '') return '—';
+      const n = parseFloat(val);
+      if (isNaN(n)) return '—';
+      return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // ── Render Scope Table ──
+    function renderScopeTable(items) {
+      const container = document.getElementById('scopeTableContainer');
+      if (!items || items.length === 0) {
+        container.innerHTML = '<div class="scope-empty">&#x1F4AD; No scope items were parsed from your estimate. Your contractor will work from the full estimate on file.</div>';
+        return;
+      }
+
+      // Filter for roofing-related items
+      const roofKeywords = /roof|shingle|felt|ice|ridge|flashing|valley|decking|deck|gutter|downspout|skylight|chimney|ventilation|vent|soffit|fascia|drip|underlayment/i;
+      const roofItems = items.filter(item => roofKeywords.test(item.description || ''));
+      const displayItems = roofItems.length > 0 ? roofItems : items;
+
+      let totalRCV = 0;
+      let totalACV = 0;
+
+      const rows = displayItems.map(item => {
+        const rcv = parseFloat(item.rcv) || 0;
+        const acv = parseFloat(item.acv) || 0;
+        const dep = parseFloat(item.depreciation) || 0;
+        totalRCV += rcv;
+        totalACV += acv;
+
+        return `<tr>
+          <td>${item.description || '—'}</td>
+          <td>${item.quantity ? item.quantity + (item.unit ? ' ' + item.unit : '') : '—'}</td>
+          <td class="amount">${rcv ? formatCurrency(rcv) : '—'}</td>
+          <td class="amount">${dep ? formatCurrency(dep) : '—'}</td>
+          <td class="amount">${acv ? formatCurrency(acv) : '—'}</td>
+        </tr>`;
+      }).join('');
+
+      container.innerHTML = `
+        <table class="scope-table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th>Qty / Unit</th>
+              <th>RCV</th>
+              <th>Depreciation</th>
+              <th>ACV</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+            <tr class="total-row">
+              <td colspan="2">Totals</td>
+              <td class="amount">${formatCurrency(totalRCV)}</td>
+              <td class="amount">—</td>
+              <td class="amount">${formatCurrency(totalACV)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="font-size:0.85rem;color:var(--slate);margin-top:var(--sp-3);">Showing ${displayItems.length} of ${items.length} line items from your estimate. Your contractor has the full estimate on file.</p>
+      `;
+    }
+
+    // ── Populate form from existing project_confirmation (if any) ──
+    function populateExistingData(data) {
+      if (!data) return;
+      const fields = ['numStructures','structureNames','roofAsphaltScope','roofMetalScope','guttersScope','downspoutsScope',
+        'shingleManufacturer','shingleType','shingleColor','dripEdgeColor','valleyType','gutterGuards',
+        'skylightsAction','skylightCount','satelliteDish','badDeckingExpected','workNotBeingDone',
+        'chimney1Material','chimney1Cricket','chimney1ReflashOop','chimney2Material','chimney2Cricket','chimney2ReflashOop',
+        'nonRecoverableDepreciation','homeownerNotes'];
+      fields.forEach(f => {
+        const el = document.getElementById(f);
+        if (el && data[f] != null) el.value = data[f];
+      });
+      const ackFields = ['ackBadDecking','ackProjectChanges','ackNonRecoverable','ackPaymentTerms'];
+      ackFields.forEach(f => {
+        const el = document.getElementById(f);
+        if (el && data[f]) el.checked = true;
+      });
+    }
+
+    // ── Validate all acks are checked ──
+    function allAcksChecked() {
+      return ['ackBadDecking','ackProjectChanges','ackNonRecoverable','ackPaymentTerms']
+        .every(id => document.getElementById(id).checked);
+    }
+
+    function updateSubmitBtn() {
+      document.getElementById('submitBtn').disabled = !allAcksChecked();
+    }
+
+    // ── Build confirmation payload ──
+    function buildPayload() {
+      const get = id => (document.getElementById(id) ? document.getElementById(id).value : null);
+      const getCheck = id => (document.getElementById(id) ? document.getElementById(id).checked : false);
+
+      return {
+        submittedAt: new Date().toISOString(),
+        // Structure
+        numStructures: get('numStructures'),
+        structureNames: get('structureNames'),
+        roofAsphaltScope: get('roofAsphaltScope'),
+        roofMetalScope: get('roofMetalScope'),
+        guttersScope: get('guttersScope'),
+        downspoutsScope: get('downspoutsScope'),
+        // Materials
+        shingleManufacturer: get('shingleManufacturer'),
+        shingleType: get('shingleType'),
+        shingleColor: get('shingleColor'),
+        dripEdgeColor: get('dripEdgeColor'),
+        valleyType: get('valleyType'),
+        gutterGuards: get('gutterGuards'),
+        // Skylights & special
+        skylightsAction: get('skylightsAction'),
+        skylightCount: get('skylightCount') ? parseInt(get('skylightCount')) : 0,
+        satelliteDish: get('satelliteDish'),
+        badDeckingExpected: get('badDeckingExpected'),
+        workNotBeingDone: get('workNotBeingDone'),
+        // Chimney
+        chimney1Material: get('chimney1Material'),
+        chimney1Cricket: get('chimney1Cricket'),
+        chimney1ReflashOop: get('chimney1ReflashOop'),
+        chimney2Material: get('chimney2Material'),
+        chimney2Cricket: get('chimney2Cricket'),
+        chimney2ReflashOop: get('chimney2ReflashOop'),
+        // Financial
+        nonRecoverableDepreciation: get('nonRecoverableDepreciation') ? parseFloat(get('nonRecoverableDepreciation')) : 0,
+        deductibleAmount: get('deductibleAmount') ? parseFloat(get('deductibleAmount')) : 0,
+        // Notes
+        homeownerNotes: get('homeownerNotes'),
+        // Acks
+        ackBadDecking: getCheck('ackBadDecking'),
+        ackProjectChanges: getCheck('ackProjectChanges'),
+        ackNonRecoverable: getCheck('ackNonRecoverable'),
+        ackPaymentTerms: getCheck('ackPaymentTerms'),
+      };
+    }
+
+    // ── DocuSign stub (Step 3 will wire the real Edge Function) ──
+    async function triggerProjectConfirmationDocuSign(claimId, payload) {
+      console.log('[OtterQuote] DocuSign project confirmation stub — claim:', claimId, 'payload:', payload);
+      console.log('[OtterQuote] Step 3 (ClickUp 86e0vc0hv) will extend create-docusign-envelope Edge Function to handle document_type: "project_confirmation".');
+      // TODO (Step 3): Replace stub with:
+      // const { data, error } = await sb.functions.invoke('create-docusign-envelope', {
+      //   body: {
+      //     claim_id: claimId,
+      //     document_type: 'project_confirmation',
+      //     confirmation_data: payload,
+      //   }
+      // });
+      return { stubbed: true };
+    }
+
+    // ── Submit Handler ──
+    async function handleSubmit(e) {
+      e.preventDefault();
+      if (!allAcksChecked()) return;
+
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+
+      try {
+        const payload = buildPayload();
+
+        // 1. Save project_confirmation JSONB to claims table
+        const { error: saveError } = await sb
+          .from('claims')
+          .update({ project_confirmation: payload })
+          .eq('id', state.claimId);
+
+        if (saveError) throw new Error('Failed to save project confirmation: ' + saveError.message);
+
+        // 2. Stub DocuSign call (Step 3 wires the real Edge Function)
+        await triggerProjectConfirmationDocuSign(state.claimId, payload);
+
+        // 3. Show success
+        document.getElementById('confirmationForm').style.display = 'none';
+        document.getElementById('successScreen').style.display = 'block';
+
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // GA4 event
+        if (typeof gtag !== 'undefined') {
+          gtag('event', 'project_confirmation_submitted', {
+            claim_id: state.claimId,
+          });
+        }
+
+      } catch (err) {
+        console.error('[OtterQuote] Project confirmation submit error:', err);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Project Confirmation →';
+        alert('There was an error submitting your confirmation: ' + err.message + '\n\nPlease try again or contact support.');
+      }
+    }
+
+    // ── Initialization ──
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Render nav
+      if (typeof Nav !== 'undefined') Nav.renderHeader();
+
+      // Auth check — homeowner required
+      const user = await Auth.requireAuth();
+      if (!user) return;
+      state.currentUser = user;
+
+      // Parse URL params
+      const params = new URLSearchParams(window.location.search);
+      const claimIdParam = params.get('claim_id');
+
+      if (!claimIdParam) {
+        showError('Missing claim ID', 'No claim ID was found in the URL. Please return to your dashboard and navigate here from your project page.');
+        return;
+      }
+      state.claimId = claimIdParam;
+
+      try {
+        // ── Load claim ──
+        const { data: claimData, error: claimError } = await sb
+          .from('claims')
+          .select('*')
+          .eq('id', state.claimId)
+          .single();
+
+        if (claimError || !claimData) throw new Error('Claim not found. Please return to your dashboard.');
+        state.claim = claimData;
+
+        // Verify homeowner owns this claim
+        const { data: profile } = await sb
+          .from('profiles')
+          .select('user_id, full_name')
+          .eq('user_id', user.id)
+          .single();
+
+        if (claimData.user_id !== user.id) {
+          showError('Access Denied', 'You do not have permission to access this project.');
+          return;
+        }
+
+        // ── Get contractor ID ──
+        state.contractorId = claimData.selected_contractor_id;
+        if (!state.contractorId) {
+          showError('No contractor selected', 'No contractor has been selected for this claim yet. Please go back to your bids page and select a contractor first.');
+          return;
+        }
+
+        // ── Load contractor ──
+        const { data: contractorData, error: contractorError } = await sb
+          .from('contractors')
+          .select('id, company_name, years_in_business, logo_url')
+          .eq('id', state.contractorId)
+          .single();
+
+        if (contractorError || !contractorData) throw new Error('Contractor not found.');
+        state.contractor = contractorData;
+
+        // ── Load parsed line items ──
+        state.parsedLineItems = claimData.parsed_line_items || [];
+
+        // ── Populate UI ──
+
+        // Contractor card
+        const avatarEl = document.getElementById('contractorAvatar');
+        if (contractorData.logo_url) {
+          avatarEl.innerHTML = `<img src="${contractorData.logo_url}" alt="${contractorData.company_name}">`;
+        } else {
+          avatarEl.textContent = contractorData.company_name ? contractorData.company_name.charAt(0).toUpperCase() : '🏠';
+        }
+        document.getElementById('contractorName').textContent = contractorData.company_name || 'Your Contractor';
+        document.getElementById('contractorMeta').textContent = contractorData.years_in_business
+          ? contractorData.years_in_business + ' years in business'
+          : 'Contractor details on file';
+
+        // Back link
+        document.getElementById('backToContractLink').href = `/contract-signing.html?claim_id=${state.claimId}`;
+
+        // Scope table
+        renderScopeTable(state.parsedLineItems);
+
+        // Pre-fill deductible from claim
+        if (claimData.deductible) {
+          const ded = parseFloat(claimData.deductible);
+          if (!isNaN(ded)) document.getElementById('deductibleAmount').value = ded.toFixed(2);
+        }
+
+        // Pre-populate if project_confirmation already exists (re-entry)
+        if (claimData.project_confirmation) {
+          populateExistingData(claimData.project_confirmation);
+        }
+
+        // ── Wire acknowledgment checkboxes to submit button ──
+        ['ackBadDecking','ackProjectChanges','ackNonRecoverable','ackPaymentTerms'].forEach(id => {
+          document.getElementById(id).addEventListener('change', updateSubmitBtn);
+        });
+
+        // ── Wire form submit ──
+        document.getElementById('confirmationForm').addEventListener('submit', handleSubmit);
+
+        // ── Show content ──
+        document.getElementById('pageLoading').style.display = 'none';
+        document.getElementById('pageContent').style.display = 'block';
+
+      } catch (err) {
+        console.error('[OtterQuote] Project confirmation init error:', err);
+        showError('Unable to load project', err.message || 'Please try again or contact support.');
+      }
+    });
+  </script>
+</body>
+</html>
