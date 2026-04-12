@@ -224,6 +224,20 @@
             <span><strong>OtterQuote Guarantee:</strong> Not sure? You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</span>
           </div>
 
+          <!-- Bid Updated Notification Banner (shown when a contractor has revised a submitted bid) -->
+          <div id="bidUpdatedBanner" style="display:none; background:#FFF3CD; border:2px solid #F59E0B; border-radius:0.75rem; padding:1.25rem 1.5rem; margin-bottom:1.5rem; animation: fadeUp 0.4s ease both;">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+              <div style="display:flex; align-items:flex-start; gap:0.75rem;">
+                <span style="font-size:1.5rem; flex-shrink:0;">⚠️</span>
+                <div>
+                  <div style="font-weight:700; color:#92400E; font-size:1rem; margin-bottom:0.35rem;" id="bidUpdatedTitle">A contractor has updated their bid — please review.</div>
+                  <div style="font-size:0.875rem; color:#78350F;" id="bidUpdatedDetail">One or more contractors have revised their submitted bids. Scroll down to compare the latest figures before making your decision.</div>
+                </div>
+              </div>
+              <button onclick="acknowledgeBidUpdatedNotifications()" style="background:transparent; border:2px solid #D97706; border-radius:0.5rem; color:#92400E; font-family:var(--font-body); font-size:0.85rem; font-weight:700; padding:0.4rem 1rem; cursor:pointer; white-space:nowrap; flex-shrink:0; transition:background 0.2s;" onmouseover="this.style.background='rgba(245,158,11,0.15)'" onmouseout="this.style.background='transparent'">Got It — Dismiss</button>
+            </div>
+          </div>
+
           <!-- RCV Disclaimer -->
           <div id="rcvDisclaimer" style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 16px; margin-bottom: 24px; display: none;">
               <p style="color: #1E40AF; font-size: 0.9rem; margin: 0;">
@@ -343,6 +357,7 @@
 
         await loadClaimData();
         await loadBids();
+        await loadBidUpdatedNotifications();
         render();
 
         // Poll for new bids every 30 seconds
@@ -401,6 +416,61 @@
         // Could trigger notification sound / badge here
       }
     }
+
+    // ── Bid Updated Notifications ──
+    // Stores IDs of unread bid_updated notifications so we can mark them read on dismiss
+    let _bidUpdatedNotifIds = [];
+
+    async function loadBidUpdatedNotifications() {
+      if (!sb || !currentUser || !currentClaim) return;
+      try {
+        const { data, error } = await sb
+          .from('notifications')
+          .select('id, message_preview, created_at')
+          .eq('user_id', currentUser.id)
+          .eq('claim_id', currentClaim.id)
+          .eq('notification_type', 'bid_updated')
+          .is('read_at', null)
+          .order('created_at', { ascending: false });
+
+        if (error || !data || data.length === 0) return;
+
+        _bidUpdatedNotifIds = data.map(n => n.id);
+
+        // Count distinct updates and surface the banner
+        const count = data.length;
+        const banner = document.getElementById('bidUpdatedBanner');
+        const titleEl = document.getElementById('bidUpdatedTitle');
+        const detailEl = document.getElementById('bidUpdatedDetail');
+
+        if (banner) {
+          if (titleEl) titleEl.textContent = count === 1
+            ? '⚠️ A contractor has updated their bid — please review.'
+            : `⚠️ ${count} contractors have updated their bids — please review.`;
+          if (detailEl) detailEl.textContent = data[0].message_preview || 'One or more contractors have revised their submitted bids. Scroll down to compare the latest figures.';
+          banner.style.display = 'block';
+        }
+      } catch (err) {
+        console.warn('Could not load bid-updated notifications:', err);
+      }
+    }
+
+    window.acknowledgeBidUpdatedNotifications = async function() {
+      // Hide banner immediately for snappy UX
+      const banner = document.getElementById('bidUpdatedBanner');
+      if (banner) banner.style.display = 'none';
+
+      if (!sb || _bidUpdatedNotifIds.length === 0) return;
+      try {
+        await sb
+          .from('notifications')
+          .update({ read_at: new Date().toISOString() })
+          .in('id', _bidUpdatedNotifIds);
+        _bidUpdatedNotifIds = [];
+      } catch (err) {
+        console.warn('Could not acknowledge notifications:', err);
+      }
+    };
 
     function loadDemoData() {
       // Demo claim object

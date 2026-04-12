@@ -483,8 +483,8 @@
             </div>
         </div>
 
-        <!-- Pending Bids (awaiting homeowner decision) -->
-        <h2 class="section-header" id="pendingBidsSection">Submitted Bids — Awaiting Decision</h2>
+        <!-- Your Submitted Bids (awaiting homeowner decision) -->
+        <h2 class="section-header" id="pendingBidsSection">Your Submitted Bids</h2>
         <table class="leads-table" id="pendingBidsTable">
             <thead>
                 <tr>
@@ -866,7 +866,7 @@
                     <td style="font-weight: 700;">${bid.bidAmount}</td>
                     <td>${bid.submittedDate}</td>
                     <td><span class="status-badge" style="background: var(--amber-light, #FFF3CD); color: var(--amber-dark, #856404);">${bid.status}</span></td>
-                    <td><a href="contractor-bid-form.html?claim_id=${bid.claimId}" class="btn btn-sm btn-secondary" style="font-size:0.8rem; padding: 4px 10px;">View Bid</a></td>
+                    <td><a href="contractor-bid-form.html?claim_id=${bid.claimId}" class="btn btn-sm btn-secondary" style="font-size:0.8rem; padding: 4px 10px;">✏️ Change Bid</a></td>
                   </tr>`).join('');
               }
             }

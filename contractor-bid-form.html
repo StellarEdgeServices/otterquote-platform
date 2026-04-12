@@ -588,9 +588,20 @@
   <header id="site-header" data-auth="false"></header>
 
   <main>
+    <!-- Change Bid Banner (hidden until Change Bid mode activates) -->
+    <div id="changeBidBanner" style="display:none; background:#FFF3CD; border:2px solid #F59E0B; border-radius:0.75rem; padding:1rem 1.5rem; margin-bottom:1.5rem; display:none;">
+      <div style="display:flex; align-items:flex-start; gap:0.75rem;">
+        <span style="font-size:1.4rem; flex-shrink:0;">⚠️</span>
+        <div>
+          <div style="font-weight:700; color:#92400E; margin-bottom:0.25rem;">You are editing a previously submitted bid.</div>
+          <div style="font-size:0.9rem; color:#78350F;">The homeowner will be notified of any changes you make. Your original bid will be replaced with the updated figures below.</div>
+        </div>
+      </div>
+    </div>
+
     <div class="page-header">
-      <h1>Submit Your Bid</h1>
-      <div class="project-id">Project ID: <strong>CS-2026-0001</strong></div>
+      <h1 id="pageHeading">Submit Your Bid</h1>
+      <div class="project-id">Project ID: <strong id="projectIdDisplay">CS-2026-0001</strong></div>
     </div>
 
     <!-- Project Summary -->
@@ -953,6 +964,8 @@
     let currentUser = null;
     let currentClaim = null;
     let currentContractor = null;
+    let changeBidMode = false;
+    let existingQuote = null;
 
     const priceInput = document.getElementById('totalPrice');
     const charCountEl = document.getElementById('charCount');
@@ -1026,11 +1039,103 @@
 
             // Re-render line items now that we know the contractor's trades
             renderInsuranceLineItems();
+
+            // Check for existing quote — activate Change Bid mode if found
+            if (claimId) {
+              try {
+                const { data: existingQuoteData } = await sb
+                  .from('quotes')
+                  .select('*')
+                  .eq('claim_id', claimId)
+                  .eq('contractor_id', data.id)
+                  .maybeSingle();
+
+                if (existingQuoteData) {
+                  existingQuote = existingQuoteData;
+                  changeBidMode = true;
+                  activateChangeBidMode(existingQuoteData);
+                }
+              } catch (err) {
+                console.error('Error checking for existing quote:', err);
+              }
+            }
           }
         } catch (err) {
           console.error('Error loading contractor:', err);
         }
       }
+    }
+
+    // ── Change Bid Mode ──
+    function activateChangeBidMode(quote) {
+      // Update heading and button
+      const heading = document.getElementById('pageHeading');
+      if (heading) heading.textContent = 'Change Your Bid';
+      document.title = 'Change Your Bid | OtterQuote Contractor Portal';
+      const submitBtnEl = document.getElementById('submitBtn');
+      if (submitBtnEl) submitBtnEl.textContent = 'Update Bid';
+
+      // Show change bid banner
+      const banner = document.getElementById('changeBidBanner');
+      if (banner) banner.style.display = 'block';
+
+      // Pre-populate form fields from existing quote
+      const scope = (() => {
+        try { return JSON.parse(quote.scope_summary || '{}'); } catch(e) { return {}; }
+      })();
+      const va = quote.value_adds || {};
+
+      // Core bid fields
+      setVal('totalPrice', quote.total_price || '');
+      setVal('brandProduct', scope.brand || '');
+      setVal('startDate', scope.estimated_start_date || '');
+      setVal('completionTime', scope.estimated_completion_time || '');
+      setVal('workmanshipWarranty', scope.workmanship_warranty_years || '');
+      setVal('manufacturerWarranty', scope.manufacturer_warranty_years || '');
+      setVal('warrantySummary', scope.warranty_summary || '');
+      setVal('deckingPricePerSheet', quote.decking_price_per_sheet || '');
+      setVal('fullRedeckPrice', quote.full_redeck_price || '');
+      setVal('homeownerMessage', quote.notes || '');
+
+      // Supplement checkbox
+      const suppCheck = document.getElementById('supplementAcknowledged');
+      if (suppCheck) suppCheck.checked = !!quote.supplement_acknowledged;
+
+      // Character counter for message
+      const charCountEl = document.getElementById('charCount');
+      if (charCountEl) charCountEl.textContent = (quote.notes || '').length;
+
+      // Value adds — radio buttons
+      setRadio('gutterOption', va.gutters?.option || 'none');
+      setRadio('chimneyFlashing', va.chimney_flashing || 'na');
+      setRadio('gutterGuards', va.gutter_guards?.option || 'none');
+      setRadio('skylights', va.skylights || 'na');
+      setRadio('chimneyReflash', va.chimney_reflash?.option || 'na');
+
+      // Value adds — cost inputs
+      if (va.gutters?.additional_cost_5inch) setVal('gutter5AdditionalCost', va.gutters.additional_cost_5inch);
+      if (va.gutters?.additional_cost_6inch) setVal('gutter6AdditionalCost', va.gutters.additional_cost_6inch);
+      if (va.gutters?.other_text) setVal('gutterOtherText', va.gutters.other_text);
+      if (va.gutter_guards?.type) {
+        const ggSel = document.querySelector('select[name="gutterGuardType"]');
+        if (ggSel) ggSel.value = va.gutter_guards.type;
+      }
+      if (va.gutter_guards?.oop_price) document.querySelector('input[name="gutterGuardOopPrice"]') && (document.querySelector('input[name="gutterGuardOopPrice"]').value = va.gutter_guards.oop_price);
+      if (va.chimney_reflash?.oop_price) document.querySelector('input[name="chimneyReflashOopPrice"]') && (document.querySelector('input[name="chimneyReflashOopPrice"]').value = va.chimney_reflash.oop_price);
+      if (va.other_offers) setVal('valueAddsOtherOffers', va.other_offers);
+
+      // Trigger fee calculator update
+      updateFeeCalculator();
+    }
+
+    function setVal(id, value) {
+      const el = document.getElementById(id);
+      if (el && value !== null && value !== undefined) el.value = value;
+    }
+
+    function setRadio(name, value) {
+      const radio = document.querySelector(`input[type="radio"][name="${name}"][value="${value}"]`);
+      if (radio) radio.checked = true;
     }
 
     function updateClaimSummary() {
@@ -1366,20 +1471,86 @@
             value_adds: valueAdds,
           };
 
-          const { error } = await sb
-            .from('quotes')
-            .insert(quoteData);
+          if (changeBidMode && existingQuote) {
+            // UPDATE existing quote record
+            const { error: updateError } = await sb
+              .from('quotes')
+              .update({
+                total_price: quoteData.total_price,
+                fee_percentage: quoteData.fee_percentage,
+                fee_amount: quoteData.fee_amount,
+                scope_summary: quoteData.scope_summary,
+                notes: quoteData.notes,
+                decking_price_per_sheet: quoteData.decking_price_per_sheet,
+                full_redeck_price: quoteData.full_redeck_price,
+                supplement_acknowledged: quoteData.supplement_acknowledged,
+                trade_type: quoteData.trade_type,
+                value_adds: quoteData.value_adds,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existingQuote.id);
 
-          if (error) throw error;
+            if (updateError) throw updateError;
 
-          gtag('event', 'bid_submitted', {
-            claim_id: currentClaim.id,
-            bid_amount: quoteData.total_price,
-          });
+            // Notify homeowner — insert dashboard notification
+            try {
+              await sb.from('notifications').insert({
+                user_id: currentClaim.user_id || null,
+                claim_id: currentClaim.id,
+                channel: 'dashboard',
+                notification_type: 'bid_updated',
+                recipient: '',
+                message_preview: `${currentContractor.company_name || 'A contractor'} has updated their bid for your project. Please review the new figures.`,
+                created_at: new Date().toISOString(),
+              });
+            } catch (notifErr) {
+              console.warn('Notification insert failed (non-fatal):', notifErr);
+            }
+
+            // Log to activity feed
+            try {
+              await sb.from('activity_log').insert({
+                user_id: currentUser.id,
+                event_type: 'bid_updated',
+                title: `Bid updated for project ${currentClaim.id?.slice(0, 8) || '...'}`,
+                created_at: new Date().toISOString(),
+              });
+            } catch (logErr) {
+              console.warn('Activity log failed (non-fatal):', logErr);
+            }
+
+            gtag('event', 'bid_updated', {
+              claim_id: currentClaim.id,
+              bid_amount: quoteData.total_price,
+            });
+
+          } else {
+            // INSERT new quote record
+            const { error } = await sb
+              .from('quotes')
+              .insert(quoteData);
+
+            if (error) throw error;
+
+            gtag('event', 'bid_submitted', {
+              claim_id: currentClaim.id,
+              bid_amount: quoteData.total_price,
+            });
+          }
         }
 
-        // Show success state
+        // Show success state (customized for change bid mode)
         bidForm.style.display = 'none';
+        const changeBidBanner = document.getElementById('changeBidBanner');
+        if (changeBidBanner) changeBidBanner.style.display = 'none';
+        if (changeBidMode) {
+          successState.innerHTML = `
+            <div class="success-icon">✓</div>
+            <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: var(--sp-3);">Bid updated!</div>
+            <div>Your updated bid has been saved. The homeowner has been notified and will see your revised figures.</div>
+            <div style="margin-top: 1rem;"><a href="contractor-dashboard.html" style="color: var(--amber); font-weight: 600; text-decoration: none;">← Back to Dashboard</a></div>
+          `;
+        }
         successState.classList.add('show');
       } catch (err) {
         console.error('Error submitting bid:', err);
