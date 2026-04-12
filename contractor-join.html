@@ -239,119 +239,23 @@
             box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
         }
 
-        textarea {
-            resize: vertical;
-            min-height: 80px;
-        }
-
-        .checkbox-group,
-        .radio-group {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: var(--sp-4);
-        }
-
-        .checkbox-item,
-        .radio-item {
+        .checkbox-item {
             display: flex;
             align-items: center;
             gap: var(--sp-3);
         }
 
-        .checkbox-item input[type="checkbox"],
-        .radio-item input[type="radio"] {
+        .checkbox-item input[type="checkbox"] {
             width: 18px;
             height: 18px;
             cursor: pointer;
             accent-color: var(--amber);
         }
 
-        .checkbox-item label,
-        .radio-item label {
+        .checkbox-item label {
             cursor: pointer;
             font-size: 0.95rem;
             color: var(--navy);
-        }
-
-        .file-upload {
-            position: relative;
-            display: inline-block;
-            width: 100%;
-        }
-
-        .file-upload input[type="file"] {
-            display: none;
-        }
-
-        .file-upload-label {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: var(--sp-3);
-            padding: var(--sp-6);
-            border: 2px dashed var(--light);
-            border-radius: var(--radius-md);
-            background-color: rgba(11, 25, 41, 0.02);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 600;
-            color: var(--navy);
-        }
-
-        .file-upload-label:hover {
-            border-color: var(--amber);
-            background-color: rgba(20, 184, 166, 0.05);
-        }
-
-        .file-list-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0.5rem 0.75rem;
-            margin-bottom: 0.25rem;
-            background: var(--navy);
-            border-radius: var(--radius-sm);
-            font-size: 0.875rem;
-            color: var(--white);
-        }
-
-        .file-list-item .file-name {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .file-list-item .file-name .checkmark {
-            color: var(--amber);
-            font-weight: 700;
-        }
-
-        .file-list-item .remove-btn {
-            background: none;
-            border: none;
-            color: rgba(255,255,255,0.6);
-            cursor: pointer;
-            font-size: 1rem;
-            padding: 0 0.25rem;
-            line-height: 1;
-        }
-
-        .file-list-item .remove-btn:hover {
-            color: #EF4444;
-        }
-
-        .file-count-badge {
-            display: inline-block;
-            background: var(--amber);
-            color: var(--navy);
-            font-size: 0.75rem;
-            font-weight: 700;
-            padding: 0.15rem 0.5rem;
-            border-radius: 999px;
-            margin-left: 0.5rem;
         }
 
         .info-box {
@@ -397,7 +301,7 @@
             background-color: #D1FAE5;
             border: 1px solid #6EE7B7;
             color: #065F46;
-            padding: var(--sp-6);
+            padding: var(--sp-8);
             border-radius: var(--radius-md);
             margin-bottom: var(--sp-8);
             text-align: center;
@@ -415,11 +319,6 @@
 
             .form-container {
                 padding: var(--sp-6);
-            }
-
-            .checkbox-group,
-            .radio-group {
-                grid-template-columns: 1fr;
             }
 
             .form-section h2 {
@@ -464,370 +363,50 @@
         <!-- Registration Form -->
         <section class="form-section">
             <div class="form-container">
-                <h2>Apply to Join OtterQuote</h2>
+                <h2>Get Instant Access</h2>
                 <p style="text-align: center; margin-bottom: var(--sp-6); color: var(--slate);">
                     Already have an account? <a href="contractor-login.html" style="color: var(--amber); font-weight: 600;">Sign in here</a>
                 </p>
 
+                <!-- Success state: shown after magic link is sent -->
                 <div id="successMessage" class="success-message">
-                    <strong>Application submitted successfully!</strong> Check your email for a magic link to complete your profile setup and access your contractor dashboard.
+                    <div style="font-size: 2rem; margin-bottom: var(--sp-3);">✉️</div>
+                    <strong style="font-size: 1.1rem; display: block; margin-bottom: var(--sp-2);">Check your email!</strong>
+                    We've sent you a secure login link. Click it to access your contractor portal and complete your profile.
                 </div>
 
                 <form id="contractorForm">
-                    <!-- Business Information -->
+                    <!-- Step 1: Email only — magic link fires immediately on submit -->
                     <fieldset class="form-fieldset">
-                        <h3><span></span>Business Information</h3>
+                        <h3><span></span>Your Business Email</h3>
+                        <p style="font-size:0.9rem; color:var(--slate); margin-bottom:var(--sp-6);">Enter your email and we'll send you a secure login link instantly — no password needed. You'll complete your full profile after logging in, before you can submit any bids.</p>
 
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="businessName" class="form-label required">Business Name</label>
-                                <input type="text" id="businessName" name="businessName" class="form-input" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="ownerFirstName" class="form-label required">Owner First Name</label>
-                                <input type="text" id="ownerFirstName" name="ownerFirstName" class="form-input" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="ownerLastName" class="form-label required">Owner Last Name</label>
-                                <input type="text" id="ownerLastName" name="ownerLastName" class="form-input" required>
-                            </div>
+                        <div class="form-group">
+                            <label for="businessEmail" class="form-label required">Business Email</label>
+                            <input type="email" id="businessEmail" name="businessEmail" class="form-input" placeholder="you@yourcompany.com" required>
                         </div>
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="businessEmail" class="form-label required">Business Email</label>
-                                <input type="email" id="businessEmail" name="businessEmail" class="form-input" required>
+                                <label for="businessName" class="form-label">Business Name <span style="color:var(--slate);font-weight:400;font-size:0.85rem;">(optional)</span></label>
+                                <input type="text" id="businessName" name="businessName" class="form-input" placeholder="Your Company LLC">
                             </div>
                             <div class="form-group">
-                                <label for="businessPhone" class="form-label required">Business Phone</label>
-                                <input type="tel" id="businessPhone" name="businessPhone" class="form-input" required>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="businessAddress" class="form-label required">Business Address</label>
-                                <input type="text" id="businessAddress" name="businessAddress" class="form-input" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="businessCity" class="form-label required">City</label>
-                                <input type="text" id="businessCity" name="businessCity" class="form-input" required>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="businessState" class="form-label required">State</label>
-                                <select id="businessState" name="businessState" class="form-select" required>
-                                    <option value="" selected>Select state</option>
-                                    <option value="IN">Indiana</option>
-                                    <option value="AL">Alabama</option>
-                                    <option value="AK">Alaska</option>
-                                    <option value="AZ">Arizona</option>
-                                    <option value="AR">Arkansas</option>
-                                    <option value="CA">California</option>
-                                    <option value="CO">Colorado</option>
-                                    <option value="CT">Connecticut</option>
-                                    <option value="DE">Delaware</option>
-                                    <option value="FL">Florida</option>
-                                    <option value="GA">Georgia</option>
-                                    <option value="HI">Hawaii</option>
-                                    <option value="ID">Idaho</option>
-                                    <option value="IL">Illinois</option>
-                                    <option value="IA">Iowa</option>
-                                    <option value="KS">Kansas</option>
-                                    <option value="KY">Kentucky</option>
-                                    <option value="LA">Louisiana</option>
-                                    <option value="ME">Maine</option>
-                                    <option value="MD">Maryland</option>
-                                    <option value="MA">Massachusetts</option>
-                                    <option value="MI">Michigan</option>
-                                    <option value="MN">Minnesota</option>
-                                    <option value="MS">Mississippi</option>
-                                    <option value="MO">Missouri</option>
-                                    <option value="MT">Montana</option>
-                                    <option value="NE">Nebraska</option>
-                                    <option value="NV">Nevada</option>
-                                    <option value="NH">New Hampshire</option>
-                                    <option value="NJ">New Jersey</option>
-                                    <option value="NM">New Mexico</option>
-                                    <option value="NY">New York</option>
-                                    <option value="NC">North Carolina</option>
-                                    <option value="ND">North Dakota</option>
-                                    <option value="OH">Ohio</option>
-                                    <option value="OK">Oklahoma</option>
-                                    <option value="OR">Oregon</option>
-                                    <option value="PA">Pennsylvania</option>
-                                    <option value="RI">Rhode Island</option>
-                                    <option value="SC">South Carolina</option>
-                                    <option value="SD">South Dakota</option>
-                                    <option value="TN">Tennessee</option>
-                                    <option value="TX">Texas</option>
-                                    <option value="UT">Utah</option>
-                                    <option value="VT">Vermont</option>
-                                    <option value="VA">Virginia</option>
-                                    <option value="WA">Washington</option>
-                                    <option value="WV">West Virginia</option>
-                                    <option value="WI">Wisconsin</option>
-                                    <option value="WY">Wyoming</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="businessZip" class="form-label required">Zip Code</label>
-                                <input type="text" id="businessZip" name="businessZip" class="form-input" required>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="yearsInBusiness" class="form-label required">Years in Business</label>
-                                <input type="number" id="yearsInBusiness" name="yearsInBusiness" class="form-input" min="0" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="numEmployees" class="form-label required">Number of Employees</label>
-                                <input type="number" id="numEmployees" name="numEmployees" class="form-input" min="1" required>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="websiteUrl" class="form-label">Website URL (optional)</label>
-                            <input type="url" id="websiteUrl" name="websiteUrl" class="form-input" placeholder="https://example.com">
-                        </div>
-                    </fieldset>
-
-                    <!-- Licensing & Insurance -->
-                    <fieldset class="form-fieldset">
-                        <h3><span></span>Licensing & Insurance</h3>
-
-                        <div class="form-group">
-                            <label class="form-label">Municipal Contractor Licenses</label>
-                            <p style="font-size: 0.85rem; color: #6B7280; margin-bottom: var(--sp-3);">
-                                Many areas do not require a state-level contractor license. Licensing requirements vary by municipality. Add each license you hold.
-                            </p>
-                            <div id="licensesContainer">
-                                <div class="license-entry" data-index="0">
-                                    <div class="form-row" style="align-items: flex-end;">
-                                        <div class="form-group">
-                                            <label class="form-label">Municipality (City/County)</label>
-                                            <input type="text" name="licenseMunicipality_0" class="form-input" placeholder="e.g. Indianapolis, Hamilton County">
-                                        </div>
-                                        <div class="form-group">
-                                            <label class="form-label">License Number</label>
-                                            <input type="text" name="licenseNumber_0" class="form-input" placeholder="License #">
-                                        </div>
-                                        <div class="form-group">
-                                            <label class="form-label">Expiration</label>
-                                            <input type="date" name="licenseExpDate_0" class="form-input">
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <div class="file-upload">
-                                            <input type="file" id="licenseDoc_0" name="licenseDoc_0" accept=".pdf,.jpg,.jpeg,.png">
-                                            <label for="licenseDoc_0" class="file-upload-label">Upload license document</label>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <button type="button" id="addLicenseBtn" onclick="addLicenseEntry()" style="background:none; border:1px dashed #D1D5DB; border-radius:var(--radius-md); padding:var(--sp-3) var(--sp-4); color:var(--amber); font-weight:600; cursor:pointer; width:100%; margin-top:var(--sp-3); font-family:var(--font-body);">+ Add Another License</button>
-                            <div style="margin-top: var(--sp-4);">
-                                <label style="display:flex; align-items:center; gap:var(--sp-2); cursor:pointer;">
-                                    <input type="checkbox" name="noLicenseRequired" id="noLicenseRequired" onchange="toggleLicenseFields()">
-                                    <span style="font-size:0.9rem; color:#374151;">I operate in municipalities that do not require a contractor license</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Remove old state dropdown, keep WC/GL below -->
-                        <div class="form-group" style="display:none;">
-                            <select id="licenseState" name="licenseState" class="form-select">
-                                <option value="">Select state</option>
-                                <option value="IN">Indiana</option>
-                                <option value="AL">Alabama</option>
-                                <option value="AK">Alaska</option>
-                                <option value="AZ">Arizona</option>
-                                <option value="AR">Arkansas</option>
-                                <option value="CA">California</option>
-                                <option value="CO">Colorado</option>
-                                    <option value="CT">Connecticut</option>
-                                    <option value="DE">Delaware</option>
-                                    <option value="FL">Florida</option>
-                                    <option value="GA">Georgia</option>
-                                    <option value="HI">Hawaii</option>
-                                    <option value="ID">Idaho</option>
-                                    <option value="IL">Illinois</option>
-                                    <option value="IA">Iowa</option>
-                                    <option value="KS">Kansas</option>
-                                    <option value="KY">Kentucky</option>
-                                    <option value="LA">Louisiana</option>
-                                    <option value="ME">Maine</option>
-                                    <option value="MD">Maryland</option>
-                                    <option value="MA">Massachusetts</option>
-                                    <option value="MI">Michigan</option>
-                                    <option value="MN">Minnesota</option>
-                                    <option value="MS">Mississippi</option>
-                                    <option value="MO">Missouri</option>
-                                    <option value="MT">Montana</option>
-                                    <option value="NE">Nebraska</option>
-                                    <option value="NV">Nevada</option>
-                                    <option value="NH">New Hampshire</option>
-                                    <option value="NJ">New Jersey</option>
-                                    <option value="NM">New Mexico</option>
-                                    <option value="NY">New York</option>
-                                    <option value="NC">North Carolina</option>
-                                    <option value="ND">North Dakota</option>
-                                    <option value="OH">Ohio</option>
-                                    <option value="OK">Oklahoma</option>
-                                    <option value="OR">Oregon</option>
-                                    <option value="PA">Pennsylvania</option>
-                                    <option value="RI">Rhode Island</option>
-                                    <option value="SC">South Carolina</option>
-                                    <option value="SD">South Dakota</option>
-                                    <option value="TN">Tennessee</option>
-                                    <option value="TX">Texas</option>
-                                    <option value="UT">Utah</option>
-                                    <option value="VT">Vermont</option>
-                                    <option value="VA">Virginia</option>
-                                    <option value="WA">Washington</option>
-                                    <option value="WV">West Virginia</option>
-                                    <option value="WI">Wisconsin</option>
-                                    <option value="WY">Wyoming</option>
-                                </select>
-                            </div>
-                        </div><!-- end hidden old license fields -->
-
-                        <div class="form-group">
-                            <label class="form-label required">Workers Compensation Insurance</label>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="wcCarrier" class="form-label required">Carrier Name</label>
-                                    <input type="text" id="wcCarrier" name="wcCarrier" class="form-input" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="wcPolicyNumber" class="form-label required">Policy Number</label>
-                                    <input type="text" id="wcPolicyNumber" name="wcPolicyNumber" class="form-input" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="wcExpDate" class="form-label required">Expiration Date</label>
-                                    <input type="date" id="wcExpDate" name="wcExpDate" class="form-input" required>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label required">General Liability Insurance</label>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="glCarrier" class="form-label required">Carrier Name</label>
-                                    <input type="text" id="glCarrier" name="glCarrier" class="form-input" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="glPolicyNumber" class="form-label required">Policy Number</label>
-                                    <input type="text" id="glPolicyNumber" name="glPolicyNumber" class="form-input" required>
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="glAmount" class="form-label required">Coverage Amount</label>
-                                    <input type="text" id="glAmount" name="glAmount" class="form-input" placeholder="e.g., $1,000,000" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="glExpDate" class="form-label required">Expiration Date</label>
-                                    <input type="date" id="glExpDate" name="glExpDate" class="form-input" required>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="insuranceCerts" class="form-label required">Insurance Certificates</label>
-                            <div class="file-upload" id="insuranceCertsUpload">
-                                <input type="file" id="insuranceCerts" name="insuranceCerts" accept=".pdf,.jpg,.jpeg,.png" multiple>
-                                <label for="insuranceCerts" class="file-upload-label" id="insuranceCertsLabel">
-                                    📎 Click to upload or drag and drop
-                                </label>
-                            </div>
-                            <div id="insuranceCertsFileList" style="margin-top: 0.5rem;"></div>
-                            <p style="font-size: 0.8rem; color: var(--slate); margin-top: 0.25rem;">You can upload multiple files. Accepted formats: PDF, JPG, PNG.</p>
-                        </div>
-                    </fieldset>
-
-                    <!-- Service Area & Trades -->
-                    <fieldset class="form-fieldset">
-                        <h3><span></span>Service Area & Trades</h3>
-
-                        <label class="form-label required">Service Area</label>
-                        <p style="font-size: 0.85rem; color: var(--slate); margin-bottom: 1rem;">Select the states you serve, then choose specific counties within each state.</p>
-
-                        <div style="margin-bottom: 1rem;">
-                          <select id="stateSelector" style="width: 100%; max-width: 400px; padding: 0.5rem 0.75rem; border: 1px solid #CBD5E1; border-radius: 0.375rem; font-family: var(--font-body); font-size: 0.95rem; color: var(--navy);">
-                            <option value="">+ Add a state...</option>
-                          </select>
-                        </div>
-
-                        <div id="selectedStatesContainer"></div>
-
-                        <div class="form-group">
-                            <label class="form-label required">Primary Trades</label>
-                            <div class="checkbox-group">
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="trade-roofing" name="trades" value="Roofing">
-                                    <label for="trade-roofing">Roofing</label>
-                                </div>
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="trade-siding" name="trades" value="Siding">
-                                    <label for="trade-siding">Siding</label>
-                                </div>
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="trade-gutters" name="trades" value="Gutters">
-                                    <label for="trade-gutters">Gutters</label>
-                                </div>
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="trade-windows" name="trades" value="Windows">
-                                    <label for="trade-windows">Windows</label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label required">Preferred Shingle Brands</label>
-                            <div class="checkbox-group">
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="brand-gaf" name="shingleBrands" value="GAF">
-                                    <label for="brand-gaf">GAF</label>
-                                </div>
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="brand-owens" name="shingleBrands" value="Owens Corning">
-                                    <label for="brand-owens">Owens Corning</label>
-                                </div>
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="brand-certainteed" name="shingleBrands" value="CertainTeed">
-                                    <label for="brand-certainteed">CertainTeed</label>
-                                </div>
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="brand-tamko" name="shingleBrands" value="TAMKO">
-                                    <label for="brand-tamko">TAMKO</label>
-                                </div>
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="brand-atlas" name="shingleBrands" value="Atlas">
-                                    <label for="brand-atlas">Atlas</label>
-                                </div>
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="brand-iko" name="shingleBrands" value="IKO">
-                                    <label for="brand-iko">IKO</label>
-                                </div>
-                                <div class="checkbox-item">
-                                    <input type="checkbox" id="brand-other" name="shingleBrands" value="Other">
-                                    <label for="brand-other">Other</label>
+                                <label class="form-label">Owner Name <span style="color:var(--slate);font-weight:400;font-size:0.85rem;">(optional)</span></label>
+                                <div style="display:flex;gap:0.5rem;">
+                                    <input type="text" id="ownerFirstName" name="ownerFirstName" class="form-input" placeholder="First">
+                                    <input type="text" id="ownerLastName" name="ownerLastName" class="form-input" placeholder="Last">
                                 </div>
                             </div>
                         </div>
                     </fieldset>
 
-                    <!-- Service Level Preferences -->
+                    <!-- Platform Agreement -->
                     <fieldset class="form-fieldset">
                         <h3><span></span>Platform Agreement</h3>
 
                         <div class="info-box">
-                            OtterQuote will collect the homeowner's deductible on your behalf. This is a core platform feature and cannot be opted out of.
+                            OtterQuote collects the homeowner's deductible on your behalf before you start. This is a core platform feature and cannot be opted out of.
                         </div>
 
                         <div class="checkbox-item" style="margin-bottom: var(--sp-6);">
@@ -838,7 +417,7 @@
                         </div>
                     </fieldset>
 
-                    <button type="submit" class="submit-btn">Apply to Join OtterQuote</button>
+                    <button type="submit" class="submit-btn">Send My Login Link</button>
                 </form>
             </div>
         </section>
@@ -852,362 +431,62 @@
     <script src="js/nav.js"></script>
 
     <script>
-        // Handle form submission
+        // Handle form submission — email is the only required field.
+        // Magic link is sent immediately; profile is completed post-login.
         document.getElementById('contractorForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            // Collect form data
             const formData = new FormData(document.getElementById('contractorForm'));
-            const data = {
-                businessName: formData.get('businessName'),
-                ownerFirstName: formData.get('ownerFirstName'),
-                ownerLastName: formData.get('ownerLastName'),
-                businessEmail: formData.get('businessEmail'),
-                businessPhone: formData.get('businessPhone'),
-                businessAddress: formData.get('businessAddress'),
-                businessCity: formData.get('businessCity'),
-                businessState: formData.get('businessState'),
-                businessZip: formData.get('businessZip'),
-                websiteUrl: formData.get('websiteUrl'),
-                yearsInBusiness: parseInt(formData.get('yearsInBusiness')),
-                numEmployees: parseInt(formData.get('numEmployees')),
-                licenses: Array.from(document.querySelectorAll('.license-entry')).map(entry => ({
-                    municipality: formData.get('licenseMunicipality_' + entry.dataset.index),
-                    number: formData.get('licenseNumber_' + entry.dataset.index),
-                    expDate: formData.get('licenseExpDate_' + entry.dataset.index)
-                })).filter(l => l.municipality || l.number),
-                noLicenseRequired: formData.get('noLicenseRequired') === 'on',
-                wcCarrier: formData.get('wcCarrier'),
-                wcPolicyNumber: formData.get('wcPolicyNumber'),
-                wcExpDate: formData.get('wcExpDate'),
-                glCarrier: formData.get('glCarrier'),
-                glPolicyNumber: formData.get('glPolicyNumber'),
-                glAmount: formData.get('glAmount'),
-                glExpDate: formData.get('glExpDate'),
-                counties: formData.getAll('counties'),
-                trades: formData.getAll('trades'),
-                shingleBrands: formData.getAll('shingleBrands'),
-                agreeToPartnerAgreement: formData.get('agreeToPartnerAgreement') === 'on',
-                submittedAt: new Date().toISOString()
-            };
+            const email        = (formData.get('businessEmail') || '').trim();
+            const businessName = (formData.get('businessName') || '').trim();
+            const firstName    = (formData.get('ownerFirstName') || '').trim();
+            const lastName     = (formData.get('ownerLastName') || '').trim();
+
+            if (!email) {
+                alert('Please enter your business email address.');
+                return;
+            }
 
             try {
-                // Check if in demo mode
+                // Demo mode: just show success
                 if (window.CONFIG && window.CONFIG.DEMO_MODE) {
-                    // Show success message
                     document.getElementById('successMessage').classList.add('show');
                     document.getElementById('contractorForm').style.display = 'none';
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                     return;
                 }
 
-                // In production mode: send magic link and store data
                 if (!window.Auth) {
                     throw new Error('Auth module not loaded');
                 }
 
-                // 1. Convert insurance certificate files to base64 for sessionStorage
-                const certFilesBase64 = [];
-                for (const file of insuranceCertsFiles) {
-                    const base64 = await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result.split(',')[1]);
-                        reader.readAsDataURL(file);
-                    });
-                    certFilesBase64.push({
-                        name: file.name,
-                        type: file.type,
-                        size: file.size,
-                        base64: base64,
-                    });
-                }
+                // Send magic link immediately — no other fields required
+                await Auth.sendMagicLink(email, 'contractor');
 
-                // 2. Send magic link
-                await Auth.sendMagicLink(data.businessEmail, 'contractor');
-
-                // 3. Store contractor data in sessionStorage for post-auth profile creation
+                // Store any optional info for post-auth profile pre-fill
                 localStorage.setItem('cs_contractor_signup', JSON.stringify({
-                    company_name: data.businessName,
-                    contact_name: data.ownerFirstName + ' ' + data.ownerLastName,
-                    email: data.businessEmail,
-                    phone: data.businessPhone,
-                    address_line1: data.businessAddress,
-                    address_city: data.businessCity,
-                    address_state: data.businessState,
-                    address_zip: data.businessZip,
-                    website_url: data.websiteUrl,
-                    years_in_business: data.yearsInBusiness,
-                    num_employees: data.numEmployees,
-                    no_license_required: data.noLicenseRequired,
-                    service_counties: data.counties,
-                    trade_types: data.trades,
-                    shingle_brands: data.shingleBrands,
-                    insurance_wc_carrier: data.wcCarrier,
-                    insurance_wc_policy: data.wcPolicyNumber,
-                    insurance_wc_expdate: data.wcExpDate,
-                    insurance_gl_carrier: data.glCarrier,
-                    insurance_gl_policy: data.glPolicyNumber,
-                    insurance_gl_amount: data.glAmount,
-                    insurance_gl_expdate: data.glExpDate,
-                    licenses: data.licenses,
-                    insurance_certs: certFilesBase64,
+                    email: email,
+                    company_name: businessName,
+                    contact_name: [firstName, lastName].filter(Boolean).join(' '),
                     role: 'contractor',
                 }));
-
-                // Set auth role for post-auth routing
                 localStorage.setItem('cs_auth_role', 'contractor');
 
-                // 3. Show success and hide form
+                // Show confirmation and hide form
                 document.getElementById('successMessage').classList.add('show');
                 document.getElementById('contractorForm').style.display = 'none';
                 window.scrollTo({ top: 0, behavior: 'smooth' });
 
-                // GA4 event
-                gtag('event', 'contractor_signup', {
-                  company: data.businessName,
-                  service_counties: data.counties.length,
-                });
+                // GA4
+                gtag('event', 'contractor_signup', { email: email });
 
             } catch (error) {
-                console.error('Error submitting application:', error);
+                console.error('Error sending magic link:', error);
                 alert('An error occurred. Please try again: ' + (error.message || 'Unknown error'));
             }
         });
 
-        // ── Insurance Certificates: Multi-file upload manager ──
-        const insuranceCertsFiles = []; // Accumulated file list
-
-        document.getElementById('insuranceCerts').addEventListener('change', function() {
-            // Add new files to accumulated list (don't replace)
-            for (const file of this.files) {
-                // Avoid exact duplicates by name+size
-                const isDuplicate = insuranceCertsFiles.some(f => f.name === file.name && f.size === file.size);
-                if (!isDuplicate) {
-                    insuranceCertsFiles.push(file);
-                }
-            }
-            renderInsuranceCertsFileList();
-            // Update the label to show count
-            const label = document.getElementById('insuranceCertsLabel');
-            label.innerHTML = '📎 Add more files';
-        });
-
-        function renderInsuranceCertsFileList() {
-            const container = document.getElementById('insuranceCertsFileList');
-            if (insuranceCertsFiles.length === 0) {
-                container.innerHTML = '';
-                // Reset label
-                document.getElementById('insuranceCertsLabel').innerHTML = '📎 Click to upload or drag and drop';
-                return;
-            }
-            let html = '<div style="margin-bottom:0.25rem;font-size:0.85rem;font-weight:600;color:var(--navy);">'
-                + insuranceCertsFiles.length + ' file' + (insuranceCertsFiles.length > 1 ? 's' : '') + ' uploaded</div>';
-            insuranceCertsFiles.forEach((file, idx) => {
-                const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-                html += '<div class="file-list-item">'
-                    + '<span class="file-name"><span class="checkmark">\u2713</span> ' + file.name + ' <span style="color:var(--slate);font-size:0.75rem;">(' + sizeMB + ' MB)</span></span>'
-                    + '<button type="button" class="remove-btn" onclick="removeInsuranceCertFile(' + idx + ')" title="Remove">\u2716</button>'
-                    + '</div>';
-            });
-            container.innerHTML = html;
-        }
-
-        function removeInsuranceCertFile(idx) {
-            insuranceCertsFiles.splice(idx, 1);
-            renderInsuranceCertsFileList();
-            if (insuranceCertsFiles.length === 0) {
-                document.getElementById('insuranceCertsLabel').innerHTML = '📎 Click to upload or drag and drop';
-            }
-        }
-
-        // ── License document uploads: single file per license, simple label update ──
-        document.querySelectorAll('.license-entry .file-upload input[type="file"]').forEach(input => {
-            input.addEventListener('change', function() {
-                const label = this.nextElementSibling;
-                const fileName = this.files[0]?.name || 'File selected';
-                label.textContent = '\u2713 ' + fileName;
-            });
-        });
-
-        // Multi-license support
-        let licenseCount = 1;
-        function addLicenseEntry() {
-            const container = document.getElementById('licensesContainer');
-            const idx = licenseCount++;
-            const entry = document.createElement('div');
-            entry.className = 'license-entry';
-            entry.dataset.index = idx;
-            entry.style.borderTop = '1px solid #E5E7EB';
-            entry.style.paddingTop = '1rem';
-            entry.style.marginTop = '1rem';
-            entry.innerHTML = '<div class="form-row" style="align-items:flex-end;">'
-                + '<div class="form-group"><label class="form-label">Municipality (City/County)</label>'
-                + '<input type="text" name="licenseMunicipality_' + idx + '" class="form-input" placeholder="e.g. Indianapolis, Hamilton County"></div>'
-                + '<div class="form-group"><label class="form-label">License Number</label>'
-                + '<input type="text" name="licenseNumber_' + idx + '" class="form-input" placeholder="License #"></div>'
-                + '<div class="form-group"><label class="form-label">Expiration</label>'
-                + '<input type="date" name="licenseExpDate_' + idx + '" class="form-input"></div>'
-                + '</div>'
-                + '<div class="form-row" style="align-items:center;">'
-                + '<div class="form-group" style="flex:1;"><div class="file-upload">'
-                + '<input type="file" id="licenseDoc_' + idx + '" name="licenseDoc_' + idx + '" accept=".pdf,.jpg,.jpeg,.png">'
-                + '<label for="licenseDoc_' + idx + '" class="file-upload-label">Upload license document</label>'
-                + '</div></div>'
-                + '<button type="button" onclick="this.closest(\'.license-entry\').remove()" style="background:none;border:none;color:#EF4444;cursor:pointer;font-size:1.2rem;padding:0.5rem;" title="Remove">\u2716</button>'
-                + '</div>';
-            container.appendChild(entry);
-        }
-
-        function toggleLicenseFields() {
-            const checked = document.getElementById('noLicenseRequired').checked;
-            document.getElementById('licensesContainer').style.opacity = checked ? '0.4' : '1';
-            document.getElementById('licensesContainer').style.pointerEvents = checked ? 'none' : 'auto';
-            document.getElementById('addLicenseBtn').style.display = checked ? 'none' : 'block';
-        }
-
-        // ── Multi-State County Selector ──
-        let usCountyData = null;
-        const selectedStates = new Map(); // state code -> Set of selected counties
-
-        async function loadCountyData() {
-          try {
-            const resp = await fetch('/data/us-counties.json');
-            usCountyData = await resp.json();
-            populateStateDropdown();
-          } catch (err) {
-            console.error('Failed to load county data:', err);
-          }
-        }
-
-        function populateStateDropdown() {
-          const select = document.getElementById('stateSelector');
-          usCountyData.states.forEach(state => {
-            const opt = document.createElement('option');
-            opt.value = state.code;
-            opt.textContent = state.name;
-            select.appendChild(opt);
-          });
-        }
-
-        document.getElementById('stateSelector').addEventListener('change', function() {
-          const code = this.value;
-          if (!code || selectedStates.has(code)) { this.value = ''; return; }
-
-          const stateData = usCountyData.states.find(s => s.code === code);
-          if (!stateData) return;
-
-          selectedStates.set(code, new Set());
-          renderStateSection(stateData);
-          this.value = '';
-
-          // Hide already-selected states from dropdown
-          updateDropdownOptions();
-        });
-
-        function updateDropdownOptions() {
-          const select = document.getElementById('stateSelector');
-          Array.from(select.options).forEach(opt => {
-            if (opt.value) {
-              opt.style.display = selectedStates.has(opt.value) ? 'none' : '';
-            }
-          });
-        }
-
-        function renderStateSection(stateData) {
-          const container = document.getElementById('selectedStatesContainer');
-
-          const section = document.createElement('div');
-          section.id = 'state-section-' + stateData.code;
-          section.style.cssText = 'background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;';
-
-          // Header with select all and remove
-          section.innerHTML = `
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
-              <div style="display: flex; align-items: center; gap: 0.75rem;">
-                <strong style="font-size: 1rem; color: var(--navy);">${stateData.name}</strong>
-                <label style="font-size: 0.8rem; color: var(--amber); cursor: pointer; display: flex; align-items: center; gap: 0.25rem;">
-                  <input type="checkbox" class="select-all-toggle" data-state="${stateData.code}" style="accent-color: var(--amber);">
-                  Select All
-                </label>
-                <span style="font-size: 0.8rem; color: var(--slate);" id="count-${stateData.code}">0 of ${stateData.counties.length} selected</span>
-              </div>
-              <button type="button" onclick="removeState('${stateData.code}')" style="background: #FEE2E2; color: #DC2626; border: none; border-radius: 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;">Remove</button>
-            </div>
-            <div class="county-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.25rem;">
-              ${stateData.counties.map(county => `
-                <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; padding: 0.2rem 0; cursor: pointer;">
-                  <input type="checkbox" name="counties" value="${stateData.code}:${county}" class="county-cb" data-state="${stateData.code}" style="accent-color: var(--amber);">
-                  ${county}
-                </label>
-              `).join('')}
-            </div>
-          `;
-
-          container.appendChild(section);
-
-          // Select All toggle handler
-          section.querySelector('.select-all-toggle').addEventListener('change', function() {
-            const cbs = section.querySelectorAll('.county-cb');
-            cbs.forEach(cb => { cb.checked = this.checked; });
-            updateCountyCount(stateData.code);
-          });
-
-          // Individual checkbox handler
-          section.querySelectorAll('.county-cb').forEach(cb => {
-            cb.addEventListener('change', () => updateCountyCount(stateData.code));
-          });
-        }
-
-        function updateCountyCount(stateCode) {
-          const section = document.getElementById('state-section-' + stateCode);
-          const all = section.querySelectorAll('.county-cb');
-          const checked = section.querySelectorAll('.county-cb:checked');
-          document.getElementById('count-' + stateCode).textContent = checked.length + ' of ' + all.length + ' selected';
-
-          // Update select all toggle
-          const selectAll = section.querySelector('.select-all-toggle');
-          selectAll.checked = checked.length === all.length;
-        }
-
-        function removeState(stateCode) {
-          selectedStates.delete(stateCode);
-          const section = document.getElementById('state-section-' + stateCode);
-          if (section) section.remove();
-          updateDropdownOptions();
-        }
-
-        // Load county data on page load
-        document.addEventListener('DOMContentLoaded', loadCountyData);
-
-        // ── Drag-and-drop support for insurance certificates ──
-        const dropTarget = document.getElementById('insuranceCertsUpload');
-        dropTarget.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropTarget.querySelector('.file-upload-label').style.borderColor = 'var(--amber)';
-            dropTarget.querySelector('.file-upload-label').style.backgroundColor = 'rgba(245, 158, 11, 0.05)';
-        });
-        dropTarget.addEventListener('dragleave', () => {
-            dropTarget.querySelector('.file-upload-label').style.borderColor = '';
-            dropTarget.querySelector('.file-upload-label').style.backgroundColor = '';
-        });
-        dropTarget.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropTarget.querySelector('.file-upload-label').style.borderColor = '';
-            dropTarget.querySelector('.file-upload-label').style.backgroundColor = '';
-            const validTypes = ['application/pdf', 'image/jpeg', 'image/png'];
-            for (const file of e.dataTransfer.files) {
-                if (validTypes.includes(file.type)) {
-                    const isDuplicate = insuranceCertsFiles.some(f => f.name === file.name && f.size === file.size);
-                    if (!isDuplicate) insuranceCertsFiles.push(file);
-                }
-            }
-            renderInsuranceCertsFileList();
-            if (insuranceCertsFiles.length > 0) {
-                document.getElementById('insuranceCertsLabel').innerHTML = '📎 Add more files';
-            }
-        });
-
-        // Set up auth state listener for post-auth profile creation
+        // Post-auth redirect listener
         if (window.Auth && window.Auth.onAuthStateChangeListener) {
             Auth.onAuthStateChangeListener();
         }

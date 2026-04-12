@@ -623,6 +623,12 @@
     <header id="site-header" data-auth="false"></header>
 
     <main>
+        <!-- Incomplete-profile banner: shown when redirected from bid form -->
+        <div id="incompleteBanner" style="display:none; background:#FEF3C7; border-bottom:3px solid #F59E0B; padding:1rem 1.5rem; text-align:center;">
+            <strong style="color:#92400E;">⚠️ Complete your profile before bidding.</strong>
+            <span style="color:#78350F; margin-left:0.5rem;">Please fill in your company name, phone number, trades, and service counties — then you'll be ready to submit bids.</span>
+        </div>
+
         <!-- Header -->
         <section class="header-section">
             <div class="container">
@@ -1997,6 +2003,16 @@
 
         // Initialize on load
         document.addEventListener('DOMContentLoaded', async () => {
+            // Show incomplete-profile banner if redirected from bid form
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('incomplete') === 'bid') {
+                const banner = document.getElementById('incompleteBanner');
+                if (banner) {
+                    banner.style.display = 'block';
+                    banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+
             // Ensure Supabase client is initialized (fixes race condition with config.js)
             if (!sb && typeof supabase !== 'undefined') {
               sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);

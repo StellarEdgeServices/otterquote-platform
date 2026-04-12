@@ -1011,6 +1011,19 @@
 
           if (!error && data) {
             currentContractor = data;
+
+            // Profile completeness gate — must complete profile before bidding
+            const hasCompanyName     = !!(data.company_name && data.company_name.trim());
+            const hasPhone           = !!(data.phone && data.phone.trim());
+            const hasTrades          = Array.isArray(data.trades) && data.trades.length > 0;
+            const hasServiceCounties = Array.isArray(data.service_counties) && data.service_counties.length > 0;
+
+            if (!hasCompanyName || !hasPhone || !hasTrades || !hasServiceCounties) {
+              // Redirect to profile page with a banner explaining the requirement
+              window.location.href = 'contractor-profile.html?incomplete=bid';
+              return;
+            }
+
             // Re-render line items now that we know the contractor's trades
             renderInsuranceLineItems();
           }
