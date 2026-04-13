@@ -154,6 +154,153 @@ const Nav = {
     if (mobileSlot) mobileSlot.innerHTML = mobileHTML;
   },
 
+  /** Inject support modal + floating button for contractor pages */
+  _renderSupportModal() {
+    if (document.getElementById('support-modal-overlay')) return; // already rendered
+
+    const overlay = document.createElement('div');
+    overlay.id = 'support-modal-overlay';
+    overlay.style.cssText = `
+      display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;
+      align-items:center;justify-content:center;padding:1rem;
+    `;
+
+    overlay.innerHTML = `
+      <div id="support-modal" style="
+        background:#0f2533;border:1px solid rgba(20,184,166,.25);border-radius:12px;
+        padding:2rem;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.5);
+        position:relative;
+      ">
+        <button id="support-modal-close" aria-label="Close" style="
+          position:absolute;top:.75rem;right:.75rem;background:none;border:none;
+          color:#94a3b8;font-size:1.25rem;cursor:pointer;line-height:1;padding:.25rem .5rem;
+        ">&times;</button>
+        <h3 style="color:#fff;margin:0 0 .25rem;font-size:1.1rem;">Contact Support</h3>
+        <p style="color:#94a3b8;font-size:.85rem;margin:0 0 1.25rem;">
+          Questions, concerns, or feedback? We respond within 24 hours.
+        </p>
+        <div id="support-form-wrap">
+          <form id="support-contact-form" novalidate>
+            <div style="margin-bottom:.75rem;">
+              <label style="display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.3rem;" for="sc-name">Your Name</label>
+              <input id="sc-name" type="text" required autocomplete="name"
+                style="width:100%;padding:.5rem .75rem;background:#0a1e2c;border:1px solid rgba(148,163,184,.25);
+                  border-radius:6px;color:#fff;font-size:.9rem;box-sizing:border-box;"
+                placeholder="Mike Reynolds">
+            </div>
+            <div style="margin-bottom:.75rem;">
+              <label style="display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.3rem;" for="sc-email">Your Email</label>
+              <input id="sc-email" type="email" required autocomplete="email"
+                style="width:100%;padding:.5rem .75rem;background:#0a1e2c;border:1px solid rgba(148,163,184,.25);
+                  border-radius:6px;color:#fff;font-size:.9rem;box-sizing:border-box;"
+                placeholder="you@company.com">
+            </div>
+            <div style="margin-bottom:.75rem;">
+              <label style="display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.3rem;" for="sc-subject">Subject (optional)</label>
+              <input id="sc-subject" type="text"
+                style="width:100%;padding:.5rem .75rem;background:#0a1e2c;border:1px solid rgba(148,163,184,.25);
+                  border-radius:6px;color:#fff;font-size:.9rem;box-sizing:border-box;"
+                placeholder="e.g. Question about my bid">
+            </div>
+            <div style="margin-bottom:1rem;">
+              <label style="display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.3rem;" for="sc-message">Message</label>
+              <textarea id="sc-message" required rows="4"
+                style="width:100%;padding:.5rem .75rem;background:#0a1e2c;border:1px solid rgba(148,163,184,.25);
+                  border-radius:6px;color:#fff;font-size:.9rem;resize:vertical;box-sizing:border-box;"
+                placeholder="Describe your question or issue..."></textarea>
+            </div>
+            <p id="sc-error" style="color:#f87171;font-size:.8rem;margin:0 0 .75rem;display:none;"></p>
+            <button type="submit" id="sc-submit"
+              style="width:100%;padding:.65rem 1rem;background:#14b8a6;color:#fff;border:none;
+                border-radius:6px;font-size:.9rem;font-weight:600;cursor:pointer;">
+              Send Message
+            </button>
+          </form>
+        </div>
+        <div id="support-success" style="display:none;text-align:center;padding:1rem 0;">
+          <div style="font-size:2rem;margin-bottom:.5rem;">✅</div>
+          <p style="color:#fff;font-weight:600;margin:0 0 .25rem;">Message sent!</p>
+          <p style="color:#94a3b8;font-size:.85rem;margin:0;">We'll get back to you within 24 hours.</p>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Floating help button
+    const fab = document.createElement('button');
+    fab.id = 'support-fab';
+    fab.setAttribute('aria-label', 'Contact Support');
+    fab.style.cssText = `
+      position:fixed;bottom:1.5rem;right:1.5rem;z-index:9998;
+      background:#14b8a6;color:#fff;border:none;border-radius:50px;
+      padding:.65rem 1.1rem;font-size:.85rem;font-weight:600;
+      cursor:pointer;box-shadow:0 4px 16px rgba(20,184,166,.4);
+      display:flex;align-items:center;gap:.4rem;
+    `;
+    fab.innerHTML = `<span style="font-size:1rem;">💬</span> Contact Support`;
+    document.body.appendChild(fab);
+
+    // Wire up open/close
+    const open  = () => { overlay.style.display = 'flex'; };
+    const close = () => {
+      overlay.style.display = 'none';
+      document.getElementById('support-success').style.display = 'none';
+      document.getElementById('support-form-wrap').style.display = '';
+      document.getElementById('support-contact-form').reset();
+      document.getElementById('sc-error').style.display = 'none';
+    };
+    fab.addEventListener('click', open);
+    document.getElementById('support-modal-close').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Form submit
+    document.getElementById('support-contact-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name    = document.getElementById('sc-name').value.trim();
+      const email   = document.getElementById('sc-email').value.trim();
+      const subject = document.getElementById('sc-subject').value.trim();
+      const message = document.getElementById('sc-message').value.trim();
+      const errEl   = document.getElementById('sc-error');
+      const btn     = document.getElementById('sc-submit');
+
+      errEl.style.display = 'none';
+      if (!name || !email || !message) {
+        errEl.textContent = 'Please fill in your name, email, and message.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+
+      try {
+        const SUPABASE_URL  = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)  || '';
+        const SUPABASE_ANON = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON_KEY) || '';
+
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-support-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_ANON,
+            'Authorization': `Bearer ${SUPABASE_ANON}`,
+          },
+          body: JSON.stringify({ from_name: name, from_email: email, subject, message }),
+        });
+
+        if (!res.ok) throw new Error('Send failed');
+
+        document.getElementById('support-form-wrap').style.display = 'none';
+        document.getElementById('support-success').style.display = 'block';
+      } catch {
+        errEl.textContent = 'Something went wrong. Please email support@otterquote.com directly.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Send Message';
+      }
+    });
+  },
+
   /** Render the site footer */
   renderFooter() {
     const footer = document.getElementById('site-footer');
@@ -192,6 +339,7 @@ const Nav = {
               <a href="/contractor-dashboard.html">Dashboard</a>
               <a href="/contractor-profile.html">Company Profile</a>
               <a href="/contractor-agreement.html">Partner Agreement</a>
+              <a href="#" id="footer-support-link" style="color:#14b8a6;font-weight:600;">💬 Contact Support</a>
             ` : `
               <a href="/contractor-login.html">Contractor Login</a>
               <a href="/contractor-join.html">Join Our Network</a>
@@ -218,6 +366,22 @@ const Nav = {
         </div>
       </div>
     `;
+
+    // Contractor pages: inject support modal + FAB, wire footer link
+    if (isContractor) {
+      this._renderSupportModal();
+      // Wire footer "Contact Support" link after DOM settles
+      requestAnimationFrame(() => {
+        const footerLink = document.getElementById('footer-support-link');
+        if (footerLink) {
+          footerLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            const overlay = document.getElementById('support-modal-overlay');
+            if (overlay) overlay.style.display = 'flex';
+          });
+        }
+      });
+    }
   }
 };
 
