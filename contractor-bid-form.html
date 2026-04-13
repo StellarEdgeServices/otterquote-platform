@@ -1532,6 +1532,12 @@
           if (!error && data) {
             currentContractor = data;
 
+            // Check approval status — pending contractors cannot submit bids
+            if (data.status !== 'active') {
+              window.location.href = '/contractor-dashboard.html?msg=pending_approval';
+              return;
+            }
+
             // Profile completeness gate
             const hasCompanyName     = !!(data.company_name && data.company_name.trim());
             const hasPhone           = !!(data.phone && data.phone.trim());
@@ -1946,11 +1952,17 @@
           + '</div>';
       }
 
+      // AI disclaimer banner
+      const aiDisclaimerHtml = '<div style="background-color: #FFF3CD; border: 1px solid #D4A76A; border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 12px; font-size: 14px; color: #856404;">'
+        + '⚠️ <strong>AI-Generated Summary</strong> — AI can make mistakes. Contractors are responsible for reviewing the actual insurance estimate and supplementing upon receipt.'
+        + '</div>';
+
       panel.innerHTML = '<div class="line-items-panel">'
         + '<div class="line-items-header">'
         + '<div class="line-items-title">📋 Insurance Line Items — Your Trades</div>'
         + '<div class="line-items-meta">Read-only reference — does not affect your bid price</div>'
         + '</div>'
+        + aiDisclaimerHtml
         + infoBarHtml
         + sectionsHtml
         + totalsHtml

@@ -332,12 +332,43 @@ window.Auth = {
                 // Insurance flags derived from signup data
                 has_workers_comp: !!(data.insurance_wc_carrier),
                 has_general_liability: !!(data.insurance_gl_carrier),
+                // New contractors default to pending_approval status
+                status: 'pending_approval',
               })
               .select('id')
               .single();
 
             if (insertError) {
               console.error('Error inserting contractor record:', insertError);
+            } else {
+              // Send email notification for new contractor signup (pending_approval status)
+              try {
+                const signupMessage = `New contractor has signed up and is pending approval:
+
+Company Name: ${data.company_name || '(not provided)'}
+Contact Name: ${data.contact_name || '(not provided)'}
+Email: ${data.email || user.email}
+Phone: ${data.phone || '(not provided)'}
+
+Status: pending_approval
+Date: ${new Date().toISOString()}
+
+Log in to the admin panel to review and approve this contractor.`;
+
+                await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    from_name: data.company_name || 'New Contractor',
+                    from_email: data.email || user.email,
+                    subject: 'New Contractor Signup — Pending Approval',
+                    message: signupMessage
+                  })
+                });
+              } catch (emailErr) {
+                console.warn('Error sending signup notification email:', emailErr);
+                // Don't fail signup if email fails
+              }
             }
 
             // Insert licenses using the contractor record's PK (not user.id)

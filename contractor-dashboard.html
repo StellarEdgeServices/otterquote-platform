@@ -407,6 +407,231 @@
             background: #D97706;
         }
 
+        /* ─── Pending Approval Banner ─── */
+        .pending-approval-banner {
+            background: #FEF3C7;
+            border-left: 4px solid #F59E0B;
+            border-radius: var(--radius-md);
+            padding: var(--sp-6);
+            margin-bottom: var(--sp-8);
+            display: none;
+        }
+
+        .pending-approval-banner.show {
+            display: block;
+        }
+
+        .pending-approval-banner-text {
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            color: #78350F;
+            margin: 0;
+        }
+
+        /* ─── Agreement Modal ─── */
+        .agreement-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            justify-content: center;
+            align-items: center;
+            padding: var(--sp-4);
+        }
+
+        .agreement-modal-overlay.show {
+            display: flex;
+        }
+
+        .agreement-modal {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            padding: var(--sp-8);
+            max-width: 500px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .agreement-modal-header {
+            margin-bottom: var(--sp-6);
+        }
+
+        .agreement-modal-header h2 {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin: 0 0 var(--sp-2) 0;
+        }
+
+        .agreement-modal-header p {
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            color: var(--slate);
+            margin: 0;
+        }
+
+        .agreement-modal-link {
+            display: block;
+            margin-bottom: var(--sp-6);
+            padding: var(--sp-4);
+            background: #F3F4F6;
+            border-radius: var(--radius-md);
+            text-decoration: none;
+            color: var(--amber);
+            font-weight: 600;
+            text-align: center;
+            transition: background 0.2s ease;
+        }
+
+        .agreement-modal-link:hover {
+            background: #E5E7EB;
+        }
+
+        .agreement-modal-checkbox {
+            display: flex;
+            align-items: center;
+            gap: var(--sp-3);
+            margin-bottom: var(--sp-6);
+        }
+
+        .agreement-modal-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--amber);
+        }
+
+        .agreement-modal-checkbox label {
+            cursor: pointer;
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            color: var(--navy);
+            margin: 0;
+        }
+
+        .agreement-modal-button {
+            width: 100%;
+            padding: var(--sp-4) var(--sp-6);
+            background: var(--amber);
+            color: var(--white);
+            border: none;
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .agreement-modal-button:not(:disabled) {
+            opacity: 1;
+            cursor: pointer;
+        }
+
+        .agreement-modal-button:not(:disabled):hover {
+            background: #D97706;
+        }
+
+        /* ─── Getting Started Checklist ─── */
+        .getting-started-section {
+            display: none;
+            background: #F0FDF4;
+            border-left: 4px solid #16A34A;
+            border-radius: var(--radius-lg);
+            padding: var(--sp-8);
+            margin-bottom: var(--sp-8);
+        }
+
+        .getting-started-section.show {
+            display: block;
+        }
+
+        .getting-started-section h2 {
+            font-family: var(--font-heading);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin: 0 0 var(--sp-6) 0;
+        }
+
+        .checklist-item {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--sp-4);
+            padding-bottom: var(--sp-6);
+            margin-bottom: var(--sp-6);
+            border-bottom: 1px solid #D1FAE5;
+        }
+
+        .checklist-item:last-child {
+            padding-bottom: 0;
+            margin-bottom: 0;
+            border-bottom: none;
+        }
+
+        .checklist-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+            width: 24px;
+            text-align: center;
+            margin-top: 4px;
+        }
+
+        .checklist-content {
+            flex: 1;
+        }
+
+        .checklist-label {
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: var(--sp-2);
+        }
+
+        .checklist-link {
+            display: inline-block;
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            color: var(--amber);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s ease;
+        }
+
+        .checklist-link:hover {
+            color: #D97706;
+        }
+
+        .getting-started-success {
+            display: none;
+            background: #D1FAE5;
+            border: 1px solid #6EE7B7;
+            color: #065F46;
+            padding: var(--sp-6);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--sp-8);
+            text-align: center;
+        }
+
+        .getting-started-success.show {
+            display: block;
+        }
+
+        .getting-started-success p {
+            font-family: var(--font-body);
+            font-size: 1rem;
+            margin: 0;
+            font-weight: 600;
+        }
+
         @media (max-width: 768px) {
             main {
                 padding: var(--sp-4) var(--sp-3);
@@ -443,6 +668,40 @@
         <div class="dashboard-hero">
             <h1 id="welcomeText">Welcome back</h1>
             <p id="serviceAreaText">Loading your service area...</p>
+        </div>
+
+        <!-- Pending Approval Banner -->
+        <div class="pending-approval-banner" id="pendingApprovalBanner">
+            <p class="pending-approval-banner-text">
+                🔄 Your account is under review. You'll be able to browse opportunities once approved. In the meantime, complete your profile to speed up the process.
+            </p>
+        </div>
+
+        <!-- Agreement Modal -->
+        <div class="agreement-modal-overlay" id="agreementModalOverlay">
+            <div class="agreement-modal">
+                <div class="agreement-modal-header">
+                    <h2>Contractor Partner Agreement</h2>
+                    <p>Before using OtterQuote, please review and accept our Contractor Partner Agreement.</p>
+                </div>
+                <a href="/contractor-agreement.html" target="_blank" class="agreement-modal-link">📄 Read Full Agreement</a>
+                <div class="agreement-modal-checkbox">
+                    <input type="checkbox" id="agreementCheckbox" name="agreementCheckbox">
+                    <label for="agreementCheckbox">I have read and agree to the OtterQuote Contractor Partner Agreement</label>
+                </div>
+                <button id="acceptAgreementBtn" class="agreement-modal-button" disabled>Accept and Continue</button>
+            </div>
+        </div>
+
+        <!-- Getting Started Checklist -->
+        <div class="getting-started-section" id="gettingStartedSection">
+            <h2>Getting Started</h2>
+            <div id="checklistContainer"></div>
+        </div>
+
+        <!-- Getting Started Success Banner -->
+        <div class="getting-started-success" id="gettingStartedSuccess">
+            <p>✅ Your profile is complete! Once approved, you'll start receiving opportunities.</p>
         </div>
 
         <!-- Profile Completeness Banner -->
@@ -586,6 +845,76 @@
                 case 'bid_rejected': return 'background: #991B1B;';
                 case 'opportunity_matched': return 'background: var(--amber);';
                 default: return 'background: #6B7280;';
+            }
+        }
+
+        // Show Getting Started Checklist
+        function showGettingStartedChecklist(contractor) {
+            const checklist = [
+                { label: 'Business information', check: !!(contractor.company_name && contractor.company_name.trim()), link: '/contractor-profile.html' },
+                { label: 'Insurance certificates on file', check: !!(contractor.has_workers_comp || contractor.has_general_liability), link: '/contractor-profile.html' },
+                { label: 'Service area selected', check: Array.isArray(contractor.service_counties) && contractor.service_counties.length > 0, link: '/contractor-profile.html' },
+                { label: 'Contract template uploaded', check: !!(contractor.contract_templates && Object.keys(contractor.contract_templates).length > 0), link: '/contractor-settings.html' },
+                { label: 'Preferred shingle brand selected', check: Array.isArray(contractor.preferred_brands) && contractor.preferred_brands.length > 0, link: '/contractor-settings.html' },
+                { label: 'Agreement accepted', check: !!contractor.agreement_accepted_at, link: '/contractor-dashboard.html' }
+            ];
+
+            const container = document.getElementById('checklistContainer');
+            if (!container) return;
+
+            container.innerHTML = checklist.map(item => `
+                <div class="checklist-item">
+                    <div class="checklist-icon">${item.check ? '✅' : '⬜'}</div>
+                    <div class="checklist-content">
+                        <div class="checklist-label">${item.label}</div>
+                        <a href="${item.link}" class="checklist-link">→ Complete this step</a>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('gettingStartedSection').classList.add('show');
+        }
+
+        // Handle agreement modal checkbox and button
+        function initAgreementModal() {
+            const checkbox = document.getElementById('agreementCheckbox');
+            const button = document.getElementById('acceptAgreementBtn');
+
+            if (checkbox) {
+                checkbox.addEventListener('change', () => {
+                    if (button) {
+                        button.disabled = !checkbox.checked;
+                    }
+                });
+            }
+
+            if (button) {
+                button.addEventListener('click', async () => {
+                    if (!currentContractor || !checkbox || !checkbox.checked || !sb) return;
+
+                    try {
+                        const today = new Date().toISOString().split('T')[0];
+                        const { error } = await sb
+                            .from('contractors')
+                            .update({
+                                agreement_accepted_at: new Date().toISOString(),
+                                agreement_version: today
+                            })
+                            .eq('id', currentContractor.id);
+
+                        if (!error) {
+                            currentContractor.agreement_accepted_at = new Date().toISOString();
+                            currentContractor.agreement_version = today;
+                            document.getElementById('agreementModalOverlay').classList.remove('show');
+                            location.reload();
+                        } else {
+                            alert('Error accepting agreement. Please try again.');
+                        }
+                    } catch (err) {
+                        console.error('Error accepting agreement:', err);
+                        alert('An error occurred. Please try again.');
+                    }
+                });
             }
         }
 
@@ -798,6 +1127,29 @@
               }
             } catch (err) {
               console.error('Error loading contractor data:', err);
+            }
+          }
+
+          // Handle pending approval message from URL
+          const urlParams = new URLSearchParams(window.location.search);
+          if (urlParams.get('msg') === 'pending_approval') {
+            document.getElementById('pendingApprovalBanner').classList.add('show');
+          }
+
+          // Check agreement acceptance status
+          if (currentContractor && !currentContractor.agreement_accepted_at) {
+            document.getElementById('agreementModalOverlay').classList.add('show');
+            initAgreementModal();
+          } else {
+            initAgreementModal();
+          }
+
+          // Show Getting Started checklist if profile is incomplete
+          if (currentContractor) {
+            const { completedCount, totalSteps } = calculateProfileCompletion(currentContractor);
+            // Show checklist only if incomplete AND status is not 'active' (pending contractors)
+            if (completedCount < totalSteps) {
+              showGettingStartedChecklist(currentContractor);
             }
           }
 

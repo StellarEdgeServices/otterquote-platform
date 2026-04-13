@@ -235,6 +235,12 @@
                 .single();
 
               if (data) currentContractor = data;
+
+              // Check approval status — pending contractors cannot view opportunities
+              if (currentContractor && currentContractor.status !== 'active') {
+                window.location.href = '/contractor-dashboard.html';
+                return;
+              }
             } catch (err) {
               console.error('Error loading contractor:', err);
             }
