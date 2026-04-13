@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
 <title>How OtterQuote Works for Contractors — Win More Roofing Jobs</title>
-<meta name="description" content="Discover how OtterQuote connects roofing contractors with qualified homeowners. Get fully executed contracts delivered ready to install.">
+<meta name="description" content="Discover how OtterQuote delivers fully executed contracts to roofing contractors. Apply in 60 seconds, bid on matched opportunities, and receive a complete project package when you win.">
 <link rel="canonical" href="https://otterquote.com/contractor-how-it-works.html">
 <meta property="og:title" content="How OtterQuote Works for Contractors — Win More Roofing Jobs">
-<meta property="og:description" content="Discover how OtterQuote connects roofing contractors with qualified homeowners. Get fully executed contracts delivered ready to install.">
+<meta property="og:description" content="Discover how OtterQuote delivers fully executed contracts to roofing contractors. Apply in 60 seconds, bid on matched opportunities, and receive a complete project package when you win.">
 <meta property="og:url" content="https://otterquote.com/contractor-how-it-works.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OtterQuote">
@@ -83,17 +83,118 @@
   margin-bottom: var(--sp-1);
 }
 
+/* What You Receive section */
+.receive-section {
+  max-width: 700px;
+  margin: var(--sp-14) auto 0;
+}
+.receive-section h2 {
+  font-family: var(--font-body);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: var(--sp-2);
+  text-align: center;
+}
+.receive-section .receive-intro {
+  text-align: center;
+  font-size: 0.95rem;
+  margin-bottom: var(--sp-6);
+  color: var(--slate);
+}
+.receive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--sp-4);
+}
+.receive-card {
+  background: rgba(20,184,166,0.04);
+  border: 1px solid rgba(20,184,166,0.15);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-5);
+}
+.receive-card .receive-icon {
+  font-size: 1.5rem;
+  margin-bottom: var(--sp-2);
+}
+.receive-card h4 {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: var(--sp-1);
+}
+.receive-card p {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--slate);
+  margin: 0;
+}
+
+/* Cost section */
 .cost-callout {
   max-width: 700px;
   margin: var(--sp-12) auto 0;
-  text-align: center;
   padding: var(--sp-8);
   background: rgba(20,184,166,0.05);
   border: 1px solid rgba(20,184,166,0.2);
   border-radius: var(--radius-lg);
 }
-.cost-callout h3 { color: var(--amber); margin-bottom: var(--sp-3); font-family: var(--font-body); }
-.cost-callout p { max-width: 500px; margin: 0 auto; }
+.cost-callout h3 {
+  color: var(--amber);
+  margin-bottom: var(--sp-4);
+  font-family: var(--font-body);
+  font-size: 1.2rem;
+  text-align: center;
+}
+.cost-callout .cost-headline {
+  text-align: center;
+  font-size: 0.95rem;
+  margin-bottom: var(--sp-6);
+}
+.fee-tiers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-6);
+}
+@media (max-width: 560px) {
+  .fee-tiers { grid-template-columns: 1fr; }
+}
+.fee-tier {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius);
+  padding: var(--sp-4);
+  text-align: center;
+}
+.fee-tier .fee-pct {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--amber);
+  display: block;
+  margin-bottom: var(--sp-1);
+}
+.fee-tier .fee-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--white);
+  display: block;
+  margin-bottom: var(--sp-1);
+}
+.fee-tier .fee-desc {
+  font-size: 0.78rem;
+  color: var(--slate);
+  line-height: 1.5;
+}
+.fee-max-note {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--slate);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: var(--sp-4);
+}
+.fee-max-note strong { color: var(--white); }
 
 .cta-bottom {
   text-align: center;
@@ -108,8 +209,12 @@
   gap: var(--sp-4);
 }
 .cta-bottom-links .btn { margin-bottom: var(--sp-2); }
-.cta-bottom-links a { color: var(--amber); text-decoration: none; font-size: 0.95rem; }
-.cta-bottom-links a:hover { text-decoration: underline; }
+.cta-bottom-links a.secondary-link {
+  color: var(--amber);
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+.cta-bottom-links a.secondary-link:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -119,7 +224,7 @@
 <section class="page-hero">
   <div class="container">
     <h1>How OtterQuote Works for Contractors</h1>
-    <p>We're your sales team — without the truck, the manager, or the advance. Here's how it works.</p>
+    <p>No cold calls. No door knocking. Just contract-ready projects delivered to your inbox — you pay only when you win.</p>
   </div>
 </section>
 
@@ -128,74 +233,128 @@
     <div class="timeline">
 
       <div class="timeline-item">
-        <div class="timeline-dot">📋</div>
+        <div class="timeline-dot">⚡</div>
         <div class="timeline-content">
           <div class="timeline-tag">Step 1</div>
-          <h3>Apply to Join Our Network</h3>
-          <p>Submit your company info, insurance certificates, and any applicable municipal licenses. We verify everything and set up your profile. No upfront costs.</p>
+          <h3>Apply in 60 Seconds</h3>
+          <p>Your email address is all you need to get started. We send you a magic link — click it and you're in. No lengthy application, no waiting room, no callbacks.</p>
         </div>
       </div>
 
       <div class="timeline-item">
-        <div class="timeline-dot">🎯</div>
+        <div class="timeline-dot">🏗️</div>
         <div class="timeline-content">
           <div class="timeline-tag">Step 2</div>
-          <h3>Browse Available Opportunities</h3>
-          <p>When a homeowner submits a claim, it appears in your opportunity feed. See the job type (insurance RCV, ACV, retail, or repair), location, estimated scope, and urgency level — all before you commit to bidding.</p>
-        </div>
-      </div>
-
-      <div class="timeline-item">
-        <div class="timeline-dot">💰</div>
-        <div class="timeline-content">
-          <div class="timeline-tag">Step 3</div>
-          <h3>Submit Your Best Bid</h3>
-          <p>Enter your pricing, warranty terms, estimated start date, and decking contingency. For insurance RCV jobs, your bid emphasizes materials and warranties over price. Your platform fee is calculated automatically.</p>
-        </div>
-      </div>
-
-      <div class="timeline-item">
-        <div class="timeline-dot">🏆</div>
-        <div class="timeline-content">
-          <div class="timeline-tag">Step 4</div>
-          <h3>Win the Contract</h3>
-          <p>The homeowner reviews all bids side-by-side and selects a contractor. When they choose you, the contract is executed electronically via DocuSign — using YOUR agreement, auto-populated with the project details.</p>
-        </div>
-      </div>
-
-      <div class="timeline-item">
-        <div class="timeline-dot">📦</div>
-        <div class="timeline-content">
-          <div class="timeline-tag">Step 5</div>
-          <h3>Receive a Contract-Ready Package</h3>
-          <p>You get: a fully executed contract, the insurance loss sheet, trade-specific Hover measurements, material selections, and homeowner contact info. Show up ready to work — no sales visit needed.</p>
+          <h3>Build Your Profile</h3>
+          <p>Add your business information, upload your insurance certificates, define your service area, and upload your contract template. Your profile is what homeowners see when comparing contractors — make it count. You complete it at your own pace.</p>
         </div>
       </div>
 
       <div class="timeline-item">
         <div class="timeline-dot">✅</div>
         <div class="timeline-content">
+          <div class="timeline-tag">Step 3</div>
+          <h3>Get Approved</h3>
+          <p>We review your profile to confirm licensing and insurance are in order. We make your research easy by gathering licensing, insurance, and review information all in one place for homeowners. Most approvals happen within 1–2 business days. Once approved, you start receiving opportunities matched to your service area and trades.</p>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot">🎯</div>
+        <div class="timeline-content">
+          <div class="timeline-tag">Step 4</div>
+          <h3>Browse &amp; Bid</h3>
+          <p>See opportunities matched to your service area and the trades you handle. Each opportunity includes the project details, Hover aerial measurements, and the insurance estimate so you know exactly what you're bidding on. Submit your bid with full pricing transparency — you see the exact platform fee before you submit. For insurance RCV projects, auto-bid lets your bid go in automatically at the RCV amount with your standard terms.</p>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot">🏆</div>
+        <div class="timeline-content">
+          <div class="timeline-tag">Step 5</div>
+          <h3>Win the Contract</h3>
+          <p>When a homeowner selects you, your pre-signed agreement is sent to them for countersignature. Once signed, you receive the fully executed contract, the loss sheet, trade-specific Hover aerial measurements, material and color selections, and the homeowner's contact information — released the moment the contract is signed. Show up ready to start work.</p>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot">📈</div>
+        <div class="timeline-content">
           <div class="timeline-tag">Step 6</div>
-          <h3>Complete the Job & Get Paid</h3>
-          <p>Install the roof, we follow up with the homeowner at every milestone. Your platform fee is collected only after the job is complete. Happy homeowners leave reviews that build your OtterQuote reputation.</p>
+          <h3>Complete &amp; Grow</h3>
+          <p>Deliver great work. Build your reputation on the platform. Every completed project strengthens your profile and helps you stand out to homeowners comparing contractors. The more projects you complete, the more your track record speaks for you.</p>
         </div>
       </div>
 
     </div>
 
-    <div class="cost-callout">
-      <h3>What Does This Cost?</h3>
-      <p>You pay nothing upfront. OtterQuote charges a percentage-based platform fee only when you win and complete a project. No subscription fees, no pay-per-click, no wasted ad spend.</p>
+    <!-- What You Receive -->
+    <div class="receive-section">
+      <h2>What You Receive When You Win</h2>
+      <p class="receive-intro">Every contract-ready project package includes everything you need to show up and start work.</p>
+      <div class="receive-grid">
+        <div class="receive-card">
+          <div class="receive-icon">📄</div>
+          <h4>Executed Contract</h4>
+          <p>Your own agreement, countersigned by the homeowner via DocuSign. Fully enforceable from day one.</p>
+        </div>
+        <div class="receive-card">
+          <div class="receive-icon">📋</div>
+          <h4>Insurance Estimate</h4>
+          <p>The homeowner's loss sheet with an AI-parsed line-item summary. No digging through Xactimate pages.</p>
+        </div>
+        <div class="receive-card">
+          <div class="receive-icon">📐</div>
+          <h4>Hover Measurements</h4>
+          <p>Trade-specific aerial measurements from Hover. Accurate square footage, pitch, and facet data for your trade.</p>
+        </div>
+        <div class="receive-card">
+          <div class="receive-icon">🎨</div>
+          <h4>Material &amp; Color Selections</h4>
+          <p>Shingle brand, product, color, and impact class — all confirmed before you arrive. No more samples at the door.</p>
+        </div>
+        <div class="receive-card">
+          <div class="receive-icon">📞</div>
+          <h4>Homeowner Contact Info</h4>
+          <p>Name, phone, and email — released the moment the contract is signed. You have 48 hours to make initial contact.</p>
+        </div>
+      </div>
     </div>
+
+    <!-- Cost / Fee Model -->
+    <div class="cost-callout">
+      <h3>What Does It Cost?</h3>
+      <p class="cost-headline">You only pay when you win. There are no subscriptions, no monthly fees, and no pay-per-click charges.</p>
+      <div class="fee-tiers">
+        <div class="fee-tier">
+          <span class="fee-pct">5%</span>
+          <span class="fee-label">Base Fee</span>
+          <span class="fee-desc">Charged on any signed contract. This is the minimum — always applies.</span>
+        </div>
+        <div class="fee-tier">
+          <span class="fee-pct">+3%</span>
+          <span class="fee-label">Color Selection</span>
+          <span class="fee-desc">Added when the homeowner completes their color selection online through OtterQuote.</span>
+        </div>
+        <div class="fee-tier">
+          <span class="fee-pct">+5%</span>
+          <span class="fee-label">Deductible Collection</span>
+          <span class="fee-desc">Added when OtterQuote facilitates deductible collection from the homeowner.</span>
+        </div>
+      </div>
+      <p class="fee-max-note">The fee is <strong>outcome-based</strong> — you see the exact amount in the bid form before you submit. Maximum platform fee: <strong>13%</strong>.</p>
+    </div>
+
   </div>
 </section>
 
 <section class="cta-bottom">
   <div class="container">
     <h2>Ready to Grow Your Business?</h2>
+    <p>Apply in 60 seconds. No upfront cost. Start receiving opportunities the moment you're approved.</p>
     <div class="cta-bottom-links">
       <a href="contractor-join.html" class="btn btn-primary btn-lg">Apply to Join</a>
-      <a href="contractor-login.html">Already have an account? Log in</a>
+      <a href="contractor-login.html" class="secondary-link">Already have an account? Log in</a>
     </div>
   </div>
 </section>
