@@ -2385,6 +2385,19 @@
               bid_amount: quoteData.total_price,
             });
 
+            // Send bid update confirmation email to contractor (non-fatal)
+            try {
+              await sb.functions.invoke('notify-contractors', {
+                body: {
+                  event_type: 'bid_update_confirmed',
+                  claim_id: currentClaim.id,
+                  contractor_id: currentContractor.id,
+                },
+              });
+            } catch (notifErr) {
+              console.warn('Bid update confirmation email failed (non-fatal):', notifErr);
+            }
+
           } else {
             const { error } = await sb
               .from('quotes')
