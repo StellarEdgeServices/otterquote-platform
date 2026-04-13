@@ -311,7 +311,7 @@
 
     try {
       // Store the intended role so post-auth can route correctly
-      sessionStorage.setItem('cs_auth_role', 'contractor');
+      localStorage.setItem('cs_auth_role', 'contractor');
 
       // Send magic link with contractor redirect
       await Auth.sendMagicLink(email, 'contractor');
