@@ -1140,11 +1140,11 @@
         Add one or more payment methods so we can charge the platform fee when you win a project. Bank accounts (ACH) have no processing fee. Card payments include a small processing fee.
       </div>
 
-      <!-- Status display: No payment methods on file -->
-      <div id="pmStatusNoPayment" style="padding: var(--sp-6); background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
-        <div style="font-size: 0.9rem; color: #991B1B; font-weight: 600; margin-bottom: var(--sp-2);">⚠️ No Payment Method on File</div>
-        <p style="font-size: 0.875rem; color: #7F1D1D; margin-bottom: var(--sp-4); line-height: 1.5;">
-          A payment method is required before your bids can be accepted. Add a bank account (free) or credit/debit card below.
+      <!-- Status display: No payment methods on file (amber) -->
+      <div id="pmStatusNoPayment" style="padding: var(--sp-6); background: #FFFBEB; border: 1px solid #F59E0B; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
+        <div style="font-size: 0.9rem; color: #92400E; font-weight: 600; margin-bottom: var(--sp-2);">⚠️ Payment Method Required</div>
+        <p style="font-size: 0.875rem; color: #78350F; margin-bottom: 0; line-height: 1.5;">
+          A payment method is required before you can receive projects. Add a bank account (<strong>no processing fee</strong>) or credit/debit card to get started.
         </p>
       </div>
 
@@ -1152,14 +1152,31 @@
       <div id="pmMethodsList" style="margin-bottom: var(--sp-6); display: none;"></div>
 
       <!-- Encouragement banner: shown when only 1 method on file -->
-      <div id="pmEncourageBanner" style="padding: var(--sp-4) var(--sp-6); background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
-        <div style="font-size: 0.85rem; color: #1E40AF; line-height: 1.5;">
-          💡 <strong>Tip:</strong> Adding a backup payment method ensures your bids are never held up by a single declined card. Bank accounts (ACH) are free — no processing fee.
+      <div id="pmEncourageBanner" style="padding: var(--sp-6); background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
+        <div style="font-size: 0.95rem; font-weight: 600; color: #1E3A5F; margin-bottom: var(--sp-3);">Protect Your Reputation &mdash; Add a Backup Payment Method</div>
+        <p style="font-size: 0.85rem; color: #334155; line-height: 1.7; margin-bottom: var(--sp-4);">
+          When a homeowner signs a contract with you through OtterQuote, your platform fee is charged automatically. If the charge fails, we're required to notify the homeowner &mdash; and that conversation can raise questions about your business that no contractor wants to answer.
+        </p>
+        <p style="font-size: 0.85rem; color: #334155; line-height: 1.7; margin-bottom: var(--sp-4);">
+          Adding a second payment method ensures your projects are delivered seamlessly, even if your primary method has a temporary issue. Most contractors keep a bank account on file as their backup &mdash; bank transfers have no processing fee and are the most reliable payment method.
+        </p>
+        <p style="font-size: 0.85rem; color: #334155; line-height: 1.7; margin-bottom: var(--sp-6);">
+          This isn't about us collecting fees faster. It's about making sure that when a homeowner chooses you, the experience is seamless from start to finish.
+        </p>
+        <button class="btn btn-primary" onclick="initializeStripeSetup('us_bank_account')" style="background: #1E3A5F; color: #F59E0B; border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;">
+          Add Backup Payment Method
+        </button>
+      </div>
+
+      <!-- Success banner: shown when 2+ methods on file -->
+      <div id="pmBackupSuccess" style="padding: var(--sp-4) var(--sp-6); background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
+        <div style="font-size: 0.85rem; color: #166534; line-height: 1.5;">
+          &#10004; <strong>You have backup payment methods on file. Nice work.</strong>
         </div>
       </div>
 
-      <!-- Add method buttons -->
-      <div id="pmAddButtons" style="display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-6);">
+      <!-- Add method buttons (Bank Account first = default/recommended) -->
+      <div id="pmAddButtons" style="display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-3);">
         <button class="btn btn-primary" style="flex: 1; min-width: 200px;" onclick="initializeStripeSetup('us_bank_account')">
           🏦 Add Bank Account
           <span style="display: block; font-size: 0.75rem; font-weight: 400; opacity: 0.85; margin-top: 2px;">Free — No Processing Fee</span>
@@ -1169,6 +1186,9 @@
           <span style="display: block; font-size: 0.75rem; font-weight: 400; opacity: 0.85; margin-top: 2px;">Processing fee applies</span>
         </button>
       </div>
+      <p style="font-size: 0.8rem; color: var(--slate); line-height: 1.5; margin-bottom: var(--sp-6);">
+        Credit and debit card payments include a small processing fee (2.9% + $0.30). Bank account transfers are always free.
+      </p>
 
       <!-- Stripe Card Element form (hidden by default) -->
       <div id="pmCardForm" style="display: none;">
@@ -1414,17 +1434,20 @@
       const listEl = document.getElementById('pmMethodsList');
       const noPayEl = document.getElementById('pmStatusNoPayment');
       const encourageEl = document.getElementById('pmEncourageBanner');
+      const successEl = document.getElementById('pmBackupSuccess');
 
       if (savedPaymentMethods.length === 0) {
         listEl.style.display = 'none';
         noPayEl.style.display = 'block';
         encourageEl.style.display = 'none';
+        successEl.style.display = 'none';
         return;
       }
 
       noPayEl.style.display = 'none';
       listEl.style.display = 'block';
       encourageEl.style.display = savedPaymentMethods.length === 1 ? 'block' : 'none';
+      successEl.style.display = savedPaymentMethods.length >= 2 ? 'block' : 'none';
 
       listEl.innerHTML = savedPaymentMethods.map(m => {
         const isCard = m.payment_type === 'card';
