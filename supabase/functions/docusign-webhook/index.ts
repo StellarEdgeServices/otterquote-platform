@@ -175,29 +175,234 @@ serve(async (req) => {
 
     // ========== UPDATE CLAIM BASED ON STATUS ==========
     const updateData: Record<string, any> = {};
+    let shouldNotifyContractor = false;
 
     if (status === "completed") {
       // Envelope fully signed by all parties
       if (isContract) {
-        // Only update if not already marked signed (idempotency)
+        // ========== HANDLE PAYMENT CHARGING (D-127) ==========
+        // Contract signed → charge contractor → release to contractor (if payment succeeds)
+        // This is the critical D-127 flow: payment AFTER signing, not at selection
+
         if (!claim.contract_signed_at) {
-          updateData.contract_signed_at = completedDateTime || new Date().toISOString();
-          updateData.contract_signed_by = recipientEmail || null;
-          updateData.status = "contract_signed";
+          // Not yet marked signed — time to charge
+          console.log(`Contract signed for claim ${claim.id}. Attempting payment charge...`);
+
+          try {
+            // Look up the winning quote to get contractor ID and amount
+            const { data: quote, error: quoteErr } = await supabase
+              .from("quotes")
+              .select("id, contractor_id, total_price, payment_status")
+              .eq("claim_id", claim.id)
+              .eq("status", "awarded")
+              .single();
+
+            if (quoteErr || !quote) {
+              throw new Error(
+                `Could not find awarded quote for claim ${claim.id}: ${quoteErr?.message || "not found"}`
+              );
+            }
+
+            // Get contractor's Stripe info
+            const { data: contractor, error: contractorErr } = await supabase
+              .from("contractors")
+              .select(
+                "id, stripe_customer_id, stripe_payment_method_id, company_name"
+              )
+              .eq("id", quote.contractor_id)
+              .single();
+
+            if (contractorErr || !contractor) {
+              throw new Error(
+                `Could not find contractor ${quote.contractor_id}: ${contractorErr?.message || "not found"}`
+              );
+            }
+
+            if (
+              !contractor.stripe_customer_id ||
+              !contractor.stripe_payment_method_id
+            ) {
+              throw new Error(
+                `Contractor ${contractor.id} does not have payment method on file`
+              );
+            }
+
+            // Fetch platform fee percentage
+            const { data: platformSettings, error: psErr } = await supabase
+              .from("platform_settings")
+              .select("platform_fee_percent")
+              .single();
+
+            if (psErr) {
+              console.warn(
+                "Could not fetch platform fee, using default 5%:",
+                psErr
+              );
+            }
+            const platformFeePercent =
+              platformSettings?.platform_fee_percent || 5;
+            const feeAmount = Math.round(
+              quote.total_price * (platformFeePercent / 100) * 100
+            );
+
+            // Call create-payment-intent via internal function invocation
+            console.log(
+              `Charging contractor ${contractor.id} ${feeAmount} cents for platform fee...`
+            );
+
+            const paymentResponse = await fetch(
+              `${supabaseUrl}/functions/v1/create-payment-intent`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${supabaseKey}`,
+                },
+                body: JSON.stringify({
+                  amount: feeAmount,
+                  currency: "usd",
+                  description: `OtterQuote platform fee (${platformFeePercent}%) for claim ${claim.id}`,
+                  metadata: {
+                    claim_id: claim.id,
+                    contractor_id: quote.contractor_id,
+                    type: "platform_fee",
+                  },
+                  contractor_id: quote.contractor_id,
+                  off_session: true,
+                }),
+              }
+            );
+
+            if (!paymentResponse.ok) {
+              const paymentError = await paymentResponse.text();
+              throw new Error(
+                `Payment function returned ${paymentResponse.status}: ${paymentError}`
+              );
+            }
+
+            const paymentResult = await paymentResponse.json();
+            console.log(
+              `Payment result: status=${paymentResult.status}, id=${paymentResult.payment_intent_id}`
+            );
+
+            // Check if payment succeeded
+            const isPaymentSuccessful = paymentResult.succeeded === true;
+
+            if (!isPaymentSuccessful) {
+              // ── Payment FAILED — do NOT mark contract as signed, trigger dunning ──
+              console.error(
+                `Payment failed for quote ${quote.id}: ${paymentResult.status}`
+              );
+
+              // Store payment info and mark as dunning
+              await supabase
+                .from("quotes")
+                .update({
+                  payment_intent_id: paymentResult.payment_intent_id,
+                  payment_status: "dunning",
+                })
+                .eq("id", quote.id);
+
+              // Trigger dunning sequence
+              try {
+                const dunningResponse = await fetch(
+                  `${supabaseUrl}/functions/v1/process-dunning`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${supabaseKey}`,
+                    },
+                    body: JSON.stringify({
+                      quote_id: quote.id,
+                      contractor_id: quote.contractor_id,
+                      claim_id: claim.id,
+                      amount_cents: feeAmount,
+                      stripe_error:
+                        paymentResult.error || "Payment failed after signing",
+                    }),
+                  }
+                );
+                console.log(`Dunning sequence triggered: ${dunningResponse.status}`);
+              } catch (dunningErr) {
+                console.error("Failed to trigger dunning:", dunningErr);
+              }
+
+              // Return early — do NOT update claim status or notify contractor
+              return new Response(
+                JSON.stringify({
+                  received: true,
+                  envelope_id: envelopeId,
+                  status,
+                  claim_id: claim.id,
+                  payment_failed: true,
+                  message: "Contract signed but payment failed. Dunning initiated.",
+                }),
+                {
+                  status: 200,
+                  headers: { ...corsHeaders, "Content-Type": "application/json" },
+                }
+              );
+            }
+
+            // ── Payment SUCCEEDED — mark contract as signed and notify contractor ──
+            console.log(`Payment succeeded for quote ${quote.id}`);
+
+            // Update quote with payment success
+            await supabase
+              .from("quotes")
+              .update({
+                payment_intent_id: paymentResult.payment_intent_id,
+                payment_status: "paid",
+              })
+              .eq("id", quote.id);
+
+            // Now update claim status
+            updateData.contract_signed_at =
+              completedDateTime || new Date().toISOString();
+            updateData.contract_signed_by = recipientEmail || null;
+            updateData.status = "contract_signed";
+
+            // Flag for contractor notification (only after successful payment)
+            shouldNotifyContractor = true;
+          } catch (paymentErr) {
+            console.error(
+              "Error processing payment after contract signing:",
+              paymentErr
+            );
+            // Don't mark as signed if something went wrong
+            // Return early to prevent partial updates
+            return new Response(
+              JSON.stringify({
+                received: true,
+                envelope_id: envelopeId,
+                status,
+                claim_id: claim.id,
+                error: paymentErr instanceof Error ? paymentErr.message : "Unknown payment error",
+              }),
+              {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
         }
       } else if (isColorConfirmation) {
-        updateData.color_confirmed_at = completedDateTime || new Date().toISOString();
+        updateData.color_confirmed_at =
+          completedDateTime || new Date().toISOString();
       }
     } else if (status === "declined") {
       // A signer declined
       if (isContract) {
-        updateData.contract_declined_at = declinedDateTime || new Date().toISOString();
+        updateData.contract_declined_at =
+          declinedDateTime || new Date().toISOString();
         // Don't change claim status — homeowner may re-sign or choose another contractor
       }
     } else if (status === "voided") {
       // Envelope was voided (cancelled)
       if (isContract) {
-        updateData.contract_voided_at = voidedDateTime || new Date().toISOString();
+        updateData.contract_voided_at =
+          voidedDateTime || new Date().toISOString();
       }
     } else if (status === "sent" || status === "delivered") {
       // Informational — envelope was sent or viewed. No claim update needed.
@@ -218,22 +423,26 @@ serve(async (req) => {
         console.log(`Updated claim ${claim.id}:`, JSON.stringify(updateData));
       }
 
-      // ── Notify contractor on signing completion ──
-      if (status === "completed" && isContract) {
+      // ── Notify contractor ONLY after payment succeeds ──
+      if (shouldNotifyContractor) {
         try {
           // Fire-and-forget notification to contractor
-          const notifyResponse = await fetch(`${supabaseUrl}/functions/v1/notify-contractors`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${supabaseKey}`,
-            },
-            body: JSON.stringify({
-              claim_id: claim.id,
-              event_type: "contract_signed",
-              message: "A homeowner has signed your contract! Contact them within 48 hours.",
-            }),
-          });
+          const notifyResponse = await fetch(
+            `${supabaseUrl}/functions/v1/notify-contractors`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify({
+                claim_id: claim.id,
+                event_type: "contract_signed",
+                message:
+                  "A homeowner has signed your contract! Contact them within 48 hours.",
+              }),
+            }
+          );
           console.log(`Contractor notification sent: ${notifyResponse.status}`);
         } catch (notifyErr) {
           // Non-critical — don't fail the webhook

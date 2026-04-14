@@ -1085,6 +1085,7 @@
 
       try {
         // ── Step 0: Check if contractor has a saved payment method ──
+        // Required for post-signing charging (D-127): charge happens after contract is signed, not here
         document.getElementById('modalBody').textContent = 'Verifying contractor payment method...';
 
         const { data: contractorPM, error: pmCheckErr } = await sb
@@ -1130,92 +1131,11 @@
           return;
         }
 
-        // ── Step 1: Charge contractor's payment method for 5% platform fee ──
-        document.getElementById('modalBody').textContent = 'Processing payment...';
+        // ── Step 1: Award the contractor (no payment charge here) ──
+        // Payment will be charged by docusign-webhook after contract signing (D-127)
+        document.getElementById('modalBody').textContent = 'Awarding the project...';
 
-        const { data: platformSettings, error: psError } = await sb
-          .from('platform_settings')
-          .select('platform_fee_percent')
-          .single();
-
-        if (psError) {
-          console.warn('Could not fetch platform fee percentage, using default 5%:', psError);
-        }
-        const platformFeePercent = platformSettings?.platform_fee_percent || 5;
-        const feeAmount = Math.round(bid.total_price * (platformFeePercent / 100) * 100);
-
-        const { data: paymentResult, error: paymentErr } = await sb.functions.invoke(
-          'create-payment-intent',
-          {
-            body: {
-              amount: feeAmount,
-              currency: 'usd',
-              description: `OtterQuote platform fee (${platformFeePercent}%) for claim ${currentClaim.id}`,
-              metadata: {
-                claim_id: currentClaim.id,
-                contractor_id: bid.contractor_id,
-                type: 'platform_fee',
-              },
-              contractor_id: bid.contractor_id,
-              off_session: true,
-            }
-          }
-        );
-
-        // ── Payment FAILED — trigger dunning sequence ──
-        if (paymentErr || !paymentResult || !paymentResult.succeeded) {
-          console.error('Payment failed:', paymentErr || paymentResult?.error || paymentResult?.status);
-
-          // Store payment_intent_id on quote even if failed
-          if (paymentResult && paymentResult.payment_intent_id) {
-            await sb.from('quotes').update({
-              payment_intent_id: paymentResult.payment_intent_id,
-              payment_status: 'failed',
-            }).eq('id', bidId);
-          }
-
-          // Trigger the dunning sequence via process-dunning Edge Function
-          try {
-            await sb.functions.invoke('process-dunning', {
-              body: {
-                quote_id: bidId,
-                contractor_id: bid.contractor_id,
-                claim_id: currentClaim.id,
-                homeowner_id: currentUser?.id || null,
-                amount_cents: feeAmount,
-                stripe_error: paymentResult?.error || paymentErr?.message || 'Payment declined',
-              }
-            });
-          } catch (dunningErr) {
-            console.error('Failed to trigger dunning sequence:', dunningErr);
-          }
-
-          // Show homeowner a reassuring message (do NOT reveal payment failure)
-          document.getElementById('modalTitle').textContent = 'Processing Your Selection';
-          document.getElementById('modalBody').innerHTML =
-            'We\'re processing this selection. You\'ll receive a confirmation email shortly. This may take a few minutes.';
-          document.getElementById('modalSpinner').style.display = 'none';
-          document.getElementById('modalActions').innerHTML =
-            '<button class="btn btn-secondary" onclick="closeModal()">OK</button>';
-          document.getElementById('modalActions').style.display = 'flex';
-
-          gtag('event', 'contractor_payment_failed', {
-            bid_id: bidId,
-            contractor_id: bid.contractor_id,
-            amount: feeAmount,
-          });
-          return;
-        }
-
-        // ── Payment SUCCEEDED — proceed with normal award flow ──
-
-        // Store payment info on quote
-        await sb.from('quotes').update({
-          payment_intent_id: paymentResult.payment_intent_id,
-          payment_status: 'succeeded',
-        }).eq('id', bidId);
-
-        // 2. Update claim status to 'awarded' and store winning contractor
+        // 1. Update claim status to 'awarded' and store winning contractor
         const { error: claimErr } = await sb
           .from('claims')
           .update({
@@ -1245,7 +1165,6 @@
           bid_id: bidId,
           contractor_id: bid.contractor_id,
           price: bid.total_price,
-          platform_fee: feeAmount,
         });
 
         // 5. Determine signing flow based on contractor_signed_at and is_auto_bid
