@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin — Incomplete Profiles | OtterQuote</title>
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+    <style>
+        :root {
+            --navy: #0B1929;
+            --amber: #F59E0B;
+            --white: #FFFFFF;
+            --slate: #94A3B8;
+            --light: #E2E8F0;
+            --red: #EF4444;
+            --green: #10B981;
+            --orange: #F97316;
+        }
+
+        body {
+            background-color: var(--navy);
+            color: #1F2937;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        /* ── Header ── */
+        .admin-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+
+        .admin-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .admin-badge {
+            background: var(--amber);
+            color: var(--navy);
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+
+        .admin-header h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5rem;
+            color: var(--white);
+            margin: 0;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logout-btn {
+            background: var(--white);
+            color: var(--navy);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            background: var(--light);
+        }
+
+        /* ── Summary Cards ── */
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .summary-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .summary-card-label {
+            font-size: 0.875rem;
+            color: var(--slate);
+            margin-bottom: 0.5rem;
+        }
+
+        .summary-card-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--navy);
+        }
+
+        .summary-card-value.warning {
+            color: var(--orange);
+        }
+
+        /* ── Toolbar ── */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .btn-copy {
+            background: var(--amber);
+            color: var(--navy);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-copy:hover {
+            background: #d97706;
+        }
+
+        .btn-copy:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .copy-confirm {
+            color: var(--green);
+            font-weight: 600;
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        .btn-refresh {
+            background: transparent;
+            color: var(--white);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-refresh:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .result-count {
+            color: var(--slate);
+            font-size: 0.9rem;
+        }
+
+        /* ── Table ── */
+        .table-wrapper {
+            background: var(--white);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: var(--navy);
+            color: var(--white);
+        }
+
+        thead th {
+            padding: 1rem 1.25rem;
+            text-align: left;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid var(--light);
+            transition: background 0.15s ease;
+        }
+
+        tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: #F8FAFC;
+        }
+
+        tbody td {
+            padding: 1rem 1.25rem;
+            font-size: 0.9rem;
+            vertical-align: top;
+        }
+
+        .td-email {
+            font-weight: 600;
+            color: var(--navy);
+            font-size: 0.875rem;
+        }
+
+        .td-date {
+            color: #6B7280;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+
+        .td-status {
+            white-space: nowrap;
+        }
+
+        .status-pill {
+            display: inline-block;
+            padding: 0.3rem 0.7rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .status-pending {
+            background: #FEF3C7;
+            color: #92400E;
+        }
+
+        .status-active {
+            background: #D1FAE5;
+            color: #065F46;
+        }
+
+        .status-suspended {
+            background: #FEE2E2;
+            color: #991B1B;
+        }
+
+        .status-inactive {
+            background: #F3F4F6;
+            color: #6B7280;
+        }
+
+        .missing-fields {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+        }
+
+        .missing-pill {
+            background: #FEE2E2;
+            color: #991B1B;
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .td-action {
+            white-space: nowrap;
+        }
+
+        .btn-mailto {
+            display: inline-block;
+            background: var(--navy);
+            color: var(--white);
+            padding: 0.45rem 0.9rem;
+            border-radius: 0.4rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.2s ease;
+        }
+
+        .btn-mailto:hover {
+            background: #1a2944;
+        }
+
+        /* ── Empty / Loading / Error states ── */
+        .state-box {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 3rem 2rem;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .state-box-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .state-box-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 0.5rem;
+        }
+
+        .state-box-sub {
+            color: #6B7280;
+            font-size: 0.9rem;
+        }
+
+        /* ── Unauthorized ── */
+        .unauthorized-container {
+            display: none;
+            justify-content: center;
+            align-items: center;
+            min-height: 60vh;
+        }
+
+        .unauthorized-box {
+            background: var(--white);
+            border-radius: 1rem;
+            padding: 3rem;
+            text-align: center;
+            max-width: 480px;
+        }
+
+        .unauthorized-box h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.75rem;
+            color: var(--navy);
+            margin-bottom: 1rem;
+        }
+
+        .unauthorized-box p {
+            color: #6B7280;
+            margin-bottom: 1.5rem;
+        }
+
+        .unauthorized-box a {
+            color: var(--amber);
+            font-weight: 600;
+        }
+
+        /* ── Note banner ── */
+        .note-banner {
+            background: rgba(255, 255, 255, 0.08);
+            border-left: 4px solid var(--amber);
+            border-radius: 0.5rem;
+            padding: 0.85rem 1.25rem;
+            color: var(--light);
+            font-size: 0.875rem;
+            margin-bottom: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-active="admin" data-auth="false"></header>
+
+    <main>
+        <!-- Unauthorized state -->
+        <div id="unauthorizedContainer" class="unauthorized-container">
+            <div class="unauthorized-box">
+                <h2>Access Denied</h2>
+                <p>This page is restricted to OtterQuote administrators.</p>
+                <a href="index.html">Return to home</a>
+            </div>
+        </div>
+
+        <!-- Admin content -->
+        <div id="adminContainer" style="display: none;">
+            <div class="admin-header">
+                <div class="admin-title">
+                    <span class="admin-badge">ADMIN</span>
+                    <h1>Incomplete Profiles</h1>
+                </div>
+                <div class="header-actions">
+                    <a href="admin-contractors.html" style="color: var(--slate); font-size: 0.875rem; text-decoration: none;">← Contractor Approvals</a>
+                    <button class="logout-btn" onclick="handleLogout()">Log Out</button>
+                </div>
+            </div>
+
+            <div class="note-banner">
+                Showing contractors who signed up but haven't completed their profile — either still in <strong>pending_approval</strong> status or missing one or more required fields. Use the mailto links to follow up directly.
+            </div>
+
+            <!-- Summary cards -->
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <div class="summary-card-label">Incomplete Profiles</div>
+                    <div class="summary-card-value warning" id="cardTotal">—</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-card-label">Still Pending Approval</div>
+                    <div class="summary-card-value" id="cardPending">—</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-card-label">Active but Incomplete</div>
+                    <div class="summary-card-value" id="cardActiveIncomplete">—</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-card-label">Missing Company Name</div>
+                    <div class="summary-card-value" id="cardMissingName">—</div>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <button class="btn-copy" id="btnCopyEmails" onclick="copyEmails()" disabled>
+                        📋 Copy All Emails
+                    </button>
+                    <span class="copy-confirm" id="copyConfirm">✓ Copied!</span>
+                    <span class="result-count" id="resultCount"></span>
+                </div>
+                <button class="btn-refresh" onclick="loadData()">↻ Refresh</button>
+            </div>
+
+            <!-- Table -->
+            <div id="tableSection" style="display: none;">
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Company Name</th>
+                                <th>Signed Up</th>
+                                <th>Status</th>
+                                <th>Missing Fields</th>
+                                <th>Contact</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Loading -->
+            <div id="loadingState" class="state-box">
+                <div class="state-box-icon">⏳</div>
+                <div class="state-box-title">Loading contractors…</div>
+            </div>
+
+            <!-- Empty -->
+            <div id="emptyState" class="state-box" style="display: none;">
+                <div class="state-box-icon">🎉</div>
+                <div class="state-box-title">All profiles complete!</div>
+                <div class="state-box-sub">No contractors with incomplete profiles found.</div>
+            </div>
+
+            <!-- Error -->
+            <div id="errorState" class="state-box" style="display: none;">
+                <div class="state-box-icon">⚠️</div>
+                <div class="state-box-title">Failed to load data</div>
+                <div class="state-box-sub" id="errorMessage">Check the console for details.</div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+    <script>
+        // Use a distinct variable name to avoid collision with global sb from config.js
+        let adminSb = null;
+        let incompleteContractors = [];
+
+        // Fields required for a complete profile
+        const REQUIRED_FIELDS = [
+            { key: 'company_name',          label: 'Company Name',     check: v => !!v },
+            { key: 'phone',                 label: 'Phone',            check: v => !!v },
+            { key: 'trades',                label: 'Trades',           check: v => Array.isArray(v) && v.length > 0 },
+            { key: 'service_counties',      label: 'Service Counties', check: v => Array.isArray(v) && v.length > 0 },
+            { key: 'has_workers_comp',      label: "Workers' Comp",    check: v => v !== null && v !== undefined },
+            { key: 'has_general_liability', label: 'General Liability', check: v => v !== null && v !== undefined },
+        ];
+
+        function getMissingFields(contractor) {
+            return REQUIRED_FIELDS
+                .filter(f => !f.check(contractor[f.key]))
+                .map(f => f.label);
+        }
+
+        function isIncomplete(contractor) {
+            if (contractor.status === 'pending_approval') return true;
+            return getMissingFields(contractor).length > 0;
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function statusPill(status) {
+            const classes = {
+                pending_approval: 'status-pending',
+                active:           'status-active',
+                suspended:        'status-suspended',
+                inactive:         'status-inactive',
+            };
+            const labels = {
+                pending_approval: 'Pending',
+                active:           'Active',
+                suspended:        'Suspended',
+                inactive:         'Inactive',
+            };
+            const cls   = classes[status] || 'status-inactive';
+            const label = labels[status]  || status;
+            return `<span class="status-pill ${cls}">${label}</span>`;
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            incompleteContractors.forEach(c => {
+                const missing   = getMissingFields(c);
+                const email     = c.email || '';
+                const company   = c.company_name || '<em style="color:#9CA3AF;">Not set</em>';
+                const signedUp  = formatDate(c.created_at);
+                const missingHtml = missing.length === 0
+                    ? '<span style="color:#10B981;font-weight:600;font-size:0.8rem;">None — pending only</span>'
+                    : missing.map(m => `<span class="missing-pill">${escapeHtml(m)}</span>`).join('');
+
+                const mailtoSubject = encodeURIComponent('Complete your OtterQuote contractor profile');
+                const mailtoBody    = encodeURIComponent(
+                    `Hi${c.company_name ? ' ' + c.company_name : ''},\n\n` +
+                    `You signed up for OtterQuote but haven't finished setting up your profile yet. ` +
+                    `Completing your profile is required before you can start receiving and bidding on projects.\n\n` +
+                    `Log in and finish your setup here: https://otterquote.com/contractor-profile.html\n\n` +
+                    `Let me know if you have any questions.\n\nDustin\nOtterQuote`
+                );
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="td-email">${escapeHtml(email)}</td>
+                    <td>${c.company_name ? escapeHtml(c.company_name) : '<em style="color:#9CA3AF;">Not set</em>'}</td>
+                    <td class="td-date">${signedUp}</td>
+                    <td class="td-status">${statusPill(c.status)}</td>
+                    <td><div class="missing-fields">${missingHtml}</div></td>
+                    <td class="td-action">
+                        <a class="btn-mailto" href="mailto:${escapeHtml(email)}?subject=${mailtoSubject}&body=${mailtoBody}">
+                            Email
+                        </a>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateSummaryCards() {
+            const total           = incompleteContractors.length;
+            const pending         = incompleteContractors.filter(c => c.status === 'pending_approval').length;
+            const activeIncomplete = incompleteContractors.filter(c => c.status !== 'pending_approval').length;
+            const missingName     = incompleteContractors.filter(c => !c.company_name).length;
+
+            document.getElementById('cardTotal').textContent          = total;
+            document.getElementById('cardPending').textContent        = pending;
+            document.getElementById('cardActiveIncomplete').textContent = activeIncomplete;
+            document.getElementById('cardMissingName').textContent    = missingName;
+            document.getElementById('resultCount').textContent        = `${total} contractor${total !== 1 ? 's' : ''} found`;
+
+            const btnCopy = document.getElementById('btnCopyEmails');
+            btnCopy.disabled = total === 0;
+        }
+
+        function showState(which) {
+            document.getElementById('loadingState').style.display  = which === 'loading' ? 'block' : 'none';
+            document.getElementById('emptyState').style.display    = which === 'empty'   ? 'block' : 'none';
+            document.getElementById('errorState').style.display    = which === 'error'   ? 'block' : 'none';
+            document.getElementById('tableSection').style.display  = which === 'table'   ? 'block' : 'none';
+        }
+
+        async function loadData() {
+            showState('loading');
+
+            try {
+                const { data, error } = await adminSb
+                    .from('contractors')
+                    .select('id, user_id, email, company_name, phone, trades, service_counties, has_workers_comp, has_general_liability, status, created_at')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                // Filter client-side for incomplete profiles
+                incompleteContractors = (data || []).filter(isIncomplete);
+
+                updateSummaryCards();
+
+                if (incompleteContractors.length === 0) {
+                    showState('empty');
+                } else {
+                    renderTable();
+                    showState('table');
+                }
+            } catch (err) {
+                console.error('Failed to load contractors:', err);
+                document.getElementById('errorMessage').textContent = err.message || 'Unknown error.';
+                showState('error');
+            }
+        }
+
+        async function copyEmails() {
+            const emails = incompleteContractors
+                .map(c => c.email)
+                .filter(Boolean)
+                .join(', ');
+
+            try {
+                await navigator.clipboard.writeText(emails);
+                const confirm = document.getElementById('copyConfirm');
+                confirm.style.display = 'inline';
+                setTimeout(() => { confirm.style.display = 'none'; }, 2500);
+            } catch (err) {
+                // Fallback: select text from a temporary input
+                const tmp = document.createElement('input');
+                tmp.value = emails;
+                document.body.appendChild(tmp);
+                tmp.select();
+                document.execCommand('copy');
+                document.body.removeChild(tmp);
+                const confirm = document.getElementById('copyConfirm');
+                confirm.style.display = 'inline';
+                setTimeout(() => { confirm.style.display = 'none'; }, 2500);
+            }
+        }
+
+        async function handleLogout() {
+            await Auth.signOut();
+            window.location.href = 'index.html';
+        }
+
+        function showUnauthorized() {
+            document.getElementById('unauthorizedContainer').style.display = 'flex';
+            document.getElementById('adminContainer').style.display = 'none';
+        }
+
+        async function init() {
+            // Initialize our own Supabase client using the anon key
+            if (typeof supabase !== 'undefined' && window.CONFIG) {
+                adminSb = supabase.createClient(
+                    window.CONFIG.SUPABASE_URL,
+                    window.CONFIG.SUPABASE_ANON
+                );
+            }
+
+            try {
+                const currentUser = await Auth.getUser();
+
+                if (!currentUser) {
+                    showUnauthorized();
+                    return;
+                }
+
+                if (currentUser.email !== 'dustinstohler1@gmail.com') {
+                    showUnauthorized();
+                    return;
+                }
+
+                document.getElementById('adminContainer').style.display = 'block';
+                await loadData();
+            } catch (err) {
+                console.error('Auth error:', err);
+                showUnauthorized();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
