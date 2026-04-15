@@ -491,6 +491,107 @@
     .file-upload input[type="file"] { display: none; }
     .file-upload label { cursor: pointer; color: var(--amber); }
 
+    /* Status banner action buttons */
+    .status-banner-actions {
+      display: flex;
+      gap: var(--sp-3);
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    /* Switch Contractor modal */
+    .switch-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: var(--sp-6);
+    }
+    .switch-modal-overlay.active {
+      display: flex;
+    }
+    .switch-modal {
+      background: var(--navy-2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      max-width: 520px;
+      width: 100%;
+      animation: fadeUp 0.3s var(--ease);
+    }
+    .switch-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--sp-6);
+      padding-bottom: var(--sp-4);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .switch-modal-header h2 {
+      margin: 0;
+      font-size: 1.2rem;
+      color: var(--white);
+    }
+    .switch-modal-body p {
+      color: var(--slate);
+      margin-bottom: var(--sp-4);
+      line-height: 1.7;
+      font-size: 0.95rem;
+    }
+    .switch-modal-warning {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      border-radius: var(--radius-md);
+      padding: var(--sp-4);
+      margin-bottom: var(--sp-6);
+      color: #fca5a5;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    .switch-modal-actions {
+      display: flex;
+      gap: var(--sp-3);
+      justify-content: flex-end;
+    }
+    .btn-danger {
+      background: #dc2626;
+      color: #fff;
+      border: none;
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: #b91c1c;
+    }
+    .btn-danger:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    /* Disabled switch button tooltip wrapper */
+    .switch-btn-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    .switch-btn-wrapper .switch-tooltip {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      right: 0;
+      background: var(--navy-1);
+      color: var(--slate);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-sm);
+      padding: var(--sp-2) var(--sp-3);
+      font-size: 0.8rem;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .switch-btn-wrapper:hover .switch-tooltip {
+      display: block;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       .dashboard-main {
@@ -535,6 +636,15 @@
       .status-banner-text {
         flex-direction: column;
         margin-bottom: var(--sp-3);
+      }
+
+      .status-banner-actions {
+        flex-direction: column;
+        width: 100%;
+      }
+
+      .switch-modal-actions {
+        flex-direction: column-reverse;
       }
 
       .submit-section {
@@ -594,7 +704,10 @@
               <p style="margin: 0; font-size: 0.95rem;" id="status-banner-text">Contractors are reviewing your details. You'll be notified of incoming bids.</p>
             </div>
           </div>
-          <a href="bids.html" class="btn btn-sm btn-secondary" id="viewBidsLinkTop">View Bids</a>
+          <div class="status-banner-actions" id="status-banner-actions">
+            <a href="bids.html" class="btn btn-sm btn-secondary" id="viewBidsLinkTop">View Bids</a>
+            <!-- Switch Contractor button injected by JS when claim status = contract_signed -->
+          </div>
         </div>
 
         <!-- Project Info Section -->
@@ -796,6 +909,37 @@
       </div>
       <div class="modal-content" id="help-modal-content">
         <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Switch Contractor Confirmation Modal -->
+  <div id="switch-contractor-modal" class="switch-modal-overlay">
+    <div class="switch-modal">
+      <div class="switch-modal-header">
+        <h2>🔄 Switch Contractors?</h2>
+        <button class="modal-close" onclick="closeSwitchModal()" aria-label="Close">✕</button>
+      </div>
+      <div class="switch-modal-body">
+        <p>You are choosing to switch to a different OtterQuote contractor. Here is exactly what happens:</p>
+        <div class="switch-modal-warning">
+          <strong>What changes immediately:</strong>
+          <ul style="margin: var(--sp-2) 0 0 var(--sp-5); line-height: 1.8;">
+            <li>Your current contract is voided</li>
+            <li>Your project returns to open bidding for the entire contractor network</li>
+            <li>Your original contractor is notified and released from the project</li>
+            <li>Their platform fee is refunded in full — you are not charged</li>
+          </ul>
+        </div>
+        <p>You will receive bids from other qualified contractors in your area. Once you select a new contractor, a new contract will be sent for signing.</p>
+        <p style="color: var(--amber); font-size: 0.88rem;">⏱ This option is available up to <strong>3 days before your scheduled installation date</strong>. After that cutoff, switching is no longer available.</p>
+        <p>You do <strong>not</strong> need to contact your current contractor directly — OtterQuote handles the entire transition.</p>
+      </div>
+      <div class="switch-modal-actions">
+        <button class="btn btn-ghost" onclick="closeSwitchModal()">Cancel — Keep My Contractor</button>
+        <button class="btn btn-danger" id="confirm-switch-btn" onclick="confirmSwitchContractor()">
+          Yes, Switch Contractors
+        </button>
       </div>
     </div>
   </div>
@@ -1298,6 +1442,43 @@
           if (iconEl) iconEl.textContent = '🎉';
           if (titleEl) titleEl.textContent = 'Contract signed!';
           if (textEl) textEl.textContent = 'Your contract is signed. Your contractor will be in touch to schedule your project.';
+
+          // ── Switch Contractor button ───────────────────────────────────
+          // Check 3-day cutoff on the frontend (Edge Function also enforces this server-side)
+          const installDate = currentClaim?.estimated_start_date
+            ? new Date(currentClaim.estimated_start_date)
+            : null;
+          const cutoffDate = new Date();
+          cutoffDate.setDate(cutoffDate.getDate() + 3);
+          const withinCutoff = installDate && installDate <= cutoffDate;
+
+          const actionsEl = document.getElementById('status-banner-actions');
+          if (actionsEl) {
+            // Keep the View Bids link and inject Switch Contractor button
+            let switchBtnHtml = '';
+            if (withinCutoff) {
+              switchBtnHtml = `
+                <div class="switch-btn-wrapper">
+                  <button class="btn btn-sm btn-ghost" disabled style="opacity:0.5; cursor:not-allowed;">
+                    Switch Contractor
+                  </button>
+                  <div class="switch-tooltip">Switching is no longer available — installation is within 3 days.</div>
+                </div>`;
+            } else {
+              switchBtnHtml = `
+                <button class="btn btn-sm btn-ghost" onclick="openSwitchContractorModal()">
+                  Switch Contractor
+                </button>`;
+            }
+            // Inject after existing content
+            const existing = actionsEl.querySelector('#viewBidsLinkTop');
+            if (!actionsEl.querySelector('#switch-contractor-trigger')) {
+              const wrapper = document.createElement('div');
+              wrapper.id = 'switch-contractor-trigger';
+              wrapper.innerHTML = switchBtnHtml;
+              actionsEl.appendChild(wrapper);
+            }
+          }
           return;
         }
 
@@ -1914,6 +2095,89 @@
           el.classList.remove('active');
         }, 4000);
       }
+
+      // ── Switch Contractor ──
+      window.openSwitchContractorModal = function() {
+        document.getElementById('switch-contractor-modal').classList.add('active');
+      };
+
+      window.closeSwitchModal = function() {
+        document.getElementById('switch-contractor-modal').classList.remove('active');
+        // Reset confirm button in case it was in loading state
+        const btn = document.getElementById('confirm-switch-btn');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Yes, Switch Contractors';
+        }
+      };
+
+      window.confirmSwitchContractor = async function() {
+        if (!currentClaim?.id || CONFIG.DEMO_MODE) {
+          // Demo mode: show success without calling backend
+          closeSwitchModal();
+          showSuccess('Demo mode: Contractor switch simulated. Your project would return to open bidding.');
+          return;
+        }
+
+        const btn = document.getElementById('confirm-switch-btn');
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+
+        try {
+          const session = await sb.auth.getSession();
+          const jwt = session?.data?.session?.access_token;
+          if (!jwt) {
+            showError('Session expired. Please refresh the page and try again.');
+            closeSwitchModal();
+            return;
+          }
+
+          const res = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/switch-contractor`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${jwt}`,
+            },
+            body: JSON.stringify({ claim_id: currentClaim.id }),
+          });
+
+          const result = await res.json();
+
+          if (!res.ok || !result.success) {
+            closeSwitchModal();
+            const errMsg = result?.error || 'Failed to switch contractor. Please try again or contact support.';
+            showError(errMsg);
+            return;
+          }
+
+          // Success — update local state and re-render
+          closeSwitchModal();
+          currentClaim.status = 'bidding';
+          currentClaim.selected_contractor_id = null;
+
+          // Update the status banner to reflect the project is back in bidding
+          const banner = document.getElementById('status-banner');
+          const iconEl = document.getElementById('status-banner-icon');
+          const titleEl = document.getElementById('status-banner-title');
+          const textEl = document.getElementById('status-banner-text');
+          const actionsEl = document.getElementById('status-banner-actions');
+
+          if (iconEl) iconEl.textContent = '✓';
+          if (titleEl) titleEl.textContent = 'Your project is back in open bidding!';
+          if (textEl) textEl.textContent = 'Your original contractor has been notified and released. New bids from qualified contractors in your area will arrive shortly.';
+          // Remove the Switch Contractor trigger
+          const trigger = document.getElementById('switch-contractor-trigger');
+          if (trigger) trigger.remove();
+
+          gtag('event', 'contractor_switched', { claim_id: currentClaim.id });
+          showSuccess('Contractor switch confirmed. Your project is back in open bidding.');
+
+        } catch (err) {
+          console.error('[Dashboard] confirmSwitchContractor error:', err);
+          closeSwitchModal();
+          showError('An unexpected error occurred. Please try again or contact support@otterquote.com.');
+        }
+      };
 
       // ── Init ──
       if (document.readyState === 'loading') {
