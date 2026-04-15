@@ -236,6 +236,18 @@
             white-space: nowrap;
         }
 
+        .td-login {
+            color: #6B7280;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+
+        .login-never {
+            color: #9CA3AF;
+            font-style: italic;
+            font-size: 0.85rem;
+        }
+
         .td-status {
             white-space: nowrap;
         }
@@ -447,6 +459,7 @@
                                 <th>Email</th>
                                 <th>Company Name</th>
                                 <th>Signed Up</th>
+                                <th>Last Login</th>
                                 <th>Status</th>
                                 <th>Missing Fields</th>
                                 <th>Contact</th>
@@ -487,6 +500,7 @@
         // Use a distinct variable name to avoid collision with global sb from config.js
         let adminSb = null;
         let incompleteContractors = [];
+        let loginMap = {};  // contractor_id → last_sign_in_at (ISO string or null)
 
         // Fields required for a complete profile
         const REQUIRED_FIELDS = [
@@ -513,6 +527,20 @@
             if (!iso) return '—';
             const d = new Date(iso);
             return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function formatRelativeDate(iso) {
+            if (!iso) return null;  // caller renders "Never" separately
+            const diffMs   = Date.now() - new Date(iso).getTime();
+            const diffDays = Math.floor(diffMs / 86400000);
+            if (diffDays < 1)   return 'Today';
+            if (diffDays === 1) return '1 day ago';
+            if (diffDays < 30)  return `${diffDays} days ago`;
+            if (diffDays < 60)  return '1 month ago';
+            const months = Math.floor(diffDays / 30);
+            if (months < 12)    return `${months} months ago`;
+            const years = Math.floor(diffDays / 365);
+            return years === 1  ? '1 year ago' : `${years} years ago`;
         }
 
         function statusPill(status) {
@@ -555,6 +583,12 @@
                     ? '<span style="color:#10B981;font-weight:600;font-size:0.8rem;">None — pending only</span>'
                     : missing.map(m => `<span class="missing-pill">${escapeHtml(m)}</span>`).join('');
 
+                const rawLogin    = loginMap[c.id] || null;
+                const loginLabel  = formatRelativeDate(rawLogin);
+                const loginHtml   = loginLabel
+                    ? `<span class="td-login">${escapeHtml(loginLabel)}</span>`
+                    : `<span class="login-never">Never</span>`;
+
                 const mailtoSubject = encodeURIComponent('Complete your OtterQuote contractor profile');
                 const mailtoBody    = encodeURIComponent(
                     `Hi${c.company_name ? ' ' + c.company_name : ''},\n\n` +
@@ -569,6 +603,7 @@
                     <td class="td-email">${escapeHtml(email)}</td>
                     <td>${c.company_name ? escapeHtml(c.company_name) : '<em style="color:#9CA3AF;">Not set</em>'}</td>
                     <td class="td-date">${signedUp}</td>
+                    <td>${loginHtml}</td>
                     <td class="td-status">${statusPill(c.status)}</td>
                     <td><div class="missing-fields">${missingHtml}</div></td>
                     <td class="td-action">
@@ -608,12 +643,33 @@
             showState('loading');
 
             try {
-                const { data, error } = await adminSb
-                    .from('contractors')
-                    .select('id, user_id, email, company_name, phone, trades, service_counties, has_workers_comp, has_general_liability, status, created_at')
-                    .order('created_at', { ascending: false });
+                // Fetch contractor records and last-login data in parallel.
+                // admin_contractor_last_logins is a view in the public schema that joins
+                // contractors with auth.users; it is restricted server-side to the admin
+                // email via auth.email(), so no service role key is needed client-side.
+                const [contractorsResult, loginResult] = await Promise.all([
+                    adminSb
+                        .from('contractors')
+                        .select('id, user_id, email, company_name, phone, trades, service_counties, has_workers_comp, has_general_liability, status, created_at')
+                        .order('created_at', { ascending: false }),
+                    adminSb
+                        .from('admin_contractor_last_logins')
+                        .select('contractor_id, last_sign_in_at'),
+                ]);
 
-                if (error) throw error;
+                if (contractorsResult.error) throw contractorsResult.error;
+                // Login fetch failure is non-fatal — just log and proceed with empty map.
+                if (loginResult.error) {
+                    console.warn('Last-login fetch failed (non-fatal):', loginResult.error.message);
+                }
+
+                // Build contractor_id → last_sign_in_at lookup
+                loginMap = {};
+                (loginResult.data || []).forEach(row => {
+                    loginMap[row.contractor_id] = row.last_sign_in_at;
+                });
+
+                const data = contractorsResult.data;
 
                 // Filter client-side for incomplete profiles
                 incompleteContractors = (data || []).filter(isIncomplete);
