@@ -27,7 +27,7 @@ serve(async (req) => {
   }
 
   try {
-    const { from_name, from_email, subject, message } = await req.json();
+    const { from_name, from_email, subject, message, to_email } = await req.json();
 
     // Validate required fields
     if (!from_name || !from_email || !message) {
@@ -44,11 +44,26 @@ serve(async (req) => {
       throw new Error("Mailgun credentials not configured.");
     }
 
-    const emailSubject = subject
-      ? `[Contractor Support] ${subject}`
-      : `[Contractor Support] Message from ${from_name}`;
+    // Determine recipient: use to_email if provided, otherwise use SUPPORT_DESTINATION
+    const recipient = to_email || SUPPORT_DESTINATION;
 
-    const emailBody = `Contractor Support Request
+    // Determine email subject and body based on recipient
+    let emailSubject: string;
+    let emailBody: string;
+    let from: string;
+
+    if (to_email) {
+      // Direct email to contractor (e.g., welcome email)
+      emailSubject = subject || "Welcome to OtterQuote";
+      emailBody = message;
+      from = `OtterQuote <notifications@${MAILGUN_DOMAIN}>`;
+    } else {
+      // Support form email to admin
+      emailSubject = subject
+        ? `[Contractor Support] ${subject}`
+        : `[Contractor Support] Message from ${from_name}`;
+
+      emailBody = `Contractor Support Request
 ===========================
 From:    ${from_name}
 Email:   ${from_email}
@@ -61,12 +76,17 @@ ${message}
 Sent via OtterQuote Contractor Portal contact form.
 Reply directly to this email to respond to the contractor.`;
 
+      from = `OtterQuote Support <noreply@${MAILGUN_DOMAIN}>`;
+    }
+
     const formData = new URLSearchParams();
-    formData.append("from",      `OtterQuote Support <noreply@${MAILGUN_DOMAIN}>`);
-    formData.append("to",        SUPPORT_DESTINATION);
+    formData.append("from",      from);
+    formData.append("to",        recipient);
     formData.append("subject",   emailSubject);
     formData.append("text",      emailBody);
-    formData.append("h:Reply-To", `${from_name} <${from_email}>`);
+    if (!to_email) {
+      formData.append("h:Reply-To", `${from_name} <${from_email}>`);
+    }
 
     const mailgunResponse = await fetch(
       `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
@@ -86,7 +106,7 @@ Reply directly to this email to respond to the contractor.`;
     }
 
     const result = await mailgunResponse.json();
-    console.log("Support email sent. Mailgun ID:", result.id, "From:", from_email);
+    console.log("Email sent. Mailgun ID:", result.id, "To:", recipient);
 
     return new Response(
       JSON.stringify({ status: "sent", id: result.id }),

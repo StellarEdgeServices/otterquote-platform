@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Contractors | OtterQuote</title>
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+    <style>
+        :root {
+            --navy: #0B1929;
+            --amber: #F59E0B;
+            --white: #FFFFFF;
+            --slate: #94A3B8;
+            --light: #E2E8F0;
+            --red: #EF4444;
+            --green: #10B981;
+        }
+
+        body {
+            background-color: var(--navy);
+            color: #1F2937;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        .admin-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+
+        .admin-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .admin-badge {
+            background: var(--amber);
+            color: var(--navy);
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+
+        .admin-header h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5rem;
+            color: var(--white);
+            margin: 0;
+        }
+
+        .logout-btn {
+            background: var(--white);
+            color: var(--navy);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            background: var(--light);
+        }
+
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .summary-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .summary-card-label {
+            font-size: 0.875rem;
+            color: var(--slate);
+            margin-bottom: 0.5rem;
+        }
+
+        .summary-card-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--navy);
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .filter-tab {
+            background: transparent;
+            color: var(--slate);
+            border: none;
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1rem;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .filter-tab.active {
+            color: var(--white);
+            border-bottom-color: var(--amber);
+        }
+
+        .contractor-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .contractor-card-header {
+            background: var(--navy);
+            color: var(--white);
+            padding: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            transition: background 0.3s ease;
+        }
+
+        .contractor-card-header:hover {
+            background: #1a2944;
+        }
+
+        .contractor-header-left {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .contractor-header-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .contractor-header-cell-label {
+            font-size: 0.75rem;
+            color: var(--light);
+            text-transform: uppercase;
+        }
+
+        .contractor-header-cell-value {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .contractor-header-badges {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+
+        .status-badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.4rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .status-badge-pending {
+            background: var(--amber);
+            color: var(--navy);
+        }
+
+        .status-badge-active {
+            background: var(--green);
+            color: var(--white);
+        }
+
+        .status-badge-inactive {
+            background: #9CA3AF;
+            color: var(--white);
+        }
+
+        .trade-badge {
+            background: #E5E7EB;
+            color: var(--navy);
+            padding: 0.25rem 0.6rem;
+            border-radius: 0.3rem;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+
+        .contractor-header-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-shrink: 0;
+        }
+
+        .btn-quick {
+            padding: 0.5rem 0.75rem;
+            border: none;
+            border-radius: 0.4rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-approve {
+            background: var(--green);
+            color: var(--white);
+        }
+
+        .btn-approve:hover {
+            background: #059669;
+        }
+
+        .btn-reject {
+            background: var(--red);
+            color: var(--white);
+        }
+
+        .btn-reject:hover {
+            background: #DC2626;
+        }
+
+        .contractor-card-body {
+            padding: 1.5rem;
+            display: none;
+        }
+
+        .contractor-card-body.expanded {
+            display: block;
+        }
+
+        .card-section {
+            margin-bottom: 2rem;
+        }
+
+        .card-section-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: var(--navy);
+            border-bottom: 2px solid var(--light);
+            padding-bottom: 0.75rem;
+        }
+
+        .info-row {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+            align-items: start;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: var(--slate);
+            font-size: 0.875rem;
+        }
+
+        .info-value {
+            color: var(--navy);
+        }
+
+        .checklist {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .checklist-item {
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-start;
+        }
+
+        .checklist-icon {
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .license-record {
+            background: var(--light);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+        }
+
+        .license-info {
+            flex: 1;
+        }
+
+        .license-municipality {
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: 0.25rem;
+        }
+
+        .license-number {
+            font-size: 0.875rem;
+            color: var(--slate);
+        }
+
+        .button-row {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-top: 0.75rem;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--light);
+            background: var(--white);
+            color: var(--navy);
+            border-radius: 0.4rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-sm:hover {
+            background: var(--light);
+        }
+
+        .btn-sm-primary {
+            background: var(--amber);
+            color: var(--navy);
+            border: 1px solid var(--amber);
+        }
+
+        .btn-sm-primary:hover {
+            background: #DECA10;
+        }
+
+        .admin-notes-section {
+            background: #FEF3C7;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            border-left: 4px solid var(--amber);
+        }
+
+        .admin-notes-label {
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 0.75rem;
+        }
+
+        .admin-notes-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 0.75rem;
+            border: 1px solid #BDB701;
+            border-radius: 0.4rem;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.875rem;
+            resize: vertical;
+        }
+
+        .admin-notes-button {
+            margin-top: 0.75rem;
+            background: var(--amber);
+            color: var(--navy);
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.4rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .admin-notes-button:hover {
+            background: #DECA10;
+        }
+
+        .actions-final {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 2px solid var(--light);
+        }
+
+        .btn-action {
+            flex: 1;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-action-approve {
+            background: var(--green);
+            color: var(--white);
+        }
+
+        .btn-action-approve:hover {
+            background: #059669;
+        }
+
+        .btn-action-reject {
+            background: var(--red);
+            color: var(--white);
+        }
+
+        .btn-action-reject:hover {
+            background: #DC2626;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--navy);
+        }
+
+        .modal-field {
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-label {
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .modal-input,
+        .modal-textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--light);
+            border-radius: 0.4rem;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.875rem;
+        }
+
+        .modal-textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            margin-top: 2rem;
+        }
+
+        .modal-btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.4rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .modal-btn-primary {
+            background: var(--amber);
+            color: var(--navy);
+        }
+
+        .modal-btn-primary:hover {
+            background: #DECA10;
+        }
+
+        .modal-btn-secondary {
+            background: var(--light);
+            color: var(--navy);
+        }
+
+        .modal-btn-secondary:hover {
+            background: #CBD5E1;
+        }
+
+        .error-message {
+            color: var(--red);
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+
+        .success-message {
+            color: var(--green);
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+
+        .unauthorized-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: var(--navy);
+        }
+
+        .unauthorized-box {
+            background: var(--white);
+            padding: 3rem;
+            border-radius: 0.75rem;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .unauthorized-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 1rem;
+        }
+
+        .unauthorized-text {
+            color: var(--slate);
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .contractor-header-left {
+                grid-template-columns: 1fr;
+                gap: 0.75rem;
+            }
+
+            .contractor-card-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .contractor-header-actions {
+                width: 100%;
+                margin-top: 1rem;
+            }
+
+            .btn-quick {
+                flex: 1;
+            }
+
+            .admin-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .admin-header h1 {
+                font-size: 1.75rem;
+            }
+
+            .summary-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-active="admin" data-auth="false"></header>
+
+    <main>
+        <!-- Authorization Check -->
+        <div id="unauthorizedContainer" class="unauthorized-container" style="display: none;">
+            <div class="unauthorized-box">
+                <div class="unauthorized-title">Unauthorized</div>
+                <div class="unauthorized-text">This page is restricted to administrators only.</div>
+            </div>
+        </div>
+
+        <div id="adminContainer" style="display: none;">
+            <!-- Header -->
+            <div class="admin-header">
+                <div class="admin-title">
+                    <h1>Admin Portal</h1>
+                    <span class="admin-badge">ADMIN</span>
+                </div>
+                <button class="logout-btn" onclick="logout()">Log Out</button>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <div class="summary-card-label">Pending Review</div>
+                    <div class="summary-card-value" id="pendingCount">—</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-card-label">Active Contractors</div>
+                    <div class="summary-card-value" id="activeCount">—</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-card-label">Total Contractors</div>
+                    <div class="summary-card-value" id="totalCount">—</div>
+                </div>
+            </div>
+
+            <!-- Filter Tabs -->
+            <div class="filter-tabs">
+                <button class="filter-tab active" onclick="setFilter('pending_approval')">Pending Review</button>
+                <button class="filter-tab" onclick="setFilter('all')">All Contractors</button>
+            </div>
+
+            <!-- Contractors List -->
+            <div id="contractorsContainer"></div>
+        </div>
+    </main>
+
+    <!-- Reject Modal -->
+    <div class="modal" id="rejectModal">
+        <div class="modal-content">
+            <div class="modal-title">Reject Application</div>
+            <div class="modal-field">
+                <label class="modal-label">Company Name</label>
+                <div id="rejectCompanyName" style="padding: 0.75rem; background: var(--light); border-radius: 0.4rem;"></div>
+            </div>
+            <div class="modal-field">
+                <label class="modal-label" for="rejectReason">Reason for Rejection</label>
+                <textarea id="rejectReason" class="modal-textarea" placeholder="e.g., Missing documentation, Insurance not current, License verification failed..."></textarea>
+                <div id="rejectError" class="error-message" style="display: none;"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="closeRejectModal()">Cancel</button>
+                <button class="modal-btn modal-btn-primary" onclick="submitReject()">Reject Application</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Insurance Verification Modal -->
+    <div class="modal" id="insuranceModal">
+        <div class="modal-content">
+            <div class="modal-title">Request Insurance Verification</div>
+            <div class="modal-field">
+                <label class="modal-label" for="brokerEmail">Broker Email</label>
+                <input type="email" id="brokerEmail" class="modal-input" placeholder="insurance-broker@example.com">
+                <div id="brokerError" class="error-message" style="display: none;"></div>
+            </div>
+            <div class="modal-field">
+                <label class="modal-label">Company Name</label>
+                <div id="insuranceCompanyName" style="padding: 0.75rem; background: var(--light); border-radius: 0.4rem;"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="closeInsuranceModal()">Cancel</button>
+                <button class="modal-btn modal-btn-primary" onclick="submitInsuranceVerification()">Send Verification Email</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Approval Confirmation Modal -->
+    <div class="modal" id="approveConfirmModal">
+        <div class="modal-content">
+            <div class="modal-title">Approve Contractor</div>
+            <p style="margin-bottom: 1.5rem; color: var(--navy);">Approve <strong id="approveConfirmName"></strong>? This will activate their account and send them a welcome email.</p>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="closeApproveConfirmModal()">Cancel</button>
+                <button class="modal-btn modal-btn-primary" onclick="submitApprove()">Confirm Approval</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+    <script>
+        let currentFilter = 'pending_approval';
+        let contractors = [];
+        let currentUser = null;
+        let sb = null;
+
+        // Initialize Supabase client
+        function initSupabase() {
+            if (window.CONFIG && window.CONFIG.SUPABASE_URL && window.CONFIG.SUPABASE_ANON_KEY) {
+                const { createClient } = window.supabase;
+                sb = createClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_ANON_KEY);
+            }
+        }
+
+        // Check authorization and initialize
+        async function init() {
+            initSupabase();
+
+            try {
+                currentUser = await Auth.getUser();
+
+                if (!currentUser) {
+                    showUnauthorized();
+                    return;
+                }
+
+                if (currentUser.email !== 'dustinstohler1@gmail.com') {
+                    showUnauthorized();
+                    return;
+                }
+
+                document.getElementById('adminContainer').style.display = 'block';
+                await loadContractors();
+                updateSummaryCards();
+            } catch (err) {
+                console.error('Authorization error:', err);
+                showUnauthorized();
+            }
+        }
+
+        function showUnauthorized() {
+            document.getElementById('unauthorizedContainer').style.display = 'flex';
+            document.getElementById('adminContainer').style.display = 'none';
+        }
+
+        async function loadContractors() {
+            if (!sb) return;
+
+            try {
+                const { data, error } = await sb
+                    .from('contractors')
+                    .select('*, contractor_licenses(id, municipality, license_number)')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                contractors = data || [];
+                renderContractors();
+            } catch (err) {
+                console.error('Error loading contractors:', err);
+                alert('Failed to load contractors');
+            }
+        }
+
+        function updateSummaryCards() {
+            const pending = contractors.filter(c => c.status === 'pending_approval').length;
+            const active = contractors.filter(c => c.status === 'active').length;
+            const total = contractors.length;
+
+            document.getElementById('pendingCount').textContent = pending;
+            document.getElementById('activeCount').textContent = active;
+            document.getElementById('totalCount').textContent = total;
+        }
+
+        function setFilter(filter) {
+            currentFilter = filter;
+
+            // Update tab styles
+            document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            renderContractors();
+        }
+
+        function renderContractors() {
+            const container = document.getElementById('contractorsContainer');
+            let filtered = contractors;
+
+            if (currentFilter === 'pending_approval') {
+                filtered = contractors.filter(c => c.status === 'pending_approval');
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<p style="color: var(--slate); text-align: center; padding: 2rem;">No contractors to display</p>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(c => {
+                const createdDate = new Date(c.created_at);
+                const formattedDate = createdDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                const trades = c.trades || [];
+                const isPending = c.status === 'pending_approval';
+
+                return `
+                    <div class="contractor-card">
+                        <div class="contractor-card-header" onclick="toggleCardExpand(event, '${c.id}')">
+                            <div class="contractor-header-left">
+                                <div class="contractor-header-cell">
+                                    <div class="contractor-header-cell-label">Company</div>
+                                    <div class="contractor-header-cell-value">${c.company_name || '—'}</div>
+                                </div>
+                                <div class="contractor-header-cell">
+                                    <div class="contractor-header-cell-label">Owner</div>
+                                    <div class="contractor-header-cell-value">${c.contact_name || '—'}</div>
+                                </div>
+                                <div class="contractor-header-cell">
+                                    <div class="contractor-header-cell-label">Email</div>
+                                    <div class="contractor-header-cell-value">${c.email || '—'}</div>
+                                </div>
+                                <div class="contractor-header-cell">
+                                    <div class="contractor-header-cell-label">Applied</div>
+                                    <div class="contractor-header-cell-value">${formattedDate}</div>
+                                </div>
+                            </div>
+                            <div class="contractor-header-badges">
+                                <span class="status-badge status-badge-${c.status}">${c.status.replace(/_/g, ' ')}</span>
+                                ${trades.map(t => `<span class="trade-badge">${t}</span>`).join('')}
+                                <span style="font-size: 1.2rem;">▼</span>
+                            </div>
+                        </div>
+
+                        <div class="contractor-card-body" id="body-${c.id}">
+                            <!-- Contact Info -->
+                            <div class="card-section">
+                                <div class="card-section-title">Contact Information</div>
+                                <div class="info-row">
+                                    <div class="info-label">Email</div>
+                                    <div class="info-value"><a href="mailto:${c.email}">${c.email}</a></div>
+                                </div>
+                                <div class="info-row">
+                                    <div class="info-label">Phone</div>
+                                    <div class="info-value">${c.phone || '—'}</div>
+                                </div>
+                                <div class="info-row">
+                                    <div class="info-label">Company</div>
+                                    <div class="info-value">${c.company_name || '—'}</div>
+                                </div>
+                                <div class="info-row">
+                                    <div class="info-label">Owner</div>
+                                    <div class="info-value">${c.contact_name || '—'}</div>
+                                </div>
+                            </div>
+
+                            <!-- Service Area -->
+                            <div class="card-section">
+                                <div class="card-section-title">Service Area</div>
+                                <div class="info-row">
+                                    <div class="info-label">Counties</div>
+                                    <div class="info-value">${(c.service_counties || []).join(', ') || '—'}</div>
+                                </div>
+                                <div class="info-row">
+                                    <div class="info-label">States</div>
+                                    <div class="info-value">${(c.service_states || []).join(', ') || '—'}</div>
+                                </div>
+                            </div>
+
+                            <!-- Profile Completeness -->
+                            <div class="card-section">
+                                <div class="card-section-title">Profile Completeness</div>
+                                <div class="checklist">
+                                    <div class="checklist-item">
+                                        <div class="checklist-icon">${c.company_name && c.company_name.trim() ? '✅' : '⬜'}</div>
+                                        <div>Company information</div>
+                                    </div>
+                                    <div class="checklist-item">
+                                        <div class="checklist-icon">${c.has_workers_comp || c.has_general_liability ? '✅' : '⬜'}</div>
+                                        <div>Insurance on file</div>
+                                    </div>
+                                    <div class="checklist-item">
+                                        <div class="checklist-icon">${(c.service_counties || []).length > 0 ? '✅' : '⬜'}</div>
+                                        <div>Service area</div>
+                                    </div>
+                                    <div class="checklist-item">
+                                        <div class="checklist-icon">${c.contract_templates && Object.keys(c.contract_templates).length > 0 ? '✅' : '⬜'}</div>
+                                        <div>Contract template</div>
+                                    </div>
+                                    <div class="checklist-item">
+                                        <div class="checklist-icon">⬜</div>
+                                        <div>Payment method</div>
+                                    </div>
+                                    <div class="checklist-item">
+                                        <div class="checklist-icon">${c.agreement_accepted_at ? '✅' : '⬜'}</div>
+                                        <div>Agreement accepted</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- License Verification -->
+                            <div class="card-section">
+                                <div class="card-section-title">License Verification</div>
+                                ${(c.contractor_licenses && c.contractor_licenses.length > 0) ? `
+                                    ${c.contractor_licenses.map(lic => `
+                                        <div class="license-record">
+                                            <div class="license-info">
+                                                <div class="license-municipality">${lic.municipality || 'Unknown Municipality'}</div>
+                                                <div class="license-number">License #${lic.license_number || 'N/A'}</div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                    <div style="margin-top: 0.75rem; padding: 0.75rem; background: var(--light); border-radius: 0.4rem; font-size: 0.875rem;">
+                                        Status: ${c.license_verified ? `✅ Verified ${new Date(c.license_verified_at).toLocaleDateString()}` : 'Not verified'}
+                                    </div>
+                                ` : '<p style="color: var(--slate);">No license records submitted</p>'}
+
+                                <div class="button-row">
+                                    <button class="btn-sm" onclick="openLicenseBoard('${c.service_states?.[0] || 'IN'}', '${c.contact_name}')">Search State License Board</button>
+                                    ${!c.license_verified ? `<button class="btn-sm btn-sm-primary" onclick="markLicenseVerified('${c.id}')">Mark as Verified ✓</button>` : ''}
+                                </div>
+                            </div>
+
+                            <!-- Insurance Verification -->
+                            <div class="card-section">
+                                <div class="card-section-title">Insurance Verification</div>
+                                <div class="info-row">
+                                    <div class="info-label">Workers Comp</div>
+                                    <div class="info-value">${c.workers_comp_carrier || '—'}</div>
+                                </div>
+                                <div class="info-row">
+                                    <div class="info-label">General Liability</div>
+                                    <div class="info-value">${c.general_liability_carrier || '—'}</div>
+                                </div>
+                                <div style="margin-top: 0.75rem; padding: 0.75rem; background: var(--light); border-radius: 0.4rem; font-size: 0.875rem;">
+                                    Status: ${c.insurance_verified ? `✅ Verified ${new Date(c.insurance_verified_at).toLocaleDateString()}` : (c.insurance_verification_sent_at ? `Email sent ${new Date(c.insurance_verification_sent_at).toLocaleDateString()}` : 'Not verified')}
+                                </div>
+
+                                <div class="button-row">
+                                    <button class="btn-sm" onclick="openInsuranceModal('${c.id}', '${c.company_name}')">Request Verification Email</button>
+                                    ${!c.insurance_verified ? `<button class="btn-sm btn-sm-primary" onclick="markInsuranceVerified('${c.id}')">Mark as Verified ✓</button>` : ''}
+                                </div>
+                            </div>
+
+                            <!-- Admin Notes -->
+                            <div class="admin-notes-section">
+                                <div class="admin-notes-label">Admin Notes</div>
+                                <textarea id="notes-${c.id}" class="admin-notes-textarea" placeholder="Add internal notes about this contractor...">${c.admin_notes || ''}</textarea>
+                                <button class="admin-notes-button" onclick="saveNotes('${c.id}')">Save Notes</button>
+                                <div id="notes-status-${c.id}" style="margin-top: 0.5rem; font-size: 0.875rem;"></div>
+                            </div>
+
+                            <!-- Actions -->
+                            ${isPending ? `
+                                <div class="actions-final">
+                                    <button class="btn-action btn-action-approve" onclick="openApproveConfirmModal('${c.id}', '${c.company_name}')">✓ Approve Contractor</button>
+                                    <button class="btn-action btn-action-reject" onclick="openRejectModal('${c.id}', '${c.company_name}')">✗ Reject Application</button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleCardExpand(event, contractorId) {
+            if (event.target.closest('.contractor-header-actions')) return;
+
+            const body = document.getElementById(`body-${contractorId}`);
+            body.classList.toggle('expanded');
+        }
+
+        function openLicenseBoard(state, companyName) {
+            const urls = {
+                'IN': `https://www.in.gov/pla/licensing/find-a-licensee/?q=${encodeURIComponent(companyName)}`,
+                'OH': 'https://elicense.ohio.gov/oh_verifylicense/',
+                'IL': 'https://apeironlicensing.idfpr.com/',
+                'MI': 'https://w2.lara.state.mi.us/VAL/',
+                'KY': 'https://secure.kentucky.gov/formservices/DBC/LicenseeSearch',
+                'TN': 'https://verify.tn.gov/',
+                'FL': 'https://www.myfloridalicense.com/wl11.asp',
+                'TX': 'https://www.tdlr.texas.gov/licensesearch/',
+                'CA': 'https://www.cslb.ca.gov/OnlineServices/CheckLicenseII/CheckLicense.aspx',
+            };
+            const url = urls[state] || `https://www.google.com/search?q=${encodeURIComponent(companyName + ' contractor license ' + (state || ''))}`;
+            window.open(url, '_blank');
+        }
+
+        async function markLicenseVerified(contractorId) {
+            if (!sb) return;
+
+            try {
+                const response = await sb.functions.invoke('admin-contractor-action', {
+                    body: {
+                        action: 'mark_license_verified',
+                        contractor_id: contractorId
+                    }
+                });
+
+                if (response.error) throw response.error;
+
+                // Reload contractor data
+                const c = contractors.find(x => x.id === contractorId);
+                if (c) {
+                    c.license_verified = true;
+                    c.license_verified_at = new Date().toISOString();
+                }
+
+                renderContractors();
+                alert('License marked as verified');
+            } catch (err) {
+                console.error('Error marking license verified:', err);
+                alert('Failed to mark license as verified');
+            }
+        }
+
+        function openInsuranceModal(contractorId, companyName) {
+            const modal = document.getElementById('insuranceModal');
+            document.getElementById('insuranceCompanyName').textContent = companyName;
+            document.getElementById('brokerEmail').value = '';
+            document.getElementById('brokerError').style.display = 'none';
+            modal.dataset.contractorId = contractorId;
+            modal.classList.add('show');
+        }
+
+        function closeInsuranceModal() {
+            document.getElementById('insuranceModal').classList.remove('show');
+        }
+
+        async function submitInsuranceVerification() {
+            const brokerEmail = document.getElementById('brokerEmail').value.trim();
+            const contractorId = document.getElementById('insuranceModal').dataset.contractorId;
+
+            if (!brokerEmail) {
+                document.getElementById('brokerError').textContent = 'Email is required';
+                document.getElementById('brokerError').style.display = 'block';
+                return;
+            }
+
+            if (!sb) return;
+
+            try {
+                const c = contractors.find(x => x.id === contractorId);
+                const response = await sb.functions.invoke('admin-contractor-action', {
+                    body: {
+                        action: 'send_insurance_verification',
+                        contractor_id: contractorId,
+                        broker_email: brokerEmail,
+                        contractor_company_name: c?.company_name || 'Contractor'
+                    }
+                });
+
+                if (response.error) throw response.error;
+
+                if (c) {
+                    c.insurance_verification_sent_at = new Date().toISOString();
+                    c.insurance_verification_email = brokerEmail;
+                }
+
+                closeInsuranceModal();
+                renderContractors();
+                alert('Insurance verification email sent');
+            } catch (err) {
+                console.error('Error sending insurance verification:', err);
+                document.getElementById('brokerError').textContent = 'Failed to send verification email';
+                document.getElementById('brokerError').style.display = 'block';
+            }
+        }
+
+        async function markInsuranceVerified(contractorId) {
+            if (!sb) return;
+
+            try {
+                const response = await sb.functions.invoke('admin-contractor-action', {
+                    body: {
+                        action: 'mark_insurance_verified',
+                        contractor_id: contractorId
+                    }
+                });
+
+                if (response.error) throw response.error;
+
+                const c = contractors.find(x => x.id === contractorId);
+                if (c) {
+                    c.insurance_verified = true;
+                    c.insurance_verified_at = new Date().toISOString();
+                }
+
+                renderContractors();
+                alert('Insurance marked as verified');
+            } catch (err) {
+                console.error('Error marking insurance verified:', err);
+                alert('Failed to mark insurance as verified');
+            }
+        }
+
+        async function saveNotes(contractorId) {
+            const notes = document.getElementById(`notes-${contractorId}`).value;
+            const statusDiv = document.getElementById(`notes-status-${contractorId}`);
+
+            if (!sb) return;
+
+            try {
+                const response = await sb.functions.invoke('admin-contractor-action', {
+                    body: {
+                        action: 'save_notes',
+                        contractor_id: contractorId,
+                        notes: notes || null
+                    }
+                });
+
+                if (response.error) throw response.error;
+
+                const c = contractors.find(x => x.id === contractorId);
+                if (c) {
+                    c.admin_notes = notes;
+                }
+
+                statusDiv.textContent = 'Notes saved ✓';
+                statusDiv.style.color = 'var(--green)';
+                setTimeout(() => {
+                    statusDiv.textContent = '';
+                }, 3000);
+            } catch (err) {
+                console.error('Error saving notes:', err);
+                statusDiv.textContent = 'Failed to save notes';
+                statusDiv.style.color = 'var(--red)';
+            }
+        }
+
+        function openApproveConfirmModal(contractorId, companyName) {
+            document.getElementById('approveConfirmName').textContent = companyName;
+            const modal = document.getElementById('approveConfirmModal');
+            modal.dataset.contractorId = contractorId;
+            modal.classList.add('show');
+        }
+
+        function closeApproveConfirmModal() {
+            document.getElementById('approveConfirmModal').classList.remove('show');
+        }
+
+        async function submitApprove() {
+            const contractorId = document.getElementById('approveConfirmModal').dataset.contractorId;
+
+            if (!sb) return;
+
+            try {
+                const response = await sb.functions.invoke('admin-contractor-action', {
+                    body: {
+                        action: 'approve',
+                        contractor_id: contractorId
+                    }
+                });
+
+                if (response.error) throw response.error;
+
+                const c = contractors.find(x => x.id === contractorId);
+                if (c) {
+                    c.status = 'active';
+                    c.approved_at = new Date().toISOString();
+                }
+
+                closeApproveConfirmModal();
+                updateSummaryCards();
+                renderContractors();
+                alert('Contractor approved and welcome email sent');
+            } catch (err) {
+                console.error('Error approving contractor:', err);
+                alert('Failed to approve contractor');
+            }
+        }
+
+        function openRejectModal(contractorId, companyName) {
+            document.getElementById('rejectCompanyName').textContent = companyName;
+            document.getElementById('rejectReason').value = '';
+            document.getElementById('rejectError').style.display = 'none';
+            const modal = document.getElementById('rejectModal');
+            modal.dataset.contractorId = contractorId;
+            modal.classList.add('show');
+        }
+
+        function closeRejectModal() {
+            document.getElementById('rejectModal').classList.remove('show');
+        }
+
+        async function submitReject() {
+            const contractorId = document.getElementById('rejectModal').dataset.contractorId;
+            const reason = document.getElementById('rejectReason').value.trim();
+
+            if (!reason) {
+                document.getElementById('rejectError').textContent = 'Please provide a reason for rejection';
+                document.getElementById('rejectError').style.display = 'block';
+                return;
+            }
+
+            if (!sb) return;
+
+            try {
+                const response = await sb.functions.invoke('admin-contractor-action', {
+                    body: {
+                        action: 'reject',
+                        contractor_id: contractorId,
+                        reason: reason
+                    }
+                });
+
+                if (response.error) throw response.error;
+
+                const c = contractors.find(x => x.id === contractorId);
+                if (c) {
+                    c.status = 'inactive';
+                    c.rejected_at = new Date().toISOString();
+                    c.rejection_reason = reason;
+                }
+
+                closeRejectModal();
+                updateSummaryCards();
+                renderContractors();
+                alert('Contractor rejected and notification email sent');
+            } catch (err) {
+                console.error('Error rejecting contractor:', err);
+                alert('Failed to reject contractor');
+            }
+        }
+
+        async function logout() {
+            try {
+                await Auth.logout();
+            } catch (err) {
+                console.error('Error logging out:', err);
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

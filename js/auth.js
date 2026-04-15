@@ -12,15 +12,10 @@ window.Auth = {
     return session;
   },
 
-  /** Get current user — uses server-validated call to prevent stale session caching */
+  /** Get current user */
   async getUser() {
-    if (!sb) return null;
-    try {
-      const { data: { user } } = await sb.auth.getUser();
-      return user || null;
-    } catch (e) {
-      return null;
-    }
+    const session = await this.getSession();
+    return session?.user || null;
   },
 
   /**
@@ -296,16 +291,6 @@ window.Auth = {
       try {
         const data = JSON.parse(contractorSignupData);
 
-        // GUARD: only process if the stored email matches the current authenticated user.
-        // Prevents stale cs_contractor_signup data from a previous contractor session
-        // from being applied to a homeowner who logs in afterward.
-        if (data.email && user.email && data.email.toLowerCase() !== user.email.toLowerCase()) {
-          console.warn('[Auth] cs_contractor_signup email mismatch — clearing stale data. stored:', data.email, 'current:', user.email);
-          localStorage.removeItem('cs_contractor_signup');
-          sessionStorage.removeItem('cs_contractor_signup');
-          // Fall through to homeowner routing
-        } else {
-
         // Create or update profile for contractor
         await this.updateProfile({
           full_name: data.contact_name,
@@ -384,6 +369,38 @@ Log in to the admin panel to review and approve this contractor.`;
                 console.warn('Error sending signup notification email:', emailErr);
                 // Don't fail signup if email fails
               }
+
+              // Send welcome email to the contractor
+              try {
+                const welcomeMessage = `Hi ${data.company_name || 'there'},
+
+Thanks for applying to join the OtterQuote contractor network. We received your application and it's currently under review.
+
+What happens next:
+- We'll review your profile and verify your licensing and insurance (usually 1–2 business days)
+- Once approved, you'll receive another email and can immediately start browsing available opportunities
+- While you wait, you can complete your profile at https://otterquote.com/contractor-profile.html
+
+Questions? Reply to this email or contact us at support@otterquote.com or (844) 875-3412.
+
+The OtterQuote Team
+https://otterquote.com`;
+
+                await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    from_name: 'OtterQuote',
+                    from_email: 'notifications@otterquote.com',
+                    subject: 'Welcome to OtterQuote — Application Received',
+                    message: welcomeMessage,
+                    to_email: data.email || user.email
+                  })
+                });
+              } catch (welcomeErr) {
+                console.warn('Error sending contractor welcome email:', welcomeErr);
+                // Non-fatal
+              }
             }
 
             // Insert licenses using the contractor record's PK (not user.id)
@@ -432,9 +449,8 @@ Log in to the admin panel to review and approve this contractor.`;
           }
         }
 
-          localStorage.removeItem('cs_contractor_signup');
-          sessionStorage.removeItem('cs_contractor_signup');
-        } // end email-match guard else block
+        localStorage.removeItem('cs_contractor_signup');
+        sessionStorage.removeItem('cs_contractor_signup');
       } catch (err) {
         console.error('Error creating contractor profile:', err);
       }

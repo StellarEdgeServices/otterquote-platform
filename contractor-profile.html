@@ -767,14 +767,14 @@
                 <div id="photosView">
                     <div class="form-group">
                         <label class="form-label">Owner Photo</label>
-                        <div id="ownerPhotoDisplay" style="width: 200px; height: 200px; background-color: var(--light); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; color: var(--slate); margin-bottom: var(--sp-6); overflow: hidden;">
+                        <div style="width: 200px; height: 200px; background-color: var(--light); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; color: var(--slate); margin-bottom: var(--sp-6);">
                             📷 No photo
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Project Gallery (up to 10 photos)</label>
-                        <div id="galleryViewGrid" style="padding: var(--sp-6); text-align: center; color: var(--slate); background-color: var(--light); border-radius: var(--radius-md);">
+                        <label class="form-label">Project Gallery (0 of 10 photos)</label>
+                        <div style="padding: var(--sp-6); text-align: center; color: var(--slate); background-color: var(--light); border-radius: var(--radius-md);">
                             No photos uploaded yet
                         </div>
                     </div>
@@ -854,114 +854,33 @@
                 <!-- Edit Mode -->
                 <div id="credentialsEdit" style="display: none;">
 
-                    <!-- General Liability Insurance -->
-                    <div style="background-color: var(--light); border-radius: var(--radius-md); padding: var(--sp-6); margin-bottom: var(--sp-6);">
-                        <h4 style="font-family: var(--font-heading); font-size: 1.1rem; color: var(--navy); margin-bottom: var(--sp-4);">General Liability Insurance</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4);">
-                            <div class="form-group">
-                                <label class="form-label">Carrier Name</label>
-                                <input type="text" id="editGlCarrier" class="form-input" placeholder="e.g., Travelers, State Farm">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Policy Number</label>
-                                <input type="text" id="editGlPolicyNumber" class="form-input" placeholder="e.g., GL-123456">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Coverage Amount</label>
-                                <input type="text" id="editGlCoverageAmount" class="form-input" placeholder="e.g., $1,000,000">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Expiration Date</label>
-                                <input type="date" id="editGlExpirationDate" class="form-input">
-                            </div>
+                    <!-- Insurance Coverage Checkboxes -->
+                    <div class="form-group" style="background-color: var(--light); border-radius: var(--radius-md); padding: var(--sp-4); margin-bottom: var(--sp-6);">
+                        <label class="form-label" style="margin-bottom: var(--sp-3);">Insurance Coverage</label>
+                        <div style="display: flex; flex-direction: column; gap: var(--sp-3);">
+                            <label style="display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; font-weight: 500; color: var(--navy);">
+                                <input type="checkbox" id="editHasWorkersComp" style="width: 18px; height: 18px; accent-color: var(--amber); cursor: pointer;">
+                                Workers' Compensation Insurance
+                            </label>
+                            <label style="display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; font-weight: 500; color: var(--navy);">
+                                <input type="checkbox" id="editHasGeneralLiability" style="width: 18px; height: 18px; accent-color: var(--amber); cursor: pointer;">
+                                General Liability Insurance
+                            </label>
                         </div>
-                        <div class="form-group" style="margin-top: var(--sp-2);">
-                            <label class="form-label">GL Certificate Upload</label>
-                            <div class="image-upload" style="height: auto; min-height: 80px;">
-                                <input type="file" id="glCertInput" accept=".pdf,image/*">
-                                <label for="glCertInput" class="upload-label" style="padding: var(--sp-4);">
-                                    📎 Upload GL certificate (PDF or image)
-                                </label>
-                            </div>
-                            <div id="glCertStatus" style="display:none; margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); font-size: 0.875rem;"></div>
+                        <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-4);">
+                            <button class="btn btn-primary" onclick="saveProfile('insurance')">Save Insurance Info</button>
                         </div>
-                        <label style="display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; font-weight: 500; color: var(--navy); margin-top: var(--sp-2);">
-                            <input type="checkbox" id="editHasGeneralLiability" style="width: 18px; height: 18px; accent-color: var(--amber); cursor: pointer;">
-                            I have General Liability Insurance (required)
-                        </label>
-                    </div>
-
-                    <!-- Workers' Compensation Insurance -->
-                    <div style="background-color: var(--light); border-radius: var(--radius-md); padding: var(--sp-6); margin-bottom: var(--sp-6);">
-                        <h4 style="font-family: var(--font-heading); font-size: 1.1rem; color: var(--navy); margin-bottom: var(--sp-4);">Workers' Compensation Insurance</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4);">
-                            <div class="form-group">
-                                <label class="form-label">Carrier Name</label>
-                                <input type="text" id="editWcCarrier" class="form-input" placeholder="e.g., ICW Group, Zurich">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Policy Number</label>
-                                <input type="text" id="editWcPolicyNumber" class="form-input" placeholder="e.g., WC-789012">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Coverage Amount</label>
-                                <input type="text" id="editWcCoverageAmount" class="form-input" placeholder="e.g., $500,000">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Expiration Date</label>
-                                <input type="date" id="editWcExpirationDate" class="form-input">
-                            </div>
-                        </div>
-                        <div class="form-group" style="margin-top: var(--sp-2);">
-                            <label class="form-label">WC Certificate Upload</label>
-                            <div class="image-upload" style="height: auto; min-height: 80px;">
-                                <input type="file" id="wcCertInput" accept=".pdf,image/*">
-                                <label for="wcCertInput" class="upload-label" style="padding: var(--sp-4);">
-                                    📎 Upload WC certificate (PDF or image)
-                                </label>
-                            </div>
-                            <div id="wcCertStatus" style="display:none; margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); font-size: 0.875rem;"></div>
-                        </div>
-                        <label style="display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; font-weight: 500; color: var(--navy); margin-top: var(--sp-2);">
-                            <input type="checkbox" id="editHasWorkersComp" style="width: 18px; height: 18px; accent-color: var(--amber); cursor: pointer;">
-                            I have Workers' Compensation Insurance
-                        </label>
-                    </div>
-
-                    <div style="display: flex; gap: var(--sp-4); margin-bottom: var(--sp-8);">
-                        <button class="btn btn-primary" onclick="saveProfile('insurance')">Save Insurance Info</button>
-                    </div>
-
-                    <hr style="border: none; border-top: 1px solid var(--light); margin: 0 0 var(--sp-6);">
-
-                    <!-- Licenses Section -->
-                    <h4 style="font-family: var(--font-heading); font-size: 1.1rem; color: var(--navy); margin-bottom: var(--sp-4);">Contractor Licenses</h4>
-
-                    <div id="licenseEditList" style="display: flex; flex-direction: column; gap: var(--sp-6);"></div>
-
-                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-4); margin-bottom: var(--sp-6);">
-                        <button class="btn btn-secondary" onclick="addLicenseRow()">+ Add License</button>
-                    </div>
-
-                    <label style="display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; font-weight: 500; color: var(--navy); margin-bottom: var(--sp-6);">
-                        <input type="checkbox" id="editNoLicenseRequired" style="width: 18px; height: 18px; accent-color: var(--amber); cursor: pointer;">
-                        My municipality does not require a contractor license
-                    </label>
-
-                    <div style="display: flex; gap: var(--sp-4); margin-bottom: var(--sp-6);">
-                        <button class="btn btn-primary" onclick="saveLicenses()">Save Licenses</button>
                     </div>
 
                     <hr style="border: none; border-top: 1px solid var(--light); margin: 0 0 var(--sp-6);">
 
                     <!-- Certifications -->
-                    <h4 style="font-family: var(--font-heading); font-size: 1.1rem; color: var(--navy); margin-bottom: var(--sp-4);">Certifications & Awards</h4>
                     <div class="form-group">
                         <label for="certificationName" class="form-label">Add Certification</label>
                         <input type="text" id="certificationName" class="form-input" placeholder="e.g., GAF Master Elite Contractor">
                     </div>
 
-                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-4);">
+                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-6);">
                         <button class="btn btn-primary" onclick="addCertification()">Add Certification</button>
                         <button class="btn btn-secondary" onclick="toggleEdit('credentials')">Close</button>
                     </div>
@@ -1079,23 +998,46 @@
             <div class="profile-card">
                 <h2><span class="card-icon">📍</span>Service Area & Trades</h2>
 
-                <div class="view-field">
-                    <label>Primary Trades</label>
-                    <div class="view-field-value" id="viewTrades">Roofing, Gutters, Siding</div>
+                <!-- View Mode -->
+                <div id="serviceAreaView">
+                    <div class="view-field">
+                        <label>Primary Trades</label>
+                        <div class="view-field-value" id="viewTrades">Roofing, Gutters, Siding</div>
+                    </div>
+
+                    <div class="view-field">
+                        <label>Preferred Shingle Brands</label>
+                        <div class="view-field-value" id="viewBrands">GAF, Owens Corning</div>
+                    </div>
+
+                    <div class="view-field">
+                        <label>Service Area</label>
+                        <div class="view-field-value" id="viewServiceArea">Hamilton, Hendricks, Boone, and surrounding counties</div>
+                    </div>
+
+                    <div style="margin-top: var(--sp-8);">
+                        <button class="btn btn-primary" onclick="toggleEdit('serviceArea')">Edit Service Area</button>
+                    </div>
                 </div>
 
-                <div class="view-field">
-                    <label>Preferred Shingle Brands</label>
-                    <div class="view-field-value" id="viewBrands">GAF, Owens Corning</div>
-                </div>
+                <!-- Edit Mode -->
+                <div id="serviceAreaEdit" style="display: none;">
+                    <div class="form-group">
+                        <label for="editServiceCounties" class="form-label">Service Counties</label>
+                        <textarea id="editServiceCounties" class="form-input" placeholder="Enter the counties you serve, separated by commas (e.g., Hamilton, Marion, Boone)" style="min-height: 80px;"></textarea>
+                        <p style="font-size: 0.85rem; color: var(--slate); margin-top: 0.5rem;">Enter county names separated by commas. This helps homeowners find contractors in their area.</p>
+                    </div>
 
-                <div class="view-field">
-                    <label>Service Area</label>
-                    <div class="view-field-value" id="viewServiceArea">Hamilton, Hendricks, Boone, and surrounding counties</div>
-                </div>
+                    <div class="form-group">
+                        <label for="editServiceStates" class="form-label">Service States</label>
+                        <textarea id="editServiceStates" class="form-input" placeholder="Enter state abbreviations, separated by commas (e.g., IN, OH, KY)" style="min-height: 80px;"></textarea>
+                        <p style="font-size: 0.85rem; color: var(--slate); margin-top: 0.5rem;">Enter state abbreviations (e.g., IN, OH, IL). This helps us match you with opportunities in your service area.</p>
+                    </div>
 
-                <div style="margin-top: var(--sp-8);">
-                    <button class="btn btn-secondary" disabled>Update Service Area (Coming Soon)</button>
+                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-8);">
+                        <button class="btn btn-primary" onclick="saveProfile('serviceArea')">Save Changes</button>
+                        <button class="btn btn-secondary" onclick="toggleEdit('serviceArea')">Cancel</button>
+                    </div>
                 </div>
             </div>
 
@@ -1282,16 +1224,14 @@
                         contractorCertifications = certResult.data;
                     }
 
-                    // Load licenses for credentials display and edit
+                    // Load licenses for credentials display
                     const licResult = await sb
                         .from('contractor_licenses')
                         .select('*')
                         .eq('contractor_id', contractorRecord.id);
 
                     if (licResult.data) {
-                        licenseRows = licResult.data.map(l => ({ ...l }));
                         renderCredentials(licResult.data);
-                        renderLicenseEditList();
                     }
 
                     // Load platform stats
@@ -1331,30 +1271,6 @@
             document.getElementById('viewBrands').textContent = c.preferred_brands ? c.preferred_brands.join(', ') : '—';
             document.getElementById('viewServiceArea').textContent = c.service_area_description || c.service_counties ? (c.service_counties || []).join(', ') : '—';
 
-            // Owner photo
-            const ownerPhotoEl = document.getElementById('ownerPhotoDisplay');
-            if (ownerPhotoEl) {
-                if (c.owner_photo_url) {
-                    ownerPhotoEl.innerHTML = `<img src="${c.owner_photo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-md);" alt="Owner photo" onerror="this.parentElement.textContent='📷 Photo unavailable'">`;
-                } else {
-                    ownerPhotoEl.textContent = '📷 No photo';
-                }
-            }
-
-            // Gallery photos
-            const galleryView = document.getElementById('galleryViewGrid');
-            if (galleryView) {
-                const urls = c.gallery_photo_urls || [];
-                if (urls.length > 0) {
-                    galleryView.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:var(--sp-3);margin-top:var(--sp-3);">${
-                        urls.map(url => `<img src="${url}" style="width:100%;height:100px;object-fit:cover;border-radius:var(--radius-sm);" alt="Gallery photo">`).join('')
-                    }</div><p style="color:var(--slate);font-size:0.85rem;margin-top:var(--sp-2);">${urls.length} of 10 photos</p>`;
-                } else {
-                    galleryView.textContent = 'No photos uploaded yet';
-                    galleryView.style.cssText = 'padding:var(--sp-6);text-align:center;color:var(--slate);background-color:var(--light);border-radius:var(--radius-md);';
-                }
-            }
-
             // Contract template
             updateContractTemplateView();
 
@@ -1374,24 +1290,21 @@
             document.getElementById('editAboutUs').value = c.about_us || '';
             document.getElementById('editWhyChoose').value = c.why_choose_us || '';
 
+            // Service area
+            const serviceCounties = c.service_counties || [];
+            const serviceStates = c.service_states || [];
+            document.getElementById('editServiceCounties').value = serviceCounties.join(', ');
+            document.getElementById('editServiceStates').value = serviceStates.join(', ');
+
             // Review links
             document.getElementById('googleReviewsUrl').value = c.google_reviews_url || '';
             document.getElementById('bbbUrl').value = c.bbb_url || '';
             document.getElementById('angiUrl').value = c.angi_url || '';
             document.getElementById('yelpUrl').value = c.yelp_url || '';
 
-            // Insurance checkboxes and detail fields
+            // Insurance checkboxes
             document.getElementById('editHasWorkersComp').checked = !!c.has_workers_comp;
             document.getElementById('editHasGeneralLiability').checked = !!c.has_general_liability;
-            document.getElementById('editGlCarrier').value = c.gl_carrier || '';
-            document.getElementById('editGlPolicyNumber').value = c.gl_policy_number || '';
-            document.getElementById('editGlCoverageAmount').value = c.gl_coverage_amount || '';
-            document.getElementById('editGlExpirationDate').value = c.gl_expiration_date ? c.gl_expiration_date.substring(0, 10) : '';
-            document.getElementById('editWcCarrier').value = c.wc_carrier || '';
-            document.getElementById('editWcPolicyNumber').value = c.wc_policy_number || '';
-            document.getElementById('editWcCoverageAmount').value = c.wc_coverage_amount || '';
-            document.getElementById('editWcExpirationDate').value = c.wc_expiration_date ? c.wc_expiration_date.substring(0, 10) : '';
-            document.getElementById('editNoLicenseRequired').checked = !!c.no_license_required;
         }
 
         // ── Render credentials from licenses data ──
@@ -1415,43 +1328,27 @@
                 html += `<div class="form-group"><label class="form-label">Contractor License</label><div><span style="color: var(--slate);">No licenses on file</span></div></div>`;
             }
 
-            // Insurance coverage — show detailed fields if available
+            // Insurance coverage (driven by has_workers_comp / has_general_liability on contractors table)
             const hasWC = contractorRecord?.has_workers_comp;
             const hasGL = contractorRecord?.has_general_liability;
-            const glCarrier = contractorRecord?.gl_carrier;
-            const glPolicy = contractorRecord?.gl_policy_number;
-            const glAmount = contractorRecord?.gl_coverage_amount;
-            const glExp = contractorRecord?.gl_expiration_date;
-            const wcCarrier = contractorRecord?.wc_carrier;
-            const wcPolicy = contractorRecord?.wc_policy_number;
-            const wcAmount = contractorRecord?.wc_coverage_amount;
-            const wcExp = contractorRecord?.wc_expiration_date;
-
-            function fmtDate(d) {
-                if (!d) return null;
-                const dt = new Date(d);
-                return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-            }
 
             html += `
                 <div class="form-group">
-                    <label class="form-label">General Liability Insurance</label>
-                    <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
-                        <div>${hasGL ? '<span class="badge badge-verified">✓ On File</span>' : '<span class="badge badge-pending">Not on File</span>'}</div>
-                        ${glCarrier ? `<div style="font-size:0.9rem;color:var(--navy);">Carrier: <strong>${glCarrier}</strong></div>` : ''}
-                        ${glPolicy ? `<div style="font-size:0.9rem;color:var(--navy);">Policy #: <strong>${glPolicy}</strong></div>` : ''}
-                        ${glAmount ? `<div style="font-size:0.9rem;color:var(--navy);">Coverage: <strong>${glAmount}</strong></div>` : ''}
-                        ${glExp ? `<div style="font-size:0.9rem;color:var(--navy);">Expires: <strong>${fmtDate(glExp)}</strong></div>` : ''}
+                    <label class="form-label">Workers' Compensation Insurance</label>
+                    <div>
+                        ${hasWC
+                            ? `<span class="badge badge-verified">✓ On File</span>`
+                            : `<span class="badge badge-pending">Not on File</span>`
+                        }
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Workers' Compensation Insurance</label>
-                    <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
-                        <div>${hasWC ? '<span class="badge badge-verified">✓ On File</span>' : '<span class="badge badge-pending">Not on File</span>'}</div>
-                        ${wcCarrier ? `<div style="font-size:0.9rem;color:var(--navy);">Carrier: <strong>${wcCarrier}</strong></div>` : ''}
-                        ${wcPolicy ? `<div style="font-size:0.9rem;color:var(--navy);">Policy #: <strong>${wcPolicy}</strong></div>` : ''}
-                        ${wcAmount ? `<div style="font-size:0.9rem;color:var(--navy);">Coverage: <strong>${wcAmount}</strong></div>` : ''}
-                        ${wcExp ? `<div style="font-size:0.9rem;color:var(--navy);">Expires: <strong>${fmtDate(wcExp)}</strong></div>` : ''}
+                    <label class="form-label">General Liability Insurance</label>
+                    <div>
+                        ${hasGL
+                            ? `<span class="badge badge-verified">✓ On File</span>`
+                            : `<span class="badge badge-pending">Not on File</span>`
+                        }
                     </div>
                 </div>
             `;
@@ -1558,52 +1455,10 @@
                 const updates = {
                     has_workers_comp: document.getElementById('editHasWorkersComp').checked,
                     has_general_liability: document.getElementById('editHasGeneralLiability').checked,
-                    gl_carrier: document.getElementById('editGlCarrier').value.trim() || null,
-                    gl_policy_number: document.getElementById('editGlPolicyNumber').value.trim() || null,
-                    gl_coverage_amount: document.getElementById('editGlCoverageAmount').value.trim() || null,
-                    gl_expiration_date: document.getElementById('editGlExpirationDate').value || null,
-                    wc_carrier: document.getElementById('editWcCarrier').value.trim() || null,
-                    wc_policy_number: document.getElementById('editWcPolicyNumber').value.trim() || null,
-                    wc_coverage_amount: document.getElementById('editWcCoverageAmount').value.trim() || null,
-                    wc_expiration_date: document.getElementById('editWcExpirationDate').value || null,
                     updated_at: new Date().toISOString(),
                 };
 
                 try {
-                    // Upload GL cert if provided
-                    const glCertInput = document.getElementById('glCertInput');
-                    if (glCertInput && glCertInput.files.length > 0) {
-                        const file = glCertInput.files[0];
-                        const ext = file.name.split('.').pop();
-                        const filePath = `${currentUser.id}/insurance/gl_cert_${Date.now()}.${ext}`;
-                        const { error: uploadErr } = await sb.storage
-                            .from('contractor-documents')
-                            .upload(filePath, file, { contentType: file.type, upsert: true });
-                        if (uploadErr) {
-                            console.error('GL cert upload failed:', uploadErr);
-                        } else {
-                            const statusEl = document.getElementById('glCertStatus');
-                            if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'GL certificate uploaded ✓'; statusEl.style.color = '#10b981'; }
-                        }
-                    }
-
-                    // Upload WC cert if provided
-                    const wcCertInput = document.getElementById('wcCertInput');
-                    if (wcCertInput && wcCertInput.files.length > 0) {
-                        const file = wcCertInput.files[0];
-                        const ext = file.name.split('.').pop();
-                        const filePath = `${currentUser.id}/insurance/wc_cert_${Date.now()}.${ext}`;
-                        const { error: uploadErr } = await sb.storage
-                            .from('contractor-documents')
-                            .upload(filePath, file, { contentType: file.type, upsert: true });
-                        if (uploadErr) {
-                            console.error('WC cert upload failed:', uploadErr);
-                        } else {
-                            const statusEl = document.getElementById('wcCertStatus');
-                            if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'WC certificate uploaded ✓'; statusEl.style.color = '#10b981'; }
-                        }
-                    }
-
                     const { data, error } = await sb
                         .from('contractors')
                         .update(updates)
@@ -1615,7 +1470,7 @@
 
                     contractorRecord = data;
 
-                    // Reload licenses to re-render the credentials view with updated insurance info
+                    // Reload licenses to re-render the credentials view with updated insurance badges
                     const licResult = await sb
                         .from('contractor_licenses')
                         .select('*')
@@ -1631,6 +1486,44 @@
                     alert('Insurance information saved.');
                 } catch (err) {
                     console.error('Error saving insurance info:', err);
+                    alert('Failed to save changes. Please try again.');
+                }
+            } else if (section === 'serviceArea') {
+                const countiesStr = document.getElementById('editServiceCounties').value.trim();
+                const statesStr = document.getElementById('editServiceStates').value.trim();
+
+                // Parse comma-separated values into arrays
+                const service_counties = countiesStr
+                    .split(',')
+                    .map(c => c.trim())
+                    .filter(c => c.length > 0);
+                const service_states = statesStr
+                    .split(',')
+                    .map(s => s.trim().toUpperCase())
+                    .filter(s => s.length > 0);
+
+                const updates = {
+                    service_counties: service_counties,
+                    service_states: service_states,
+                    updated_at: new Date().toISOString(),
+                };
+
+                try {
+                    const { data, error } = await sb
+                        .from('contractors')
+                        .update(updates)
+                        .eq('id', contractorRecord.id)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    contractorRecord = data;
+                    populateViewFromData(contractorRecord);
+                    toggleEdit('serviceArea');
+                    alert('Service area saved.');
+                } catch (err) {
+                    console.error('Error saving service area:', err);
                     alert('Failed to save changes. Please try again.');
                 }
             } else if (section === 'confirmation-template') {
@@ -1692,112 +1585,32 @@
                     statusEl.style.color = '#ef4444';
                 }
             } else if (section === 'photos') {
-                // Handle photo uploads — use partner-photos bucket (public read)
+                // Handle photo uploads
                 const ownerPhotoInput = document.getElementById('ownerPhotoInput');
-                let uploadedAny = false;
-
-                if (ownerPhotoInput && ownerPhotoInput.files.length > 0) {
+                if (ownerPhotoInput.files.length > 0) {
                     try {
                         const file = ownerPhotoInput.files[0];
-                        // Validate size (max 5MB)
-                        if (file.size > 5 * 1024 * 1024) {
-                            alert('Owner photo must be under 5MB.');
-                            return;
-                        }
-                        // Use contractor record ID in path for public bucket (safer than auth user ID)
-                        const ext = file.name.split('.').pop();
-                        const filePath = `contractor-profiles/${contractorRecord.id}/owner.${ext}`;
+                        const filePath = `${currentUser.id}/profile/${file.name}`;
                         const { error: uploadError } = await sb.storage
-                            .from('partner-photos')
+                            .from('contractor-documents')
                             .upload(filePath, file, { contentType: file.type, upsert: true });
 
                         if (uploadError) throw uploadError;
 
-                        // Public URL (partner-photos has public read policy)
+                        // Get public URL and save to contractor record
                         const { data: urlData } = sb.storage
-                            .from('partner-photos')
+                            .from('contractor-documents')
                             .getPublicUrl(filePath);
 
-                        const { data: updatedRec, error: updateErr } = await sb
-                            .from('contractors')
+                        await sb.from('contractors')
                             .update({ owner_photo_url: urlData.publicUrl, updated_at: new Date().toISOString() })
-                            .eq('id', contractorRecord.id)
-                            .select()
-                            .single();
+                            .eq('id', contractorRecord.id);
 
-                        if (updateErr) throw updateErr;
-                        contractorRecord = updatedRec;
-                        uploadedAny = true;
-
-                        // Update the view immediately
-                        const ownerPhotoEl = document.getElementById('ownerPhotoDisplay');
-                        if (ownerPhotoEl) {
-                            ownerPhotoEl.innerHTML = `<img src="${urlData.publicUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-md);" alt="Owner photo">`;
-                        }
+                        contractorRecord.owner_photo_url = urlData.publicUrl;
                     } catch (err) {
                         console.error('Error uploading owner photo:', err);
-                        alert('Failed to upload photo: ' + (err.message || 'Unknown error'));
-                        return;
+                        alert('Failed to upload photo. Please try again.');
                     }
-                }
-
-                // Gallery photos
-                const galleryInput = document.getElementById('galleryInput');
-                if (galleryInput && galleryInput.files.length > 0) {
-                    const galleryUrls = contractorRecord.gallery_photo_urls ? [...contractorRecord.gallery_photo_urls] : [];
-                    for (const file of galleryInput.files) {
-                        if (galleryUrls.length >= 10) {
-                            alert('Maximum 10 gallery photos reached.');
-                            break;
-                        }
-                        if (file.size > 5 * 1024 * 1024) {
-                            alert(`${file.name} exceeds 5MB — skipping.`);
-                            continue;
-                        }
-                        try {
-                            const ext = file.name.split('.').pop();
-                            const ts = Date.now();
-                            const filePath = `contractor-profiles/${contractorRecord.id}/gallery_${ts}.${ext}`;
-                            const { error: uploadError } = await sb.storage
-                                .from('partner-photos')
-                                .upload(filePath, file, { contentType: file.type });
-
-                            if (uploadError) throw uploadError;
-
-                            const { data: urlData } = sb.storage
-                                .from('partner-photos')
-                                .getPublicUrl(filePath);
-
-                            galleryUrls.push(urlData.publicUrl);
-                            uploadedAny = true;
-                        } catch (err) {
-                            console.error('Error uploading gallery photo:', file.name, err);
-                        }
-                    }
-
-                    if (uploadedAny) {
-                        const { data: updatedRec, error: updateErr } = await sb
-                            .from('contractors')
-                            .update({ gallery_photo_urls: galleryUrls, updated_at: new Date().toISOString() })
-                            .eq('id', contractorRecord.id)
-                            .select()
-                            .single();
-
-                        if (!updateErr) {
-                            contractorRecord = updatedRec;
-                            // Update gallery view
-                            const galleryView = document.getElementById('galleryViewGrid');
-                            if (galleryView && galleryUrls.length > 0) {
-                                galleryView.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:var(--sp-3);margin-top:var(--sp-3);">${
-                                    galleryUrls.map(url => `<img src="${url}" style="width:100%;height:100px;object-fit:cover;border-radius:var(--radius-sm);" alt="Gallery photo">`).join('')
-                                }</div><p style="color:var(--slate);font-size:0.85rem;margin-top:var(--sp-2);">${galleryUrls.length} of 10 photos</p>`;
-                            }
-                        }
-                    }
-                }
-
-                if (uploadedAny) {
-                    alert('Photos saved successfully.');
                 }
                 toggleEdit('photos');
             }
@@ -1890,107 +1703,6 @@
         }
 
         // Add certification to database
-        // ── License Management ──
-        let licenseRows = []; // [{id, municipality, license_number, expiration_date, _localId}]
-
-        function renderLicenseEditList() {
-            const container = document.getElementById('licenseEditList');
-            if (!container) return;
-            if (licenseRows.length === 0) {
-                container.innerHTML = `<p style="color:var(--slate);font-size:0.9rem;">No licenses added yet. Click "Add License" to start.</p>`;
-                return;
-            }
-            container.innerHTML = licenseRows.map((lic, idx) => `
-                <div style="background:white;border:1px solid var(--light);border-radius:var(--radius-md);padding:var(--sp-4);" data-lic-idx="${idx}">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);">
-                        <div class="form-group">
-                            <label class="form-label" style="font-size:0.85rem;">Municipality / Jurisdiction</label>
-                            <input type="text" class="form-input" placeholder="e.g., Indianapolis, IN" value="${lic.municipality || ''}"
-                                onchange="licenseRows[${idx}].municipality = this.value">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" style="font-size:0.85rem;">License Number</label>
-                            <input type="text" class="form-input" placeholder="e.g., CR-00123456" value="${lic.license_number || ''}"
-                                onchange="licenseRows[${idx}].license_number = this.value">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" style="font-size:0.85rem;">Expiration Date</label>
-                            <input type="date" class="form-input" value="${lic.expiration_date ? lic.expiration_date.substring(0,10) : ''}"
-                                onchange="licenseRows[${idx}].expiration_date = this.value">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" style="font-size:0.85rem;">License Document</label>
-                            <input type="file" accept=".pdf,image/*" id="licFile_${idx}" style="font-size:0.85rem;">
-                        </div>
-                    </div>
-                    <button class="btn btn-secondary" style="font-size:0.8rem;padding:var(--sp-1) var(--sp-3);margin-top:var(--sp-2);"
-                        onclick="removeLicenseRow(${idx})">Remove</button>
-                </div>
-            `).join('');
-        }
-
-        function addLicenseRow() {
-            licenseRows.push({ id: null, municipality: '', license_number: '', expiration_date: '', _localId: Date.now() });
-            renderLicenseEditList();
-        }
-
-        function removeLicenseRow(idx) {
-            licenseRows.splice(idx, 1);
-            renderLicenseEditList();
-        }
-
-        async function saveLicenses() {
-            if (!contractorRecord || !sb) { alert('Not connected.'); return; }
-
-            try {
-                // Delete all existing licenses for this contractor, then re-insert
-                await sb.from('contractor_licenses').delete().eq('contractor_id', contractorRecord.id);
-
-                const toInsert = licenseRows
-                    .filter(l => l.municipality || l.license_number)
-                    .map(l => ({
-                        contractor_id: contractorRecord.id,
-                        municipality: l.municipality || null,
-                        license_number: l.license_number || null,
-                        expiration_date: l.expiration_date || null,
-                    }));
-
-                if (toInsert.length > 0) {
-                    const { error: insertErr } = await sb.from('contractor_licenses').insert(toInsert);
-                    if (insertErr) throw insertErr;
-                }
-
-                // Upload license documents
-                for (let idx = 0; idx < licenseRows.length; idx++) {
-                    const fileInput = document.getElementById(`licFile_${idx}`);
-                    if (fileInput && fileInput.files.length > 0) {
-                        const file = fileInput.files[0];
-                        const ext = file.name.split('.').pop();
-                        const filePath = `${currentUser.id}/license/lic_${idx}_${Date.now()}.${ext}`;
-                        await sb.storage.from('contractor-documents')
-                            .upload(filePath, file, { contentType: file.type, upsert: true });
-                    }
-                }
-
-                // Update no_license_required flag
-                const noLicReq = document.getElementById('editNoLicenseRequired').checked;
-                await sb.from('contractors')
-                    .update({ no_license_required: noLicReq, updated_at: new Date().toISOString() })
-                    .eq('id', contractorRecord.id);
-                contractorRecord.no_license_required = noLicReq;
-
-                // Re-render credentials view
-                const { data: freshLics } = await sb.from('contractor_licenses').select('*').eq('contractor_id', contractorRecord.id);
-                renderCredentials(freshLics || []);
-                renderCertifications();
-
-                alert('Licenses saved successfully.');
-            } catch (err) {
-                console.error('Error saving licenses:', err);
-                alert('Failed to save licenses. Please try again.');
-            }
-        }
-
         async function addCertification() {
             const certName = document.getElementById('certificationName').value.trim();
             if (!certName) return;

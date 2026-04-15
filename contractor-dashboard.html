@@ -690,8 +690,12 @@
         <!-- Pending Approval Banner -->
         <div class="pending-approval-banner" id="pendingApprovalBanner">
             <p class="pending-approval-banner-text">
-                🔄 Your account is under review. You'll be able to browse opportunities once approved. In the meantime, complete your profile to speed up the process.
+                🔄 Your account is under review. While you wait (usually 1–2 business days), here's what you can do to get ready:
             </p>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
+                <a href="/contractor-profile.html" class="btn btn-secondary" style="display: inline-block; text-decoration: none; padding: 0.6rem 1.2rem; font-size: 0.875rem;">Complete Your Profile →</a>
+                <a href="/contractor-settings.html" class="btn btn-secondary" style="display: inline-block; text-decoration: none; padding: 0.6rem 1.2rem; font-size: 0.875rem;">Add Payment Method →</a>
+            </div>
         </div>
 
         <!-- Agreement Modal -->
@@ -872,6 +876,7 @@
                 { label: 'Insurance certificates on file', check: !!(contractor.has_workers_comp || contractor.has_general_liability), link: '/contractor-profile.html' },
                 { label: 'Service area selected', check: Array.isArray(contractor.service_counties) && contractor.service_counties.length > 0, link: '/contractor-profile.html' },
                 { label: 'Contract template uploaded', check: !!(contractor.contract_templates && Object.keys(contractor.contract_templates).length > 0), link: '/contractor-settings.html' },
+                { label: 'Payment method on file', check: !!(contractor.stripe_payment_method_id), link: '/contractor-settings.html#payment' },
                 { label: 'Preferred shingle brand selected', check: Array.isArray(contractor.preferred_brands) && contractor.preferred_brands.length > 0, link: '/contractor-settings.html' },
                 { label: 'Agreement accepted', check: !!contractor.agreement_accepted_at, link: '/contractor-dashboard.html' }
             ];
@@ -949,28 +954,9 @@
           // magic link is sent. When the contractor clicks the link and lands here, we need
           // to run handleAuthCallback to create the profile + contractor record in the DB,
           // then reload the page with a live contractor record.
-          const rawSignupData = localStorage.getItem('cs_contractor_signup') || sessionStorage.getItem('cs_contractor_signup');
-          if (currentUser && rawSignupData) {
-            // Guard: only process signup data if it belongs to the current user.
-            // Prevents stale contractor signup localStorage from corrupting a homeowner session.
-            try {
-              const signupParsed = JSON.parse(rawSignupData);
-              const storedEmail = (signupParsed.email || '').toLowerCase();
-              const currentEmail = (currentUser.email || '').toLowerCase();
-              if (!storedEmail || storedEmail === currentEmail) {
-                await Auth.handleAuthCallback();
-                return; // handleAuthCallback calls redirectToDashboard(), which reloads this page
-              } else {
-                // Email mismatch — clear stale data and continue as normal contractor
-                console.warn('[Dashboard] cs_contractor_signup email mismatch, clearing. stored:', storedEmail, 'current:', currentEmail);
-                localStorage.removeItem('cs_contractor_signup');
-                sessionStorage.removeItem('cs_contractor_signup');
-              }
-            } catch (e) {
-              // Malformed signup data — clear it
-              localStorage.removeItem('cs_contractor_signup');
-              sessionStorage.removeItem('cs_contractor_signup');
-            }
+          if (currentUser && localStorage.getItem('cs_contractor_signup')) {
+            await Auth.handleAuthCallback();
+            return; // handleAuthCallback calls redirectToDashboard(), which reloads this page
           }
 
           // Load contractor profile
