@@ -11,10 +11,15 @@
  * Run: node tests/smoke-tests.mjs
  * Exit code 0 = pass, 1 = any failure.
  *
- * When the commission Edge Function is built (ClickUp 86e0xdy9h), update
- * the `referralPayout` function below to import and call the real
- * implementation instead of the reference one.
+ * Session 182 update — ClickUp 86e0xdy9h CLOSED. The backend commission
+ * implementation (v40-commission-trigger.sql) now exists in the DB. The
+ * in-file JS reference for `referralPayout` has been retired in favor of
+ * `./referral-payout-via-trigger.mjs`, which exercises the real
+ * apply_referral_commission() trigger via the Supabase Management API
+ * (BEGIN ... ROLLBACK — no persisted rows). Commission tests are now async.
  */
+
+import { referralPayout } from "./referral-payout-via-trigger.mjs";
 
 // ---------------------------------------------------------------------------
 // Tiny assertion harness
@@ -79,35 +84,10 @@ function computeQuoteTotals(sections) {
   return { sections: sectionTotals, total_rc, total_acv };
 }
 
-/**
- * Commission math, per D-139/D-140/D-141/D-142:
- *   - $200 to the person who referred the job (referrer)
- *   - $50 to whoever recruited that referrer (one level deep only)
- *   - Job must be >= $10,000 to trigger ANY commission
- *   - Exactly one $200 and at most one $50 per completed job
- *   - Forward-only: recruit bonus only applies if recruitment predates the referral
- *
- * Input: { job_total, referrer, recruiter?, recruited_at?, referred_at? }
- * Output: { referrer_bonus, recruiter_bonus, eligible }
- */
-function referralPayout({ job_total, referrer, recruiter, recruited_at, referred_at }) {
-  const MIN = 10000;
-  if (!referrer || Number(job_total) < MIN) {
-    return { referrer_bonus: 0, recruiter_bonus: 0, eligible: false };
-  }
-
-  const referrer_bonus = 200;
-
-  // Recruit bonus requires: a recruiter, and the referral post-dates the recruit.
-  let recruiter_bonus = 0;
-  if (recruiter && recruited_at && referred_at) {
-    if (new Date(referred_at) >= new Date(recruited_at)) {
-      recruiter_bonus = 50;
-    }
-  }
-
-  return { referrer_bonus, recruiter_bonus, eligible: true };
-}
+// NOTE: the pure-JS referralPayout reference that lived here was retired in
+// Session 182. It is now imported from ./referral-payout-via-trigger.mjs,
+// which runs against the live apply_referral_commission() SQL trigger
+// inside a BEGIN ... ROLLBACK transaction. See D-139/D-140/D-141/D-142.
 
 /**
  * Service-area match: returns true if a contractor covers the claim's state.
@@ -178,27 +158,27 @@ section("Commission math (D-139/D-140/D-141/D-142)");
 
 // Below $10K floor
 {
-  const out = referralPayout({ job_total: 9999, referrer: "agent_a" });
+  const out = await referralPayout({ job_total: 9999, referrer: "agent_a" });
   eq("job below $10K: no payout", out, { referrer_bonus: 0, recruiter_bonus: 0, eligible: false });
 }
 
 // Exactly $10K
 {
-  const out = referralPayout({ job_total: 10000, referrer: "agent_a" });
+  const out = await referralPayout({ job_total: 10000, referrer: "agent_a" });
   eq("job at $10K: referrer gets $200", out.referrer_bonus, 200);
   eq("job at $10K: no recruiter set -> recruiter gets $0", out.recruiter_bonus, 0);
 }
 
 // Referrer only, no recruiter in chain
 {
-  const out = referralPayout({ job_total: 50000, referrer: "agent_a" });
+  const out = await referralPayout({ job_total: 50000, referrer: "agent_a" });
   eq("no recruiter: recruiter_bonus is 0", out.recruiter_bonus, 0);
   eq("solo referrer gets $200", out.referrer_bonus, 200);
 }
 
 // Two-tier: recruiter recruited referrer BEFORE the referral
 {
-  const out = referralPayout({
+  const out = await referralPayout({
     job_total: 25000,
     referrer: "agent_b",
     recruiter: "agent_a",
@@ -211,7 +191,7 @@ section("Commission math (D-139/D-140/D-141/D-142)");
 
 // Recruit AFTER referral — forward-only, recruiter gets $0 (D-142)
 {
-  const out = referralPayout({
+  const out = await referralPayout({
     job_total: 25000,
     referrer: "agent_b",
     recruiter: "agent_a",
@@ -224,14 +204,14 @@ section("Commission math (D-139/D-140/D-141/D-142)");
 
 // No referrer at all -> ineligible
 {
-  const out = referralPayout({ job_total: 20000, referrer: null });
+  const out = await referralPayout({ job_total: 20000, referrer: null });
   eq("no referrer: ineligible", out, { referrer_bonus: 0, recruiter_bonus: 0, eligible: false });
 }
 
 // One-level-deep: recruiter-of-recruiter gets nothing (D-140)
 // (Modeled by never passing a grandparent — the function signature has no slot for it.)
 {
-  const out = referralPayout({
+  const out = await referralPayout({
     job_total: 40000,
     referrer: "agent_c",
     recruiter: "agent_b",
