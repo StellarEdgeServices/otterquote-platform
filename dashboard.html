@@ -222,6 +222,27 @@
       background: rgba(255,255,255,0.06);
     }
 
+    /* Hover link sent — amber/waiting state */
+    .checklist-icon.hover-pending {
+      background: rgba(245,158,11,0.15);
+      color: var(--amber);
+    }
+
+    /* "Required" badge on checklist item title */
+    .required-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--amber);
+      border: 1px solid rgba(245,158,11,0.4);
+      border-radius: 3px;
+      padding: 1px 5px;
+      vertical-align: middle;
+      margin-left: var(--sp-2);
+    }
+
     .checklist-left {
       display: flex;
       align-items: center;
@@ -961,6 +982,7 @@
       let carriers = [];
       let isEditingClaim = false;
       let uploadsInProgress = {};
+      let hoverOrder = null; // Most recent hover_orders row for this claim (or null)
 
       // ── Demo Mode ──
       let isDemo = false;
@@ -1120,6 +1142,25 @@
           if (data) {
             currentClaim = data;
             console.log('[Dashboard] Loaded existing claim:', { id: data.id, status: data.status, has_estimate: data.has_estimate, has_material_selection: data.has_material_selection });
+
+            // Fetch the most recent active Hover order for this claim (link_sent or pending)
+            try {
+              const { data: hoData } = await sb
+                .from('hover_orders')
+                .select('id, claim_id, status, capture_link, capturing_user_email, resend_count, last_resend_at, hover_job_id')
+                .eq('claim_id', data.id)
+                .in('status', ['pending', 'link_sent'])
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              hoverOrder = hoData || null;
+              if (hoverOrder) {
+                console.log('[Dashboard] Hover order found:', { id: hoverOrder.id, status: hoverOrder.status });
+              }
+            } catch (hoErr) {
+              console.warn('[Dashboard] Could not load hover order (non-fatal):', hoErr);
+              hoverOrder = null;
+            }
           }
 
           if (!currentClaim) {
@@ -1290,6 +1331,55 @@
       function renderChecklist() {
         if (!currentClaim) return;
 
+        // Retail / cash / repair claims require measurements; insurance claims do not.
+        const isInsurance = currentClaim.funding_type === 'insurance';
+
+        // Hover order state helpers
+        const hasHoverOrder = hoverOrder && (hoverOrder.status === 'link_sent' || hoverOrder.status === 'pending');
+        const todayResendCount = (() => {
+          if (!hoverOrder?.last_resend_at) return 0;
+          const lastDate = new Date(hoverOrder.last_resend_at).toISOString().slice(0, 10);
+          const today   = new Date().toISOString().slice(0, 10);
+          return lastDate === today ? (hoverOrder.resend_count || 0) : 0;
+        })();
+        const resendAvailable = hasHoverOrder && todayResendCount < 3;
+
+        // Build measurements description + buttons depending on context
+        let measurementsDesc, measurementsNote, measurementsBtns;
+        if (currentClaim.has_measurements) {
+          // Already done — handled by status logic below
+          measurementsDesc  = null;
+          measurementsNote  = null;
+          measurementsBtns  = [];
+        } else if (hasHoverOrder) {
+          measurementsDesc  = 'Your Hover measurement link was sent. Awaiting your photos — check your email inbox.';
+          measurementsNote  = resendAvailable
+            ? `Link sent to ${hoverOrder.capturing_user_email || 'your email'}. Didn't receive it? Resend below.`
+            : 'Resend limit reached for today (3/3). Try again tomorrow or upload measurements manually.';
+          measurementsBtns  = [
+            { label: 'Upload Instead', action: 'upload',   data: 'measurements' },
+            ...(resendAvailable
+              ? [{ label: 'Resend Link', action: 'resend', data: '' }]
+              : [{ label: 'Help Me',     action: 'navigate', data: 'help-measurements.html' }]
+            ),
+          ];
+        } else if (isInsurance) {
+          measurementsDesc  = 'Optional but recommended. Upload photos, measurements, or inspection reports.';
+          measurementsNote  = 'Optional but recommended for more accurate bids.';
+          measurementsBtns  = [
+            { label: 'Upload', action: 'upload',   data: 'measurements' },
+            { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' },
+          ];
+        } else {
+          // Retail / cash — required, no hover order yet
+          measurementsDesc  = 'Required for retail projects. Upload measurement reports or use a Hover aerial measurement.';
+          measurementsNote  = 'Required — contractors need measurements to price your project accurately.';
+          measurementsBtns  = [
+            { label: 'Upload', action: 'upload',   data: 'measurements' },
+            { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' },
+          ];
+        }
+
         const container = document.getElementById('checklist-container');
         const items = [
           {
@@ -1308,16 +1398,13 @@
           {
             id: 'measurements',
             title: 'Measurements',
-            required: false,
-            status: currentClaim.has_measurements ? 'uploaded' : 'pending',
+            required: !isInsurance, // Hard required for retail; optional for insurance
+            status: currentClaim.has_measurements ? 'uploaded' : (hasHoverOrder ? 'hover_pending' : 'pending'),
             filename: currentClaim.measurements_filename,
-            description: 'Optional but recommended. Upload photos, measurements, or inspection reports.',
-            note: 'Optional but recommended for more accurate bids.',
-            buttons: [
-              { label: 'Upload', action: 'upload', data: 'measurements' },
-              { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' }
-            ],
-            icon: '📐'
+            description: measurementsDesc,
+            note: measurementsNote,
+            buttons: measurementsBtns,
+            icon: hasHoverOrder && !currentClaim.has_measurements ? '🔗' : '📐'
           },
           {
             id: 'material',
@@ -1355,16 +1442,19 @@
           }
         ];
 
-        container.innerHTML = items.map(item => `
+        container.innerHTML = items.map(item => {
+          const isDone    = item.status === 'uploaded' || item.status === 'selected';
+          const isHover   = item.status === 'hover_pending';
+          return `
           <div class="checklist-item-wrapper">
-            <div class="checklist-item ${item.status === 'uploaded' || item.status === 'selected' ? 'complete' : ''} ${item.required ? 'required' : ''} ${item.disabled ? 'disabled' : ''}">
+            <div class="checklist-item ${isDone ? 'complete' : ''} ${item.required ? 'required' : ''} ${item.disabled ? 'disabled' : ''}">
               <div class="checklist-left">
-                <div class="checklist-icon ${item.status === 'uploaded' || item.status === 'selected' ? 'done' : 'pending'}">
-                  ${item.status === 'uploaded' || item.status === 'selected' ? '✓' : item.icon}
+                <div class="checklist-icon ${isDone ? 'done' : isHover ? 'hover-pending' : 'pending'}">
+                  ${isDone ? '✓' : item.icon}
                 </div>
                 <div class="checklist-info">
-                  <div class="checklist-title">${item.title}</div>
-                  ${item.status === 'uploaded' || item.status === 'selected' ? `
+                  <div class="checklist-title">${item.title}${item.required ? ' <span class="required-badge">Required</span>' : ''}</div>
+                  ${isDone ? `
                     <div class="checklist-status uploaded">
                       ✓ ${item.status === 'uploaded' ? 'Uploaded' : 'Selected'}
                       ${item.filename ? `<span class="checklist-filename">${item.filename}</span>` : ''}
@@ -1372,7 +1462,7 @@
                   ` : item.disabled ? `
                     <div class="color-unavailable">${item.note}</div>
                   ` : `
-                    <div class="checklist-status">${item.description}</div>
+                    <div class="checklist-status">${item.description || ''}</div>
                     ${item.note ? `<div class="checklist-note">${item.note}</div>` : ''}
                   `}
                 </div>
@@ -1385,6 +1475,8 @@
                     return `<button type="button" class="btn btn-sm btn-ghost" onclick="showHelpModal('${btn.data}')">Help Me</button>`;
                   } else if (btn.action === 'navigate') {
                     return `<a href="${btn.data}" class="btn btn-sm btn-secondary">${btn.label}</a>`;
+                  } else if (btn.action === 'resend') {
+                    return `<button type="button" class="btn btn-sm btn-secondary" id="resend-hover-btn" onclick="resendHoverLink(this)">Resend Link</button>`;
                   }
                   return '';
                 }).join('')}
@@ -1397,7 +1489,8 @@
               </div>
             </div>
           </div>
-        `).join('');
+        `; // end template literal
+        }).join(''); // end items.map
       }
 
       function updateProgressBar() {
@@ -1515,9 +1608,17 @@
         const btn = document.getElementById('submit-btn');
         const hint = document.getElementById('submit-hint');
 
-        const hasEstimate = currentClaim?.has_estimate;
-        const hasMaterial = currentClaim?.has_material_selection;
-        const isReady = hasEstimate && hasMaterial;
+        const hasEstimate     = currentClaim?.has_estimate;
+        const hasMaterial     = currentClaim?.has_material_selection;
+        const hasMeasurements = currentClaim?.has_measurements;
+
+        // Insurance claims (RCV and ACV) may proceed without measurements.
+        // Retail, cash, and repair claims CANNOT — measurements are a hard gate.
+        const isInsurance      = currentClaim?.funding_type === 'insurance';
+        const needsMeasurements = !isInsurance;
+        const measurementsOk    = !needsMeasurements || hasMeasurements;
+
+        const isReady = hasEstimate && hasMaterial && measurementsOk;
 
         btn.disabled = !isReady;
 
@@ -1525,6 +1626,7 @@
           const missing = [];
           if (!hasEstimate) missing.push('Insurance Estimate');
           if (!hasMaterial) missing.push('Material Selection');
+          if (needsMeasurements && !hasMeasurements) missing.push('Property Measurements (required for retail projects)');
           hint.textContent = `Complete the required items: ${missing.join(', ')}.`;
         } else {
           hint.textContent = 'Your project details are complete. Submit them now to get competitive bids from qualified contractors.';
@@ -1770,6 +1872,70 @@
         input.click();
       };
 
+      // ── Resend Hover Capture Link ──
+      window.resendHoverLink = async function(btn) {
+        if (!currentClaim?.id || CONFIG.DEMO_MODE) return;
+
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = 'Sending…';
+
+        try {
+          const response = await fetch(
+            `${CONFIG.SUPABASE_URL}/functions/v1/resend-hover-link`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.SUPABASE_ANON}`,
+              },
+              body: JSON.stringify({ claim_id: currentClaim.id }),
+            }
+          );
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            if (response.status === 429) {
+              showError(result.reason || 'Daily resend limit reached. Try again tomorrow.');
+            } else {
+              showError(result.error || 'Failed to resend the link. Please try again.');
+            }
+            btn.disabled = false;
+            btn.textContent = originalText;
+            return;
+          }
+
+          showSuccess('Measurement link resent! Check your email inbox.');
+
+          // Update local hoverOrder state so the count reflects immediately
+          if (hoverOrder) {
+            hoverOrder.resend_count = result.resend_count;
+            hoverOrder.last_resend_at = new Date().toISOString();
+          }
+
+          // Re-render checklist to update resend count display
+          renderChecklist();
+
+          // If no resends remain, disable the button via re-render
+          if (result.resends_remaining_today <= 0) {
+            const resendBtn = document.getElementById('resend-hover-btn');
+            if (resendBtn) {
+              resendBtn.disabled = true;
+              resendBtn.textContent = 'Limit Reached';
+            }
+          } else {
+            // Keep button enabled (re-render already handled it)
+          }
+
+        } catch (err) {
+          console.error('[resendHoverLink] Error:', err);
+          showError('Could not resend the link. Please refresh the page and try again.');
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      };
+
       async function uploadFile(file, type) {
         if (!currentClaim) return;
 
@@ -1997,6 +2163,13 @@
       // ── Submit for Bids ──
       async function submitForBids() {
         if (!currentClaim) return;
+
+        // ── Claim progression gate (defensive double-check) ──
+        const isInsurance = currentClaim.funding_type === 'insurance';
+        if (!isInsurance && !currentClaim.has_measurements) {
+          showError('Retail projects require property measurements before bidding. Please upload measurements or use your Hover link.');
+          return;
+        }
 
         const btn = document.getElementById('submit-btn');
         btn.disabled = true;
