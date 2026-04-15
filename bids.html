@@ -755,14 +755,15 @@
           : initials;
 
         // Determine job type badge color and label
-        const jobTypeColor = currentClaim.jobType === 'insurance_rcv' ? 'var(--blue)' :
-                            currentClaim.jobType === 'insurance_acv' ? 'var(--purple)' :
-                            currentClaim.jobType === 'retail' ? 'var(--green)' :
-                            currentClaim.jobType === 'repair' ? 'var(--orange)' : 'var(--slate)';
-        const jobTypeLabel = currentClaim.jobType === 'insurance_rcv' ? 'RCV' :
-                            currentClaim.jobType === 'insurance_acv' ? 'ACV' :
-                            currentClaim.jobType === 'retail' ? 'Retail' :
-                            currentClaim.jobType === 'repair' ? 'Repair' : 'Project';
+        // Use snake_case job_type to match Supabase column name
+        const jobTypeColor = currentClaim.job_type === 'insurance_rcv' ? 'var(--blue)' :
+                            currentClaim.job_type === 'insurance_acv' ? 'var(--purple)' :
+                            currentClaim.job_type === 'retail' ? 'var(--green)' :
+                            currentClaim.job_type === 'repair' ? 'var(--orange)' : 'var(--slate)';
+        const jobTypeLabel = currentClaim.job_type === 'insurance_rcv' ? 'RCV' :
+                            currentClaim.job_type === 'insurance_acv' ? 'ACV' :
+                            currentClaim.job_type === 'retail' ? 'Retail' :
+                            currentClaim.job_type === 'repair' ? 'Repair' : 'Project';
 
         return `
           <div class="bid-card ${isLowest ? 'lowest-price' : ''}" style="animation-delay:${idx * 0.1}s">

@@ -11,6 +11,9 @@ const Nav = {
   /** Detect if current page is a contractor page */
   _isContractorPage() {
     const path = window.location.pathname;
+    // contractor-about.html is a homeowner-facing page (viewing a contractor's profile);
+    // it must not be treated as a contractor portal page despite its URL.
+    if (path.includes('contractor-about')) return false;
     return path.includes('contractor');
   },
 
@@ -103,15 +106,31 @@ const Nav = {
       { href: '/faq.html',          label: 'FAQ' },
     ];
 
-    // Update the three main nav-link anchors (exclude mobile-auth injected links)
+    // Rebuild nav links in-place to handle both role expansions (3→6) and
+    // contractions (6→3). Simply patching existing anchors leaves orphaned
+    // links when switching from contractor (6 links) to homeowner (3 links).
     const container = document.getElementById('nav-links');
     if (container) {
-      const anchors = container.querySelectorAll(
+      const anchors = Array.from(container.querySelectorAll(
         'a.nav-link:not(.nav-mobile-cta):not(.nav-mobile-cta-secondary)'
-      );
+      ));
+      // Update anchors that have a corresponding corrected link; remove the rest
       anchors.forEach((a, i) => {
         if (links[i]) { a.href = links[i].href; a.textContent = links[i].label; }
+        else { a.remove(); }
       });
+      // If corrected link set is larger than existing anchors, append the extras
+      if (links.length > anchors.length) {
+        const mobileAuthSlot = container.querySelector('#nav-mobile-auth-slot');
+        const extras = links.slice(anchors.length)
+          .map(l => `<a href="${l.href}" class="nav-link">${l.label}</a>`)
+          .join('');
+        if (mobileAuthSlot) {
+          mobileAuthSlot.insertAdjacentHTML('beforebegin', extras);
+        } else {
+          container.insertAdjacentHTML('beforeend', extras);
+        }
+      }
     }
 
     // Update logo href

@@ -1288,6 +1288,30 @@
             value = '$' + parseFloat(value || 0).toFixed(2);
           }
 
+          // Format date of loss to human-readable (parse manually to avoid UTC offset shifting)
+          if (field.key === 'date_of_loss' && value !== 'Not provided') {
+            const parts = value.split('-');
+            if (parts.length === 3) {
+              const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+              value = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            }
+          }
+
+          // Capitalize damage type (e.g. "roof" → "Roof")
+          if (field.key === 'damage_type' && value !== 'Not provided') {
+            value = value.charAt(0).toUpperCase() + value.slice(1);
+          }
+
+          // Format phone number (10-digit or 11-digit with leading 1)
+          if (field.key === 'adjuster_phone' && value !== 'Not provided') {
+            const digits = value.replace(/\D/g, '');
+            if (digits.length === 10) {
+              value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+            } else if (digits.length === 11 && digits[0] === '1') {
+              value = `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`;
+            }
+          }
+
           return `
             <div class="claim-field">
               <div class="claim-field-label">${field.label}</div>
