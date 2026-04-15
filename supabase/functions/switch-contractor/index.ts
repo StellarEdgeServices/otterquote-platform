@@ -31,23 +31,28 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+// CORS tightened Apr 15, 2026 (Session 181, ClickUp 86e0xhz2j): sensitive
+// function (homeowner JWT, Stripe refunds, contractor emails) — origin allowlisted.
+const ALLOWED_ORIGINS = [
+  "https://otterquote.com",
+  "https://jade-alpaca-b82b5e.netlify.app",
+];
+
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  };
+}
 
 /** Days before installation at which switching is no longer allowed. */
 const SWITCH_CUTOFF_DAYS = 3;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
 
 /** Returns true if the installation date is within the cutoff window. */
 function isWithinCutoff(estimatedStartDate: string | null): boolean {
@@ -155,6 +160,16 @@ async function sendEmail(
 // ─── Main Handler ────────────────────────────────────────────────────────────
 
 serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+
+  // jsonResponse is defined inside the handler so it closes over the
+  // per-request corsHeaders (Origin-aware).
+  const jsonResponse = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
