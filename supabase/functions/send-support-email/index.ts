@@ -27,7 +27,7 @@ serve(async (req) => {
   }
 
   try {
-    const { from_name, from_email, subject, message, to_email } = await req.json();
+    const { from_name, from_email, subject, message, to_email, html } = await req.json();
 
     // Validate required fields
     if (!from_name || !from_email || !message) {
@@ -84,6 +84,9 @@ Reply directly to this email to respond to the contractor.`;
     formData.append("to",        recipient);
     formData.append("subject",   emailSubject);
     formData.append("text",      emailBody);
+    // When html is provided (e.g., branded welcome emails), include it for clients that render HTML.
+    // The text field above serves as the plain-text fallback.
+    if (to_email && html) formData.append("html", html);
     if (!to_email) {
       formData.append("h:Reply-To", `${from_name} <${from_email}>`);
     }

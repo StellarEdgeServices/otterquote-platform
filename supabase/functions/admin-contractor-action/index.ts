@@ -27,14 +27,63 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-/** Send a Mailgun email. Returns true on success. */
+// =============================================================================
+// EMAIL HELPERS
+// =============================================================================
+
+const DASHBOARD_URL = "https://otterquote.com/contractor-dashboard.html";
+const SETTINGS_URL = "https://otterquote.com/contractor-settings.html";
+
+function emailFooter(): string {
+  return `
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td align="center" style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#64748B;">
+      <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
+      &nbsp;&nbsp;|&nbsp;&nbsp;
+      <a href="tel:+18448753412" style="color:#0EA5E9;text-decoration:none;">(844) 875-3412</a>
+    </td>
+  </tr>
+</table>`.trim();
+}
+
+function buildEmail(bodyHtml: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F1F5F9;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
+  <tr>
+    <td align="center" style="padding:24px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <tr>
+          <td align="left" style="background:#0B1929;padding:24px 32px;">
+            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">OtterQuote</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 32px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+            ${bodyHtml}
+          </td>
+        </tr>
+        <tr><td>${emailFooter()}</td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`.trim();
+}
+
+/** Send a Mailgun email. Returns true on success. Accepts optional html (text is plain-text fallback). */
 async function sendMailgunEmail(
   apiKey: string,
   domain: string,
   to: string,
   from: string,
   subject: string,
-  text: string
+  text: string,
+  html?: string
 ): Promise<boolean> {
   const basicAuth = btoa(`api:${apiKey}`);
   const formData = new URLSearchParams();
@@ -42,6 +91,7 @@ async function sendMailgunEmail(
   formData.append("to", to);
   formData.append("subject", subject);
   formData.append("text", text);
+  if (html) formData.append("html", html);
 
   try {
     const response = await fetch(
@@ -137,28 +187,67 @@ serve(async (req) => {
         throw updateError;
       }
 
-      // Fetch contractor details
+      // Fetch contractor details (include contact_name for personal greeting)
       const { data: contractor } = await supabase
         .from("contractors")
-        .select("email, company_name")
+        .select("email, company_name, contact_name")
         .eq("id", contractor_id)
         .single();
 
       if (contractor) {
-        const approvalEmail = `Hi ${contractor.company_name},
+        const greeting = contractor.contact_name || contractor.company_name || "there";
+
+        const approvalEmailText = `Hi ${greeting},
 
 Great news — your OtterQuote contractor account has been approved. You can now browse available opportunities and submit bids.
 
-Log in to get started: https://otterquote.com/contractor-dashboard.html
+Log in to get started: ${DASHBOARD_URL}
 
-Before submitting your first bid, make sure you've completed these steps in your dashboard:
+Before submitting your first bid, complete these steps in your Getting Started checklist:
 - Add a payment method (required to receive projects)
 - Upload your contract template
 - Select your preferred shingle brand
 
-If you have any questions, we're here: support@otterquote.com or (844) 875-3412.
+Tip: Enable Auto-Bid in Settings to automatically compete for every matching opportunity — no action needed between jobs.
+
+Questions? support@otterquote.com | (844) 875-3412
 
 The OtterQuote Team`;
+
+        const approvalEmailHtml = buildEmail(`
+          <p style="margin:0 0 6px;color:#14B8A6;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">You're Approved</p>
+          <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Welcome to OtterQuote, ${greeting}!</h2>
+
+          <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">Your account is active. You can now browse available opportunities and submit bids.</p>
+
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;margin-bottom:24px;">
+            <tr><td style="padding:16px 20px;">
+              <p style="margin:0 0 10px;color:#166534;font-size:14px;font-weight:700;">Complete these steps before your first bid:</p>
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">1.&nbsp; Add a payment method (required to receive projects)</td></tr>
+                <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">2.&nbsp; Upload your contract template</td></tr>
+                <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">3.&nbsp; Select your preferred shingle brand</td></tr>
+              </table>
+            </td></tr>
+          </table>
+
+          <table cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+            <tr>
+              <td align="center" bgcolor="#14B8A6" style="border-radius:8px;">
+                <a href="${DASHBOARD_URL}" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;padding:14px 28px;">Go to My Dashboard &rarr;</a>
+              </td>
+            </tr>
+          </table>
+
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;">
+            <tr>
+              <td style="padding:14px 16px;">
+                <p style="margin:0 0 4px;color:#92400E;font-size:14px;font-weight:600;">&#9889; Enable Auto-Bid</p>
+                <p style="margin:0;color:#78350F;font-size:13px;line-height:1.5;">Auto-Bid places you in the running for every matching opportunity automatically &mdash; no action needed between jobs. Set it up in <a href="${SETTINGS_URL}" style="color:#92400E;">Settings</a>.</p>
+              </td>
+            </tr>
+          </table>
+        `);
 
         await sendMailgunEmail(
           mailgunKey,
@@ -166,7 +255,8 @@ The OtterQuote Team`;
           contractor.email,
           "OtterQuote <notifications@mail.otterquote.com>",
           "Welcome to OtterQuote — You're Approved!",
-          approvalEmail
+          approvalEmailText,
+          approvalEmailHtml
         );
       }
 
@@ -202,12 +292,13 @@ The OtterQuote Team`;
       // Fetch contractor details
       const { data: contractor } = await supabase
         .from("contractors")
-        .select("email, company_name")
+        .select("email, company_name, contact_name")
         .eq("id", contractor_id)
         .single();
 
       if (contractor) {
-        const rejectionEmail = `Hi ${contractor.company_name},
+        const greeting = contractor.contact_name || contractor.company_name || "there";
+        const rejectionEmailText = `Hi ${greeting},
 
 Thank you for applying to join the OtterQuote contractor network. After reviewing your application, we weren't able to approve your account at this time.
 
@@ -222,8 +313,8 @@ The OtterQuote Team`;
           mailgunDomain,
           contractor.email,
           "OtterQuote <notifications@mail.otterquote.com>",
-          "OtterQuote Contractor Application — Action Required",
-          rejectionEmail
+          "OtterQuote Application — Update on Your Account",
+          rejectionEmailText
         );
       }
 

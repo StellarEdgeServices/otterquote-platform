@@ -372,19 +372,112 @@ Log in to the admin panel to review and approve this contractor.`;
 
               // Send welcome email to the contractor
               try {
-                const welcomeMessage = `Hi ${data.company_name || 'there'},
+                const greeting = data.company_name || 'there';
+                const dashboardUrl = 'https://otterquote.com/contractor-dashboard.html';
+                const settingsUrl = 'https://otterquote.com/contractor-settings.html';
+
+                const welcomeMessage = `Hi ${greeting},
 
 Thanks for applying to join the OtterQuote contractor network. We received your application and it's currently under review.
 
 What happens next:
-- We'll review your profile and verify your licensing and insurance (usually 1–2 business days)
-- Once approved, you'll receive another email and can immediately start browsing available opportunities
-- While you wait, you can complete your profile at https://otterquote.com/contractor-profile.html
+1. We'll review your profile and verify your licensing and insurance (usually 1–2 business days)
+2. You'll receive an approval email once your account is active
+3. Once approved, you can immediately start browsing available opportunities
 
-Questions? Reply to this email or contact us at support@otterquote.com or (844) 875-3412.
+While you wait, complete your Getting Started checklist to speed up approval:
+${dashboardUrl}
+
+Set up Auto-Bid now — once approved, you'll automatically compete for every matching opportunity without lifting a finger:
+${settingsUrl}
+
+Questions? support@otterquote.com | (844) 875-3412
 
 The OtterQuote Team
 https://otterquote.com`;
+
+                const welcomeHtml = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F1F5F9;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
+  <tr>
+    <td align="center" style="padding:24px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <tr>
+          <td align="left" style="background:#0B1929;padding:24px 32px;">
+            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">OtterQuote</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 32px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+            <p style="margin:0 0 6px;color:#64748B;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Application Received</p>
+            <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Welcome to OtterQuote, ${greeting}!</h2>
+            <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">We received your application to the OtterQuote contractor network. Here&rsquo;s what happens next:</p>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F8FAFC;border-radius:8px;margin-bottom:24px;">
+              <tr><td style="padding:16px 20px;border-bottom:1px solid #E2E8F0;">
+                <table cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td style="width:28px;vertical-align:top;padding-top:2px;">
+                    <div style="width:22px;height:22px;background:#14B8A6;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">1</div>
+                  </td>
+                  <td style="padding-left:12px;">
+                    <p style="margin:0;color:#0F172A;font-size:14px;font-weight:600;">Profile Review (1&ndash;2 business days)</p>
+                    <p style="margin:4px 0 0;color:#64748B;font-size:13px;">We&rsquo;ll verify your licensing and insurance on file.</p>
+                  </td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:16px 20px;border-bottom:1px solid #E2E8F0;">
+                <table cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td style="width:28px;vertical-align:top;padding-top:2px;">
+                    <div style="width:22px;height:22px;background:#14B8A6;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">2</div>
+                  </td>
+                  <td style="padding-left:12px;">
+                    <p style="margin:0;color:#0F172A;font-size:14px;font-weight:600;">Approval Email</p>
+                    <p style="margin:4px 0 0;color:#64748B;font-size:13px;">You&rsquo;ll receive an email when your account is active.</p>
+                  </td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:16px 20px;">
+                <table cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td style="width:28px;vertical-align:top;padding-top:2px;">
+                    <div style="width:22px;height:22px;background:#14B8A6;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">3</div>
+                  </td>
+                  <td style="padding-left:12px;">
+                    <p style="margin:0;color:#0F172A;font-size:14px;font-weight:600;">Start Bidding</p>
+                    <p style="margin:4px 0 0;color:#64748B;font-size:13px;">Browse available opportunities and submit bids immediately.</p>
+                  </td>
+                </tr></table>
+              </td></tr>
+            </table>
+            <p style="margin:0 0 12px;color:#374151;font-size:15px;font-weight:600;">Complete your profile to speed up approval:</p>
+            <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
+              <tr>
+                <td align="center" bgcolor="#0369A1" style="border-radius:8px;">
+                  <a href="${dashboardUrl}" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;padding:12px 24px;">View Getting Started Checklist &rarr;</a>
+                </td>
+              </tr>
+            </table>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;">
+              <tr><td style="padding:14px 16px;">
+                <p style="margin:0 0 4px;color:#92400E;font-size:14px;font-weight:600;">&#9889; Set up Auto-Bid now</p>
+                <p style="margin:0;color:#78350F;font-size:13px;line-height:1.5;">Auto-Bid places you in the running for every matching opportunity automatically once you&rsquo;re approved &mdash; no action needed between jobs. Get it ready in <a href="${settingsUrl}" style="color:#92400E;">Settings</a>.</p>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#64748B;">
+            <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <a href="tel:+18448753412" style="color:#0EA5E9;text-decoration:none;">(844) 875-3412</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
 
                 await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
                   method: 'POST',
@@ -394,6 +487,7 @@ https://otterquote.com`;
                     from_email: 'notifications@otterquote.com',
                     subject: 'Welcome to OtterQuote — Application Received',
                     message: welcomeMessage,
+                    html: welcomeHtml,
                     to_email: data.email || user.email
                   })
                 });
