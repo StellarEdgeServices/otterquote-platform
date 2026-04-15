@@ -904,7 +904,7 @@
                     <div class="checklist-icon">${item.check ? '✅' : '⬜'}</div>
                     <div class="checklist-content">
                         <div class="checklist-label">${item.label}</div>
-                        <a href="${item.link}" class="checklist-link">→ Complete this step</a>
+                        ${!item.check ? `<a href="${item.link}" class="checklist-link">→ Complete this step</a>` : ''}
                     </div>
                 </div>
             `).join('');
@@ -1173,7 +1173,7 @@
                         quoteId: q.id,
                         claimId: q.claim_id,
                         location: buildLocation(claim, q.status),
-                        damageType: claim.damage_type || 'Roofing',
+                        damageType: claim.damage_type ? (claim.damage_type.charAt(0).toUpperCase() + claim.damage_type.slice(1)) : 'Roofing',
                         bidAmount: q.total_price ? '$' + Number(q.total_price).toLocaleString() : '—',
                         submittedDate: new Date(q.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
                         status: 'Pending Decision',
@@ -1184,7 +1184,7 @@
                         id: claim.id ? String(claim.id).slice(0, 8) : q.claim_id?.slice(0, 8) || '—',
                         fullId: q.claim_id,
                         location: buildLocation(claim, q.status),
-                        damageType: claim.damage_type || 'Unknown',
+                        damageType: claim.damage_type ? (claim.damage_type.charAt(0).toUpperCase() + claim.damage_type.slice(1)) : 'Unknown',
                         material: buildMaterial(claim),
                         estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
                         status: statusMap[q.status] || q.status,

@@ -1805,12 +1805,14 @@
       let shingleHighlight = null;
 
       if (currentClaim.shingle_type) {
-        shingleDisplay = currentClaim.shingle_type;
+        const shingleName = currentClaim.shingle_type.charAt(0).toUpperCase() + currentClaim.shingle_type.slice(1);
+        shingleDisplay = shingleName;
         if (currentClaim.impact_class) {
-          shingleDisplay += ` — Class ${currentClaim.impact_class} Impact`;
-          shingleHighlight = `✓ This homeowner has selected <strong>${currentClaim.shingle_type}, Class ${currentClaim.impact_class} Impact Resistant</strong>`;
+          const impactNum = currentClaim.impact_class.replace(/^class[-_]?/i, '');
+          shingleDisplay += ` — Class ${impactNum} Impact`;
+          shingleHighlight = `✓ This homeowner has selected <strong>${shingleName}, Class ${impactNum} Impact Resistant</strong>`;
         } else {
-          shingleHighlight = `✓ This homeowner has selected <strong>${currentClaim.shingle_type}</strong>`;
+          shingleHighlight = `✓ This homeowner has selected <strong>${shingleName}</strong>`;
         }
       } else if (currentClaim.designer_product) {
         shingleDisplay = currentClaim.designer_product;
@@ -1826,7 +1828,7 @@
       const carEl = document.getElementById('summaryCarrier');
       const shEl  = document.getElementById('summaryShingle');
       if (locEl) locEl.textContent = locationDisplay;
-      if (dmgEl) dmgEl.textContent = currentClaim.damage_type || 'Not specified';
+      if (dmgEl) dmgEl.textContent = currentClaim.damage_type ? (currentClaim.damage_type.charAt(0).toUpperCase() + currentClaim.damage_type.slice(1)) : 'Not specified';
       if (carEl) carEl.textContent = carrierName;
       if (shEl)  shEl.textContent  = shingleDisplay;
 

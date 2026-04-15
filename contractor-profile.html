@@ -1254,7 +1254,12 @@
         function populateViewFromData(c) {
             document.getElementById('viewBusinessName').textContent = c.company_name || '—';
             document.getElementById('viewOwnerName').textContent = c.contact_name || '—';
-            document.getElementById('viewPhone').textContent = c.phone || '—';
+            const _rawPhone = (c.phone || '').replace(/\D/g, '');
+            document.getElementById('viewPhone').textContent = _rawPhone.length === 10
+                ? `(${_rawPhone.slice(0,3)}) ${_rawPhone.slice(3,6)}-${_rawPhone.slice(6)}`
+                : (_rawPhone.length === 11 && _rawPhone[0] === '1'
+                    ? `(${_rawPhone.slice(1,4)}) ${_rawPhone.slice(4,7)}-${_rawPhone.slice(7)}`
+                    : c.phone || '—');
             document.getElementById('viewEmail').textContent = c.email || '—';
             const website = c.website_url || '';
             document.getElementById('viewWebsite').innerHTML = website
@@ -1267,7 +1272,9 @@
 
             // Service area and trades
             const trades = c.trades || [];
-            document.getElementById('viewTrades').textContent = trades.length ? trades.join(', ') : '—';
+            document.getElementById('viewTrades').textContent = trades.length
+                ? trades.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ')
+                : '—';
             document.getElementById('viewBrands').textContent = c.preferred_brands ? c.preferred_brands.join(', ') : '—';
             document.getElementById('viewServiceArea').textContent = c.service_area_description || c.service_counties ? (c.service_counties || []).join(', ') : '—';
 
@@ -1296,11 +1303,25 @@
             document.getElementById('editServiceCounties').value = serviceCounties.join(', ');
             document.getElementById('editServiceStates').value = serviceStates.join(', ');
 
-            // Review links
+            // Review links — populate edit inputs and rebuild view mode
             document.getElementById('googleReviewsUrl').value = c.google_reviews_url || '';
             document.getElementById('bbbUrl').value = c.bbb_url || '';
             document.getElementById('angiUrl').value = c.angi_url || '';
             document.getElementById('yelpUrl').value = c.yelp_url || '';
+            const _reviewViewFields = [
+                { url: c.google_reviews_url, label: 'Google Reviews', text: 'View on Google' },
+                { url: c.bbb_url, label: 'Better Business Bureau (BBB)', text: 'View on BBB' },
+                { url: c.angi_url, label: 'Angi (Formerly Angie\'s List)', text: 'View on Angi' },
+                { url: c.yelp_url, label: 'Yelp', text: 'View on Yelp' },
+            ];
+            const _reviewsViewEl = document.getElementById('reviewsView');
+            if (_reviewsViewEl) {
+                _reviewsViewEl.innerHTML = _reviewViewFields.map(f => `
+                    <div class="view-field"><label>${f.label}</label><div class="view-field-value">${f.url
+                        ? `<a href="${f.url}" target="_blank" style="color: var(--amber); text-decoration: none;">${f.text}</a>`
+                        : '<span style="color: var(--slate);">Not provided</span>'}</div></div>
+                `).join('');
+            }
 
             // Insurance checkboxes
             document.getElementById('editHasWorkersComp').checked = !!c.has_workers_comp;
