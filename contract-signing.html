@@ -1679,7 +1679,7 @@
         phones.push(c.phone);
       }
 
-      const contractorMsg = `OtterQuote: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (317) 501-9215.`;
+      const contractorMsg = `OtterQuote: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (844) 875-3412.`;
       const dustinMsg = `OtterQuote Alert: ${homeownerName} (claim ${state.claimId || 'unknown'}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
 
       const sends = phones.map(phone =>
@@ -1698,7 +1698,7 @@
         console.error('Nudge error:', err);
         btn.disabled = false;
         btn.textContent = "Haven't heard from your contractor? Click here.";
-        statusEl.textContent = 'Message failed to send. Please call us directly at (317) 501-9215.';
+        statusEl.textContent = 'Message failed to send. Please call us directly at (844) 875-3412.';
         statusEl.style.color = 'var(--red, #ef4444)';
         statusEl.style.display = 'block';
       }
