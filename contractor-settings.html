@@ -1257,15 +1257,18 @@
         Repair jobs are <strong>FREE LEADS</strong> that we provide to contractors who promise to: 1) send a technician capable of diagnosing and quoting a repair (not the canvasser you hired last month); and 2) show up on time.
       </p>
 
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:var(--sp-4) var(--sp-6); background:#F0F9FF; border-radius:var(--radius-md); border:1px solid #BAE6FD;">
+      <div class="autobid-toggle-row" style="padding:var(--sp-4) var(--sp-6); background:#F0F9FF; border-radius:var(--radius-md); border:1px solid #BAE6FD; justify-content:space-between; flex-wrap:wrap; gap:var(--sp-3);">
         <div>
-          <div style="font-weight:600; color:var(--navy);">Opt In to Repair Work</div>
+          <div style="font-weight:600; color:var(--navy);">Repair Work</div>
           <div style="font-size:0.85rem; color:var(--slate); margin-top:0.25rem;">Appear in repair results and receive notifications for repair jobs in your service area</div>
         </div>
-        <label style="display:flex; align-items:center; gap:var(--sp-3); cursor:pointer;">
-          <input type="checkbox" id="repairsToggle" style="width:1.1rem; height:1.1rem; accent-color:var(--amber);">
+        <div style="display:flex; align-items:center; gap:var(--sp-3);">
+          <label class="switch">
+            <input type="checkbox" id="repairsToggle">
+            <span class="slider"></span>
+          </label>
           <span class="autobid-status inactive" id="repairsStatusBadge">OFF</span>
-        </label>
+        </div>
       </div>
 
       <div id="repairsDetails" class="hidden" style="margin-top:var(--sp-6); padding:var(--sp-6); background:#FFFBEB; border:1px solid #F59E0B; border-radius:var(--radius-md);">
