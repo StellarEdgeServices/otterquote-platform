@@ -22,7 +22,7 @@ const CONFIG = {
   // NOTE: TWILIO_SID and TWILIO_TOKEN are server-side only (Edge Functions)
 
   // ── Stripe (payments: Hover fees, deductible escrow, contractor platform fees) ──
-  STRIPE_PK:     'pk_test_51TCI2O0AJRnqIYPUgKku8lRifucMiKIBTdu8hkmBLjXVR73eggMnqVuPPtlZF8thfGypv8UShBoLsoIgY4ELfRP009TrgSIxo',
+  STRIPE_PK:     'pk_test_51TCI2O0AJRnqIYPUgKku8lRifucMiKIBTdu8hkmBLjjXVR73eggMnqVuPPtlZF8thfGypv8UShBoLsoIgY4ELfRP009TrgSIxo',
   // NOTE: STRIPE_SECRET_KEY is server-side only (Edge Functions)
 
   // ── DocuSign (e-signatures) ──
