@@ -53,17 +53,17 @@ serve(async (req) => {
     let from: string;
 
     if (to_email) {
-      // Direct email to contractor (e.g., welcome email)
+      // Direct email to a specific recipient (e.g., contractor welcome email)
       emailSubject = subject || "Welcome to OtterQuote";
       emailBody = message;
       from = `OtterQuote <notifications@${MAILGUN_DOMAIN}>`;
     } else {
       // Support form email to admin
       emailSubject = subject
-        ? `[Contractor Support] ${subject}`
-        : `[Contractor Support] Message from ${from_name}`;
+        ? `[OtterQuote Support] ${subject}`
+        : `[OtterQuote Support] Message from ${from_name}`;
 
-      emailBody = `Contractor Support Request
+      emailBody = `OtterQuote Support Request
 ===========================
 From:    ${from_name}
 Email:   ${from_email}
@@ -73,8 +73,8 @@ Message:
 ${message}
 
 ---
-Sent via OtterQuote Contractor Portal contact form.
-Reply directly to this email to respond to the contractor.`;
+Sent via OtterQuote support form.
+Reply directly to this email to respond.`;
 
       from = `OtterQuote Support <noreply@${MAILGUN_DOMAIN}>`;
     }
