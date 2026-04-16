@@ -233,6 +233,13 @@ const Nav = {
                   border-radius:6px;color:#fff;font-size:.9rem;box-sizing:border-box;"
                 placeholder="e.g. Question about my bid">
             </div>
+            <div style="margin-bottom:.75rem;">
+              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.85rem;color:#94a3b8;user-select:none;">
+                <input type="checkbox" id="sc-bug-report"
+                  style="width:1rem;height:1rem;accent-color:#14b8a6;cursor:pointer;flex-shrink:0;">
+                I'm reporting a bug on this page
+              </label>
+            </div>
             <div style="margin-bottom:1rem;">
               <label style="display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.3rem;" for="sc-message">Message</label>
               <textarea id="sc-message" required rows="4"
@@ -280,20 +287,42 @@ const Nav = {
       document.getElementById('support-form-wrap').style.display = '';
       document.getElementById('support-contact-form').reset();
       document.getElementById('sc-error').style.display = 'none';
+      // Reset bug-report checkbox (form.reset() handles it, but be explicit)
+      document.getElementById('sc-bug-report').checked = false;
     };
     fab.addEventListener('click', open);
     document.getElementById('support-modal-close').addEventListener('click', close);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
+    // Bug-report checkbox: auto-fill subject + message with page context
+    const bugCheckbox  = document.getElementById('sc-bug-report');
+    const subjectInput = document.getElementById('sc-subject');
+    const msgInput     = document.getElementById('sc-message');
+    bugCheckbox.addEventListener('change', () => {
+      if (bugCheckbox.checked) {
+        const pageName = window.location.pathname.split('/').pop() || window.location.pathname;
+        const pageUrl  = window.location.href;
+        if (!subjectInput.value.trim()) {
+          subjectInput.value = `Bug Report — ${pageName}`;
+        }
+        if (!msgInput.value.trim()) {
+          msgInput.value = `I found a bug on this page: ${pageUrl}\n\nDescription:\n`;
+          msgInput.focus();
+          msgInput.setSelectionRange(msgInput.value.length, msgInput.value.length);
+        }
+      }
+    });
+
     // Form submit
     document.getElementById('support-contact-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name    = document.getElementById('sc-name').value.trim();
-      const email   = document.getElementById('sc-email').value.trim();
-      const subject = document.getElementById('sc-subject').value.trim();
-      const message = document.getElementById('sc-message').value.trim();
-      const errEl   = document.getElementById('sc-error');
-      const btn     = document.getElementById('sc-submit');
+      const name      = document.getElementById('sc-name').value.trim();
+      const email     = document.getElementById('sc-email').value.trim();
+      const subject   = document.getElementById('sc-subject').value.trim();
+      const message   = document.getElementById('sc-message').value.trim();
+      const isBugRpt  = document.getElementById('sc-bug-report').checked;
+      const errEl     = document.getElementById('sc-error');
+      const btn       = document.getElementById('sc-submit');
 
       errEl.style.display = 'none';
       if (!name || !email || !message) {
@@ -301,6 +330,18 @@ const Nav = {
         errEl.style.display = 'block';
         return;
       }
+
+      // If it's a bug report, ensure the page URL is always in the email body
+      // (in case the user edited it out) and prefix the subject clearly.
+      const pageUrl      = window.location.href;
+      const pageName     = window.location.pathname.split('/').pop() || window.location.pathname;
+      const finalSubject = isBugRpt
+        ? (subject || `Bug Report — ${pageName}`)
+        : subject;
+      const urlLine      = `\n\n---\nPage: ${pageUrl}`;
+      const finalMessage = isBugRpt
+        ? (message.includes(pageUrl) ? message : message + urlLine)
+        : message;
 
       btn.disabled = true;
       btn.textContent = 'Sending…';
@@ -316,7 +357,7 @@ const Nav = {
             'apikey': SUPABASE_ANON,
             'Authorization': `Bearer ${SUPABASE_ANON}`,
           },
-          body: JSON.stringify({ from_name: name, from_email: email, subject, message }),
+          body: JSON.stringify({ from_name: name, from_email: email, subject: finalSubject, message: finalMessage }),
         });
 
         if (!res.ok) throw new Error('Send failed');
