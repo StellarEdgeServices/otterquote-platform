@@ -163,21 +163,11 @@ serve(async (req) => {
     setupFormData.append("metadata[payment_type]", selectedType);
     setupFormData.append("usage", "off_session");
 
-    // For ACH (us_bank_account): add mandate_data for recurring off-session charges
-    if (selectedType === "us_bank_account") {
-      setupFormData.append(
-        "mandate_data[customer_acceptance][type]",
-        "online"
-      );
-      setupFormData.append(
-        "mandate_data[customer_acceptance][online][ip_address]",
-        req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "0.0.0.0"
-      );
-      setupFormData.append(
-        "mandate_data[customer_acceptance][online][user_agent]",
-        req.headers.get("user-agent") || "OtterQuote/1.0"
-      );
-    }
+    // NOTE: mandate_data is intentionally omitted here.
+    // For ACH (us_bank_account) with client-side confirmation via Stripe.js,
+    // the mandate acceptance is collected during confirmSetup() in the browser.
+    // Passing mandate_data at creation time requires a valid real IP address
+    // and is only needed for server-side confirmation flows.
 
     console.log(
       "Creating SetupIntent for customer:",
