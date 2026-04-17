@@ -72,7 +72,11 @@ serve(async (req) => {
         .single();
 
       if (claim?.measurements_filename) {
-        const match = claim.measurements_filename.match(/hover_(\d+)_measurements/);
+        // Match: hover_11418054_measurements.json  OR  hover-measurements-job-11418054.pdf
+        const match =
+          claim.measurements_filename.match(/hover[_-](\d{6,})[_-]/) ||
+          claim.measurements_filename.match(/job[_-](\d{6,})/i) ||
+          claim.measurements_filename.match(/(\d{6,})/);
         if (match) hoverId = parseInt(match[1]);
       }
     }
