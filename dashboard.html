@@ -1453,16 +1453,24 @@
             icon: '🎨'
           },
           {
-            id: 'color',
-            title: 'Color',
+            id: 'project_confirmation',
+            title: 'Project Confirmation',
             required: false,
-            status: 'unavailable',
-            filename: null,
-            description: 'Select a color once you\'ve chosen a contractor.',
-            note: 'Available after you select a contractor.',
-            buttons: [],
-            icon: '🌈',
-            disabled: true
+            status: currentClaim.project_confirmation
+              ? 'selected'
+              : (currentClaim.status === 'contract_signed' ? 'pending' : 'unavailable'),
+            filename: currentClaim.project_confirmation ? 'Roofing confirmation on file' : null,
+            description: 'Confirm project scope, materials, and details for your contractor.',
+            note: (!currentClaim.project_confirmation && currentClaim.status !== 'contract_signed')
+              ? 'Available after your contract is signed.'
+              : null,
+            buttons: currentClaim.project_confirmation
+              ? [{ label: 'Review Confirmation', action: 'navigate', data: `project-confirmation.html?claim_id=${currentClaim.id}` }]
+              : (currentClaim.status === 'contract_signed'
+                ? [{ label: 'Start Confirmation', action: 'navigate', data: `project-confirmation.html?claim_id=${currentClaim.id}` }]
+                : []),
+            icon: currentClaim.project_confirmation ? '✅' : '📋',
+            disabled: !currentClaim.project_confirmation && currentClaim.status !== 'contract_signed'
           }
         ];
 

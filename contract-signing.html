@@ -1020,9 +1020,9 @@
               <div class="next-steps-grid">
                 <div class="next-step-card">
                   <div class="next-step-number">1</div>
-                  <div class="next-step-title">Pick Your Color</div>
-                  <div class="next-step-description">Choose the perfect roof color that complements your home.</div>
-                  <a href="#" id="colorSelectionLink" class="next-step-link">Select Color &rarr;</a>
+                  <div class="next-step-title">Project Confirmation</div>
+                  <div class="next-step-description">Confirm project scope, materials, and color selections with your contractor.</div>
+                  <a href="#" id="colorSelectionLink" class="next-step-link">Project Confirmation &rarr;</a>
                 </div>
                 <div class="next-step-card">
                   <div class="next-step-number">2</div>
@@ -1313,7 +1313,7 @@
       // Confirmation section
       document.getElementById('confirmContractorName').textContent = c.company_name || c.name || 'your contractor';
       document.getElementById('confirmContractorName2').textContent = c.company_name || c.name || 'Your contractor';
-      document.getElementById('colorSelectionLink').href = `/color-selection.html?claim_id=${state.claimId}`;
+      document.getElementById('colorSelectionLink').href = `/project-confirmation.html?claim_id=${state.claimId}`;
 
       // D-123: Set contractor name in acknowledgment checkbox
       const ackNameEl = document.getElementById('ackContractorName');
