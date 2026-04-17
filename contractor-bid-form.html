@@ -1559,28 +1559,10 @@
         <div class="fee-row">
           <span class="fee-label">
             <span class="fee-check">✓</span>
-            <span>Contract Signing (base)</span>
+            <span>Contract Signing</span>
             <span class="fee-percentage">5.0%</span>
           </span>
           <span class="fee-amount" id="feeContractSigning">$0.00</span>
-        </div>
-
-        <div class="fee-row">
-          <span class="fee-label">
-            <span class="fee-check">✓</span>
-            <span>Color Selection</span>
-            <span class="fee-percentage">3.0%</span>
-          </span>
-          <span class="fee-amount" id="feeColorSelection">$0.00</span>
-        </div>
-
-        <div class="fee-row">
-          <span class="fee-label">
-            <span class="fee-check">✓</span>
-            <span>Deductible Collection</span>
-            <span class="fee-percentage">5.0%</span>
-          </span>
-          <span class="fee-amount" id="feeDeductibleCollection">$0.00</span>
         </div>
       </div>
 
@@ -1598,10 +1580,7 @@
       </div>
 
       <div class="fee-info">
-        <div>ℹ Color selection and scheduling fees based on your service tier settings. Deductible collection is mandatory.</div>
-        <a href="contractor-settings.html" class="fee-info-link">
-          Adjust your service tier → Settings
-        </a>
+        <div>ℹ A flat 5% platform fee applies to all projects upon contract signing.</div>
       </div>
     </div>
 
@@ -1683,17 +1662,9 @@
     let sidingTradeActive = false;
     let gutterGuardCount = 0;
 
-    // Fee calculator configuration
+    // Fee calculator configuration — flat 5% only (Session 216 + 226 cleanup)
     const PLATFORM_FEES = {
-      contractSigning: 0.05,    // 5%
-      colorSelection: 0.03,     // 3%
-      deductibleCollection: 0.05 // 5%
-    };
-
-    // Contractor tier settings (demo)
-    const contractorTiers = {
-      colorSelection: true,
-      deductibleCollection: true
+      contractSigning: 0.05     // 5%
     };
 
     // State
@@ -2239,7 +2210,10 @@
       // Starter strip
       if (va.starter_strip) setRadio('starterStrip', va.starter_strip);
 
-      // Warranties — re-build cards
+      // Warranties — clear existing cards and re-build from saved data (fix: reset warrantyCardCount to avoid index drift)
+      const wcContainer = document.getElementById('warrantyCardsContainer');
+      if (wcContainer) wcContainer.innerHTML = '';
+      warrantyCardCount = 0;
       if (va.warranties && va.warranties.length > 0) {
         va.warranties.forEach(w => addWarrantyCard(w));
       }
@@ -2577,22 +2551,17 @@
         .replace(/"/g, '&quot;');
     }
 
-    // ── Fee Calculator ──
+    // ── Fee Calculator — flat 5% only (Session 216 + 226 cleanup) ──
     function updateFeeCalculator() {
       const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
 
       const contractSigningFee = bidAmount * PLATFORM_FEES.contractSigning;
-      const colorSelectionFee = contractorTiers.colorSelection ? bidAmount * PLATFORM_FEES.colorSelection : 0;
-      const deductibleCollectionFee = contractorTiers.deductibleCollection ? bidAmount * PLATFORM_FEES.deductibleCollection : 0;
-
-      const totalFee = contractSigningFee + colorSelectionFee + deductibleCollectionFee;
+      const totalFee = contractSigningFee;
       const totalFeePercent = bidAmount > 0 ? (totalFee / bidAmount * 100).toFixed(1) : 0;
       const netAmount = bidAmount - totalFee;
 
       document.getElementById('displayBid').textContent = formatCurrency(bidAmount);
       document.getElementById('feeContractSigning').textContent = formatCurrency(contractSigningFee);
-      document.getElementById('feeColorSelection').textContent = formatCurrency(colorSelectionFee);
-      document.getElementById('feeDeductibleCollection').textContent = formatCurrency(deductibleCollectionFee);
       document.getElementById('totalFeePercent').textContent = totalFeePercent + '%';
       document.getElementById('totalFeeAmount').textContent = formatCurrency(totalFee);
       document.getElementById('yourNet').textContent = formatCurrency(netAmount);
@@ -2856,7 +2825,7 @@
           await new Promise(resolve => setTimeout(resolve, 800));
         } else if (sb && currentUser && currentClaim) {
           const totalPrice = parseFloat(document.getElementById('totalPrice').value) || 0;
-          const feePercentage = 13.0;
+          const feePercentage = 5.0;
 
           const scopeSummary = JSON.stringify({
             brand: formData.get('brandProduct') || null,

@@ -612,7 +612,7 @@
         function calcFees(opp) {
             let base = opp.estimatedValue || (opp.roofSquares ? opp.roofSquares * 700 : null);
             if (!base) return null;
-            return { baseFee: fmt(base*0.05), colorFee: fmt(base*0.03), deductibleFee: fmt(base*0.05), total: fmt(base*0.13) };
+            return { baseFee: fmt(base*0.05), total: fmt(base*0.05) };
         }
 
         function fmt(v) { return v.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:0}); }
@@ -660,11 +660,9 @@
 
                 let feeHtml = '';
                 if (fees) {
-                    feeHtml = '<div class="fee-breakdown"><span class="fee-breakdown-title">Estimated Platform Fees</span>'
+                    feeHtml = '<div class="fee-breakdown"><span class="fee-breakdown-title">Estimated Platform Fee</span>'
                         + '<div class="fee-item"><span class="fee-item-label">Contract Signing (5%)</span><span class="fee-item-amount">' + fees.baseFee + '</span></div>'
-                        + '<div class="fee-item"><span class="fee-item-label">Color Selection Service (3%)</span><span class="fee-item-amount">' + fees.colorFee + '</span></div>'
-                        + '<div class="fee-item"><span class="fee-item-label">Deductible Collection (5%)</span><span class="fee-item-amount">' + fees.deductibleFee + '</span></div>'
-                        + '<div class="fee-item fee-total"><span>Total Platform Fees</span><span>' + fees.total + '</span></div></div>';
+                        + '<div class="fee-item fee-total"><span>Total Platform Fee</span><span>' + fees.total + '</span></div></div>';
                 }
 
                 return '<div class="opportunity-card' + (isUrgent?' urgent-card':'') + '">'

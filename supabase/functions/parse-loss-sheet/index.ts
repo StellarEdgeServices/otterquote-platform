@@ -163,23 +163,14 @@ function buildScopeSummary(parsed: any): string {
     }
   }
 
-  // Summary
+  // Summary — only RCV, Depreciation, ACV, Deductible (Session 226 cleanup per 86e0yybjc)
   const s = parsed.summary;
   if (s) {
-    lines.push("SUMMARY TOTALS");
-    if (s.total_materials) lines.push(`  Materials: $${s.total_materials.toLocaleString()}`);
-    if (s.total_labor) lines.push(`  Labor: $${s.total_labor.toLocaleString()}`);
-    if (s.total_equipment) lines.push(`  Equipment: $${s.total_equipment.toLocaleString()}`);
-    if (s.subtotal) lines.push(`  Subtotal: $${s.subtotal.toLocaleString()}`);
-    if (s.sales_tax) lines.push(`  Sales Tax: $${s.sales_tax.toLocaleString()}`);
+    lines.push("CLAIM SUMMARY");
     if (s.rcv) lines.push(`  RCV: $${s.rcv.toLocaleString()}`);
     if (s.total_depreciation) lines.push(`  Depreciation: -$${s.total_depreciation.toLocaleString()}`);
     if (s.acv) lines.push(`  ACV: $${s.acv.toLocaleString()}`);
     if (s.deductible) lines.push(`  Deductible: $${s.deductible.toLocaleString()}`);
-    if (s.net_estimate) lines.push(`  Net Estimate: $${s.net_estimate.toLocaleString()}`);
-    if (s.net_if_depreciation_recovered) {
-      lines.push(`  Net if Depreciation Recovered: $${s.net_if_depreciation_recovered.toLocaleString()}`);
-    }
   }
 
   return lines.join("\n");

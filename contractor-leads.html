@@ -493,20 +493,12 @@
         function calculatePlatformFees(valueMin, valueMax) {
             const baseFeeMin = valueMin * 0.05;
             const baseFeeMax = valueMax * 0.05;
-            const colorFeeMin = valueMin * 0.03;
-            const colorFeeMax = valueMax * 0.03;
-            const deductibleFeeMin = valueMin * 0.05;
-            const deductibleFeeMax = valueMax * 0.05;
 
             return {
                 baseFeeMin: baseFeeMin.toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0}),
                 baseFeeMax: baseFeeMax.toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0}),
-                colorFeeMin: colorFeeMin.toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0}),
-                colorFeeMax: colorFeeMax.toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0}),
-                deductibleFeeMin: deductibleFeeMin.toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0}),
-                deductibleFeeMax: deductibleFeeMax.toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0}),
-                totalMin: (baseFeeMin + colorFeeMin + deductibleFeeMin).toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0}),
-                totalMax: (baseFeeMax + colorFeeMax + deductibleFeeMax).toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0})
+                totalMin: baseFeeMin.toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0}),
+                totalMax: baseFeeMax.toLocaleString('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 0})
             };
         }
 
@@ -575,14 +567,6 @@
                             <div class="fee-item">
                                 <span class="fee-item-label">Contract Signing (5%)</span>
                                 <span class="fee-item-amount">${fees.baseFeeMin} - ${fees.baseFeeMax}</span>
-                            </div>
-                            <div class="fee-item">
-                                <span class="fee-item-label">Color Selection Service (3%)</span>
-                                <span class="fee-item-amount">${fees.colorFeeMin} - ${fees.colorFeeMax}</span>
-                            </div>
-                            <div class="fee-item">
-                                <span class="fee-item-label">Deductible Collection (5%)</span>
-                                <span class="fee-item-amount">${fees.deductibleFeeMin} - ${fees.deductibleFeeMax}</span>
                             </div>
                             <div class="fee-item fee-total">
                                 <span>Total Platform Fees</span>
