@@ -1041,37 +1041,15 @@
                 </div>
             </div>
 
-            <!-- Contract Template Card (Legacy - Single Template) -->
-            <div class="profile-card">
-                <h2><span class="card-icon">📄</span>Contract Template</h2>
+            <!-- Contract Templates Card (IMP-009) -->
+            <div class="profile-card" id="contract-templates">
+                <h2><span class="card-icon">📑</span>Contract Templates</h2>
 
                 <div class="info-box" style="margin-bottom: var(--sp-6);">
-                    Upload your standard contract PDF. OtterQuote will auto-fill homeowner details, insurance info, and bid amounts when a homeowner is ready to sign. The contract is sent for e-signature via DocuSign.
+                    Upload your contract template for each type of work. OtterQuote will auto-populate your company details and get it signed by the homeowner. The contract is sent for e-signature via DocuSign.
                 </div>
 
-                <div id="contractTemplateView">
-                    <div class="view-field">
-                        <label>Current Contract Template</label>
-                        <div class="view-field-value" id="viewContractTemplate">No contract uploaded</div>
-                    </div>
-                </div>
-
-                <div style="margin-top: var(--sp-4);">
-                    <div class="form-group">
-                        <label class="form-label">Upload Contract PDF</label>
-                        <div class="image-upload" style="height: auto; min-height: 100px;">
-                            <input type="file" id="contractPdfInput" accept=".pdf" onchange="uploadContractTemplate()">
-                            <label for="contractPdfInput" style="display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); cursor: pointer; padding: var(--sp-4);">
-                                <span style="font-size: 2rem;">📄</span>
-                                <span>Click to upload PDF</span>
-                                <span style="font-size: 0.8rem; color: var(--text-muted);">PDF format only, max 10MB</span>
-                            </label>
-                        </div>
-                    </div>
-                    <div id="contractUploadStatus" style="display: none; padding: var(--sp-3); border-radius: 8px; margin-top: var(--sp-3);"></div>
-                </div>
-
-                <div id="contractAnchorHelp" style="display: none; margin-top: var(--sp-6);">
+                <div style="margin-bottom: var(--sp-6);">
                     <h3 style="font-size: 1rem; margin-bottom: var(--sp-3); color: var(--text-secondary);">Auto-Fill Fields Detected</h3>
                     <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--sp-3);">
                         OtterQuote scans your contract for these labels and auto-fills the corresponding data:
@@ -1083,30 +1061,50 @@
                         <div><strong>Email:</strong> → Homeowner email</div>
                         <div><strong>Insurance Co</strong> → Insurance carrier</div>
                         <div><strong>Claim #</strong> → Claim number</div>
-                        <div><strong>DEDUCTIBLE:</strong> → Deductible amount</div>
+                        <div><strong>Deductible:</strong> → Deductible amount</div>
                         <div><strong>Contract Price:</strong> → Bid amount</div>
                         <div><strong>Material:</strong> → Shingle brand/type</div>
                         <div><strong>Warranty:</strong> → Warranty years</div>
                     </div>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--sp-3);">
-                        Tip: Include these exact labels in your contract to enable auto-fill. Fields not found will be left blank for manual entry.
+                        Tip: Include these exact labels in your contract to enable auto-fill. Fields not found will be left blank for manual entry. After uploading a template, click <strong>Review Mapping</strong> to customize which labels OtterQuote looks for.
                     </p>
                 </div>
-            </div>
-
-            <!-- Contract Templates Card (IMP-009) -->
-            <div class="profile-card">
-                <h2><span class="card-icon">📑</span>Contract Templates</h2>
-
-                <p style="color: var(--slate); margin-bottom: var(--sp-2); font-size: 0.95rem;">
-                    Upload your contract template for each type of work. OtterQuote will auto-populate your company details and get it signed by the homeowner.
-                </p>
 
                 <div id="contractTemplatesGrid" style="display: grid; gap: var(--sp-6); margin-top: var(--sp-8);">
                     <!-- Templates will be rendered here by JavaScript -->
                     <div style="text-align: center; color: var(--slate); padding: var(--sp-8);">
                         Loading templates...
                     </div>
+                </div>
+            </div>
+
+            <!-- Field Mapping Review Modal -->
+            <div id="fieldMappingModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; align-items: center; justify-content: center; padding: var(--sp-4);">
+                <div style="background: #fff; border-radius: 12px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; padding: var(--sp-8); box-shadow: 0 20px 60px rgba(0,0,0,0.2);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-6);">
+                        <div>
+                            <h2 style="font-size: 1.25rem; margin: 0;">Review Field Mapping</h2>
+                            <p id="fieldMappingSubtitle" style="font-size: 0.85rem; color: var(--text-muted); margin: var(--sp-1) 0 0;"></p>
+                        </div>
+                        <button onclick="closeFieldMappingModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); line-height: 1;">✕</button>
+                    </div>
+                    <p style="font-size: 0.9rem; color: var(--slate); margin-bottom: var(--sp-5);">
+                        OtterQuote searches your PDF for the label text in the left column and replaces it with the OtterQuote data shown on the right. If your contract uses different label text, update the left column to match exactly.
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--sp-3); align-items: center; margin-bottom: var(--sp-2);">
+                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Label in Your Contract</div>
+                        <div></div>
+                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">OtterQuote Data</div>
+                    </div>
+                    <div id="fieldMappingRows" style="display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--sp-2); align-items: center;">
+                        <!-- Populated by JS -->
+                    </div>
+                    <div style="margin-top: var(--sp-6); display: flex; gap: var(--sp-3); justify-content: flex-end;">
+                        <button class="btn-small btn-small-secondary" onclick="resetFieldMappings()">Reset to Defaults</button>
+                        <button class="btn-small btn-small-primary" onclick="saveFieldMappings()">Save Mapping</button>
+                    </div>
+                    <div id="fieldMappingSaveStatus" style="display: none; margin-top: var(--sp-3); font-size: 0.85rem; text-align: right;"></div>
                 </div>
             </div>
 
@@ -1939,8 +1937,9 @@
                                         <div class="template-file-name">${matchingTemplate.file_name}</div>
                                         <div class="template-file-date">Uploaded: ${uploadDate}</div>
                                     </div>
-                                    <div style="display: flex; gap: var(--sp-3);">
+                                    <div style="display: flex; gap: var(--sp-3); flex-wrap: wrap;">
                                         <button class="btn-small btn-small-primary" onclick="viewContractTemplate('${matchingTemplate.file_url}')">View</button>
+                                        <button class="btn-small btn-small-secondary" onclick="openFieldMappingModal('${slot.trade}', '${slot.fundingType}')">Review Mapping</button>
                                         <button class="btn-small btn-small-secondary" onclick="replaceContractTemplate('${slotId}', '${slot.trade}', '${slot.fundingType}')">Replace</button>
                                     </div>
                                 </div>
@@ -2082,10 +2081,119 @@
                 contractorRecord.contract_templates = updatedTemplates;
                 await loadContractTemplates();
 
-                alert('Contract template uploaded successfully!');
+                // Open field mapping review modal for the just-uploaded template
+                openFieldMappingModal(trade, fundingType);
             } catch (err) {
                 console.error('Error uploading template:', err);
                 alert('Failed to upload template. Please try again.');
+            }
+        }
+
+        // ── Field Mapping Modal ──
+
+        const DEFAULT_FIELD_MAPPINGS = {
+            homeowner_name:    { label: 'Name',           description: 'Homeowner name' },
+            property_address:  { label: 'Address:',       description: 'Property address' },
+            homeowner_phone:   { label: 'Phone',          description: 'Homeowner phone' },
+            homeowner_email:   { label: 'Email:',         description: 'Homeowner email' },
+            insurance_carrier: { label: 'Insurance Co',   description: 'Insurance carrier' },
+            claim_number:      { label: 'Claim #',        description: 'Claim number' },
+            deductible:        { label: 'Deductible:',    description: 'Deductible amount' },
+            contract_price:    { label: 'Contract Price:', description: 'Bid amount' },
+            material:          { label: 'Material:',      description: 'Shingle brand/type' },
+            warranty:          { label: 'Warranty:',      description: 'Warranty years' }
+        };
+
+        let fieldMappingCurrentTrade = null;
+        let fieldMappingCurrentFundingType = null;
+
+        function openFieldMappingModal(trade, fundingType) {
+            fieldMappingCurrentTrade = trade;
+            fieldMappingCurrentFundingType = fundingType;
+
+            document.getElementById('fieldMappingSubtitle').textContent = `${trade} — ${fundingType}`;
+
+            // Get current mappings for this template (fall back to defaults)
+            const currentTemplates = contractorRecord?.contract_templates || [];
+            const template = currentTemplates.find(t => t.trade === trade && t.funding_type === fundingType);
+            const savedMappings = template?.field_mappings || {};
+
+            // Render rows
+            const rowsContainer = document.getElementById('fieldMappingRows');
+            let html = '';
+            for (const [key, defaults] of Object.entries(DEFAULT_FIELD_MAPPINGS)) {
+                const currentLabel = savedMappings[key] !== undefined ? savedMappings[key] : defaults.label;
+                html += `
+                    <input type="text" id="fm_${key}"
+                        value="${currentLabel.replace(/"/g, '&quot;')}"
+                        style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.875rem; font-family: inherit; width: 100%;">
+                    <span style="color: var(--text-muted); font-size: 0.85rem; text-align: center;">→</span>
+                    <span style="font-size: 0.875rem; color: var(--text-secondary);">${defaults.description}</span>
+                `;
+            }
+            rowsContainer.innerHTML = html;
+
+            const modal = document.getElementById('fieldMappingModal');
+            modal.style.display = 'flex';
+            document.getElementById('fieldMappingSaveStatus').style.display = 'none';
+        }
+
+        function closeFieldMappingModal() {
+            document.getElementById('fieldMappingModal').style.display = 'none';
+            fieldMappingCurrentTrade = null;
+            fieldMappingCurrentFundingType = null;
+        }
+
+        function resetFieldMappings() {
+            for (const [key, defaults] of Object.entries(DEFAULT_FIELD_MAPPINGS)) {
+                const input = document.getElementById(`fm_${key}`);
+                if (input) input.value = defaults.label;
+            }
+        }
+
+        async function saveFieldMappings() {
+            if (!fieldMappingCurrentTrade || !fieldMappingCurrentFundingType) return;
+            if (!contractorRecord || !sb) {
+                alert('Not connected to database.');
+                return;
+            }
+
+            // Collect current input values
+            const newMappings = {};
+            for (const key of Object.keys(DEFAULT_FIELD_MAPPINGS)) {
+                const input = document.getElementById(`fm_${key}`);
+                newMappings[key] = input ? input.value.trim() : DEFAULT_FIELD_MAPPINGS[key].label;
+            }
+
+            // Update the matching template in JSONB
+            const currentTemplates = contractorRecord.contract_templates || [];
+            const updatedTemplates = currentTemplates.map(t => {
+                if (t.trade === fieldMappingCurrentTrade && t.funding_type === fieldMappingCurrentFundingType) {
+                    return { ...t, field_mappings: newMappings };
+                }
+                return t;
+            });
+
+            const statusEl = document.getElementById('fieldMappingSaveStatus');
+            statusEl.style.display = 'block';
+            statusEl.style.color = 'var(--text-muted)';
+            statusEl.textContent = 'Saving…';
+
+            try {
+                const { error } = await sb.from('contractors')
+                    .update({ contract_templates: updatedTemplates, updated_at: new Date().toISOString() })
+                    .eq('id', contractorRecord.id);
+
+                if (error) throw error;
+
+                contractorRecord.contract_templates = updatedTemplates;
+                statusEl.style.color = 'var(--green)';
+                statusEl.textContent = '✓ Mapping saved';
+                setTimeout(() => closeFieldMappingModal(), 800);
+            } catch (err) {
+                console.error('Error saving field mappings:', err);
+                statusEl.style.color = '#e53935';
+                statusEl.textContent = 'Failed to save. Please try again.';
             }
         }
 
