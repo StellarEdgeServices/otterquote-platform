@@ -21,6 +21,8 @@
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
   gtag('config', 'G-JNQ6XR3LX2');
+  // A/B test variant identifier — used to segment conversions in GA4
+  gtag('set', 'user_properties', { ab_test_variant: 'A_competing_quotes' });
 </script>
 
 <!-- Supabase -->
