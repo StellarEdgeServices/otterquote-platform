@@ -909,5 +909,95 @@
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 
+<!-- GA4 Conversion Tracking — Landing Page -->
+<script>
+(function() {
+  'use strict';
+
+  // ── CTA Click Tracking ──
+  // Track every CTA button click with position context
+  document.querySelectorAll('a.btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      var href = this.getAttribute('href') || '';
+      var text = this.textContent.trim();
+      var section = this.closest('section');
+      var sectionClass = section ? (section.className.split(' ')[0] || 'unknown') : 'unknown';
+
+      // Determine CTA type
+      var ctaType = 'other';
+      if (href.includes('get-started')) ctaType = 'homeowner_cta';
+      else if (href.includes('contractor-join')) ctaType = 'contractor_apply_cta';
+      else if (href.includes('contractor-login')) ctaType = 'contractor_login_cta';
+
+      gtag('event', 'cta_click', {
+        cta_type: ctaType,
+        cta_text: text,
+        cta_destination: href,
+        cta_location: sectionClass
+      });
+    });
+  });
+
+  // ── Scroll Depth Tracking ──
+  // Fire once per threshold (25%, 50%, 75%, 100%)
+  var scrollThresholds = [25, 50, 75, 100];
+  var scrollFired = {};
+
+  function getScrollPercent() {
+    var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    if (docHeight <= 0) return 100;
+    return Math.round((window.scrollY / docHeight) * 100);
+  }
+
+  window.addEventListener('scroll', function() {
+    var pct = getScrollPercent();
+    scrollThresholds.forEach(function(threshold) {
+      if (pct >= threshold && !scrollFired[threshold]) {
+        scrollFired[threshold] = true;
+        gtag('event', 'scroll_depth', {
+          percent_scrolled: threshold,
+          page_path: '/index.html'
+        });
+      }
+    });
+  }, { passive: true });
+
+  // ── Section Visibility Tracking ──
+  // Track when key sections become visible (user engagement depth)
+  if ('IntersectionObserver' in window) {
+    var sectionsFired = {};
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          var id = entry.target.className.split(' ')[0] || entry.target.tagName;
+          if (!sectionsFired[id]) {
+            sectionsFired[id] = true;
+            gtag('event', 'section_view', {
+              section_name: id,
+              page_path: '/index.html'
+            });
+          }
+        }
+      });
+    }, { threshold: 0.5 });
+
+    document.querySelectorAll('section').forEach(function(s) {
+      observer.observe(s);
+    });
+  }
+
+  // ── Time on Page Tracking ──
+  // Fire at 30s, 60s, 120s to measure engagement quality
+  [30, 60, 120].forEach(function(seconds) {
+    setTimeout(function() {
+      gtag('event', 'time_on_page', {
+        seconds_elapsed: seconds,
+        page_path: '/index.html'
+      });
+    }, seconds * 1000);
+  });
+})();
+</script>
+
 </body>
 </html>

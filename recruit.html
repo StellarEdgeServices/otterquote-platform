@@ -82,6 +82,10 @@
 
 <footer id="site-footer"></footer>
 
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+
 <!-- Supabase UMD (must come before config.js) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
@@ -161,6 +165,13 @@ async function handleRecruit() {
     }
 
     const destination = DESTINATIONS[agentType] || DEFAULT_DESTINATION;
+
+    // Track recruit link usage
+    gtag('event', 'recruit_link_used', {
+      recruit_code: code,
+      recruiter_type: agentType || 'unknown',
+      destination: destination
+    });
 
     // Pass ?recruit= through as a fallback in case localStorage was blocked.
     window.location.replace(`/${destination}?recruit=${encodeURIComponent(code)}`);

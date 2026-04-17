@@ -964,6 +964,7 @@ Best regards`;
       }
 
       navigator.clipboard.writeText(text).then(() => {
+        gtag('event', 'referral_link_copied', { element_id: elementId });
         const btn = typeof buttonEl === 'string'
           ? document.getElementById(buttonEl)
           : buttonEl.target || buttonEl;
@@ -982,6 +983,7 @@ Best regards`;
 
     function shareReferralLink() {
       const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      gtag('event', 'referral_share', { method: 'native_share', referral_code: userReferralCode });
       if (navigator.share) {
         navigator.share({
           title: 'OtterQuote Referral',
@@ -995,11 +997,13 @@ Best regards`;
 
     function shareFacebook() {
       const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      gtag('event', 'referral_share', { method: 'facebook', referral_code: userReferralCode });
       const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralUrl)}&quote=${encodeURIComponent(window.facebookShareMessage)}`;
       window.open(fbUrl, 'facebook-share', 'width=600,height=400');
     }
 
     function handleSMS() {
+      gtag('event', 'referral_share', { method: 'sms', referral_code: userReferralCode });
       const isMobile = /iPhone|iPad|Android|mobile/i.test(navigator.userAgent);
       if (isMobile) {
         window.location.href = `sms:?body=${encodeURIComponent(window.smsMessage)}`;
@@ -1011,6 +1015,7 @@ Best regards`;
     }
 
     function sendEmail() {
+      gtag('event', 'referral_share', { method: 'email', referral_code: userReferralCode });
       const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
       const mailtoLink = `mailto:?subject=${encodeURIComponent(window.emailSubject)}&body=${encodeURIComponent(window.emailBody)}`;
       window.location.href = mailtoLink;
