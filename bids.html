@@ -245,6 +245,33 @@
               </p>
           </div>
 
+          <!-- Hover Property Design Panel (siding jobs only) -->
+          <div id="hoverPropertyPanel" style="display:none;background:linear-gradient(135deg,#0C2A3A 0%,#0F3849 100%);border:1px solid rgba(20,184,166,0.3);border-radius:0.875rem;padding:1.5rem;margin-bottom:1.5rem;animation:fadeUp 0.5s ease both;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
+              <div>
+                <div style="font-weight:700;color:#14B8A6;font-size:1rem;margin-bottom:0.25rem;">🏠 Your Property Design</div>
+                <div id="hoverPropAddress" style="font-size:0.82rem;color:#94A3B8;"></div>
+              </div>
+              <a id="hoverPropViewLink" href="#" target="_blank" rel="noopener"
+                 style="display:none;color:#14B8A6;font-size:0.82rem;font-weight:600;text-decoration:none;border:1px solid rgba(20,184,166,0.4);padding:5px 12px;border-radius:0.5rem;white-space:nowrap;transition:background 0.2s;"
+                 onmouseover="this.style.background='rgba(20,184,166,0.1)'" onmouseout="this.style.background='transparent'">
+                View in Hover ↗
+              </a>
+            </div>
+
+            <!-- Images gallery -->
+            <div id="hoverPropImages" style="display:none;margin-bottom:1rem;"></div>
+
+            <!-- Wall area + material summary -->
+            <div id="hoverPropMeasurements" style="display:none;"></div>
+
+            <!-- Product selections -->
+            <div id="hoverPropMaterials" style="display:none;"></div>
+
+            <!-- Loading / empty state -->
+            <div id="hoverPropStatus" style="font-size:0.875rem;color:#64748B;">Loading your property data from Hover…</div>
+          </div>
+
           <!-- Waiting Indicator -->
           <div id="waitingIndicator" class="waiting-indicator" style="display:none;">
             <div class="waiting-dots"><span></span><span></span><span></span></div>
@@ -723,6 +750,16 @@
         document.getElementById('rcvDisclaimer').style.display = 'none';
       }
 
+      // Show Hover Property Design Panel for siding claims
+      if (currentClaim) {
+        const trades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
+        const hasSiding = trades.some(t => (t || '').toLowerCase().includes('siding'));
+        if (hasSiding && currentClaim.has_measurements) {
+          document.getElementById('hoverPropertyPanel').style.display = 'block';
+          loadHoverPropertyDesign();
+        }
+      }
+
       // Update status dot and text based on claim status and bid count
       const bidCount = bids.length;
       const statusText = document.getElementById('statusText');
@@ -740,6 +777,119 @@
       } else {
         statusText.textContent = 'Bidding open — contractors are reviewing your project';
       }
+    }
+
+    // ── Hover Property Design Panel (homeowner view) ──────────────────
+    // Fetches siding design data from Hover and populates the panel on bids.html.
+    // Non-blocking — errors are caught and displayed gracefully.
+    let _hoverPropLoaded = false;
+    async function loadHoverPropertyDesign() {
+      if (_hoverPropLoaded) return; // only load once per page session
+      _hoverPropLoaded = true;
+
+      const statusEl   = document.getElementById('hoverPropStatus');
+      const imagesEl   = document.getElementById('hoverPropImages');
+      const measureEl  = document.getElementById('hoverPropMeasurements');
+      const matEl      = document.getElementById('hoverPropMaterials');
+      const viewLink   = document.getElementById('hoverPropViewLink');
+      const addrEl     = document.getElementById('hoverPropAddress');
+
+      if (!statusEl || !currentClaim) return;
+
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/get-hover-siding-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (session?.access_token || ''),
+            'apikey': CONFIG.SUPABASE_ANON,
+          },
+          body: JSON.stringify({ claim_id: currentClaim.id }),
+        });
+
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        // "View in Hover" link
+        if (data.hover_job_id) {
+          if (viewLink) {
+            viewLink.href = 'https://app.hover.to/jobs/' + data.hover_job_id;
+            viewLink.style.display = 'inline-block';
+          }
+        }
+
+        // Address
+        if (data.job_address && addrEl) addrEl.textContent = data.job_address;
+
+        // Rendered images gallery
+        if (data.design_images && data.design_images.length > 0 && imagesEl) {
+          let imgHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:0.75rem;">';
+          data.design_images.forEach((url, idx) => {
+            imgHtml += '<div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;border:1px solid rgba(20,184,166,0.3);background:rgba(0,0,0,0.2);">'
+                     + '<img src="' + url + '" alt="Property view ' + (idx+1) + '" '
+                     + 'style="width:100%;height:100%;object-fit:cover;cursor:pointer;" '
+                     + 'onclick="window.open(\'' + url + '\',\'_blank\')" '
+                     + 'onerror="this.closest(\'div\').style.display=\'none\'">'
+                     + '</div>';
+          });
+          imgHtml += '</div>';
+          imagesEl.innerHTML = imgHtml;
+          imagesEl.style.display = 'block';
+        }
+
+        // Wall measurements summary
+        if ((data.wall_squares || data.wall_sqft) && measureEl) {
+          let txt = '📐 <strong style="color:#14B8A6;">' + (data.wall_squares || '—') + ' squares</strong> of siding wall area';
+          if (data.wall_sqft) txt += ' <span style="color:#64748B;font-size:0.8rem;">(' + Number(data.wall_sqft).toLocaleString() + ' sq ft)</span>';
+          measureEl.innerHTML = '<div style="font-size:0.875rem;color:#CBD5E1;margin-bottom:0.75rem;">' + txt + '</div>';
+          measureEl.style.display = 'block';
+        }
+
+        // Product / material selections
+        const hasMats = data.siding_materials && data.siding_materials.length > 0;
+        if (hasMats && matEl) {
+          let mHtml = '<div style="font-size:0.82rem;color:#94A3B8;margin-bottom:0.5rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Selected Products</div>';
+          mHtml += '<div style="display:flex;flex-direction:column;gap:6px;">';
+          data.siding_materials.forEach(m => {
+            const name  = m.product_name || '—';
+            const color = m.color ? ' — ' + m.color : '';
+            const qty   = (m.calculated_quantity ?? m.quantity) != null
+                          ? parseFloat(m.calculated_quantity ?? m.quantity).toFixed(1) + ' ' + (m.units || '')
+                          : '';
+            mHtml += '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 10px;">'
+                   + '<span style="color:#E2E8F0;font-size:0.82rem;">' + escHtml(name) + '<span style="color:#64748B;">' + escHtml(color) + '</span></span>'
+                   + (qty ? '<span style="color:#14B8A6;font-size:0.8rem;font-weight:600;white-space:nowrap;margin-left:8px;">' + escHtml(qty) + '</span>' : '')
+                   + '</div>';
+          });
+          mHtml += '</div>';
+          if (!hasMats) {
+            mHtml += '<div style="font-size:0.8rem;color:#64748B;margin-top:0.5rem;">Your measurements are ready. To see specific product selections here, open your Hover job and choose your preferred siding products.</div>';
+          }
+          matEl.innerHTML = mHtml;
+          matEl.style.display = 'block';
+          statusEl.style.display = 'none';
+        } else if (data.wall_squares || data.design_images?.length > 0) {
+          // Measurements available but no product selections
+          statusEl.innerHTML = '<span style="color:#64748B;">Measurements loaded. '
+            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://app.hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#14B8A6;">open your project in Hover ↗</a> and create an Estimate.' : '')
+            + '</span>';
+        } else if (data.message) {
+          statusEl.innerHTML = '<span style="color:#64748B;">' + data.message + '</span>';
+        } else {
+          statusEl.innerHTML = '<span style="color:#64748B;">No Hover data available for this project.</span>';
+        }
+
+      } catch (err) {
+        console.warn('loadHoverPropertyDesign error:', err);
+        if (statusEl) statusEl.innerHTML = '<span style="color:#64748B;">Could not load Hover data.</span>';
+      }
+    }
+
+    // ── HTML escape helper (bids.html scope) ─────────────────────────────
+    function escHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
     function renderBids() {

@@ -1447,16 +1447,42 @@
 
           <!-- Hover Design Summary Panel -->
           <div id="hoverDesignPanel" style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-8);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-3);">
-              <strong style="color:#0369A1;">Hover Design Summary</strong>
-              <button type="button" id="loadHoverSidingDataBtn" class="btn-sm primary" onclick="loadHoverSidingData()" style="font-size:0.8rem;">Load Design Data</button>
+
+            <!-- Panel header row -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-4);">
+              <div>
+                <strong style="color:#0369A1;font-size:1rem;">🏠 Homeowner's Hover Design</strong>
+                <div id="hoverJobAddressLine" style="font-size:0.8rem;color:#64748B;margin-top:2px;"></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:var(--sp-3);">
+                <div id="hoverDesignLink" style="display:none;">
+                  <a id="hoverJobLink" href="#" target="_blank" rel="noopener"
+                     style="color:#0284C7;font-size:0.8rem;font-weight:600;text-decoration:none;border:1px solid #BAE6FD;padding:4px 10px;border-radius:var(--radius-sm);background:#fff;">
+                    View in Hover ↗
+                  </a>
+                </div>
+                <button type="button" id="loadHoverSidingDataBtn" class="btn-sm primary" onclick="loadHoverSidingData()" style="font-size:0.8rem;">Load Design Data</button>
+              </div>
             </div>
+
+            <!-- Rendered images gallery (populated by JS) -->
+            <div id="hoverDesignImages" style="display:none;margin-bottom:var(--sp-4);"></div>
+
+            <!-- Wall area summary (populated by JS) -->
+            <div id="hoverWallSummary" style="display:none;background:#E0F2FE;border-radius:var(--radius-sm);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-4);font-size:0.875rem;color:#0369A1;"></div>
+
+            <!-- Material & labor table (populated by JS) -->
             <div id="hoverDesignContent" style="font-size:0.875rem;color:#6B7280;">
               Click <strong>Load Design Data</strong> to fetch the homeowner's product and color selections from Hover.
             </div>
-            <div id="hoverDesignLink" style="margin-top:var(--sp-3);display:none;">
-              <a id="hoverJobLink" href="#" target="_blank" rel="noopener" style="color:#0284C7;font-size:0.875rem;font-weight:600;">View 3D Design in Hover →</a>
+
+            <!-- No-data help prompt (shown when no material list exists) -->
+            <div id="hoverNoDesignHelp" style="display:none;margin-top:var(--sp-4);background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--radius-sm);padding:var(--sp-3) var(--sp-4);font-size:0.82rem;color:#92400E;">
+              <strong>No product selections on file.</strong> The homeowner's Hover measurements are available but they haven't selected specific products yet.
+              To see brand, color, and exact quantities here, the homeowner needs to open their Hover job and create an Estimate (Hover's material list tool) with their desired products.
+              In the meantime, wall area and square count appear above.
             </div>
+
           </div>
 
           <!-- Siding Pricing Grid (shown only for siding-only jobs; hidden when combined with roofing) -->
@@ -1742,13 +1768,17 @@
 
     // ── Hover Siding Data Loader ──
     async function loadHoverSidingData() {
-      const btn     = document.getElementById('loadHoverSidingDataBtn');
-      const content = document.getElementById('hoverDesignContent');
+      const btn        = document.getElementById('loadHoverSidingDataBtn');
+      const content    = document.getElementById('hoverDesignContent');
+      const imagesDiv  = document.getElementById('hoverDesignImages');
+      const wallDiv    = document.getElementById('hoverWallSummary');
+      const noDataHelp = document.getElementById('hoverNoDesignHelp');
       if (!currentClaim || !btn || !content) return;
 
       btn.disabled = true;
       btn.textContent = 'Loading…';
       content.innerHTML = '<span style="color:#6B7280;">Fetching design data from Hover…</span>';
+      if (noDataHelp) noDataHelp.style.display = 'none';
 
       try {
         const { data: { session } } = await sb.auth.getSession();
@@ -1765,7 +1795,7 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        // Show "View in Hover" link regardless
+        // ── "View in Hover" link ──────────────────────────────────────
         if (data.hover_job_id) {
           const linkDiv = document.getElementById('hoverDesignLink');
           const linkEl  = document.getElementById('hoverJobLink');
@@ -1773,59 +1803,132 @@
           if (linkEl)  linkEl.href = 'https://app.hover.to/jobs/' + data.hover_job_id;
         }
 
-        // Update squares note if we got wall area; store for fee-calculator math
-        if (data.wall_squares) {
+        // ── Address line ──────────────────────────────────────────────
+        if (data.job_address) {
+          const addrEl = document.getElementById('hoverJobAddressLine');
+          if (addrEl) addrEl.textContent = data.job_address;
+        }
+
+        // ── Rendered images gallery ───────────────────────────────────
+        if (imagesDiv && data.design_images && data.design_images.length > 0) {
+          imagesDiv.innerHTML = '';
+          const gallery = document.createElement('div');
+          gallery.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;';
+          data.design_images.forEach((url, idx) => {
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'position:relative;border-radius:8px;overflow:hidden;border:1px solid #BAE6FD;background:#E0F2FE;aspect-ratio:4/3;';
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = 'Property view ' + (idx + 1);
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;cursor:pointer;transition:transform 0.2s;';
+            img.onclick = () => window.open(url, '_blank');
+            img.onerror = () => { wrapper.style.display = 'none'; };
+            wrapper.appendChild(img);
+            gallery.appendChild(wrapper);
+          });
+          imagesDiv.appendChild(gallery);
+          imagesDiv.style.display = 'block';
+        }
+
+        // ── Wall area summary ─────────────────────────────────────────
+        if (wallDiv && (data.wall_squares || data.wall_sqft)) {
+          let wallText = '📐 ';
+          if (data.wall_squares) wallText += '<strong>' + data.wall_squares + ' squares</strong> of siding wall area';
+          if (data.wall_sqft)    wallText += ' (' + data.wall_sqft.toLocaleString() + ' sq ft)';
+          wallDiv.innerHTML = wallText;
+          wallDiv.style.display = 'block';
+
+          // Store for fee-calculator math; update per-square note
           sidingWallSquares = parseFloat(data.wall_squares) || 0;
           const note = document.getElementById('sidingSquaresNote');
           if (note) note.textContent = 'Hover reports ' + data.wall_squares + ' squares of siding area';
-          // Re-sync the fee calculator now that we have accurate wall area
           syncSidingTotal();
         }
 
-        // Build material summary
-        if (data.siding_materials && data.siding_materials.length > 0) {
-          let html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">';
+        // ── Material list table ───────────────────────────────────────
+        const hasMaterials = data.siding_materials && data.siding_materials.length > 0;
+        const hasLabor     = data.labor_items && data.labor_items.length > 0;
+
+        if (hasMaterials || hasLabor) {
+          const showCost = data.siding_materials.some(m => m.unit_cost != null || m.total_cost != null);
+
+          const thStyle = 'text-align:left;padding:5px 8px;border-bottom:2px solid #BAE6FD;color:#0369A1;font-size:0.78rem;white-space:nowrap;';
+          const thR     = thStyle + 'text-align:right;';
+          const tdStyle = 'padding:5px 8px;border-bottom:1px solid #E0F2FE;font-size:0.82rem;vertical-align:top;';
+          const tdR     = tdStyle + 'text-align:right;';
+          const tdMuted = tdStyle + 'color:#6B7280;font-size:0.75rem;';
+
+          let html = '<div style="overflow-x:auto;">';
+          html += '<table style="width:100%;border-collapse:collapse;min-width:520px;">';
+
+          // Header
           html += '<thead><tr>'
-               + '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #BAE6FD;color:#0369A1;">Product</th>'
-               + '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #BAE6FD;color:#0369A1;">Color</th>'
-               + '<th style="text-align:right;padding:4px 8px;border-bottom:1px solid #BAE6FD;color:#0369A1;">Qty</th>'
-               + '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #BAE6FD;color:#0369A1;">Units</th>'
+               + '<th style="' + thStyle + '">Group / Product</th>'
+               + '<th style="' + thStyle + '">Color</th>'
+               + '<th style="' + thR + '">Qty</th>'
+               + '<th style="' + thStyle + '">Units</th>'
+               + (showCost ? '<th style="' + thR + '">Waste</th><th style="' + thR + '">Unit $</th><th style="' + thR + '">Subtotal</th>' : '')
                + '</tr></thead><tbody>';
-          data.siding_materials.forEach(m => {
-            html += '<tr>'
-                 + '<td style="padding:4px 8px;border-bottom:1px solid #E0F2FE;">' + escHtmlBid(m.product_name || '—') + '</td>'
-                 + '<td style="padding:4px 8px;border-bottom:1px solid #E0F2FE;">' + escHtmlBid(m.color || '—') + '</td>'
-                 + '<td style="padding:4px 8px;border-bottom:1px solid #E0F2FE;text-align:right;">' + (m.quantity != null ? parseFloat(m.quantity).toFixed(1) : '—') + '</td>'
-                 + '<td style="padding:4px 8px;border-bottom:1px solid #E0F2FE;">' + escHtmlBid(m.units || '') + '</td>'
+
+          // Helper: format a material row
+          const renderRow = (m, isLabor = false) => {
+            const rowBg = isLabor ? 'background:#F0FDF4;' : '';
+            const qty = m.calculated_quantity ?? m.quantity;
+            const qtyFmt = qty != null ? parseFloat(qty).toFixed(1) : '—';
+            const wasteLabel = m.waste_factor != null ? (parseFloat(m.waste_factor) * 100).toFixed(0) + '%' : '—';
+            const unitCostFmt = m.unit_cost != null ? '$' + parseFloat(m.unit_cost).toFixed(2) : '—';
+            const subtotalFmt = m.total_cost != null ? '$' + parseFloat(m.total_cost).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+            const nameDisplay = m.product_name || (isLabor ? 'Labor' : '—');
+            const groupDisplay = m.group_name && m.group_name !== m.product_name ? escHtmlBid(m.group_name) : '';
+            const typeLabel = isLabor ? ' <span style="font-size:0.7rem;color:#166534;background:#DCFCE7;padding:1px 5px;border-radius:3px;margin-left:4px;">LABOR</span>' : '';
+            return '<tr style="' + rowBg + '">'
+                 + '<td style="' + tdStyle + '">'
+                 + (groupDisplay ? '<div style="font-size:0.72rem;color:#94A3B8;margin-bottom:1px;">' + groupDisplay + '</div>' : '')
+                 + escHtmlBid(nameDisplay) + typeLabel + '</td>'
+                 + '<td style="' + tdStyle + '">' + escHtmlBid(m.color || '—') + '</td>'
+                 + '<td style="' + tdR + '">' + qtyFmt + '</td>'
+                 + '<td style="' + tdMuted + '">' + escHtmlBid(m.units || '') + '</td>'
+                 + (showCost ? '<td style="' + tdR + ';color:#6B7280;">' + wasteLabel + '</td>'
+                             + '<td style="' + tdR + '">' + unitCostFmt + '</td>'
+                             + '<td style="' + tdR + ';font-weight:600;">' + subtotalFmt + '</td>' : '')
                  + '</tr>';
-          });
-          html += '</tbody></table>';
+          };
+
+          if (hasMaterials) {
+            data.siding_materials.forEach(m => { html += renderRow(m, false); });
+          }
+          if (hasLabor) {
+            data.labor_items.forEach(m => { html += renderRow(m, true); });
+          }
+
+          // Totals row if we have cost data
+          if (showCost && data.material_total != null) {
+            html += '<tr style="background:#E0F2FE;">'
+                 + '<td colspan="' + (showCost ? '6' : '3') + '" style="' + tdStyle + 'font-weight:700;color:#0369A1;">Material Total</td>'
+                 + '<td style="' + tdR + 'font-weight:700;color:#0369A1;">$' + parseFloat(data.material_total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</td>'
+                 + '</tr>';
+          }
+
+          html += '</tbody></table></div>';
           content.innerHTML = html;
+          if (noDataHelp) noDataHelp.style.display = 'none';
+
+        } else if (data.wall_squares || data.wall_sqft) {
+          // We have measurements but no product selections
+          content.innerHTML = '<span style="color:#6B7280;">Measurements loaded. No specific products selected yet in Hover — see note below.</span>';
+          if (noDataHelp) noDataHelp.style.display = 'block';
+
         } else {
           content.innerHTML = data.message
             ? '<span style="color:#6B7280;">' + escHtmlBid(data.message) + '</span>'
-            : '<span style="color:#6B7280;">No product data available — use the Hover link above to view design details.</span>';
-        }
-
-        // Show rendered design images if any
-        if (data.design_images && data.design_images.length > 0) {
-          const imgDiv = document.createElement('div');
-          imgDiv.style.cssText = 'display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;';
-          data.design_images.forEach(url => {
-            const img = document.createElement('img');
-            img.src = url;
-            img.alt = 'Hover design';
-            img.style.cssText = 'height:120px;border-radius:6px;object-fit:cover;border:1px solid #BAE6FD;';
-            imgDiv.appendChild(img);
-          });
-          content.appendChild(imgDiv);
+            : '<span style="color:#6B7280;">No Hover data available for this project.</span>';
         }
 
         btn.textContent = 'Refresh';
         btn.disabled = false;
       } catch (err) {
         console.warn('loadHoverSidingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Use the Hover link to view manually.</span>';
+        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Use the "View in Hover" button above to view manually.</span>';
         // Still show the Hover link even on failure so contractor isn't blocked
         const linkDiv = document.getElementById('hoverDesignLink');
         if (linkDiv) linkDiv.style.display = 'block';

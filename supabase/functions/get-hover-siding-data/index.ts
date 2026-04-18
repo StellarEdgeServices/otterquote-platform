@@ -2,18 +2,22 @@
  * OtterQuote Edge Function: get-hover-siding-data
  *
  * Fetches Hover design and material data for a siding claim.
- * Returns siding material list (product, color, quantity) and wall area
- * so the contractor bid form can display the homeowner's Hover design selections.
+ * Returns:
+ *   - siding_materials[]  — material list items with product, color, qty, cost, group, type
+ *   - labor_items[]       — labor line items from the Hover estimate
+ *   - wall_squares        — total siding wall area in squares
+ *   - wall_sqft           — total siding wall area in sq ft
+ *   - design_images[]     — rendered/photo images of the 3D model
+ *   - material_total      — sum of all MATERIAL-type item costs
+ *   - hover_job_id        — Hover job ID for direct link
+ *   - job_address         — property address from Hover
+ *
+ * Gracefully returns partial data if some Hover API calls fail.
+ * Never errors out — always returns 200 with whatever we could fetch.
  *
  * Usage:
  *   POST /functions/v1/get-hover-siding-data
  *   Body: { "claim_id": "..." }
- *
- * Returns:
- *   { hover_job_id, siding_materials[], wall_squares, design_images[] }
- *
- * Gracefully returns partial data if some Hover API calls fail.
- * Never errors out — always returns 200 with whatever we could fetch.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -87,8 +91,11 @@ serve(async (req) => {
         JSON.stringify({
           hover_job_id: null,
           siding_materials: [],
+          labor_items: [],
           wall_squares: null,
+          wall_sqft: null,
           design_images: [],
+          material_total: null,
           message: "No Hover job linked to this claim",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -102,8 +109,11 @@ serve(async (req) => {
         JSON.stringify({
           hover_job_id: hoverId,
           siding_materials: [],
+          labor_items: [],
           wall_squares: null,
+          wall_sqft: null,
           design_images: [],
+          material_total: null,
           message: "Hover authentication unavailable — view in Hover directly",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -112,7 +122,10 @@ serve(async (req) => {
 
     // ── Step 3: Fetch material list ───────────────────────────────
     let sidingMaterials: any[] = [];
+    let laborItems: any[] = [];
     let wallSquares: number | null = null;
+    let wallSqft: number | null = null;
+    let materialTotal: number | null = null;
 
     try {
       const mlResponse = await fetch(
@@ -129,39 +142,63 @@ serve(async (req) => {
           mlData?.data ??
           (Array.isArray(mlData) ? mlData : []);
 
-        // Filter to siding trade type
-        sidingMaterials = listItems
-          .filter((item: any) => {
-            const tt = (item.tradeType || item.trade_type || "").toUpperCase();
-            return tt.includes("SIDING") || tt.includes("WALL");
-          })
-          .map((item: any) => ({
-            product_name: item.name || item.product_name || item.description || null,
-            color: item.color || null,
-            quantity: item.quantity ?? item.calculatedQuantity ?? null,
-            calculated_quantity: item.calculatedQuantity ?? null,
-            units: item.quantityUnits || item.measurementUnits || null,
-            unit_cost: item.unitCost ?? null,
-            total_cost: item.totalCost ?? null,
-            type: (item.type || "MATERIAL").toUpperCase(),
-          }));
+        // Separate siding materials from labor items
+        const sidingItems = listItems.filter((item: any) => {
+          const tt = (item.tradeType || item.trade_type || "").toUpperCase();
+          return tt.includes("SIDING") || tt.includes("WALL");
+        });
 
-        // Try to extract wall area in squares from material data
-        const squaresItem = sidingMaterials.find((m: any) => {
-          const units = (m.units || "").toLowerCase();
+        // Map to rich output format
+        const mapItem = (item: any) => ({
+          product_name:       item.name || item.product_name || item.description || item.listItemGroupName || null,
+          group_name:         item.listItemGroupName || item.list_item_group_name || null,
+          color:              item.color || null,
+          quantity:           item.quantity ?? null,
+          calculated_quantity: item.calculatedQuantity ?? item.calculated_quantity ?? null,
+          units:              item.quantityUnits || item.measurementUnits || item.quantity_units || null,
+          unit_cost:          item.unitCost ?? item.unit_cost ?? null,
+          waste_factor:       item.wasteFactor ?? item.waste_factor ?? null,
+          pretax_cost:        item.pretaxCost ?? item.pretax_cost ?? null,
+          total_cost:         item.totalCost ?? item.total_cost ?? null,
+          type:               (item.type || "MATERIAL").toUpperCase(),
+          product_catalog_id: item.productCatalogProductId ?? item.product_catalog_product_id ?? null,
+        });
+
+        sidingMaterials = sidingItems
+          .filter((item: any) => (item.type || "MATERIAL").toUpperCase() === "MATERIAL")
+          .map(mapItem);
+
+        laborItems = sidingItems
+          .filter((item: any) => (item.type || "").toUpperCase() === "LABOR")
+          .map(mapItem);
+
+        // Total cost of all MATERIAL type items
+        const totalCostItems = sidingItems
+          .filter((item: any) => (item.type || "MATERIAL").toUpperCase() === "MATERIAL")
+          .map((item: any) => parseFloat(item.totalCost ?? item.total_cost ?? 0) || 0);
+        if (totalCostItems.length > 0) {
+          materialTotal = totalCostItems.reduce((a: number, b: number) => a + b, 0);
+          if (materialTotal === 0) materialTotal = null; // don't show $0
+        }
+
+        // Extract wall area in squares from material data
+        const squaresItem = sidingItems.find((m: any) => {
+          const units = (m.quantityUnits || m.measurementUnits || "").toLowerCase();
           return units.includes("square") || units.includes("sq");
         });
-        if (squaresItem?.calculated_quantity) {
-          wallSquares = parseFloat((squaresItem.calculated_quantity / 1).toFixed(1));
-        } else if (squaresItem?.quantity) {
-          wallSquares = parseFloat(squaresItem.quantity);
+        if (squaresItem) {
+          const qty = squaresItem.calculatedQuantity ?? squaresItem.calculated_quantity ?? squaresItem.quantity;
+          if (qty != null) {
+            wallSquares = parseFloat(parseFloat(qty).toFixed(1));
+            wallSqft = Math.round(wallSquares * 100);
+          }
         }
       }
     } catch (mlErr) {
       console.warn("Material list fetch failed (non-fatal):", mlErr);
     }
 
-    // ── Step 4: Fetch job details (for rendered images) ───────────
+    // ── Step 4: Fetch job details (for rendered images + measurements) ─
     let designImages: string[] = [];
     let jobAddress: string | null = null;
 
@@ -175,26 +212,49 @@ serve(async (req) => {
         const jobData = await jobResponse.json();
         const job = jobData?.job ?? jobData;
 
-        // Extract rendered/design images if present
-        if (Array.isArray(job?.images)) {
-          designImages = job.images
-            .filter((img: any) => img?.url || typeof img === "string")
-            .slice(0, 4)
-            .map((img: any) => img?.url || img);
+        // Try multiple image fields — Hover may return renders, photos, or images
+        // Priority: renders > wireframe_images > images > photos
+        const imageCollections = [
+          job?.renders,
+          job?.render_images,
+          job?.wireframe_images,
+          job?.deliverable_images,
+          job?.images,
+          job?.photos,
+        ];
+
+        for (const collection of imageCollections) {
+          if (Array.isArray(collection) && collection.length > 0) {
+            const urls = collection
+              .filter((img: any) => img?.url || typeof img === "string")
+              .map((img: any) => (img?.url || img) as string)
+              .filter((url: string) => url && url.startsWith("http"));
+            if (urls.length > 0) {
+              // Prefer rendered/wireframe images (often higher resolution and show the 3D model)
+              designImages = urls.slice(0, 6);
+              break;
+            }
+          }
         }
 
         // Grab address for display
         if (job?.location?.full_address) {
           jobAddress = job.location.full_address;
+        } else if (job?.location?.address) {
+          jobAddress = job.location.address;
         }
 
         // Extract wall area from job measurements if not yet found
         if (!wallSquares && job?.measurements) {
-          const wallSqFt =
+          const wallSqFtRaw =
             job.measurements.wall_area_sq_ft ??
             job.measurements.total_wall_area ??
+            job.measurements.siding_area ??
             null;
-          if (wallSqFt) wallSquares = parseFloat((wallSqFt / 100).toFixed(1));
+          if (wallSqFtRaw) {
+            wallSqft = Math.round(parseFloat(wallSqFtRaw));
+            wallSquares = parseFloat((wallSqft / 100).toFixed(1));
+          }
         }
       }
     } catch (jobErr) {
@@ -205,12 +265,16 @@ serve(async (req) => {
     if (!wallSquares && storedMeasurementsJson) {
       try {
         const mj = storedMeasurementsJson;
-        const wallSqFt =
+        const wallSqFtRaw =
           mj?.structures?.[0]?.areas?.wall ??
           mj?.wall_area_sq_ft ??
           mj?.measurements?.wall_area ??
+          mj?.wall_area ??
           null;
-        if (wallSqFt) wallSquares = parseFloat((wallSqFt / 100).toFixed(1));
+        if (wallSqFtRaw) {
+          wallSqft = Math.round(parseFloat(wallSqFtRaw));
+          wallSquares = parseFloat((wallSqft / 100).toFixed(1));
+        }
       } catch (_) {
         // Non-fatal
       }
@@ -220,8 +284,11 @@ serve(async (req) => {
       JSON.stringify({
         hover_job_id: hoverId,
         siding_materials: sidingMaterials,
+        labor_items: laborItems,
         wall_squares: wallSquares,
+        wall_sqft: wallSqft,
         design_images: designImages,
+        material_total: materialTotal,
         job_address: jobAddress,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -233,8 +300,11 @@ serve(async (req) => {
       JSON.stringify({
         hover_job_id: null,
         siding_materials: [],
+        labor_items: [],
         wall_squares: null,
+        wall_sqft: null,
         design_images: [],
+        material_total: null,
         error: error instanceof Error ? error.message : "Unexpected error",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
