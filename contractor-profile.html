@@ -1108,40 +1108,20 @@
                 </div>
             </div>
 
-            <!-- Project Confirmation Template Card -->
-            <div class="profile-card">
-                <h2><span class="card-icon">📋</span>Project Confirmation Template</h2>
+            <!-- Project Confirmation Templates Card (D-161) — 8-slot grid, one per trade × funding type -->
+            <div class="profile-card" id="pc-templates">
+                <h2><span class="card-icon">📋</span>Project Confirmation Templates</h2>
 
                 <div class="info-box" style="margin-bottom: var(--sp-6);">
-                    Upload your project confirmation PDF template. After a homeowner signs the main contract, OtterQuote sends this document to capture full scope details — structures, colors, materials, skylights, and work authorizations. OtterQuote will auto-fill homeowner name and property address before sending for e-signature via DocuSign.
+                    Upload a project confirmation PDF template for each trade and funding type. After a homeowner signs the main contract, OtterQuote selects the matching template and sends it to capture full scope details — structures, colors, materials, skylights, and work authorizations. OtterQuote auto-fills homeowner name and property address before sending for e-signature via DocuSign.
                 </div>
 
-                <!-- View Mode -->
-                <div id="confirmationTemplateView">
-                    <div class="view-field">
-                        <label>Current Project Confirmation Template</label>
-                        <div class="view-field-value" id="viewConfirmationTemplate">No template uploaded</div>
-                    </div>
+                <div class="info-box" style="margin-bottom: var(--sp-6); background: rgba(245,158,11,0.08); border-left: 3px solid var(--amber);">
+                    <strong>⚠️ Templates are per-trade and per-funding type</strong> — your confirmation docs differ by trade and by insurance vs. retail, just like your contracts. Upload the right template into each slot you use.
                 </div>
 
-                <!-- Upload Section -->
-                <div style="margin-top: var(--sp-6);">
-                    <div class="form-group">
-                        <label class="form-label">Upload Project Confirmation Template PDF</label>
-                        <div class="template-upload-box" onclick="document.getElementById('confirmationTemplateInput').click()">
-                            <label for="confirmationTemplateInput" class="template-upload-label">
-                                <div class="template-upload-icon">📋</div>
-                                <div class="template-upload-text">Click to upload PDF</div>
-                                <div class="template-upload-hint">PDF format only, max 10MB</div>
-                            </label>
-                            <input type="file" id="confirmationTemplateInput" accept=".pdf" onchange="saveProfile('confirmation-template', this)">
-                        </div>
-                    </div>
-                    <div id="confirmationUploadStatus" style="display: none; padding: var(--sp-3); border-radius: 8px; margin-top: var(--sp-3);"></div>
-                </div>
-
-                <div class="info-box" style="margin-top: var(--sp-6); font-size: 0.85rem;">
-                    <strong>No template yet?</strong> Until you upload a template, project confirmation falls back to the current color addendum behavior — color data is captured and you contact the homeowner directly for remaining scope details. Upload your own template to unlock the full two-document flow.
+                <div id="pcTemplatesGrid" style="display: grid; gap: var(--sp-6); margin-top: var(--sp-8);">
+                    <div style="color: var(--slate); font-size: 0.875rem;">Loading templates…</div>
                 </div>
             </div>
 
@@ -1546,63 +1526,8 @@
                     alert('Failed to save changes. Please try again.');
                 }
             } else if (section === 'confirmation-template') {
-                // inputElement is passed as second arg when called from file input onchange
-                const inputElement = arguments[1];
-                if (!inputElement || !inputElement.files.length) return;
-
-                const file = inputElement.files[0];
-                if (file.type !== 'application/pdf') {
-                    alert('Please upload a PDF file.');
-                    return;
-                }
-                if (file.size > 10 * 1024 * 1024) {
-                    alert('File too large. Maximum 10MB.');
-                    return;
-                }
-                if (!contractorRecord || !sb) {
-                    alert('Not connected to database.');
-                    return;
-                }
-
-                try {
-                    const timestamp = Date.now();
-                    const filePath = `${contractorRecord.id}/project_confirmation_template_${timestamp}.pdf`;
-
-                    const { error: uploadError } = await sb.storage
-                        .from('contractor-templates')
-                        .upload(filePath, file, { contentType: 'application/pdf' });
-
-                    if (uploadError) throw uploadError;
-
-                    const { data: urlData } = sb.storage
-                        .from('contractor-templates')
-                        .getPublicUrl(filePath);
-
-                    const { data, error: updateError } = await sb
-                        .from('contractors')
-                        .update({ color_confirmation_template: urlData.publicUrl, updated_at: new Date().toISOString() })
-                        .eq('id', contractorRecord.id)
-                        .select()
-                        .single();
-
-                    if (updateError) throw updateError;
-
-                    contractorRecord = data;
-                    updateConfirmationTemplateView();
-
-                    const statusEl = document.getElementById('confirmationUploadStatus');
-                    statusEl.style.display = 'block';
-                    statusEl.textContent = 'Project confirmation template uploaded successfully!';
-                    statusEl.style.background = 'rgba(16, 185, 129, 0.1)';
-                    statusEl.style.color = '#10b981';
-                } catch (err) {
-                    console.error('Error uploading confirmation template:', err);
-                    const statusEl = document.getElementById('confirmationUploadStatus');
-                    statusEl.style.display = 'block';
-                    statusEl.textContent = 'Failed to upload template. Please try again.';
-                    statusEl.style.background = 'rgba(239, 68, 68, 0.1)';
-                    statusEl.style.color = '#ef4444';
-                }
+                // D-161: single-upload path retired — use uploadPcTemplateFile() per-slot instead
+                console.warn('saveProfile(confirmation-template) called — this path is deprecated (D-161). Use the PC template grid.');
             } else if (section === 'photos') {
                 // Handle photo uploads
                 const ownerPhotoInput = document.getElementById('ownerPhotoInput');
@@ -1702,7 +1627,7 @@
         function updateContractTemplateView() {
             const el = document.getElementById('viewContractTemplate');
             if (contractorRecord && contractorRecord.contract_pdf_url) {
-                el.innerHTML = `<a href="${contractorRecord.contract_pdf_url}" target="_blank" style="color: var(--amber); text-decoration: none;">📄 View uploaded contract</a>
+                el.innerHTML = `<a href="#" onclick="event.preventDefault();viewContractTemplate('${contractorRecord.contract_pdf_url}');" style="color: var(--amber); text-decoration: none;">📄 View uploaded contract</a>
                     <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: var(--sp-2);">(Upload a new file to replace)</span>`;
                 document.getElementById('contractAnchorHelp').style.display = 'block';
             } else {
@@ -1710,16 +1635,7 @@
             }
         }
 
-        function updateConfirmationTemplateView() {
-            const el = document.getElementById('viewConfirmationTemplate');
-            if (!el) return;
-            if (contractorRecord && contractorRecord.color_confirmation_template) {
-                el.innerHTML = `<a href="${contractorRecord.color_confirmation_template}" target="_blank" style="color: var(--amber); text-decoration: none;">📋 View uploaded project confirmation template</a>
-                    <span style="font-size: 0.8rem; color: var(--slate); margin-left: var(--sp-2);">(Upload a new file to replace)</span>`;
-            } else {
-                el.textContent = 'No template uploaded';
-            }
-        }
+        // updateConfirmationTemplateView() retired — loadPcTemplates() now renders the 8-slot grid (D-161)
 
         // Add certification to database
         async function addCertification() {
@@ -1898,6 +1814,179 @@
             }
         }
 
+        // ── Project Confirmation Templates (D-161) — 8-slot grid ──
+
+        const PC_TEMPLATE_SLOTS = [
+            { trade: 'roofing',  fundingType: 'insurance', label: 'Roofing — Insurance' },
+            { trade: 'roofing',  fundingType: 'retail',    label: 'Roofing — Retail' },
+            { trade: 'siding',   fundingType: 'insurance', label: 'Siding — Insurance' },
+            { trade: 'siding',   fundingType: 'retail',    label: 'Siding — Retail' },
+            { trade: 'gutters',  fundingType: 'insurance', label: 'Gutters — Insurance' },
+            { trade: 'gutters',  fundingType: 'retail',    label: 'Gutters — Retail' },
+            { trade: 'windows',  fundingType: 'insurance', label: 'Windows — Insurance' },
+            { trade: 'windows',  fundingType: 'retail',    label: 'Windows — Retail' },
+        ];
+
+        async function loadPcTemplates() {
+            const gridContainer = document.getElementById('pcTemplatesGrid');
+            if (!gridContainer) return;
+
+            let html = '<div class="template-slots-grid">';
+
+            // Fetch fresh from DB (avoids stale local state after upload)
+            let pcTemplates = {};
+            if (contractorRecord && sb && !CONFIG.DEMO_MODE) {
+                try {
+                    const { data } = await sb.from('contractors')
+                        .select('color_confirmation_template')
+                        .eq('id', contractorRecord.id)
+                        .single();
+                    pcTemplates = data?.color_confirmation_template || {};
+                    // Keep local record in sync
+                    if (contractorRecord) contractorRecord.color_confirmation_template = pcTemplates;
+                } catch (err) {
+                    console.error('Error loading PC templates:', err);
+                }
+            }
+
+            for (const slot of PC_TEMPLATE_SLOTS) {
+                const slotKey   = `${slot.trade}/${slot.fundingType}`;
+                const inputId   = `pc_${slot.trade}_${slot.fundingType}_input`;
+                const slotData  = pcTemplates[slotKey];
+
+                if (slotData && slotData.file_url) {
+                    const uploadDate = slotData.uploaded_at
+                        ? new Date(slotData.uploaded_at).toLocaleDateString()
+                        : 'Unknown date';
+                    // Derive a friendly filename from the path
+                    const fileName = slotData.file_url.split('/').pop().split('?')[0] || 'template.pdf';
+                    html += `
+                        <div class="template-slot">
+                            <div class="template-slot-header">${slot.label}</div>
+                            <div class="template-file-display">
+                                <div class="template-file-name">${fileName}</div>
+                                <div class="template-file-date">Uploaded: ${uploadDate}</div>
+                            </div>
+                            <div style="display: flex; gap: var(--sp-3); flex-wrap: wrap;">
+                                <button class="btn-small btn-small-primary" onclick="viewPcTemplate('${slotData.file_url.replace(/'/g, "\\'")}')">View</button>
+                                <button class="btn-small btn-small-secondary" onclick="replacePcTemplate('${slotKey}', '${inputId}')">Replace</button>
+                            </div>
+                            <input type="file" id="${inputId}" accept=".pdf" style="display:none" onchange="uploadPcTemplateFile('${slotKey}', this)">
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="template-slot">
+                            <div class="template-slot-header">${slot.label}</div>
+                            <div class="template-slot-subtext">No template uploaded</div>
+                            <div class="template-upload-box" onclick="document.getElementById('${inputId}').click()">
+                                <label for="${inputId}" class="template-upload-label">
+                                    <div class="template-upload-icon">📋</div>
+                                    <div class="template-upload-text">Upload Template</div>
+                                    <div class="template-upload-hint">PDF format, max 10MB</div>
+                                </label>
+                                <input type="file" id="${inputId}" accept=".pdf" onchange="uploadPcTemplateFile('${slotKey}', this)">
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            html += '</div>';
+            gridContainer.innerHTML = html;
+        }
+
+        // View a PC template — bucket is private so mint a signed URL
+        async function viewPcTemplate(fileUrl) {
+            if (!fileUrl) { alert('No file available for this slot.'); return; }
+            try {
+                // Extract storage path — handles both full public URL and bare path
+                const pathMatch = fileUrl.match(/contractor-templates\/(.+?)(\?|$)/);
+                const storagePath = pathMatch
+                    ? decodeURIComponent(pathMatch[1])
+                    : fileUrl; // already a bare path
+                const { data, error } = await sb.storage
+                    .from('contractor-templates')
+                    .createSignedUrl(storagePath, 3600);
+                if (error || !data?.signedUrl) {
+                    console.error('Signed URL generation failed:', error);
+                    alert('Unable to open template. Please try uploading again or contact support.');
+                    return;
+                }
+                window.open(data.signedUrl, '_blank');
+            } catch (err) {
+                console.error('viewPcTemplate error:', err);
+                alert('Unable to open template. Please try again.');
+            }
+        }
+
+        // Trigger replace — creates a hidden file input if needed
+        function replacePcTemplate(slotKey, inputId) {
+            let input = document.getElementById(inputId);
+            if (!input) {
+                input = document.createElement('input');
+                input.type = 'file';
+                input.id = inputId;
+                input.accept = '.pdf';
+                input.style.display = 'none';
+                input.onchange = function() { uploadPcTemplateFile(slotKey, this); };
+                document.body.appendChild(input);
+            }
+            input.click();
+        }
+
+        // Upload a PC template into a specific slot
+        async function uploadPcTemplateFile(slotKey, inputElement) {
+            if (!inputElement.files.length) return;
+            const file = inputElement.files[0];
+            if (file.type !== 'application/pdf') { alert('Please upload a PDF file.'); return; }
+            if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+            if (!contractorRecord || !sb) { alert('Not connected to database.'); return; }
+
+            try {
+                // Store ONLY the path — bucket is private; public URLs would 404
+                const [trade, funding] = slotKey.split('/');
+                const timestamp = Date.now();
+                const filePath = `${contractorRecord.id}/pc_${trade}_${funding}_${timestamp}.pdf`;
+
+                const { error: uploadError } = await sb.storage
+                    .from('contractor-templates')
+                    .upload(filePath, file, { contentType: 'application/pdf' });
+                if (uploadError) throw uploadError;
+
+                // Merge new slot into existing JSONB (fetch fresh to avoid overwriting concurrent changes)
+                const { data: fresh } = await sb.from('contractors')
+                    .select('color_confirmation_template')
+                    .eq('id', contractorRecord.id)
+                    .single();
+                const existing = fresh?.color_confirmation_template || {};
+                const updated  = {
+                    ...existing,
+                    [slotKey]: {
+                        file_url:    filePath,
+                        uploaded_at: new Date().toISOString(),
+                    },
+                };
+
+                const { data, error: updateError } = await sb.from('contractors')
+                    .update({
+                        color_confirmation_template:  updated,
+                        pc_template_migration_pending: false,  // contractor has actively managed slots — no longer pending
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', contractorRecord.id)
+                    .select()
+                    .single();
+                if (updateError) throw updateError;
+
+                contractorRecord = data;
+                await loadPcTemplates();
+            } catch (err) {
+                console.error('Error uploading PC template:', err);
+                alert('Failed to upload template. Please try again.');
+            }
+        }
+
         // ── Load and Display Contract Templates (IMP-009) ──
         async function loadContractTemplates() {
             const templateSlots = [
@@ -2001,9 +2090,31 @@
             gridContainer.innerHTML = html;
         }
 
-        // View contract template
-        function viewContractTemplate(fileUrl) {
-            window.open(fileUrl, '_blank');
+        // View contract template — bucket is private, so mint a signed URL at click time
+        async function viewContractTemplate(fileUrl) {
+            if (!fileUrl) {
+                alert('No file URL available for this template.');
+                return;
+            }
+            try {
+                // Extract storage path after /contractor-templates/ (works for both full public URLs and bare paths)
+                const pathMatch = fileUrl.match(/contractor-templates\/(.+?)(\?|$)/);
+                const storagePath = pathMatch
+                    ? decodeURIComponent(pathMatch[1])
+                    : fileUrl; // already a path
+                const { data, error } = await sb.storage
+                    .from('contractor-templates')
+                    .createSignedUrl(storagePath, 3600); // 1 hour
+                if (error || !data?.signedUrl) {
+                    console.error('Signed URL generation failed:', error);
+                    alert('Unable to open template. Please try uploading again or contact support.');
+                    return;
+                }
+                window.open(data.signedUrl, '_blank');
+            } catch (err) {
+                console.error('viewContractTemplate error:', err);
+                alert('Unable to open template. Please try again.');
+            }
         }
 
         // Replace contract template
@@ -2218,6 +2329,7 @@
             // Load documents and templates after contractor record is loaded
             await loadDocuments();
             await loadContractTemplates();
+            await loadPcTemplates();
         });
     </script>
 </body>

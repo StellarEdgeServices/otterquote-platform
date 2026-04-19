@@ -814,7 +814,7 @@
         // "View in Hover" link
         if (data.hover_job_id) {
           if (viewLink) {
-            viewLink.href = 'https://app.hover.to/jobs/' + data.hover_job_id;
+            viewLink.href = 'https://hover.to/jobs/' + data.hover_job_id;
             viewLink.style.display = 'inline-block';
           }
         }
@@ -872,7 +872,7 @@
         } else if (data.wall_squares || data.design_images?.length > 0) {
           // Measurements available but no product selections
           statusEl.innerHTML = '<span style="color:#64748B;">Measurements loaded. '
-            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://app.hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#14B8A6;">open your project in Hover ↗</a> and create an Estimate.' : '')
+            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#14B8A6;">open your project in Hover ↗</a> and create an Estimate.' : '')
             + '</span>';
         } else if (data.message) {
           statusEl.innerHTML = '<span style="color:#64748B;">' + data.message + '</span>';

@@ -268,6 +268,76 @@ async function fetchTemplateFromUrl(url: string): Promise<string> {
   return base64EncodeBinary(new Uint8Array(arrayBuffer));
 }
 
+/**
+ * Fetch a PC template from Supabase Storage using a bare path.
+ * Handles both bare paths (stored post-D-161) and full public URLs
+ * (stored pre-migration — extracts path via regex for backward compat).
+ *
+ * D-161: contractor-templates bucket is private; public URLs 404.
+ * All new uploads store only the path.
+ */
+async function getPcTemplateFromStorage(supabase: any, fileUrl: string): Promise<string> {
+  // Resolve bare path vs full URL (backward compat for pre-migration data)
+  let storagePath: string;
+  const pathMatch = fileUrl.match(/contractor-templates\/(.+?)(\?|$)/);
+  if (pathMatch) {
+    storagePath = decodeURIComponent(pathMatch[1]);
+  } else {
+    // Assume it's already a bare path (post-migration uploads)
+    storagePath = fileUrl;
+  }
+
+  console.log(`Fetching PC template from storage: contractor-templates/${storagePath}`);
+  const { data, error } = await supabase.storage
+    .from("contractor-templates")
+    .download(storagePath);
+
+  if (error) {
+    throw new Error(`PC template storage error (${storagePath}): ${error.message}`);
+  }
+  if (!data) {
+    throw new Error(`No data returned from storage for PC template: ${storagePath}`);
+  }
+
+  const arrayBuffer = await data.arrayBuffer();
+  return base64EncodeBinary(new Uint8Array(arrayBuffer));
+}
+
+/**
+ * Select the best PC template slot from the contractor's color_confirmation_template JSONB.
+ * D-161 slot key format: "{trade}/{funding_type}" (lowercase, e.g. "roofing/insurance").
+ *
+ * Selection order:
+ *   1. Exact match on trade + funding_type
+ *   2. Fallback to roofing/insurance
+ *   3. If neither exists, returns null (caller must handle gracefully)
+ */
+function selectPcTemplateSlot(
+  pcTemplateJsonb: Record<string, any> | null | undefined,
+  trade: string,
+  fundingType: string
+): { file_url: string; uploaded_at: string } | null {
+  if (!pcTemplateJsonb || typeof pcTemplateJsonb !== "object") return null;
+
+  const primaryKey  = `${trade.toLowerCase()}/${fundingType.toLowerCase()}`;
+  const fallbackKey = "roofing/insurance";
+
+  const primary  = pcTemplateJsonb[primaryKey];
+  if (primary?.file_url) {
+    console.log(`PC template: using slot ${primaryKey}`);
+    return primary;
+  }
+
+  const fallback = pcTemplateJsonb[fallbackKey];
+  if (fallback?.file_url) {
+    console.warn(`PC template: slot ${primaryKey} missing — falling back to ${fallbackKey}`);
+    return fallback;
+  }
+
+  console.warn(`PC template: no usable slot found (tried ${primaryKey} and ${fallbackKey})`);
+  return null;
+}
+
 function base64EncodeBinary(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.byteLength; i++) {
@@ -1637,7 +1707,7 @@ async function handleLegacyFlow(
     if (document_type === "project_confirmation") {
       const { data: fetchedClaim } = await supabase
         .from("claims")
-        .select("project_confirmation, property_address")
+        .select("project_confirmation, property_address, selected_trades, funding_type, job_type")
         .eq("id", claim_id)
         .single();
       claimData = fetchedClaim;
@@ -1655,6 +1725,7 @@ async function handleLegacyFlow(
   let templateBase64: string;
 
   if (document_type === "project_confirmation") {
+    // Ensure contractor data with JSONB PC template column is loaded
     const templateContractor = contractorData || await (async () => {
       const { data } = await supabase
         .from("contractors")
@@ -1664,13 +1735,42 @@ async function handleLegacyFlow(
       return data;
     })();
 
-    const templateUrl = templateContractor?.color_confirmation_template;
-    if (!templateUrl) {
+    // Resolve trade + funding type from claim data
+    const trade: string = (
+      claimData?.selected_trades?.[0] ||
+      (autoFields?.trade_type as string | undefined)
+    )?.toLowerCase() || "roofing";
+
+    const rawFunding: string = (
+      claimData?.funding_type ||
+      claimData?.job_type ||
+      (autoFields?.funding_type as string | undefined) ||
+      ""
+    ).toLowerCase();
+    // Normalize: anything containing "insurance" → "insurance", else "retail"
+    const fundingType: string = rawFunding.includes("insurance") ? "insurance" : "retail";
+
+    // Select the best-matching PC template slot
+    const slot = selectPcTemplateSlot(
+      templateContractor?.color_confirmation_template,
+      trade,
+      fundingType
+    );
+
+    if (!slot) {
+      // No PC template available — log a warning and omit the PC document.
+      // The envelope still generates (non-fatal per D-161 spec).
+      console.warn(
+        `[D-161] No project confirmation template found for contractor ${contractor_id} ` +
+        `(trade=${trade}, fundingType=${fundingType}). Omitting PC document from envelope.`
+      );
       throw new Error(
-        "No project confirmation template on file. The contractor must upload a Project Confirmation Template in their profile before this document can be created."
+        "No project confirmation template on file for this trade and funding type. " +
+        "The contractor must upload a Project Confirmation Template in their profile before this document can be created."
       );
     }
-    templateBase64 = await fetchTemplateFromUrl(templateUrl);
+
+    templateBase64 = await getPcTemplateFromStorage(supabase, slot.file_url);
   } else {
     templateBase64 = await getTemplateFromStorage(supabase, contractor_id, document_type);
   }

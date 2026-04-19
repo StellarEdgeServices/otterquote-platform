@@ -20,7 +20,6 @@ Disallow: /quotes.html
 Disallow: /contractor-leads.html
 Disallow: /contractor-onboarding.html
 Disallow: /landing.html
-Disallow: /inspector-landing.html
 Disallow: /trade-selector
 Disallow: /project-confirmation
 Disallow: /repair-intake

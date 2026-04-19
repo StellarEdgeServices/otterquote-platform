@@ -642,12 +642,17 @@
                     <div class="summary-card-label">Total Contractors</div>
                     <div class="summary-card-value" id="totalCount">—</div>
                 </div>
+                <div class="summary-card" style="border-left: 4px solid #f59e0b;">
+                    <div class="summary-card-label" style="color: #92400e;">⚠️ PC Template Nudge</div>
+                    <div class="summary-card-value" id="pcMigrationCount" style="color: #d97706;">—</div>
+                </div>
             </div>
 
             <!-- Filter Tabs -->
             <div class="filter-tabs">
                 <button class="filter-tab active" onclick="setFilter('pending_approval')">Pending Review</button>
                 <button class="filter-tab" onclick="setFilter('all')">All Contractors</button>
+                <button class="filter-tab" onclick="setFilter('pc_migration_pending')" style="border-color: #f59e0b; color: #92400e;">⚠️ Needs PC Template Update</button>
             </div>
 
             <!-- Contractors List -->
@@ -778,10 +783,12 @@
             const pending = contractors.filter(c => c.status === 'pending_approval').length;
             const active = contractors.filter(c => c.status === 'active').length;
             const total = contractors.length;
+            const pcMigration = contractors.filter(c => c.pc_template_migration_pending === true).length;
 
             document.getElementById('pendingCount').textContent = pending;
             document.getElementById('activeCount').textContent = active;
             document.getElementById('totalCount').textContent = total;
+            document.getElementById('pcMigrationCount').textContent = pcMigration;
         }
 
         function setFilter(filter) {
@@ -800,6 +807,8 @@
 
             if (currentFilter === 'pending_approval') {
                 filtered = contractors.filter(c => c.status === 'pending_approval');
+            } else if (currentFilter === 'pc_migration_pending') {
+                filtered = contractors.filter(c => c.pc_template_migration_pending === true);
             }
 
             if (filtered.length === 0) {
@@ -837,6 +846,7 @@
                             <div class="contractor-header-badges">
                                 <span class="status-badge status-badge-${c.status}">${c.status.replace(/_/g, ' ')}</span>
                                 ${trades.map(t => `<span class="trade-badge">${t}</span>`).join('')}
+                                ${c.pc_template_migration_pending ? `<span style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ PC Template</span>` : ''}
                                 <span style="font-size: 1.2rem;">▼</span>
                             </div>
                         </div>
