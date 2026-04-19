@@ -143,7 +143,7 @@ serve(async (req) => {
             // Create a notification for the homeowner
             const { data: claim } = await supabase
               .from("claims")
-              .select("user_id")
+              .select("user_id, funding_type, trades, siding_bid_released_at")
               .eq("id", order.claim_id)
               .single();
 
@@ -156,6 +156,44 @@ serve(async (req) => {
                   "Your property measurements from Hover are now available. You can proceed with submitting for contractor bids.",
                 claim_id: order.claim_id,
               });
+            }
+
+            // ── D-164: Check siding design gate immediately on measurement completion ──
+            // The homeowner typically hasn't designed in Hover yet at this point, but
+            // calling the check function is cheap and handles the edge case where the
+            // design was done before measurements (or on another account).
+            // The primary release mechanism is the 30-min polling cron job.
+            const isRetailSiding =
+              claim?.funding_type === "cash" &&
+              Array.isArray(claim?.trades) &&
+              claim.trades.some((t: string) => t.toLowerCase().includes("siding")) &&
+              !claim?.siding_bid_released_at;
+
+            if (isRetailSiding) {
+              console.log(
+                `D-164: Retail siding claim ${order.claim_id} — checking design gate immediately...`
+              );
+              try {
+                const checkUrl =
+                  Deno.env.get("SUPABASE_URL")!.replace(
+                    ".supabase.co",
+                    ".functions.supabase.co"
+                  ) + "/functions/v1/check-siding-design-completion";
+
+                const checkRes = await fetch(checkUrl, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!}`,
+                  },
+                  body: JSON.stringify({ claim_id: order.claim_id }),
+                });
+                const checkData = await checkRes.json();
+                console.log(`D-164: gate check result for claim ${order.claim_id}:`, JSON.stringify(checkData));
+              } catch (gateErr) {
+                // Non-fatal — the 30-min cron will catch it
+                console.warn("D-164: Immediate gate check failed (non-fatal):", gateErr);
+              }
             }
           } else {
             console.error(

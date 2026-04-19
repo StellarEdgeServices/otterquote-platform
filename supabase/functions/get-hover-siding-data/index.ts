@@ -12,6 +12,13 @@
  *   - hover_job_id        — Hover job ID for direct link
  *   - job_address         — property address from Hover
  *
+ * D-164 design-completeness gate fields (all four must be non-empty for release):
+ *   - design_manufacturer — e.g. "James Hardie", "LP SmartSide", "CertainTeed"
+ *   - design_profile      — e.g. "Dutch Lap", "Board and Batten", "Clapboard"
+ *   - design_color        — any non-empty color value found in siding items
+ *   - design_trim         — any trim/fascia/corner item found in siding items
+ *   - design_complete     — boolean: true when all four are present
+ *
  * Gracefully returns partial data if some Hover API calls fail.
  * Never errors out — always returns 200 with whatever we could fetch.
  *
@@ -29,6 +36,123 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// ── D-164: Known siding manufacturer name fragments ──────────────────────────
+const KNOWN_MANUFACTURERS = [
+  "james hardie",
+  "hardie",
+  "lp smartside",
+  "smartside",
+  "certainteed",
+  "vinyl",
+  "alside",
+  "mastic",
+  "revere",
+  "gentek",
+  "provia",
+  "fiber cement",
+  "wood",
+  "aluminum",
+  "steel",
+];
+
+// ── D-164: Known siding profile/style name fragments ────────────────────────
+const KNOWN_PROFILES = [
+  "dutch lap",
+  "board and batten",
+  "board & batten",
+  "clapboard",
+  "beveled",
+  "shakes",
+  "shingle",
+  "smooth panel",
+  "lap siding",
+  "lap panel",
+  "beaded",
+  "v-groove",
+  "vertical",
+  "horizontal",
+  "plank",
+];
+
+// ── D-164: Trim indicator fragments ──────────────────────────────────────────
+const TRIM_INDICATORS = [
+  "trim",
+  "fascia",
+  "corner",
+  "j-trim",
+  "j trim",
+  "frieze",
+  "soffit",
+  "rake",
+  "starter strip",
+  "finish trim",
+  "window trim",
+  "door trim",
+];
+
+/**
+ * Extract D-164 design-completeness attributes from the raw list of siding items.
+ * Returns: { manufacturer, profile, color, trim, complete }
+ */
+function extractDesignAttributes(sidingItems: any[]): {
+  manufacturer: string | null;
+  profile: string | null;
+  color: string | null;
+  trim: string | null;
+  complete: boolean;
+} {
+  let manufacturer: string | null = null;
+  let profile: string | null = null;
+  let color: string | null = null;
+  let trim: string | null = null;
+
+  for (const item of sidingItems) {
+    const productName = (item.name || item.product_name || item.description || "").toLowerCase();
+    const groupName   = (item.listItemGroupName || item.list_item_group_name || "").toLowerCase();
+    const combined    = `${productName} ${groupName}`;
+    const itemColor   = (item.color || "").trim();
+
+    // ── Manufacturer ───────────────────────────────────────────────────
+    if (!manufacturer) {
+      for (const mfr of KNOWN_MANUFACTURERS) {
+        if (combined.includes(mfr)) {
+          // Return the display name (capitalize first letters of each segment)
+          manufacturer = item.listItemGroupName || item.list_item_group_name || item.name || item.product_name || mfr;
+          break;
+        }
+      }
+    }
+
+    // ── Siding Profile ─────────────────────────────────────────────────
+    if (!profile) {
+      for (const prof of KNOWN_PROFILES) {
+        if (combined.includes(prof)) {
+          profile = item.name || item.product_name || item.description || prof;
+          break;
+        }
+      }
+    }
+
+    // ── Color ──────────────────────────────────────────────────────────
+    if (!color && itemColor.length > 0) {
+      color = itemColor;
+    }
+
+    // ── Trim ───────────────────────────────────────────────────────────
+    if (!trim) {
+      for (const indicator of TRIM_INDICATORS) {
+        if (combined.includes(indicator)) {
+          trim = item.name || item.product_name || item.description || item.listItemGroupName || indicator;
+          break;
+        }
+      }
+    }
+  }
+
+  const complete = !!(manufacturer && profile && color && trim);
+  return { manufacturer, profile, color, trim, complete };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -96,6 +220,12 @@ serve(async (req) => {
           wall_sqft: null,
           design_images: [],
           material_total: null,
+          // D-164 design-completeness fields
+          design_manufacturer: null,
+          design_profile: null,
+          design_color: null,
+          design_trim: null,
+          design_complete: false,
           message: "No Hover job linked to this claim",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -114,6 +244,12 @@ serve(async (req) => {
           wall_sqft: null,
           design_images: [],
           material_total: null,
+          // D-164 design-completeness fields
+          design_manufacturer: null,
+          design_profile: null,
+          design_color: null,
+          design_trim: null,
+          design_complete: false,
           message: "Hover authentication unavailable — view in Hover directly",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -126,6 +262,7 @@ serve(async (req) => {
     let wallSquares: number | null = null;
     let wallSqft: number | null = null;
     let materialTotal: number | null = null;
+    let allSidingItems: any[] = []; // Raw items used for design attribute extraction
 
     try {
       const mlResponse = await fetch(
@@ -147,6 +284,9 @@ serve(async (req) => {
           const tt = (item.tradeType || item.trade_type || "").toUpperCase();
           return tt.includes("SIDING") || tt.includes("WALL");
         });
+
+        // Keep all siding items for D-164 design attribute extraction
+        allSidingItems = sidingItems;
 
         // Map to rich output format
         const mapItem = (item: any) => ({
@@ -280,6 +420,9 @@ serve(async (req) => {
       }
     }
 
+    // ── Step 6: D-164 — Extract design-completeness attributes ────
+    const designAttrs = extractDesignAttributes(allSidingItems);
+
     return new Response(
       JSON.stringify({
         hover_job_id: hoverId,
@@ -290,6 +433,12 @@ serve(async (req) => {
         design_images: designImages,
         material_total: materialTotal,
         job_address: jobAddress,
+        // D-164 design-completeness fields
+        design_manufacturer: designAttrs.manufacturer,
+        design_profile:      designAttrs.profile,
+        design_color:        designAttrs.color,
+        design_trim:         designAttrs.trim,
+        design_complete:     designAttrs.complete,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -305,6 +454,11 @@ serve(async (req) => {
         wall_sqft: null,
         design_images: [],
         material_total: null,
+        design_manufacturer: null,
+        design_profile: null,
+        design_color: null,
+        design_trim: null,
+        design_complete: false,
         error: error instanceof Error ? error.message : "Unexpected error",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -1194,58 +1194,23 @@
             <div class="form-section">
               <div class="section-header">
                 <h2>🏠 Siding Details</h2>
-                <p class="section-subtitle">Confirm your siding material, color, and project scope.</p>
+                <p class="section-subtitle">Confirm your siding project scope and acknowledge the disclosures below.</p>
               </div>
 
-              <div class="form-grid">
-                <div class="form-group">
-                  <label class="form-label" for="sidingMaterial">Siding Material</label>
-                  <select id="sidingMaterial" name="sidingMaterial" class="form-select">
-                    <option value="">Select material…</option>
-                    <option value="Vinyl">Vinyl</option>
-                    <option value="James Hardie">James Hardie (Fiber Cement)</option>
-                    <option value="LP SmartSide">LP SmartSide (Engineered Wood)</option>
-                    <option value="Wood">Wood / Cedar</option>
-                    <option value="Aluminum">Aluminum</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label" for="sidingProfile">Siding Profile / Style</label>
-                  <select id="sidingProfile" name="sidingProfile" class="form-select">
-                    <option value="">Select profile…</option>
-                    <option value="Dutch Lap">Dutch Lap</option>
-                    <option value="Clapboard">Clapboard / Beveled</option>
-                    <option value="Board and Batten">Board and Batten</option>
-                    <option value="Shakes">Shakes / Shingles</option>
-                    <option value="Smooth Panel">Smooth Panel</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label required" for="sidingColor">Siding Color / Color Name</label>
-                <input type="text" id="sidingColor" name="sidingColor" class="form-input"
-                  placeholder="e.g., Sandstone Beige, Arctic White, Autumn Red…">
-                <p class="form-hint">Enter the exact color name from the manufacturer's catalog.</p>
-              </div>
-
-              <div class="form-grid">
-                <div class="form-group">
-                  <label class="form-label" for="trimColorType">Trim Color</label>
-                  <select id="trimColorType" name="trimColorType" class="form-select" onchange="handleTrimColorChange()">
-                    <option value="">Select…</option>
-                    <option value="Same as siding">Same as siding</option>
-                    <option value="Other">Different color</option>
-                  </select>
-                  <div id="trimColorOtherGroup" style="display:none; margin-top:var(--sp-2);">
-                    <input type="text" id="trimColorOther" name="trimColorOther" class="form-input"
-                      placeholder="Trim color name…">
+              <!-- D-164/D-158 info callout: manufacturer/profile/color/trim captured pre-bid in Hover -->
+              <div class="callout callout-info" style="margin-bottom:var(--sp-5);">
+                <div class="callout-icon">ℹ️</div>
+                <div>
+                  <div class="callout-title">Siding design already locked in</div>
+                  <div class="callout-description">
+                    Your manufacturer, profile, color, and trim selections were captured in Hover before bids were released.
+                    Contractors bid on those exact specifications — you don't need to re-enter them here.
+                    The fields below cover scope and installation details that don't affect the bid price.
                   </div>
                 </div>
+              </div>
 
+              <div class="form-grid">
                 <div class="form-group">
                   <label class="form-label" for="soffitFascia">Soffit &amp; Fascia</label>
                   <select id="soffitFascia" name="soffitFascia" class="form-select">
@@ -1255,19 +1220,19 @@
                     <option value="Damaged Only">Included — damaged areas only</option>
                   </select>
                 </div>
-              </div>
 
-              <div class="form-group">
-                <label class="form-label" for="windowWraps">Window Wraps</label>
-                <select id="windowWraps" name="windowWraps" class="form-select" onchange="handleWindowWrapsChange()">
-                  <option value="">Select…</option>
-                  <option value="Included - All">Included — all windows</option>
-                  <option value="Included - Damaged Only">Included — damaged windows only</option>
-                  <option value="Not Included">Not included</option>
-                </select>
-                <div id="windowWrapsColorGroup" style="display:none; margin-top:var(--sp-2);">
-                  <input type="text" id="windowWrapsColor" name="windowWrapsColor" class="form-input"
-                    placeholder="Window wrap color…">
+                <div class="form-group">
+                  <label class="form-label" for="windowWraps">Window Wraps</label>
+                  <select id="windowWraps" name="windowWraps" class="form-select" onchange="handleWindowWrapsChange()">
+                    <option value="">Select…</option>
+                    <option value="Included - All">Included — all windows</option>
+                    <option value="Included - Damaged Only">Included — damaged windows only</option>
+                    <option value="Not Included">Not included</option>
+                  </select>
+                  <div id="windowWrapsColorGroup" style="display:none; margin-top:var(--sp-2);">
+                    <input type="text" id="windowWrapsColor" name="windowWrapsColor" class="form-input"
+                      placeholder="Window wrap color…">
+                  </div>
                 </div>
               </div>
 
@@ -1915,11 +1880,8 @@
 
         // ── Siding (only populated when siding is an active trade) ──
         ...(hasSiding ? {
-          sidingMaterial:        getSelectVal('sidingMaterial')        || '',
-          sidingProfile:         getSelectVal('sidingProfile')         || '',
-          sidingColor:           getInputVal('sidingColor')            || '',
-          trimColorType:         getSelectVal('trimColorType')         || '',
-          trimColorOther:        getInputVal('trimColorOther')         || '',
+          // D-164/D-158 amendment: sidingMaterial, sidingProfile, sidingColor, trimColor
+          // are captured pre-bid in Hover and NOT re-entered on this form.
           soffitFascia:          getSelectVal('soffitFascia')          || '',
           windowWraps:           getSelectVal('windowWraps')           || '',
           windowWrapsColor:      getInputVal('windowWrapsColor')       || '',
@@ -2016,15 +1978,10 @@
       setInput('exclusions',    data.exclusions);
       setInput('projectNotes',  data.projectNotes);
 
-      // ── Siding ──
-      if (data.sidingMaterial) {
+      // ── Siding ── (D-164/D-158 amendment: sidingMaterial/sidingProfile/sidingColor/trimColor
+      // are captured pre-bid in Hover — not on this form. Only restore scope + disclosure fields.)
+      if (data.soffitFascia || data.windowWraps || data.rottenSheathing) {
         const setSelectById = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
-        setSelectById('sidingMaterial',    data.sidingMaterial);
-        setSelectById('sidingProfile',     data.sidingProfile);
-        setInput('sidingColor',            data.sidingColor);
-        setSelectById('trimColorType',     data.trimColorType);
-        setInput('trimColorOther',         data.trimColorOther);
-        if (data.trimColorType === 'Other') handleTrimColorChange();
         setSelectById('soffitFascia',      data.soffitFascia);
         setSelectById('windowWraps',       data.windowWraps);
         setInput('windowWrapsColor',       data.windowWrapsColor);

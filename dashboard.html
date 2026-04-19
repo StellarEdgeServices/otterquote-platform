@@ -1524,38 +1524,67 @@
         `; // end template literal
         }).join(''); // end items.map
 
-        // ── Siding Design Prompt ─────────────────────────────────────────
-        // For siding claims where Hover measurements are complete, guide the
-        // homeowner to select specific products in Hover so contractors see
-        // their brand/color/quantity selections in the bid form.
+        // ── D-164: Siding Design Gate CTA ────────────────────────────────────
+        // Retail siding bids are held until the homeowner completes their full
+        // Hover design (manufacturer + profile + color + trim).
         const claimTrades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
-        const claimHasSiding = claimTrades.some(t => (t || '').toLowerCase().includes('siding'));
-        if (claimHasSiding && currentClaim.has_measurements) {
-          // Find hover_job_id from measurements_filename if available
+        const claimHasSiding    = claimTrades.some(t => (t || '').toLowerCase().includes('siding'));
+        const isRetailFunding   = currentClaim.funding_type === 'cash';
+        const sidingReleased    = !!currentClaim.siding_bid_released_at;
+
+        if (claimHasSiding && isRetailFunding) {
+          // Resolve Hover job link (hover.to/jobs/{id} — NOT app.hover.to per Session 238 fix)
           let hoverJobId = null;
-          const mf = currentClaim.measurements_filename || '';
-          const mMatch = mf.match(/hover[_-](\d{6,})[_-]/) || mf.match(/job[_-](\d{6,})/i) || mf.match(/(\d{6,})/);
-          if (mMatch) hoverJobId = mMatch[1];
+          if (hoverOrder?.hover_job_id) {
+            hoverJobId = hoverOrder.hover_job_id;
+          } else {
+            const mf = currentClaim.measurements_filename || '';
+            const mMatch = mf.match(/hover[_-](\d{6,})[_-]/) || mf.match(/job[_-](\d{6,})/i) || mf.match(/(\d{6,})/);
+            if (mMatch) hoverJobId = mMatch[1];
+          }
+          const hoverLink = hoverJobId ? `https://hover.to/jobs/${hoverJobId}` : 'https://hover.to';
 
-          const hoverLink = hoverJobId
-            ? 'https://hover.to/jobs/' + hoverJobId
-            : 'https://hover.to';
+          const ctaDiv = document.createElement('div');
 
-          const designPrompt = document.createElement('div');
-          designPrompt.style.cssText = 'margin-top:1rem;background:#F0FDF4;border:1px solid #86EFAC;border-radius:0.75rem;padding:1rem 1.25rem;display:flex;align-items:flex-start;gap:0.875rem;';
-          designPrompt.innerHTML = `
-            <div style="font-size:1.5rem;flex-shrink:0;">🎨</div>
-            <div style="flex:1;">
-              <div style="font-weight:700;color:#166534;font-size:0.9rem;margin-bottom:0.25rem;">Customize your siding design in Hover</div>
-              <div style="font-size:0.82rem;color:#15803D;margin-bottom:0.75rem;">Your measurements are ready. Open your Hover project to select specific siding brands, colors, and products — like James Hardie HardiePlank in Arctic White. Contractors will see your exact product specifications in their bids, including the amount of each material needed.</div>
-              <a href="${hoverLink}" target="_blank" rel="noopener"
-                 style="display:inline-block;background:#166534;color:#fff;font-size:0.82rem;font-weight:600;text-decoration:none;padding:6px 14px;border-radius:0.5rem;transition:background 0.2s;"
-                 onmouseover="this.style.background='#14532D'" onmouseout="this.style.background='#166534'">
-                Open My Design in Hover ↗
-              </a>
-            </div>
-          `;
-          container.appendChild(designPrompt);
+          if (!sidingReleased) {
+            // ── Gate NOT clear: prominent CTA card ───────────────────────
+            ctaDiv.style.cssText = 'margin-top:1.25rem;background:linear-gradient(135deg,#0f2942 0%,#0d3151 100%);border:2px solid var(--amber,#F59E0B);border-radius:0.875rem;padding:1.25rem 1.5rem;';
+            ctaDiv.innerHTML = `
+              <div style="display:flex;align-items:flex-start;gap:1rem;">
+                <div style="font-size:2rem;flex-shrink:0;line-height:1;">🏠</div>
+                <div style="flex:1;">
+                  <div style="font-weight:700;color:var(--amber,#F59E0B);font-size:1rem;margin-bottom:0.5rem;">
+                    Design your siding on Hover
+                  </div>
+                  <div style="font-size:0.875rem;color:rgba(255,255,255,0.85);margin-bottom:1rem;line-height:1.55;">
+                    Siding pricing depends on <strong style="color:#fff;">manufacturer</strong>,
+                    <strong style="color:#fff;">profile</strong>,
+                    <strong style="color:#fff;">color</strong>, and
+                    <strong style="color:#fff;">trim</strong>.
+                    Once you've chosen all four in Hover, your siding bids will be released to contractors.
+                  </div>
+                  <a href="${hoverLink}" target="_blank" rel="noopener"
+                     style="display:inline-block;background:var(--amber,#F59E0B);color:#0B1929;font-size:0.875rem;font-weight:700;text-decoration:none;padding:8px 20px;border-radius:0.5rem;transition:opacity 0.2s;"
+                     onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                    Design Your Siding in Hover →
+                  </a>
+                </div>
+              </div>
+            `;
+          } else {
+            // ── Gate cleared: brief confirmation ─────────────────────────
+            ctaDiv.style.cssText = 'margin-top:1rem;background:rgba(20,184,166,0.08);border:1px solid rgba(20,184,166,0.35);border-radius:0.75rem;padding:0.875rem 1.25rem;display:flex;align-items:center;gap:0.75rem;';
+            ctaDiv.innerHTML = `
+              <div style="font-size:1.25rem;flex-shrink:0;">✅</div>
+              <div style="font-size:0.875rem;color:rgba(255,255,255,0.9);">
+                <strong style="color:#5eead4;">Siding design locked in.</strong>
+                Contractors are now bidding on your siding project.
+                <a href="bids.html?claim_id=${encodeURIComponent(currentClaim.id)}"
+                   style="color:var(--amber,#F59E0B);margin-left:0.25rem;text-decoration:none;">View bids →</a>
+              </div>
+            `;
+          }
+          container.appendChild(ctaDiv);
         }
       }
 
@@ -1668,6 +1697,56 @@
           if (titleEl) titleEl.textContent = 'Your project is live!';
           if (textEl) textEl.textContent = 'Contractors are reviewing your details. You\'ll be notified of incoming bids.';
         }
+
+        // ── D-164: Per-trade status pills ─────────────────────────────────
+        // Show a trade-by-trade breakdown when the claim has multiple trades
+        // (or a single siding trade) and is in bidding/submitted status.
+        const bannerTrades = Array.isArray(currentClaim?.trades) ? currentClaim.trades : [];
+        const hasSidingTrade = bannerTrades.some(t => (t || '').toLowerCase().includes('siding'));
+        const isRetailClaim  = currentClaim?.funding_type === 'cash';
+
+        if (isRetailClaim && bannerTrades.length > 0 && hasSidingTrade) {
+          const sidingReleased = !!currentClaim?.siding_bid_released_at;
+
+          // Build per-trade status pills
+          const tradeLabels: Record<string, string> = {
+            roofing: 'Roofing',
+            siding:  'Siding',
+            gutters: 'Gutters',
+            windows: 'Windows',
+          };
+
+          const pills = bannerTrades.map((t: string) => {
+            const key   = (t || '').toLowerCase();
+            const label = tradeLabels[key] || t;
+            const isSiding = key.includes('siding');
+
+            if (isSiding && !sidingReleased) {
+              // Held: amber pill with lock icon
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.5);color:#F59E0B;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">
+                🔒 ${label}: Waiting on design
+              </span>`;
+            } else {
+              // Live: teal pill
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);color:#5eead4;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">
+                ✓ ${label}: Collecting bids
+              </span>`;
+            }
+          }).join('');
+
+          // Inject below the status text, but only once
+          if (!document.getElementById('trade-status-pills')) {
+            const pillsContainer = document.createElement('div');
+            pillsContainer.id = 'trade-status-pills';
+            pillsContainer.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:0.5rem;';
+            pillsContainer.innerHTML = pills;
+            if (textEl?.parentNode) {
+              textEl.parentNode.insertBefore(pillsContainer, textEl.nextSibling);
+            }
+          }
+        }
+
+        if (banner) banner.classList.add('active');
       }
 
       function updateSubmitButton() {
