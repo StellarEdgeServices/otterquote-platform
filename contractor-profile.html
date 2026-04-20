@@ -1592,16 +1592,13 @@
 
                 if (uploadError) throw uploadError;
 
-                // Get public URL and save to contractor record
-                const { data: urlData } = sb.storage
-                    .from('contractor-templates')
-                    .getPublicUrl(filePath);
-
+                // Store only the path — bucket is private; public URLs would return "Bucket not found" 404.
+                // viewContractTemplate() mints a short-lived signed URL at click time.
                 await sb.from('contractors')
-                    .update({ contract_pdf_url: urlData.publicUrl, updated_at: new Date().toISOString() })
+                    .update({ contract_pdf_url: filePath, updated_at: new Date().toISOString() })
                     .eq('id', contractorRecord.id);
 
-                contractorRecord.contract_pdf_url = urlData.publicUrl;
+                contractorRecord.contract_pdf_url = filePath;
                 updateContractTemplateView();
                 showUploadStatus('Contract template uploaded successfully!', 'success');
 
@@ -2075,6 +2072,9 @@
 
         // ── Load and Display Contract Templates (IMP-009) ──
         async function loadContractTemplates() {
+            // Session 262: XSS hardening — build DOM instead of templated innerHTML
+            // so that DB-sourced file_url / filename values can never inject markup.
+            // Also refactored to single DB fetch (was one query per slot = 8 round trips).
             const templateSlots = [
                 { trade: 'Roofing', fundingType: 'Insurance (full replacement)' },
                 { trade: 'Roofing', fundingType: 'Retail' },
@@ -2087,93 +2087,129 @@
             ];
 
             const gridContainer = document.getElementById('contractTemplatesGrid');
-            let html = '<div class="template-slots-grid">';
+            gridContainer.innerHTML = '';
+            const grid = document.createElement('div');
+            grid.className = 'template-slots-grid';
 
-            for (const slot of templateSlots) {
-                const slotId = `template_${slot.trade.toLowerCase()}_${slot.fundingType.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '')}`;
-
-                if (contractorRecord && sb && !CONFIG.DEMO_MODE) {
-                    // Try to load the template from storage
-                    try {
-                        const { data: templates } = await sb.from('contractors')
-                            .select('contract_templates')
-                            .eq('id', contractorRecord.id)
-                            .single();
-
-                        const contractTemplates = templates?.contract_templates || [];
-                        const matchingTemplate = contractTemplates.find(t => t.trade === slot.trade && t.funding_type === slot.fundingType);
-
-                        if (matchingTemplate) {
-                            const uploadDate = new Date(matchingTemplate.uploaded_at).toLocaleDateString();
-                            html += `
-                                <div class="template-slot">
-                                    <div class="template-slot-header">${slot.trade} — ${slot.fundingType}</div>
-                                    <div class="template-file-display">
-                                        <div class="template-file-name">${matchingTemplate.file_name}</div>
-                                        <div class="template-file-date">Uploaded: ${uploadDate}</div>
-                                    </div>
-                                    <div style="display: flex; gap: var(--sp-3); flex-wrap: wrap;">
-                                        <button class="btn-small btn-small-primary" onclick="viewContractTemplate('${matchingTemplate.file_url}')">View</button>
-                                        <button class="btn-small btn-small-secondary" onclick="openFieldMappingModal('${slot.trade}', '${slot.fundingType}')">Review Mapping</button>
-                                        <button class="btn-small btn-small-secondary" onclick="replaceContractTemplate('${slotId}', '${slot.trade}', '${slot.fundingType}')">Replace</button>
-                                    </div>
-                                </div>
-                            `;
-                        } else {
-                            html += `
-                                <div class="template-slot">
-                                    <div class="template-slot-header">${slot.trade} — ${slot.fundingType}</div>
-                                    <div class="template-slot-subtext">No template uploaded</div>
-                                    <div class="template-upload-box" onclick="document.getElementById('${slotId}_input').click()">
-                                        <label for="${slotId}_input" class="template-upload-label">
-                                            <div class="template-upload-icon">📄</div>
-                                            <div class="template-upload-text">Upload Template</div>
-                                            <div class="template-upload-hint">PDF format, max 10MB</div>
-                                        </label>
-                                        <input type="file" id="${slotId}_input" accept=".pdf" onchange="uploadTemplateFile('${slot.trade}', '${slot.fundingType}', this)">
-                                    </div>
-                                </div>
-                            `;
-                        }
-                    } catch (err) {
-                        console.error(`Error loading template ${slot.trade} - ${slot.fundingType}:`, err);
-                        // Show upload placeholder on error
-                        html += `
-                            <div class="template-slot">
-                                <div class="template-slot-header">${slot.trade} — ${slot.fundingType}</div>
-                                <div class="template-slot-subtext">Unable to load status</div>
-                                <div class="template-upload-box" onclick="document.getElementById('${slotId}_input').click()">
-                                    <label for="${slotId}_input" class="template-upload-label">
-                                        <div class="template-upload-icon">📄</div>
-                                        <div class="template-upload-text">Upload Template</div>
-                                        <div class="template-upload-hint">PDF format, max 10MB</div>
-                                    </label>
-                                    <input type="file" id="${slotId}_input" accept=".pdf" onchange="uploadTemplateFile('${slot.trade}', '${slot.fundingType}', this)">
-                                </div>
-                            </div>
-                        `;
-                    }
-                } else {
-                    // Demo mode: show upload placeholder for all slots
-                    html += `
-                        <div class="template-slot">
-                            <div class="template-slot-header">${slot.trade} — ${slot.fundingType}</div>
-                            <div class="template-slot-subtext">No template uploaded</div>
-                            <div class="template-upload-box" onclick="document.getElementById('${slotId}_input').click()">
-                                <label for="${slotId}_input" class="template-upload-label">
-                                    <div class="template-upload-icon">📄</div>
-                                    <div class="template-upload-text">Upload Template</div>
-                                    <div class="template-upload-hint">PDF format, max 10MB</div>
-                                </label>
-                                <input type="file" id="${slotId}_input" accept=".pdf" onchange="uploadTemplateFile('${slot.trade}', '${slot.fundingType}', this)">
-                            </div>
-                        </div>
-                    `;
+            // Fetch all contract templates in one query
+            let contractTemplates = [];
+            if (contractorRecord && sb && !CONFIG.DEMO_MODE) {
+                try {
+                    const { data: templates } = await sb.from('contractors')
+                        .select('contract_templates')
+                        .eq('id', contractorRecord.id)
+                        .single();
+                    contractTemplates = templates?.contract_templates || [];
+                } catch (err) {
+                    console.error('Error loading contract templates:', err);
                 }
             }
 
-            html += '</div>';
-            gridContainer.innerHTML = html;
+            for (const slot of templateSlots) {
+                const slotId = `template_${slot.trade.toLowerCase()}_${slot.fundingType.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '')}`;
+                const inputId = `${slotId}_input`;
+                const matchingTemplate = contractTemplates.find(t => t.trade === slot.trade && t.funding_type === slot.fundingType);
+
+                const cell = document.createElement('div');
+                cell.className = 'template-slot';
+
+                const header = document.createElement('div');
+                header.className = 'template-slot-header';
+                header.textContent = `${slot.trade} — ${slot.fundingType}`;
+                cell.appendChild(header);
+
+                if (matchingTemplate) {
+                    const fileUrl  = String(matchingTemplate.file_url || '');
+                    const fileName = String(matchingTemplate.file_name || 'template.pdf');
+                    const uploadDate = matchingTemplate.uploaded_at
+                        ? new Date(matchingTemplate.uploaded_at).toLocaleDateString()
+                        : 'Unknown date';
+
+                    const fileDisplay = document.createElement('div');
+                    fileDisplay.className = 'template-file-display';
+
+                    const nameEl = document.createElement('div');
+                    nameEl.className = 'template-file-name';
+                    nameEl.textContent = fileName;
+
+                    const dateEl = document.createElement('div');
+                    dateEl.className = 'template-file-date';
+                    dateEl.textContent = 'Uploaded: ' + uploadDate;
+
+                    fileDisplay.appendChild(nameEl);
+                    fileDisplay.appendChild(dateEl);
+                    cell.appendChild(fileDisplay);
+
+                    const btnRow = document.createElement('div');
+                    btnRow.style.cssText = 'display: flex; gap: var(--sp-3); flex-wrap: wrap;';
+
+                    // View — mints signed URL; never navigates to stored URL directly
+                    const viewBtn = document.createElement('button');
+                    viewBtn.className = 'btn-small btn-small-primary';
+                    viewBtn.textContent = 'View';
+                    viewBtn.addEventListener('click', () => viewContractTemplate(fileUrl));
+
+                    const mappingBtn = document.createElement('button');
+                    mappingBtn.className = 'btn-small btn-small-secondary';
+                    mappingBtn.textContent = 'Review Mapping';
+                    mappingBtn.addEventListener('click', () => openFieldMappingModal(slot.trade, slot.fundingType));
+
+                    const replaceBtn = document.createElement('button');
+                    replaceBtn.className = 'btn-small btn-small-secondary';
+                    replaceBtn.textContent = 'Replace';
+                    replaceBtn.addEventListener('click', () => replaceContractTemplate(slotId, slot.trade, slot.fundingType));
+
+                    btnRow.appendChild(viewBtn);
+                    btnRow.appendChild(mappingBtn);
+                    btnRow.appendChild(replaceBtn);
+                    cell.appendChild(btnRow);
+                } else {
+                    const subtext = document.createElement('div');
+                    subtext.className = 'template-slot-subtext';
+                    subtext.textContent = 'No template uploaded';
+                    cell.appendChild(subtext);
+
+                    const uploadBox = document.createElement('div');
+                    uploadBox.className = 'template-upload-box';
+
+                    const label = document.createElement('label');
+                    label.htmlFor = inputId;
+                    label.className = 'template-upload-label';
+                    label.style.cursor = 'pointer';
+
+                    const icon = document.createElement('div');
+                    icon.className = 'template-upload-icon';
+                    icon.textContent = '📄';
+
+                    const uploadText = document.createElement('div');
+                    uploadText.className = 'template-upload-text';
+                    uploadText.textContent = 'Upload Template';
+
+                    const uploadHint = document.createElement('div');
+                    uploadHint.className = 'template-upload-hint';
+                    uploadHint.textContent = 'PDF format, max 10MB';
+
+                    label.appendChild(icon);
+                    label.appendChild(uploadText);
+                    label.appendChild(uploadHint);
+
+                    const fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.id = inputId;
+                    fileInput.accept = '.pdf';
+                    fileInput.style.display = 'none';
+                    fileInput.addEventListener('change', function () { uploadTemplateFile(slot.trade, slot.fundingType, this); });
+
+                    uploadBox.addEventListener('click', () => fileInput.click());
+                    uploadBox.appendChild(label);
+                    uploadBox.appendChild(fileInput);
+                    cell.appendChild(uploadBox);
+                }
+
+                grid.appendChild(cell);
+            }
+
+            gridContainer.appendChild(grid);
         }
 
         // View contract template — bucket is private, so mint a signed URL at click time
@@ -2252,18 +2288,14 @@
 
                 if (uploadError) throw uploadError;
 
-                // Get public URL
-                const { data: urlData } = sb.storage
-                    .from('contractor-templates')
-                    .getPublicUrl(filePath);
-
-                // Update contractors table with template metadata
+                // Store only the path — bucket is private; public URLs would return "Bucket not found" 404.
+                // viewContractTemplate() mints a short-lived signed URL at click time.
                 const currentTemplates = contractorRecord.contract_templates || [];
                 const updatedTemplates = currentTemplates.filter(t => !(t.trade === trade && t.funding_type === fundingType));
                 updatedTemplates.push({
                     trade: trade,
                     funding_type: fundingType,
-                    file_url: urlData.publicUrl,
+                    file_url: filePath,
                     file_name: file.name,
                     uploaded_at: new Date().toISOString()
                 });
