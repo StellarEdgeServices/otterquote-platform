@@ -298,11 +298,11 @@
           <span class="form-hint">For bid notifications and updates via text.</span>
         </div>
 
-        <!-- TWILIO MESSAGE_FLOW: "By providing your phone number and checking the SMS consent checkbox, you consent to receive SMS messages from OtterQuote about your project status, contractor updates, and bid notifications. Message & data rates may apply. Reply STOP to opt out. For more information, see our Privacy Policy and Terms of Service." -->
+        <!-- TWILIO MESSAGE_FLOW: "I agree to receive transactional SMS from OtterQuote. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe." -->
         <div class="form-group">
           <label style="display: flex; align-items: flex-start; gap: var(--sp-2); cursor: pointer; font-weight: 400;">
             <input type="checkbox" id="sms-consent" class="form-checkbox" required style="margin-top: 2px; flex-shrink: 0;">
-            <span style="font-size: 0.9rem; line-height: 1.5;">By providing your phone number and checking this box, you consent to receive SMS messages from OtterQuote about your project status and contractor updates. Message & data rates may apply. Reply STOP to opt out. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</span>
+            <span style="font-size: 0.9rem; line-height: 1.5;">I agree to receive transactional SMS from OtterQuote. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</span>
           </label>
         </div>
 
@@ -403,12 +403,6 @@
           <h4>Always free for you</h4>
           <p>OtterQuote is 100% free for homeowners. Contractors pay to earn your business, not you.</p>
         </div>
-      </div>
-
-      <div style="margin-top: var(--sp-6); padding: var(--sp-4) var(--sp-5); background: rgba(20,184,166,0.06); border: 1px solid rgba(20,184,166,0.12); border-radius: var(--radius-md);">
-        <p style="font-size: 0.82rem; color: var(--slate); margin: 0; line-height: 1.6;">
-          <strong style="color: var(--amber);">🧱 Siding projects:</strong> If your project includes siding, expect bids on that trade about 24–48 hours after your other trades. Contractors need a complete design from our measurement partner before they can price siding accurately — your bids release automatically once it's ready.
-        </p>
       </div>
     </div>
   </div>
@@ -531,6 +525,7 @@
         referring_agent_name: refName || null,
         referring_agent_email: refEmail || null,
         role: 'homeowner',
+        sms_consent_ts: smsConsent ? new Date().toISOString() : null,
       }));
 
       // Persist referral_id to localStorage so auth.js can advance status after magic-link click

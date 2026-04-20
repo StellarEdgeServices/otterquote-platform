@@ -281,6 +281,7 @@ window.Auth = {
           phone: data.phone || null,
           address_line1: data.address || null,
           role: data.role || 'homeowner',
+          sms_consent_ts: data.sms_consent_ts || null,
         });
 
         localStorage.removeItem('cs_signup');
@@ -358,6 +359,8 @@ window.Auth = {
                 attestation_signer_name:  attestationPayload ? data.contact_name : null,
                 attestation_signer_title: data.signer_title || null,
                 attestation_text_version: attestationPayload ? (attestationPayload.text_version) : null,
+                // TCPA SMS consent
+                sms_consent_ts: data.sms_consent_ts || null,
                 // New contractors default to pending_approval status
                 status: 'pending_approval',
               })

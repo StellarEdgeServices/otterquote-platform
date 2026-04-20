@@ -819,12 +819,6 @@
             </div>
           </div>
 
-          <!-- Siding timing notice — shown when siding is selected -->
-          <div id="siding-notice" style="display: none; margin-bottom: var(--sp-8); padding: var(--sp-5) var(--sp-6); background: rgba(20,184,166,0.06); border: 1px solid rgba(20,184,166,0.15); border-left: 3px solid var(--amber); border-radius: var(--radius-md);">
-            <p style="font-size: 0.9rem; font-weight: 600; color: var(--white); margin: 0 0 var(--sp-2) 0;">🧱 Heads up on siding bids</p>
-            <p style="font-size: 0.88rem; color: var(--slate); margin: 0; line-height: 1.6;">Siding bids take about 24–48 hours longer than other trades. Contractors need a complete design — your siding profile, color, and trim selections — from our measurement partner before they can price the work accurately. Your siding bids release automatically once that design is ready. No extra steps needed from you.</p>
-          </div>
-
           <div class="action-buttons">
             <button class="btn btn-secondary" id="step-trades-back">← Back</button>
             <button class="btn btn-primary" id="step-trades-continue" disabled>Continue →</button>
@@ -1090,11 +1084,6 @@
         card.classList.add('selected');
       }
       updateTradesContinueButton();
-      // Show siding timing notice when siding is selected
-      const sidingNotice = document.getElementById('siding-notice');
-      if (sidingNotice) {
-        sidingNotice.style.display = state.trades.includes('siding') ? 'block' : 'none';
-      }
     }
 
     function updateTradesContinueButton() {

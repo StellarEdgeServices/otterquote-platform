@@ -473,6 +473,45 @@
                         </div>
                     </fieldset>
 
+                    <!-- TCPA SMS Consent -->
+                    <fieldset class="form-fieldset">
+                        <h3><span></span>SMS Notifications</h3>
+
+                        <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy);">
+                            OtterQuote uses SMS to notify you of new project opportunities, bid updates, and important platform communications.
+                        </div>
+
+                        <div class="checkbox-item" style="margin-top: var(--sp-4); margin-bottom: var(--sp-6);">
+                            <input type="checkbox" id="agreeTcpaSms" name="agreeTcpaSms" required>
+                            <label for="agreeTcpaSms">
+                                I agree to receive transactional SMS from OtterQuote. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe.
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <!-- 1099-NEC Tax Reporting Disclosure (86e0zj7j4 — disclosure version 1099-nec-v1-2026-04) -->
+                    <fieldset class="form-fieldset">
+                        <h3><span></span>Tax Reporting Notice</h3>
+
+                        <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy);">
+                            <p style="margin-bottom: var(--sp-4);">OtterQuote pays contractors for project-based work facilitated through the platform. Because you are an independent contractor — not an employee — OtterQuote does not withhold federal, state, or local taxes from your fees.</p>
+                            <p style="margin-bottom: var(--sp-4);">Federal law requires us to report payments made to independent contractors. Specifically:</p>
+                            <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
+                                <li style="margin-bottom: var(--sp-2);"><strong>If you receive $600 or more from OtterQuote in a calendar year</strong>, we are required to file a Form 1099-NEC with the IRS reporting those payments. You will receive a copy no later than January 31 of the following year.</li>
+                                <li style="margin-bottom: var(--sp-2);">You are responsible for estimating and remitting all applicable federal income tax, self-employment tax, and state and local taxes on income earned through the platform.</li>
+                                <li style="margin-bottom: var(--sp-2);">OtterQuote may be required to collect your taxpayer identification information (W-9) before issuing payment. Failure to provide accurate information may result in backup withholding at the applicable IRS rate.</li>
+                            </ul>
+                            <p style="font-weight: 600; color: var(--navy);">We recommend consulting a qualified tax professional regarding your obligations as an independent contractor.</p>
+                        </div>
+
+                        <div class="checkbox-item" style="margin-top: var(--sp-4); margin-bottom: var(--sp-6);">
+                            <input type="checkbox" id="agree1099Nec" name="agree1099Nec" required>
+                            <label for="agree1099Nec">
+                                I understand that OtterQuote will issue a Form 1099-NEC if I receive $600 or more through the platform in a calendar year, that no taxes are withheld from my payments, and that I am solely responsible for all federal, state, and local tax obligations on income earned through the platform.
+                            </label>
+                        </div>
+                    </fieldset>
+
                     <button type="submit" class="submit-btn">Send My Login Link</button>
                 </form>
             </div>
@@ -499,6 +538,8 @@
             const lastName     = (formData.get('ownerLastName') || '').trim();
             const signerTitle  = (formData.get('signerTitle')    || '').trim();
             const attestationChecked = document.getElementById('agreeToAttestation').checked;
+            const tcpaSmsChecked = document.getElementById('agreeTcpaSms').checked;
+            const nec1099Checked = document.getElementById('agree1099Nec').checked;
 
             if (!email) {
                 alert('Please enter your business email address.');
@@ -510,6 +551,14 @@
             }
             if (!attestationChecked) {
                 alert('You must accept the contractor attestation and indemnity before we can send your login link.');
+                return;
+            }
+            if (!tcpaSmsChecked) {
+                alert('You must agree to receive transactional SMS from OtterQuote before we can send your login link.');
+                return;
+            }
+            if (!nec1099Checked) {
+                alert('You must acknowledge the tax reporting notice before we can send your login link.');
                 return;
             }
 
@@ -540,6 +589,7 @@
                     signer_last_name: lastName,
                     signer_title: signerTitle,
                     role: 'contractor',
+                    sms_consent_ts: tcpaSmsChecked ? new Date().toISOString() : null,
                     attestation: {
                         text_version: 'ic-24511-v1-2026-04',
                         accepted: true,
@@ -547,6 +597,8 @@
                         user_agent: navigator.userAgent,
                         platform_agreement_ack: true,
                         cancellation_policy_ack: true,
+                        tax_1099_nec_ack: true,
+                        tax_1099_nec_version: '1099-nec-v1-2026-04',
                     },
                 }));
                 localStorage.setItem('cs_auth_role', 'contractor');
