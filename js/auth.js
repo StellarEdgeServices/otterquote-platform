@@ -313,6 +313,21 @@ window.Auth = {
             .single();
 
           if (!existing) {
+            // D-170: build the IC 24-5-11 attestation JSONB + top-level columns.
+            // IP is stamped server-side via record_attestation_ip RPC below so
+            // the client cannot spoof it.
+            const attestation = data.attestation || null;
+            const attestationPayload = attestation ? {
+              text_version:          attestation.text_version || 'ic-24511-v1-2026-04',
+              accepted:              true,
+              accepted_client_ts:    attestation.accepted_client_ts || new Date().toISOString(),
+              user_agent:            attestation.user_agent || navigator.userAgent,
+              signer_name:           data.contact_name,
+              signer_title:          data.signer_title || null,
+              platform_agreement:    !!attestation.platform_agreement_ack,
+              cancellation_policy:   !!attestation.cancellation_policy_ack,
+            } : null;
+
             // Insert contractor record and get the new record's PK (id)
             const { data: newContractor, error: insertError } = await sb
               .from('contractors')
@@ -337,6 +352,12 @@ window.Auth = {
                 // Insurance flags derived from signup data
                 has_workers_comp: !!(data.insurance_wc_carrier),
                 has_general_liability: !!(data.insurance_gl_carrier),
+                // D-170 attestation (top-level for indexing + hot-path gate)
+                ic_24511_attestation:     attestationPayload || {},
+                attestation_accepted_at:  attestationPayload ? new Date().toISOString() : null,
+                attestation_signer_name:  attestationPayload ? data.contact_name : null,
+                attestation_signer_title: data.signer_title || null,
+                attestation_text_version: attestationPayload ? (attestationPayload.text_version) : null,
                 // New contractors default to pending_approval status
                 status: 'pending_approval',
               })
@@ -346,6 +367,16 @@ window.Auth = {
             if (insertError) {
               console.error('Error inserting contractor record:', insertError);
             } else {
+              // D-170: stamp server-side IP onto the attestation (x-forwarded-for
+              // captured by the RPC — can't be spoofed client-side). Non-fatal.
+              if (attestationPayload && newContractor?.id) {
+                try {
+                  await sb.rpc('record_attestation_ip', { p_contractor_id: newContractor.id });
+                } catch (ipErr) {
+                  console.warn('record_attestation_ip RPC failed (non-fatal):', ipErr);
+                }
+              }
+
               // Send email notification for new contractor signup (pending_approval status)
               try {
                 const signupMessage = `New contractor has signed up and is pending approval:

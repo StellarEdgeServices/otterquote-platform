@@ -388,16 +388,22 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="businessName" class="form-label">Business Name <span style="color:var(--slate);font-weight:400;font-size:0.85rem;">(optional)</span></label>
-                                <input type="text" id="businessName" name="businessName" class="form-input" placeholder="Your Company LLC">
+                                <label for="businessName" class="form-label required">Business Name</label>
+                                <input type="text" id="businessName" name="businessName" class="form-input" placeholder="Your Company LLC" required>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Owner Name <span style="color:var(--slate);font-weight:400;font-size:0.85rem;">(optional)</span></label>
+                                <label class="form-label required">Signer Name</label>
                                 <div style="display:flex;gap:0.5rem;">
-                                    <input type="text" id="ownerFirstName" name="ownerFirstName" class="form-input" placeholder="First">
-                                    <input type="text" id="ownerLastName" name="ownerLastName" class="form-input" placeholder="Last">
+                                    <input type="text" id="ownerFirstName" name="ownerFirstName" class="form-input" placeholder="First" required>
+                                    <input type="text" id="ownerLastName" name="ownerLastName" class="form-input" placeholder="Last" required>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="signerTitle" class="form-label required">Signer Title</label>
+                            <input type="text" id="signerTitle" name="signerTitle" class="form-input" placeholder="Owner / President / Authorized Officer" required>
+                            <p style="font-size:0.85rem; color:var(--slate); margin-top:var(--sp-2);">You must be authorized to bind the business. The name and title you enter here will appear on the IC 24-5-11 attestation and the DocuSign Partner Agreement.</p>
                         </div>
                     </fieldset>
 
@@ -443,6 +449,30 @@
                         </div>
                     </fieldset>
 
+                    <!-- D-170: IC 24-5-11 Attestation + Joint-and-Several Indemnity -->
+                    <fieldset class="form-fieldset">
+                        <h3><span></span>Contractor Attestation &amp; Indemnity</h3>
+
+                        <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy);">
+                            <p style="margin-bottom: var(--sp-4);">OtterQuote is a lead-matching and payments platform. We do not perform your work, supervise your crews, or warrant the materials you install. Every contractor on the platform represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
+                            <p style="margin-bottom: var(--sp-4);">By checking the box below, you personally and on behalf of the business attest that:</p>
+                            <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
+                                <li style="margin-bottom: var(--sp-2);">You hold all licenses, registrations, and permits required to perform the work you bid on in every jurisdiction where the home is located.</li>
+                                <li style="margin-bottom: var(--sp-2);">You carry and will maintain Commercial General Liability insurance of at least <strong>$1,000,000 per occurrence / $2,000,000 aggregate</strong>, including products-completed operations and contractual liability coverage, with Stellar Edge Services, LLC named as additional insured on a primary and non-contributory basis.</li>
+                                <li style="margin-bottom: var(--sp-2);">You will comply with Indiana Code 24-5-11 (Home Improvement Contracts Act) on every project booked through the platform, including the statutory written-contract, disclosure, and cancellation-right requirements.</li>
+                                <li style="margin-bottom: var(--sp-2);">You will indemnify, defend, and hold harmless Stellar Edge Services, LLC, OtterQuote, and their officers, employees, and agents from and against any and all claims, damages, losses, liabilities, fines, penalties, and reasonable attorneys' fees arising out of or relating to your work, your employees or subcontractors, your failure to maintain required insurance or licensing, or any violation of IC 24-5-11 or other applicable law. This indemnity is <strong>joint and several</strong> with any co-contractor, subcontractor, or affiliate you engage on the project, and survives termination of your participation on the platform.</li>
+                            </ul>
+                            <p style="font-weight: 600; color: var(--navy);">Electronic acceptance below, together with the name and title entered above and the timestamp and IP address captured at acceptance, constitutes your signature under the federal E-SIGN Act and the Indiana Uniform Electronic Transactions Act.</p>
+                        </div>
+
+                        <div class="checkbox-item" style="margin-top: var(--sp-4); margin-bottom: var(--sp-6);">
+                            <input type="checkbox" id="agreeToAttestation" name="agreeToAttestation" required>
+                            <label for="agreeToAttestation">
+                                I am authorized to bind the business named above. I attest to the licensing, insurance, IC 24-5-11 compliance, and joint-and-several indemnity obligations stated above, and I intend this electronic acceptance to be my signature.
+                            </label>
+                        </div>
+                    </fieldset>
+
                     <button type="submit" class="submit-btn">Send My Login Link</button>
                 </form>
             </div>
@@ -467,9 +497,19 @@
             const businessName = (formData.get('businessName') || '').trim();
             const firstName    = (formData.get('ownerFirstName') || '').trim();
             const lastName     = (formData.get('ownerLastName') || '').trim();
+            const signerTitle  = (formData.get('signerTitle')    || '').trim();
+            const attestationChecked = document.getElementById('agreeToAttestation').checked;
 
             if (!email) {
                 alert('Please enter your business email address.');
+                return;
+            }
+            if (!businessName || !firstName || !lastName || !signerTitle) {
+                alert('Please enter your business name and the signer\u2019s first name, last name, and title. These appear on your IC 24-5-11 attestation.');
+                return;
+            }
+            if (!attestationChecked) {
+                alert('You must accept the contractor attestation and indemnity before we can send your login link.');
                 return;
             }
 
@@ -489,12 +529,25 @@
                 // Send magic link immediately — no other fields required
                 await Auth.sendMagicLink(email, 'contractor');
 
-                // Store any optional info for post-auth profile pre-fill
+                // Store profile + D-170 attestation payload for post-auth write
+                // (handleAuthCallback in js/auth.js persists these to contractors + calls
+                //  the record-attestation Edge Function to capture IP server-side.)
                 localStorage.setItem('cs_contractor_signup', JSON.stringify({
                     email: email,
                     company_name: businessName,
                     contact_name: [firstName, lastName].filter(Boolean).join(' '),
+                    signer_first_name: firstName,
+                    signer_last_name: lastName,
+                    signer_title: signerTitle,
                     role: 'contractor',
+                    attestation: {
+                        text_version: 'ic-24511-v1-2026-04',
+                        accepted: true,
+                        accepted_client_ts: new Date().toISOString(),
+                        user_agent: navigator.userAgent,
+                        platform_agreement_ack: true,
+                        cancellation_policy_ack: true,
+                    },
                 }));
                 localStorage.setItem('cs_auth_role', 'contractor');
 

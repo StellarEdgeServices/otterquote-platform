@@ -646,6 +646,14 @@
                     <div class="summary-card-label" style="color: #92400e;">⚠️ PC Template Nudge</div>
                     <div class="summary-card-value" id="pcMigrationCount" style="color: #d97706;">—</div>
                 </div>
+                <div class="summary-card" style="border-left: 4px solid #dc2626;">
+                    <div class="summary-card-label" style="color: #991b1b;">⚠️ COI Missing / Expired</div>
+                    <div class="summary-card-value" id="coiMissingCount" style="color: #b91c1c;">—</div>
+                </div>
+                <div class="summary-card" style="border-left: 4px solid #f59e0b;">
+                    <div class="summary-card-label" style="color: #92400e;">COI Expiring ≤30d</div>
+                    <div class="summary-card-value" id="coiExpiringCount" style="color: #d97706;">—</div>
+                </div>
             </div>
 
             <!-- Filter Tabs -->
@@ -653,6 +661,8 @@
                 <button class="filter-tab active" onclick="setFilter('pending_approval')">Pending Review</button>
                 <button class="filter-tab" onclick="setFilter('all')">All Contractors</button>
                 <button class="filter-tab" onclick="setFilter('pc_migration_pending')" style="border-color: #f59e0b; color: #92400e;">⚠️ Needs PC Template Update</button>
+                <button class="filter-tab" onclick="setFilter('coi_missing')" style="border-color: #dc2626; color: #991b1b;">⚠️ COI Missing / Expired</button>
+                <button class="filter-tab" onclick="setFilter('coi_expiring')" style="border-color: #f59e0b; color: #92400e;">COI Expiring ≤30d</button>
             </div>
 
             <!-- Contractors List -->
@@ -784,11 +794,26 @@
             const active = contractors.filter(c => c.status === 'active').length;
             const total = contractors.length;
             const pcMigration = contractors.filter(c => c.pc_template_migration_pending === true).length;
+            const coiMissing = contractors.filter(c => coiState(c) === 'missing' || coiState(c) === 'expired').length;
+            const coiExpiring = contractors.filter(c => coiState(c) === 'expiring').length;
 
             document.getElementById('pendingCount').textContent = pending;
             document.getElementById('activeCount').textContent = active;
             document.getElementById('totalCount').textContent = total;
             document.getElementById('pcMigrationCount').textContent = pcMigration;
+            document.getElementById('coiMissingCount').textContent = coiMissing;
+            document.getElementById('coiExpiringCount').textContent = coiExpiring;
+        }
+
+        // D-170: derive a contractor's COI state for filters + badges
+        function coiState(c) {
+            if (!c.coi_file_url || !c.coi_expires_at) return 'missing';
+            const today = new Date(); today.setHours(0,0,0,0);
+            const exp = new Date(c.coi_expires_at + 'T00:00:00');
+            const days = Math.floor((exp - today) / (1000*60*60*24));
+            if (days < 0)  return 'expired';
+            if (days <= 30) return 'expiring';
+            return 'current';
         }
 
         function setFilter(filter) {
@@ -809,6 +834,13 @@
                 filtered = contractors.filter(c => c.status === 'pending_approval');
             } else if (currentFilter === 'pc_migration_pending') {
                 filtered = contractors.filter(c => c.pc_template_migration_pending === true);
+            } else if (currentFilter === 'coi_missing') {
+                filtered = contractors.filter(c => {
+                    const s = coiState(c);
+                    return s === 'missing' || s === 'expired';
+                });
+            } else if (currentFilter === 'coi_expiring') {
+                filtered = contractors.filter(c => coiState(c) === 'expiring');
             }
 
             if (filtered.length === 0) {
@@ -847,6 +879,14 @@
                                 <span class="status-badge status-badge-${c.status}">${c.status.replace(/_/g, ' ')}</span>
                                 ${trades.map(t => `<span class="trade-badge">${t}</span>`).join('')}
                                 ${c.pc_template_migration_pending ? `<span style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ PC Template</span>` : ''}
+                                ${(() => {
+                                    const s = coiState(c);
+                                    if (s === 'missing')  return `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ COI Missing</span>`;
+                                    if (s === 'expired')  return `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ COI Expired</span>`;
+                                    if (s === 'expiring') return `<span style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">COI ≤30d</span>`;
+                                    return '';
+                                })()}
+                                ${c.attestation_accepted_at ? '' : `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ No Attestation</span>`}
                                 <span style="font-size: 1.2rem;">▼</span>
                             </div>
                         </div>

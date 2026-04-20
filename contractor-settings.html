@@ -1395,6 +1395,113 @@
     </div>
 
     <!-- ═══════════════════════════════════════ -->
+    <!-- IC 24-5-11 Attestation (D-170)          -->
+    <!-- Only shown to contractors who predate   -->
+    <!-- the contractor-join attestation flow.   -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card" id="attestationCard" style="display:none; border-left: 4px solid #dc2626;">
+      <div class="settings-card-title" style="color:#991b1b;">⚠️ Contractor Attestation Required</div>
+      <div class="settings-card-subtitle">
+        OtterQuote has updated its terms. Before you can submit new bids, please confirm the following IC 24-5-11 attestation and joint-and-several indemnity.
+      </div>
+
+      <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy); padding: var(--sp-4); background:#F8FAFC; border:1px solid #E2E8F0; border-radius: var(--radius-md); margin-bottom: var(--sp-4);">
+        <p style="margin-bottom: var(--sp-4);">OtterQuote is a lead-matching and payments platform. We do not perform your work or warrant your materials. Every contractor represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
+        <p style="margin-bottom: var(--sp-4);">By accepting below, you personally and on behalf of the business attest that:</p>
+        <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
+          <li style="margin-bottom: var(--sp-2);">You hold all licenses, registrations, and permits required in every jurisdiction where you bid.</li>
+          <li style="margin-bottom: var(--sp-2);">You carry and maintain CGL insurance of at least <strong>$1M per occurrence / $2M aggregate</strong>, with products-completed operations and contractual liability coverage, naming Stellar Edge Services, LLC as additional insured on a primary and non-contributory basis.</li>
+          <li style="margin-bottom: var(--sp-2);">You comply with Indiana Code 24-5-11 (Home Improvement Contracts Act) on every platform project.</li>
+          <li style="margin-bottom: var(--sp-2);">You indemnify, defend, and hold harmless Stellar Edge Services, LLC, OtterQuote, and their officers, employees, and agents from any claims, damages, losses, liabilities, fines, penalties, and reasonable attorneys' fees arising out of or relating to your work, crews, subcontractors, failure to maintain insurance or licensing, or any violation of IC 24-5-11 or other applicable law. This indemnity is <strong>joint and several</strong> with any co-contractor, subcontractor, or affiliate on the project, and survives termination.</li>
+        </ul>
+        <p style="font-weight:600; color:var(--navy);">Electronic acceptance below — together with the name, title, timestamp, and IP captured — constitutes your signature under the federal E-SIGN Act and the Indiana UETA.</p>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-4); margin-bottom: var(--sp-4);">
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Signer Name</label>
+          <input type="text" id="attSignerName" placeholder="First and last name" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Signer Title</label>
+          <input type="text" id="attSignerTitle" placeholder="Owner / President / Authorized Officer" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+      </div>
+
+      <label style="display:flex; align-items:flex-start; gap:var(--sp-3); cursor:pointer; margin-bottom:var(--sp-4);">
+        <input type="checkbox" id="attAccept" style="width:1rem; height:1rem; margin-top:3px; accent-color:var(--amber); flex-shrink:0;">
+        <span style="font-size:0.9rem; color:var(--navy);">
+          I am authorized to bind the business named above. I attest to the licensing, insurance, IC 24-5-11 compliance, and joint-and-several indemnity obligations stated above, and I intend this electronic acceptance to be my signature.
+        </span>
+      </label>
+
+      <div>
+        <button class="save-button" onclick="saveAttestation()" id="attSaveBtn" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Accept &amp; Continue</button>
+        <span id="attSaveStatus" style="margin-left: var(--sp-3); font-size:0.85rem; color:var(--slate);"></span>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- CGL Certificate of Insurance (D-170)    -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card" id="coiCard">
+      <div class="settings-card-title">Commercial General Liability Certificate</div>
+      <div class="settings-card-subtitle">
+        OtterQuote requires a current CGL certificate of insurance on file at all times. Required minimums: <strong>$1,000,000 per occurrence / $2,000,000 aggregate</strong>, products-completed operations, contractual liability, with Stellar Edge Services, LLC named as additional insured on a primary and non-contributory basis. We'll remind you 30, 14, and 7 days before expiration. An expired or missing COI automatically suspends bidding.
+      </div>
+
+      <!-- Status banner — populated by loadCoiStatus() -->
+      <div id="coiStatusBanner" style="padding: var(--sp-4); border-radius: var(--radius-md); margin-bottom: var(--sp-4); display:none; font-size: 0.9rem;"></div>
+
+      <!-- Current COI summary -->
+      <div id="coiSummary" style="display:none; padding: var(--sp-4); background:#F8FAFC; border:1px solid #E2E8F0; border-radius: var(--radius-md); margin-bottom: var(--sp-4);">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap: var(--sp-4);">
+          <div>
+            <div style="font-size:0.75rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; margin-bottom:4px;">Insurer</div>
+            <div id="coiInsurerDisplay" style="color:var(--navy); font-weight:600;">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; margin-bottom:4px;">Policy #</div>
+            <div id="coiPolicyDisplay" style="color:var(--navy); font-weight:600;">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; margin-bottom:4px;">Expires</div>
+            <div id="coiExpiresDisplay" style="color:var(--navy); font-weight:600;">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; margin-bottom:4px;">Certificate</div>
+            <div><a id="coiFileLink" href="#" target="_blank" style="color:var(--amber); font-weight:600;">View PDF</a></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload / replace form -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-4); margin-bottom: var(--sp-4);">
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Insurer</label>
+          <input type="text" id="coiInsurer" placeholder="e.g., Nationwide" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Policy Number</label>
+          <input type="text" id="coiPolicyNumber" placeholder="Policy #" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Expiration Date</label>
+          <input type="date" id="coiExpiresAt" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Certificate PDF</label>
+          <input type="file" id="coiFileInput" accept=".pdf,.jpg,.jpeg,.png" style="width:100%; padding:var(--sp-2); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.8rem;">
+        </div>
+      </div>
+
+      <div>
+        <button class="save-button" onclick="saveCoi()" id="coiSaveBtn" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Upload / Update Certificate</button>
+        <span id="coiSaveStatus" style="margin-left: var(--sp-3); font-size:0.85rem; color:var(--slate);"></span>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
     <!-- Project Confirmation Templates (D-161) -->
     <!-- ═══════════════════════════════════════ -->
     <div class="settings-card">
@@ -2410,9 +2517,236 @@
 
           // Load PC template grid (D-161)
           await loadPcTemplatesSettings();
+
+          // D-170: populate COI status + form from contractor record
+          loadCoiStatus(data);
+          // D-170: show the attestation card if this contractor hasn't signed yet
+          loadAttestationCard(data);
         } catch (err) {
           console.error('Error initializing settings:', err);
         }
+      }
+    }
+
+    // ── D-170: COI load/save ──────────────────────────────────
+    function loadCoiStatus(c) {
+      const banner   = document.getElementById('coiStatusBanner');
+      const summary  = document.getElementById('coiSummary');
+      const insurerInput = document.getElementById('coiInsurer');
+      const policyInput  = document.getElementById('coiPolicyNumber');
+      const expiresInput = document.getElementById('coiExpiresAt');
+      if (!banner) return;
+
+      // Pre-fill form with existing values so contractor can edit/renew
+      if (c.coi_insurer)        insurerInput.value = c.coi_insurer;
+      if (c.coi_policy_number)  policyInput.value  = c.coi_policy_number;
+      if (c.coi_expires_at)     expiresInput.value = String(c.coi_expires_at).slice(0, 10);
+
+      if (c.coi_file_url && c.coi_expires_at) {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const exp   = new Date(c.coi_expires_at + 'T00:00:00');
+        const daysLeft = Math.floor((exp - today) / (1000*60*60*24));
+        document.getElementById('coiInsurerDisplay').textContent  = c.coi_insurer || '—';
+        document.getElementById('coiPolicyDisplay').textContent   = c.coi_policy_number || '—';
+        document.getElementById('coiExpiresDisplay').textContent  =
+          exp.toLocaleDateString() + (daysLeft >= 0 ? ` (${daysLeft} days left)` : ' (expired)');
+        const fileLink = document.getElementById('coiFileLink');
+        // coi_file_url stores a storage path — build a signed URL on demand
+        fileLink.onclick = async (ev) => {
+          ev.preventDefault();
+          try {
+            const { data, error } = await sb.storage
+              .from('contractor-documents')
+              .createSignedUrl(c.coi_file_url, 300);
+            if (error) throw error;
+            window.open(data.signedUrl, '_blank');
+          } catch (err) {
+            alert('Could not open certificate: ' + (err.message || err));
+          }
+        };
+        summary.style.display = 'block';
+
+        if (daysLeft < 0) {
+          banner.style.display = 'block';
+          banner.style.background = '#FEE2E2';
+          banner.style.border = '1px solid #FCA5A5';
+          banner.style.color = '#991B1B';
+          banner.innerHTML = '<strong>Your CGL certificate is expired.</strong> Bidding is suspended until you upload a current certificate.';
+        } else if (daysLeft <= 30) {
+          banner.style.display = 'block';
+          banner.style.background = '#FEF3C7';
+          banner.style.border = '1px solid #F59E0B';
+          banner.style.color = '#78350F';
+          banner.innerHTML = `<strong>Your CGL certificate expires in ${daysLeft} days.</strong> Upload a renewed certificate to avoid a bidding suspension.`;
+        } else {
+          banner.style.display = 'block';
+          banner.style.background = '#DCFCE7';
+          banner.style.border = '1px solid #86EFAC';
+          banner.style.color = '#14532D';
+          banner.innerHTML = `<strong>CGL certificate current</strong> — expires ${exp.toLocaleDateString()}.`;
+        }
+      } else {
+        banner.style.display = 'block';
+        banner.style.background = '#FEE2E2';
+        banner.style.border = '1px solid #FCA5A5';
+        banner.style.color = '#991B1B';
+        banner.innerHTML = '<strong>No CGL certificate on file.</strong> You cannot submit bids until a current certificate is uploaded.';
+      }
+    }
+
+    // Show the attestation card only for contractors who don't have an accepted
+    // attestation on file (i.e., signed up before the D-170 flow existed).
+    function loadAttestationCard(c) {
+      const card = document.getElementById('attestationCard');
+      if (!card) return;
+      if (c.attestation_accepted_at) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = 'block';
+      // Pre-fill signer name with contact_name if we have it
+      if (c.contact_name) document.getElementById('attSignerName').value = c.contact_name;
+      // Scroll into view if user landed here from the bid-form redirect
+      if (location.search.indexOf('reason=attestation_required') !== -1) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    async function saveAttestation() {
+      const btn = document.getElementById('attSaveBtn');
+      const status = document.getElementById('attSaveStatus');
+      const name = (document.getElementById('attSignerName').value || '').trim();
+      const title = (document.getElementById('attSignerTitle').value || '').trim();
+      const checked = document.getElementById('attAccept').checked;
+
+      if (!name || !title) { alert('Enter the signer name and title.'); return; }
+      if (!checked) { alert('Please check the acceptance box.'); return; }
+
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Saving…';
+      status.textContent = '';
+
+      const now = new Date().toISOString();
+      const payload = {
+        text_version:       'ic-24511-v1-2026-04',
+        accepted:           true,
+        accepted_client_ts: now,
+        user_agent:         navigator.userAgent,
+        signer_name:        name,
+        signer_title:       title,
+        source:             'contractor-settings',
+      };
+
+      try {
+        const { data, error } = await sb.from('contractors')
+          .update({
+            ic_24511_attestation:     payload,
+            attestation_accepted_at:  now,
+            attestation_signer_name:  name,
+            attestation_signer_title: title,
+            attestation_text_version: payload.text_version,
+            updated_at:               now,
+          })
+          .eq('id', contractorRecord.id)
+          .select()
+          .single();
+        if (error) throw error;
+
+        // Stamp IP server-side so the on-record IP is trustworthy
+        try {
+          await sb.rpc('record_attestation_ip', { p_contractor_id: contractorRecord.id });
+        } catch (ipErr) {
+          console.warn('record_attestation_ip RPC failed (non-fatal):', ipErr);
+        }
+
+        contractorRecord = data;
+        status.textContent = 'Attestation recorded.';
+        status.style.color = '#14532D';
+        loadAttestationCard(data);
+      } catch (err) {
+        console.error('Error saving attestation:', err);
+        status.textContent = 'Failed: ' + (err.message || err);
+        status.style.color = '#991B1B';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    }
+
+    async function saveCoi() {
+      const btn      = document.getElementById('coiSaveBtn');
+      const status   = document.getElementById('coiSaveStatus');
+      const insurer  = (document.getElementById('coiInsurer').value || '').trim();
+      const policy   = (document.getElementById('coiPolicyNumber').value || '').trim();
+      const expires  = document.getElementById('coiExpiresAt').value;
+      const fileIn   = document.getElementById('coiFileInput');
+      const file     = fileIn.files && fileIn.files[0];
+
+      if (!insurer || !policy || !expires) {
+        alert('Please enter the insurer, policy number, and expiration date.');
+        return;
+      }
+      // Require a file only if contractor doesn't already have one on record,
+      // OR if the expiration date is changing (new cert expected).
+      const needFile = !contractorRecord.coi_file_url || contractorRecord.coi_expires_at !== expires;
+      if (needFile && !file) {
+        alert('Please attach the updated certificate PDF.');
+        return;
+      }
+      // Soft sanity check on expiration
+      const today = new Date(); today.setHours(0,0,0,0);
+      if (new Date(expires + 'T00:00:00') < today) {
+        if (!confirm('That expiration date is in the past. Continue anyway?')) return;
+      }
+
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Uploading…';
+      status.textContent = '';
+
+      try {
+        let filePath = contractorRecord.coi_file_url;
+        if (file) {
+          const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+          filePath = `${currentUser.id}/coi/coi-${Date.now()}.${ext}`;
+          const { error: upErr } = await sb.storage
+            .from('contractor-documents')
+            .upload(filePath, file, { contentType: file.type || 'application/pdf', upsert: true });
+          if (upErr) throw upErr;
+        }
+
+        const { data, error } = await sb.from('contractors')
+          .update({
+            coi_file_url:      filePath,
+            coi_insurer:       insurer,
+            coi_policy_number: policy,
+            coi_expires_at:    expires,
+            coi_uploaded_at:   new Date().toISOString(),
+            // Reset reminder stamps when a new cert is uploaded so the
+            // nightly sweep re-qualifies reminders against the new expiry.
+            coi_reminder_30_sent_at: null,
+            coi_reminder_14_sent_at: null,
+            coi_reminder_7_sent_at:  null,
+            coi_expired_notified_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', contractorRecord.id)
+          .select()
+          .single();
+        if (error) throw error;
+
+        contractorRecord = data;
+        status.textContent = 'Saved.';
+        status.style.color = '#14532D';
+        loadCoiStatus(data);
+      } catch (err) {
+        console.error('Error saving COI:', err);
+        status.textContent = 'Failed: ' + (err.message || err);
+        status.style.color = '#991B1B';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
       }
     }
 

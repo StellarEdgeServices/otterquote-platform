@@ -2691,6 +2691,21 @@
               return;
             }
 
+            // D-170: contractor must have an accepted attestation and a current COI.
+            // Mirrors the RLS policy (contractor_can_bid) so we fail fast in the UI
+            // with a clear message rather than a generic RLS error at submit time.
+            const hasAttestation = !!data.attestation_accepted_at;
+            const coiOk = !!(data.coi_file_url && data.coi_expires_at &&
+                             new Date(data.coi_expires_at + 'T00:00:00') > new Date());
+            if (!hasAttestation) {
+              window.location.href = '/contractor-settings.html?reason=attestation_required';
+              return;
+            }
+            if (!coiOk) {
+              window.location.href = '/contractor-settings.html?reason=coi_required#coiCard';
+              return;
+            }
+
             // Profile completeness gate
             const hasCompanyName     = !!(data.company_name && data.company_name.trim());
             const hasPhone           = !!(data.phone && data.phone.trim());
