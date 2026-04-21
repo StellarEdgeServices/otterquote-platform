@@ -82,7 +82,14 @@ function base64urlDecode(str: string): Uint8Array {
 }
 
 async function importRsaPrivateKey(pemBase64: string): Promise<CryptoKey> {
-  const pemBinary = atob(pemBase64);
+  // Handle both PEM format (-----BEGIN/END headers) and raw base64-encoded DER.
+  // Strip PEM headers/footers if present, then strip all whitespace before atob().
+  // Deno's atob() is strict — any non-base64 char (including PEM dashes) throws.
+  const b64 = pemBase64
+    .replace(/-----BEGIN[^-]*-----/g, "")
+    .replace(/-----END[^-]*-----/g, "")
+    .replace(/\s+/g, "");
+  const pemBinary = atob(b64);
   const pemBytes = new Uint8Array(pemBinary.split("").map((c) => c.charCodeAt(0)));
   return await crypto.subtle.importKey(
     "pkcs8",
@@ -579,6 +586,150 @@ function generateComplianceAddendumPdf(contractorName: string, homeownerName: st
   pdfWrite("%%EOF");
 
   // Encode to base64
+  const pdfContent = pdfLines.join("\n");
+  const pdfBytes = new TextEncoder().encode(pdfContent);
+  return base64EncodeBinary(pdfBytes);
+}
+
+// ========== SIGNATURE PAGE GENERATOR ==========
+/**
+ * Generates a "Signature Page" PDF to attach as Doc 2 in every contract envelope.
+ *
+ * WHY THIS EXISTS: Contractor-uploaded PDFs are arbitrary — they won't contain the
+ * /Contractor/ and /Customer/ anchor strings that DocuSign's anchor tab mechanism
+ * requires. Placing signing tabs on Doc 1 causes hard errors when the anchor text
+ * is absent. Solution: attach a generated Signature Page (Doc 2) that contains
+ * known anchor text we control. Doc 1 (contractor's PDF) becomes display-only.
+ *
+ * This is standard legal practice: the Signature Page explicitly references and
+ * incorporates the Contractor Agreement (Exhibit A). Signing anywhere in a DocuSign
+ * envelope legally executes all documents in that envelope.
+ *
+ * Uses the same hand-rolled PDF generator as generateComplianceAddendumPdf() —
+ * no external dependencies.
+ */
+function generateSignaturePage(
+  contractorName: string,
+  homeownerName: string,
+  propertyAddress: string,
+  contractDate: string
+): string {
+  // ── PDF content ──────────────────────────────────────────────────────────
+  const contentLines: string[] = [];
+
+  function escPdf(text: string): string {
+    return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  }
+
+  function addLine(x: number, y: number, size: number, font: string, text: string) {
+    contentLines.push(`BT /${font} ${size} Tf ${x} ${y} Td (${escPdf(text)}) Tj ET`);
+  }
+
+  function hRule(y: number) {
+    contentLines.push(`0.6 G 50 ${y} m 562 ${y} l S 0 G`);
+  }
+
+  let y = 740;
+
+  // Title
+  addLine(50, y, 14, "F2", "SIGNATURE PAGE TO CONTRACTOR AGREEMENT");
+  y -= 6;
+  hRule(y);
+  y -= 22;
+
+  // Preamble
+  addLine(50, y, 10, "F1", "This Signature Page is incorporated into and forms part of the Contractor Agreement");
+  y -= 15;
+  addLine(50, y, 10, "F1", "attached hereto as Exhibit A, and is binding upon signature as if set forth therein in full.");
+  y -= 24;
+
+  // Party / property summary box
+  hRule(y + 4);
+  y -= 6;
+  addLine(50, y, 9, "F2", "PARTIES AND PROPERTY");
+  y -= 16;
+  addLine(65, y, 9, "F1", `Property Owner:   ${homeownerName}`);
+  y -= 13;
+  addLine(65, y, 9, "F1", `Property Address: ${propertyAddress || "(as stated in the Contractor Agreement)"}`);
+  y -= 13;
+  addLine(65, y, 9, "F1", `Contractor:       ${contractorName}`);
+  y -= 13;
+  addLine(65, y, 9, "F1", `Contract Date:    ${contractDate}`);
+  y -= 10;
+  hRule(y);
+  y -= 28;
+
+  // ── CONTRACTOR EXECUTION ─────────────────────────────────────────────────
+  addLine(50, y, 11, "F2", "CONTRACTOR EXECUTION");
+  y -= 18;
+  addLine(50, y, 9, "F1", "By signing below, Contractor acknowledges having reviewed the Contractor Agreement");
+  y -= 14;
+  addLine(50, y, 9, "F1", "(Exhibit A) and all other documents in this DocuSign envelope, and agrees to be");
+  y -= 14;
+  addLine(50, y, 9, "F1", "bound by their terms.");
+  y -= 26;
+
+  // Contractor signature line — /Contractor/ is the DocuSign anchor string
+  addLine(50, y, 9, "F1", "/Contractor/ ___________________________________   Date: /Contractor_Date/");
+  y -= 16;
+  addLine(55, y, 8, "F1", `${contractorName}`);
+  y -= 10;
+  addLine(55, y, 8, "F1", "Authorized Representative");
+  y -= 24;
+
+  hRule(y);
+  y -= 28;
+
+  // ── HOMEOWNER EXECUTION ──────────────────────────────────────────────────
+  addLine(50, y, 11, "F2", "HOMEOWNER / PROPERTY OWNER EXECUTION");
+  y -= 18;
+  addLine(50, y, 9, "F1", "By signing below, Homeowner acknowledges having reviewed the Contractor Agreement");
+  y -= 14;
+  addLine(50, y, 9, "F1", "(Exhibit A) and all other documents in this DocuSign envelope, and agrees to be");
+  y -= 14;
+  addLine(50, y, 9, "F1", "bound by their terms.");
+  y -= 26;
+
+  // Homeowner signature line — /Customer/ is the DocuSign anchor string
+  addLine(50, y, 9, "F1", "/Customer/ _____________________________________   Date: /Customer_Date/");
+  y -= 16;
+  addLine(55, y, 8, "F1", `${homeownerName}`);
+  y -= 10;
+  addLine(55, y, 8, "F1", "Property Owner");
+  y -= 24;
+
+  hRule(y);
+  y -= 18;
+
+  // Footer note
+  addLine(50, y, 8, "F1", "OtterQuote is not a party to this contract. See the IC 24-5-11 Compliance Addendum for full platform disclosure.");
+  y -= 12;
+  addLine(50, y, 8, "F1", `Generated by OtterQuote — ${new Date().toISOString()}`);
+
+  // ── Assemble PDF ─────────────────────────────────────────────────────────
+  const contentStream = contentLines.join("\n");
+
+  const pdfLines: string[] = [];
+  const objOffsets: number[] = new Array(8).fill(0);
+  let byteOffset = 0;
+
+  function pw(s: string) { pdfLines.push(s); byteOffset += s.length + 1; }
+  function startObj(n: number) { objOffsets[n] = byteOffset; pw(`${n} 0 obj`); }
+
+  pw("%PDF-1.4");
+  startObj(1); pw("<< /Type /Catalog /Pages 2 0 R >>"); pw("endobj");
+  startObj(2); pw("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"); pw("endobj");
+  startObj(3); pw("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>"); pw("endobj");
+  startObj(4); pw(`<< /Length ${contentStream.length} >>`); pw("stream"); pw(contentStream); pw("endstream"); pw("endobj");
+  startObj(5); pw("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"); pw("endobj");
+  startObj(6); pw("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"); pw("endobj");
+
+  const xrefAt = byteOffset;
+  pw("xref"); pw("0 7");
+  pw("0000000000 65535 f ");
+  for (let i = 1; i <= 6; i++) pw(String(objOffsets[i]).padStart(10, "0") + " 00000 n ");
+  pw("trailer"); pw("<< /Size 7 /Root 1 0 R >>"); pw("startxref"); pw(String(xrefAt)); pw("%%EOF");
+
   const pdfContent = pdfLines.join("\n");
   const pdfBytes = new TextEncoder().encode(pdfContent);
   return base64EncodeBinary(pdfBytes);
@@ -1191,6 +1342,7 @@ function buildTextTabs(
       anchorUnits: "pixels",
       anchorXOffset: "150",
       anchorYOffset: "-5",
+      anchorIgnoreIfNotPresent: "true",  // contractor PDFs are arbitrary — skip silently if anchor not found
       value: String(fieldValue),
       locked: "true",
       font: "helvetica",
@@ -1481,13 +1633,18 @@ async function handleContractorSign(
   const { accessToken, accountId, baseUri } = tokenInfo;
 
   // Document IDs:
-  //   Insurance:  doc 1 = contractor agreement, doc 2 = IC 24-5-11 addendum
-  //   Retail:     doc 1 = contractor agreement, doc 2 = Scope of Work, doc 3 = IC 24-5-11 addendum
-  const documentId = "1";
-  const sowDocId    = "2"; // retail only
-  const addendumDocId = isRetail && scopeOfWorkBase64 ? "3" : "2";
+  //   Insurance:  doc 1 = contractor agreement, doc 2 = Signature Page, doc 3 = IC 24-5-11 addendum
+  //   Retail:     doc 1 = contractor agreement, doc 2 = Signature Page, doc 3 = Scope of Work, doc 4 = IC 24-5-11 addendum
+  //
+  // Doc 1 (contractor's arbitrary PDF) is DISPLAY-ONLY — no signing tabs. Contractor PDFs
+  // don't contain the anchor strings DocuSign requires, so tabs on Doc 1 cause hard errors.
+  // All signing tabs go on Doc 2 (generated Signature Page) which has known anchor text.
+  const documentId    = "1";             // contractor's PDF — display only
+  const sigPageDocId  = "2";             // generated Signature Page — signing tabs live here
+  const sowDocId      = "3";             // retail Scope of Work (shifted from "2")
+  const addendumDocId = isRetail && scopeOfWorkBase64 ? "4" : "3";  // shifted by sigPage insertion
   const textTabs = buildTextTabs(autoFields, documentId, "contractor_sign");
-  const contractorTabs = buildSignerTabs(documentId, "contractor");
+  const contractorTabs = buildSignerTabs(sigPageDocId, "contractor");
 
   // Resolve homeowner email for placeholder recipient (from profiles table)
   let homeownerEmail = "homeowner@placeholder.otterquote.com";
@@ -1513,9 +1670,17 @@ async function handleContractorSign(
         documentBase64: templateBase64,
         name: docLabel,
         fileExtension: "pdf",
-        documentId,
+        documentId,  // Doc 1: contractor's PDF (display-only, no signing tabs)
       },
-      // Scope of Work — retail jobs only (doc 2). Shifts addendum to doc 3.
+      // Doc 2: Signature Page — generated with known /Contractor/ and /Customer/ anchor text.
+      // Signing tabs are placed here instead of Doc 1 (arbitrary contractor PDF).
+      {
+        documentBase64: generateSignaturePage(contractorName, homeownerName, claimData?.property_address || autoFields.customer_address || "", contractDate),
+        name: "Signature Page",
+        fileExtension: "pdf",
+        documentId: sigPageDocId,
+      },
+      // Scope of Work — retail jobs only (doc 3, shifted from doc 2 by Signature Page insertion).
       ...(scopeOfWorkBase64 ? [{
         documentBase64: scopeOfWorkBase64,
         name: "Scope of Work",
@@ -1551,7 +1716,7 @@ async function handleContractorSign(
           routingOrder: "2",
           clientUserId: "homeowner_1",
           tabs: {
-            ...buildSignerTabs(documentId, "homeowner"),
+            ...buildSignerTabs(sigPageDocId, "homeowner"),  // Signature Page, not contractor PDF
             ...buildAddendumTabs(addendumDocId),
           },
         },
