@@ -26,4 +26,10 @@ Disallow: /repair-intake
 Disallow: /schedule-inspection
 
 # Admin and internal tools
-Disallow: /stripe
+Disallow: /stripe-mockup.html
+Disallow: /contractor-agreement.html
+
+# Scripts (belt-and-suspenders — stohler-hover-import.py removed from deploy)
+Disallow: /stohler-hover-import.py
+
+Sitemap: https://otterquote.com/sitemap.xml

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Your Bids — OtterQuote</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Your Bids — Otter Quotes</title>
   <meta name="description" content="Compare contractor bids and select the best contractor for your roofing or exterior project.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -268,7 +268,7 @@
           <!-- Guarantee Banner -->
           <div class="guarantee-banner">
             <span style="font-size:1.3rem;">🛡</span>
-            <span><strong>OtterQuote Guarantee:</strong> Not sure? You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</span>
+            <span><strong>Otter Quotes Guarantee:</strong> Not sure? You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.</span>
           </div>
 
           <!-- Bid Updated Notification Banner (shown when a contractor has revised a submitted bid) -->
@@ -1224,7 +1224,7 @@
       // Testimonials placeholder — testimonials column not yet available
       document.getElementById('profileTestimonials').innerHTML = `
         <h3>Customer Reviews</h3>
-        <p style="color:var(--slate);">No OtterQuote reviews yet. Reviews from previous OtterQuote homeowners will appear here as the contractor completes projects.</p>
+        <p style="color:var(--slate);">No Otter Quotes reviews yet. Reviews from previous Otter Quotes homeowners will appear here as the contractor completes projects.</p>
       `;
 
       // Stats
@@ -1288,7 +1288,7 @@
       // Select CTA — any contractor can be selected; signing happens after selection
       document.getElementById('profileSelectCTA').innerHTML = `
         <h3>Ready to Choose ${esc(c.company_name)}?</h3>
-        <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. The contract will be sent to both you and the contractor for signature. You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</p>
+        <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. The contract will be sent to both you and the contractor for signature. You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.</p>
         <button class="btn btn-primary btn-lg" onclick="selectContractor('${bid.id}')">Select ${esc(c.company_name)}</button>
       `;
 
@@ -1534,4 +1534,186 @@
         });
 
         // 5. Proceed to contract signing — contract distributed to both parties after selection
-        window.location.href = `contract-signing.html?claim_id=${encodeURIComponent(currentClaim.id)}&contractor_id=${encodeURIComponent(bid.contractor_id)}
+        window.location.href = `contract-signing.html?claim_id=${encodeURIComponent(currentClaim.id)}&contractor_id=${encodeURIComponent(bid.contractor_id)}&quote_id=${encodeURIComponent(bidId)}`;
+
+      } catch (err) {
+        console.error('Selection error:', err);
+
+        let errorTitle = 'Something Went Wrong';
+        let errorMessage = 'There was a problem awarding this project. Please try again.';
+
+        if (err.message && err.message.includes('Payment')) {
+          errorTitle = 'Unable to Process Payment';
+          errorMessage = 'Unable to process the contractor\'s payment method. Please select another contractor or contact support.';
+        }
+
+        document.getElementById('modalTitle').textContent = errorTitle;
+        document.getElementById('modalBody').textContent = errorMessage;
+        document.getElementById('modalSpinner').style.display = 'none';
+        document.getElementById('modalActions').style.display = 'flex';
+        document.getElementById('modalConfirmBtn').disabled = false;
+      }
+    };
+
+    // ── View Toggle ──
+    window.setView = function(view) {
+      currentView = view;
+      document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+      // Future: implement list view layout
+      renderBids();
+    };
+
+    // ── Helpers ──
+    function esc(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatDate(dateStr) {
+      try {
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch { return dateStr; }
+    }
+
+    function formatWarranty(bid) {
+      const parts = [];
+      if (bid.workmanship_warranty_years) parts.push(`${bid.workmanship_warranty_years}yr workmanship`);
+      if (bid.manufacturer_warranty_years) parts.push(`${bid.manufacturer_warranty_years}yr manufacturer`);
+      return parts.length > 0 ? parts.join(' + ') : (bid.warranty_summary || 'TBD');
+    }
+
+    function parseCerts(certs) {
+      if (!certs) return [];
+      if (Array.isArray(certs)) return certs;
+      try { return JSON.parse(certs); } catch { return certs.split(',').map(s => s.trim()); }
+    }
+
+    function parseJSON(val) {
+      if (!val) return null;
+      if (Array.isArray(val)) return val;
+      try { return JSON.parse(val); } catch { return null; }
+    }
+
+    // Render value_adds (contractor distinguishing features) as a clean bulleted section
+    function renderValueAdds(bid) {
+      const va = typeof bid.value_adds === 'string' ? parseJSON(bid.value_adds) : bid.value_adds;
+      if (!va) return '';
+
+      const items = [];
+
+      // Gutters
+      if (va.gutters && va.gutters.option && va.gutters.option !== 'none') {
+        const opt = va.gutters.option;
+        if (opt === '5inch_included') items.push('✓ 5" gutters included at no out-of-pocket cost');
+        else if (opt === '6inch_included') items.push('✓ 6" gutters included at no out-of-pocket cost');
+        else if (opt === '5inch_additional') items.push(`5" gutters available for +$${(va.gutters.additional_cost_5inch || 0).toLocaleString()}`);
+        else if (opt === '6inch_additional') items.push(`6" gutters available for +$${(va.gutters.additional_cost_6inch || 0).toLocaleString()}`);
+        else if (opt === 'other' && va.gutters.other_text) items.push('Gutters: ' + esc(va.gutters.other_text));
+      }
+
+      // Chimney Flashing
+      if (va.chimney_flashing && va.chimney_flashing !== 'na') {
+        if (va.chimney_flashing === 'replace') items.push('✓ Chimney flashing replaced (included)');
+        else if (va.chimney_flashing === 'reuse') items.push('Chimney flashing reused if in good condition');
+      }
+
+      // Gutter Guards
+      if (va.gutter_guards && va.gutter_guards.option === 'available') {
+        const type = va.gutter_guards.type === 'other' ? (va.gutter_guards.type_other || 'custom type') : (va.gutter_guards.type || 'mesh');
+        const price = va.gutter_guards.oop_price ? `+$${va.gutter_guards.oop_price.toLocaleString()} OOP` : 'price on request';
+        items.push(`Gutter guards available (${esc(type)}) — ${price}`);
+      }
+
+      // Skylights
+      if (va.skylights && va.skylights !== 'na') {
+        if (va.skylights === 'reflash') items.push('✓ Skylights reflashed (included)');
+        else if (va.skylights === 'replace') items.push('Skylights can be replaced');
+      }
+
+      // Chimney Reflash
+      if (va.chimney_reflash && va.chimney_reflash.option && va.chimney_reflash.option !== 'na') {
+        if (va.chimney_reflash.option === 'included') items.push('✓ Chimney reflash included at no additional cost');
+        else if (va.chimney_reflash.option === 'oop') items.push(`Chimney reflash available for +$${(va.chimney_reflash.oop_price || 0).toLocaleString()} OOP`);
+      }
+
+      // Other offers
+      if (va.other_offers && va.other_offers.trim()) {
+        items.push(esc(va.other_offers.trim()));
+      }
+
+      // Other Shingles Available — new array format or legacy object format
+      let shingleItems = [];
+      if (va.other_shingles) {
+        if (Array.isArray(va.other_shingles) && va.other_shingles.length > 0) {
+          // New format: ["GAF|Timberline HDZ", "Owens Corning|Duration", ...]
+          // Group by brand for display
+          const byBrand = {};
+          va.other_shingles.forEach(v => {
+            const parts = v.split('|');
+            const brand = parts[0] || 'Other';
+            const product = parts[1] || v;
+            if (!byBrand[brand]) byBrand[brand] = [];
+            byBrand[brand].push(product);
+          });
+          Object.keys(byBrand).forEach(brand => {
+            shingleItems.push(`<strong>${esc(brand)}:</strong> ${byBrand[brand].map(p => esc(p)).join(', ')}`);
+          });
+        } else if (typeof va.other_shingles === 'object' && !Array.isArray(va.other_shingles)) {
+          // Legacy format: {impact: true, designer: true, metal: false, ...}
+          const labels = { impact: 'Impact Resistant (Class 4)', designer: 'Designer / Luxury', metal: 'Metal Roofing', premium_arch: 'Premium Architectural' };
+          Object.keys(labels).forEach(key => {
+            if (va.other_shingles[key]) shingleItems.push(esc(labels[key]));
+          });
+          if (va.other_shingles.other_text) shingleItems.push(esc(va.other_shingles.other_text));
+        }
+      }
+
+      if (items.length === 0 && shingleItems.length === 0) return '';
+
+      let html = '';
+
+      if (items.length > 0) {
+        html += `
+          <div style="margin: var(--sp-4) 0; padding: var(--sp-4); background: #F0FDF4; border: 1px solid #86EFAC; border-radius: var(--radius-md);">
+            <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #166534; margin-bottom: var(--sp-2);">What's Included / Available</div>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-1);">
+              ${items.map(item => `<li style="font-size: 0.875rem; color: #14532D;">${item}</li>`).join('')}
+            </ul>
+          </div>
+        `;
+      }
+
+      if (shingleItems.length > 0) {
+        const notesHtml = (va.other_shingles_notes || (va.other_shingles && typeof va.other_shingles === 'object' && !Array.isArray(va.other_shingles) && va.other_shingles.notes))
+          ? `<div style="margin-top:var(--sp-2);font-size:0.8rem;color:#374151;font-style:italic;">${esc(va.other_shingles_notes || va.other_shingles.notes)}</div>`
+          : '';
+        html += `
+          <div style="margin: var(--sp-4) 0; padding: var(--sp-4); background: #EFF6FF; border: 1px solid #93C5FD; border-radius: var(--radius-md);">
+            <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1E3A5F; margin-bottom: var(--sp-2);">Also Available at Insurance Price</div>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-1);">
+              ${shingleItems.map(item => `<li style="font-size: 0.875rem; color: #1E3A5F;">${item}</li>`).join('')}
+            </ul>
+            ${notesHtml}
+            <div style="margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid #BFDBFE;font-size:0.75rem;color:#6B7280;">⚠️ Different warranty terms may apply to shingles other than the contractor's preferred product. Ask the contractor about specific warranty coverage before making your selection.</div>
+          </div>
+        `;
+      }
+
+      return html;
+    }
+
+    // ── Init ──
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+  </script>
+
+</body>
+</html>

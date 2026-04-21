@@ -1,5 +1,5 @@
 /**
- * OtterQuote Edge Function: admin-contractor-action
+ * Otter Quotes Edge Function: admin-contractor-action
  *
  * Handles admin actions on contractor accounts:
  *   - approve: Activate contractor and send welcome email
@@ -70,7 +70,7 @@ function buildEmail(bodyHtml: string): string {
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
         <tr>
           <td align="left" style="background:#0B1929;padding:24px 32px;">
-            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">OtterQuote</span>
+            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Otter Quotes</span>
           </td>
         </tr>
         <tr>
@@ -212,7 +212,7 @@ serve(async (req) => {
 
         const approvalEmailText = `Hi ${greeting},
 
-Great news — your OtterQuote contractor account has been approved. You can now browse available opportunities and submit bids.
+Great news — your Otter Quotes contractor account has been approved. You can now browse available opportunities and submit bids.
 
 Log in to get started: ${DASHBOARD_URL}
 
@@ -225,11 +225,11 @@ Tip: Enable Auto-Bid in Settings to automatically compete for every matching opp
 
 Questions? support@otterquote.com | (844) 875-3412
 
-The OtterQuote Team`;
+The Otter Quotes Team`;
 
         const approvalEmailHtml = buildEmail(`
           <p style="margin:0 0 6px;color:#14B8A6;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">You're Approved</p>
-          <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Welcome to OtterQuote, ${greeting}!</h2>
+          <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Welcome to Otter Quotes, ${greeting}!</h2>
 
           <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">Your account is active. You can now browse available opportunities and submit bids.</p>
 
@@ -266,8 +266,8 @@ The OtterQuote Team`;
           mailgunKey,
           mailgunDomain,
           contractor.email,
-          "OtterQuote <notifications@mail.otterquote.com>",
-          "Welcome to OtterQuote — You're Approved!",
+          "Otter Quotes <notifications@mail.otterquote.com>",
+          "Welcome to Otter Quotes — You're Approved!",
           approvalEmailText,
           approvalEmailHtml
         );
@@ -313,20 +313,20 @@ The OtterQuote Team`;
         const greeting = contractor.contact_name || contractor.company_name || "there";
         const rejectionEmailText = `Hi ${greeting},
 
-Thank you for applying to join the OtterQuote contractor network. After reviewing your application, we weren't able to approve your account at this time.
+Thank you for applying to join the Otter Quotes contractor network. After reviewing your application, we weren't able to approve your account at this time.
 
 Reason: ${reason}
 
 If you'd like to address this and reapply, please contact us at support@otterquote.com or call (844) 875-3412. We're happy to work with you to get things squared away.
 
-The OtterQuote Team`;
+The Otter Quotes Team`;
 
         await sendMailgunEmail(
           mailgunKey,
           mailgunDomain,
           contractor.email,
-          "OtterQuote <notifications@mail.otterquote.com>",
-          "OtterQuote Application — Update on Your Account",
+          "Otter Quotes <notifications@mail.otterquote.com>",
+          "Otter Quotes Application — Update on Your Account",
           rejectionEmailText
         );
       }
@@ -361,7 +361,7 @@ The OtterQuote Team`;
 
       const coiEmail = `Dear Insurance Representative,
 
-We are writing to verify the Certificate of Insurance on file for ${contractor_company_name}, who has applied to join the OtterQuote contractor network.
+We are writing to verify the Certificate of Insurance on file for ${contractor_company_name}, who has applied to join the Otter Quotes contractor network.
 
 We are requesting confirmation that the following policies are currently active and in good standing for this insured:
 - Commercial General Liability Insurance
@@ -371,7 +371,7 @@ Please reply to this email confirming policy status, or contact us at info@otter
 
 Thank you for your time.
 
-OtterQuote
+Otter Quotes
 info@otterquote.com
 (844) 875-3412
 https://otterquote.com`;
@@ -380,8 +380,8 @@ https://otterquote.com`;
         mailgunKey,
         mailgunDomain,
         broker_email,
-        "OtterQuote <info@mail.otterquote.com>",
-        "COI Verification Request — OtterQuote",
+        "Otter Quotes <info@mail.otterquote.com>",
+        "COI Verification Request — Otter Quotes",
         coiEmail
       );
 

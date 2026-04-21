@@ -1,7 +1,7 @@
 /**
- * OtterQuote Edge Function: send-support-email
+ * Otter Quotes Edge Function: send-support-email
  * Receives contractor support form submissions and forwards them to the
- * OtterQuote support inbox via Mailgun.
+ * Otter Quotes support inbox via Mailgun.
  *
  * The destination address (dustinstohler1@gmail.com) is hardcoded here —
  * callers cannot override the recipient for security reasons.
@@ -66,16 +66,16 @@ serve(async (req) => {
 
     if (to_email) {
       // Direct email to a specific recipient (e.g., contractor welcome email)
-      emailSubject = subject || "Welcome to OtterQuote";
+      emailSubject = subject || "Welcome to Otter Quotes";
       emailBody = message;
-      from = `OtterQuote <notifications@${MAILGUN_DOMAIN}>`;
+      from = `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`;
     } else {
       // Support form email to admin
       emailSubject = subject
-        ? `[OtterQuote Support] ${subject}`
-        : `[OtterQuote Support] Message from ${from_name}`;
+        ? `[Otter Quotes Support] ${subject}`
+        : `[Otter Quotes Support] Message from ${from_name}`;
 
-      emailBody = `OtterQuote Support Request
+      emailBody = `Otter Quotes Support Request
 ===========================
 From:    ${from_name}
 Email:   ${from_email}
@@ -85,10 +85,10 @@ Message:
 ${message}
 
 ---
-Sent via OtterQuote support form.
+Sent via Otter Quotes support form.
 Reply directly to this email to respond.`;
 
-      from = `OtterQuote Support <noreply@${MAILGUN_DOMAIN}>`;
+      from = `Otter Quotes Support <noreply@${MAILGUN_DOMAIN}>`;
     }
 
     const formData = new URLSearchParams();

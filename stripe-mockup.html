@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
-<title>OtterQuote — Stripe Payment Flow (Internal)</title>
+<title>Otter Quotes — Stripe Payment Flow (Internal)</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&family=DM+Mono&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -163,7 +163,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
   <div class="auth-gate-box">
     <h2 id="authGateTitle">Verifying access…</h2>
     <p id="authGateMsg">Please wait.</p>
-    <a href="index.html" id="authGateLink" style="display:none;">← Return to OtterQuote</a>
+    <a href="index.html" id="authGateLink" style="display:none;">← Return to Otter Quotes</a>
   </div>
 </div>
 
@@ -171,7 +171,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
 <div id="mainContent" style="display:none;">
 
 <div class="header">
-  <h1>OtterQuote</h1>
+  <h1>Otter Quotes</h1>
   <span class="badge">Stripe Mockup — Internal</span>
   <span style="margin-left:auto; font-size:0.8rem; color:var(--slate);">Not connected to Stripe — internal reference only</span>
 </div>
@@ -188,7 +188,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
 
   <!-- ═══ SECTION 1: Flow Overview ═══ -->
   <div class="section active" id="overview">
-    <h2 class="flow-header">How Money Flows Through OtterQuote</h2>
+    <h2 class="flow-header">How Money Flows Through Otter Quotes</h2>
     <p class="flow-subtitle">End-to-end payment lifecycle from homeowner selection to contractor payout</p>
 
     <div class="flow-diagram">
@@ -221,7 +221,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
         </div>
         <div class="step-content">
           <h3>Platform Fee Charged to Contractor</h3>
-          <p>OtterQuote charges the contractor's card on file for the platform fee. This is the revenue event.</p>
+          <p>Otter Quotes charges the contractor's card on file for the platform fee. This is the revenue event.</p>
           <span class="fee-tag">Platform fee = 5% of job value</span>
         </div>
       </div>
@@ -233,8 +233,8 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
         </div>
         <div class="step-content">
           <h3>Deductible Collected from Homeowner</h3>
-          <p>Homeowner pays their insurance deductible via Stripe. Funds land in OtterQuote's platform account — NOT the contractor's.</p>
-          <span class="money-tag">$2,500 → OtterQuote Platform Balance</span>
+          <p>Homeowner pays their insurance deductible via Stripe. Funds land in Otter Quotes's platform account — NOT the contractor's.</p>
+          <span class="money-tag">$2,500 → Otter Quotes Platform Balance</span>
         </div>
       </div>
 
@@ -245,7 +245,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
         </div>
         <div class="step-content">
           <h3>Funds Held in Platform Balance</h3>
-          <p>Deductible sits in OtterQuote's Stripe balance while work is performed. Homeowner protected — contractor doesn't have the money yet.</p>
+          <p>Deductible sits in Otter Quotes's Stripe balance while work is performed. Homeowner protected — contractor doesn't have the money yet.</p>
           <span class="hold-tag">HELD — awaiting ACV check</span>
         </div>
       </div>
@@ -257,7 +257,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
         </div>
         <div class="step-content">
           <h3>ACV Check Verified</h3>
-          <p>Insurance company issues the ACV (Actual Cash Value) check. OtterQuote confirms payment was received by homeowner or contractor.</p>
+          <p>Insurance company issues the ACV (Actual Cash Value) check. Otter Quotes confirms payment was received by homeowner or contractor.</p>
         </div>
       </div>
 
@@ -267,14 +267,14 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
         </div>
         <div class="step-content">
           <h3>Deductible Released to Contractor</h3>
-          <p>OtterQuote creates a Stripe Transfer from platform balance to the contractor's Express Connected Account. Contractor receives funds in their bank account.</p>
+          <p>Otter Quotes creates a Stripe Transfer from platform balance to the contractor's Express Connected Account. Contractor receives funds in their bank account.</p>
           <span class="money-tag">$2,500 → Contractor Bank Account</span>
         </div>
       </div>
     </div>
 
     <div class="callout legal" style="margin-top: 32px;">
-      <p><strong>Legal flag (D-029):</strong> The deductible escrow structure requires attorney sign-off before go-live. Key question: does holding homeowner funds require an Indiana money transmitter or escrow license? This is tabled until legal review is complete. See attorney review brief in OtterQuote/Legal/.</p>
+      <p><strong>Legal flag (D-029):</strong> The deductible escrow structure requires attorney sign-off before go-live. Key question: does holding homeowner funds require an Indiana money transmitter or escrow license? This is tabled until legal review is complete. See attorney review brief in Otter Quotes/Legal/.</p>
     </div>
   </div>
 
@@ -305,7 +305,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
           <label class="toggle"><input type="checkbox" id="colorToggle" checked onchange="calculateFees()"><span class="slider"></span></label>
         </div>
       </div>
-      <p style="font-size:0.8rem; color:var(--gray); margin: -4px 0 12px 0;">Opt-in. OtterQuote handles color visualization and selection with homeowner.</p>
+      <p style="font-size:0.8rem; color:var(--gray); margin: -4px 0 12px 0;">Opt-in. Otter Quotes handles color visualization and selection with homeowner.</p>
 
       <div class="toggle-row">
         <label><span class="tier-badge tier-deductible">DEDUCTIBLE</span> Deductible Collection & Escrow</label>
@@ -314,7 +314,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
           <label class="toggle"><input type="checkbox" checked disabled><span class="slider"></span></label>
         </div>
       </div>
-      <p style="font-size:0.8rem; color:var(--gray); margin: -4px 0 12px 0;">Always included. OtterQuote collects & holds deductible, releases after ACV check.</p>
+      <p style="font-size:0.8rem; color:var(--gray); margin: -4px 0 12px 0;">Always included. Otter Quotes collects & holds deductible, releases after ACV check.</p>
 
       <div class="fee-calc">
         <div class="fee-row">
@@ -395,7 +395,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
       </div>
 
       <div class="callout" style="margin-bottom:20px;">
-        <p>Your deductible is held securely by OtterQuote and released to your contractor only after your insurance company's ACV check has been verified. <strong>Your money is protected.</strong></p>
+        <p>Your deductible is held securely by Otter Quotes and released to your contractor only after your insurance company's ACV check has been verified. <strong>Your money is protected.</strong></p>
       </div>
 
       <button class="btn btn-primary" style="width:100%; padding:16px; font-size:1rem;" onclick="simulatePayment()">
@@ -405,7 +405,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
       <div id="paymentResult" style="display:none; margin-top:20px; text-align:center; padding:24px; background:rgba(16,185,129,0.1); border-radius:var(--radius-md); border:1px solid rgba(16,185,129,0.2);">
         <div style="font-size:2rem; margin-bottom:8px;">&#10003;</div>
         <h3 style="color:var(--green); margin-bottom:4px;">Payment Successful</h3>
-        <p style="color:var(--slate); font-size:0.85rem;">Your deductible of $2,500.00 has been securely collected.<br>Funds are held by OtterQuote until ACV verification.</p>
+        <p style="color:var(--slate); font-size:0.85rem;">Your deductible of $2,500.00 has been securely collected.<br>Funds are held by Otter Quotes until ACV verification.</p>
         <p style="font-family:var(--font-mono); font-size:0.8rem; color:var(--gray); margin-top:12px;">pi_3RKzY2J... &bull; March 19, 2026 at 4:32 PM</p>
       </div>
     </div>
@@ -415,7 +415,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
   <div class="section" id="escrow">
     <div class="demo-card">
       <h2>Escrow Status — Admin View</h2>
-      <p class="demo-desc">OtterQuote admin dashboard for tracking held deductibles and release status.</p>
+      <p class="demo-desc">Otter Quotes admin dashboard for tracking held deductibles and release status.</p>
 
       <div class="account-diagram">
         <div class="account-box">
@@ -429,7 +429,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
           <div class="arrow-label">Charge on platform account</div>
         </div>
         <div class="account-box" style="border-color:var(--amber);">
-          <div class="acct-type">OtterQuote Platform</div>
+          <div class="acct-type">Otter Quotes Platform</div>
           <h4>Stripe Balance</h4>
           <div class="balance" style="color:var(--amber);">$2,500</div>
           <p style="font-size:0.75rem; color:var(--gray); margin-top:4px;">Held — awaiting ACV</p>
@@ -438,7 +438,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
 
       <div class="account-diagram">
         <div class="account-box" style="border-color:var(--amber);">
-          <div class="acct-type">OtterQuote Platform</div>
+          <div class="acct-type">Otter Quotes Platform</div>
           <h4>After ACV Verified</h4>
           <div class="balance" style="color:var(--amber);">$0</div>
           <p style="font-size:0.75rem; color:var(--gray); margin-top:4px;">Transferred out</p>
@@ -485,7 +485,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
           <div class="status-icon current">&#9679;</div>
           <div class="status-text">
             <h4>Awaiting ACV Check Verification</h4>
-            <p>Funds held in OtterQuote platform balance. Contractor notified — 48-hour contact window active.</p>
+            <p>Funds held in Otter Quotes platform balance. Contractor notified — 48-hour contact window active.</p>
             <span class="timestamp">In progress</span>
           </div>
         </div>
@@ -513,7 +513,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
       </div>
 
       <div class="callout warning" style="margin-top:24px;">
-        <p><strong>Cancellation scenario:</strong> If the homeowner cancels (D-041, up to 3 days before install), the deductible is refunded from OtterQuote's platform balance directly. No clawback from contractor needed — funds were never transferred.</p>
+        <p><strong>Cancellation scenario:</strong> If the homeowner cancels (D-041, up to 3 days before install), the deductible is refunded from Otter Quotes's platform balance directly. No clawback from contractor needed — funds were never transferred.</p>
       </div>
     </div>
   </div>
@@ -537,7 +537,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
           <h4 style="color:var(--green); margin-bottom:12px; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px;">Connected Accounts (Express)</h4>
           <p style="font-size:0.85rem; margin-bottom:8px;"><strong>Each contractor gets one</strong></p>
           <p style="font-size:0.8rem; color:var(--slate); margin-bottom:4px;">&#8226; Stripe-hosted onboarding (KYC handled)</p>
-          <p style="font-size:0.8rem; color:var(--slate); margin-bottom:4px;">&#8226; Manual payouts (OtterQuote controls timing)</p>
+          <p style="font-size:0.8rem; color:var(--slate); margin-bottom:4px;">&#8226; Manual payouts (Otter Quotes controls timing)</p>
           <p style="font-size:0.8rem; color:var(--slate); margin-bottom:4px;">&#8226; Express Dashboard for payout history</p>
           <p style="font-size:0.8rem; color:var(--slate);">&#8226; Receives Transfers after ACV verification</p>
         </div>
@@ -568,7 +568,7 @@ body { font-family: var(--font-body); background: var(--navy); color: var(--whit
           <p style="font-size:0.8rem; color:var(--slate); margin-bottom:4px;"><strong>Who pays:</strong> Contractor</p>
           <p style="font-size:0.8rem; color:var(--slate); margin-bottom:4px;"><strong>When:</strong> At contract signing</p>
           <p style="font-size:0.8rem; color:var(--slate); margin-bottom:4px;"><strong>Amount:</strong> Tiered % of job value</p>
-          <p style="font-size:0.8rem; color:var(--slate);"><strong>Stays:</strong> In OtterQuote balance (revenue)</p>
+          <p style="font-size:0.8rem; color:var(--slate);"><strong>Stays:</strong> In Otter Quotes balance (revenue)</p>
         </div>
         <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.2); border-radius:var(--radius-md); padding:20px;">
           <h4 style="color:var(--green); margin-bottom:8px;">Event 2: Deductible Escrow</h4>
@@ -608,10 +608,71 @@ document.addEventListener('DOMContentLoaded', async function () {
   try {
     const user = await Auth.getUser();
     if (!user) {
-      deny('This page is restricted to OtterQuote administrators. Please log in first.');
+      deny('This page is restricted to Otter Quotes administrators. Please log in first.');
       return;
     }
     if (user.email !== 'dustinstohler1@gmail.com') {
       deny('Your account does not have access to this page.');
       return;
-   
+    }
+    // Auth passed — show content
+    gate.style.display = 'none';
+    document.getElementById('mainContent').style.display = 'block';
+    calculateFees();
+  } catch (err) {
+    console.error('Auth gate error:', err);
+    deny('Authentication error. Please log in and try again.');
+  }
+});
+
+// ── Page logic ─────────────────────────────────────────────────────────────
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function calculateFees() {
+  const jobVal = parseFloat(document.getElementById('jobValue').value) || 0;
+  const colorOn = document.getElementById('colorToggle').checked;
+
+  const basePct = 0.05;
+  const colorPct = colorOn ? 0.03 : 0;
+  const deductPct = 0.05;
+
+  const baseFee = jobVal * basePct;
+  const colorFee = jobVal * colorPct;
+  const deductFee = jobVal * deductPct;
+  const totalPlatformFee = baseFee + colorFee + deductFee;
+  const stripeFee = (totalPlatformFee * 0.029) + 0.30;
+  const totalWithStripe = totalPlatformFee + stripeFee;
+  const net = jobVal - totalPlatformFee;
+  const effectiveRate = jobVal > 0 ? ((totalPlatformFee / jobVal) * 100).toFixed(1) : '0.0';
+
+  document.getElementById('baseFee').textContent = '$' + baseFee.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('colorFee').textContent = '$' + colorFee.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('deductFee').textContent = '$' + deductFee.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('stripeFee').textContent = '$' + stripeFee.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('totalFee').textContent = '$' + totalPlatformFee.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('netPayout').textContent = '$' + net.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('effectiveRate').textContent = effectiveRate + '%';
+
+  document.getElementById('colorFeeRow').style.opacity = colorOn ? '1' : '0.3';
+}
+
+function simulatePayment() {
+  const btn = event.target;
+  btn.textContent = 'Processing...';
+  btn.disabled = true;
+  setTimeout(() => {
+    document.getElementById('paymentResult').style.display = 'block';
+    btn.textContent = 'Payment Complete';
+    btn.style.background = 'var(--green)';
+  }, 1500);
+}
+
+</script>
+
+</body>
+</html>

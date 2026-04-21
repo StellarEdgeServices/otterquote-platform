@@ -1,5 +1,5 @@
 /**
- * OtterQuote Edge Function: notify-contractors
+ * Otter Quotes Edge Function: notify-contractors
  *
  * Handles four event types:
  *
@@ -93,7 +93,7 @@ function ctaButton(text: string, url: string, color = "#14B8A6"): string {
 </table>`.trim();
 }
 
-/** Wrap any body HTML in the shared OtterQuote email shell. */
+/** Wrap any body HTML in the shared Otter Quotes email shell. */
 function buildEmail(bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html>
@@ -109,7 +109,7 @@ function buildEmail(bodyHtml: string): string {
         <!-- Header -->
         <tr>
           <td align="left" style="background:#0B1929;padding:24px 32px;">
-            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">OtterQuote</span>
+            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Otter Quotes</span>
           </td>
         </tr>
         <!-- Body -->
@@ -255,7 +255,7 @@ function contractSignedEmailHtml(contractorName: string, claimId: string): strin
 function contractSignedEmailText(contractorName: string): string {
   return `Hi ${contractorName},
 
-Both parties have signed your contract. Your complete project package is ready in your OtterQuote dashboard.
+Both parties have signed your contract. Your complete project package is ready in your Otter Quotes dashboard.
 
 What's included:
 - Fully executed contract
@@ -559,12 +559,12 @@ async function handleContractSigned(
     .filter((p: string | null): p is string => p !== null);
 
   const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
-  const fromAddress = `OtterQuote <notifications@${mailgunDomain}>`;
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
 
   const emailSubject = `Your contract is signed — project package ready`;
   const emailText = contractSignedEmailText(contractorName);
   const emailHtml = contractSignedEmailHtml(contractorName, claim_id);
-  const smsMessage = `OtterQuote: Your contract is signed. Project package is ready — log in within 48 hrs to contact the homeowner: ${DASHBOARD_URL}`;
+  const smsMessage = `Otter Quotes: Your contract is signed. Project package is ready — log in within 48 hrs to contact the homeowner: ${DASHBOARD_URL}`;
 
   let emailSent = false;
   let smsSent = false;
@@ -670,7 +670,7 @@ async function handleBidUpdateConfirmed(
   }
 
   const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
-  const fromAddress = `OtterQuote <notifications@${mailgunDomain}>`;
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
   const emailSubject = `Bid update confirmed — homeowner notified`;
   const emailText = bidUpdateEmailText(contractorName);
   const emailHtml = bidUpdateEmailHtml(contractorName);
@@ -773,8 +773,8 @@ async function notifyContractorsForSingleTrade(
 
   const tradeCap = tradeLower.charAt(0).toUpperCase() + tradeLower.slice(1);
   const emailSubject = `New ${tradeCap} Opportunity — ${claim_city}, ${claim_state}`;
-  const smsMessage   = `New OtterQuote ${tradeCap} opportunity in ${claim_city}, ${claim_zip}. Log in to bid: ${OPPORTUNITIES_URL}`;
-  const fromAddress  = `OtterQuote <notifications@${mailgunDomain}>`;
+  const smsMessage   = `New Otter Quotes ${tradeCap} opportunity in ${claim_city}, ${claim_zip}. Log in to bid: ${OPPORTUNITIES_URL}`;
+  const fromAddress  = `Otter Quotes <notifications@${mailgunDomain}>`;
 
   const results: Array<{ id: string; email_sent: boolean; sms_sent: boolean; skipped?: boolean; trade: string }> = [];
 
@@ -1060,7 +1060,7 @@ async function handleAgreementRequested(
     .filter((p: string | null): p is string => p !== null);
 
   const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
-  const fromAddress = `OtterQuote <notifications@${mailgunDomain}>`;
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
 
   // Privacy: strip full address — show only city and state to contractor
   const addrParts = (claim.property_address || "").split(",");
@@ -1073,7 +1073,7 @@ async function handleAgreementRequested(
   const emailSubject = `A homeowner is waiting — sign your agreement to be selected`;
   const emailText = agreementRequestedEmailText(contractorName, displayLocation, signingLink);
   const emailHtml = agreementRequestedEmailHtml(contractorName, displayLocation, signingLink);
-  const smsMessage = `OtterQuote: A homeowner wants to select you for a project in ${displayLocation}. Sign your agreement now to stay in the running: ${signingLink}`;
+  const smsMessage = `Otter Quotes: A homeowner wants to select you for a project in ${displayLocation}. Sign your agreement now to stay in the running: ${signingLink}`;
 
   let emailSent = false;
   let smsSent = false;

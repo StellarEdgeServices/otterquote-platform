@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Choose Your Color — OtterQuote</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Choose Your Color — Otter Quotes</title>
   <meta name="description" content="Select the perfect roof color for your home.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -1028,7 +1028,7 @@
 
         } catch (err) {
           console.error('Error requesting color board visit:', err);
-          // Fallback: open mailto to OtterQuote support
+          // Fallback: open mailto to Otter Quotes support
           const subject = encodeURIComponent('Color Board Visit Request');
           const body = encodeURIComponent(`I would like to request an in-person color board visit.\n\nClaim ID: ${this.claimId || 'unknown'}\nContractor: ${this.contractorName || 'unknown'}`);
           window.location.href = `mailto:info@otterquote.com?subject=${subject}&body=${body}`;

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin — Incomplete Profiles | OtterQuote</title>
+    <title>Admin — Incomplete Profiles | Otter Quotes</title>
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
     <style>
@@ -396,7 +396,7 @@
         <div id="unauthorizedContainer" class="unauthorized-container">
             <div class="unauthorized-box">
                 <h2>Access Denied</h2>
-                <p>This page is restricted to OtterQuote administrators.</p>
+                <p>This page is restricted to Otter Quotes administrators.</p>
                 <a href="index.html">Return to home</a>
             </div>
         </div>
@@ -589,13 +589,13 @@
                     ? `<span class="td-login">${escapeHtml(loginLabel)}</span>`
                     : `<span class="login-never">Never</span>`;
 
-                const mailtoSubject = encodeURIComponent('Complete your OtterQuote contractor profile');
+                const mailtoSubject = encodeURIComponent('Complete your Otter Quotes contractor profile');
                 const mailtoBody    = encodeURIComponent(
                     `Hi${c.company_name ? ' ' + c.company_name : ''},\n\n` +
-                    `You signed up for OtterQuote but haven't finished setting up your profile yet. ` +
+                    `You signed up for Otter Quotes but haven't finished setting up your profile yet. ` +
                     `Completing your profile is required before you can start receiving and bidding on projects.\n\n` +
                     `Log in and finish your setup here: https://otterquote.com/contractor-profile.html\n\n` +
-                    `Let me know if you have any questions.\n\nDustin\nOtterQuote`
+                    `Let me know if you have any questions.\n\nDustin\nOtter Quotes`
                 );
 
                 const tr = document.createElement('tr');

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Project Confirmation — OtterQuote</title>
+  <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Project Confirmation — Otter Quotes</title>
   <meta name="description" content="Confirm your project scope and materials so your contractor can get started.">
   <meta name="robots" content="noindex, nofollow">
 
@@ -1445,7 +1445,7 @@
 
   <script>
     /**
-     * OtterQuote — Project Confirmation Page (D-110/D-111/D-112/D-155)
+     * Otter Quotes — Project Confirmation Page (D-110/D-111/D-112/D-155)
      * Roofing flow — expanded from color-selection.html per D-155.
      * Siding/gutters/windows flows to follow in a future session.
      *
@@ -2070,7 +2070,7 @@
         try {
           envelopeResult = await triggerDocuSign(state.claimId);
         } catch (dsErr) {
-          console.error('[OtterQuote] DocuSign envelope error (non-fatal):', dsErr.message);
+          console.error('[Otter Quotes] DocuSign envelope error (non-fatal):', dsErr.message);
         }
 
         // 3. Show success
@@ -2089,7 +2089,7 @@
         }
 
       } catch (err) {
-        console.error('[OtterQuote] Project confirmation submit error:', err);
+        console.error('[Otter Quotes] Project confirmation submit error:', err);
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Project Confirmation →';
         alert('There was an error submitting your confirmation: ' + err.message + '\n\nPlease try again or contact support.');
@@ -2324,7 +2324,7 @@
         document.getElementById('pageContent').style.display = 'block';
 
       } catch (err) {
-        console.error('[OtterQuote] Project confirmation init error:', err);
+        console.error('[Otter Quotes] Project confirmation init error:', err);
         showError('Unable to load project', err.message || 'Please try again or contact support.');
       }
     });

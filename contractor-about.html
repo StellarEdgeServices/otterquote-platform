@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Contractor Profile — OtterQuote</title>
+  <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Contractor Profile — Otter Quotes</title>
   <meta name="description" content="Learn more about this contractor — their experience, certifications, license, and bid for your project.">
 
   <!-- Google Analytics -->
@@ -351,9 +351,9 @@
 
           <!-- ── Select CTA ── -->
           <div class="select-cta-card" id="selectCTA">
-            <div class="guarantee-pill">🛡 OtterQuote Guarantee</div>
+            <div class="guarantee-pill">🛡 Otter Quotes Guarantee</div>
             <h2 id="ctaTitle">Ready to Move Forward?</h2>
-            <p id="ctaBody">Selecting this contractor starts the contract signing process. You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</p>
+            <p id="ctaBody">Selecting this contractor starts the contract signing process. You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.</p>
             <div class="select-cta-actions">
               <a id="ctaBackBtn" href="bids.html" class="btn btn-secondary">← Compare All Bids</a>
               <button id="ctaSelectBtn" class="btn btn-primary btn-lg" onclick="openSelectModal()" style="display:none;">Select This Contractor</button>
@@ -429,7 +429,7 @@
         ]);
 
         if (!contractor) {
-          showError('Contractor Not Found', 'We couldn\'t find this contractor. They may no longer be active on OtterQuote.');
+          showError('Contractor Not Found', 'We couldn\'t find this contractor. They may no longer be active on Otter Quotes.');
           return;
         }
 
@@ -510,7 +510,7 @@
       const initials = (c.company_name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
 
       // Document title
-      document.title = `${esc(c.company_name)} — OtterQuote`;
+      document.title = `${esc(c.company_name)} — Otter Quotes`;
 
       // ── Hero ──
       // owner_photo_url is a bare storage path in the private contractor-documents bucket.
@@ -611,7 +611,7 @@
 
         document.getElementById('ctaTitle').textContent = `Ready to Choose ${c.company_name}?`;
         document.getElementById('ctaBody').textContent =
-          `Selecting ${c.company_name} will begin the contract signing process. You can switch to another OtterQuote contractor at no cost up to 3 days before installation.`;
+          `Selecting ${c.company_name} will begin the contract signing process. You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.`;
       }
 
       // ── About Section ──
@@ -662,7 +662,7 @@
 
       // ── Reviews (from `reviews` table — placeholder until built) ──
       document.getElementById('reviewsContent').innerHTML =
-        `<p class="review-placeholder-msg">No OtterQuote reviews yet. Reviews from homeowners who complete projects with this contractor will appear here.</p>`;
+        `<p class="review-placeholder-msg">No Otter Quotes reviews yet. Reviews from homeowners who complete projects with this contractor will appear here.</p>`;
 
       // ── Quick Stats ──
       document.getElementById('quickStats').innerHTML = `
@@ -771,7 +771,7 @@
           </div>
         `;
       } else {
-        licenseHtml = `<p style="color:var(--slate);font-size:0.9rem;">License information on file and verified by OtterQuote.</p>`;
+        licenseHtml = `<p style="color:var(--slate);font-size:0.9rem;">License information on file and verified by Otter Quotes.</p>`;
       }
 
       // Append insurance summary to license section
@@ -922,4 +922,30 @@
     function formatWarranty(b) {
       const parts = [];
       if (b.workmanship_warranty_years) parts.push(`${b.workmanship_warranty_years}yr workmanship`);
-      if (b.manufacturer_warranty_years) parts.push(`${b.manufacturer_warranty_years}yr
+      if (b.manufacturer_warranty_years) parts.push(`${b.manufacturer_warranty_years}yr manufacturer`);
+      return parts.length > 0 ? parts.join(' + ') : (b.warranty_summary || 'TBD');
+    }
+
+    function parseCerts(val) {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      try { return JSON.parse(val); } catch { return String(val).split(',').map(s => s.trim()).filter(Boolean); }
+    }
+
+    function parseServiceCounties(val) {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      try { return JSON.parse(val); } catch { return String(val).split(',').map(s => s.trim()).filter(Boolean); }
+    }
+
+    // ── Boot ──
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+  </script>
+
+</body>
+</html>
