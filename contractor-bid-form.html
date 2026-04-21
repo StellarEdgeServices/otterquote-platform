@@ -20,19 +20,17 @@
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Design System -->
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
   <style>
     :root {
-      --navy: #0B1929;
+      --navy: #0D1B2E;
       --navy-2: #0F2440;
       --navy-3: #132D50;
-      --amber: #F59E0B;
+      --amber: #E07B00;
       --white: #FFFFFF;
       --slate: #94A3B8;
       --light: #E2E8F0;
@@ -49,9 +47,9 @@
       --radius-md: 0.5rem;
       --radius-lg: 0.75rem;
       --radius-xl: 1rem;
-      --font-body: 'DM Sans', sans-serif;
-      --font-heading: 'Playfair Display', serif;
-      --font-mono: 'DM Mono', monospace;
+      --font-body: 'Rubik', sans-serif;
+      --font-heading: 'Rubik', serif;
+      --font-mono: 'Rubik', monospace;
     }
 
     * {
@@ -204,7 +202,7 @@
     .form-group textarea:focus {
       outline: none;
       border-color: var(--amber);
-      box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+      box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
     }
 
     .form-group textarea {
@@ -298,7 +296,7 @@
     }
 
     .fee-row.net {
-      background: rgba(20, 184, 166, 0.15);
+      background: rgba(224, 123, 0, 0.15);
       padding: var(--sp-4);
       margin-top: var(--sp-4);
       border-radius: var(--radius-md);
@@ -328,7 +326,7 @@
     }
 
     .fee-info {
-      background: rgba(20, 184, 166, 0.1);
+      background: rgba(224, 123, 0, 0.1);
       border-left: 2px solid var(--amber);
       padding: var(--sp-4);
       border-radius: var(--radius-sm);
@@ -1005,7 +1003,7 @@
 
   <main>
     <!-- Change Bid Banner (hidden until Change Bid mode activates) -->
-    <div id="changeBidBanner" style="display:none; background:#FFF3CD; border:2px solid #F59E0B; border-radius:0.75rem; padding:1rem 1.5rem; margin-bottom:1.5rem;">
+    <div id="changeBidBanner" style="display:none; background:#FFF3CD; border:2px solid #E07B00; border-radius:0.75rem; padding:1rem 1.5rem; margin-bottom:1.5rem;">
       <div style="display:flex; align-items:flex-start; gap:0.75rem;">
         <span style="font-size:1.4rem; flex-shrink:0;">⚠️</span>
         <div>
@@ -1561,7 +1559,7 @@
           </div>
 
           <!-- SOW Disclosure Preview -->
-          <div id="slcDisclosurePreview" style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:var(--radius-md);padding:var(--sp-4);">
+          <div id="slcDisclosurePreview" style="background:#FEF3C7;border:1px solid #E07B00;border-radius:var(--radius-md);padding:var(--sp-4);">
             <p style="font-weight:700;color:#92400E;margin-bottom:var(--sp-2);font-size:0.85rem;">📋 Disclosure Language (will appear in the homeowner's contract)</p>
             <p id="slcDisclosureText" style="font-size:0.85rem;color:#78350F;font-style:italic;line-height:1.6;">
               Enter pricing above to see the disclosure language.
@@ -1602,7 +1600,7 @@
           </div>
 
           <!-- Rotten Wood Notice -->
-          <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
+          <div style="background:#FEF3C7;border:1px solid #E07B00;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
             <p style="font-weight:700;color:#92400E;margin-bottom:var(--sp-1);">⚠️ Note — Rotten Wood</p>
             <p style="font-size:0.9rem;color:#78350F;">Rotten wood behind gutters will need to be replaced at an additional charge.</p>
           </div>
@@ -1726,7 +1724,7 @@
           </div>
 
           <!-- Rotten Sheathing Notice -->
-          <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
+          <div style="background:#FEF3C7;border:1px solid #E07B00;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
             <p style="font-weight:700;color:#92400E;margin-bottom:var(--sp-1);">⚠️ Note — Rotten Sheathing</p>
             <p style="font-size:0.9rem;color:#78350F;">Rotten wall sheathing discovered during tear-off will need to be replaced at an additional charge.</p>
           </div>
@@ -1839,7 +1837,7 @@
 
     <!-- CONTRACT SIGNING STEP (DEPRECATED: signing now happens after homeowner selection, not at bid submission) -->
     <div id="contractSigningStep" style="display: none; margin-top: var(--sp-8);">
-      <div style="background: #FFFBEB; border: 2px solid #F59E0B; border-radius: var(--radius-lg); padding: var(--sp-6); margin-bottom: var(--sp-6);">
+      <div style="background: #FFFBEB; border: 2px solid #E07B00; border-radius: var(--radius-lg); padding: var(--sp-6); margin-bottom: var(--sp-6);">
         <h3 style="color: var(--navy); margin-bottom: var(--sp-3); font-size: 1.15rem;">⚖️ Sign Your Contract — Required by Indiana Law</h3>
         <p style="color: #374151; font-size: 0.95rem; line-height: 1.6; margin-bottom: var(--sp-3);">
           Indiana law (IC 24-5-11) requires that you, as the contractor, sign the contract <strong>before</strong> the homeowner.
@@ -1852,7 +1850,7 @@
 
       <!-- DocuSign Loading -->
       <div id="contractorDocusignLoading" style="text-align: center; padding: var(--sp-8);">
-        <div style="width: 40px; height: 40px; border: 3px solid #E5E7EB; border-top-color: #F59E0B; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto var(--sp-4);"></div>
+        <div style="width: 40px; height: 40px; border: 3px solid #E5E7EB; border-top-color: #E07B00; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto var(--sp-4);"></div>
         <p style="color: var(--navy); font-weight: 600;">Preparing your contract for signing...</p>
         <p style="color: #6B7280; font-size: 0.9rem;">This may take a few seconds.</p>
       </div>

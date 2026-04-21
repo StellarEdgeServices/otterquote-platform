@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - Contractors | Otter Quotes</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -9,10 +11,10 @@
     <link rel="stylesheet" href="css/nav.css">
     <style>
         :root {
-            --navy: #0B1929;
-            --amber: #F59E0B;
+            --navy: #0D1B2E;
+            --amber: #E07B00;
             --white: #FFFFFF;
-            --slate: #94A3B8;
+            --slate: #8A9BAB;
             --light: #E2E8F0;
             --red: #EF4444;
             --green: #10B981;
@@ -21,7 +23,7 @@
         body {
             background-color: var(--navy);
             color: #1F2937;
-            font-family: 'DM Sans', sans-serif;
+            font-family: 'Rubik', sans-serif;
         }
 
         main {
@@ -53,7 +55,7 @@
         }
 
         .admin-header h1 {
-            font-family: 'Playfair Display', serif;
+            font-family: 'Rubik', serif;
             font-size: 2.5rem;
             color: var(--white);
             margin: 0;
@@ -379,7 +381,7 @@
             padding: 0.75rem;
             border: 1px solid #BDB701;
             border-radius: 0.4rem;
-            font-family: 'DM Sans', sans-serif;
+            font-family: 'Rubik', sans-serif;
             font-size: 0.875rem;
             resize: vertical;
         }
@@ -488,7 +490,7 @@
             padding: 0.75rem;
             border: 1px solid var(--light);
             border-radius: 0.4rem;
-            font-family: 'DM Sans', sans-serif;
+            font-family: 'Rubik', sans-serif;
             font-size: 0.875rem;
         }
 
@@ -643,7 +645,7 @@
                     <div class="summary-card-label">Total Contractors</div>
                     <div class="summary-card-value" id="totalCount">—</div>
                 </div>
-                <div class="summary-card" style="border-left: 4px solid #f59e0b;">
+                <div class="summary-card" style="border-left: 4px solid #E07B00;">
                     <div class="summary-card-label" style="color: #92400e;">⚠️ PC Template Nudge</div>
                     <div class="summary-card-value" id="pcMigrationCount" style="color: #d97706;">—</div>
                 </div>
@@ -651,7 +653,7 @@
                     <div class="summary-card-label" style="color: #991b1b;">⚠️ COI Missing / Expired</div>
                     <div class="summary-card-value" id="coiMissingCount" style="color: #b91c1c;">—</div>
                 </div>
-                <div class="summary-card" style="border-left: 4px solid #f59e0b;">
+                <div class="summary-card" style="border-left: 4px solid #E07B00;">
                     <div class="summary-card-label" style="color: #92400e;">COI Expiring ≤30d</div>
                     <div class="summary-card-value" id="coiExpiringCount" style="color: #d97706;">—</div>
                 </div>
@@ -661,9 +663,9 @@
             <div class="filter-tabs">
                 <button class="filter-tab active" onclick="setFilter('pending_approval')">Pending Review</button>
                 <button class="filter-tab" onclick="setFilter('all')">All Contractors</button>
-                <button class="filter-tab" onclick="setFilter('pc_migration_pending')" style="border-color: #f59e0b; color: #92400e;">⚠️ Needs PC Template Update</button>
+                <button class="filter-tab" onclick="setFilter('pc_migration_pending')" style="border-color: #E07B00; color: #92400e;">⚠️ Needs PC Template Update</button>
                 <button class="filter-tab" onclick="setFilter('coi_missing')" style="border-color: #dc2626; color: #991b1b;">⚠️ COI Missing / Expired</button>
-                <button class="filter-tab" onclick="setFilter('coi_expiring')" style="border-color: #f59e0b; color: #92400e;">COI Expiring ≤30d</button>
+                <button class="filter-tab" onclick="setFilter('coi_expiring')" style="border-color: #E07B00; color: #92400e;">COI Expiring ≤30d</button>
             </div>
 
             <!-- Contractors List -->
@@ -879,12 +881,12 @@
                             <div class="contractor-header-badges">
                                 <span class="status-badge status-badge-${c.status}">${c.status.replace(/_/g, ' ')}</span>
                                 ${trades.map(t => `<span class="trade-badge">${t}</span>`).join('')}
-                                ${c.pc_template_migration_pending ? `<span style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ PC Template</span>` : ''}
+                                ${c.pc_template_migration_pending ? `<span style="background:#fef3c7;color:#92400e;border:1px solid #E07B00;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ PC Template</span>` : ''}
                                 ${(() => {
                                     const s = coiState(c);
                                     if (s === 'missing')  return `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ COI Missing</span>`;
                                     if (s === 'expired')  return `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ COI Expired</span>`;
-                                    if (s === 'expiring') return `<span style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">COI ≤30d</span>`;
+                                    if (s === 'expiring') return `<span style="background:#fef3c7;color:#92400e;border:1px solid #E07B00;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">COI ≤30d</span>`;
                                     return '';
                                 })()}
                                 ${c.attestation_accepted_at ? '' : `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ No Attestation</span>`}

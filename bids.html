@@ -12,7 +12,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
@@ -272,7 +272,7 @@
           </div>
 
           <!-- Bid Updated Notification Banner (shown when a contractor has revised a submitted bid) -->
-          <div id="bidUpdatedBanner" style="display:none; background:#FFF3CD; border:2px solid #F59E0B; border-radius:0.75rem; padding:1.25rem 1.5rem; margin-bottom:1.5rem; animation: fadeUp 0.4s ease both;">
+          <div id="bidUpdatedBanner" style="display:none; background:#FFF3CD; border:2px solid #E07B00; border-radius:0.75rem; padding:1.25rem 1.5rem; margin-bottom:1.5rem; animation: fadeUp 0.4s ease both;">
             <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
               <div style="display:flex; align-items:flex-start; gap:0.75rem;">
                 <span style="font-size:1.5rem; flex-shrink:0;">⚠️</span>
@@ -293,15 +293,15 @@
           </div>
 
           <!-- Hover Property Design Panel (siding jobs only) -->
-          <div id="hoverPropertyPanel" style="display:none;background:linear-gradient(135deg,#0C2A3A 0%,#0F3849 100%);border:1px solid rgba(20,184,166,0.3);border-radius:0.875rem;padding:1.5rem;margin-bottom:1.5rem;animation:fadeUp 0.5s ease both;">
+          <div id="hoverPropertyPanel" style="display:none;background:linear-gradient(135deg,#0C2A3A 0%,#0F3849 100%);border:1px solid rgba(224,123,0,0.3);border-radius:0.875rem;padding:1.5rem;margin-bottom:1.5rem;animation:fadeUp 0.5s ease both;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
               <div>
-                <div style="font-weight:700;color:#14B8A6;font-size:1rem;margin-bottom:0.25rem;">🏠 Your Property Design</div>
+                <div style="font-weight:700;color:#E07B00;font-size:1rem;margin-bottom:0.25rem;">🏠 Your Property Design</div>
                 <div id="hoverPropAddress" style="font-size:0.82rem;color:#94A3B8;"></div>
               </div>
               <a id="hoverPropViewLink" href="#" target="_blank" rel="noopener"
-                 style="display:none;color:#14B8A6;font-size:0.82rem;font-weight:600;text-decoration:none;border:1px solid rgba(20,184,166,0.4);padding:5px 12px;border-radius:0.5rem;white-space:nowrap;transition:background 0.2s;"
-                 onmouseover="this.style.background='rgba(20,184,166,0.1)'" onmouseout="this.style.background='transparent'">
+                 style="display:none;color:#E07B00;font-size:0.82rem;font-weight:600;text-decoration:none;border:1px solid rgba(224,123,0,0.4);padding:5px 12px;border-radius:0.5rem;white-space:nowrap;transition:background 0.2s;"
+                 onmouseover="this.style.background='rgba(224,123,0,0.1)'" onmouseout="this.style.background='transparent'">
                 View in Hover ↗
               </a>
             </div>
@@ -898,7 +898,7 @@
             if (!safeUrl) return;
 
             const cell = document.createElement('div');
-            cell.style.cssText = 'aspect-ratio:4/3;border-radius:8px;overflow:hidden;border:1px solid rgba(20,184,166,0.3);background:rgba(0,0,0,0.2);';
+            cell.style.cssText = 'aspect-ratio:4/3;border-radius:8px;overflow:hidden;border:1px solid rgba(224,123,0,0.3);background:rgba(0,0,0,0.2);';
 
             const img = document.createElement('img');
             img.src = safeUrl;
@@ -917,7 +917,7 @@
 
         // Wall measurements summary
         if ((data.wall_squares || data.wall_sqft) && measureEl) {
-          let txt = '📐 <strong style="color:#14B8A6;">' + (data.wall_squares || '—') + ' squares</strong> of siding wall area';
+          let txt = '📐 <strong style="color:#E07B00;">' + (data.wall_squares || '—') + ' squares</strong> of siding wall area';
           if (data.wall_sqft) txt += ' <span style="color:#64748B;font-size:0.8rem;">(' + Number(data.wall_sqft).toLocaleString() + ' sq ft)</span>';
           measureEl.innerHTML = '<div style="font-size:0.875rem;color:#CBD5E1;margin-bottom:0.75rem;">' + txt + '</div>';
           measureEl.style.display = 'block';
@@ -936,7 +936,7 @@
                           : '';
             mHtml += '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 10px;">'
                    + '<span style="color:#E2E8F0;font-size:0.82rem;">' + escHtml(name) + '<span style="color:#64748B;">' + escHtml(color) + '</span></span>'
-                   + (qty ? '<span style="color:#14B8A6;font-size:0.8rem;font-weight:600;white-space:nowrap;margin-left:8px;">' + escHtml(qty) + '</span>' : '')
+                   + (qty ? '<span style="color:#E07B00;font-size:0.8rem;font-weight:600;white-space:nowrap;margin-left:8px;">' + escHtml(qty) + '</span>' : '')
                    + '</div>';
           });
           mHtml += '</div>';
@@ -949,7 +949,7 @@
         } else if (data.wall_squares || data.design_images?.length > 0) {
           // Measurements available but no product selections
           statusEl.innerHTML = '<span style="color:#64748B;">Measurements loaded. '
-            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#14B8A6;">open your project in Hover ↗</a> and create an Estimate.' : '')
+            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#E07B00;">open your project in Hover ↗</a> and create an Estimate.' : '')
             + '</span>';
         } else if (data.message) {
           statusEl.innerHTML = '<span style="color:#64748B;">' + data.message + '</span>';

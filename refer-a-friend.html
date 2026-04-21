@@ -13,7 +13,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
@@ -30,7 +30,7 @@
       padding: var(--sp-16) var(--sp-8);
       text-align: center;
       margin-bottom: var(--sp-20);
-      border-bottom: 1px solid rgba(20, 184, 166, 0.1);
+      border-bottom: 1px solid rgba(224, 123, 0, 0.1);
     }
     .hero-section h1 {
       font-size: clamp(2rem, 5vw, 3.5rem);
@@ -64,7 +64,7 @@
     }
     .referral-link-display {
       background: var(--navy);
-      border: 1px solid rgba(20, 184, 166, 0.2);
+      border: 1px solid rgba(224, 123, 0, 0.2);
       border-radius: var(--radius-md);
       padding: var(--sp-4) var(--sp-6);
       font-family: var(--font-mono);
@@ -114,7 +114,7 @@
     }
     .share-card:hover {
       transform: translateY(-4px);
-      border-color: rgba(20, 184, 166, 0.3);
+      border-color: rgba(224, 123, 0, 0.3);
       box-shadow: var(--shadow-lg);
     }
     .share-card-header {
@@ -155,7 +155,7 @@
     /* Before/After Photo Section */
     .photo-upload-section {
       background: var(--navy);
-      border: 1px solid rgba(20, 184, 166, 0.2);
+      border: 1px solid rgba(224, 123, 0, 0.2);
       border-radius: var(--radius-md);
       padding: var(--sp-6);
       margin-top: var(--sp-6);
@@ -174,13 +174,13 @@
       margin-bottom: var(--sp-6);
     }
     .upload-zone {
-      border: 2px dashed rgba(20, 184, 166, 0.3);
+      border: 2px dashed rgba(224, 123, 0, 0.3);
       border-radius: var(--radius-md);
       padding: var(--sp-6);
       text-align: center;
       cursor: pointer;
       transition: all 0.2s;
-      background: rgba(20, 184, 166, 0.05);
+      background: rgba(224, 123, 0, 0.05);
     }
     .upload-zone:hover {
       border-color: var(--amber);
@@ -239,7 +239,7 @@
     /* Message Box */
     .message-box {
       background: var(--navy);
-      border: 1px solid rgba(20, 184, 166, 0.2);
+      border: 1px solid rgba(224, 123, 0, 0.2);
       border-radius: var(--radius-md);
       padding: var(--sp-4);
       margin: var(--sp-4) 0;
@@ -253,7 +253,7 @@
     /* Badge Preview */
     .badge-preview {
       background: var(--navy);
-      border: 1px solid rgba(20, 184, 166, 0.2);
+      border: 1px solid rgba(224, 123, 0, 0.2);
       border-radius: var(--radius-md);
       padding: var(--sp-6);
       margin: var(--sp-4) 0;
@@ -335,7 +335,7 @@
       color: var(--white);
     }
     .referrals-table tbody tr:hover {
-      background: rgba(20, 184, 166, 0.05);
+      background: rgba(224, 123, 0, 0.05);
     }
     .status-badge {
       display: inline-block;
@@ -812,7 +812,7 @@
 
       <!-- 1099-MISC Tax Reporting Notice (86e0zj7je — disclosure version 1099-misc-v1-2026-04) -->
       <section class="refer-section">
-        <div style="background: rgba(11, 25, 41, 0.6); border: 1px solid rgba(20, 184, 166, 0.2); border-radius: var(--radius-md); padding: var(--sp-8);">
+        <div style="background: rgba(11, 25, 41, 0.6); border: 1px solid rgba(224, 123, 0, 0.2); border-radius: var(--radius-md); padding: var(--sp-8);">
           <p style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--amber); margin-bottom: var(--sp-3);">Tax Reporting Notice</p>
           <p style="color: var(--slate); font-size: 0.9rem; line-height: 1.7; margin: 0;">Your $200 referral bonus is taxable income. If you receive $600 or more in referral bonuses from Otter Quotes in a calendar year, we are required by federal law to file a Form 1099-MISC with the IRS reporting those payments, and to provide you a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.</p>
         </div>
@@ -956,7 +956,7 @@
         text: referralUrl,
         width: 200,
         height: 200,
-        colorDark: '#0A1E2C',
+        colorDark: '#0D1B2E',
         colorLight: '#FFFFFF',
         correctLevel: QRCode.CorrectLevel.H
       });
@@ -991,7 +991,7 @@ Best regards`;
       window.emailBody = emailBody;
 
       // Badge HTML
-      const badgeHtml = `<a href="${referralUrl}" target="_blank" style="display: inline-block; padding: 8px 12px; background: #14B8A6; color: #0A1E2C; text-decoration: none; border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600;">
+      const badgeHtml = `<a href="${referralUrl}" target="_blank" style="display: inline-block; padding: 8px 12px; background: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 8px; font-family: 'Rubik', sans-serif; font-size: 12px; font-weight: 600;">
   <img src="${CONFIG.SITE_URL}/img/otter-logo.svg" alt="Otter Quotes" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;">
   <span>I trust Otter Quotes</span>
 </a>`;
@@ -1103,12 +1103,12 @@ Best regards`;
       ctx.fillRect(0, 0, width, height);
 
       // Navy top bar with Otter Quotes branding
-      ctx.fillStyle = '#0A1E2C';
+      ctx.fillStyle = '#0D1B2E';
       ctx.fillRect(0, 0, width, 60);
 
       // Otter Quotes text in top-left
-      ctx.fillStyle = '#14B8A6';
-      ctx.font = 'bold 24px "DM Sans"';
+      ctx.fillStyle = '#E07B00';
+      ctx.font = 'bold 24px "Rubik"';
       ctx.fillText('Otter Quotes', 20, 40);
 
       // Load and draw photos side-by-side
@@ -1140,21 +1140,21 @@ Best regards`;
         ctx.drawImage(afterImg, photoWidth + 40, photoY, photoWidth, photoHeight);
 
         // Labels
-        ctx.fillStyle = '#0A1E2C';
-        ctx.font = 'bold 14px "DM Sans"';
+        ctx.fillStyle = '#0D1B2E';
+        ctx.font = 'bold 14px "Rubik"';
         ctx.fillText('Before', 30, photoY + photoHeight + 20);
         ctx.fillText('After', photoWidth + 50, photoY + photoHeight + 20);
 
         // Bottom bar with branding and referral link
-        ctx.fillStyle = '#0A1E2C';
+        ctx.fillStyle = '#0D1B2E';
         ctx.fillRect(0, height - 50, width, 50);
 
-        ctx.fillStyle = '#14B8A6';
-        ctx.font = '12px "DM Sans"';
+        ctx.fillStyle = '#E07B00';
+        ctx.font = '12px "Rubik"';
         ctx.fillText('Powered by Otter Quotes', 20, height - 15);
 
         const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
-        ctx.font = 'bold 12px "DM Mono"';
+        ctx.font = 'bold 12px "Rubik"';
         ctx.fillText(referralUrl, width - 300, height - 15);
       }
     }
@@ -1198,51 +1198,4 @@ Best regards`;
         // structure per D-139). Fall back to $200 for older rows with no
         // commission_amount persisted.
         const amount = Number(ref.commission_amount) || 200;
-        const amountStr = `$${amount}`;
-        return `
-        <tr>
-          <td>${ref.referred_name || 'N/A'}</td>
-          <td>${new Date(ref.created_at).toLocaleDateString()}</td>
-          <td><span class="status-badge status-${(ref.status || 'clicked').toLowerCase()}">${formatStatus(ref.status)}</span></td>
-          <td>${ref.status === 'paid' ? amountStr : (ref.status === 'completed' ? 'Pending' : '—')}</td>
-        </tr>
-      `;
-      }).join('');
-    }
-
-    function calculateSummary(referrals) {
-      let earned = 0;
-      let pending = 0;
-
-      referrals.forEach(ref => {
-        const amount = Number(ref.commission_amount) || 200;
-        if (ref.status === 'paid') earned += amount;
-        if (ref.status === 'completed') pending += amount;
-      });
-
-      document.getElementById('total-earned').textContent = `$${earned}`;
-      document.getElementById('total-pending').textContent = `$${pending}`;
-    }
-
-    function formatStatus(status) {
-      const map = {
-        'clicked': 'Clicked',
-        'registered': 'Registered',
-        'submitted': 'Submitted',
-        'in_progress': 'In Progress',
-        'completed': 'Completed',
-        'paid': 'Paid'
-      };
-      return map[status] || status;
-    }
-
-    function toggleFAQ(btn) {
-      const item = btn.parentElement;
-      item.classList.toggle('open');
-    }
-
-    // Initialize on page load
-    document.addEventListener('DOMContentLoaded', init);
-  </script>
-</body>
-</html>
+        const amo

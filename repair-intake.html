@@ -10,9 +10,7 @@
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Design System -->
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
@@ -31,8 +29,8 @@
 
     <style>
         :root {
-            --navy: #0A1E2C;
-            --amber: #14B8A6;
+            --navy: #0D1B2E;
+            --amber: #E07B00;
             --orange: #FB923C;
             --light-gray: #F8FAFC;
             --border-gray: #E2E8F0;
@@ -49,7 +47,7 @@
         body {
             background-color: var(--navy);
             color: var(--text-dark);
-            font-family: 'DM Sans', sans-serif;
+            font-family: 'Rubik', sans-serif;
             line-height: 1.6;
             min-height: 100vh;
         }
@@ -71,7 +69,7 @@
         }
 
         .disclaimer-banner h2 {
-            font-family: 'Playfair Display', serif;
+            font-family: 'Rubik', serif;
             font-size: 1.75rem;
             color: white;
             margin-bottom: 0.75rem;
@@ -107,7 +105,7 @@
         }
 
         .section-container h2 {
-            font-family: 'Playfair Display', serif;
+            font-family: 'Rubik', serif;
             font-size: 1.5rem;
             color: var(--navy);
             margin-bottom: 0.5rem;
@@ -142,13 +140,13 @@
 
         .repair-card:hover {
             border-color: var(--amber);
-            box-shadow: 0 2px 8px rgba(20, 184, 166, 0.15);
+            box-shadow: 0 2px 8px rgba(224, 123, 0, 0.15);
         }
 
         .repair-card.selected {
             border-color: var(--amber);
-            background: rgba(20, 184, 166, 0.08);
-            box-shadow: 0 4px 12px rgba(20, 184, 166, 0.2);
+            background: rgba(224, 123, 0, 0.08);
+            box-shadow: 0 4px 12px rgba(224, 123, 0, 0.2);
         }
 
         .repair-card .icon {
@@ -174,7 +172,7 @@
             padding: 0.75rem;
             border: 1px solid var(--border-gray);
             border-radius: 6px;
-            font-family: 'DM Sans', sans-serif;
+            font-family: 'Rubik', sans-serif;
             font-size: 1rem;
             resize: vertical;
             margin-bottom: 1rem;
@@ -183,7 +181,7 @@
         textarea:focus, input:focus {
             outline: none;
             border-color: var(--amber);
-            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+            box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
         }
 
         /* Photo Upload */
@@ -220,12 +218,12 @@
 
         .upload-zone:hover {
             border-color: var(--amber);
-            background: rgba(20, 184, 166, 0.05);
+            background: rgba(224, 123, 0, 0.05);
         }
 
         .upload-zone.dragover {
             border-color: var(--amber);
-            background: rgba(20, 184, 166, 0.1);
+            background: rgba(224, 123, 0, 0.1);
         }
 
         .upload-zone p {
@@ -312,7 +310,7 @@
             border: none;
             width: 100%;
             text-align: left;
-            font-family: 'DM Sans', sans-serif;
+            font-family: 'Rubik', sans-serif;
             font-size: 1rem;
         }
 
@@ -321,7 +319,7 @@
         }
 
         .accordion-header.open {
-            background: rgba(20, 184, 166, 0.08);
+            background: rgba(224, 123, 0, 0.08);
             border-bottom: 2px solid var(--amber);
         }
 
@@ -402,7 +400,7 @@
 
         .tier-price {
             display: inline-block;
-            background: rgba(20, 184, 166, 0.1);
+            background: rgba(224, 123, 0, 0.1);
             color: var(--amber);
             padding: 0.25rem 0.75rem;
             border-radius: 4px;
@@ -437,7 +435,7 @@
             padding: 0.75rem 1.5rem;
             border: none;
             border-radius: 6px;
-            font-family: 'DM Sans', sans-serif;
+            font-family: 'Rubik', sans-serif;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
@@ -452,9 +450,9 @@
         }
 
         .btn-primary:hover:not(:disabled) {
-            background: #0D9488;
+            background: #A85C00;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(20, 184, 166, 0.3);
+            box-shadow: 0 4px 12px rgba(224, 123, 0, 0.3);
         }
 
         .btn-primary:disabled {
@@ -469,7 +467,7 @@
         }
 
         .btn-secondary:hover {
-            background: rgba(20, 184, 166, 0.08);
+            background: rgba(224, 123, 0, 0.08);
         }
 
         .btn-sm {
@@ -490,7 +488,7 @@
             color: white;
             padding: 1rem 1.5rem;
             border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(20, 184, 166, 0.3);
+            box-shadow: 0 4px 20px rgba(224, 123, 0, 0.3);
             display: flex;
             align-items: center;
             gap: 0.75rem;
@@ -740,7 +738,7 @@
                 <div class="accordion-content" id="tier3-content">
                     <p>Our AI tool will identify your shingle from photos in seconds using RoofPair and SAIGE AI — 90-97% accuracy, including color matching.</p>
                     <p>Take 7-8 clear photos from multiple angles — front texture, granule pattern, and the back of a shingle if accessible.</p>
-                    <div style="background: rgba(245,158,11,0.1); border-left: 3px solid #F59E0B; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                    <div style="background: rgba(245,158,11,0.1); border-left: 3px solid #E07B00; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem;">
                         <strong>⚙️ AI integration coming soon.</strong> While we finish building this, use Tier 1, Tier 2, or Tier 4 to identify your material.
                     </div>
                     <div class="upload-zone" id="upload-zone-tier3">
@@ -1326,7 +1324,7 @@
 
                 if (error || !contractors || contractors.length === 0) {
                     listEl.innerHTML = `
-                        <div style="padding:1.5rem; background:#FFF7ED; border-left:3px solid #F59E0B; border-radius:6px;">
+                        <div style="padding:1.5rem; background:#FFF7ED; border-left:3px solid #E07B00; border-radius:6px;">
                             <strong>No contractors have opted into repairs yet.</strong>
                             <p style="margin-top:0.5rem; font-size:0.9rem; color:var(--text-light);">
                                 Your claim has been saved. Schedule an inspection and a contractor will diagnose the issue on site.

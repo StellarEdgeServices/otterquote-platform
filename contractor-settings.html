@@ -23,19 +23,17 @@
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Design System -->
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
   <style>
     :root {
-      --navy: #0B1929;
+      --navy: #0D1B2E;
       --navy-2: #0F2440;
       --navy-3: #132D50;
-      --amber: #F59E0B;
+      --amber: #E07B00;
       --white: #FFFFFF;
       --slate: #94A3B8;
       --light: #E2E8F0;
@@ -52,9 +50,9 @@
       --radius-md: 0.5rem;
       --radius-lg: 0.75rem;
       --radius-xl: 1rem;
-      --font-body: 'DM Sans', sans-serif;
-      --font-heading: 'Playfair Display', serif;
-      --font-mono: 'DM Mono', monospace;
+      --font-body: 'Rubik', sans-serif;
+      --font-heading: 'Rubik', serif;
+      --font-mono: 'Rubik', monospace;
     }
 
     * {
@@ -395,7 +393,7 @@
     .notification-item input[type="text"]:focus {
       outline: none;
       border-color: var(--amber);
-      box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+      box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
     }
 
     .remove-btn {
@@ -1220,7 +1218,7 @@
       </div>
 
       <!-- Status display: No payment methods on file (amber) -->
-      <div id="pmStatusNoPayment" style="padding: var(--sp-6); background: #FFFBEB; border: 1px solid #F59E0B; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
+      <div id="pmStatusNoPayment" style="padding: var(--sp-6); background: #FFFBEB; border: 1px solid #E07B00; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
         <div style="font-size: 0.9rem; color: #92400E; font-weight: 600; margin-bottom: var(--sp-2);">⚠️ Payment Method Required</div>
         <p style="font-size: 0.875rem; color: #78350F; margin-bottom: 0; line-height: 1.5;">
           A payment method is required before you can receive projects. Add a bank account (<strong>no processing fee</strong>) or credit/debit card to get started.
@@ -1242,7 +1240,7 @@
         <p style="font-size: 0.85rem; color: #334155; line-height: 1.7; margin-bottom: var(--sp-6);">
           This isn't about us collecting fees faster. It's about making sure that when a homeowner chooses you, the experience is seamless from start to finish.
         </p>
-        <button class="btn btn-primary" onclick="initializeStripeSetup('us_bank_account')" style="background: #1E3A5F; color: #F59E0B; border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;">
+        <button class="btn btn-primary" onclick="initializeStripeSetup('us_bank_account')" style="background: #1E3A5F; color: #E07B00; border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;">
           Add Backup Payment Method
         </button>
       </div>
@@ -1350,7 +1348,7 @@
         </div>
       </div>
 
-      <div id="repairsDetails" class="hidden" style="margin-top:var(--sp-6); padding:var(--sp-6); background:#FFFBEB; border:1px solid #F59E0B; border-radius:var(--radius-md);">
+      <div id="repairsDetails" class="hidden" style="margin-top:var(--sp-6); padding:var(--sp-6); background:#FFFBEB; border:1px solid #E07B00; border-radius:var(--radius-md);">
         <p style="font-size:0.9rem; color:var(--navy); margin-bottom:var(--sp-4);">
           <strong>Show-Up Guarantee Agreement</strong>
         </p>
@@ -1365,7 +1363,7 @@
         </label>
 
         <!-- Diagnostic Fee -->
-        <div style="border-top:1px solid #F59E0B; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
+        <div style="border-top:1px solid #E07B00; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
           <div style="font-weight:600; color:var(--navy); margin-bottom:var(--sp-3);">Diagnostic Fee?</div>
           <div style="display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-4); font-size:0.875rem;">
             <label style="display:flex; align-items:center; gap:var(--sp-2); cursor:pointer;">
@@ -1382,13 +1380,13 @@
         </div>
 
         <!-- Notes to the Customer -->
-        <div style="border-top:1px solid #F59E0B; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
+        <div style="border-top:1px solid #E07B00; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
           <label style="font-size:0.875rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Notes to the Customer</label>
           <p style="font-size:0.8rem; color:#6B7280; margin-bottom:var(--sp-2);">These notes will appear on your repair listing. Use them to set expectations, explain your diagnostic process, or highlight your expertise.</p>
           <textarea id="repairNotesToCustomer" name="repairNotesToCustomer" placeholder="e.g., Our diagnostic technician will assess the damage, photograph all affected areas, and provide a written repair estimate on-site. No commitment required." style="width:100%; min-height:80px; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem; resize:vertical;" maxlength="1000"></textarea>
         </div>
 
-        <div style="border-top:1px solid #F59E0B; padding-top:var(--sp-4);">
+        <div style="border-top:1px solid #E07B00; padding-top:var(--sp-4);">
           <button class="save-button" onclick="saveSettings()" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Save Repair Settings</button>
         </div>
       </div>
@@ -1608,8 +1606,8 @@
         style: {
           base: {
             fontSize: '14px',
-            color: '#0B1929',
-            fontFamily: 'DM Sans, sans-serif',
+            color: '#0D1B2E',
+            fontFamily: 'Rubik, sans-serif',
             '::placeholder': { color: '#94A3B8' }
           },
           invalid: { color: '#EF4444' }
@@ -1667,7 +1665,7 @@
           ? '<span style="font-size:0.7rem;background:#FEF3C7;color:#92400E;padding:2px 6px;border-radius:4px;margin-left:8px;">Processing fee</span>'
           : '<span style="font-size:0.7rem;background:#D1FAE5;color:#065F46;padding:2px 6px;border-radius:4px;margin-left:8px;">Free</span>';
         const defaultBadge = m.is_default
-          ? '<span style="font-size:0.7rem;background:#0B1929;color:#F59E0B;padding:2px 8px;border-radius:4px;margin-left:8px;font-weight:600;">DEFAULT</span>'
+          ? '<span style="font-size:0.7rem;background:#0D1B2E;color:#E07B00;padding:2px 8px;border-radius:4px;margin-left:8px;font-weight:600;">DEFAULT</span>'
           : '';
         const setDefaultBtn = !m.is_default
           ? `<button onclick="setDefaultMethod('${m.id}')" style="font-size:0.78rem;color:#0369A1;background:none;border:none;cursor:pointer;padding:4px 0;text-decoration:underline;">Set as Default</button>`
@@ -2575,7 +2573,7 @@
         } else if (daysLeft <= 30) {
           banner.style.display = 'block';
           banner.style.background = '#FEF3C7';
-          banner.style.border = '1px solid #F59E0B';
+          banner.style.border = '1px solid #E07B00';
           banner.style.color = '#78350F';
           banner.innerHTML = `<strong>Your CGL certificate expires in ${daysLeft} days.</strong> Upload a renewed certificate to avoid a bidding suspension.`;
         } else {

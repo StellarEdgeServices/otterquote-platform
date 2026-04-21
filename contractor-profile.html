@@ -20,18 +20,16 @@
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Stylesheets -->
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
     <style>
         :root {
-            --navy: #0B1929;
+            --navy: #0D1B2E;
             --navy-2: #0F2440;
             --navy-3: #132D50;
-            --amber: #F59E0B;
+            --amber: #E07B00;
             --white: #FFFFFF;
             --slate: #94A3B8;
             --light: #E2E8F0;
@@ -48,8 +46,8 @@
             --radius-md: 0.5rem;
             --radius-lg: 0.75rem;
             --radius-xl: 1rem;
-            --font-body: 'DM Sans', sans-serif;
-            --font-heading: 'Playfair Display', serif;
+            --font-body: 'Rubik', sans-serif;
+            --font-heading: 'Rubik', serif;
         }
 
         * {
@@ -119,7 +117,7 @@
             display: inline-block;
             width: 40px;
             height: 40px;
-            background-color: rgba(20, 184, 166, 0.1);
+            background-color: rgba(224, 123, 0, 0.1);
             border-radius: var(--radius-md);
             display: flex;
             align-items: center;
@@ -202,7 +200,7 @@
         textarea:focus {
             outline: none;
             border-color: var(--amber);
-            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+            box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
         }
 
         textarea {
@@ -285,7 +283,7 @@
 
         .upload-label:hover {
             border-color: var(--amber);
-            background-color: rgba(20, 184, 166, 0.05);
+            background-color: rgba(224, 123, 0, 0.05);
         }
 
         .image-preview {
@@ -624,7 +622,7 @@
 
     <main>
         <!-- Incomplete-profile banner: shown when redirected from bid form -->
-        <div id="incompleteBanner" style="display:none; background:#FEF3C7; border-bottom:3px solid #F59E0B; padding:1rem 1.5rem; text-align:center;">
+        <div id="incompleteBanner" style="display:none; background:#FEF3C7; border-bottom:3px solid #E07B00; padding:1rem 1.5rem; text-align:center;">
             <strong style="color:#92400E;">⚠️ Complete your profile before bidding.</strong>
             <span style="color:#78350F; margin-left:0.5rem;">Please fill in your company name, phone number, trades, and service counties — then you'll be ready to submit bids.</span>
         </div>
@@ -1615,7 +1613,7 @@
                                       type === 'success' ? 'rgba(16, 185, 129, 0.1)' :
                                       'rgba(245, 158, 11, 0.1)';
             status.style.color = type === 'error' ? '#ef4444' :
-                                 type === 'success' ? '#10b981' : '#f59e0b';
+                                 type === 'success' ? '#10b981' : '#E07B00';
         }
 
         function updateContractTemplateView() {

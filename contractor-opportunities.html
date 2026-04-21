@@ -19,9 +19,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-
-    <!-- Design System & Navigation -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Design System & Navigation -->
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
 
@@ -29,8 +29,8 @@
         main { padding: var(--sp-8) var(--sp-4); max-width: 1400px; margin: 0 auto; }
 
         .sales-banner {
-            background: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(20,184,166,0.03));
-            border: 1px solid rgba(20,184,166,0.2);
+            background: linear-gradient(135deg, rgba(224,123,0,0.08), rgba(224,123,0,0.03));
+            border: 1px solid rgba(224,123,0,0.2);
             border-radius: var(--radius-lg);
             padding: var(--sp-4) var(--sp-6);
             margin-bottom: var(--sp-8);
@@ -57,7 +57,7 @@
         .filter-select:hover, .filter-select:focus { border-color: var(--amber); outline: none; }
 
         .opportunity-card { background: var(--white); border: 1px solid #E5E7EB; border-radius: var(--radius-lg); padding: var(--sp-6); margin-bottom: var(--sp-6); transition: all 0.2s ease; position: relative; }
-        .opportunity-card:hover { border-color: var(--amber); box-shadow: 0 8px 24px rgba(20,184,166,0.1); }
+        .opportunity-card:hover { border-color: var(--amber); box-shadow: 0 8px 24px rgba(224,123,0,0.1); }
         .opportunity-card.urgent-card { border-left: 4px solid #EF4444; }
 
         .opportunity-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--sp-4); gap: var(--sp-4); }
@@ -198,7 +198,7 @@
     <div id="detailModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(11,25,41,0.75);backdrop-filter:blur(4px);overflow-y:auto;" onclick="if(event.target===this)closeDetailModal()">
       <div style="background:#fff;border-radius:12px;max-width:520px;width:90%;margin:5vh auto;padding:2rem;position:relative;">
         <button onclick="closeDetailModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.5rem;cursor:pointer;color:#94A3B8;line-height:1;">×</button>
-        <h2 id="detailModalTitle" style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:#0B1929;margin-bottom:0.25rem;"></h2>
+        <h2 id="detailModalTitle" style="font-family:'Rubik',serif;font-size:1.5rem;font-weight:700;color:#0D1B2E;margin-bottom:0.25rem;"></h2>
         <p id="detailModalLocation" style="font-size:0.95rem;color:#94A3B8;margin-bottom:1.5rem;"></p>
         <div id="detailModalBody" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;"></div>
         <div id="detailModalFooter" style="margin-top:1.5rem;display:flex;gap:1rem;justify-content:flex-end;"></div>
@@ -805,37 +805,37 @@
             document.getElementById('detailModalBody').innerHTML = `
                 <div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Job Type</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${jobTypeLabels[o.jobType] || o.jobType || 'N/A'}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${jobTypeLabels[o.jobType] || o.jobType || 'N/A'}</div>
                 </div>
                 <div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Trade(s)</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${tradeDisplay}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${tradeDisplay}</div>
                 </div>
                 <div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Urgency</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${urgencyDisplay}${urgencyNote}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${urgencyDisplay}${urgencyNote}</div>
                 </div>
                 <div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Damage Type</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${o.damageType || 'N/A'}${o.damageDetail ? ' — ' + o.damageDetail : ''}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${o.damageType || 'N/A'}${o.damageDetail ? ' — ' + o.damageDetail : ''}</div>
                 </div>
                 ${o.estimatedValue ? `<div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Est. Value</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${fmt(o.estimatedValue)}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${fmt(o.estimatedValue)}</div>
                 </div>` : ''}
                 ${o.material ? `<div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Material</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${o.material}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${o.material}</div>
                 </div>` : ''}
                 ${o.homeownerNotes ? `<div style="grid-column:1/-1;">
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Homeowner Notes</div>
-                    <div style="font-size:0.9rem;color:#0B1929;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px;padding:.75rem 1rem;">${o.homeownerNotes}</div>
+                    <div style="font-size:0.9rem;color:#0D1B2E;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px;padding:.75rem 1rem;">${o.homeownerNotes}</div>
                 </div>` : ''}
             `;
 
             document.getElementById('detailModalFooter').innerHTML =
-                `<button onclick="closeDetailModal()" style="background:#F3F4F6;color:#0B1929;border:1px solid #D1D5DB;border-radius:6px;padding:.6rem 1.25rem;font-family:'DM Sans',sans-serif;font-weight:600;cursor:pointer;">Close</button>
-                 <a href="contractor-bid-form.html?project=${o.id}" style="background:#F59E0B;color:#fff;border:none;border-radius:6px;padding:.6rem 1.25rem;font-family:'DM Sans',sans-serif;font-weight:600;text-decoration:none;">Submit Bid →</a>`;
+                `<button onclick="closeDetailModal()" style="background:#F3F4F6;color:#0D1B2E;border:1px solid #D1D5DB;border-radius:6px;padding:.6rem 1.25rem;font-family:'Rubik',sans-serif;font-weight:600;cursor:pointer;">Close</button>
+                 <a href="contractor-bid-form.html?project=${o.id}" style="background:#E07B00;color:#fff;border:none;border-radius:6px;padding:.6rem 1.25rem;font-family:'Rubik',sans-serif;font-weight:600;text-decoration:none;">Submit Bid →</a>`;
 
             document.getElementById('detailModal').style.display = 'block';
             document.body.style.overflow = 'hidden';

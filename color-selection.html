@@ -11,7 +11,7 @@
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
@@ -319,9 +319,9 @@
 
     /* Always-visible in-person color samples section */
     .in-person-section {
-      background: rgba(20, 184, 166, 0.06);
-      border: 1px solid rgba(20, 184, 166, 0.25);
-      border-left: 4px solid #14B8A6;
+      background: rgba(224, 123, 0, 0.06);
+      border: 1px solid rgba(224, 123, 0, 0.25);
+      border-left: 4px solid #E07B00;
       border-radius: var(--radius-lg);
       padding: var(--sp-8);
       margin-bottom: var(--sp-8);
@@ -1149,7 +1149,7 @@
 
         const section = document.createElement('div');
         section.id = 'color-addendum-section';
-        section.style.cssText = 'margin-top:2rem; padding:1.5rem; background:rgba(20,184,166,0.08); border:1px solid rgba(20,184,166,0.3); border-left:4px solid var(--teal,#14B8A6); border-radius:0.75rem;';
+        section.style.cssText = 'margin-top:2rem; padding:1.5rem; background:rgba(224,123,0,0.08); border:1px solid rgba(224,123,0,0.3); border-left:4px solid var(--teal,#E07B00); border-radius:0.75rem;';
         section.innerHTML = `
           <h3 style="color:var(--white,#fff); margin:0 0 0.75rem;">Sign Color Addendum</h3>
           <p style="color:var(--slate,#94A3B8); margin:0 0 1rem;">
@@ -1176,12 +1176,12 @@
 
         const note = document.createElement('div');
         note.id = 'color-addendum-section';
-        note.style.cssText = 'margin-top:1.5rem; padding:1rem 1.25rem; background:rgba(245,158,11,0.08); border-left:3px solid var(--amber,#F59E0B); border-radius:0.5rem;';
+        note.style.cssText = 'margin-top:1.5rem; padding:1rem 1.25rem; background:rgba(245,158,11,0.08); border-left:3px solid var(--amber,#E07B00); border-radius:0.5rem;';
         note.innerHTML = `
           <p style="color:rgba(255,255,255,0.8); margin:0; font-size:0.9rem;">
             <strong>Color saved.</strong> Your contractor will include the color selection in your final contract documents.
             ${this.contractorPhone
-              ? `You can also confirm directly with <strong>${this.contractorName}</strong> at <a href="tel:${this.contractorPhone}" style="color:var(--amber,#F59E0B);">${this.contractorPhone}</a>.`
+              ? `You can also confirm directly with <strong>${this.contractorName}</strong> at <a href="tel:${this.contractorPhone}" style="color:var(--amber,#E07B00);">${this.contractorPhone}</a>.`
               : `Contact your contractor, ${this.contractorName}, to confirm.`}
           </p>
         `;

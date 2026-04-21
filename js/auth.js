@@ -444,7 +444,7 @@ https://otterquote.com`;
     <td align="center" style="padding:24px 16px;">
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
         <tr>
-          <td align="left" style="background:#0B1929;padding:24px 32px;">
+          <td align="left" style="background:#0D1B2E;padding:24px 32px;">
             <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">OtterQuote</span>
           </td>
         </tr>
@@ -457,7 +457,7 @@ https://otterquote.com`;
               <tr><td style="padding:16px 20px;border-bottom:1px solid #E2E8F0;">
                 <table cellpadding="0" cellspacing="0" border="0"><tr>
                   <td style="width:28px;vertical-align:top;padding-top:2px;">
-                    <div style="width:22px;height:22px;background:#14B8A6;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">1</div>
+                    <div style="width:22px;height:22px;background:#E07B00;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">1</div>
                   </td>
                   <td style="padding-left:12px;">
                     <p style="margin:0;color:#0F172A;font-size:14px;font-weight:600;">Profile Review (1&ndash;2 business days)</p>
@@ -468,7 +468,7 @@ https://otterquote.com`;
               <tr><td style="padding:16px 20px;border-bottom:1px solid #E2E8F0;">
                 <table cellpadding="0" cellspacing="0" border="0"><tr>
                   <td style="width:28px;vertical-align:top;padding-top:2px;">
-                    <div style="width:22px;height:22px;background:#14B8A6;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">2</div>
+                    <div style="width:22px;height:22px;background:#E07B00;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">2</div>
                   </td>
                   <td style="padding-left:12px;">
                     <p style="margin:0;color:#0F172A;font-size:14px;font-weight:600;">Approval Email</p>
@@ -479,7 +479,7 @@ https://otterquote.com`;
               <tr><td style="padding:16px 20px;">
                 <table cellpadding="0" cellspacing="0" border="0"><tr>
                   <td style="width:28px;vertical-align:top;padding-top:2px;">
-                    <div style="width:22px;height:22px;background:#14B8A6;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">3</div>
+                    <div style="width:22px;height:22px;background:#E07B00;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">3</div>
                   </td>
                   <td style="padding-left:12px;">
                     <p style="margin:0;color:#0F172A;font-size:14px;font-weight:600;">Start Bidding</p>

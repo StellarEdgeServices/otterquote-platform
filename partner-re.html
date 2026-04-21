@@ -18,7 +18,7 @@
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
 
@@ -98,7 +98,7 @@
 
 .step-card:hover {
   background: rgba(255,255,255,0.04);
-  border-color: rgba(20, 184, 166, 0.2);
+  border-color: rgba(224, 123, 0, 0.2);
 }
 
 .step-number {
@@ -147,13 +147,13 @@
 .prop-card {
   padding: var(--sp-6);
   background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(20, 184, 166, 0.2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
   border-radius: var(--radius-md);
   transition: all var(--duration) var(--ease);
 }
 
 .prop-card:hover {
-  background: rgba(20, 184, 166, 0.08);
+  background: rgba(224, 123, 0, 0.08);
   border-color: var(--amber);
   transform: translateY(-2px);
 }
@@ -187,7 +187,7 @@
   max-width: 700px;
   margin: 0 auto;
   padding: var(--sp-10);
-  background: linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, rgba(20, 184, 166, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(224, 123, 0, 0.1) 0%, rgba(224, 123, 0, 0.05) 100%);
   border: 2px solid var(--amber);
   border-radius: var(--radius-lg);
 }
@@ -340,7 +340,7 @@
   outline: none;
   background: rgba(255,255,255,0.06);
   border-color: var(--amber);
-  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+  box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
 }
 
 .form-hint {
@@ -396,7 +396,7 @@
 .signup-benefits {
   padding: var(--sp-8);
   background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(20, 184, 166, 0.2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
   border-radius: var(--radius-lg);
   max-width: 500px;
 }
@@ -466,7 +466,7 @@
 .btn-primary:hover {
   background: var(--amber-2);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(20, 184, 166, 0.3);
+  box-shadow: 0 8px 20px rgba(224, 123, 0, 0.3);
 }
 
 .btn-primary:disabled {
@@ -535,7 +535,7 @@
 }
 
 .referral-link-box {
-  background: rgba(20, 184, 166, 0.15);
+  background: rgba(224, 123, 0, 0.15);
   border: 2px solid var(--amber);
   border-radius: var(--radius-md);
   padding: var(--sp-4) var(--sp-6);
@@ -600,11 +600,11 @@
 
 .faq-question:hover {
   background: rgba(255,255,255,0.05);
-  border-color: rgba(20, 184, 166, 0.2);
+  border-color: rgba(224, 123, 0, 0.2);
 }
 
 .faq-question.active {
-  background: rgba(20, 184, 166, 0.1);
+  background: rgba(224, 123, 0, 0.1);
   border-color: var(--amber);
 }
 
@@ -1168,7 +1168,7 @@
           || 'Otter Quotes Partner';
         referredByInput.value = displayName;
         referredByInput.readOnly = true;
-        referredByInput.style.background = 'rgba(20, 184, 166, 0.08)';
+        referredByInput.style.background = 'rgba(224, 123, 0, 0.08)';
         referredByInput.style.borderColor = 'var(--amber)';
         referredByInput.style.color = 'var(--amber)';
         referredByInput.style.cursor = 'not-allowed';
@@ -1369,13 +1369,4 @@
   });
 
   // Dashboard button
-  dashboardBtn.addEventListener('click', () => {
-    window.location.href = '/partner-dashboard.html';
-  });
-
-  // Partner pages are public — do NOT redirect logged-in users to dashboard
-})();
-</script>
-
-</body>
-</html>
+  dashboardBtn.addEventListener('click', (

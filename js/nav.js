@@ -198,7 +198,7 @@ const Nav = {
 
     overlay.innerHTML = `
       <div id="support-modal" style="
-        background:#0f2533;border:1px solid rgba(20,184,166,.25);border-radius:12px;
+        background:#0f2533;border:1px solid rgba(224,123,0,.25);border-radius:12px;
         padding:2rem;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.5);
         position:relative;
       ">
@@ -215,41 +215,41 @@ const Nav = {
             <div style="margin-bottom:.75rem;">
               <label style="display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.3rem;" for="sc-name">Your Name</label>
               <input id="sc-name" type="text" required autocomplete="name"
-                style="width:100%;padding:.5rem .75rem;background:#0a1e2c;border:1px solid rgba(148,163,184,.25);
+                style="width:100%;padding:.5rem .75rem;background:#0D1B2E;border:1px solid rgba(148,163,184,.25);
                   border-radius:6px;color:#fff;font-size:.9rem;box-sizing:border-box;"
                 placeholder="Mike Reynolds">
             </div>
             <div style="margin-bottom:.75rem;">
               <label style="display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.3rem;" for="sc-email">Your Email</label>
               <input id="sc-email" type="email" required autocomplete="email"
-                style="width:100%;padding:.5rem .75rem;background:#0a1e2c;border:1px solid rgba(148,163,184,.25);
+                style="width:100%;padding:.5rem .75rem;background:#0D1B2E;border:1px solid rgba(148,163,184,.25);
                   border-radius:6px;color:#fff;font-size:.9rem;box-sizing:border-box;"
                 placeholder="you@company.com">
             </div>
             <div style="margin-bottom:.75rem;">
               <label style="display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.3rem;" for="sc-subject">Subject (optional)</label>
               <input id="sc-subject" type="text"
-                style="width:100%;padding:.5rem .75rem;background:#0a1e2c;border:1px solid rgba(148,163,184,.25);
+                style="width:100%;padding:.5rem .75rem;background:#0D1B2E;border:1px solid rgba(148,163,184,.25);
                   border-radius:6px;color:#fff;font-size:.9rem;box-sizing:border-box;"
                 placeholder="e.g. Question about my bid">
             </div>
             <div style="margin-bottom:.75rem;">
               <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.85rem;color:#94a3b8;user-select:none;">
                 <input type="checkbox" id="sc-bug-report"
-                  style="width:1rem;height:1rem;accent-color:#14b8a6;cursor:pointer;flex-shrink:0;">
+                  style="width:1rem;height:1rem;accent-color:#E07B00;cursor:pointer;flex-shrink:0;">
                 I'm reporting a bug on this page
               </label>
             </div>
             <div style="margin-bottom:1rem;">
               <label style="display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.3rem;" for="sc-message">Message</label>
               <textarea id="sc-message" required rows="4"
-                style="width:100%;padding:.5rem .75rem;background:#0a1e2c;border:1px solid rgba(148,163,184,.25);
+                style="width:100%;padding:.5rem .75rem;background:#0D1B2E;border:1px solid rgba(148,163,184,.25);
                   border-radius:6px;color:#fff;font-size:.9rem;resize:vertical;box-sizing:border-box;"
                 placeholder="Describe your question or issue..."></textarea>
             </div>
             <p id="sc-error" style="color:#f87171;font-size:.8rem;margin:0 0 .75rem;display:none;"></p>
             <button type="submit" id="sc-submit"
-              style="width:100%;padding:.65rem 1rem;background:#14b8a6;color:#fff;border:none;
+              style="width:100%;padding:.65rem 1rem;background:#E07B00;color:#fff;border:none;
                 border-radius:6px;font-size:.9rem;font-weight:600;cursor:pointer;">
               Send Message
             </button>
@@ -271,9 +271,9 @@ const Nav = {
     fab.setAttribute('aria-label', 'Contact Support');
     fab.style.cssText = `
       position:fixed;bottom:1.5rem;right:1.5rem;z-index:9998;
-      background:#14b8a6;color:#fff;border:none;border-radius:50px;
+      background:#E07B00;color:#fff;border:none;border-radius:50px;
       padding:.65rem 1.1rem;font-size:.85rem;font-weight:600;
-      cursor:pointer;box-shadow:0 4px 16px rgba(20,184,166,.4);
+      cursor:pointer;box-shadow:0 4px 16px rgba(224,123,0,.4);
       display:flex;align-items:center;gap:.4rem;
     `;
     fab.innerHTML = `<span style="font-size:1rem;">💬</span> Contact Support`;
@@ -411,7 +411,7 @@ const Nav = {
               <a href="/contractor-dashboard.html">Dashboard</a>
               <a href="/contractor-profile.html">Company Profile</a>
               <a href="/contractor-agreement.html">Partner Agreement</a>
-              <a href="#" id="footer-support-link" style="color:#14b8a6;font-weight:600;">💬 Contact Support</a>
+              <a href="#" id="footer-support-link" style="color:#E07B00;font-weight:600;">💬 Contact Support</a>
             ` : `
               <a href="/contractor-login.html">Contractor Login</a>
               <a href="/contractor-join.html">Join Our Network</a>

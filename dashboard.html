@@ -11,7 +11,7 @@
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
@@ -299,7 +299,7 @@
 
     .checklist-material-selection {
       padding: var(--sp-3);
-      background: rgba(20,184,166,0.05);
+      background: rgba(224,123,0,0.05);
       border-radius: var(--radius-sm);
       border-left: 3px solid var(--amber);
       font-size: 0.95rem;
@@ -366,7 +366,7 @@
     .submit-section {
       margin-top: var(--sp-12);
       padding: var(--sp-8);
-      background: rgba(20,184,166,0.05);
+      background: rgba(224,123,0,0.05);
       border: 1px solid var(--amber);
       border-radius: var(--radius-lg);
       text-align: center;
@@ -501,11 +501,11 @@
       color: var(--white);
     }
     .job-type-btn:hover { border-color: var(--amber); }
-    .job-type-btn.selected { border-color: var(--amber); background: rgba(20,184,166,0.1); }
+    .job-type-btn.selected { border-color: var(--amber); background: rgba(224,123,0,0.1); }
     .job-type-btn strong { font-size: 0.95rem; margin-bottom: var(--sp-1); }
     .job-type-btn span { font-size: 0.8rem; color: var(--slate); }
     .conditional-section { animation: fadeUp 0.3s ease both; }
-    .callout-warning { background: rgba(20,184,166,0.08); border: 1px solid rgba(20,184,166,0.25); border-radius: var(--radius-md); padding: var(--sp-4); color: var(--amber); font-size: 0.9rem; }
+    .callout-warning { background: rgba(224,123,0,0.08); border: 1px solid rgba(224,123,0,0.25); border-radius: var(--radius-md); padding: var(--sp-4); color: var(--amber); font-size: 0.9rem; }
     .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--sp-6); }
     .char-count { font-size: 0.8rem; color: var(--slate); float: right; margin-top: var(--sp-2); }
     .file-upload { padding: var(--sp-4); background: rgba(255,255,255,0.03); border: 2px dashed rgba(255,255,255,0.2); border-radius: var(--radius-md); text-align: center; cursor: pointer; }
@@ -1548,12 +1548,12 @@
 
           if (!sidingReleased) {
             // ── Gate NOT clear: prominent CTA card ───────────────────────
-            ctaDiv.style.cssText = 'margin-top:1.25rem;background:linear-gradient(135deg,#0f2942 0%,#0d3151 100%);border:2px solid var(--amber,#F59E0B);border-radius:0.875rem;padding:1.25rem 1.5rem;';
+            ctaDiv.style.cssText = 'margin-top:1.25rem;background:linear-gradient(135deg,#0f2942 0%,#0d3151 100%);border:2px solid var(--amber,#E07B00);border-radius:0.875rem;padding:1.25rem 1.5rem;';
             ctaDiv.innerHTML = `
               <div style="display:flex;align-items:flex-start;gap:1rem;">
                 <div style="font-size:2rem;flex-shrink:0;line-height:1;">🏠</div>
                 <div style="flex:1;">
-                  <div style="font-weight:700;color:var(--amber,#F59E0B);font-size:1rem;margin-bottom:0.5rem;">
+                  <div style="font-weight:700;color:var(--amber,#E07B00);font-size:1rem;margin-bottom:0.5rem;">
                     Design your siding on Hover
                   </div>
                   <div style="font-size:0.875rem;color:rgba(255,255,255,0.85);margin-bottom:1rem;line-height:1.55;">
@@ -1564,7 +1564,7 @@
                     Once you've chosen all four in Hover, your siding bids will be released to contractors.
                   </div>
                   <a href="${hoverLink}" target="_blank" rel="noopener"
-                     style="display:inline-block;background:var(--amber,#F59E0B);color:#0B1929;font-size:0.875rem;font-weight:700;text-decoration:none;padding:8px 20px;border-radius:0.5rem;transition:opacity 0.2s;"
+                     style="display:inline-block;background:var(--amber,#E07B00);color:#0D1B2E;font-size:0.875rem;font-weight:700;text-decoration:none;padding:8px 20px;border-radius:0.5rem;transition:opacity 0.2s;"
                      onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
                     Design Your Siding in Hover →
                   </a>
@@ -1573,14 +1573,14 @@
             `;
           } else {
             // ── Gate cleared: brief confirmation ─────────────────────────
-            ctaDiv.style.cssText = 'margin-top:1rem;background:rgba(20,184,166,0.08);border:1px solid rgba(20,184,166,0.35);border-radius:0.75rem;padding:0.875rem 1.25rem;display:flex;align-items:center;gap:0.75rem;';
+            ctaDiv.style.cssText = 'margin-top:1rem;background:rgba(224,123,0,0.08);border:1px solid rgba(224,123,0,0.35);border-radius:0.75rem;padding:0.875rem 1.25rem;display:flex;align-items:center;gap:0.75rem;';
             ctaDiv.innerHTML = `
               <div style="font-size:1.25rem;flex-shrink:0;">✅</div>
               <div style="font-size:0.875rem;color:rgba(255,255,255,0.9);">
-                <strong style="color:#5eead4;">Siding design locked in.</strong>
+                <strong style="color:#FAC775;">Siding design locked in.</strong>
                 Contractors are now bidding on your siding project.
                 <a href="bids.html?claim_id=${encodeURIComponent(currentClaim.id)}"
-                   style="color:var(--amber,#F59E0B);margin-left:0.25rem;text-decoration:none;">View bids →</a>
+                   style="color:var(--amber,#E07B00);margin-left:0.25rem;text-decoration:none;">View bids →</a>
               </div>
             `;
           }
@@ -1735,9 +1735,9 @@
               : (Object.prototype.hasOwnProperty.call(releaseMap, key) ? releaseMap[key] : true);
 
             if (!released) {
-              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.5);color:#F59E0B;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">🔒 ${label}: Waiting on design</span>`;
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.5);color:#E07B00;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">🔒 ${label}: Waiting on design</span>`;
             } else {
-              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);color:#5eead4;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">✓ ${label}: Collecting bids</span>`;
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(224,123,0,0.12);border:1px solid rgba(224,123,0,0.4);color:#FAC775;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">✓ ${label}: Collecting bids</span>`;
             }
           }).join('');
 
