@@ -25,4 +25,5 @@ Disallow: /project-confirmation
 Disallow: /repair-intake
 Disallow: /schedule-inspection
 
-Sitemap: https://otterquote.com/sitemap.xml
+# Admin and internal tools
+Disallow: /stripe
