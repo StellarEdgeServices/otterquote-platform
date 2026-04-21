@@ -19,11 +19,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const FUNCTION_NAME = "create-hover-order";
 const HOVER_API_BASE = "https://hover.to";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+// CORS tightened (Session 254): origin-allowlisted instead of wildcard.
+const ALLOWED_ORIGINS = [
+  "https://otterquote.com",
+  "https://jade-alpaca-b82b5e.netlify.app",
+];
+
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  };
+}
 
 /**
  * Get a valid Hover access token, refreshing if expired.
@@ -103,6 +114,7 @@ async function getValidAccessToken(
 }
 
 serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }

@@ -14,10 +14,23 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-docusign-signature-1",
-};
+// CORS tightened (Session 254): origin-allowlisted instead of wildcard.
+// Webhook traffic is server-to-server (no Origin header); browser probes
+// fall back to the first allowed origin.
+const ALLOWED_ORIGINS = [
+  "https://otterquote.com",
+  "https://jade-alpaca-b82b5e.netlify.app",
+];
+
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-docusign-signature-1",
+    "Vary": "Origin",
+  };
+}
 
 // ========== HMAC VERIFICATION ==========
 async function verifyHmacSignature(
@@ -56,6 +69,7 @@ async function verifyHmacSignature(
 
 // ========== MAIN HANDLER ==========
 serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -172,6 +186,44 @@ serve(async (req) => {
     const isColorConfirmation = claim.color_confirmation_envelope_id === envelopeId;
 
     console.log(`Matched claim ${claim.id} (${isContract ? "contract" : "color_confirmation"})`);
+
+    // ========== CONTRACTOR SIGNING TRACKING ==========
+    // On every contract envelope event, scan the signers array. If the contractor
+    // signer (clientUserId: "contractor_1") has completed, write contractor_signed_at
+    // to the matching quote. Covers both intermediate events (contractor signed,
+    // homeowner pending) and the final completed event (all signed — signedDateTime
+    // is still present per signer in the payload). Idempotent via IS NULL guard.
+    if (isContract) {
+      const allSigners: any[] = (
+        payload.data?.envelopeSummary?.recipients?.signers ||
+        payload.recipients?.signers ||
+        []
+      );
+      const contractorSigner = allSigners.find(
+        (s: any) => s.clientUserId === "contractor_1" && s.status === "completed"
+      );
+      if (contractorSigner) {
+        const { data: contractorQuote } = await supabase
+          .from("quotes")
+          .select("id, contractor_signed_at")
+          .eq("docusign_envelope_id", envelopeId)
+          .is("contractor_signed_at", null)
+          .maybeSingle();
+        if (contractorQuote) {
+          const { error: csErr } = await supabase
+            .from("quotes")
+            .update({
+              contractor_signed_at: contractorSigner.signedDateTime || new Date().toISOString(),
+            })
+            .eq("id", contractorQuote.id);
+          if (csErr) {
+            console.error(`Failed to write contractor_signed_at for quote ${contractorQuote.id}:`, csErr);
+          } else {
+            console.log(`contractor_signed_at written for quote ${contractorQuote.id} (claim ${claim.id})`);
+          }
+        }
+      }
+    }
 
     // ========== UPDATE CLAIM BASED ON STATUS ==========
     const updateData: Record<string, any> = {};

@@ -33,11 +33,22 @@ const FUNCTION_NAME = "parse-loss-sheet";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+// CORS tightened (Session 254): origin-allowlisted instead of wildcard.
+const ALLOWED_ORIGINS = [
+  "https://otterquote.com",
+  "https://jade-alpaca-b82b5e.netlify.app",
+];
+
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  };
+}
 
 // ── Extraction prompt ──────────────────────────────────────────────────────────
 const EXTRACTION_PROMPT = `You are processing an insurance loss sheet / damage estimate PDF. Your job is two-fold:
@@ -121,10 +132,14 @@ function buildScopeSummary(parsed: any): string {
 
   lines.push("");
 
-  // Section measurements
+  // Section measurements and line items
+  // Note: Claude's extraction may return field names as either the prompt schema
+  // (section_name, line_items, rc) or common variants (name, items, rcv).
+  // Handle both to be resilient to LLM output variation.
   if (parsed.sections && parsed.sections.length > 0) {
     for (const section of parsed.sections) {
-      const label = [section.section_name, section.area_name].filter(Boolean).join(" — ");
+      const sectionName = section.section_name || section.name;
+      const label = [sectionName, section.area_name].filter(Boolean).join(" — ");
       lines.push(`SECTION: ${label}`);
 
       const m = section.measurements;
@@ -139,13 +154,15 @@ function buildScopeSummary(parsed: any): string {
         }
       }
 
-      if (section.line_items && section.line_items.length > 0) {
-        lines.push(`  Line Items (${section.line_items.length}):`);
-        for (const item of section.line_items) {
+      const sectionItems = section.line_items || section.items || [];
+      if (sectionItems.length > 0) {
+        lines.push(`  Line Items (${sectionItems.length}):`);
+        for (const item of sectionItems) {
           const parts = [];
           if (item.description) parts.push(item.description);
           if (item.quantity && item.unit) parts.push(`${item.quantity} ${item.unit}`);
-          if (item.rc) parts.push(`RC $${item.rc.toLocaleString()}`);
+          const rcVal = item.rc ?? item.rcv;
+          if (rcVal) parts.push(`RC $${rcVal.toLocaleString()}`);
           if (item.depreciation) parts.push(`Dep -$${item.depreciation.toLocaleString()}`);
           if (item.acv) parts.push(`ACV $${item.acv.toLocaleString()}`);
           lines.push(`    • ${parts.join(" | ")}`);
@@ -153,11 +170,11 @@ function buildScopeSummary(parsed: any): string {
         }
       }
 
-      if (section.subtotal_rc) {
-        lines.push(`  Section RC Total: $${section.subtotal_rc.toLocaleString()}`);
+      if (section.subtotal_rc || section.rcv) {
+        lines.push(`  Section RC Total: $${(section.subtotal_rc || section.rcv).toLocaleString()}`);
       }
-      if (section.subtotal_acv) {
-        lines.push(`  Section ACV Total: $${section.subtotal_acv.toLocaleString()}`);
+      if (section.subtotal_acv || section.acv) {
+        lines.push(`  Section ACV Total: $${(section.subtotal_acv || section.acv).toLocaleString()}`);
       }
       lines.push("");
     }
@@ -178,6 +195,7 @@ function buildScopeSummary(parsed: any): string {
 
 // ── Main handler ───────────────────────────────────────────────────────────────
 serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }

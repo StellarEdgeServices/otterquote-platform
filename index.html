@@ -22,7 +22,7 @@
   gtag('js', new Date());
   gtag('config', 'G-JNQ6XR3LX2');
   // A/B test variant identifier — used to segment conversions in GA4
-  gtag('set', 'user_properties', { ab_test_variant: 'B_speed_trust' });
+  gtag('set', 'user_properties', { ab_test_variant: 'A_competing_quotes' });
 </script>
 
 <!-- Supabase -->
@@ -30,8 +30,7 @@
 
 <!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- Shared Styles -->
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
@@ -81,7 +80,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 0%, rgba(20,184,166,0.08) 0%, transparent 60%);
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.08) 0%, transparent 60%);
   pointer-events: none;
 }
 
@@ -91,7 +90,7 @@
   margin: 0 auto var(--sp-4);
   display: block;
   animation: fadeUp 0.5s var(--ease) both;
-  filter: drop-shadow(0 4px 24px rgba(20,184,166,0.18));
+  filter: drop-shadow(0 4px 24px rgba(224,123,0,0.18));
 }
 
 .hero-brand-name {
@@ -108,8 +107,8 @@
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
-  background: rgba(20,184,166,0.1);
-  border: 1px solid rgba(20,184,166,0.3);
+  background: rgba(224,123,0,0.1);
+  border: 1px solid rgba(224,123,0,0.3);
   border-radius: var(--radius-full);
   padding: var(--sp-2) var(--sp-4);
   font-size: 0.85rem;
@@ -142,10 +141,10 @@
   justify-content: center;
   align-items: stretch;
   gap: 0;
-  border: 2px solid rgba(20,184,166,0.4);
+  border: 2px solid rgba(224,123,0,0.4);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  background: rgba(20,184,166,0.05);
+  background: rgba(224,123,0,0.05);
 }
 
 .hero-callout-item {
@@ -156,11 +155,11 @@
 }
 
 .hero-callout-item + .hero-callout-item {
-  border-left: 1px solid rgba(20,184,166,0.25);
+  border-left: 1px solid rgba(224,123,0,0.25);
 }
 
 .hero-callout-item:last-child {
-  background: rgba(20,184,166,0.12);
+  background: rgba(224,123,0,0.12);
 }
 
 .hero-callout-icon {
@@ -182,13 +181,13 @@
 .hero-callout-text {
   font-size: 1rem;
   font-weight: 700;
-  color: var(--teal, #14b8a6);
+  color: var(--teal, #E07B00);
   display: block;
 }
 
 .hero-callout-item:last-child .hero-callout-text {
   font-size: 1.15rem;
-  color: var(--teal, #14b8a6);
+  color: var(--teal, #E07B00);
 }
 
 .hero-subtitle {
@@ -260,7 +259,7 @@
 }
 
 .track-card:hover {
-  border-color: rgba(20,184,166,0.35);
+  border-color: rgba(224,123,0,0.35);
 }
 
 .track-card-icon {
@@ -520,7 +519,7 @@
 /* ── CTA Section ── */
 .cta-section {
   text-align: center;
-  background: linear-gradient(180deg, transparent, rgba(20,184,166,0.05));
+  background: linear-gradient(180deg, transparent, rgba(224,123,0,0.05));
   padding: var(--sp-20) 0 var(--sp-24);
 }
 
@@ -568,7 +567,7 @@
   .hero-logo { width: 96px; height: 96px; }
   .hero-trust { gap: var(--sp-4); }
   .hero-callout-inner { flex-direction: column; }
-  .hero-callout-item + .hero-callout-item { border-left: none; border-top: 1px solid rgba(20,184,166,0.25); }
+  .hero-callout-item + .hero-callout-item { border-left: none; border-top: 1px solid rgba(224,123,0,0.25); }
   .guarantee-banner { flex-direction: column; text-align: center; align-items: center; }
   .two-track-grid { grid-template-columns: 1fr; }
   .problem-answers { grid-template-columns: 1fr; }
@@ -589,8 +588,8 @@
   <div class="container">
     <img src="/img/otter-logo.svg" alt="Otter Quotes" class="hero-logo">
     <div class="hero-brand-name">Otter Quotes</div>
-    <div class="hero-badge">&#x1F30E; Serving Homeowners Nationwide</div>
-    <h1>Stop chasing contractors. <em>Let them compete for you.</em></h1>
+    <div class="hero-badge">&#x1F4DD; Insurance Claims &amp; Retail Quotes — All in One Place</div>
+    <h1>Get competing quotes on <em>your home</em> — without the runaround.</h1>
 
     <!-- Speed / Trust / Free — visually prominent -->
     <div class="hero-callout-block">
@@ -614,7 +613,7 @@
     </div>
 
     <p class="hero-subtitle">
-      Describe your project in 2 minutes. We match you with licensed contractors who send their best bid — no phone tag, no site visits, no pressure. Insurance claim or out-of-pocket, Otter Quotes handles the paperwork up to a signed contract.
+      Whether you have an insurance claim or are paying out of pocket, Otter Quotes brings qualified, licensed contractors to you — competing for your business with their best quote. We handle everything up to a signed agreement.
     </p>
     <div class="hero-cta">
       <a href="get-started.html" class="btn btn-primary btn-lg">Get My Free Quotes</a>
@@ -685,7 +684,7 @@
       <div class="value-card card">
         <div class="value-icon">&#x1F50D;</div>
         <h3>Contractor Information, All in One Place</h3>
-        <p>Every contractor on Otter Quotes is screened for state licensing, proof of insurance, and verified customer reviews before they ever see your job. You see the full picture — no digging required.</p>
+        <p>Otter Quotes gathers the information you need to do your own due diligence — state licensing, proof of insurance, public customer reviews, and years in business — all in one place. You see the full picture without the digging.</p>
       </div>
 
       <div class="value-card card">
@@ -702,8 +701,8 @@
 
       <div class="value-card card">
         <div class="value-icon">&#x1F4AC;</div>
-        <h3>Real Accountability, Built In</h3>
-        <p>Every contractor is background-checked, licensed, and insured before joining Otter Quotes. We track response times and job history — contractors who don't perform don't stay on the platform. You have everything you need to choose with confidence.</p>
+        <h3>You Stay in the Driver's Seat</h3>
+        <p>You see each contractor's license, insurance, and public reviews before bidding even begins. Compare quotes side-by-side and choose the contractor who fits best — no pressure, no hidden agendas.</p>
       </div>
 
     </div>
@@ -715,13 +714,8 @@
 <!-- ═══════════════════════════════════════ -->
 <section class="trust-badges-section">
   <div class="container">
-    <p class="trust-badges-label">Every contractor on Otter Quotes is screened before joining</p>
+    <p class="trust-badges-label">Everything you need to evaluate each contractor — in one place</p>
     <div class="trust-badges-row">
-      <div class="trust-badge">
-        <span class="trust-badge-icon">&#x1F4DC;</span>
-        <span class="trust-badge-title">State License Verified</span>
-        <span class="trust-badge-sub">We confirm active contractor licensing in your state</span>
-      </div>
       <div class="trust-badge">
         <span class="trust-badge-icon">&#x1F6E1;&#xFE0F;</span>
         <span class="trust-badge-title">Insurance on File</span>
@@ -729,13 +723,13 @@
       </div>
       <div class="trust-badge">
         <span class="trust-badge-icon">&#x2B50;</span>
-        <span class="trust-badge-title">Customer Reviews Checked</span>
-        <span class="trust-badge-sub">Track record reviewed before approval</span>
+        <span class="trust-badge-title">Public Reviews Gathered</span>
+        <span class="trust-badge-sub">Reviews from Google, BBB, Angi, and Yelp in one view</span>
       </div>
       <div class="trust-badge">
-        <span class="trust-badge-icon">&#x1F9A6;</span>
-        <span class="trust-badge-title">Otter Quotes Approved</span>
-        <span class="trust-badge-sub">Only contractors who meet our standards join the network</span>
+        <span class="trust-badge-icon">&#x1F4C5;</span>
+        <span class="trust-badge-title">Years in Business Displayed</span>
+        <span class="trust-badge-sub">How long each contractor has been operating — shown up front</span>
       </div>
     </div>
   </div>
@@ -766,7 +760,7 @@
     <div class="problem-answers">
       <div class="problem-answer">
         <div class="problem-answer-q">How do you know who to trust?</div>
-        <p>Every contractor is screened for state licensing, proof of insurance, and customer reviews before joining Otter Quotes. Only contractors who meet our standards get access to homeowner projects. You see their credentials up front — not after you've already committed.</p>
+        <p>You see each contractor's state license, proof of insurance, public reviews, and years in business before you ever commit to anything. Otter Quotes pulls that information together so you can do your own due diligence in one place — and make the call for yourself.</p>
       </div>
       <div class="problem-answer">
         <div class="problem-answer-q">How do you know if the price is fair?</div>
@@ -815,7 +809,7 @@
       <div class="step-card card">
         <div class="step-number">5</div>
         <h3>Compare Your Options</h3>
-        <p>Review quotes side by side. See each contractor's pricing, workmanship and materials warranties, years in business, contractor licensing and insurance status, and verified customer reviews — all gathered in one place.</p>
+        <p>Review quotes side by side. See each contractor's pricing, workmanship and materials warranties, years in business, contractor licensing and insurance status, and customer reviews from Google, BBB, Angi, and Yelp — all gathered in one place.</p>
       </div>
 
       <div class="step-card card">

@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-    <title>Available Opportunities — OtterQuote Contractor</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>Available Opportunities — Otter Quotes Contractor</title>
 
     <!-- GA4 -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -19,9 +19,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-
-    <!-- Design System & Navigation -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Design System & Navigation -->
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
 
@@ -29,8 +29,8 @@
         main { padding: var(--sp-8) var(--sp-4); max-width: 1400px; margin: 0 auto; }
 
         .sales-banner {
-            background: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(20,184,166,0.03));
-            border: 1px solid rgba(20,184,166,0.2);
+            background: linear-gradient(135deg, rgba(224,123,0,0.08), rgba(224,123,0,0.03));
+            border: 1px solid rgba(224,123,0,0.2);
             border-radius: var(--radius-lg);
             padding: var(--sp-4) var(--sp-6);
             margin-bottom: var(--sp-8);
@@ -57,7 +57,7 @@
         .filter-select:hover, .filter-select:focus { border-color: var(--amber); outline: none; }
 
         .opportunity-card { background: var(--white); border: 1px solid #E5E7EB; border-radius: var(--radius-lg); padding: var(--sp-6); margin-bottom: var(--sp-6); transition: all 0.2s ease; position: relative; }
-        .opportunity-card:hover { border-color: var(--amber); box-shadow: 0 8px 24px rgba(20,184,166,0.1); }
+        .opportunity-card:hover { border-color: var(--amber); box-shadow: 0 8px 24px rgba(224,123,0,0.1); }
         .opportunity-card.urgent-card { border-left: 4px solid #EF4444; }
 
         .opportunity-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--sp-4); gap: var(--sp-4); }
@@ -198,7 +198,7 @@
     <div id="detailModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(11,25,41,0.75);backdrop-filter:blur(4px);overflow-y:auto;" onclick="if(event.target===this)closeDetailModal()">
       <div style="background:#fff;border-radius:12px;max-width:520px;width:90%;margin:5vh auto;padding:2rem;position:relative;">
         <button onclick="closeDetailModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.5rem;cursor:pointer;color:#94A3B8;line-height:1;">×</button>
-        <h2 id="detailModalTitle" style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:#0B1929;margin-bottom:0.25rem;"></h2>
+        <h2 id="detailModalTitle" style="font-family:'Rubik',serif;font-size:1.5rem;font-weight:700;color:#0D1B2E;margin-bottom:0.25rem;"></h2>
         <p id="detailModalLocation" style="font-size:0.95rem;color:#94A3B8;margin-bottom:1.5rem;"></p>
         <div id="detailModalBody" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;"></div>
         <div id="detailModalFooter" style="margin-top:1.5rem;display:flex;gap:1rem;justify-content:flex-end;"></div>
@@ -224,7 +224,7 @@
         // =============================================================
 
         // Indiana zip centroids [lat, lng]. Covers all major metros
-        // and suburbs. Add entries as OtterQuote expands to new markets.
+        // and suburbs. Add entries as Otter Quotes expands to new markets.
         const ZIP_CENTROIDS = {
           // ── Indianapolis / Marion County ──────────────────────────
           '46201':[39.7728,-86.1035],'46202':[39.7856,-86.1609],
@@ -432,6 +432,14 @@
                   // Parse trades from claim
                   const trades = claim.selected_trades || claim.trades || ['roofing'];
 
+                  // D-165: per-trade release timestamps — drives filter + card labels
+                  const releasedTrades = {
+                    roofing: !!claim.roofing_bid_released_at,
+                    gutters: !!claim.gutters_bid_released_at,
+                    siding:  !!claim.siding_bid_released_at,
+                    windows: !!claim.windows_bid_released_at,
+                  };
+
                   return {
                     id: claim.id,
                     propertyAddress: claim.property_address || null,
@@ -461,15 +469,28 @@
                     homeownerNotes: claim.homeowner_notes,
                     contractorScopeSummary: claim.contractor_scope_summary || null,
                     fundingType: claim.funding_type || (claim.job_type?.startsWith('insurance') ? 'insurance' : 'cash'),
+                    releasedTrades: releasedTrades,
                   };
                 });
 
-                // Filter by contractor's trades if we have a contractor profile
+                // D-165: Filter opportunities by contractor trade + release status.
+                // Show an opportunity only if at least one of the contractor's service
+                // trades matches a RELEASED trade on the claim. A trade is "released"
+                // when its *_bid_released_at timestamp is non-null (set by the bidding
+                // transition in dashboard.html or, for retail siding, by the
+                // check-siding-design-completion gate). Unknown trades (outside the
+                // known set) default to "released" as a conservative fallback.
                 if (currentContractor && currentContractor.trades && currentContractor.trades.length > 0) {
                   const contractorTrades = currentContractor.trades.map(t => t.toLowerCase());
+                  const knownTrades = ['roofing', 'gutters', 'siding', 'windows'];
                   allOpportunities = allOpportunities.filter(opp => {
-                    // Show opportunity if ANY of the contractor's trades match ANY of the claim's trades
-                    return opp.trades.some(t => contractorTrades.includes(t.toLowerCase()));
+                    return opp.trades.some(t => {
+                      const tl = t.toLowerCase();
+                      if (!contractorTrades.includes(tl)) return false; // not contractor's trade
+                      if (!knownTrades.includes(tl)) return true;       // unknown trade = conservative include
+                      // Only show if this trade's bid has been released
+                      return !!(opp.releasedTrades && opp.releasedTrades[tl]);
+                    });
                   });
                 }
 
@@ -522,7 +543,8 @@
                 roofSquares: null, repairSquares: null, totalSquares: null, existingShingle: null,
                 estimateAvailable: true, measurementsAvailable: true, claimFiledDate: '2026-03-15',
                 distance: 5, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
-                homeownerNotes: null, fundingType: 'insurance'
+                homeownerNotes: null, fundingType: 'insurance',
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
             },
             {
                 id: 'OQ-2026-0047', location: 'Carmel', zip: '46032', jobType: 'insurance_acv',
@@ -531,7 +553,8 @@
                 roofSquares: null, repairSquares: null, totalSquares: null, existingShingle: null,
                 estimateAvailable: true, measurementsAvailable: false, claimFiledDate: '2026-03-14',
                 distance: 18, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
-                homeownerNotes: 'Two-story home. Ladder access on south side only.', fundingType: 'insurance'
+                homeownerNotes: 'Two-story home. Ladder access on south side only.', fundingType: 'insurance',
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
             },
             {
                 id: 'OQ-2026-0046', location: 'Fishers', zip: '46037', jobType: 'retail',
@@ -540,7 +563,8 @@
                 roofSquares: 28, repairSquares: null, totalSquares: null, existingShingle: null,
                 estimateAvailable: false, measurementsAvailable: true, claimFiledDate: '2026-03-13',
                 distance: 22, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
-                homeownerNotes: null, fundingType: 'cash'
+                homeownerNotes: null, fundingType: 'cash',
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
             },
             {
                 id: 'OQ-2026-0045', location: 'Noblesville', zip: '46060', jobType: 'repair',
@@ -550,7 +574,8 @@
                 estimateAvailable: true, measurementsAvailable: false, claimFiledDate: '2026-03-12',
                 distance: 25, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
                 homeownerNotes: 'Damage on north-facing slope near chimney. Have leftover shingles in garage — confirmed GAF Timberline HD Charcoal.',
-                fundingType: 'insurance', repairType: 'blown_off'
+                fundingType: 'insurance', repairType: 'blown_off',
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
             },
             {
                 id: 'OQ-2026-0044', location: 'Greenwood', zip: '46142', jobType: 'insurance_rcv',
@@ -561,17 +586,20 @@
                 distance: 15, urgency: 'asap', urgencyDeadline: '2026-04-15',
                 urgencyReason: 'Real estate closing April 15',
                 homeownerNotes: 'House is under contract. Must have roof complete before closing on April 15. Buyer inspection passed contingent on roof.',
-                fundingType: 'insurance'
+                fundingType: 'insurance',
+                releasedTrades: { roofing: true, gutters: true, siding: false, windows: false }
             },
             {
-                id: 'OQ-2026-0043', location: 'Zionsville', zip: '46077', jobType: 'insurance_rcv',
-                trades: ['roofing', 'siding', 'gutters'], damageType: 'Roof + Siding + Gutters', damageDetail: 'Hail & Wind', insuranceCarrier: 'State Farm',
-                material: 'OC Duration STORM — Class 4', estimatedValue: 38000,
-                roofSquares: null, repairSquares: null, totalSquares: null, existingShingle: null,
-                estimateAvailable: true, measurementsAvailable: true, claimFiledDate: '2026-03-08',
+                // Demo: retail roofing + siding — siding held pending Hover design
+                id: 'OQ-2026-0043', location: 'Zionsville', zip: '46077', jobType: 'retail',
+                trades: ['roofing', 'siding'], damageType: 'Roof + Siding', damageDetail: 'Age / Wear', insuranceCarrier: null,
+                material: 'OC Duration STORM — Class 4', estimatedValue: null,
+                roofSquares: 28, repairSquares: null, totalSquares: null, existingShingle: null,
+                estimateAvailable: false, measurementsAvailable: true, claimFiledDate: '2026-03-08',
                 distance: 8, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
-                homeownerNotes: 'Full exterior claim. Siding on north and west sides only. Gutters all around.',
-                fundingType: 'insurance'
+                homeownerNotes: 'Full exterior project. Siding on north and west sides only.',
+                fundingType: 'cash',
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
             }
         ];
 
@@ -590,6 +618,42 @@
             const icons = { roofing: '🏠', siding: '🧱', gutters: '🌧️', windows: '🪟' };
             const labels = { roofing: 'Roofing', siding: 'Siding', gutters: 'Gutters', windows: 'Windows' };
             return trades.map(t => '<span class="badge" style="background:#E0F2FE;color:#0369A1;">' + (icons[t]||'') + ' ' + (labels[t]||t) + '</span>').join('');
+        }
+
+        /**
+         * D-165: Per-trade release status badges.
+         * Shows a status badge for each trade indicating whether bids are open
+         * or held pending a homeowner action (e.g. retail siding design in Hover).
+         * Only renders when the opportunity has any unreleased trade OR multiple trades.
+         */
+        function getTradeReleaseBadges(opp) {
+            if (!opp.trades || opp.trades.length === 0) return '';
+            const knownTrades = ['roofing', 'gutters', 'siding', 'windows'];
+            const labels = { roofing: 'Roofing', siding: 'Siding', gutters: 'Gutters', windows: 'Windows' };
+            const releasedTrades = opp.releasedTrades || {};
+
+            // Only show per-trade badges when there's something meaningful to communicate:
+            // multi-trade claims, or a single-trade retail claim where the release is pending.
+            const hasAnyUnreleased = opp.trades.some(t => {
+                const tl = t.toLowerCase();
+                return knownTrades.includes(tl) && !releasedTrades[tl];
+            });
+            if (!hasAnyUnreleased && opp.trades.length < 2) return '';
+
+            return '<div class="badge-group" style="margin-top:4px;flex-wrap:wrap;gap:4px;">'
+                + opp.trades.map(t => {
+                    const tl = t.toLowerCase();
+                    const label = labels[tl] || t;
+                    const released = !knownTrades.includes(tl) ? true : !!releasedTrades[tl];
+                    if (released) {
+                        return '<span class="badge badge-available" style="font-size:0.72rem;">'
+                            + label + ': Available &#x2713;</span>';
+                    } else {
+                        return '<span class="badge" style="background:#FEF3C7;color:#92400E;font-size:0.72rem;">'
+                            + '&#x23F3; ' + label + ': Waiting on homeowner design</span>';
+                    }
+                }).join('')
+                + '</div>';
         }
 
         function getMultiTradeBadge(trades) {
@@ -670,7 +734,9 @@
                     + '<h2 class="opportunity-id">Project in ' + o.location + (o.zip ? ', IN ' + o.zip : '') + '</h2>'
                     + '<p class="opportunity-location">' + o.location + ', ' + o.zip + (o.distance !== null ? ' &mdash; ~' + o.distance + ' mi away' : '') + '</p>'
                     + '</div><div class="header-badges">' + getJobTypeBadge(o.jobType) + getMultiTradeBadge(o.trades) + getUrgentBadge(o) + '</div></div>'
-                    + '<div class="badge-group" style="margin-bottom:var(--sp-4)">' + getTradeBadges(o.trades) + '</div>'
+                    + '<div class="badge-group" style="margin-bottom:4px">' + getTradeBadges(o.trades) + '</div>'
+                    + getTradeReleaseBadges(o)
+                    + '<div style="margin-bottom:var(--sp-4)"></div>'
                     + '<div class="opportunity-main-info">'
                     + '<div class="info-block"><span class="info-label">Damage Type</span><span class="info-value">' + o.damageType + ' &mdash; ' + o.damageDetail + '</span></div>'
                     + sourceBlock + matBlock
@@ -739,37 +805,37 @@
             document.getElementById('detailModalBody').innerHTML = `
                 <div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Job Type</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${jobTypeLabels[o.jobType] || o.jobType || 'N/A'}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${jobTypeLabels[o.jobType] || o.jobType || 'N/A'}</div>
                 </div>
                 <div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Trade(s)</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${tradeDisplay}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${tradeDisplay}</div>
                 </div>
                 <div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Urgency</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${urgencyDisplay}${urgencyNote}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${urgencyDisplay}${urgencyNote}</div>
                 </div>
                 <div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Damage Type</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${o.damageType || 'N/A'}${o.damageDetail ? ' — ' + o.damageDetail : ''}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${o.damageType || 'N/A'}${o.damageDetail ? ' — ' + o.damageDetail : ''}</div>
                 </div>
                 ${o.estimatedValue ? `<div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Est. Value</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${fmt(o.estimatedValue)}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${fmt(o.estimatedValue)}</div>
                 </div>` : ''}
                 ${o.material ? `<div>
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Material</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0B1929;">${o.material}</div>
+                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${o.material}</div>
                 </div>` : ''}
                 ${o.homeownerNotes ? `<div style="grid-column:1/-1;">
                     <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Homeowner Notes</div>
-                    <div style="font-size:0.9rem;color:#0B1929;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px;padding:.75rem 1rem;">${o.homeownerNotes}</div>
+                    <div style="font-size:0.9rem;color:#0D1B2E;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px;padding:.75rem 1rem;">${o.homeownerNotes}</div>
                 </div>` : ''}
             `;
 
             document.getElementById('detailModalFooter').innerHTML =
-                `<button onclick="closeDetailModal()" style="background:#F3F4F6;color:#0B1929;border:1px solid #D1D5DB;border-radius:6px;padding:.6rem 1.25rem;font-family:'DM Sans',sans-serif;font-weight:600;cursor:pointer;">Close</button>
-                 <a href="contractor-bid-form.html?project=${o.id}" style="background:#F59E0B;color:#fff;border:none;border-radius:6px;padding:.6rem 1.25rem;font-family:'DM Sans',sans-serif;font-weight:600;text-decoration:none;">Submit Bid →</a>`;
+                `<button onclick="closeDetailModal()" style="background:#F3F4F6;color:#0D1B2E;border:1px solid #D1D5DB;border-radius:6px;padding:.6rem 1.25rem;font-family:'Rubik',sans-serif;font-weight:600;cursor:pointer;">Close</button>
+                 <a href="contractor-bid-form.html?project=${o.id}" style="background:#E07B00;color:#fff;border:none;border-radius:6px;padding:.6rem 1.25rem;font-family:'Rubik',sans-serif;font-weight:600;text-decoration:none;">Submit Bid →</a>`;
 
             document.getElementById('detailModal').style.display = 'block';
             document.body.style.overflow = 'hidden';

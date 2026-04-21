@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Trade Selection — OtterQuote</title>
+  <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Trade Selection — Otter Quotes</title>
   <meta name="description" content="Select how you're funding your project and which trades you need.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
@@ -60,13 +60,13 @@
     .step-dot.active {
       background: var(--amber);
       color: var(--navy);
-      box-shadow: 0 0 16px rgba(20, 184, 166, 0.3);
+      box-shadow: 0 0 16px rgba(224, 123, 0, 0.3);
     }
 
     .step-connector {
       width: 40px;
       height: 2px;
-      background: rgba(20, 184, 166, 0.2);
+      background: rgba(224, 123, 0, 0.2);
       transition: all var(--duration) var(--ease);
     }
 
@@ -139,14 +139,14 @@
 
     .funding-card:hover {
       border-color: var(--amber);
-      box-shadow: 0 0 24px rgba(20, 184, 166, 0.1);
+      box-shadow: 0 0 24px rgba(224, 123, 0, 0.1);
       transform: translateY(-2px);
     }
 
     .funding-card.selected {
       border-color: var(--amber);
-      background: rgba(20, 184, 166, 0.08);
-      box-shadow: 0 0 24px rgba(20, 184, 166, 0.15);
+      background: rgba(224, 123, 0, 0.08);
+      box-shadow: 0 0 24px rgba(224, 123, 0, 0.15);
     }
 
     .funding-icon {
@@ -186,14 +186,14 @@
 
     .policy-card:hover {
       border-color: var(--amber);
-      box-shadow: 0 0 24px rgba(20, 184, 166, 0.1);
+      box-shadow: 0 0 24px rgba(224, 123, 0, 0.1);
       transform: translateY(-2px);
     }
 
     .policy-card.selected {
       border-color: var(--amber);
-      background: rgba(20, 184, 166, 0.08);
-      box-shadow: 0 0 24px rgba(20, 184, 166, 0.15);
+      background: rgba(224, 123, 0, 0.08);
+      box-shadow: 0 0 24px rgba(224, 123, 0, 0.15);
     }
 
     .policy-card-icon {
@@ -215,7 +215,7 @@
     /* Policy info panel (shown after selection) */
     .policy-info-panel {
       background: var(--navy-2);
-      border: 1px solid rgba(20, 184, 166, 0.15);
+      border: 1px solid rgba(224, 123, 0, 0.15);
       border-left: 4px solid var(--amber);
       border-radius: var(--radius-lg);
       padding: var(--sp-8);
@@ -263,8 +263,8 @@
     }
 
     .policy-info-panel .tip-box {
-      background: rgba(20, 184, 166, 0.06);
-      border: 1px solid rgba(20, 184, 166, 0.15);
+      background: rgba(224, 123, 0, 0.06);
+      border: 1px solid rgba(224, 123, 0, 0.15);
       border-radius: var(--radius-md);
       padding: var(--sp-4) var(--sp-6);
       margin-top: var(--sp-6);
@@ -287,7 +287,7 @@
       display: flex;
       align-items: flex-start;
       gap: var(--sp-4);
-      background: rgba(20, 184, 166, 0.04);
+      background: rgba(224, 123, 0, 0.04);
       border: 1px solid rgba(255,255,255,0.06);
       border-radius: var(--radius-md);
       padding: var(--sp-4) var(--sp-6);
@@ -295,8 +295,8 @@
     }
 
     .idk-option:hover {
-      border-color: rgba(20, 184, 166, 0.2);
-      background: rgba(20, 184, 166, 0.06);
+      border-color: rgba(224, 123, 0, 0.2);
+      background: rgba(224, 123, 0, 0.06);
     }
 
     .idk-option-number {
@@ -386,14 +386,14 @@
 
     .trade-card:hover {
       border-color: var(--amber);
-      box-shadow: 0 0 24px rgba(20, 184, 166, 0.1);
+      box-shadow: 0 0 24px rgba(224, 123, 0, 0.1);
       transform: translateY(-2px);
     }
 
     .trade-card.selected {
       border-color: var(--amber);
-      background: rgba(20, 184, 166, 0.08);
-      box-shadow: 0 0 24px rgba(20, 184, 166, 0.15);
+      background: rgba(224, 123, 0, 0.08);
+      box-shadow: 0 0 24px rgba(224, 123, 0, 0.15);
     }
 
     .trade-checkbox {
@@ -451,14 +451,14 @@
 
     .repair-replace-card:hover {
       border-color: var(--amber);
-      box-shadow: 0 0 24px rgba(20, 184, 166, 0.1);
+      box-shadow: 0 0 24px rgba(224, 123, 0, 0.1);
       transform: translateY(-2px);
     }
 
     .repair-replace-card.selected {
       border-color: var(--amber);
-      background: rgba(20, 184, 166, 0.08);
-      box-shadow: 0 0 24px rgba(20, 184, 166, 0.15);
+      background: rgba(224, 123, 0, 0.08);
+      box-shadow: 0 0 24px rgba(224, 123, 0, 0.15);
     }
 
     .repair-replace-icon {
@@ -499,7 +499,7 @@
     }
 
     .repair-replace-table tr:hover {
-      background: rgba(20, 184, 166, 0.05);
+      background: rgba(224, 123, 0, 0.05);
     }
 
     .trade-toggle-wrapper {
@@ -556,7 +556,7 @@
 
     .btn-primary:hover:not(:disabled) {
       background: var(--amber-2);
-      box-shadow: 0 0 24px rgba(20, 184, 166, 0.3);
+      box-shadow: 0 0 24px rgba(224, 123, 0, 0.3);
       transform: translateY(-2px);
     }
 
@@ -624,7 +624,7 @@
       display: inline-block;
       width: 24px;
       height: 24px;
-      border: 3px solid rgba(20, 184, 166, 0.2);
+      border: 3px solid rgba(224, 123, 0, 0.2);
       border-top-color: var(--amber);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
@@ -714,11 +714,11 @@
             <p>Your insurance company will typically issue two payments: an initial payment (the actual cash value) and a second payment (the recoverable depreciation) after the work is completed and you submit proof of completion.</p>
 
             <div class="tip-box">
-              <p><strong>What this means for you:</strong> Since insurance is covering the cost, your goal should be to find the highest-rated contractor with the best products and strongest warranties — not the cheapest bid. OtterQuote will help you compare contractors on quality, not just price.</p>
+              <p><strong>What this means for you:</strong> Since insurance is covering the cost, your goal should be to find the highest-rated contractor with the best products and strongest warranties — not the cheapest bid. Otter Quotes will help you compare contractors on quality, not just price.</p>
             </div>
 
             <div class="fraud-warning">
-              <p><strong>A word of caution:</strong> You are legally required to pay your deductible. Any contractor who offers to "waive your deductible," "give you money back," or "work with your insurance so you don't pay anything out of pocket" may be committing insurance fraud on your behalf. This can jeopardize your claim, void your policy, and expose you to legal liability. OtterQuote will never facilitate this — and we recommend you avoid any contractor who suggests it.</p>
+              <p><strong>A word of caution:</strong> You are legally required to pay your deductible. Any contractor who offers to "waive your deductible," "give you money back," or "work with your insurance so you don't pay anything out of pocket" may be committing insurance fraud on your behalf. This can jeopardize your claim, void your policy, and expose you to legal liability. Otter Quotes will never facilitate this — and we recommend you avoid any contractor who suggests it.</p>
             </div>
           </div>
 
@@ -729,7 +729,7 @@
             <p>Unlike RCV policies, there is no second payment. What insurance gave you is all you are going to get from them.</p>
 
             <div class="tip-box">
-              <p><strong>What this means for you:</strong> You should still negotiate for the best materials, warranties, and workmanship you can get — but you'll also benefit from competitive pricing since you're more sensitive to cost. OtterQuote will help you compare bids on both quality and price so you get the most value from your insurance payout.</p>
+              <p><strong>What this means for you:</strong> You should still negotiate for the best materials, warranties, and workmanship you can get — but you'll also benefit from competitive pricing since you're more sensitive to cost. Otter Quotes will help you compare bids on both quality and price so you get the most value from your insurance payout.</p>
             </div>
           </div>
 

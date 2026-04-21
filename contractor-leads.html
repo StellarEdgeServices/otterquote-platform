@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-    <title>Available Leads — OtterQuote Contractor</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>Available Projects — Otter Quotes Contractor</title>
 
     <!-- GA4 -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -19,9 +19,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-
-    <!-- Design System & Navigation -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Design System & Navigation -->
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
 
@@ -108,7 +108,7 @@
 
         .lead-card:hover {
             border-color: var(--amber);
-            box-shadow: 0 8px 24px rgba(20, 184, 166, 0.1);
+            box-shadow: 0 8px 24px rgba(224, 123, 0, 0.1);
         }
 
         .lead-header {
@@ -350,8 +350,8 @@
 
     <main>
         <div class="page-header">
-            <h1>Available Leads</h1>
-            <p>Pre-qualified homeowner leads in your service area</p>
+            <h1>Available Projects</h1>
+            <p>Pre-qualified homeowner projects in your service area</p>
         </div>
 
         <!-- Filter Section -->
@@ -395,7 +395,7 @@
             </div>
         </div>
 
-        <div class="results-count" id="resultsCount">5 leads available</div>
+        <div class="results-count" id="resultsCount">5 projects available</div>
 
         <!-- Leads Container -->
         <div id="leadsContainer">
@@ -513,8 +513,8 @@
                 container.innerHTML = `
                     <div class="empty-state">
                         <span class="empty-state-icon">📭</span>
-                        <h2 class="empty-state-title">No leads found</h2>
-                        <p class="empty-state-text">Try adjusting your filters to see more available leads.</p>
+                        <h2 class="empty-state-title">No projects found</h2>
+                        <p class="empty-state-text">Try adjusting your filters to see more available projects.</p>
                     </div>
                 `;
                 return;
@@ -620,7 +620,7 @@
             // 'newest' is default order
 
             // Update results count
-            document.getElementById('resultsCount').textContent = `${filtered.length} lead${filtered.length !== 1 ? 's' : ''} available`;
+            document.getElementById('resultsCount').textContent = `${filtered.length} project${filtered.length !== 1 ? 's' : ''} available`;
 
             // Render
             renderLeads(filtered);

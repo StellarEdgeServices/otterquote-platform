@@ -13,3 +13,8 @@ Thumbs.db
 # Node
 node_modules/
 supabase/.temp/
+
+# One-off scripts — never deploy to production
+*.py
+*.sh
+*.ipynb

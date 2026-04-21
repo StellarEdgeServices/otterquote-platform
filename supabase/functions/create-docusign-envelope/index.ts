@@ -1,5 +1,5 @@
 /**
- * OtterQuote Edge Function: create-docusign-envelope
+ * Otter Quotes Edge Function: create-docusign-envelope
  * Creates DocuSign envelopes for the contract signing flow.
  *
  * SIGNING ORDER (IC 24-5-11-11 compliance):
@@ -19,7 +19,7 @@
  *   LAST document. This addendum contains:
  *   - Verbatim Statement of Right to Cancel (IC 24-5-11-10.6)
  *   - Notice of Cancellation form (10-point boldface equivalent)
- *   - Homeowner acknowledgment that OtterQuote is not a party
+ *   - Homeowner acknowledgment that Otter Quotes is not a party
  *
  * Environment variables:
  *   DOCUSIGN_INTEGRATION_KEY
@@ -82,7 +82,14 @@ function base64urlDecode(str: string): Uint8Array {
 }
 
 async function importRsaPrivateKey(pemBase64: string): Promise<CryptoKey> {
-  const pemBinary = atob(pemBase64);
+  // Handle both PEM format (-----BEGIN/END headers) and raw base64-encoded DER.
+  // Strip PEM headers/footers if present, then strip all whitespace before atob().
+  // Deno's atob() is strict — any non-base64 char (including PEM dashes) throws.
+  const b64 = pemBase64
+    .replace(/-----BEGIN[^-]*-----/g, "")
+    .replace(/-----END[^-]*-----/g, "")
+    .replace(/\s+/g, "");
+  const pemBinary = atob(b64);
   const pemBytes = new Uint8Array(pemBinary.split("").map((c) => c.charCodeAt(0)));
   return await crypto.subtle.importKey(
     "pkcs8",
@@ -268,6 +275,76 @@ async function fetchTemplateFromUrl(url: string): Promise<string> {
   return base64EncodeBinary(new Uint8Array(arrayBuffer));
 }
 
+/**
+ * Fetch a PC template from Supabase Storage using a bare path.
+ * Handles both bare paths (stored post-D-161) and full public URLs
+ * (stored pre-migration — extracts path via regex for backward compat).
+ *
+ * D-161: contractor-templates bucket is private; public URLs 404.
+ * All new uploads store only the path.
+ */
+async function getPcTemplateFromStorage(supabase: any, fileUrl: string): Promise<string> {
+  // Resolve bare path vs full URL (backward compat for pre-migration data)
+  let storagePath: string;
+  const pathMatch = fileUrl.match(/contractor-templates\/(.+?)(\?|$)/);
+  if (pathMatch) {
+    storagePath = decodeURIComponent(pathMatch[1]);
+  } else {
+    // Assume it's already a bare path (post-migration uploads)
+    storagePath = fileUrl;
+  }
+
+  console.log(`Fetching PC template from storage: contractor-templates/${storagePath}`);
+  const { data, error } = await supabase.storage
+    .from("contractor-templates")
+    .download(storagePath);
+
+  if (error) {
+    throw new Error(`PC template storage error (${storagePath}): ${error.message}`);
+  }
+  if (!data) {
+    throw new Error(`No data returned from storage for PC template: ${storagePath}`);
+  }
+
+  const arrayBuffer = await data.arrayBuffer();
+  return base64EncodeBinary(new Uint8Array(arrayBuffer));
+}
+
+/**
+ * Select the best PC template slot from the contractor's color_confirmation_template JSONB.
+ * D-161 slot key format: "{trade}/{funding_type}" (lowercase, e.g. "roofing/insurance").
+ *
+ * Selection order:
+ *   1. Exact match on trade + funding_type
+ *   2. Fallback to roofing/insurance
+ *   3. If neither exists, returns null (caller must handle gracefully)
+ */
+function selectPcTemplateSlot(
+  pcTemplateJsonb: Record<string, any> | null | undefined,
+  trade: string,
+  fundingType: string
+): { file_url: string; uploaded_at: string } | null {
+  if (!pcTemplateJsonb || typeof pcTemplateJsonb !== "object") return null;
+
+  const primaryKey  = `${trade.toLowerCase()}/${fundingType.toLowerCase()}`;
+  const fallbackKey = "roofing/insurance";
+
+  const primary  = pcTemplateJsonb[primaryKey];
+  if (primary?.file_url) {
+    console.log(`PC template: using slot ${primaryKey}`);
+    return primary;
+  }
+
+  const fallback = pcTemplateJsonb[fallbackKey];
+  if (fallback?.file_url) {
+    console.warn(`PC template: slot ${primaryKey} missing — falling back to ${fallbackKey}`);
+    return fallback;
+  }
+
+  console.warn(`PC template: no usable slot found (tried ${primaryKey} and ${fallbackKey})`);
+  return null;
+}
+
 function base64EncodeBinary(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.byteLength; i++) {
@@ -285,7 +362,7 @@ function base64EncodeBinary(bytes: Uint8Array): string {
  * Contents:
  * 1. Statement of Right to Cancel (IC 24-5-11-10.6 — verbatim)
  * 2. Notice of Cancellation form (IC 24-5-11-10.6(b) — 10pt boldface)
- * 3. Homeowner acknowledgment that OtterQuote is not a party (D-123)
+ * 3. Homeowner acknowledgment that Otter Quotes is not a party (D-123)
  *
  * Uses a minimal PDF generator (no external libraries) to produce a valid PDF
  * with the required legal text.
@@ -422,19 +499,19 @@ function generateComplianceAddendumPdf(contractorName: string, homeownerName: st
   contentLines.push(`50 ${y + 5} m 562 ${y + 5} l S`);
   y -= 15;
 
-  // Section 3: OtterQuote Disclaimer (D-123)
+  // Section 3: Otter Quotes Disclaimer (D-123)
   addText(50, y, 12, "F2", "PLATFORM DISCLOSURE");
   y -= 20;
 
   y = addWrappedText(50, y, 10, "F1",
-    `OtterQuote is a technology platform that facilitates connections between homeowners and contractors. OtterQuote is NOT a party to this contract and assumes no liability for work performed under this agreement. This contract is between the homeowner and the contractor named above.`,
+    `Otter Quotes is a technology platform that facilitates connections between homeowners and contractors. Otter Quotes is NOT a party to this contract and assumes no liability for work performed under this agreement. This contract is between the homeowner and the contractor named above.`,
     512);
   y -= 10;
 
   addText(50, y, 10, "F1", `Down payment may not exceed $1,000 or 10% of contract price, whichever is less (IC 24-5-11-12).`);
   y -= 30;
 
-  addText(50, y, 8, "F1", "This addendum is generated by OtterQuote to comply with Indiana Code IC 24-5-11 (Home Improvement Contract Act).");
+  addText(50, y, 8, "F1", "This addendum is generated by Otter Quotes to comply with Indiana Code IC 24-5-11 (Home Improvement Contract Act).");
   y -= 12;
   addText(50, y, 8, "F1", `Generated: ${new Date().toISOString()}`);
 
@@ -512,6 +589,659 @@ function generateComplianceAddendumPdf(contractorName: string, homeownerName: st
   const pdfContent = pdfLines.join("\n");
   const pdfBytes = new TextEncoder().encode(pdfContent);
   return base64EncodeBinary(pdfBytes);
+}
+
+// ========== SIGNATURE PAGE GENERATOR ==========
+/**
+ * Generates a "Signature Page" PDF to attach as Doc 2 in every contract envelope.
+ *
+ * WHY THIS EXISTS: Contractor-uploaded PDFs are arbitrary — they won't contain the
+ * /Contractor/ and /Customer/ anchor strings that DocuSign's anchor tab mechanism
+ * requires. Placing signing tabs on Doc 1 causes hard errors when the anchor text
+ * is absent. Solution: attach a generated Signature Page (Doc 2) that contains
+ * known anchor text we control. Doc 1 (contractor's PDF) becomes display-only.
+ *
+ * This is standard legal practice: the Signature Page explicitly references and
+ * incorporates the Contractor Agreement (Exhibit A). Signing anywhere in a DocuSign
+ * envelope legally executes all documents in that envelope.
+ *
+ * Uses the same hand-rolled PDF generator as generateComplianceAddendumPdf() —
+ * no external dependencies.
+ */
+function generateSignaturePage(
+  contractorName: string,
+  homeownerName: string,
+  propertyAddress: string,
+  contractDate: string
+): string {
+  // ── PDF content ──────────────────────────────────────────────────────────
+  const contentLines: string[] = [];
+
+  function escPdf(text: string): string {
+    return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  }
+
+  function addLine(x: number, y: number, size: number, font: string, text: string) {
+    contentLines.push(`BT /${font} ${size} Tf ${x} ${y} Td (${escPdf(text)}) Tj ET`);
+  }
+
+  function hRule(y: number) {
+    contentLines.push(`0.6 G 50 ${y} m 562 ${y} l S 0 G`);
+  }
+
+  let y = 740;
+
+  // Title
+  addLine(50, y, 14, "F2", "SIGNATURE PAGE TO CONTRACTOR AGREEMENT");
+  y -= 6;
+  hRule(y);
+  y -= 22;
+
+  // Preamble
+  addLine(50, y, 10, "F1", "This Signature Page is incorporated into and forms part of the Contractor Agreement");
+  y -= 15;
+  addLine(50, y, 10, "F1", "attached hereto as Exhibit A, and is binding upon signature as if set forth therein in full.");
+  y -= 24;
+
+  // Party / property summary box
+  hRule(y + 4);
+  y -= 6;
+  addLine(50, y, 9, "F2", "PARTIES AND PROPERTY");
+  y -= 16;
+  addLine(65, y, 9, "F1", `Property Owner:   ${homeownerName}`);
+  y -= 13;
+  addLine(65, y, 9, "F1", `Property Address: ${propertyAddress || "(as stated in the Contractor Agreement)"}`);
+  y -= 13;
+  addLine(65, y, 9, "F1", `Contractor:       ${contractorName}`);
+  y -= 13;
+  addLine(65, y, 9, "F1", `Contract Date:    ${contractDate}`);
+  y -= 10;
+  hRule(y);
+  y -= 28;
+
+  // ── CONTRACTOR EXECUTION ─────────────────────────────────────────────────
+  addLine(50, y, 11, "F2", "CONTRACTOR EXECUTION");
+  y -= 18;
+  addLine(50, y, 9, "F1", "By signing below, Contractor acknowledges having reviewed the Contractor Agreement");
+  y -= 14;
+  addLine(50, y, 9, "F1", "(Exhibit A) and all other documents in this DocuSign envelope, and agrees to be");
+  y -= 14;
+  addLine(50, y, 9, "F1", "bound by their terms.");
+  y -= 26;
+
+  // Contractor signature line — /Contractor/ is the DocuSign anchor string
+  addLine(50, y, 9, "F1", "/Contractor/ ___________________________________   Date: /Contractor_Date/");
+  y -= 16;
+  addLine(55, y, 8, "F1", `${contractorName}`);
+  y -= 10;
+  addLine(55, y, 8, "F1", "Authorized Representative");
+  y -= 24;
+
+  hRule(y);
+  y -= 28;
+
+  // ── HOMEOWNER EXECUTION ──────────────────────────────────────────────────
+  addLine(50, y, 11, "F2", "HOMEOWNER / PROPERTY OWNER EXECUTION");
+  y -= 18;
+  addLine(50, y, 9, "F1", "By signing below, Homeowner acknowledges having reviewed the Contractor Agreement");
+  y -= 14;
+  addLine(50, y, 9, "F1", "(Exhibit A) and all other documents in this DocuSign envelope, and agrees to be");
+  y -= 14;
+  addLine(50, y, 9, "F1", "bound by their terms.");
+  y -= 26;
+
+  // Homeowner signature line — /Customer/ is the DocuSign anchor string
+  addLine(50, y, 9, "F1", "/Customer/ _____________________________________   Date: /Customer_Date/");
+  y -= 16;
+  addLine(55, y, 8, "F1", `${homeownerName}`);
+  y -= 10;
+  addLine(55, y, 8, "F1", "Property Owner");
+  y -= 24;
+
+  hRule(y);
+  y -= 18;
+
+  // Footer note
+  addLine(50, y, 8, "F1", "Otter Quotes is not a party to this contract. See the IC 24-5-11 Compliance Addendum for full platform disclosure.");
+  y -= 12;
+  addLine(50, y, 8, "F1", `Generated by Otter Quotes — ${new Date().toISOString()}`);
+
+  // ── Assemble PDF ─────────────────────────────────────────────────────────
+  const contentStream = contentLines.join("\n");
+
+  const pdfLines: string[] = [];
+  const objOffsets: number[] = new Array(8).fill(0);
+  let byteOffset = 0;
+
+  function pw(s: string) { pdfLines.push(s); byteOffset += s.length + 1; }
+  function startObj(n: number) { objOffsets[n] = byteOffset; pw(`${n} 0 obj`); }
+
+  pw("%PDF-1.4");
+  startObj(1); pw("<< /Type /Catalog /Pages 2 0 R >>"); pw("endobj");
+  startObj(2); pw("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"); pw("endobj");
+  startObj(3); pw("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>"); pw("endobj");
+  startObj(4); pw(`<< /Length ${contentStream.length} >>`); pw("stream"); pw(contentStream); pw("endstream"); pw("endobj");
+  startObj(5); pw("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"); pw("endobj");
+  startObj(6); pw("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"); pw("endobj");
+
+  const xrefAt = byteOffset;
+  pw("xref"); pw("0 7");
+  pw("0000000000 65535 f ");
+  for (let i = 1; i <= 6; i++) pw(String(objOffsets[i]).padStart(10, "0") + " 00000 n ");
+  pw("trailer"); pw("<< /Size 7 /Root 1 0 R >>"); pw("startxref"); pw(String(xrefAt)); pw("%%EOF");
+
+  const pdfContent = pdfLines.join("\n");
+  const pdfBytes = new TextEncoder().encode(pdfContent);
+  return base64EncodeBinary(pdfBytes);
+}
+
+// ========== HOVER MEASUREMENTS FETCH ==========
+/**
+ * Fetches key measurement data from hover_orders for use in the Scope of Work PDF.
+ * Returns a normalized measurement object with common fields, or null if unavailable.
+ * Never throws — any error produces null so the SOW still generates without measurements.
+ */
+async function fetchHoverMeasurements(supabase: any, claimId: string): Promise<{
+  roofSqFt: number | null;
+  wallSqFt: number | null;
+  perimeterFt: number | null;
+  pitch: string | null;
+} | null> {
+  try {
+    const { data: order } = await supabase
+      .from("hover_orders")
+      .select("hover_job_id, measurements_json")
+      .eq("claim_id", claimId)
+      .eq("status", "complete")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!order?.measurements_json) return null;
+
+    const mj = order.measurements_json;
+
+    // Roof area — try multiple Hover API response shapes
+    const roofSqFtRaw =
+      mj?.structures?.[0]?.areas?.roof ??
+      mj?.total_sq_ft ??
+      mj?.total_area_sq_ft ??
+      mj?.roof_area_sq_ft ??
+      mj?.measurements?.total_area ??
+      null;
+
+    // Wall area (for siding)
+    const wallSqFtRaw =
+      mj?.structures?.[0]?.areas?.wall ??
+      mj?.wall_area_sq_ft ??
+      mj?.measurements?.wall_area ??
+      null;
+
+    // Perimeter / eaves linear footage (for gutters)
+    const perimeterFtRaw =
+      mj?.structures?.[0]?.eaves ??
+      mj?.eaves_length ??
+      mj?.perimeter_ft ??
+      mj?.measurements?.perimeter ??
+      null;
+
+    // Primary pitch
+    const pitchRaw =
+      mj?.structures?.[0]?.pitch ??
+      mj?.primary_pitch ??
+      mj?.pitch ??
+      null;
+
+    if (!roofSqFtRaw && !wallSqFtRaw && !perimeterFtRaw) return null;
+
+    return {
+      roofSqFt: roofSqFtRaw ? Math.round(Number(roofSqFtRaw)) : null,
+      wallSqFt: wallSqFtRaw ? Math.round(Number(wallSqFtRaw)) : null,
+      perimeterFt: perimeterFtRaw ? Math.round(Number(perimeterFtRaw)) : null,
+      pitch: pitchRaw ? String(pitchRaw) : null,
+    };
+  } catch (err) {
+    console.warn("fetchHoverMeasurements: non-fatal error:", err);
+    return null;
+  }
+}
+
+// ========== RETAIL SCOPE OF WORK PDF ==========
+/**
+ * Generates a Scope of Work PDF for retail (non-insurance) jobs.
+ * Attached as document 2 in the DocuSign envelope when fundingType !== 'insurance'.
+ * For insurance jobs, the loss sheet serves as the scope reference instead.
+ *
+ * Content:
+ *   1. Project header (address, parties, date)
+ *   2. Contract summary (trades, price, start date)
+ *   3. Hover aerial measurements (if available — graceful fallback if not)
+ *   4. Trade-specific scope details (from value_adds JSONB on the winning quote)
+ *   5. Warranty details (from value_adds.warranties)
+ *   6. Project confirmation answers (if claim.project_confirmation is populated)
+ *   7. Notes and platform disclosure
+ *
+ * Uses the same raw PDF 1.4 operator pattern as generateComplianceAddendumPdf —
+ * no external libraries, no Deno.read, no filesystem access.
+ */
+function generateRetailScopeOfWorkPdf(params: {
+  homeownerName: string;
+  contractorName: string;
+  propertyAddress: string;
+  claimId: string;
+  trades: string[];
+  contractPrice: number | null;
+  estimatedStartDate: string | null;
+  valueAdds: any;
+  bidBrand: string | null;
+  deckingPricePerSheet: number | null;
+  fullRedeckPrice: number | null;
+  messageToHomeowner: string | null;
+  homeownerNotes: string | null;
+  projectConfirmation: any;
+  measurements: { roofSqFt: number | null; wallSqFt: number | null; perimeterFt: number | null; pitch: string | null } | null;
+  contractDate: string;
+}): string {
+  const {
+    homeownerName, contractorName, propertyAddress, claimId,
+    trades, contractPrice, estimatedStartDate, valueAdds,
+    bidBrand, deckingPricePerSheet, fullRedeckPrice,
+    messageToHomeowner, homeownerNotes, projectConfirmation,
+    measurements, contractDate,
+  } = params;
+
+  const va = valueAdds || {};
+  const pc = projectConfirmation || null;
+
+  // ── PDF builder state ────────────────────────────────────────────
+  const pdfLines: string[] = [];
+  const pdfObjects: number[] = [];
+  let byteOffset = 0;
+
+  function pdfWrite(s: string) {
+    pdfLines.push(s);
+    byteOffset += s.length + 1;
+  }
+
+  function pdfStartObj(n: number) {
+    pdfObjects[n] = byteOffset;
+    pdfWrite(`${n} 0 obj`);
+  }
+
+  // ── Content stream builder ───────────────────────────────────────
+  const contentLines: string[] = [];
+
+  function esc(text: string): string {
+    return String(text || "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  }
+
+  function addText(x: number, y: number, fontSize: number, font: string, text: string) {
+    contentLines.push(`BT /${font} ${fontSize} Tf ${x} ${y} Td (${esc(text)}) Tj ET`);
+  }
+
+  function addWrappedText(x: number, startY: number, fontSize: number, font: string, text: string, maxWidth: number): number {
+    const charWidth = fontSize * 0.5;
+    const maxChars = Math.floor(maxWidth / charWidth);
+    const words = String(text || "").split(" ");
+    let line = "";
+    let y = startY;
+    const ls = fontSize * 1.4;
+    for (const word of words) {
+      if (line.length + word.length + 1 > maxChars) {
+        addText(x, y, fontSize, font, line.trim());
+        y -= ls;
+        line = word + " ";
+      } else {
+        line += word + " ";
+      }
+    }
+    if (line.trim()) { addText(x, y, fontSize, font, line.trim()); y -= ls; }
+    return y;
+  }
+
+  function hLine(y: number) {
+    contentLines.push(`50 ${y} m 562 ${y} l S`);
+  }
+
+  function fmt$(val: number | null | undefined): string {
+    if (val == null) return "TBD";
+    return "$" + Number(val).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // ── Page content ─────────────────────────────────────────────────
+  let y = 750;
+
+  // Header
+  addText(50, y, 16, "F2", "SCOPE OF WORK");
+  y -= 18;
+  addText(50, y, 9, "F1", `Prepared by Otter Quotes on behalf of ${esc(contractorName)}`);
+  y -= 10;
+  hLine(y); y -= 16;
+
+  // Project info
+  addText(50, y, 10, "F2", "PROJECT:");   addText(160, y, 10, "F1", esc(propertyAddress)); y -= 14;
+  addText(50, y, 10, "F2", "HOMEOWNER:"); addText(160, y, 10, "F1", esc(homeownerName)); y -= 14;
+  addText(50, y, 10, "F2", "CONTRACTOR:"); addText(160, y, 10, "F1", esc(contractorName)); y -= 14;
+  addText(50, y, 10, "F2", "DATE:");      addText(160, y, 10, "F1", esc(contractDate)); y -= 14;
+  addText(50, y, 10, "F2", "JOB REF:");   addText(160, y, 10, "F1", claimId.slice(0, 8).toUpperCase()); y -= 20;
+  hLine(y); y -= 16;
+
+  // Contract summary
+  addText(50, y, 12, "F2", "CONTRACT SUMMARY"); y -= 16;
+  const tradeLabel = (trades || []).map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(", ") || "See below";
+  addText(50, y, 10, "F2", "Trade(s):"); addText(160, y, 10, "F1", esc(tradeLabel)); y -= 14;
+  addText(50, y, 10, "F2", "Financing:"); addText(160, y, 10, "F1", "Retail / Homeowner-Financed"); y -= 14;
+  addText(50, y, 10, "F2", "Contract Price:"); addText(160, y, 10, "F1", contractPrice ? fmt$(contractPrice) : "Per contractor agreement"); y -= 14;
+  addText(50, y, 10, "F2", "Est. Start:"); addText(160, y, 10, "F1", esc(estimatedStartDate || "To be scheduled")); y -= 20;
+  hLine(y); y -= 16;
+
+  // Hover measurements (if available)
+  if (measurements && (measurements.roofSqFt || measurements.wallSqFt || measurements.perimeterFt)) {
+    addText(50, y, 12, "F2", "HOVER AERIAL MEASUREMENTS"); y -= 16;
+    if (measurements.roofSqFt) {
+      addText(50, y, 10, "F2", "Roof Area:");
+      addText(160, y, 10, "F1", `${measurements.roofSqFt.toLocaleString()} sq ft (${(measurements.roofSqFt / 100).toFixed(1)} squares)`);
+      y -= 14;
+    }
+    if (measurements.wallSqFt) {
+      addText(50, y, 10, "F2", "Wall Area:");
+      addText(160, y, 10, "F1", `${measurements.wallSqFt.toLocaleString()} sq ft (${(measurements.wallSqFt / 100).toFixed(1)} squares)`);
+      y -= 14;
+    }
+    if (measurements.perimeterFt) {
+      addText(50, y, 10, "F2", "Perimeter:");
+      addText(160, y, 10, "F1", `${measurements.perimeterFt.toLocaleString()} linear ft`);
+      y -= 14;
+    }
+    if (measurements.pitch) {
+      addText(50, y, 10, "F2", "Primary Pitch:");
+      addText(160, y, 10, "F1", esc(measurements.pitch));
+      y -= 14;
+    }
+    y -= 6; hLine(y); y -= 16;
+  }
+
+  // Scope of work details by trade
+  addText(50, y, 12, "F2", "SCOPE OF WORK DETAILS"); y -= 16;
+
+  const hasRoofing = (trades || []).some(t => t.toLowerCase().includes("roof"));
+  const hasSiding  = (trades || []).some(t => t.toLowerCase().includes("siding"));
+  const hasGutters = (trades || []).some(t => t.toLowerCase().includes("gutter"));
+  const hasWindows = (trades || []).some(t => t.toLowerCase().includes("window"));
+
+  // ── Roofing section ──────────────────────────────────────────────
+  if (hasRoofing) {
+    addText(50, y, 11, "F2", "ROOFING"); y -= 14;
+
+    if (bidBrand) {
+      addText(60, y, 10, "F2", "Materials:"); addText(160, y, 10, "F1", esc(bidBrand)); y -= 14;
+    }
+    if (pc?.shingleManufacturer || pc?.shingleColor) {
+      const shingleStr = [pc.shingleManufacturer, pc.shingleColor].filter(Boolean).join(" — ");
+      addText(60, y, 10, "F2", "Shingle:"); addText(160, y, 10, "F1", esc(shingleStr)); y -= 14;
+    }
+    if (pc?.dripEdgeColor) {
+      addText(60, y, 10, "F2", "Drip Edge Color:"); addText(160, y, 10, "F1", esc(pc.dripEdgeColor)); y -= 14;
+    }
+    if (va.underlayment?.type) {
+      addText(60, y, 10, "F2", "Underlayment:");
+      addText(160, y, 10, "F1", va.underlayment.type === "synthetic" ? "Synthetic" : "Felt");
+      y -= 14;
+    }
+    if (va.starter_strip) {
+      const ssMap: Record<string, string> = { rakes: "Rakes only", eaves: "Eaves only", rakes_and_eaves: "Rakes and Eaves", neither: "None" };
+      addText(60, y, 10, "F2", "Starter Strip:"); addText(160, y, 10, "F1", ssMap[va.starter_strip] || esc(va.starter_strip)); y -= 14;
+    }
+    if (va.ventilation) {
+      const ventDesc = va.ventilation.ridge_vent_included
+        ? "Ridge Vent — Included"
+        : va.ventilation.ridge_vent_oop
+        ? `Ridge Vent — OOP ${fmt$(va.ventilation.ridge_vent_oop)}`
+        : null;
+      if (ventDesc) { addText(60, y, 10, "F2", "Ventilation:"); addText(160, y, 10, "F1", ventDesc); y -= 14; }
+    }
+    if (deckingPricePerSheet) {
+      const redeckTxt = fullRedeckPrice
+        ? `${fmt$(deckingPricePerSheet)}/sheet if needed; Full redeck: ${fmt$(fullRedeckPrice)}`
+        : `${fmt$(deckingPricePerSheet)}/sheet if needed`;
+      addText(60, y, 10, "F2", "Decking:");
+      y = addWrappedText(160, y, 10, "F1", redeckTxt, 380);
+    }
+    if (va.chimney_flashing?.option && va.chimney_flashing.option !== "na") {
+      const cfMap: Record<string, string> = { reuse: "Reuse existing", replace: "Replace — Included", replace_oop: `Replace OOP ${fmt$(va.chimney_flashing.oop_price)}` };
+      addText(60, y, 10, "F2", "Chimney Flashing:"); addText(160, y, 10, "F1", cfMap[va.chimney_flashing.option] || esc(va.chimney_flashing.option)); y -= 14;
+    }
+    if (va.skylights && va.skylights !== "na") {
+      addText(60, y, 10, "F2", "Skylights:"); addText(160, y, 10, "F1", va.skylights === "reflash" ? "Reflash" : "Replace"); y -= 14;
+    }
+    if (pc?.valleyType) {
+      addText(60, y, 10, "F2", "Valleys:"); addText(160, y, 10, "F1", pc.valleyType === "closed" ? "Closed Cut" : "Open / Metal"); y -= 14;
+    }
+    if (pc?.gutterGuards) {
+      addText(60, y, 10, "F2", "Gutter Guards:"); addText(160, y, 10, "F1", esc(pc.gutterGuards)); y -= 14;
+    }
+    if (pc?.satelliteDish && pc.satelliteDish !== "NONE") {
+      const satMap: Record<string, string> = { "REMOVE-TRASH": "Remove & discard", "REMOVE-RESET": "Remove & reset after install" };
+      addText(60, y, 10, "F2", "Satellite Dish:"); addText(160, y, 10, "F1", satMap[pc.satelliteDish] || esc(pc.satelliteDish)); y -= 14;
+    }
+    y -= 8;
+  }
+
+  // ── Second-Layer Tear-Off Contingency ────────────────────────────
+  // Only rendered when bid includes secondLayerContingency pricing (retail roofing).
+  const slc = va?.secondLayerContingency;
+  if (hasRoofing && slc) {
+    const slcAmount = (slc.method === "flat_fee" && slc.flatFeeAlternative != null)
+      ? slc.flatFeeAlternative
+      : slc.pricePerSquare;
+    if (slcAmount != null) {
+      const slcPhrase = slc.method === "flat_fee" ? "flat fee" : "per square";
+      const slcDisclaimer =
+        `If the existing roof is found to contain more than one layer of shingles, the contract price will increase by ${fmt$(slcAmount)} ${slcPhrase}. ` +
+        `Customer will be notified before work proceeds and has the right to accept the change order or cancel the Agreement per the Change Order Disclaimer.`;
+      addText(50, y, 11, "F2", "SECOND-LAYER TEAR-OFF CONTINGENCY"); y -= 14;
+      y = addWrappedText(60, y, 10, "F1", slcDisclaimer, 480);
+      y -= 8;
+    }
+  }
+
+  // ── Gutters section ──────────────────────────────────────────────
+  if (hasGutters) {
+    addText(50, y, 11, "F2", "GUTTERS"); y -= 14;
+
+    if (va.gutters?.option) {
+      const go = va.gutters.option;
+      let gutterDesc = esc(go);
+      if (go === "5inch_included" || go === "5inch") gutterDesc = '5" Gutters — Included';
+      else if (go === "6inch_included" || go === "6inch") gutterDesc = '6" Gutters — Included';
+      else if (go.includes("5inch") && go.includes("additional")) gutterDesc = `5" Gutters — OOP ${fmt$(va.gutters.additional_cost_5inch)}`;
+      else if (go.includes("6inch") && go.includes("additional")) gutterDesc = `6" Gutters — OOP ${fmt$(va.gutters.additional_cost_6inch)}`;
+      else if (go === "none") gutterDesc = "No gutter work included";
+      addText(60, y, 10, "F2", "Gutters:"); addText(160, y, 10, "F1", gutterDesc); y -= 14;
+    }
+
+    if (va.gutter_guards) {
+      const gg = va.gutter_guards;
+      if (gg.pricing_on_request) {
+        addText(60, y, 10, "F2", "Gutter Guards:"); addText(160, y, 10, "F1", "Available — pricing on request"); y -= 14;
+      } else if (gg.mesh_oop || gg.screw_in_oop) {
+        const parts: string[] = [];
+        if (gg.mesh_oop) parts.push(`Mesh OOP ${fmt$(gg.mesh_oop)}`);
+        if (gg.screw_in_oop) parts.push(`Screw-in OOP ${fmt$(gg.screw_in_oop)}`);
+        addText(60, y, 10, "F2", "Gutter Guards:"); addText(160, y, 10, "F1", parts.join("; ")); y -= 14;
+      }
+    }
+    y -= 8;
+  }
+
+  // ── Siding section ───────────────────────────────────────────────
+  if (hasSiding) {
+    addText(50, y, 11, "F2", "SIDING"); y -= 14;
+    addText(60, y, 10, "F1", "Scope per contractor bid and Hover design specifications."); y -= 14;
+    if (measurements?.wallSqFt) {
+      addText(60, y, 10, "F2", "Wall Area:"); addText(160, y, 10, "F1", `${(measurements.wallSqFt / 100).toFixed(1)} squares`); y -= 14;
+    }
+    y -= 8;
+  }
+
+  // ── Windows section ──────────────────────────────────────────────
+  if (hasWindows) {
+    addText(50, y, 11, "F2", "WINDOWS"); y -= 14;
+    addText(60, y, 10, "F1", "Scope per contractor bid."); y -= 14;
+    y -= 8;
+  }
+
+  // ── Measurement Summary (Fix 86e105v02) ─────────────────────────
+  // Trade-specific Hover measurement quantities, sourced from hover_orders.measurements_json.
+  // Positioned after scope details so contractors see scope first, then confirm measurements.
+  hLine(y + 4); y -= 12;
+  addText(50, y, 12, "F2", "MEASUREMENT SUMMARY"); y -= 16;
+
+  const hasMeasurementData = measurements && (
+    (hasRoofing && (measurements.roofSqFt || measurements.pitch)) ||
+    (hasGutters && measurements.perimeterFt) ||
+    (hasSiding && measurements.wallSqFt)
+  );
+
+  if (hasMeasurementData) {
+    if (hasRoofing) {
+      if (measurements!.roofSqFt) {
+        const squares = (measurements!.roofSqFt / 100).toFixed(1);
+        addText(60, y, 10, "F2", "Roofing:");
+        addText(160, y, 10, "F1", `${squares} squares (${measurements!.roofSqFt.toLocaleString()} sq ft)`);
+        y -= 14;
+      }
+      if (measurements!.pitch) {
+        addText(60, y, 10, "F2", "Primary Pitch:");
+        addText(160, y, 10, "F1", esc(measurements!.pitch));
+        y -= 14;
+      }
+    }
+    if (hasGutters && measurements!.perimeterFt) {
+      addText(60, y, 10, "F2", "Gutters:");
+      addText(160, y, 10, "F1", `${measurements!.perimeterFt.toLocaleString()} linear ft`);
+      y -= 14;
+    }
+    if (hasSiding && measurements!.wallSqFt) {
+      addText(60, y, 10, "F2", "Siding:");
+      addText(160, y, 10, "F1", `${measurements!.wallSqFt.toLocaleString()} sq ft wall area`);
+      y -= 14;
+    }
+  } else {
+    addText(60, y, 10, "F1", "Measurements pending -- will be confirmed prior to material order."); y -= 14;
+  }
+  y -= 6;
+
+  // ── Measurement Disclaimer & Change Order Terms (Fix 86e105v0q) ──
+  // (a) Hover aerial accuracy disclaimer: +/-5% variance, contractor to verify before ordering.
+  // (b) 10% change order written authorization requirement + cancellation restocking clause.
+  hLine(y + 4); y -= 12;
+  addText(50, y, 11, "F2", "MEASUREMENT DISCLAIMER & CHANGE ORDER TERMS"); y -= 14;
+  y = addWrappedText(60, y, 9, "F1",
+    "All measurements are based on Hover aerial technology and may vary +/-5% from field measurements. Contractor shall verify prior to ordering materials.",
+    480);
+  y -= 6;
+  y = addWrappedText(60, y, 9, "F1",
+    "Change orders exceeding 10% of the original contract price require written authorization from the homeowner. Cancellation after material order requires [X]% restocking fee per contractor's terms.",
+    480);
+  y -= 10;
+
+  // ── Warranties ───────────────────────────────────────────────────
+  if (Array.isArray(va.warranties) && va.warranties.length > 0) {
+    hLine(y + 4); y -= 12;
+    addText(50, y, 12, "F2", "WARRANTIES"); y -= 14;
+    for (const w of va.warranties) {
+      if (!w.name) continue;
+      addText(60, y, 10, "F2", esc(w.name)); y -= 12;
+      if (w.material_defects?.years) { addText(70, y, 9, "F1", `Material Defects: ${w.material_defects.years} yrs`); y -= 11; }
+      if (w.labor?.years) { addText(70, y, 9, "F1", `Labor: ${w.labor.years} yrs`); y -= 11; }
+      if (w.wind_damage?.years) { addText(70, y, 9, "F1", `Wind: ${w.wind_damage.years} yrs`); y -= 11; }
+      if (w.hail_damage?.years) { addText(70, y, 9, "F1", `Hail: ${w.hail_damage.years} yrs`); y -= 11; }
+      y -= 4;
+    }
+  }
+
+  // ── Notes ────────────────────────────────────────────────────────
+  const hasNotes = homeownerNotes || messageToHomeowner || va.other_offers ||
+                   (pc?.workNotBeingDone) || (pc?.homeownerNotes);
+  if (hasNotes) {
+    hLine(y + 4); y -= 12;
+    addText(50, y, 12, "F2", "NOTES"); y -= 14;
+    if (homeownerNotes) {
+      addText(50, y, 10, "F2", "Homeowner Notes:"); y -= 12;
+      y = addWrappedText(60, y, 9, "F1", homeownerNotes, 500); y -= 4;
+    }
+    if (messageToHomeowner) {
+      addText(50, y, 10, "F2", "Message from Contractor:"); y -= 12;
+      y = addWrappedText(60, y, 9, "F1", messageToHomeowner, 500); y -= 4;
+    }
+    if (va.other_offers) {
+      addText(50, y, 10, "F2", "Special Offers:"); y -= 12;
+      y = addWrappedText(60, y, 9, "F1", va.other_offers, 500); y -= 4;
+    }
+    if (pc?.workNotBeingDone) {
+      addText(50, y, 10, "F2", "Exclusions:"); y -= 12;
+      y = addWrappedText(60, y, 9, "F1", pc.workNotBeingDone, 500); y -= 4;
+    }
+    if (pc?.homeownerNotes) {
+      addText(50, y, 10, "F2", "Project Notes:"); y -= 12;
+      y = addWrappedText(60, y, 9, "F1", pc.homeownerNotes, 500);
+    }
+  }
+
+  // ── Footer disclosure ─────────────────────────────────────────────
+  y -= 12; hLine(y + 4); y -= 12;
+  y = addWrappedText(50, y, 8, "F1",
+    "This Scope of Work is a reference document generated by Otter Quotes. The contractor's signed agreement is the binding contract. Scope details are based on the contractor's bid submission and may be supplemented by on-site assessment.",
+    512);
+  addText(50, y, 8, "F1", `Generated by Otter Quotes on ${esc(contractDate)} — Job Ref ${claimId.slice(0, 8).toUpperCase()}`);
+
+  // ── Assemble PDF ─────────────────────────────────────────────────
+  const contentStream = contentLines.join("\n");
+
+  pdfWrite("%PDF-1.4");
+
+  pdfStartObj(1);
+  pdfWrite("<< /Type /Catalog /Pages 2 0 R >>");
+  pdfWrite("endobj");
+
+  pdfStartObj(2);
+  pdfWrite("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  pdfWrite("endobj");
+
+  pdfStartObj(3);
+  pdfWrite("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>");
+  pdfWrite("endobj");
+
+  pdfStartObj(4);
+  pdfWrite(`<< /Length ${contentStream.length} >>`);
+  pdfWrite("stream");
+  pdfWrite(contentStream);
+  pdfWrite("endstream");
+  pdfWrite("endobj");
+
+  pdfStartObj(5);
+  pdfWrite("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  pdfWrite("endobj");
+
+  pdfStartObj(6);
+  pdfWrite("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+  pdfWrite("endobj");
+
+  const xrefOffset = byteOffset;
+  pdfWrite("xref");
+  pdfWrite("0 7");
+  pdfWrite("0000000000 65535 f ");
+  for (let i = 1; i <= 6; i++) {
+    pdfWrite(String(pdfObjects[i]).padStart(10, "0") + " 00000 n ");
+  }
+  pdfWrite("trailer");
+  pdfWrite("<< /Size 7 /Root 1 0 R >>");
+  pdfWrite("startxref");
+  pdfWrite(String(xrefOffset));
+  pdfWrite("%%EOF");
+
+  return base64EncodeBinary(new TextEncoder().encode(pdfLines.join("\n")));
 }
 
 // ========== TAB BUILDERS ==========
@@ -612,6 +1342,7 @@ function buildTextTabs(
       anchorUnits: "pixels",
       anchorXOffset: "150",
       anchorYOffset: "-5",
+      anchorIgnoreIfNotPresent: "true",  // contractor PDFs are arbitrary — skip silently if anchor not found
       value: String(fieldValue),
       locked: "true",
       font: "helvetica",
@@ -662,7 +1393,7 @@ function buildAddendumTabs(documentId: string) {
         anchorXOffset: "0",
         anchorYOffset: "180",
         tabLabel: "otterquote_acknowledgment",
-        name: "I understand I am signing a contract directly with the contractor named above. OtterQuote is not a party to this agreement.",
+        name: "I understand I am signing a contract directly with the contractor named above. Otter Quotes is not a party to this agreement.",
         required: "true",
         documentId,
       },
@@ -820,6 +1551,14 @@ async function handleContractorSign(
     contractorData = c;
     const { data: cl } = await supabase.from("claims").select("*").eq("id", claim_id).single();
     claimData = cl;
+    // Fetch bid data for SOW generation — needed even when caller provides their own fields
+    const { data: bd } = await supabase
+      .from("quotes")
+      .select("*")
+      .eq("claim_id", claim_id)
+      .eq("contractor_id", contractor_id)
+      .maybeSingle();
+    bidData = bd;
   }
 
   // Fetch contractor's contract template from storage
@@ -833,36 +1572,21 @@ async function handleContractorSign(
     fundingType = "retail";
   }
 
-  // Look up template from contractor's contract_templates JSONB
-  const templates = contractorData?.contract_templates || [];
-  let matchingTemplate = templates.find((t: any) =>
-    t.trade && t.trade.toLowerCase() === trade &&
-    t.funding_type && t.funding_type.toLowerCase() === fundingType
+  // D-161: Look up PC template from contractor's color_confirmation_template JSONB (8-slot grid).
+  // selectPcTemplateSlot() picks trade x funding_type with roofing/insurance fallback.
+  // getPcTemplateFromStorage() handles both bare paths (post-migration) and full URLs (pre-migration).
+  const pcTemplateSlot = selectPcTemplateSlot(
+    contractorData?.color_confirmation_template,
+    trade,
+    fundingType
   );
-  if (!matchingTemplate) {
-    matchingTemplate = templates.find((t: any) => t.trade && t.trade.toLowerCase() === trade);
-  }
-  if (!matchingTemplate && contractorData?.contract_pdf_url) {
-    matchingTemplate = { file_url: contractorData.contract_pdf_url };
-  }
 
   let templateBase64: string;
-  if (matchingTemplate?.file_url && matchingTemplate.file_url.includes("contractor-templates")) {
-    // Extract storage path from URL and download
-    const pathMatch = matchingTemplate.file_url.match(/contractor-templates\/(.+)$/);
-    if (pathMatch) {
-      const storagePath = decodeURIComponent(pathMatch[1]);
-      const { data: blob, error } = await supabase.storage.from("contractor-templates").download(storagePath);
-      if (error) throw new Error(`Template download error: ${error.message}`);
-      const ab = await blob.arrayBuffer();
-      templateBase64 = base64EncodeBinary(new Uint8Array(ab));
-    } else {
-      templateBase64 = await fetchTemplateFromUrl(matchingTemplate.file_url);
-    }
-  } else if (matchingTemplate?.file_url) {
-    templateBase64 = await fetchTemplateFromUrl(matchingTemplate.file_url);
+  if (pcTemplateSlot?.file_url) {
+    templateBase64 = await getPcTemplateFromStorage(supabase, pcTemplateSlot.file_url);
   } else {
-    // Fallback: try standard path convention
+    // No slot found in color_confirmation_template — last-resort fallback to legacy path convention.
+    console.warn(`No color_confirmation_template slot found for contractor ${contractor_id} (${trade}/${fundingType}). Falling back to legacy storage path.`);
     templateBase64 = await getTemplateFromStorage(supabase, contractor_id, "contract");
   }
 
@@ -872,14 +1596,55 @@ async function handleContractorSign(
   const homeownerName = autoFields.customer_name || "Homeowner";
   const addendumBase64 = generateComplianceAddendumPdf(contractorName, homeownerName, contractDate);
 
+  // For retail (non-insurance) jobs: generate a Scope of Work PDF and attach it as
+  // document 2. The IC 24-5-11 compliance addendum shifts to document 3.
+  // For insurance jobs the loss sheet serves as the scope reference — no SOW generated.
+  const isRetail = fundingType !== "insurance";
+  let scopeOfWorkBase64: string | null = null;
+  if (isRetail) {
+    try {
+      const measurements = await fetchHoverMeasurements(supabase, claim_id);
+      scopeOfWorkBase64 = generateRetailScopeOfWorkPdf({
+        homeownerName,
+        contractorName,
+        propertyAddress: claimData?.property_address || autoFields.customer_address || "",
+        claimId: claim_id,
+        trades: claimData?.selected_trades || [trade],
+        contractPrice: bidData?.amount ?? bidData?.total_price ?? null,
+        estimatedStartDate: bidData?.estimated_start_date ?? null,
+        valueAdds: bidData?.value_adds ?? null,
+        bidBrand: bidData?.brand ?? null,
+        deckingPricePerSheet: bidData?.decking_price_per_sheet ?? null,
+        fullRedeckPrice: bidData?.full_redeck_price ?? null,
+        messageToHomeowner: bidData?.message_to_homeowner ?? bidData?.contractor_message ?? null,
+        homeownerNotes: claimData?.homeowner_notes ?? null,
+        projectConfirmation: claimData?.project_confirmation ?? null,
+        measurements,
+        contractDate,
+      });
+      console.log(`Retail Scope of Work PDF generated for claim ${claim_id}`);
+    } catch (sowErr) {
+      // Non-fatal: proceed without SOW if generation fails for any reason
+      console.error("Retail SOW PDF generation failed (non-fatal, continuing without SOW):", sowErr);
+      scopeOfWorkBase64 = null;
+    }
+  }
+
   const { accessToken, accountId, baseUri } = tokenInfo;
 
-  // Build envelope with contractor as FIRST signer (routingOrder 1)
-  // Homeowner placeholder as SECOND signer (routingOrder 2) — will be activated later
-  const documentId = "1";
-  const addendumDocId = "2";
+  // Document IDs:
+  //   Insurance:  doc 1 = contractor agreement, doc 2 = Signature Page, doc 3 = IC 24-5-11 addendum
+  //   Retail:     doc 1 = contractor agreement, doc 2 = Signature Page, doc 3 = Scope of Work, doc 4 = IC 24-5-11 addendum
+  //
+  // Doc 1 (contractor's arbitrary PDF) is DISPLAY-ONLY — no signing tabs. Contractor PDFs
+  // don't contain the anchor strings DocuSign requires, so tabs on Doc 1 cause hard errors.
+  // All signing tabs go on Doc 2 (generated Signature Page) which has known anchor text.
+  const documentId    = "1";             // contractor's PDF — display only
+  const sigPageDocId  = "2";             // generated Signature Page — signing tabs live here
+  const sowDocId      = "3";             // retail Scope of Work (shifted from "2")
+  const addendumDocId = isRetail && scopeOfWorkBase64 ? "4" : "3";  // shifted by sigPage insertion
   const textTabs = buildTextTabs(autoFields, documentId, "contractor_sign");
-  const contractorTabs = buildSignerTabs(documentId, "contractor");
+  const contractorTabs = buildSignerTabs(sigPageDocId, "contractor");
 
   // Resolve homeowner email for placeholder recipient (from profiles table)
   let homeownerEmail = "homeowner@placeholder.otterquote.com";
@@ -899,14 +1664,29 @@ async function handleContractorSign(
   const docLabel = getDocumentLabel("contractor_sign");
 
   const envelopeDefinition: any = {
-    emailSubject: `${docLabel} — OtterQuote (Claim ${claim_id.slice(0, 8)})`,
+    emailSubject: `${docLabel} — Otter Quotes (Claim ${claim_id.slice(0, 8)})`,
     documents: [
       {
         documentBase64: templateBase64,
         name: docLabel,
         fileExtension: "pdf",
-        documentId,
+        documentId,  // Doc 1: contractor's PDF (display-only, no signing tabs)
       },
+      // Doc 2: Signature Page — generated with known /Contractor/ and /Customer/ anchor text.
+      // Signing tabs are placed here instead of Doc 1 (arbitrary contractor PDF).
+      {
+        documentBase64: generateSignaturePage(contractorName, homeownerName, claimData?.property_address || autoFields.customer_address || "", contractDate),
+        name: "Signature Page",
+        fileExtension: "pdf",
+        documentId: sigPageDocId,
+      },
+      // Scope of Work — retail jobs only (doc 3, shifted from doc 2 by Signature Page insertion).
+      ...(scopeOfWorkBase64 ? [{
+        documentBase64: scopeOfWorkBase64,
+        name: "Scope of Work",
+        fileExtension: "pdf",
+        documentId: sowDocId,
+      }] : []),
       {
         documentBase64: addendumBase64,
         name: "IC 24-5-11 Compliance Addendum",
@@ -936,7 +1716,7 @@ async function handleContractorSign(
           routingOrder: "2",
           clientUserId: "homeowner_1",
           tabs: {
-            ...buildSignerTabs(documentId, "homeowner"),
+            ...buildSignerTabs(sigPageDocId, "homeowner"),  // Signature Page, not contractor PDF
             ...buildAddendumTabs(addendumDocId),
           },
         },
@@ -1150,7 +1930,7 @@ async function handleLegacyFlow(
     if (document_type === "project_confirmation") {
       const { data: fetchedClaim } = await supabase
         .from("claims")
-        .select("project_confirmation, property_address")
+        .select("project_confirmation, property_address, selected_trades, funding_type, job_type")
         .eq("id", claim_id)
         .single();
       claimData = fetchedClaim;
@@ -1168,6 +1948,7 @@ async function handleLegacyFlow(
   let templateBase64: string;
 
   if (document_type === "project_confirmation") {
+    // Ensure contractor data with JSONB PC template column is loaded
     const templateContractor = contractorData || await (async () => {
       const { data } = await supabase
         .from("contractors")
@@ -1177,13 +1958,42 @@ async function handleLegacyFlow(
       return data;
     })();
 
-    const templateUrl = templateContractor?.color_confirmation_template;
-    if (!templateUrl) {
+    // Resolve trade + funding type from claim data
+    const trade: string = (
+      claimData?.selected_trades?.[0] ||
+      (autoFields?.trade_type as string | undefined)
+    )?.toLowerCase() || "roofing";
+
+    const rawFunding: string = (
+      claimData?.funding_type ||
+      claimData?.job_type ||
+      (autoFields?.funding_type as string | undefined) ||
+      ""
+    ).toLowerCase();
+    // Normalize: anything containing "insurance" → "insurance", else "retail"
+    const fundingType: string = rawFunding.includes("insurance") ? "insurance" : "retail";
+
+    // Select the best-matching PC template slot
+    const slot = selectPcTemplateSlot(
+      templateContractor?.color_confirmation_template,
+      trade,
+      fundingType
+    );
+
+    if (!slot) {
+      // No PC template available — log a warning and omit the PC document.
+      // The envelope still generates (non-fatal per D-161 spec).
+      console.warn(
+        `[D-161] No project confirmation template found for contractor ${contractor_id} ` +
+        `(trade=${trade}, fundingType=${fundingType}). Omitting PC document from envelope.`
+      );
       throw new Error(
-        "No project confirmation template on file. The contractor must upload a Project Confirmation Template in their profile before this document can be created."
+        "No project confirmation template on file for this trade and funding type. " +
+        "The contractor must upload a Project Confirmation Template in their profile before this document can be created."
       );
     }
-    templateBase64 = await fetchTemplateFromUrl(templateUrl);
+
+    templateBase64 = await getPcTemplateFromStorage(supabase, slot.file_url);
   } else {
     templateBase64 = await getTemplateFromStorage(supabase, contractor_id, document_type);
   }
@@ -1227,7 +2037,7 @@ async function handleLegacyFlow(
   }
 
   const envelopeDefinition = {
-    emailSubject: `${docLabel} — OtterQuote (Claim ${claim_id.slice(0, 8)})`,
+    emailSubject: `${docLabel} — Otter Quotes (Claim ${claim_id.slice(0, 8)})`,
     documents,
     recipients: {
       signers: [

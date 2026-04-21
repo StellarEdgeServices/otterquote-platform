@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Sign Contract — OtterQuote</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Sign Contract — Otter Quotes</title>
   <meta name="description" content="Review and sign your contractor agreement.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
@@ -70,7 +70,7 @@
       background: var(--amber);
       border-color: var(--amber);
       color: var(--navy);
-      box-shadow: 0 0 20px rgba(20, 184, 166, 0.3);
+      box-shadow: 0 0 20px rgba(224, 123, 0, 0.3);
     }
 
     .progress-step.completed .progress-step-number {
@@ -137,8 +137,8 @@
 
     /* ── Contractor Card ── */
     .contractor-card {
-      background: linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, transparent 100%);
-      border: 1px solid rgba(20, 184, 166, 0.3);
+      background: linear-gradient(135deg, rgba(224, 123, 0, 0.1) 0%, transparent 100%);
+      border: 1px solid rgba(224, 123, 0, 0.3);
       border-radius: var(--radius-lg);
       padding: var(--sp-8);
       margin-bottom: var(--sp-8);
@@ -449,7 +449,7 @@
 
     .deductible-amount-display {
       background: var(--navy-2);
-      border: 1px solid rgba(20, 184, 166, 0.3);
+      border: 1px solid rgba(224, 123, 0, 0.3);
       border-radius: var(--radius-md);
       padding: var(--sp-4);
       margin-bottom: var(--sp-6);
@@ -592,13 +592,13 @@
     .button-primary {
       background: var(--amber);
       color: var(--navy);
-      box-shadow: 0 0 20px rgba(20, 184, 166, 0.3);
+      box-shadow: 0 0 20px rgba(224, 123, 0, 0.3);
     }
 
     .button-primary:hover:not(:disabled) {
       background: var(--amber-2);
       transform: translateY(-2px);
-      box-shadow: 0 0 30px rgba(20, 184, 166, 0.4);
+      box-shadow: 0 0 30px rgba(224, 123, 0, 0.4);
     }
 
     .button-primary:disabled {
@@ -810,6 +810,16 @@
           <a href="/dashboard.html" class="button button-primary">Back to Dashboard</a>
         </div>
 
+        <!-- Expired Bid State (hidden initially) -->
+        <div id="bidExpiredState" style="display: none;" class="error-state">
+          <div style="font-size: 2.5rem; margin-bottom: var(--sp-4);">&#x23F0;</div>
+          <p style="color: var(--amber); font-weight: 700; font-size: 1.25rem; margin-bottom: var(--sp-2);">This bid has expired</p>
+          <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-6);">The contractor's bid is no longer valid. You can request an updated bid and they'll have the opportunity to resubmit.</p>
+          <button id="renewalBtnSigning" class="button button-primary" style="background: var(--amber); border-color: var(--amber); margin-bottom: var(--sp-4);">Request an Updated Bid</button>
+          <br>
+          <a id="backToBidsExpired" href="/bids.html" style="color: var(--slate); font-size: 0.9rem; text-decoration: none; display: inline-block; margin-top: var(--sp-3);">&#x2190; Back to your bids</a>
+        </div>
+
         <!-- Main Content (hidden until loaded) -->
         <div id="pageContent" style="display: none;">
 
@@ -909,11 +919,20 @@
               </div>
             </div>
 
-            <!-- D-123: OtterQuote is not a party acknowledgment -->
+            <!-- Platform fee disclosure (86e0zj7hr) -->
+            <div class="callout callout-info" style="margin-bottom: var(--sp-6);">
+              <div class="callout-icon">&#x1F4B3;</div>
+              <div class="callout-text">
+                <div class="callout-title">Platform Fee Disclosure</div>
+                <div class="callout-description">Otter Quotes charges the contractor a 5% platform fee on the contract total. This fee is already included in the price the contractor quoted you — you don't pay it separately.</div>
+              </div>
+            </div>
+
+            <!-- D-123: Otter Quotes is not a party acknowledgment -->
             <div class="checkbox-container" id="acknowledgmentCheckbox">
               <input type="checkbox" class="checkbox-input" id="otterquoteAcknowledgment">
               <label class="checkbox-label" for="otterquoteAcknowledgment">
-                <span class="checkbox-label-text">I understand I am signing a contract directly with <span id="ackContractorName">the contractor</span>. OtterQuote is not a party to this agreement.</span>
+                <span class="checkbox-label-text">I understand I am signing a contract directly with <span id="ackContractorName">the contractor</span>. Otter Quotes is not a party to this agreement.</span>
                 <span class="checkbox-label-hint">Required before signing.</span>
               </label>
             </div>
@@ -1008,21 +1027,21 @@
                 <p style="color: var(--slate); font-size: 0.9rem; line-height: 1.65;">You have the right to cancel this contract at any time before midnight on the <strong style="color: var(--white);">third business day</strong> after the date you signed. To cancel, complete and deliver the Notice of Cancellation form included in your contract documents to your contractor. No penalty applies.</p>
               </div>
 
-              <!-- OtterQuote Cancellation Policy -->
+              <!-- Otter Quotes Cancellation Policy -->
               <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md); padding: var(--sp-5) var(--sp-6); margin-bottom: var(--sp-8); text-align: left;">
-                <div style="font-weight: 700; color: var(--white); margin-bottom: var(--sp-2); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.04em;">&#x1F504; OtterQuote Contractor Switch Policy</div>
-                <p style="color: var(--slate); font-size: 0.9rem; line-height: 1.65; margin-bottom: var(--sp-3);">Changed your mind about your contractor? Up to <strong style="color: var(--white);">3 days before your scheduled installation date</strong>, you can switch to a different contractor in the OtterQuote network — at no cost to you.</p>
-                <p style="color: var(--slate); font-size: 0.9rem; line-height: 1.65; margin-bottom: var(--sp-3);">OtterQuote handles the entire transition. Your project goes back out to the contractor network and a replacement is selected. You do not need to contact your current contractor directly.</p>
-                <p style="color: var(--slate); font-size: 0.85rem; line-height: 1.65;"><strong style="color: var(--white);">Note:</strong> If you choose to leave the OtterQuote platform entirely rather than switch within the network, you remain bound by the contract you signed with your contractor. To initiate a contractor switch, go to your dashboard and use the "Switch Contractor" option, or contact us at <a href="mailto:support@otterquote.com" style="color: var(--teal);">support@otterquote.com</a>.</p>
+                <div style="font-weight: 700; color: var(--white); margin-bottom: var(--sp-2); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.04em;">&#x1F504; Otter Quotes Contractor Switch Policy</div>
+                <p style="color: var(--slate); font-size: 0.9rem; line-height: 1.65; margin-bottom: var(--sp-3);">Changed your mind about your contractor? Up to <strong style="color: var(--white);">3 days before your scheduled installation date</strong>, you can switch to a different contractor in the Otter Quotes network — at no cost to you.</p>
+                <p style="color: var(--slate); font-size: 0.9rem; line-height: 1.65; margin-bottom: var(--sp-3);">Otter Quotes handles the entire transition. Your project goes back out to the contractor network and a replacement is selected. You do not need to contact your current contractor directly.</p>
+                <p style="color: var(--slate); font-size: 0.85rem; line-height: 1.65;"><strong style="color: var(--white);">Note:</strong> If you choose to leave the Otter Quotes platform entirely rather than switch within the network, you remain bound by the contract you signed with your contractor. To initiate a contractor switch, go to your dashboard and use the "Switch Contractor" option, or contact us at <a href="mailto:support@otterquote.com" style="color: var(--teal);">support@otterquote.com</a>.</p>
               </div>
 
               <!-- Next Steps -->
               <div class="next-steps-grid">
                 <div class="next-step-card">
                   <div class="next-step-number">1</div>
-                  <div class="next-step-title">Pick Your Color</div>
-                  <div class="next-step-description">Choose the perfect roof color that complements your home.</div>
-                  <a href="#" id="colorSelectionLink" class="next-step-link">Select Color &rarr;</a>
+                  <div class="next-step-title">Project Confirmation</div>
+                  <div class="next-step-description">Confirm project scope, materials, and color selections with your contractor.</div>
+                  <a href="#" id="colorSelectionLink" class="next-step-link">Project Confirmation &rarr;</a>
                 </div>
                 <div class="next-step-card">
                   <div class="next-step-number">2</div>
@@ -1058,7 +1077,7 @@
 
   <script>
     /**
-     * OtterQuote v2 — Contract Signing Flow (End-to-End)
+     * Otter Quotes v2 — Contract Signing Flow (End-to-End)
      *
      * Accepts URL params:
      *   ?bid=XXX                           (from bids.html — looks up claim + contractor from bid)
@@ -1209,14 +1228,37 @@
         // Store quote_id for use in signing flow
         state.quoteId = quoteIdParam || state.bid?.id || null;
 
-        // Check if contractor has already signed (IC 24-5-11 flow)
+        // ── Bid Expiration Guard (D-150) ──
+        // If the selected bid is expired, show a clear error state instead of
+        // the signing UI. The homeowner can request an updated bid from here.
+        if (state.bid?.bid_status === 'expired') {
+          document.getElementById('pageLoading').style.display = 'none';
+          // Wire the renewal button to this specific bid
+          const renewalBtn = document.getElementById('renewalBtnSigning');
+          if (renewalBtn) {
+            renewalBtn.onclick = () => window.requestBidRenewal(state.bid.id);
+          }
+          // Wire the back link to their bids page for this claim
+          const backLink = document.getElementById('backToBidsExpired');
+          if (backLink && state.claimId) {
+            backLink.href = `/bids.html?claim_id=${state.claimId}`;
+          }
+          document.getElementById('bidExpiredState').style.display = 'block';
+          return; // Stop — do not render the signing UI
+        }
+
+        // Check if contractor has already signed (IC 24-5-11 flow).
+        // Read existingEnvelopeId directly from the quote record — do NOT gate it on
+        // contractor_signed_at. The webhook writes contractor_signed_at asynchronously;
+        // the envelope_id is available as soon as contractor_sign runs, which is earlier.
+        // Decoupling these allows homeowner_sign to work even before the webhook fires.
+        state.existingEnvelopeId = state.bid?.docusign_envelope_id || null;
         if (state.bid?.contractor_signed_at) {
           state.contractorAlreadySigned = true;
-          state.existingEnvelopeId = state.bid.docusign_envelope_id || null;
         }
 
         // ── Render the page ──
-        renderContractorCard();
+        await renderContractorCard();
         await loadContractTemplate();
         setupEventListeners();
 
@@ -1249,16 +1291,34 @@
     });
 
     // ── Render Contractor Card ──
-    function renderContractorCard() {
+    async function renderContractorCard() {
       const c = state.contractor;
       const b = state.bid;
       const cl = state.claim;
       if (!c) return;
 
-      // Avatar
+      // Avatar — owner_photo_url is a bare storage path; generate a signed URL.
+      // Legacy records may contain a full public URL — regex extracts path in that case.
       const avatarEl = document.getElementById('contractorAvatar');
       if (c.owner_photo_url) {
-        avatarEl.innerHTML = `<img src="${esc(c.owner_photo_url)}" alt="${esc(c.company_name || c.name)}">`;
+        try {
+          const pathMatch = c.owner_photo_url.match(/contractor-documents\/(.+?)(\?|$)/);
+          const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : c.owner_photo_url;
+          const { data: signedData, error: signErr } = await sb.storage
+            .from('contractor-documents')
+            .createSignedUrl(storagePath, 3600);
+          if (!signErr && signedData?.signedUrl) {
+            avatarEl.innerHTML = `<img src="${signedData.signedUrl}" alt="${esc(c.company_name || c.name)}">`;
+          } else {
+            throw new Error('signed URL failed');
+          }
+        } catch (_) {
+          const initials = (c.company_name || c.name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+          avatarEl.textContent = initials;
+          avatarEl.style.fontSize = '1.5rem';
+          avatarEl.style.fontWeight = '700';
+          avatarEl.style.color = 'var(--amber)';
+        }
       } else {
         const initials = (c.company_name || c.name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
         avatarEl.textContent = initials;
@@ -1313,7 +1373,7 @@
       // Confirmation section
       document.getElementById('confirmContractorName').textContent = c.company_name || c.name || 'your contractor';
       document.getElementById('confirmContractorName2').textContent = c.company_name || c.name || 'Your contractor';
-      document.getElementById('colorSelectionLink').href = `/color-selection.html?claim_id=${state.claimId}`;
+      document.getElementById('colorSelectionLink').href = `/project-confirmation.html?claim_id=${state.claimId}`;
 
       // D-123: Set contractor name in acknowledgment checkbox
       const ackNameEl = document.getElementById('ackContractorName');
@@ -1482,12 +1542,14 @@
           || state.currentUser.user_metadata?.full_name
           || state.currentUser.email;
 
-        // New signing flow: after homeowner selects contractor, contract is distributed to both parties.
-        // Use 'homeowner_sign' if contractor already signed (retrieves existing envelope).
-        // Use 'contract' to create a new envelope — contractor signs first (IC 24-5-11), then homeowner.
-        const docType = state.contractorAlreadySigned && state.existingEnvelopeId
-          ? 'homeowner_sign'
-          : 'contract';
+        // Always use homeowner_sign. contract-signing.html is exclusively the homeowner signing page.
+        // The contractor_sign envelope is created earlier (at contractor selection time) and its
+        // envelope_id is stored on the quote. handleHomeownerSign() looks it up from the quote record.
+        // If no envelope exists yet, the Edge Function returns a clear actionable error.
+        // 'contract' (the deprecated legacy handler) is intentionally never used here: it pointed at
+        // an old storage path (contractorId/contract.pdf) that doesn't exist for D-161 contractors,
+        // and its signing order (homeowner first) violated IC 24-5-11 D-152 sequential flow.
+        const docType = 'homeowner_sign';
 
         console.log(`DocuSign flow: ${docType}, contractor_signed: ${state.contractorAlreadySigned}, envelope: ${state.existingEnvelopeId}`);
 
@@ -1679,8 +1741,8 @@
         phones.push(c.phone);
       }
 
-      const contractorMsg = `OtterQuote: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (844) 875-3412.`;
-      const dustinMsg = `OtterQuote Alert: ${homeownerName} (claim ${state.claimId || 'unknown'}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
+      const contractorMsg = `Otter Quotes: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (844) 875-3412.`;
+      const dustinMsg = `Otter Quotes Alert: ${homeownerName} (claim ${state.claimId || 'unknown'}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
 
       const sends = phones.map(phone =>
         sb.functions.invoke('send-sms', { body: { to: phone, message: contractorMsg } })
@@ -1703,6 +1765,79 @@
         statusEl.style.display = 'block';
       }
     }
+
+    // ── Request Bid Renewal — used by expired bid guard (D-150) ──
+    // Same logic as bids.html requestBidRenewal: notifies contractor via dashboard
+    // notification and sends admin a support email. Non-blocking; errors are caught.
+    window.requestBidRenewal = async function(bidId) {
+      const btn = document.getElementById('renewalBtnSigning');
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending request\u2026'; }
+
+      let notifOk = false, emailOk = false;
+
+      // 1. Insert dashboard notification for the contractor
+      try {
+        if (state.contractor?.user_id) {
+          const { error: notifErr } = await sb.from('notifications').insert({
+            user_id: state.contractor.user_id,
+            notification_type: 'bid_renewal_requested',
+            channel: 'dashboard',
+            title: 'Homeowner requesting updated bid',
+            message: `A homeowner is requesting an updated bid on ${state.claim?.property_address || 'their project'}.`,
+            message_preview: `A homeowner is requesting an updated bid on ${state.claim?.property_address || 'their project'}.`,
+            metadata: JSON.stringify({ quote_id: bidId, claim_id: state.claimId }),
+          });
+          if (!notifErr) notifOk = true;
+          else console.warn('requestBidRenewal — notification insert error:', notifErr);
+        }
+      } catch (err) {
+        console.warn('requestBidRenewal — notification step error:', err);
+      }
+
+      // 2. Send support email so admin has visibility
+      try {
+        const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': CONFIG.SUPABASE_ANON },
+          body: JSON.stringify({
+            subject: 'Bid Renewal Requested \u2014 ' + (state.contractor?.company_name || 'Unknown Contractor'),
+            body: [
+              'A homeowner has requested an updated bid (via contract-signing.html expired guard).',
+              'Contractor: ' + (state.contractor?.company_name || 'N/A'),
+              'Property: ' + (state.claim?.property_address || 'N/A'),
+              'Claim ID: ' + (state.claimId || 'N/A'),
+              'Quote ID: ' + bidId,
+              '',
+              'The contractor has been notified via their dashboard' +
+                (notifOk ? '.' : ' (notification may have failed \u2014 check manually).'),
+            ].join('\n'),
+          }),
+        });
+        if (resp.ok) emailOk = true;
+      } catch (err) {
+        console.warn('requestBidRenewal — email step error:', err);
+      }
+
+      // Update button to reflect outcome
+      if (btn) {
+        if (notifOk || emailOk) {
+          btn.textContent = '\u2713 Request Sent';
+          btn.style.background = '#059669';
+          btn.style.cursor = 'default';
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Request an Updated Bid';
+          console.warn('requestBidRenewal — both notification and email failed for bid', bidId);
+        }
+      }
+
+      gtag('event', 'bid_renewal_requested', {
+        bid_id: bidId,
+        contractor_id: state.contractor?.id,
+        success: notifOk || emailOk,
+        source: 'contract-signing',
+      });
+    };
 
     // ── Escape HTML ──
     function esc(str) {

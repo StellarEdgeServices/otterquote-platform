@@ -2,16 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin — Incomplete Profiles | OtterQuote</title>
+    <title>Admin — Incomplete Profiles | Otter Quotes</title>
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
     <style>
         :root {
-            --navy: #0B1929;
-            --amber: #F59E0B;
+            --navy: #0D1B2E;
+            --amber: #E07B00;
             --white: #FFFFFF;
-            --slate: #94A3B8;
+            --slate: #8A9BAB;
             --light: #E2E8F0;
             --red: #EF4444;
             --green: #10B981;
@@ -21,7 +23,7 @@
         body {
             background-color: var(--navy);
             color: #1F2937;
-            font-family: 'DM Sans', sans-serif;
+            font-family: 'Rubik', sans-serif;
         }
 
         main {
@@ -54,7 +56,7 @@
         }
 
         .admin-header h1 {
-            font-family: 'Playfair Display', serif;
+            font-family: 'Rubik', serif;
             font-size: 2.5rem;
             color: var(--white);
             margin: 0;
@@ -360,7 +362,7 @@
         }
 
         .unauthorized-box h2 {
-            font-family: 'Playfair Display', serif;
+            font-family: 'Rubik', serif;
             font-size: 1.75rem;
             color: var(--navy);
             margin-bottom: 1rem;
@@ -396,7 +398,7 @@
         <div id="unauthorizedContainer" class="unauthorized-container">
             <div class="unauthorized-box">
                 <h2>Access Denied</h2>
-                <p>This page is restricted to OtterQuote administrators.</p>
+                <p>This page is restricted to Otter Quotes administrators.</p>
                 <a href="index.html">Return to home</a>
             </div>
         </div>
@@ -589,13 +591,13 @@
                     ? `<span class="td-login">${escapeHtml(loginLabel)}</span>`
                     : `<span class="login-never">Never</span>`;
 
-                const mailtoSubject = encodeURIComponent('Complete your OtterQuote contractor profile');
+                const mailtoSubject = encodeURIComponent('Complete your Otter Quotes contractor profile');
                 const mailtoBody    = encodeURIComponent(
                     `Hi${c.company_name ? ' ' + c.company_name : ''},\n\n` +
-                    `You signed up for OtterQuote but haven't finished setting up your profile yet. ` +
+                    `You signed up for Otter Quotes but haven't finished setting up your profile yet. ` +
                     `Completing your profile is required before you can start receiving and bidding on projects.\n\n` +
                     `Log in and finish your setup here: https://otterquote.com/contractor-profile.html\n\n` +
-                    `Let me know if you have any questions.\n\nDustin\nOtterQuote`
+                    `Let me know if you have any questions.\n\nDustin\nOtter Quotes`
                 );
 
                 const tr = document.createElement('tr');

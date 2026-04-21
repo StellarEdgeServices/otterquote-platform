@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Submit Your Bid | OtterQuote Contractor Portal</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Submit Your Bid | Otter Quotes Contractor Portal</title>
 
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -20,19 +20,17 @@
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Design System -->
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
   <style>
     :root {
-      --navy: #0B1929;
+      --navy: #0D1B2E;
       --navy-2: #0F2440;
       --navy-3: #132D50;
-      --amber: #F59E0B;
+      --amber: #E07B00;
       --white: #FFFFFF;
       --slate: #94A3B8;
       --light: #E2E8F0;
@@ -49,9 +47,9 @@
       --radius-md: 0.5rem;
       --radius-lg: 0.75rem;
       --radius-xl: 1rem;
-      --font-body: 'DM Sans', sans-serif;
-      --font-heading: 'Playfair Display', serif;
-      --font-mono: 'DM Mono', monospace;
+      --font-body: 'Rubik', sans-serif;
+      --font-heading: 'Rubik', serif;
+      --font-mono: 'Rubik', monospace;
     }
 
     * {
@@ -204,7 +202,7 @@
     .form-group textarea:focus {
       outline: none;
       border-color: var(--amber);
-      box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+      box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
     }
 
     .form-group textarea {
@@ -298,7 +296,7 @@
     }
 
     .fee-row.net {
-      background: rgba(20, 184, 166, 0.15);
+      background: rgba(224, 123, 0, 0.15);
       padding: var(--sp-4);
       margin-top: var(--sp-4);
       border-radius: var(--radius-md);
@@ -328,7 +326,7 @@
     }
 
     .fee-info {
-      background: rgba(20, 184, 166, 0.1);
+      background: rgba(224, 123, 0, 0.1);
       border-left: 2px solid var(--amber);
       padding: var(--sp-4);
       border-radius: var(--radius-sm);
@@ -900,6 +898,104 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* ── Wizard ────────────────────────────────────────────────── */
+    .wizard-progress {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: var(--sp-2);
+      margin-bottom: var(--sp-8);
+    }
+    .wizard-step {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      font-size: 0.85rem;
+      color: var(--slate);
+    }
+    .wizard-step .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.8rem;
+      border: 2px solid #CBD5E1;
+      background: var(--white);
+      color: var(--slate);
+      flex-shrink: 0;
+    }
+    .wizard-step.active .step-num {
+      background: var(--amber);
+      border-color: var(--amber);
+      color: var(--navy);
+    }
+    .wizard-step.completed .step-num {
+      background: #10B981;
+      border-color: #10B981;
+      color: var(--white);
+    }
+    .wizard-step.active .step-label { color: var(--navy); font-weight: 600; }
+    .wizard-step-connector {
+      width: 40px;
+      height: 2px;
+      background: #CBD5E1;
+      align-self: center;
+      flex-shrink: 0;
+    }
+    .wizard-step-connector.done { background: #10B981; }
+    .wizard-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: var(--sp-6);
+      padding-top: var(--sp-6);
+      border-top: 1px solid #E2E8F0;
+    }
+    .btn-wizard {
+      padding: var(--sp-3) var(--sp-6);
+      border-radius: var(--radius-md);
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 2px solid;
+      transition: all 0.2s;
+    }
+    .btn-wizard-back { background: var(--white); border-color: #CBD5E1; color: var(--navy); }
+    .btn-wizard-back:hover { background: #F8FAFC; }
+    .btn-wizard-next { background: var(--amber); border-color: var(--amber); color: var(--navy); }
+    .btn-wizard-next:hover { background: #DDA500; }
+    .wizard-trade-label {
+      display: inline-block;
+      background: #FFF7ED;
+      border: 1px solid #FED7AA;
+      color: #92400E;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 99px;
+      margin-bottom: var(--sp-3);
+      letter-spacing: 0.05em;
+    }
+    #wizardStep1Card .trade-wizard-option {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      padding: var(--sp-4);
+      border: 2px solid #E2E8F0;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    #wizardStep1Card .trade-wizard-option:has(input:checked) {
+      border-color: var(--amber);
+      background: #FFFBEB;
+    }
+    #wizardStep3Card { display: none; }
   </style>
 </head>
 <body>
@@ -907,7 +1003,7 @@
 
   <main>
     <!-- Change Bid Banner (hidden until Change Bid mode activates) -->
-    <div id="changeBidBanner" style="display:none; background:#FFF3CD; border:2px solid #F59E0B; border-radius:0.75rem; padding:1rem 1.5rem; margin-bottom:1.5rem;">
+    <div id="changeBidBanner" style="display:none; background:#FFF3CD; border:2px solid #E07B00; border-radius:0.75rem; padding:1rem 1.5rem; margin-bottom:1.5rem;">
       <div style="display:flex; align-items:flex-start; gap:0.75rem;">
         <span style="font-size:1.4rem; flex-shrink:0;">⚠️</span>
         <div>
@@ -972,9 +1068,43 @@
       <div id="tradeBreakdownFields"></div>
     </div>
 
+    <!-- Wizard Progress Bar (hidden in non-wizard mode) -->
+    <div id="wizardProgressBar" class="wizard-progress" style="display:none;">
+      <div class="wizard-step" id="wizardStepIndicator1">
+        <span class="step-num">1</span>
+        <span class="step-label">Select Trades</span>
+      </div>
+      <div class="wizard-step-connector" id="wizardConnector1"></div>
+      <div class="wizard-step" id="wizardStepIndicator2">
+        <span class="step-num">2</span>
+        <span class="step-label">Bid Details</span>
+      </div>
+      <div class="wizard-step-connector" id="wizardConnector2"></div>
+      <div class="wizard-step" id="wizardStepIndicator3">
+        <span class="step-num">3</span>
+        <span class="step-label">Review &amp; Submit</span>
+      </div>
+    </div>
+
+    <!-- Wizard Step 1: Trade Selection -->
+    <div class="form-card" id="wizardStep1Card" style="display:none;">
+      <div class="form-card-title">Which Trades Are You Bidding On?</div>
+      <p style="font-size:0.9rem;color:var(--slate);margin-bottom:var(--sp-6);">
+        This project includes multiple trades. All are selected by default — uncheck any you'd like to skip.
+      </p>
+      <div id="wizardTradeCheckboxes" style="display:flex;flex-direction:column;gap:var(--sp-3);margin-bottom:var(--sp-4);"></div>
+      <div class="wizard-nav" style="border-top:none;padding-top:0;justify-content:flex-end;">
+        <button type="button" class="btn-wizard btn-wizard-next" id="wizardStep1Next" onclick="wizardNext()">
+          Next: Enter Bid Details →
+        </button>
+      </div>
+    </div>
+
     <!-- Bid Form -->
-    <div class="form-card">
-      <div class="form-card-title">Your Bid Details</div>
+    <div class="form-card" id="bidFormCard">
+      <div class="form-card-title" id="bidFormCardTitle">Your Bid Details</div>
+      <!-- Wizard trade label (shown in step 2 only) -->
+      <div id="wizardTradeLabelRow" style="display:none;"><span class="wizard-trade-label" id="wizardTradeLabel"></span></div>
       <form id="bidForm" class="form-grid">
         <!-- Hidden fields for trade data -->
         <input type="hidden" id="selectedTradeType" name="tradeType" value="roofing">
@@ -1386,6 +1516,58 @@
         </div><!-- /valueAddsSection -->
 
         <!-- ══════════════════════════════════════════════════════
+             SECOND-LAYER TEAR-OFF CONTINGENCY (retail roofing only)
+             ══════════════════════════════════════════════════════ -->
+        <div class="form-section" id="secondLayerContingencySection" style="grid-column: 1 / -1; display: none;">
+          <h3 style="font-size:1.1rem;margin-bottom:var(--sp-2);">Second-Layer Tear-Off Contingency</h3>
+          <p style="font-size:0.85rem;color:#6B7280;margin-bottom:var(--sp-6);">
+            If the existing roof has more than one layer of shingles, additional tear-off costs apply.
+            Set your contingency pricing here — the homeowner will see the exact disclosure language below in their contract.
+          </p>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--sp-6);margin-bottom:var(--sp-6);">
+            <div class="form-group">
+              <label class="form-label" for="slcPricePerSquare">Price Per Square (USD)</label>
+              <div class="input-prefix">
+                <span>$</span>
+                <input type="number" id="slcPricePerSquare" name="slcPricePerSquare" step="0.01" min="0" placeholder="e.g. 75">
+              </div>
+              <div class="form-help">Applied per roofing square (100 sq ft) of existing second layer removed.</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="slcFlatFeeAlternative">Flat Fee Alternative (USD, optional)</label>
+              <div class="input-prefix">
+                <span>$</span>
+                <input type="number" id="slcFlatFeeAlternative" name="slcFlatFeeAlternative" step="0.01" min="0" placeholder="e.g. 1500">
+              </div>
+              <div class="form-help">Leave blank if you price per square only.</div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:var(--sp-6);">
+            <label class="form-label required">Billing Method</label>
+            <div style="display:flex;flex-direction:column;gap:var(--sp-3);margin-top:var(--sp-2);">
+              <label style="display:flex;align-items:center;gap:var(--sp-3);cursor:pointer;">
+                <input type="radio" name="slcMethod" id="slcMethodPerSquare" value="per_square" checked>
+                <span>Per square — charge homeowner per roofing square of second-layer tear-off</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:var(--sp-3);cursor:pointer;">
+                <input type="radio" name="slcMethod" id="slcMethodFlatFee" value="flat_fee">
+                <span>Flat fee — fixed additional charge if second layer is found</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- SOW Disclosure Preview -->
+          <div id="slcDisclosurePreview" style="background:#FEF3C7;border:1px solid #E07B00;border-radius:var(--radius-md);padding:var(--sp-4);">
+            <p style="font-weight:700;color:#92400E;margin-bottom:var(--sp-2);font-size:0.85rem;">📋 Disclosure Language (will appear in the homeowner's contract)</p>
+            <p id="slcDisclosureText" style="font-size:0.85rem;color:#78350F;font-style:italic;line-height:1.6;">
+              Enter pricing above to see the disclosure language.
+            </p>
+          </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════
              GUTTER TRADE BID SECTION (shown for gutter-only bids)
              ══════════════════════════════════════════════════════ -->
         <div class="form-section" id="gutterTradeSection" style="grid-column: 1 / -1; display: none;">
@@ -1418,7 +1600,7 @@
           </div>
 
           <!-- Rotten Wood Notice -->
-          <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
+          <div style="background:#FEF3C7;border:1px solid #E07B00;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
             <p style="font-weight:700;color:#92400E;margin-bottom:var(--sp-1);">⚠️ Note — Rotten Wood</p>
             <p style="font-size:0.9rem;color:#78350F;">Rotten wood behind gutters will need to be replaced at an additional charge.</p>
           </div>
@@ -1447,16 +1629,42 @@
 
           <!-- Hover Design Summary Panel -->
           <div id="hoverDesignPanel" style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-8);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-3);">
-              <strong style="color:#0369A1;">Hover Design Summary</strong>
-              <button type="button" id="loadHoverSidingDataBtn" class="btn-sm primary" onclick="loadHoverSidingData()" style="font-size:0.8rem;">Load Design Data</button>
+
+            <!-- Panel header row -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-4);">
+              <div>
+                <strong style="color:#0369A1;font-size:1rem;">🏠 Homeowner's Hover Design</strong>
+                <div id="hoverJobAddressLine" style="font-size:0.8rem;color:#64748B;margin-top:2px;"></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:var(--sp-3);">
+                <div id="hoverDesignLink" style="display:none;">
+                  <a id="hoverJobLink" href="#" target="_blank" rel="noopener"
+                     style="color:#0284C7;font-size:0.8rem;font-weight:600;text-decoration:none;border:1px solid #BAE6FD;padding:4px 10px;border-radius:var(--radius-sm);background:#fff;">
+                    View in Hover ↗
+                  </a>
+                </div>
+                <button type="button" id="loadHoverSidingDataBtn" class="btn-sm primary" onclick="loadHoverSidingData()" style="font-size:0.8rem;">Load Design Data</button>
+              </div>
             </div>
+
+            <!-- Rendered images gallery (populated by JS) -->
+            <div id="hoverDesignImages" style="display:none;margin-bottom:var(--sp-4);"></div>
+
+            <!-- Wall area summary (populated by JS) -->
+            <div id="hoverWallSummary" style="display:none;background:#E0F2FE;border-radius:var(--radius-sm);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-4);font-size:0.875rem;color:#0369A1;"></div>
+
+            <!-- Material & labor table (populated by JS) -->
             <div id="hoverDesignContent" style="font-size:0.875rem;color:#6B7280;">
               Click <strong>Load Design Data</strong> to fetch the homeowner's product and color selections from Hover.
             </div>
-            <div id="hoverDesignLink" style="margin-top:var(--sp-3);display:none;">
-              <a id="hoverJobLink" href="#" target="_blank" rel="noopener" style="color:#0284C7;font-size:0.875rem;font-weight:600;">View 3D Design in Hover →</a>
+
+            <!-- No-data help prompt (shown when no material list exists) -->
+            <div id="hoverNoDesignHelp" style="display:none;margin-top:var(--sp-4);background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--radius-sm);padding:var(--sp-3) var(--sp-4);font-size:0.82rem;color:#92400E;">
+              <strong>No product selections on file.</strong> The homeowner's Hover measurements are available but they haven't selected specific products yet.
+              To see brand, color, and exact quantities here, the homeowner needs to open their Hover job and create an Estimate (Hover's material list tool) with their desired products.
+              In the meantime, wall area and square count appear above.
             </div>
+
           </div>
 
           <!-- Siding Pricing Grid (shown only for siding-only jobs; hidden when combined with roofing) -->
@@ -1516,7 +1724,7 @@
           </div>
 
           <!-- Rotten Sheathing Notice -->
-          <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
+          <div style="background:#FEF3C7;border:1px solid #E07B00;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
             <p style="font-weight:700;color:#92400E;margin-bottom:var(--sp-1);">⚠️ Note — Rotten Sheathing</p>
             <p style="font-size:0.9rem;color:#78350F;">Rotten wall sheathing discovered during tear-off will need to be replaced at an additional charge.</p>
           </div>
@@ -1538,16 +1746,23 @@
           </div>
         </div>
 
-        <div class="form-group" style="grid-column: 1 / -1;">
+        <div class="form-group" id="homeownerMsgGroup" style="grid-column: 1 / -1;">
           <label for="homeownerMessage">Message to Homeowner</label>
           <textarea id="homeownerMessage" name="homeownerMessage" placeholder="Add a personal note for the homeowner (optional)" maxlength="500"></textarea>
           <div class="form-help"><span id="charCount">0</span>/500 characters</div>
         </div>
       </form>
+
+      <!-- Wizard Step 2 Navigation (shown only in wizard mode) -->
+      <div id="wizardStep2Nav" class="wizard-nav" style="display:none;">
+        <button type="button" class="btn-wizard btn-wizard-back" id="wizardStep2Back" onclick="wizardBack()">← Back</button>
+        <span id="wizardStep2Progress" style="font-size:0.85rem;color:var(--slate);"></span>
+        <button type="button" class="btn-wizard btn-wizard-next" id="wizardStep2Next" onclick="wizardNext()">Next Trade →</button>
+      </div>
     </div>
 
     <!-- Fee Calculator -->
-    <div class="fee-calculator">
+    <div class="fee-calculator" id="feeCalculatorSection">
       <div class="fee-calculator-title">Platform Fee Breakdown</div>
 
       <div class="fee-row">
@@ -1569,7 +1784,7 @@
       <div class="fee-row total">
         <span>Total Platform Fee</span>
         <div>
-          <span class="fee-amount" id="totalFeePercent">13.0%</span>
+          <span class="fee-amount" id="totalFeePercent">5.0%</span>
           <span style="margin-left: var(--sp-2); font-weight: 400;">= <span class="fee-amount" id="totalFeeAmount">$0.00</span></span>
         </div>
       </div>
@@ -1584,8 +1799,30 @@
       </div>
     </div>
 
+    <!-- Wizard Step 3: Review & Submit -->
+    <div class="form-card" id="wizardStep3Card" style="display:none;">
+      <div class="form-card-title">Review &amp; Submit</div>
+      <p style="font-size:0.9rem;color:var(--slate);margin-bottom:var(--sp-6);">
+        You've entered bid details for all selected trades. Add any final context below, then submit your bid.
+      </p>
+
+      <div class="form-group" style="margin-bottom:var(--sp-6);">
+        <label class="form-label" for="wizardBundleNote">Bundle Discount Note (optional)</label>
+        <textarea id="wizardBundleNote" name="wizardBundleNote" placeholder="If you are offering a discount for doing multiple trades together, describe it here (e.g., 'I am offering a $500 discount for booking roofing and gutters together')." style="min-height:100px;width:100%;padding:var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.875rem;resize:vertical;" maxlength="1000"></textarea>
+      </div>
+
+      <div class="form-group" style="margin-bottom:var(--sp-4);">
+        <label class="form-label" for="wizardRationale">Anything else the homeowner should know? (optional)</label>
+        <textarea id="wizardRationale" name="wizardRationale" placeholder="Add any final notes — scheduling flexibility, crew size, your experience with this type of project, etc." style="min-height:120px;width:100%;padding:var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.875rem;resize:vertical;" maxlength="2000"></textarea>
+      </div>
+
+      <div class="wizard-nav" style="border-top:none;padding-top:0;">
+        <button type="button" class="btn-wizard btn-wizard-back" id="wizardStep3Back" onclick="wizardBack()">← Back</button>
+      </div>
+    </div>
+
     <!-- Submit Section -->
-    <div class="submit-section">
+    <div class="submit-section" id="submitSection">
       <button type="submit" form="bidForm" class="submit-button" id="submitBtn">Submit Bid</button>
       <div class="submit-disclaimer">
         By submitting, you agree to the platform fees shown above.<br>
@@ -1600,7 +1837,7 @@
 
     <!-- CONTRACT SIGNING STEP (DEPRECATED: signing now happens after homeowner selection, not at bid submission) -->
     <div id="contractSigningStep" style="display: none; margin-top: var(--sp-8);">
-      <div style="background: #FFFBEB; border: 2px solid #F59E0B; border-radius: var(--radius-lg); padding: var(--sp-6); margin-bottom: var(--sp-6);">
+      <div style="background: #FFFBEB; border: 2px solid #E07B00; border-radius: var(--radius-lg); padding: var(--sp-6); margin-bottom: var(--sp-6);">
         <h3 style="color: var(--navy); margin-bottom: var(--sp-3); font-size: 1.15rem;">⚖️ Sign Your Contract — Required by Indiana Law</h3>
         <p style="color: #374151; font-size: 0.95rem; line-height: 1.6; margin-bottom: var(--sp-3);">
           Indiana law (IC 24-5-11) requires that you, as the contractor, sign the contract <strong>before</strong> the homeowner.
@@ -1613,7 +1850,7 @@
 
       <!-- DocuSign Loading -->
       <div id="contractorDocusignLoading" style="text-align: center; padding: var(--sp-8);">
-        <div style="width: 40px; height: 40px; border: 3px solid #E5E7EB; border-top-color: #F59E0B; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto var(--sp-4);"></div>
+        <div style="width: 40px; height: 40px; border: 3px solid #E5E7EB; border-top-color: #E07B00; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto var(--sp-4);"></div>
         <p style="color: var(--navy); font-weight: 600;">Preparing your contract for signing...</p>
         <p style="color: #6B7280; font-size: 0.9rem;">This may take a few seconds.</p>
       </div>
@@ -1661,6 +1898,27 @@
     let gutterTradeActive = false;
     let sidingTradeActive = false;
     let gutterGuardCount = 0;
+    let sidingWallSquares = null; // populated from Hover data; used by syncSidingTotal
+
+    // ── Siding Total Sync (module-level so loadHoverSidingData + Change Bid can call it) ──
+    // For siding-only retail jobs the fee calculator derives total from per-sq × wall_squares + fixed items.
+    // If wall_squares is not yet loaded the function is a no-op so we don't write a garbage total.
+    function syncSidingTotal() {
+      if (!sidingTradeActive) return;
+      const install = parseFloat(document.getElementById('sidingInstallPerSquare')?.value) || 0;
+      const trim    = parseFloat(document.getElementById('sidingTrimPrice')?.value) || 0;
+      const wrap    = parseFloat(document.getElementById('sidingWindowWrapPrice')?.value) || 0;
+      const demo    = parseFloat(document.getElementById('sidingTeardownPrice')?.value) || 0;
+      if (sidingWallSquares > 0) {
+        const total = (install * sidingWallSquares) + trim + wrap + demo;
+        document.getElementById('totalPrice').value = total > 0 ? total : '';
+      } else {
+        // Wall squares not yet loaded — use raw input sum as placeholder (warn in note)
+        const total = install + trim + wrap + demo;
+        document.getElementById('totalPrice').value = total > 0 ? total : '';
+      }
+      updateFeeCalculator();
+    }
 
     // Fee calculator configuration — flat 5% only (Session 216 + 226 cleanup)
     const PLATFORM_FEES = {
@@ -1674,6 +1932,265 @@
     let changeBidMode = false;
     let existingQuote = null;
     let claimRcv = null; // RCV from parsed line items or rcv_amount column
+
+    // ═══════════════════════════════════════════════════════════════
+    //  WIZARD STATE MACHINE (D-162)
+    // ═══════════════════════════════════════════════════════════════
+    let wizardMode = false;
+    let wizardStep = 1;
+    let wizardTradeQueue = [];      // ordered list of trades walked in step 2
+    let wizardCurrentTradeIdx = 0;
+    let wizardSelectedTrades = [];  // trades user kept checked in step 1
+
+    const WIZARD_TRADE_ORDER = ['roofing', 'gutters', 'siding'];
+    const WIZARD_LS_KEY = () => `oq_wizard_${currentClaim?.id || 'unknown'}`;
+
+    // Form section IDs controlled by wizard per trade
+    const WIZARD_ROOFING_SECTIONS = [
+      'brandProductGroup', 'deckingSection', 'valueAddsSection',
+      'secondLayerContingencySection', 'homeownerMsgGroup'
+    ];
+    const WIZARD_GUTTERS_SECTIONS  = ['gutterTradeSection', 'homeownerMsgGroup'];
+    const WIZARD_SIDING_SECTIONS   = ['sidingTradeSection', 'homeownerMsgGroup'];
+    const ALL_WIZARD_FORM_SECTIONS = [
+      'bidTypeSection', 'retailPriceSection', 'brandProductGroup',
+      'deckingSection', 'supplementSection', 'valueAddsSection',
+      'secondLayerContingencySection', 'gutterTradeSection',
+      'sidingTradeSection', 'homeownerMsgGroup'
+    ];
+
+    function initWizard(trades) {
+      if (!isRetailJob) return;
+      const eligible = WIZARD_TRADE_ORDER.filter(t => trades.includes(t));
+      if (eligible.length < 2) return; // single trade — no wizard
+
+      // Siding gate: D-165
+      const sidingReleased = currentClaim?.siding_bid_released_at != null;
+      const queued = eligible.filter(t => t !== 'siding' || sidingReleased);
+      if (queued.length < 2) return;
+
+      wizardMode = true;
+      wizardSelectedTrades = [...queued];
+      wizardTradeQueue = [...queued];
+
+      _buildStep1Checkboxes(queued);
+
+      // Hide old trade selection UI
+      const oldCard = document.getElementById('tradeSelectionCard');
+      if (oldCard) oldCard.style.display = 'none';
+      const breakdown = document.getElementById('perTradeBreakdown');
+      if (breakdown) breakdown.style.display = 'none';
+
+      document.getElementById('wizardProgressBar').style.display = '';
+      wizardGoTo(1, 0, false);
+    }
+
+    function _buildStep1Checkboxes(trades) {
+      const container = document.getElementById('wizardTradeCheckboxes');
+      container.innerHTML = '';
+      const icons = { roofing: '🏠 Roofing', gutters: '💧 Gutters', siding: '🧱 Siding' };
+      trades.forEach(trade => {
+        const label = document.createElement('label');
+        label.className = 'trade-wizard-option';
+        label.innerHTML = `
+          <input type="checkbox" name="wizardTrade_${trade}" value="${trade}" checked>
+          <span style="font-size:1rem;font-weight:600;color:var(--navy);">${icons[trade] || trade}</span>
+        `;
+        label.querySelector('input').addEventListener('change', _syncWizardTradeSelection);
+        container.appendChild(label);
+      });
+    }
+
+    function _syncWizardTradeSelection() {
+      const checked = [...document.querySelectorAll('#wizardTradeCheckboxes input:checked')]
+        .map(cb => cb.value);
+      wizardSelectedTrades = WIZARD_TRADE_ORDER.filter(t => checked.includes(t));
+    }
+
+    function wizardGoTo(step, tradeIdx, pushState = true) {
+      wizardStep = step;
+      wizardCurrentTradeIdx = tradeIdx;
+
+      const step1Card     = document.getElementById('wizardStep1Card');
+      const bidFormCard   = document.getElementById('bidFormCard');
+      const step2Nav      = document.getElementById('wizardStep2Nav');
+      const step3Card     = document.getElementById('wizardStep3Card');
+      const feeCalc       = document.getElementById('feeCalculatorSection');
+      const submitSection = document.getElementById('submitSection');
+
+      if (step === 1) {
+        step1Card.style.display     = '';
+        bidFormCard.style.display   = 'none';
+        step2Nav.style.display      = 'none';
+        step3Card.style.display     = 'none';
+        feeCalc.style.display       = 'none';
+        submitSection.style.display = 'none';
+      } else if (step === 2) {
+        step1Card.style.display     = 'none';
+        bidFormCard.style.display   = '';
+        step2Nav.style.display      = '';
+        step3Card.style.display     = 'none';
+        feeCalc.style.display       = '';
+        submitSection.style.display = 'none';
+        _showWizardTrade(tradeIdx);
+      } else if (step === 3) {
+        step1Card.style.display     = 'none';
+        bidFormCard.style.display   = 'none';
+        step2Nav.style.display      = 'none';
+        step3Card.style.display     = '';
+        feeCalc.style.display       = '';
+        submitSection.style.display = '';
+      }
+
+      _updateWizardProgressBar(step);
+      saveWizardState();
+
+      if (pushState) {
+        history.pushState({ wizardStep: step, wizardTradeIdx: tradeIdx }, '', location.href);
+      }
+
+      const bar = document.getElementById('wizardProgressBar');
+      if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function _showWizardTrade(tradeIdx) {
+      const trade = wizardTradeQueue[tradeIdx];
+      if (!trade) return;
+
+      // Trade label chip
+      const labelEl = document.getElementById('wizardTradeLabel');
+      const labelRow = document.getElementById('wizardTradeLabelRow');
+      const names = { roofing: 'ROOFING', gutters: 'GUTTERS', siding: 'SIDING' };
+      if (labelEl) labelEl.textContent = names[trade] || trade.toUpperCase();
+      if (labelRow) labelRow.style.display = '';
+
+      // Hide all wizard-controlled sections
+      ALL_WIZARD_FORM_SECTIONS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+
+      // Show sections for this trade
+      const sectionsMap = {
+        roofing:  WIZARD_ROOFING_SECTIONS,
+        gutters:  WIZARD_GUTTERS_SECTIONS,
+        siding:   WIZARD_SIDING_SECTIONS
+      };
+      (sectionsMap[trade] || []).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = '';
+      });
+
+      // For roofing: D-163 — show valueAddsSection + secondLayerContingencySection
+      // (retailPriceSection is hidden — fee syncs from valueAddsSection total price input)
+      if (trade === 'roofing' && isRetailJob) {
+        const retail = document.getElementById('retailPriceSection');
+        if (retail) retail.style.display = 'none';
+        const va = document.getElementById('valueAddsSection');
+        if (va) va.style.display = '';
+        const slc = document.getElementById('secondLayerContingencySection');
+        if (slc) slc.style.display = '';
+      }
+
+      // Back / Next button labels
+      const backBtn = document.getElementById('wizardStep2Back');
+      if (backBtn) backBtn.textContent = tradeIdx === 0 ? '← Back to Trade Selection' : '← Back';
+      const nextBtn = document.getElementById('wizardStep2Next');
+      const isLast = tradeIdx === wizardTradeQueue.length - 1;
+      if (nextBtn) nextBtn.textContent = isLast ? 'Review & Submit →' : 'Next Trade →';
+      const progress = document.getElementById('wizardStep2Progress');
+      if (progress) progress.textContent = `Trade ${tradeIdx + 1} of ${wizardTradeQueue.length}`;
+    }
+
+    function _updateWizardProgressBar(step) {
+      for (let i = 1; i <= 3; i++) {
+        const el = document.getElementById(`wizardStepIndicator${i}`);
+        if (!el) continue;
+        el.classList.remove('active', 'completed');
+        if (i < step) el.classList.add('completed');
+        else if (i === step) el.classList.add('active');
+      }
+      for (let i = 1; i <= 2; i++) {
+        const el = document.getElementById(`wizardConnector${i}`);
+        if (el) el.classList.toggle('done', step > i);
+      }
+    }
+
+    function wizardNext() {
+      if (wizardStep === 1) {
+        if (wizardSelectedTrades.length === 0) {
+          alert('Please select at least one trade to bid on.');
+          return;
+        }
+        wizardTradeQueue = [...wizardSelectedTrades];
+        saveWizardState();
+        wizardGoTo(2, 0, true);
+      } else if (wizardStep === 2) {
+        if (wizardCurrentTradeIdx < wizardTradeQueue.length - 1) {
+          wizardGoTo(2, wizardCurrentTradeIdx + 1, true);
+        } else {
+          wizardGoTo(3, 0, true);
+        }
+      }
+    }
+
+    function wizardBack() {
+      if (wizardStep === 2 && wizardCurrentTradeIdx === 0) {
+        wizardGoTo(1, 0, true);
+      } else if (wizardStep === 2 && wizardCurrentTradeIdx > 0) {
+        wizardGoTo(2, wizardCurrentTradeIdx - 1, true);
+      } else if (wizardStep === 3) {
+        wizardGoTo(2, wizardTradeQueue.length - 1, true);
+      }
+    }
+
+    function saveWizardState() {
+      if (!wizardMode || !currentClaim) return;
+      try {
+        localStorage.setItem(WIZARD_LS_KEY(), JSON.stringify({
+          wizardStep, wizardCurrentTradeIdx, wizardTradeQueue, wizardSelectedTrades
+        }));
+      } catch(e) {}
+    }
+
+    function loadWizardState() {
+      try {
+        const raw = localStorage.getItem(WIZARD_LS_KEY());
+        return raw ? JSON.parse(raw) : null;
+      } catch(e) { return null; }
+    }
+
+    function clearWizardState() {
+      try { localStorage.removeItem(WIZARD_LS_KEY()); } catch(e) {}
+    }
+
+    // Browser back/forward
+    window.addEventListener('popstate', (e) => {
+      if (!wizardMode) return;
+      const s = e.state;
+      if (s && typeof s.wizardStep === 'number') {
+        wizardGoTo(s.wizardStep, s.wizardTradeIdx || 0, false);
+      }
+    });
+
+    // ── Second-Layer Contingency Disclosure Preview ──
+    function updateSlcDisclosure() {
+      const perSq  = parseFloat(document.getElementById('slcPricePerSquare')?.value)     || 0;
+      const flat   = parseFloat(document.getElementById('slcFlatFeeAlternative')?.value) || 0;
+      const method = document.querySelector('input[name="slcMethod"]:checked')?.value || 'per_square';
+      const el = document.getElementById('slcDisclosureText');
+      if (!el) return;
+
+      if (perSq === 0 && flat === 0) {
+        el.textContent = 'Enter pricing above to see the disclosure language.';
+        return;
+      }
+      const fmt = n => `$${n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+      const amt = (method === 'flat_fee' && flat > 0) ? fmt(flat) : fmt(perSq);
+      const phrase = method === 'flat_fee' ? 'flat fee' : 'per square';
+      el.textContent = `If the existing roof is found to contain more than one layer of shingles, the contract price will increase by ${amt} ${phrase}. Customer will be notified before work proceeds and has the right to accept the change order or cancel the Agreement per the Change Order Disclaimer.`;
+    }
+    // ════════════════════════════════════════════════════════════════
 
     const charCountEl = document.getElementById('charCount');
     const messageInput = document.getElementById('homeownerMessage');
@@ -1721,13 +2238,17 @@
 
     // ── Hover Siding Data Loader ──
     async function loadHoverSidingData() {
-      const btn     = document.getElementById('loadHoverSidingDataBtn');
-      const content = document.getElementById('hoverDesignContent');
+      const btn        = document.getElementById('loadHoverSidingDataBtn');
+      const content    = document.getElementById('hoverDesignContent');
+      const imagesDiv  = document.getElementById('hoverDesignImages');
+      const wallDiv    = document.getElementById('hoverWallSummary');
+      const noDataHelp = document.getElementById('hoverNoDesignHelp');
       if (!currentClaim || !btn || !content) return;
 
       btn.disabled = true;
       btn.textContent = 'Loading…';
       content.innerHTML = '<span style="color:#6B7280;">Fetching design data from Hover…</span>';
+      if (noDataHelp) noDataHelp.style.display = 'none';
 
       try {
         const { data: { session } } = await sb.auth.getSession();
@@ -1744,64 +2265,140 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        // Show "View in Hover" link regardless
+        // ── "View in Hover" link ──────────────────────────────────────
         if (data.hover_job_id) {
           const linkDiv = document.getElementById('hoverDesignLink');
           const linkEl  = document.getElementById('hoverJobLink');
           if (linkDiv) linkDiv.style.display = 'block';
-          if (linkEl)  linkEl.href = 'https://app.hover.to/jobs/' + data.hover_job_id;
+          if (linkEl)  linkEl.href = 'https://hover.to/jobs/' + data.hover_job_id;
         }
 
-        // Update squares note if we got wall area
-        if (data.wall_squares) {
+        // ── Address line ──────────────────────────────────────────────
+        if (data.job_address) {
+          const addrEl = document.getElementById('hoverJobAddressLine');
+          if (addrEl) addrEl.textContent = data.job_address;
+        }
+
+        // ── Rendered images gallery ───────────────────────────────────
+        if (imagesDiv && data.design_images && data.design_images.length > 0) {
+          imagesDiv.innerHTML = '';
+          const gallery = document.createElement('div');
+          gallery.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;';
+          data.design_images.forEach((url, idx) => {
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'position:relative;border-radius:8px;overflow:hidden;border:1px solid #BAE6FD;background:#E0F2FE;aspect-ratio:4/3;';
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = 'Property view ' + (idx + 1);
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;cursor:pointer;transition:transform 0.2s;';
+            img.onclick = () => window.open(url, '_blank');
+            img.onerror = () => { wrapper.style.display = 'none'; };
+            wrapper.appendChild(img);
+            gallery.appendChild(wrapper);
+          });
+          imagesDiv.appendChild(gallery);
+          imagesDiv.style.display = 'block';
+        }
+
+        // ── Wall area summary ─────────────────────────────────────────
+        if (wallDiv && (data.wall_squares || data.wall_sqft)) {
+          let wallText = '📐 ';
+          if (data.wall_squares) wallText += '<strong>' + data.wall_squares + ' squares</strong> of siding wall area';
+          if (data.wall_sqft)    wallText += ' (' + data.wall_sqft.toLocaleString() + ' sq ft)';
+          wallDiv.innerHTML = wallText;
+          wallDiv.style.display = 'block';
+
+          // Store for fee-calculator math; update per-square note
+          sidingWallSquares = parseFloat(data.wall_squares) || 0;
           const note = document.getElementById('sidingSquaresNote');
           if (note) note.textContent = 'Hover reports ' + data.wall_squares + ' squares of siding area';
+          syncSidingTotal();
         }
 
-        // Build material summary
-        if (data.siding_materials && data.siding_materials.length > 0) {
-          let html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">';
+        // ── Material list table ───────────────────────────────────────
+        const hasMaterials = data.siding_materials && data.siding_materials.length > 0;
+        const hasLabor     = data.labor_items && data.labor_items.length > 0;
+
+        if (hasMaterials || hasLabor) {
+          const showCost = data.siding_materials.some(m => m.unit_cost != null || m.total_cost != null);
+
+          const thStyle = 'text-align:left;padding:5px 8px;border-bottom:2px solid #BAE6FD;color:#0369A1;font-size:0.78rem;white-space:nowrap;';
+          const thR     = thStyle + 'text-align:right;';
+          const tdStyle = 'padding:5px 8px;border-bottom:1px solid #E0F2FE;font-size:0.82rem;vertical-align:top;';
+          const tdR     = tdStyle + 'text-align:right;';
+          const tdMuted = tdStyle + 'color:#6B7280;font-size:0.75rem;';
+
+          let html = '<div style="overflow-x:auto;">';
+          html += '<table style="width:100%;border-collapse:collapse;min-width:520px;">';
+
+          // Header
           html += '<thead><tr>'
-               + '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #BAE6FD;color:#0369A1;">Product</th>'
-               + '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #BAE6FD;color:#0369A1;">Color</th>'
-               + '<th style="text-align:right;padding:4px 8px;border-bottom:1px solid #BAE6FD;color:#0369A1;">Qty</th>'
-               + '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #BAE6FD;color:#0369A1;">Units</th>'
+               + '<th style="' + thStyle + '">Group / Product</th>'
+               + '<th style="' + thStyle + '">Color</th>'
+               + '<th style="' + thR + '">Qty</th>'
+               + '<th style="' + thStyle + '">Units</th>'
+               + (showCost ? '<th style="' + thR + '">Waste</th><th style="' + thR + '">Unit $</th><th style="' + thR + '">Subtotal</th>' : '')
                + '</tr></thead><tbody>';
-          data.siding_materials.forEach(m => {
-            html += '<tr>'
-                 + '<td style="padding:4px 8px;border-bottom:1px solid #E0F2FE;">' + escHtmlBid(m.product_name || '—') + '</td>'
-                 + '<td style="padding:4px 8px;border-bottom:1px solid #E0F2FE;">' + escHtmlBid(m.color || '—') + '</td>'
-                 + '<td style="padding:4px 8px;border-bottom:1px solid #E0F2FE;text-align:right;">' + (m.quantity != null ? parseFloat(m.quantity).toFixed(1) : '—') + '</td>'
-                 + '<td style="padding:4px 8px;border-bottom:1px solid #E0F2FE;">' + escHtmlBid(m.units || '') + '</td>'
+
+          // Helper: format a material row
+          const renderRow = (m, isLabor = false) => {
+            const rowBg = isLabor ? 'background:#F0FDF4;' : '';
+            const qty = m.calculated_quantity ?? m.quantity;
+            const qtyFmt = qty != null ? parseFloat(qty).toFixed(1) : '—';
+            const wasteLabel = m.waste_factor != null ? (parseFloat(m.waste_factor) * 100).toFixed(0) + '%' : '—';
+            const unitCostFmt = m.unit_cost != null ? '$' + parseFloat(m.unit_cost).toFixed(2) : '—';
+            const subtotalFmt = m.total_cost != null ? '$' + parseFloat(m.total_cost).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+            const nameDisplay = m.product_name || (isLabor ? 'Labor' : '—');
+            const groupDisplay = m.group_name && m.group_name !== m.product_name ? escHtmlBid(m.group_name) : '';
+            const typeLabel = isLabor ? ' <span style="font-size:0.7rem;color:#166534;background:#DCFCE7;padding:1px 5px;border-radius:3px;margin-left:4px;">LABOR</span>' : '';
+            return '<tr style="' + rowBg + '">'
+                 + '<td style="' + tdStyle + '">'
+                 + (groupDisplay ? '<div style="font-size:0.72rem;color:#94A3B8;margin-bottom:1px;">' + groupDisplay + '</div>' : '')
+                 + escHtmlBid(nameDisplay) + typeLabel + '</td>'
+                 + '<td style="' + tdStyle + '">' + escHtmlBid(m.color || '—') + '</td>'
+                 + '<td style="' + tdR + '">' + qtyFmt + '</td>'
+                 + '<td style="' + tdMuted + '">' + escHtmlBid(m.units || '') + '</td>'
+                 + (showCost ? '<td style="' + tdR + ';color:#6B7280;">' + wasteLabel + '</td>'
+                             + '<td style="' + tdR + '">' + unitCostFmt + '</td>'
+                             + '<td style="' + tdR + ';font-weight:600;">' + subtotalFmt + '</td>' : '')
                  + '</tr>';
-          });
-          html += '</tbody></table>';
+          };
+
+          if (hasMaterials) {
+            data.siding_materials.forEach(m => { html += renderRow(m, false); });
+          }
+          if (hasLabor) {
+            data.labor_items.forEach(m => { html += renderRow(m, true); });
+          }
+
+          // Totals row if we have cost data
+          if (showCost && data.material_total != null) {
+            html += '<tr style="background:#E0F2FE;">'
+                 + '<td colspan="' + (showCost ? '6' : '3') + '" style="' + tdStyle + 'font-weight:700;color:#0369A1;">Material Total</td>'
+                 + '<td style="' + tdR + 'font-weight:700;color:#0369A1;">$' + parseFloat(data.material_total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</td>'
+                 + '</tr>';
+          }
+
+          html += '</tbody></table></div>';
           content.innerHTML = html;
+          if (noDataHelp) noDataHelp.style.display = 'none';
+
+        } else if (data.wall_squares || data.wall_sqft) {
+          // We have measurements but no product selections
+          content.innerHTML = '<span style="color:#6B7280;">Measurements loaded. No specific products selected yet in Hover — see note below.</span>';
+          if (noDataHelp) noDataHelp.style.display = 'block';
+
         } else {
           content.innerHTML = data.message
             ? '<span style="color:#6B7280;">' + escHtmlBid(data.message) + '</span>'
-            : '<span style="color:#6B7280;">No product data available — use the Hover link above to view design details.</span>';
-        }
-
-        // Show rendered design images if any
-        if (data.design_images && data.design_images.length > 0) {
-          const imgDiv = document.createElement('div');
-          imgDiv.style.cssText = 'display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;';
-          data.design_images.forEach(url => {
-            const img = document.createElement('img');
-            img.src = url;
-            img.alt = 'Hover design';
-            img.style.cssText = 'height:120px;border-radius:6px;object-fit:cover;border:1px solid #BAE6FD;';
-            imgDiv.appendChild(img);
-          });
-          content.appendChild(imgDiv);
+            : '<span style="color:#6B7280;">No Hover data available for this project.</span>';
         }
 
         btn.textContent = 'Refresh';
         btn.disabled = false;
       } catch (err) {
         console.warn('loadHoverSidingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Use the Hover link to view manually.</span>';
+        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Use the "View in Hover" button above to view manually.</span>';
         // Still show the Hover link even on failure so contractor isn't blocked
         const linkDiv = document.getElementById('hoverDesignLink');
         if (linkDiv) linkDiv.style.display = 'block';
@@ -1823,6 +2420,36 @@
       gutterTradeActive = hasGutters && !hasRoofing && !hasSiding;
       sidingTradeActive = hasSiding && isRetailJob;
 
+      // ── Wizard guard: wizard owns visibility; only wire event listeners here ──
+      if (wizardMode) {
+        if (isRetailJob && hasRoofing) {
+          const retailInput = document.getElementById('retailBidPrice');
+          if (retailInput) {
+            retailInput.addEventListener('input', () => {
+              document.getElementById('totalPrice').value = retailInput.value || '';
+              updateFeeCalculator();
+            });
+          }
+          _wireSlcListeners();
+        }
+        if (gutterTradeActive && isRetailJob) {
+          const g6 = document.getElementById('gutter6InchPrice');
+          const g5 = document.getElementById('gutter5InchPrice');
+          const syncGP = () => {
+            const price = parseFloat(g6?.value) || parseFloat(g5?.value) || 0;
+            document.getElementById('totalPrice').value = price > 0 ? price : '';
+            updateFeeCalculator();
+          };
+          if (g6) g6.addEventListener('input', syncGP);
+          if (g5) g5.addEventListener('input', syncGP);
+        }
+        if (sidingTradeActive) {
+          _wireSidingListeners(hasRoofing);
+          loadHoverSidingData();
+        }
+        return; // wizard controls all show/hide
+      }
+
       // ── 1. Retail: replace RCV/Other selector with simple price input ──
       if (isRetailJob) {
         // Hide the RCV option card
@@ -1830,7 +2457,7 @@
         // Auto-select "Other" (so internal bid type tracking works)
         const radioOther = document.getElementById('bidTypeOther');
         if (radioOther) { radioOther.checked = true; radioOther.dispatchEvent(new Event('change')); }
-        // Hide the entire bid type section; show the clean retail price section
+        // Hide the entire bid type section
         document.getElementById('bidTypeSection')?.style.setProperty('display', 'none');
         // Hide supplement acknowledgment (insurance-only)
         const suppSection = document.getElementById('supplementSection');
@@ -1849,38 +2476,30 @@
 
       // ── 2. Gutter-only trade: show gutter section, hide roofing sections ──
       if (gutterTradeActive) {
-        // Hide decking contingency (roofing-only)
         const deckEl = document.getElementById('deckingSection');
         if (deckEl) {
           deckEl.style.display = 'none';
           deckEl.querySelectorAll('[required]').forEach(el => el.removeAttribute('required'));
         }
-        // Hide brand/product (not relevant for gutters)
         const brandEl = document.getElementById('brandProductGroup');
         if (brandEl) {
           brandEl.style.display = 'none';
           brandEl.querySelectorAll('[required]').forEach(el => el.removeAttribute('required'));
         }
-        // Hide shingle summary row
         const shingleItem = document.getElementById('summaryShingle')?.closest('.summary-item');
         if (shingleItem) shingleItem.style.display = 'none';
-        // Show gutter trade section
         document.getElementById('gutterTradeSection')?.style.setProperty('display', 'block');
-        // For gutter+retail: hide the retail price input (gutter pricing replaces it)
-        // For gutter+insurance: keep retail section hidden; bid type stays as-is
         if (isRetailJob) {
-          // Gutter prices sync to totalPrice for fee calculator
           const g6 = document.getElementById('gutter6InchPrice');
           const g5 = document.getElementById('gutter5InchPrice');
-          function syncGutterPrice() {
+          const syncGP = () => {
             const price = parseFloat(g6?.value) || parseFloat(g5?.value) || 0;
             document.getElementById('totalPrice').value = price > 0 ? price : '';
             updateFeeCalculator();
-          }
-          if (g6) g6.addEventListener('input', syncGutterPrice);
-          if (g5) g5.addEventListener('input', syncGutterPrice);
+          };
+          if (g6) g6.addEventListener('input', syncGP);
+          if (g5) g5.addEventListener('input', syncGP);
         } else {
-          // Gutter insurance job: show retail price section so contractor can enter amount
           document.getElementById('retailPriceSection')?.style.setProperty('display', 'block');
           const retailInput = document.getElementById('retailBidPrice');
           if (retailInput) {
@@ -1891,8 +2510,7 @@
           }
         }
       } else if (sidingTradeActive && !hasRoofing) {
-        // ── 3. Pure siding retail (no roofing): siding pricing replaces retailPriceSection ──
-        // Decking and brand/product sections are roofing-specific — hide them
+        // ── 3. Pure siding retail (no roofing) ──
         const deckEl = document.getElementById('deckingSection');
         if (deckEl) {
           deckEl.style.display = 'none';
@@ -1905,21 +2523,11 @@
         }
         const shingleItem = document.getElementById('summaryShingle')?.closest('.summary-item');
         if (shingleItem) shingleItem.style.display = 'none';
-        // Wire siding price inputs to fee calculator
-        function syncSidingTotal() {
-          const install = parseFloat(document.getElementById('sidingInstallPerSquare')?.value) || 0;
-          const trim    = parseFloat(document.getElementById('sidingTrimPrice')?.value) || 0;
-          const wrap    = parseFloat(document.getElementById('sidingWindowWrapPrice')?.value) || 0;
-          const demo    = parseFloat(document.getElementById('sidingTeardownPrice')?.value) || 0;
-          const total   = install + trim + wrap + demo;
-          document.getElementById('totalPrice').value = total > 0 ? total : '';
-          updateFeeCalculator();
-        }
         ['sidingInstallPerSquare','sidingTrimPrice','sidingWindowWrapPrice','sidingTeardownPrice'].forEach(id => {
           document.getElementById(id)?.addEventListener('input', syncSidingTotal);
         });
       } else if (isRetailJob) {
-        // ── 4. Retail roofing (or roofing+siding): show combined total price input ──
+        // ── 4. Retail roofing (D-163): total price input + full value-adds parity ──
         document.getElementById('retailPriceSection')?.style.setProperty('display', 'block');
         const retailInput = document.getElementById('retailBidPrice');
         if (retailInput) {
@@ -1928,25 +2536,43 @@
             updateFeeCalculator();
           });
         }
+        // D-163: show the full feature/benefit grid (same as insurance side)
+        document.getElementById('valueAddsSection')?.style.setProperty('display', 'block');
+        // Second-layer tear-off contingency
+        document.getElementById('secondLayerContingencySection')?.style.setProperty('display', 'block');
+        _wireSlcListeners();
       }
 
-      // ── 5. Siding section (all retail siding jobs — pure siding AND roofing+siding) ──
+      // ── 5. Siding section (all retail siding — pure siding AND roofing+siding) ──
       if (sidingTradeActive) {
         const sidingSection = document.getElementById('sidingTradeSection');
         if (sidingSection) sidingSection.style.display = 'block';
-        // Show the pricing grid only for siding-only jobs
         const pricingGrid = document.getElementById('sidingPricingGrid');
         if (pricingGrid) pricingGrid.style.display = hasRoofing ? 'none' : 'grid';
-        // Wire "equivalent product" field visibility
-        document.querySelectorAll('[name="sidingProductSupply"]').forEach(radio => {
-          radio.addEventListener('change', () => {
-            const eqGroup = document.getElementById('sidingEquivalentGroup');
-            if (eqGroup) eqGroup.style.display = (radio.value === 'equivalent' && radio.checked) ? 'block' : 'none';
-          });
-        });
-        // Auto-load Hover design data
+        _wireSidingListeners(hasRoofing);
         loadHoverSidingData();
       }
+    }
+
+    function _wireSlcListeners() {
+      ['slcPricePerSquare', 'slcFlatFeeAlternative'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', updateSlcDisclosure);
+      });
+      document.querySelectorAll('input[name="slcMethod"]').forEach(r => {
+        r.addEventListener('change', updateSlcDisclosure);
+      });
+    }
+
+    function _wireSidingListeners(hasRoofing) {
+      ['sidingInstallPerSquare','sidingTrimPrice','sidingWindowWrapPrice','sidingTeardownPrice'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', syncSidingTotal);
+      });
+      document.querySelectorAll('[name="sidingProductSupply"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+          const eqGroup = document.getElementById('sidingEquivalentGroup');
+          if (eqGroup) eqGroup.style.display = (radio.value === 'equivalent' && radio.checked) ? 'block' : 'none';
+        });
+      });
     }
 
     // ── Bid Type UI Logic ──
@@ -2063,6 +2689,21 @@
               return;
             }
 
+            // D-170: contractor must have an accepted attestation and a current COI.
+            // Mirrors the RLS policy (contractor_can_bid) so we fail fast in the UI
+            // with a clear message rather than a generic RLS error at submit time.
+            const hasAttestation = !!data.attestation_accepted_at;
+            const coiOk = !!(data.coi_file_url && data.coi_expires_at &&
+                             new Date(data.coi_expires_at + 'T00:00:00') > new Date());
+            if (!hasAttestation) {
+              window.location.href = '/contractor-settings.html?reason=attestation_required';
+              return;
+            }
+            if (!coiOk) {
+              window.location.href = '/contractor-settings.html?reason=coi_required#coiCard';
+              return;
+            }
+
             // Profile completeness gate
             const hasCompanyName     = !!(data.company_name && data.company_name.trim());
             const hasPhone           = !!(data.phone && data.phone.trim());
@@ -2113,7 +2754,7 @@
     function activateChangeBidMode(quote) {
       const heading = document.getElementById('pageHeading');
       if (heading) heading.textContent = 'Change Your Bid';
-      document.title = 'Change Your Bid | OtterQuote Contractor Portal';
+      document.title = 'Change Your Bid | Otter Quotes Contractor Portal';
       const submitBtnEl = document.getElementById('submitBtn');
       if (submitBtnEl) submitBtnEl.textContent = 'Update Bid';
 
@@ -2268,6 +2909,28 @@
         }
       }
       if (va.siding_equivalent_product) setVal('sidingEquivalentProduct', va.siding_equivalent_product);
+
+      // For siding-only retail: re-sync the fee calculator from restored per-sq fields.
+      // (Wall squares may not be available yet; syncSidingTotal is tolerant of null sidingWallSquares.)
+      if (sidingTradeActive && !_restoreTrades.includes('roofing')) {
+        syncSidingTotal();
+      }
+
+      // ── Second-Layer Contingency restore (Tandem-Change Rule — D-162/secondLayerContingency) ──
+      const slc = va.secondLayerContingency;
+      if (slc) {
+        if (slc.pricePerSquare != null) setVal('slcPricePerSquare', slc.pricePerSquare);
+        if (slc.flatFeeAlternative != null) setVal('slcFlatFeeAlternative', slc.flatFeeAlternative);
+        if (slc.method) setRadio('slcMethod', slc.method);
+        updateSlcDisclosure();
+      }
+
+      // ── Wizard Step 3 fields restore (Tandem-Change Rule — D-162/wizard) ──
+      if (va.wizard_bundle_note) setVal('wizardBundleNote', va.wizard_bundle_note);
+      if (va.wizard_rationale)   setVal('wizardRationale', va.wizard_rationale);
+
+      // ── Wizard: change-bid restores to step 2 (not step 1) per D-162 ──
+      // Actual step redirect happens in startUp after initWizard runs.
 
       // Trigger bid type UI sync
       document.querySelectorAll('input[name="bidTypeOption"]').forEach(r => r.dispatchEvent(new Event('change')));
@@ -2442,14 +3105,18 @@
         ? currentContractor.trades.map(t => t.toLowerCase())
         : null;
 
+      // Handle both prompt-schema field names (line_items, section_name) and
+      // LLM-variant field names (items, name) for resilience
       const filteredSections = [];
       (parsed.sections || []).forEach(section => {
-        const items = (section.line_items || []).filter(item => {
+        const sectionItems = section.line_items || section.items || [];
+        const sectionName = section.section_name || section.name;
+        const items = sectionItems.filter(item => {
           if (!contractorTrades) return true;
-          return matchesTrade(section.section_name, item.description, contractorTrades);
+          return matchesTrade(sectionName, item.description, contractorTrades);
         });
         if (items.length > 0) {
-          filteredSections.push({ ...section, line_items: items });
+          filteredSections.push({ ...section, section_name: sectionName, line_items: items });
         }
       });
 
@@ -2478,10 +3145,11 @@
 
         let rowsHtml = section.line_items.map(item => {
           const noteHtml = item.notes ? '<span class="item-note">' + escHtmlBid(item.notes) + '</span>' : '';
+          const rcVal = item.rc ?? item.rcv;
           return '<tr>'
             + '<td class="desc">' + escHtmlBid(item.description || '') + noteHtml + '</td>'
             + '<td class="num">' + escHtmlBid(fmtQty(item.quantity, item.unit)) + '</td>'
-            + '<td class="num">' + fmtMoney(item.rc) + '</td>'
+            + '<td class="num">' + fmtMoney(rcVal) + '</td>'
             + '<td class="num">' + fmtMoney(item.depreciation) + '</td>'
             + '<td class="num">' + fmtMoney(item.acv) + '</td>'
             + '</tr>';
@@ -2552,12 +3220,18 @@
     }
 
     // ── Fee Calculator — flat 5% only (Session 216 + 226 cleanup) ──
+    // Insurance jobs: fee is 5% of RCV (from loss sheet), not 5% of bid amount.
+    // Retail jobs: fee is 5% of bid amount as before.
     function updateFeeCalculator() {
       const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
 
-      const contractSigningFee = bidAmount * PLATFORM_FEES.contractSigning;
+      // For insurance jobs, fee base is RCV; for retail, fee base is bid amount
+      const isInsurance = currentClaim && currentClaim.job_type === 'insurance_rcv';
+      const feeBase = (isInsurance && claimRcv) ? claimRcv : bidAmount;
+
+      const contractSigningFee = feeBase * PLATFORM_FEES.contractSigning;
       const totalFee = contractSigningFee;
-      const totalFeePercent = bidAmount > 0 ? (totalFee / bidAmount * 100).toFixed(1) : 0;
+      const totalFeePercent = feeBase > 0 ? (totalFee / feeBase * 100).toFixed(1) : 0;
       const netAmount = bidAmount - totalFee;
 
       document.getElementById('displayBid').textContent = formatCurrency(bidAmount);
@@ -2565,6 +3239,16 @@
       document.getElementById('totalFeePercent').textContent = totalFeePercent + '%';
       document.getElementById('totalFeeAmount').textContent = formatCurrency(totalFee);
       document.getElementById('yourNet').textContent = formatCurrency(netAmount);
+
+      // Show fee basis note for insurance jobs
+      const feeInfoEl = document.querySelector('.fee-info');
+      if (feeInfoEl) {
+        if (isInsurance && claimRcv) {
+          feeInfoEl.innerHTML = '<div>ℹ A flat 5% platform fee based on the RCV (' + formatCurrency(claimRcv) + ') applies upon contract signing.</div>';
+        } else {
+          feeInfoEl.innerHTML = '<div>ℹ A flat 5% platform fee applies to all projects upon contract signing.</div>';
+        }
+      }
     }
 
     function formatCurrency(value) {
@@ -2827,6 +3511,17 @@
           const totalPrice = parseFloat(document.getElementById('totalPrice').value) || 0;
           const feePercentage = 5.0;
 
+          // Insurance jobs: fee is based on RCV from loss sheet, not bid amount
+          let feeBase = totalPrice;
+          if (currentClaim.job_type === 'insurance_rcv' && currentClaim.parsed_line_items) {
+            const pli = typeof currentClaim.parsed_line_items === 'string'
+              ? JSON.parse(currentClaim.parsed_line_items)
+              : currentClaim.parsed_line_items;
+            if (pli && pli.summary && pli.summary.rcv) {
+              feeBase = pli.summary.rcv;
+            }
+          }
+
           const scopeSummary = JSON.stringify({
             brand: formData.get('brandProduct') || null,
             estimated_start_date: formData.get('startDate') || null,
@@ -2932,12 +3627,34 @@
             }
           }
 
+          // ── Second-Layer Tear-Off Contingency (retail roofing) ──
+          const slcPerSq  = parseFloat(document.getElementById('slcPricePerSquare')?.value)     || null;
+          const slcFlat   = parseFloat(document.getElementById('slcFlatFeeAlternative')?.value) || null;
+          const slcMethod = document.querySelector('input[name="slcMethod"]:checked')?.value    || null;
+          if (slcPerSq != null || slcFlat != null) {
+            valueAdds.secondLayerContingency = {
+              pricePerSquare:     slcPerSq,
+              flatFeeAlternative: slcFlat,
+              method:             slcMethod || 'per_square',
+            };
+          }
+
+          // ── Wizard Step 3 fields ──
+          if (wizardMode) {
+            const bundleNote = document.getElementById('wizardBundleNote')?.value?.trim() || null;
+            const rationale  = document.getElementById('wizardRationale')?.value?.trim()  || null;
+            if (bundleNote) valueAdds.wizard_bundle_note = bundleNote;
+            if (rationale)  valueAdds.wizard_rationale   = rationale;
+            // Record which trades were bid in this wizard session
+            valueAdds.wizard_trade_queue = wizardTradeQueue.length > 0 ? wizardTradeQueue : null;
+          }
+
           const quoteData = {
             claim_id: currentClaim.id,
             contractor_id: currentContractor.id,
             total_price: totalPrice,
             fee_percentage: feePercentage,
-            fee_amount: totalPrice * (feePercentage / 100),
+            fee_amount: feeBase * (feePercentage / 100),
             scope_summary: scopeSummary,
             notes: formData.get('homeownerMessage') || null,
             decking_price_per_sheet: parseFloat(formData.get('deckingPricePerSheet')) || null,
@@ -3023,8 +3740,10 @@
             // Store the new quote ID for contract signing
             window._newQuoteId = insertedQuote?.id || null;
 
-            gtag('event', 'bid_submitted', {
-              claim_id: currentClaim.id,
+            // GA4 conversion event — bid funnel
+            gtag('event', 'bid_submit', {
+              trade_types: Array.isArray(currentClaim.trades) ? currentClaim.trades : [],
+              job_type: isRetailJob ? 'retail' : 'insurance',
               bid_amount: quoteData.total_price,
             });
           }
@@ -3051,6 +3770,8 @@
           `;
         }
         successState.classList.add('show');
+        // Clear wizard localStorage state on successful submission
+        clearWizardState();
       } catch (err) {
         console.error('Error submitting bid:', err);
         alert('Error submitting bid: ' + (err.message || 'Unknown error'));
@@ -3159,7 +3880,7 @@
           // Fall through to normal bid form behavior
         }
 
-        // Multi-trade project check
+        // Multi-trade project check (non-wizard path)
         const tradesParam = urlParams.get('trades');
         if (tradesParam) {
           try { initTradeSelection(JSON.parse(tradesParam)); } catch(e) {}
@@ -3169,6 +3890,35 @@
 
         // Apply retail / trade-specific form customizations
         applyJobTypeCustomizations();
+
+        // ── Wizard initialization (D-162): multi-trade retail only ──
+        // initWizard runs AFTER applyJobTypeCustomizations so isRetailJob / trade flags are set.
+        if (currentClaim) {
+          const claimTrades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
+          if (isRetailJob && claimTrades.length >= 2) {
+            // Try restoring wizard state from localStorage
+            const saved = loadWizardState();
+            initWizard(claimTrades);  // sets wizardMode if eligible
+
+            if (wizardMode) {
+              if (saved && saved.wizardTradeQueue && saved.wizardTradeQueue.length > 0) {
+                wizardTradeQueue    = saved.wizardTradeQueue;
+                wizardSelectedTrades = saved.wizardSelectedTrades || [...wizardTradeQueue];
+                const restoreStep  = changeBidMode ? 2 : (saved.wizardStep || 1);
+                const restoreIdx   = changeBidMode ? 0 : (saved.wizardCurrentTradeIdx || 0);
+                wizardGoTo(restoreStep, restoreIdx, false);
+              } else if (changeBidMode) {
+                // Change-bid with no saved state: jump to step 2 per D-162 spec
+                wizardGoTo(2, 0, false);
+              }
+              // Push initial history entry so first popstate works
+              history.replaceState(
+                { wizardStep: wizardStep, wizardTradeIdx: wizardCurrentTradeIdx },
+                '', location.href
+              );
+            }
+          }
+        }
       }
 
       if (sb) {

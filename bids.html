@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Your Bids — OtterQuote</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Your Bids — Otter Quotes</title>
   <meta name="description" content="Compare contractor bids and select the best contractor for your roofing or exterior project.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -12,7 +12,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
@@ -193,6 +193,53 @@
       .info-grid { grid-template-columns: 1fr; }
       .view-tabs { overflow-x: auto; }
     }
+
+    /* ════════════════════════════════════════ */
+    /* EXPIRED BID TREATMENT                   */
+    /* ════════════════════════════════════════ */
+    .bid-card.expired {
+      opacity: 0.6;
+      filter: grayscale(0.55);
+      border-color: rgba(255,255,255,0.04);
+    }
+    .bid-card.expired:hover {
+      transform: none;
+      box-shadow: none;
+      border-color: rgba(255,255,255,0.05);
+    }
+    .bid-expiry-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: var(--radius-full);
+      background: var(--amber-light);
+      color: #92400E;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .bid-expiry-notice {
+      font-size: 0.85rem;
+      color: #D97706;
+      margin-bottom: var(--sp-4);
+      padding: var(--sp-2) var(--sp-3);
+      background: var(--amber-glow);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--amber);
+    }
+    /* All-expired banner */
+    .all-expired-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-4);
+      background: rgba(245,158,11,0.07);
+      border: 1px solid rgba(245,158,11,0.35);
+      border-radius: var(--radius-md);
+      padding: var(--sp-5) var(--sp-6);
+      margin-bottom: var(--sp-6);
+    }
+    .all-expired-banner .aeb-icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 2px; }
+    .all-expired-banner .aeb-body { font-size: 0.9rem; color: var(--white); line-height: 1.6; }
+    .all-expired-banner .aeb-body strong { color: var(--amber); }
   </style>
 </head>
 <body>
@@ -221,11 +268,11 @@
           <!-- Guarantee Banner -->
           <div class="guarantee-banner">
             <span style="font-size:1.3rem;">🛡</span>
-            <span><strong>OtterQuote Guarantee:</strong> Not sure? You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</span>
+            <span><strong>Otter Quotes Guarantee:</strong> Not sure? You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.</span>
           </div>
 
           <!-- Bid Updated Notification Banner (shown when a contractor has revised a submitted bid) -->
-          <div id="bidUpdatedBanner" style="display:none; background:#FFF3CD; border:2px solid #F59E0B; border-radius:0.75rem; padding:1.25rem 1.5rem; margin-bottom:1.5rem; animation: fadeUp 0.4s ease both;">
+          <div id="bidUpdatedBanner" style="display:none; background:#FFF3CD; border:2px solid #E07B00; border-radius:0.75rem; padding:1.25rem 1.5rem; margin-bottom:1.5rem; animation: fadeUp 0.4s ease both;">
             <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
               <div style="display:flex; align-items:flex-start; gap:0.75rem;">
                 <span style="font-size:1.5rem; flex-shrink:0;">⚠️</span>
@@ -243,6 +290,41 @@
               <p style="color: #1E40AF; font-size: 0.9rem; margin: 0;">
                   <strong>About Your RCV Policy:</strong> Your contractor may submit a supplement to your insurance company to ensure all necessary work is covered. This may increase the insurance payout but will not increase your out-of-pocket cost. Your deductible remains the same regardless of supplements.
               </p>
+          </div>
+
+          <!-- Hover Property Design Panel (siding jobs only) -->
+          <div id="hoverPropertyPanel" style="display:none;background:linear-gradient(135deg,#0C2A3A 0%,#0F3849 100%);border:1px solid rgba(224,123,0,0.3);border-radius:0.875rem;padding:1.5rem;margin-bottom:1.5rem;animation:fadeUp 0.5s ease both;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
+              <div>
+                <div style="font-weight:700;color:#E07B00;font-size:1rem;margin-bottom:0.25rem;">🏠 Your Property Design</div>
+                <div id="hoverPropAddress" style="font-size:0.82rem;color:#94A3B8;"></div>
+              </div>
+              <a id="hoverPropViewLink" href="#" target="_blank" rel="noopener"
+                 style="display:none;color:#E07B00;font-size:0.82rem;font-weight:600;text-decoration:none;border:1px solid rgba(224,123,0,0.4);padding:5px 12px;border-radius:0.5rem;white-space:nowrap;transition:background 0.2s;"
+                 onmouseover="this.style.background='rgba(224,123,0,0.1)'" onmouseout="this.style.background='transparent'">
+                View in Hover ↗
+              </a>
+            </div>
+
+            <!-- Images gallery -->
+            <div id="hoverPropImages" style="display:none;margin-bottom:1rem;"></div>
+
+            <!-- Wall area + material summary -->
+            <div id="hoverPropMeasurements" style="display:none;"></div>
+
+            <!-- Product selections -->
+            <div id="hoverPropMaterials" style="display:none;"></div>
+
+            <!-- Loading / empty state -->
+            <div id="hoverPropStatus" style="font-size:0.875rem;color:#64748B;">Loading your property data from Hover…</div>
+          </div>
+
+          <!-- All-Expired Banner (shown when every bid on this claim has expired) -->
+          <div id="allExpiredBanner" class="all-expired-banner" style="display:none;">
+            <div class="aeb-icon">⏰</div>
+            <div class="aeb-body">
+              <strong>All bids on this project have expired.</strong> Contractor bids are valid for 14 days. Request updated bids from the contractors listed below — they'll be notified right away.
+            </div>
           </div>
 
           <!-- Waiting Indicator -->
@@ -357,6 +439,7 @@
 
         await loadClaimData();
         await loadBids();
+        await resolveContractorPhotos();
         await loadBidUpdatedNotifications();
         render();
 
@@ -391,7 +474,7 @@
         .select(`
           *,
           contractors (
-            id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
+            id, user_id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
             service_area_description, service_counties, license_number, verified,
             google_reviews_url, rating, review_count, bbb_url, angi_url, yelp_url,
             specialties, why_choose_us, num_employees, trades, website_url
@@ -412,6 +495,7 @@
       const prevCount = bids.length;
       await loadBids();
       if (bids.length > prevCount) {
+        await resolveContractorPhotos();
         render();
         // Could trigger notification sound / badge here
       }
@@ -723,11 +807,23 @@
         document.getElementById('rcvDisclaimer').style.display = 'none';
       }
 
+      // Show Hover Property Design Panel for siding claims
+      if (currentClaim) {
+        const trades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
+        const hasSiding = trades.some(t => (t || '').toLowerCase().includes('siding'));
+        if (hasSiding && currentClaim.has_measurements) {
+          document.getElementById('hoverPropertyPanel').style.display = 'block';
+          loadHoverPropertyDesign();
+        }
+      }
+
       // Update status dot and text based on claim status and bid count
       const bidCount = bids.length;
       const statusText = document.getElementById('statusText');
       const statusDot = document.getElementById('statusDot');
       const claimStatus = currentClaim ? currentClaim.status : null;
+
+      const allExpired = bids.length > 0 && bids.every(b => b.bid_status === 'expired');
 
       if (claimStatus === 'contract_signed') {
         statusDot.className = 'bids-status-dot closed';
@@ -735,6 +831,9 @@
       } else if (claimStatus === 'awarded') {
         statusDot.className = 'bids-status-dot closed';
         statusText.textContent = 'Contractor selected — awaiting contract signature';
+      } else if (allExpired) {
+        statusDot.className = 'bids-status-dot closed';
+        statusText.textContent = `${bidCount} bid${bidCount > 1 ? 's' : ''} received — all bids have expired`;
       } else if (bidCount > 0) {
         statusText.textContent = `${bidCount} bid${bidCount > 1 ? 's' : ''} received — bidding open`;
       } else {
@@ -742,16 +841,182 @@
       }
     }
 
+    // ── Hover Property Design Panel (homeowner view) ──────────────────
+    // Fetches siding design data from Hover and populates the panel on bids.html.
+    // Non-blocking — errors are caught and displayed gracefully.
+    let _hoverPropLoaded = false;
+    async function loadHoverPropertyDesign() {
+      if (_hoverPropLoaded) return; // only load once per page session
+      _hoverPropLoaded = true;
+
+      const statusEl   = document.getElementById('hoverPropStatus');
+      const imagesEl   = document.getElementById('hoverPropImages');
+      const measureEl  = document.getElementById('hoverPropMeasurements');
+      const matEl      = document.getElementById('hoverPropMaterials');
+      const viewLink   = document.getElementById('hoverPropViewLink');
+      const addrEl     = document.getElementById('hoverPropAddress');
+
+      if (!statusEl || !currentClaim) return;
+
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/get-hover-siding-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (session?.access_token || ''),
+            'apikey': CONFIG.SUPABASE_ANON,
+          },
+          body: JSON.stringify({ claim_id: currentClaim.id }),
+        });
+
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        // "View in Hover" link
+        if (data.hover_job_id) {
+          if (viewLink) {
+            viewLink.href = 'https://hover.to/jobs/' + data.hover_job_id;
+            viewLink.style.display = 'inline-block';
+          }
+        }
+
+        // Address
+        if (data.job_address && addrEl) addrEl.textContent = data.job_address;
+
+        // Rendered images gallery
+        // Session 254: XSS hardening — build DOM instead of string-concatenated innerHTML
+        // so that Hover-supplied URLs can never inject markup or JS handlers.
+        if (data.design_images && data.design_images.length > 0 && imagesEl) {
+          imagesEl.innerHTML = ''; // clear
+          const grid = document.createElement('div');
+          grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:0.75rem;';
+
+          data.design_images.forEach((url, idx) => {
+            // Only allow http(s) URLs — reject javascript:, data:, etc.
+            const safeUrl = (typeof url === 'string' && /^https?:\/\//i.test(url)) ? url : '';
+            if (!safeUrl) return;
+
+            const cell = document.createElement('div');
+            cell.style.cssText = 'aspect-ratio:4/3;border-radius:8px;overflow:hidden;border:1px solid rgba(224,123,0,0.3);background:rgba(0,0,0,0.2);';
+
+            const img = document.createElement('img');
+            img.src = safeUrl;
+            img.alt = 'Property view ' + (idx + 1);
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;cursor:pointer;';
+            img.addEventListener('click', () => window.open(safeUrl, '_blank'));
+            img.addEventListener('error', () => { cell.style.display = 'none'; });
+
+            cell.appendChild(img);
+            grid.appendChild(cell);
+          });
+
+          imagesEl.appendChild(grid);
+          imagesEl.style.display = 'block';
+        }
+
+        // Wall measurements summary
+        if ((data.wall_squares || data.wall_sqft) && measureEl) {
+          let txt = '📐 <strong style="color:#E07B00;">' + (data.wall_squares || '—') + ' squares</strong> of siding wall area';
+          if (data.wall_sqft) txt += ' <span style="color:#64748B;font-size:0.8rem;">(' + Number(data.wall_sqft).toLocaleString() + ' sq ft)</span>';
+          measureEl.innerHTML = '<div style="font-size:0.875rem;color:#CBD5E1;margin-bottom:0.75rem;">' + txt + '</div>';
+          measureEl.style.display = 'block';
+        }
+
+        // Product / material selections
+        const hasMats = data.siding_materials && data.siding_materials.length > 0;
+        if (hasMats && matEl) {
+          let mHtml = '<div style="font-size:0.82rem;color:#94A3B8;margin-bottom:0.5rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Selected Products</div>';
+          mHtml += '<div style="display:flex;flex-direction:column;gap:6px;">';
+          data.siding_materials.forEach(m => {
+            const name  = m.product_name || '—';
+            const color = m.color ? ' — ' + m.color : '';
+            const qty   = (m.calculated_quantity ?? m.quantity) != null
+                          ? parseFloat(m.calculated_quantity ?? m.quantity).toFixed(1) + ' ' + (m.units || '')
+                          : '';
+            mHtml += '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 10px;">'
+                   + '<span style="color:#E2E8F0;font-size:0.82rem;">' + escHtml(name) + '<span style="color:#64748B;">' + escHtml(color) + '</span></span>'
+                   + (qty ? '<span style="color:#E07B00;font-size:0.8rem;font-weight:600;white-space:nowrap;margin-left:8px;">' + escHtml(qty) + '</span>' : '')
+                   + '</div>';
+          });
+          mHtml += '</div>';
+          if (!hasMats) {
+            mHtml += '<div style="font-size:0.8rem;color:#64748B;margin-top:0.5rem;">Your measurements are ready. To see specific product selections here, open your Hover job and choose your preferred siding products.</div>';
+          }
+          matEl.innerHTML = mHtml;
+          matEl.style.display = 'block';
+          statusEl.style.display = 'none';
+        } else if (data.wall_squares || data.design_images?.length > 0) {
+          // Measurements available but no product selections
+          statusEl.innerHTML = '<span style="color:#64748B;">Measurements loaded. '
+            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#E07B00;">open your project in Hover ↗</a> and create an Estimate.' : '')
+            + '</span>';
+        } else if (data.message) {
+          statusEl.innerHTML = '<span style="color:#64748B;">' + data.message + '</span>';
+        } else {
+          statusEl.innerHTML = '<span style="color:#64748B;">No Hover data available for this project.</span>';
+        }
+
+      } catch (err) {
+        console.warn('loadHoverPropertyDesign error:', err);
+        if (statusEl) statusEl.innerHTML = '<span style="color:#64748B;">Could not load Hover data.</span>';
+      }
+    }
+
+    // ── HTML escape helper (bids.html scope) ─────────────────────────────
+    function escHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── Owner photo signed URL helpers ────────────────────────────────────
+    // owner_photo_url stores a bare storage path (contractor-documents bucket).
+    // Legacy records may store a full public URL — regex extracts the path in that case.
+    async function getSignedOwnerPhotoUrl(filePath) {
+      if (!filePath || !sb) return null;
+      try {
+        const pathMatch = filePath.match(/contractor-documents\/(.+?)(\?|$)/);
+        const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : filePath;
+        const { data, error } = await sb.storage
+          .from('contractor-documents')
+          .createSignedUrl(storagePath, 3600);
+        return (!error && data?.signedUrl) ? data.signedUrl : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Pre-resolve signed URLs for all loaded contractors into c._resolvedPhotoUrl.
+    // Called before render() so the synchronous map can use the resolved value.
+    async function resolveContractorPhotos() {
+      await Promise.all(Object.values(contractors).map(async (c) => {
+        if (c.owner_photo_url) {
+          c._resolvedPhotoUrl = await getSignedOwnerPhotoUrl(c.owner_photo_url);
+        }
+      }));
+    }
+
     function renderBids() {
       const grid = document.getElementById('bidsGrid');
-      const lowestPrice = Math.min(...bids.map(b => b.total_price || Infinity));
+
+      // Only non-expired bids compete for "Best Price" badge
+      const activeBids = bids.filter(b => b.bid_status !== 'expired');
+      const lowestPrice = activeBids.length > 1
+        ? Math.min(...activeBids.map(b => b.total_price || Infinity))
+        : Infinity;
+
+      // All-expired banner visibility
+      const allExpired = bids.length > 0 && bids.every(b => b.bid_status === 'expired');
+      const aeb = document.getElementById('allExpiredBanner');
+      if (aeb) aeb.style.display = allExpired ? 'flex' : 'none';
 
       grid.innerHTML = bids.map((bid, idx) => {
         const c = contractors[bid.contractor_id] || {};
-        const isLowest = bid.total_price === lowestPrice && bids.length > 1;
+        const isExpired = bid.bid_status === 'expired';
+        const isLowest = !isExpired && bid.total_price === lowestPrice && activeBids.length > 1;
         const initials = (c.company_name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
-        const avatarHTML = c.owner_photo_url
-          ? `<img src="${c.owner_photo_url}" alt="${c.company_name}">`
+        const avatarHTML = c._resolvedPhotoUrl
+          ? `<img src="${c._resolvedPhotoUrl}" alt="${c.company_name}">`
           : initials;
 
         // Determine job type badge color and label
@@ -765,11 +1030,35 @@
                             currentClaim.job_type === 'retail' ? 'Retail' :
                             currentClaim.job_type === 'repair' ? 'Repair' : 'Project';
 
+        // Expired date notice
+        const expiryNotice = isExpired
+          ? `<div class="bid-expiry-notice">⏰ This bid expired on ${bid.expires_at ? formatDate(bid.expires_at) : 'an earlier date'}.</div>`
+          : '';
+
+        // Action button(s) — expired bids get Request Updated Bid instead of Select
+        const actionBtn = (function() {
+          const cs = currentClaim ? currentClaim.status : null;
+          if (cs === 'contract_signed') {
+            return `<a href="contract-signing.html?claim_id=${currentClaim.id}&contractor_id=${bid.contractor_id}&quote_id=${bid.id}" class="btn btn-sm btn-ghost" style="border:1px solid var(--green);color:var(--green);">✓ Contract Signed</a>`;
+          }
+          if (cs === 'awarded' && currentClaim.selected_contractor_id === bid.contractor_id) {
+            return `<a href="contract-signing.html?claim_id=${currentClaim.id}&contractor_id=${bid.contractor_id}&quote_id=${bid.id}" class="btn btn-sm btn-primary">View Contract Status →</a>`;
+          }
+          if (cs === 'awarded') {
+            return `<button class="btn btn-sm btn-ghost" disabled style="opacity:0.4;cursor:not-allowed;">Not Selected</button>`;
+          }
+          if (isExpired) {
+            return `<button id="renewalBtn-${bid.id}" class="btn btn-sm btn-primary" style="background:var(--amber);" onclick="requestBidRenewal('${bid.id}')">Request Updated Bid</button>`;
+          }
+          // Active bid — standard select button
+          return `<button class="btn btn-sm btn-primary" onclick="selectContractor('${bid.id}')">Select This Contractor</button>`;
+        })();
+
         return `
-          <div class="bid-card ${isLowest ? 'lowest-price' : ''}" style="animation-delay:${idx * 0.1}s">
+          <div class="bid-card ${isLowest ? 'lowest-price' : ''} ${isExpired ? 'expired' : ''}" style="animation-delay:${idx * 0.1}s">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-4);">
               <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; background: ${jobTypeColor}; color: white; padding: 4px 10px; border-radius: var(--radius-full);">${jobTypeLabel}</span>
-              ${isLowest ? '' : '<span></span>'}
+              ${isExpired ? '<span class="bid-expiry-badge">Expired</span>' : '<span></span>'}
             </div>
 
             <div class="bid-card-header">
@@ -782,6 +1071,8 @@
                 </div>
               </div>
             </div>
+
+            ${expiryNotice}
 
             <div class="bid-metrics">
               <div class="bid-metric">
@@ -827,16 +1118,7 @@
 
             <div class="bid-card-actions">
               <a href="contractor-about.html?contractor_id=${bid.contractor_id}&claim_id=${currentClaim ? currentClaim.id : ''}" class="btn btn-sm btn-secondary">View Full Profile</a>
-              ${(function() {
-                const cs = currentClaim ? currentClaim.status : null;
-                if (cs === 'contract_signed') return `<a href="contract-signing.html?claim_id=${currentClaim.id}&contractor_id=${bid.contractor_id}&quote_id=${bid.id}" class="btn btn-sm btn-ghost" style="border:1px solid var(--green);color:var(--green);">✓ Contract Signed</a>`;
-                if (cs === 'awarded' && currentClaim.selected_contractor_id === bid.contractor_id) {
-                  return `<a href="contract-signing.html?claim_id=${currentClaim.id}&contractor_id=${bid.contractor_id}&quote_id=${bid.id}" class="btn btn-sm btn-primary">View Contract Status →</a>`;
-                }
-                if (cs === 'awarded') return `<button class="btn btn-sm btn-ghost" disabled style="opacity:0.4;cursor:not-allowed;">Not Selected</button>`;
-                // All contractors with bids are selectable — contract is distributed to both parties after selection
-                return `<button class="btn btn-sm btn-primary" onclick="selectContractor('${bid.id}')">Select This Contractor</button>`;
-              })()}
+              ${actionBtn}
             </div>
           </div>
         `;
@@ -855,8 +1137,8 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
       const initials = (c.company_name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
-      const avatarHTML = c.owner_photo_url
-        ? `<img src="${c.owner_photo_url}" alt="${c.company_name}">`
+      const avatarHTML = c._resolvedPhotoUrl
+        ? `<img src="${c._resolvedPhotoUrl}" alt="${c.company_name}">`
         : initials;
 
       // Hero
@@ -942,7 +1224,7 @@
       // Testimonials placeholder — testimonials column not yet available
       document.getElementById('profileTestimonials').innerHTML = `
         <h3>Customer Reviews</h3>
-        <p style="color:var(--slate);">No OtterQuote reviews yet. Reviews from previous OtterQuote homeowners will appear here as the contractor completes projects.</p>
+        <p style="color:var(--slate);">No Otter Quotes reviews yet. Reviews from previous Otter Quotes homeowners will appear here as the contractor completes projects.</p>
       `;
 
       // Stats
@@ -1006,7 +1288,7 @@
       // Select CTA — any contractor can be selected; signing happens after selection
       document.getElementById('profileSelectCTA').innerHTML = `
         <h3>Ready to Choose ${esc(c.company_name)}?</h3>
-        <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. The contract will be sent to both you and the contractor for signature. You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</p>
+        <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. The contract will be sent to both you and the contractor for signature. You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.</p>
         <button class="btn btn-primary btn-lg" onclick="selectContractor('${bid.id}')">Select ${esc(c.company_name)}</button>
       `;
 
@@ -1052,6 +1334,91 @@
     window.closeModal = function() {
       document.getElementById('confirmModal').classList.remove('active');
       pendingBidId = null;
+    };
+
+    // ── Request Updated Bid (expired bids) ──
+    // Notifies the contractor via dashboard notification and sends admin a support email.
+    // Non-blocking: errors are caught and surfaced via button text only.
+    window.requestBidRenewal = async function(bidId) {
+      const bid = bids.find(b => b.id === bidId);
+      if (!bid) return;
+      const c = contractors[bid.contractor_id] || {};
+
+      const btn = document.getElementById('renewalBtn-' + bidId);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Sending request…';
+      }
+
+      let notifOk = false;
+      let emailOk = false;
+
+      try {
+        // 1. Insert dashboard notification for the contractor (they'll see it on next login)
+        if (c.user_id) {
+          const { error: notifErr } = await sb.from('notifications').insert({
+            user_id: c.user_id,
+            notification_type: 'bid_renewal_requested',
+            channel: 'dashboard',
+            title: 'Homeowner requesting updated bid',
+            message: `A homeowner is requesting an updated bid on ${currentClaim ? (currentClaim.property_address || 'their project') : 'their project'}.`,
+            message_preview: `A homeowner is requesting an updated bid on ${currentClaim ? (currentClaim.property_address || 'their project') : 'their project'}.`,
+            metadata: JSON.stringify({ quote_id: bidId, claim_id: currentClaim ? currentClaim.id : null }),
+          });
+          if (!notifErr) notifOk = true;
+          else console.warn('requestBidRenewal — notification insert error:', notifErr);
+        }
+      } catch (err) {
+        console.warn('requestBidRenewal — notification step error:', err);
+      }
+
+      try {
+        // 2. Send support email so admin has visibility and can follow up if contractor is unresponsive
+        const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': CONFIG.SUPABASE_ANON,
+          },
+          body: JSON.stringify({
+            subject: '[Bid Renewal Requested] ' + (c.company_name || 'Contractor') + ' — ' + (currentClaim ? (currentClaim.property_address || currentClaim.id) : 'Unknown Claim'),
+            message: [
+              'A homeowner has requested an updated bid from a contractor whose bid has expired.',
+              '',
+              'Contractor: ' + (c.company_name || 'Unknown'),
+              'Property: ' + (currentClaim ? (currentClaim.property_address || 'N/A') : 'N/A'),
+              'Claim ID: ' + (currentClaim ? currentClaim.id : 'N/A'),
+              'Quote ID: ' + bidId,
+              '',
+              'The contractor has been notified via their dashboard' + (notifOk ? '.' : ' (notification may have failed — check manually).'),
+            ].join('\n'),
+          }),
+        });
+        if (resp.ok) emailOk = true;
+      } catch (err) {
+        console.warn('requestBidRenewal — email step error:', err);
+      }
+
+      // Update button to reflect outcome
+      if (btn) {
+        if (notifOk || emailOk) {
+          btn.textContent = '✓ Request Sent';
+          btn.style.background = '#059669'; // green — success
+          btn.style.cursor = 'default';
+        } else {
+          // Both steps failed — let homeowner try again
+          btn.disabled = false;
+          btn.textContent = 'Request Updated Bid';
+          btn.style.background = '';
+          console.warn('requestBidRenewal — both notification and email failed for bid', bidId);
+        }
+      }
+
+      gtag('event', 'bid_renewal_requested', {
+        bid_id: bidId,
+        contractor_id: bid.contractor_id,
+        success: notifOk || emailOk,
+      });
     };
 
     // requestAgreement (D-134) — REMOVED: no longer needed. Signing happens after

@@ -3,15 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Project Confirmation — OtterQuote</title>
+  <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Project Confirmation — Otter Quotes</title>
   <meta name="description" content="Confirm your project scope and materials so your contractor can get started.">
+  <meta name="robots" content="noindex, nofollow">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
@@ -28,7 +29,6 @@
       padding: var(--sp-12) 0;
     }
 
-    /* ── Container ── */
     .container {
       max-width: 900px;
       margin: 0 auto;
@@ -77,7 +77,7 @@
       background: var(--amber);
       border-color: var(--amber);
       color: var(--navy);
-      box-shadow: 0 0 20px rgba(20, 184, 166, 0.3);
+      box-shadow: 0 0 20px rgba(224, 123, 0, 0.3);
     }
 
     .progress-step.completed .progress-step-number {
@@ -110,12 +110,9 @@
     }
 
     .progress-step:first-child .progress-connector { display: none; }
+    .progress-step.completed .progress-connector { background: var(--green); }
 
-    .progress-step.completed .progress-connector {
-      background: var(--green);
-    }
-
-    /* ── Header ── */
+    /* ── Page Header ── */
     .page-header {
       margin-bottom: var(--sp-10);
       animation: fadeUp 0.6s var(--ease) 0.1s both;
@@ -134,8 +131,8 @@
 
     /* ── Contractor Card ── */
     .contractor-card {
-      background: linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, transparent 100%);
-      border: 1px solid rgba(20, 184, 166, 0.3);
+      background: linear-gradient(135deg, rgba(224, 123, 0, 0.1) 0%, transparent 100%);
+      border: 1px solid rgba(224, 123, 0, 0.3);
       border-radius: var(--radius-lg);
       padding: var(--sp-6);
       margin-bottom: var(--sp-8);
@@ -173,10 +170,7 @@
       margin-bottom: var(--sp-1);
     }
 
-    .contractor-meta {
-      color: var(--slate);
-      font-size: 0.9rem;
-    }
+    .contractor-meta { color: var(--slate); font-size: 0.9rem; }
 
     .contractor-badge {
       background: var(--amber-glow);
@@ -209,19 +203,79 @@
       border-left: 4px solid #3b82f6;
     }
 
-    .callout-icon {
-      font-size: 1.4rem;
-      flex-shrink: 0;
-      color: var(--green);
+    .callout.callout-amber {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-left: 4px solid var(--amber);
     }
 
+    .callout-icon { font-size: 1.4rem; flex-shrink: 0; color: var(--green); }
     .callout.callout-info .callout-icon { color: #3b82f6; }
+    .callout.callout-amber .callout-icon { color: var(--amber); }
 
     .callout-text { display: flex; flex-direction: column; gap: var(--sp-1); }
-
     .callout-title { font-weight: 600; color: var(--white); }
-
     .callout-description { color: rgba(255,255,255,0.8); font-size: 0.95rem; }
+
+    /* ── Auto-fill Banner ── */
+    .autofill-banner {
+      background: var(--navy-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-6) var(--sp-8);
+      margin-bottom: var(--sp-8);
+      animation: fadeUp 0.6s var(--ease) 0.2s both;
+    }
+
+    .autofill-banner-header {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      margin-bottom: var(--sp-5);
+      padding-bottom: var(--sp-4);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .autofill-banner-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--white);
+      margin: 0;
+    }
+
+    .autofill-tag {
+      background: rgba(224, 123, 0, 0.12);
+      color: var(--amber);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 2px var(--sp-2);
+      border-radius: var(--radius-full);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .autofill-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--sp-5);
+    }
+
+    .autofill-item {}
+
+    .autofill-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+      margin-bottom: var(--sp-1);
+    }
+
+    .autofill-value {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--white);
+    }
 
     /* ── Form Sections ── */
     .form-section {
@@ -248,7 +302,7 @@
     }
 
     .section-badge {
-      background: rgba(20, 184, 166, 0.1);
+      background: rgba(224, 123, 0, 0.1);
       color: var(--amber);
       padding: var(--sp-1) var(--sp-3);
       border-radius: var(--radius-full);
@@ -259,13 +313,11 @@
     /* ── Form Grid ── */
     .form-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: var(--sp-6);
     }
 
-    .form-grid-full {
-      grid-column: 1 / -1;
-    }
+    .form-grid-full { grid-column: 1 / -1; }
 
     .form-group {
       display: flex;
@@ -309,9 +361,7 @@
     }
 
     .form-input::placeholder,
-    .form-textarea::placeholder {
-      color: rgba(255,255,255,0.25);
-    }
+    .form-textarea::placeholder { color: rgba(255,255,255,0.25); }
 
     .form-select {
       cursor: pointer;
@@ -323,10 +373,7 @@
       padding-right: var(--sp-10);
     }
 
-    .form-select option {
-      background: #0B1929;
-      color: var(--white);
-    }
+    .form-select option { background: #0D1B2E; color: var(--white); }
 
     .form-textarea {
       resize: vertical;
@@ -340,85 +387,191 @@
       margin-top: var(--sp-1);
     }
 
-    /* ── Scope Line Items Table ── */
-    .scope-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.9rem;
-    }
-
-    .scope-table th {
-      text-align: left;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--slate);
-      padding: var(--sp-2) var(--sp-4);
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
-
-    .scope-table td {
-      padding: var(--sp-3) var(--sp-4);
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-      color: var(--white);
-      vertical-align: top;
-    }
-
-    .scope-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .scope-table tr:hover td {
-      background: rgba(255,255,255,0.02);
-    }
-
-    .scope-table .amount {
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-      font-family: var(--font-mono);
-      font-size: 0.85rem;
-    }
-
-    .scope-table .total-row td {
-      font-weight: 700;
-      border-top: 1px solid rgba(255,255,255,0.12);
-      padding-top: var(--sp-4);
-      color: var(--amber);
-    }
-
-    .scope-empty {
-      background: var(--navy-3);
-      border: 1px dashed rgba(255,255,255,0.1);
-      border-radius: var(--radius-md);
-      padding: var(--sp-6);
-      text-align: center;
-      color: var(--slate);
-      font-size: 0.9rem;
-    }
-
-    /* ── Colors / Materials Preview ── */
-    .color-preview {
+    /* ── Count Input (vents) ── */
+    .count-input-group {
       display: flex;
       align-items: center;
       gap: var(--sp-3);
-      margin-top: var(--sp-2);
+      flex-wrap: wrap;
     }
 
-    .color-swatch {
+    .count-input-row {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+    }
+
+    .count-input-label {
+      font-size: 0.85rem;
+      color: var(--slate);
+      white-space: nowrap;
+    }
+
+    .count-input {
+      width: 72px;
+      text-align: center;
+      padding: var(--sp-2) var(--sp-3) !important;
+    }
+
+    /* ── Structure Cards ── */
+    .structure-cards-container {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-6);
+      margin-top: var(--sp-6);
+    }
+
+    .structure-card {
+      background: var(--navy-3);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+    }
+
+    .structure-card-header {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      margin-bottom: var(--sp-5);
+      padding-bottom: var(--sp-4);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .structure-number {
       width: 28px;
       height: 28px;
-      border-radius: var(--radius-sm);
-      border: 1px solid rgba(255,255,255,0.15);
-      background: var(--navy-3);
+      border-radius: 50%;
+      background: var(--amber);
+      color: var(--navy);
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       flex-shrink: 0;
+    }
+
+    .structure-card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--white);
+    }
+
+    .structure-scope-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--sp-4);
+    }
+
+    .structure-scope-item {}
+
+    .structure-scope-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--slate);
+      margin-bottom: var(--sp-2);
+    }
+
+    .structure-skylight-row {
+      display: flex;
+      gap: var(--sp-4);
+      margin-top: var(--sp-4);
+      padding-top: var(--sp-4);
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .structure-skylight-row .form-group {
+      flex: 1;
+    }
+
+    /* ── Conditional Sections ── */
+    .conditional-section {
+      display: none;
+      margin-top: var(--sp-4);
+      padding: var(--sp-4) var(--sp-5);
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-md);
+    }
+
+    .conditional-section.visible { display: block; }
+
+    /* ── Skylight Cards ── */
+    .skylight-cards-container {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-5);
+    }
+
+    .skylight-card {
+      background: var(--navy-3);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+    }
+
+    .skylight-card-header {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      margin-bottom: var(--sp-5);
+    }
+
+    .skylight-number {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      color: var(--slate);
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .skylight-card.active .skylight-number {
+      background: rgba(224, 123, 0, 0.2);
+      color: var(--amber);
+    }
+
+    .skylight-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--slate);
+    }
+
+    .skylight-card.active .skylight-title { color: var(--white); }
+
+    .skylight-details {
+      display: none;
+      margin-top: var(--sp-4);
+      padding-top: var(--sp-4);
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .skylight-card.active .skylight-details { display: block; }
+
+    /* ── Disclosure Text ── */
+    .disclosure-text {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.75);
+      line-height: 1.7;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-md);
+      padding: var(--sp-4) var(--sp-5);
+      margin-bottom: var(--sp-4);
     }
 
     /* ── Acknowledgment Checkboxes ── */
     .ack-group {
       display: flex;
       flex-direction: column;
-      gap: var(--sp-4);
+      gap: var(--sp-6);
     }
 
     .ack-item {
@@ -446,7 +599,7 @@
     .ack-checkbox:checked {
       background: var(--amber);
       border-color: var(--amber);
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%230B1929' d='M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 11-1.06-1.06l7.25-7.25a.75.75 0 011.06 0z'/%3E%3Cpath fill='%230B1929' d='M2.22 9.28a.75.75 0 001.06 1.06L6.5 6.56l.72.72a.75.75 0 101.06-1.06l-1.28-1.28a.75.75 0 00-1.06 0L2.22 9.28z'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%230B1929' d='M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 11-1.06-1.06l7.25-7.25a.75.75 0 011.06 0zM2.22 9.28a.75.75 0 001.06 1.06L6.5 6.56l.72.72a.75.75 0 101.06-1.06l-1.28-1.28a.75.75 0 00-1.06 0L2.22 9.28z'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
       background-position: center;
       background-size: 13px;
@@ -460,12 +613,30 @@
       line-height: 1.5;
     }
 
-    .ack-label span {
+    .ack-sublabel {
       display: block;
       font-size: 0.85rem;
       color: var(--slate);
       margin-top: var(--sp-1);
     }
+
+    /* ── Form Actions ── */
+    .form-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      margin-top: var(--sp-8);
+      flex-wrap: wrap;
+    }
+
+    .back-link {
+      color: var(--slate);
+      text-decoration: none;
+      font-weight: 500;
+      transition: all var(--duration) var(--ease);
+    }
+
+    .back-link:hover { color: var(--white); }
 
     /* ── Buttons ── */
     .button {
@@ -487,19 +658,16 @@
     .button-primary {
       background: var(--amber);
       color: var(--navy);
-      box-shadow: 0 0 20px rgba(20, 184, 166, 0.3);
+      box-shadow: 0 0 20px rgba(224, 123, 0, 0.3);
     }
 
     .button-primary:hover:not(:disabled) {
       background: var(--amber-2);
       transform: translateY(-2px);
-      box-shadow: 0 0 30px rgba(20, 184, 166, 0.4);
+      box-shadow: 0 0 30px rgba(224, 123, 0, 0.4);
     }
 
-    .button-primary:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+    .button-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .button-secondary {
       background: var(--navy-3);
@@ -512,28 +680,7 @@
       background: var(--navy-2);
     }
 
-    .button-large {
-      padding: var(--sp-4) var(--sp-8);
-      font-size: 1.1rem;
-    }
-
-    /* ── Form Actions ── */
-    .form-actions {
-      display: flex;
-      align-items: center;
-      gap: var(--sp-4);
-      margin-top: var(--sp-8);
-      flex-wrap: wrap;
-    }
-
-    .back-link {
-      color: var(--slate);
-      text-decoration: none;
-      font-weight: 500;
-      transition: all var(--duration) var(--ease);
-    }
-
-    .back-link:hover { color: var(--white); }
+    .button-large { padding: var(--sp-4) var(--sp-8); font-size: 1.1rem; }
 
     /* ── Success Screen ── */
     .success-wrapper {
@@ -563,11 +710,8 @@
       margin-right: auto;
     }
 
-    /* ── Loading / Error States ── */
-    .loading-state {
-      text-align: center;
-      padding: var(--sp-20) var(--sp-8);
-    }
+    /* ── Loading / Error ── */
+    .loading-state { text-align: center; padding: var(--sp-20) var(--sp-8); }
 
     .loading-spinner {
       width: 48px;
@@ -631,21 +775,23 @@
         align-items: flex-start;
       }
 
-      .form-grid {
-        grid-template-columns: 1fr;
-      }
-
+      .form-grid { grid-template-columns: 1fr; }
+      .structure-scope-grid { grid-template-columns: 1fr 1fr; }
       .form-actions { flex-direction: column; }
-
       .button { width: 100%; justify-content: center; }
+      .autofill-grid { grid-template-columns: 1fr 1fr; }
+      .structure-skylight-row { flex-direction: column; }
+    }
+
+    @media (max-width: 480px) {
+      .structure-scope-grid { grid-template-columns: 1fr; }
+      .autofill-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <!-- Navigation -->
   <header id="site-header"></header>
 
-  <!-- Main Content -->
   <div class="confirmation-page-layout">
     <main class="confirmation-page-main">
       <div class="container">
@@ -670,17 +816,17 @@
           <!-- Progress Indicator -->
           <div class="progress-indicator">
             <div class="progress-steps">
-              <div class="progress-step completed" data-step="1">
+              <div class="progress-step completed">
                 <div class="progress-step-number">&#x2713;</div>
                 <div class="progress-step-label">Contract</div>
                 <div class="progress-connector"></div>
               </div>
-              <div class="progress-step active" data-step="2">
+              <div class="progress-step active">
                 <div class="progress-step-number">2</div>
                 <div class="progress-step-label">Confirm</div>
                 <div class="progress-connector"></div>
               </div>
-              <div class="progress-step" data-step="3">
+              <div class="progress-step">
                 <div class="progress-step-number">3</div>
                 <div class="progress-step-label">Done</div>
                 <div class="progress-connector"></div>
@@ -690,8 +836,8 @@
 
           <!-- Page Header -->
           <div class="page-header">
-            <h1>Project Confirmation</h1>
-            <p class="page-header-subtitle">Your contract is signed. Now let's confirm the scope, materials, and any special details your contractor needs to get started.</p>
+            <h1>Project Confirmation — Roofing</h1>
+            <p class="page-header-subtitle">Your contract is signed. Review the details below, answer a few questions, and initial the disclosures. Your contractor receives a signed confirmation document as soon as you submit.</p>
           </div>
 
           <!-- Contractor Card -->
@@ -709,341 +855,574 @@
             <div class="callout-icon">&#x2139;&#xFE0F;</div>
             <div class="callout-text">
               <div class="callout-title">This information goes directly to your contractor.</div>
-              <div class="callout-description">Once submitted, your contractor receives a signed project confirmation document with everything below. Review it carefully before hitting Submit.</div>
+              <div class="callout-description">Once submitted, your contractor receives a signed project confirmation document with everything below. Review carefully before hitting Submit.</div>
             </div>
           </div>
 
-          <!-- FORM -->
-          <form id="confirmationForm" novalidate>
-
-            <!-- ── Section 1: Scope Line Items ── -->
-            <div class="form-section">
-              <div class="section-header">
-                <h2>&#x1F4CB; Insurance Scope Items</h2>
-                <span class="section-badge">From Your Estimate</span>
+          <!-- ── Auto-Fill Banner ── -->
+          <div class="autofill-banner" id="autofillBanner">
+            <div class="autofill-banner-header">
+              <span>&#x2728;</span>
+              <h3 class="autofill-banner-title">Auto-filled from your claim &amp; winning bid</h3>
+              <span class="autofill-tag">Pre-filled</span>
+            </div>
+            <div class="autofill-grid" id="autofillGrid">
+              <div class="autofill-item">
+                <div class="autofill-label">Homeowner</div>
+                <div class="autofill-value" id="af-name">—</div>
               </div>
-              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5);">These line items were parsed from your insurance estimate. Review and verify they match what's being replaced.</p>
-              <div id="scopeTableContainer">
-                <div class="scope-empty">&#x23F3; Loading scope items...</div>
+              <div class="autofill-item">
+                <div class="autofill-label">Property Address</div>
+                <div class="autofill-value" id="af-address">—</div>
+              </div>
+              <div class="autofill-item">
+                <div class="autofill-label">Shingle Manufacturer</div>
+                <div class="autofill-value" id="af-mftr">—</div>
+              </div>
+              <div class="autofill-item">
+                <div class="autofill-label">Shingle Type</div>
+                <div class="autofill-value" id="af-type">—</div>
+              </div>
+              <div class="autofill-item">
+                <div class="autofill-label">Non-Recoverable Depreciation</div>
+                <div class="autofill-value" id="af-depreciation">—</div>
+              </div>
+              <div class="autofill-item">
+                <div class="autofill-label">Decking Rate (Per Sheet)</div>
+                <div class="autofill-value" id="af-decking-rate">—</div>
               </div>
             </div>
+          </div>
 
-            <!-- ── Section 2: Structure & Trades ── -->
+          <!-- ── FORM ── -->
+          <form id="confirmationForm" novalidate>
+
+            <!-- ══ Section 1: Structures & Trade Scope ══ -->
             <div class="form-section">
               <div class="section-header">
                 <h2>&#x1F3D7;&#xFE0F; Structures &amp; Trade Scope</h2>
               </div>
-              <div class="form-grid">
-                <div class="form-group">
-                  <label class="form-label required" for="numStructures">Number of Structures</label>
-                  <select id="numStructures" name="numStructures" class="form-select" required>
-                    <option value="">Select...</option>
-                    <option value="1">1 — House only</option>
-                    <option value="2">2 — House + detached garage</option>
-                    <option value="3">3 or more</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label required" for="structureNames">Structure Names</label>
-                  <input type="text" id="structureNames" name="structureNames" class="form-input" placeholder="e.g., Main house, Detached garage" required>
-                  <div class="form-hint">List each structure separated by commas</div>
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="roofAsphaltScope">Roof (Asphalt) Scope</label>
-                  <select id="roofAsphaltScope" name="roofAsphaltScope" class="form-select">
-                    <option value="">N/A — Not part of this project</option>
-                    <option value="full_replacement">Full replacement</option>
-                    <option value="partial_replacement">Partial replacement</option>
-                    <option value="repair_only">Repair only</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="roofMetalScope">Roof (Metal) Scope</label>
-                  <select id="roofMetalScope" name="roofMetalScope" class="form-select">
-                    <option value="">N/A — Not part of this project</option>
-                    <option value="full_replacement">Full replacement</option>
-                    <option value="partial_replacement">Partial replacement</option>
-                    <option value="repair_only">Repair only</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="guttersScope">Gutters</label>
-                  <select id="guttersScope" name="guttersScope" class="form-select">
-                    <option value="">N/A</option>
-                    <option value="replace_all">Replace all</option>
-                    <option value="replace_partial">Replace partial</option>
-                    <option value="repair">Repair only</option>
-                    <option value="clean_only">Clean only</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="downspoutsScope">Downspouts</label>
-                  <select id="downspoutsScope" name="downspoutsScope" class="form-select">
-                    <option value="">N/A</option>
-                    <option value="replace_all">Replace all</option>
-                    <option value="replace_partial">Replace partial</option>
-                    <option value="repair">Repair only</option>
-                  </select>
-                </div>
+              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5);">How many structures on the property need work? For each structure, confirm which trades will be completed.</p>
+
+              <div class="form-group" style="max-width: 280px; margin-bottom: var(--sp-6);">
+                <label class="form-label required" for="numStructures">Number of Structures on Property</label>
+                <select id="numStructures" name="numStructures" class="form-select" required>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </select>
+              </div>
+
+              <div class="structure-cards-container" id="structureCardsContainer">
+                <!-- Rendered by JS -->
               </div>
             </div>
 
-            <!-- ── Section 3: Materials & Colors ── -->
+            <!-- ══ Sections 2–6: ROOFING-SPECIFIC (hidden for non-roofing claims) ══ -->
+            <div id="roofingSections">
+
+            <!-- ══ Section 2: Shingle & Material Selections ══ -->
             <div class="form-section">
               <div class="section-header">
-                <h2>&#x1F3A8; Materials &amp; Colors</h2>
+                <h2>&#x1F3A8; Shingle &amp; Material Selections</h2>
+                <span class="section-badge">Roofing</span>
               </div>
+
               <div class="form-grid">
+                <!-- Shingle manufacturer — auto-filled, editable -->
                 <div class="form-group">
                   <label class="form-label" for="shingleManufacturer">Shingle Manufacturer</label>
                   <select id="shingleManufacturer" name="shingleManufacturer" class="form-select">
-                    <option value="">Not yet selected</option>
-                    <option value="owens_corning">Owens Corning</option>
-                    <option value="gaf">GAF</option>
-                    <option value="certainteed">CertainTeed</option>
-                    <option value="tamko">TAMKO</option>
-                    <option value="atlas">Atlas</option>
-                    <option value="iko">IKO</option>
-                    <option value="other">Other</option>
+                    <option value="">Not yet confirmed</option>
+                    <option value="Owens Corning">Owens Corning</option>
+                    <option value="GAF">GAF</option>
+                    <option value="CertainTeed">CertainTeed</option>
+                    <option value="TAMKO">TAMKO</option>
+                    <option value="Atlas">Atlas</option>
+                    <option value="IKO">IKO</option>
+                    <option value="Malarkey">Malarkey</option>
+                    <option value="Other">Other</option>
                   </select>
                 </div>
+
+                <!-- Shingle type — auto-filled, editable -->
                 <div class="form-group">
-                  <label class="form-label" for="shingleType">Shingle Type</label>
-                  <select id="shingleType" name="shingleType" class="form-select">
-                    <option value="">Not yet selected</option>
-                    <option value="3tab">3-Tab</option>
-                    <option value="architectural">Architectural / Laminate</option>
-                    <option value="designer">Designer / Premium</option>
-                    <option value="impact_class3">Architectural — Impact Class 3</option>
-                    <option value="impact_class4">Architectural — Impact Class 4</option>
-                    <option value="standing_seam_metal">Standing Seam Metal</option>
-                    <option value="exposed_fastener_metal">Exposed Fastener Metal</option>
+                  <label class="form-label" for="shingleType">Shingle Type / Product Line</label>
+                  <input type="text" id="shingleType" name="shingleType" class="form-input" placeholder="e.g., Duration, Timberline HDZ, Landmark">
+                </div>
+
+                <!-- Shingle color — homeowner fills -->
+                <div class="form-group">
+                  <label class="form-label required" for="shingleColor">Shingle Color</label>
+                  <input type="text" id="shingleColor" name="shingleColor" class="form-input" placeholder="e.g., Estate Gray, Weathered Wood, Charcoal" required>
+                  <div class="form-hint">
+                    Not sure? <a href="/color-selection.html" id="colorVisualizerLink" target="_blank" style="color: var(--amber);">Use the color visualizer &rarr;</a>
+                  </div>
+                </div>
+
+                <!-- Drip edge color -->
+                <div class="form-group">
+                  <label class="form-label required" for="dripEdgeColor">Drip Edge Color</label>
+                  <select id="dripEdgeColor" name="dripEdgeColor" class="form-select" required>
+                    <option value="">Select...</option>
+                    <option value="Black">Black</option>
+                    <option value="White">White</option>
+                    <option value="Special Order">Special Order*</option>
                   </select>
+                  <div class="form-hint">* Special order may extend lead time — confirm with your contractor.</div>
                 </div>
+
+                <!-- Valleys -->
                 <div class="form-group">
-                  <label class="form-label" for="shingleColor">Shingle Color</label>
-                  <input type="text" id="shingleColor" name="shingleColor" class="form-input" placeholder="e.g., Weathered Wood, Estate Gray">
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="dripEdgeColor">Drip Edge Color</label>
-                  <input type="text" id="dripEdgeColor" name="dripEdgeColor" class="form-input" placeholder="e.g., White, Brown, Black">
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="valleyType">Valley Type</label>
-                  <select id="valleyType" name="valleyType" class="form-select">
+                  <label class="form-label" for="valleys">Valleys</label>
+                  <select id="valleys" name="valleys" class="form-select">
                     <option value="">Not specified</option>
-                    <option value="open">Open valley</option>
-                    <option value="closed_cut">Closed-cut valley</option>
-                    <option value="woven">Woven valley</option>
+                    <option value="Closed">Closed</option>
+                    <option value="Open/Metal">Open / Metal</option>
                   </select>
                 </div>
+
+                <!-- Gutter guards -->
                 <div class="form-group">
                   <label class="form-label" for="gutterGuards">Gutter Guards</label>
-                  <select id="gutterGuards" name="gutterGuards" class="form-select">
-                    <option value="">Not applicable</option>
-                    <option value="included">Included (as covered by insurance)</option>
-                    <option value="available">Available (additional cost)</option>
-                    <option value="existing_reuse">Existing — reuse</option>
-                    <option value="existing_replace">Existing — replace with new</option>
+                  <select id="gutterGuards" name="gutterGuards" class="form-select" onchange="handleGutterGuardsChange()">
+                    <option value="None">None</option>
+                    <option value="On All Gutters">On All Gutters</option>
+                    <option value="On Some Gutters">On Some Gutters*</option>
                   </select>
                 </div>
-              </div>
-            </div>
 
-            <!-- ── Section 4: Skylights & Special Items ── -->
+                <!-- Gutter guards conditional notes -->
+                <div class="form-group form-grid-full" id="gutterGuardsNotesGroup" style="display:none;">
+                  <label class="form-label" for="gutterGuardsNotes">Which gutters?</label>
+                  <input type="text" id="gutterGuardsNotes" name="gutterGuardsNotes" class="form-input" placeholder="e.g., Front and left side only">
+                </div>
+
+              </div><!-- /form-grid -->
+
+              <!-- Vents -->
+              <div style="margin-top: var(--sp-6); padding-top: var(--sp-6); border-top: 1px solid rgba(255,255,255,0.06);">
+                <label class="form-label" style="display:block; margin-bottom: var(--sp-3);">Vent Type &amp; Count</label>
+                <div class="count-input-group">
+                  <div class="count-input-row">
+                    <span class="count-input-label">Box Vents</span>
+                    <input type="number" id="ventBox" name="ventBox" class="form-input count-input" placeholder="0" min="0" max="99" value="0">
+                  </div>
+                  <div class="count-input-row">
+                    <span class="count-input-label">Ridge Vents (ln ft)</span>
+                    <input type="number" id="ventRidge" name="ventRidge" class="form-input count-input" placeholder="0" min="0" max="999" value="0">
+                  </div>
+                  <div class="count-input-row" style="flex: 1;">
+                    <span class="count-input-label">Other</span>
+                    <input type="text" id="ventOther" name="ventOther" class="form-input" placeholder="e.g., 2 turbines, 1 power vent" style="flex: 1; min-width: 160px;">
+                  </div>
+                </div>
+              </div>
+
+            </div><!-- /section 2 -->
+
+            <!-- ══ Section 3: Satellite Dish ══ -->
             <div class="form-section">
               <div class="section-header">
-                <h2>&#x1FA9F; Skylights &amp; Special Items</h2>
+                <h2>&#x1F4E1; Satellite Dish</h2>
               </div>
+              <div class="form-group" style="max-width: 320px;">
+                <label class="form-label required" for="satelliteDish">Satellite Dish on Roof</label>
+                <select id="satelliteDish" name="satelliteDish" class="form-select" required>
+                  <option value="None">None</option>
+                  <option value="Remove - Trash">Remove &amp; Trash (homeowner canceling service)</option>
+                  <option value="Remove - Reset">Remove &amp; Reset (homeowner keeping service)</option>
+                </select>
+                <div class="form-hint">If Remove &amp; Reset: your contractor will remount the dish. You are responsible for scheduling any service technician realignment.</div>
+              </div>
+            </div>
+
+            <!-- ══ Section 4: Bad Decking ══ -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x1F528; Bad Decking</h2>
+              </div>
+              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5);">Decking damage cannot be confirmed until shingles are removed. Tell your contractor what you expect.</p>
+
               <div class="form-grid">
                 <div class="form-group">
-                  <label class="form-label" for="skylightsAction">Skylights</label>
-                  <select id="skylightsAction" name="skylightsAction" class="form-select">
-                    <option value="none">None / N/A</option>
-                    <option value="reflash_only">Reflash only</option>
-                    <option value="replace">Replace</option>
-                    <option value="reflash_and_replace">Some reflash, some replace</option>
+                  <label class="form-label required" for="badDecking">Bad Decking Expectation</label>
+                  <select id="badDecking" name="badDecking" class="form-select" required onchange="handleBadDeckingChange()">
+                    <option value="Unexpected">Unexpected — I don't anticipate bad decking</option>
+                    <option value="Expected">Expected — I know some sheets need replacing</option>
                   </select>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="skylightCount">Number of Skylights</label>
-                  <input type="number" id="skylightCount" name="skylightCount" class="form-input" placeholder="0" min="0" max="20">
+                <div class="form-group" id="badDeckingSheetsGroup" style="display:none;">
+                  <label class="form-label" for="badDeckingSheets">Estimated Number of Bad Sheets</label>
+                  <input type="number" id="badDeckingSheets" name="badDeckingSheets" class="form-input" placeholder="0" min="0" max="999" value="0">
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="satelliteDish">Satellite Dish</label>
-                  <select id="satelliteDish" name="satelliteDish" class="form-select">
-                    <option value="none">None</option>
-                    <option value="leave_in_place">Leave in place</option>
-                    <option value="disconnect_reconnect">Disconnect and reconnect</option>
-                    <option value="remove_homeowner">Remove — homeowner handles</option>
-                  </select>
+              </div>
+
+              <!-- Bad decking disclosure -->
+              <div style="margin-top: var(--sp-6); padding-top: var(--sp-6); border-top: 1px solid rgba(255,255,255,0.06);">
+                <div class="disclosure-text">
+                  <strong>BAD DECKING DISCLOSURE:</strong> I understand that decking cannot be inspected until the shingles are removed from the roof. On the day of install, my contractor is required by law to replace all bad decking discovered during removal. If any decking needs to be replaced, my contractor will submit an estimate of the costs to me and to my insurance company, but they cannot guarantee that my insurance company will pay for bad decking. I agree to sign the estimate and pay for re-decking at the contractor's stated per-sheet rate if my insurance company will not cover it.
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="badDeckingExpected">Bad Decking</label>
-                  <select id="badDeckingExpected" name="badDeckingExpected" class="form-select">
-                    <option value="none_expected">None expected</option>
-                    <option value="some_expected">Some expected (per estimate)</option>
-                    <option value="unknown">Unknown — T&amp;M rate applies</option>
-                  </select>
-                </div>
-                <div class="form-group form-grid-full">
-                  <label class="form-label" for="workNotBeingDone">Work NOT Being Done</label>
-                  <input type="text" id="workNotBeingDone" name="workNotBeingDone" class="form-input" placeholder="e.g., Chimney cap, HVAC flashing, Siding">
-                  <div class="form-hint">List any line items from the estimate that are excluded from this scope</div>
+                <div class="ack-item">
+                  <input type="checkbox" class="ack-checkbox" id="ackBadDecking" name="ackBadDecking">
+                  <label class="ack-label" for="ackBadDecking">
+                    I have read and understand the Bad Decking Disclosure above. <em>(Initial)</em>
+                    <span class="ack-sublabel">Decking rate per sheet: <strong id="deckingRateDisplay">—</strong></span>
+                  </label>
                 </div>
               </div>
             </div>
 
-            <!-- ── Section 5: Chimney Details ── -->
+            <!-- ══ Section 5: Chimney Details ══ -->
             <div class="form-section">
               <div class="section-header">
                 <h2>&#x1F6D6; Chimney Details</h2>
               </div>
-              <div class="form-grid">
-                <div class="form-group">
-                  <label class="form-label" for="chimney1Material">Chimney 1 — Material</label>
-                  <select id="chimney1Material" name="chimney1Material" class="form-select">
-                    <option value="none">None / N/A</option>
-                    <option value="brick">Brick</option>
-                    <option value="stone">Stone</option>
-                    <option value="stucco">Stucco</option>
-                    <option value="siding">Siding-wrapped</option>
-                  </select>
+              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5);">If no chimney, leave all fields as N/A. Complete one card per chimney (up to 2).</p>
+
+              <!-- Chimney 1 -->
+              <div class="structure-card" style="margin-bottom: var(--sp-5);">
+                <div class="structure-card-header">
+                  <div class="structure-number">1</div>
+                  <div class="structure-card-title">Chimney #1</div>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="chimney1Cricket">Chimney 1 — Cricket</label>
-                  <select id="chimney1Cricket" name="chimney1Cricket" class="form-select">
-                    <option value="no">Not needed</option>
-                    <option value="existing">Existing — keep</option>
-                    <option value="new">Install new cricket</option>
-                  </select>
+                <div class="structure-scope-grid">
+                  <div class="structure-scope-item">
+                    <div class="structure-scope-label">Material</div>
+                    <select name="chimney1Material" class="form-select">
+                      <option value="N/A">N/A — No Chimney</option>
+                      <option value="Brick">Brick</option>
+                      <option value="Vinyl">Vinyl</option>
+                      <option value="Hardie/LP">Hardie / LP</option>
+                      <option value="Wood">Wood</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div class="structure-scope-item">
+                    <div class="structure-scope-label">Size</div>
+                    <select name="chimney1Size" class="form-select">
+                      <option value="N/A">N/A</option>
+                      <option value="Small">Small</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Large">Large</option>
+                      <option value="X-Large">X-Large</option>
+                    </select>
+                  </div>
+                  <div class="structure-scope-item">
+                    <div class="structure-scope-label">Cricket</div>
+                    <select name="chimney1Cricket" class="form-select">
+                      <option value="No">No</option>
+                      <option value="Yes">Yes</option>
+                    </select>
+                  </div>
+                  <div class="structure-scope-item">
+                    <div class="structure-scope-label">Reflash</div>
+                    <select name="chimney1Reflash" class="form-select">
+                      <option value="N/A">N/A</option>
+                      <option value="No - Homeowner will NOT pay OOP">No — Homeowner will NOT pay OOP</option>
+                      <option value="Yes - Homeowner will pay OOP">Yes — Homeowner will pay OOP</option>
+                    </select>
+                  </div>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="chimney1ReflashOop">Chimney 1 — Reflash OOP?</label>
-                  <select id="chimney1ReflashOop" name="chimney1ReflashOop" class="form-select">
-                    <option value="no">No — covered by insurance</option>
-                    <option value="yes">Yes — homeowner OOP</option>
-                    <option value="na">Not applicable</option>
-                  </select>
+              </div>
+
+              <!-- Chimney 2 -->
+              <div class="structure-card">
+                <div class="structure-card-header">
+                  <div class="structure-number" style="background: rgba(255,255,255,0.1); color: var(--slate);">2</div>
+                  <div class="structure-card-title" style="color: var(--slate);">Chimney #2</div>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="chimney2Material">Chimney 2 — Material</label>
-                  <select id="chimney2Material" name="chimney2Material" class="form-select">
-                    <option value="none">None / N/A</option>
-                    <option value="brick">Brick</option>
-                    <option value="stone">Stone</option>
-                    <option value="stucco">Stucco</option>
-                    <option value="siding">Siding-wrapped</option>
-                  </select>
+                <div class="structure-scope-grid">
+                  <div class="structure-scope-item">
+                    <div class="structure-scope-label">Material</div>
+                    <select name="chimney2Material" class="form-select">
+                      <option value="N/A">N/A — No Second Chimney</option>
+                      <option value="Brick">Brick</option>
+                      <option value="Vinyl">Vinyl</option>
+                      <option value="Hardie/LP">Hardie / LP</option>
+                      <option value="Wood">Wood</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div class="structure-scope-item">
+                    <div class="structure-scope-label">Size</div>
+                    <select name="chimney2Size" class="form-select">
+                      <option value="N/A">N/A</option>
+                      <option value="Small">Small</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Large">Large</option>
+                      <option value="X-Large">X-Large</option>
+                    </select>
+                  </div>
+                  <div class="structure-scope-item">
+                    <div class="structure-scope-label">Cricket</div>
+                    <select name="chimney2Cricket" class="form-select">
+                      <option value="No">No</option>
+                      <option value="Yes">Yes</option>
+                    </select>
+                  </div>
+                  <div class="structure-scope-item">
+                    <div class="structure-scope-label">Reflash</div>
+                    <select name="chimney2Reflash" class="form-select">
+                      <option value="N/A">N/A</option>
+                      <option value="No - Homeowner will NOT pay OOP">No — Homeowner will NOT pay OOP</option>
+                      <option value="Yes - Homeowner will pay OOP">Yes — Homeowner will pay OOP</option>
+                    </select>
+                  </div>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="chimney2Cricket">Chimney 2 — Cricket</label>
-                  <select id="chimney2Cricket" name="chimney2Cricket" class="form-select">
-                    <option value="no">Not needed</option>
-                    <option value="existing">Existing — keep</option>
-                    <option value="new">Install new cricket</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="chimney2ReflashOop">Chimney 2 — Reflash OOP?</label>
-                  <select id="chimney2ReflashOop" name="chimney2ReflashOop" class="form-select">
-                    <option value="no">No — covered by insurance</option>
-                    <option value="yes">Yes — homeowner OOP</option>
-                    <option value="na">N/A — no second chimney</option>
-                  </select>
-                </div>
+              </div>
+            </div><!-- /chimneys -->
+
+            <!-- ══ Section 6: Skylight Details ══ -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x1FA9F; Skylight Details</h2>
+              </div>
+              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5);">Select N/A for skylights that are not part of this project. Complete scope for each skylight that needs work (up to 4).</p>
+
+              <div class="skylight-cards-container" id="skylightCardsContainer">
+                <!-- Rendered by JS -->
               </div>
             </div>
 
-            <!-- ── Section 6: Financial Details ── -->
+            </div><!-- /roofingSections -->
+
+            <!-- ══ Section 7: Siding Details (hidden for non-siding claims) ══ -->
+            <div id="sidingSection" style="display:none;">
             <div class="form-section">
               <div class="section-header">
-                <h2>&#x1F4B0; Financial Details</h2>
+                <h2>🏠 Siding Details</h2>
+                <p class="section-subtitle">Confirm your siding project scope and acknowledge the disclosures below.</p>
               </div>
+
+              <!-- D-164/D-158 info callout: manufacturer/profile/color/trim captured pre-bid in Hover -->
+              <div class="callout callout-info" style="margin-bottom:var(--sp-5);">
+                <div class="callout-icon">ℹ️</div>
+                <div>
+                  <div class="callout-title">Siding design already locked in</div>
+                  <div class="callout-description">
+                    Your manufacturer, profile, color, and trim selections were captured in Hover before bids were released.
+                    Contractors bid on those exact specifications — you don't need to re-enter them here.
+                    The fields below cover scope and installation details that don't affect the bid price.
+                  </div>
+                </div>
+              </div>
+
               <div class="form-grid">
                 <div class="form-group">
-                  <label class="form-label" for="nonRecoverableDepreciation">Non-Recoverable Depreciation</label>
-                  <input type="number" id="nonRecoverableDepreciation" name="nonRecoverableDepreciation" class="form-input" placeholder="0.00" min="0" step="0.01">
-                  <div class="form-hint">Amount homeowner is responsible for (if ACV policy or partial)</div>
+                  <label class="form-label" for="soffitFascia">Soffit &amp; Fascia</label>
+                  <select id="soffitFascia" name="soffitFascia" class="form-select">
+                    <option value="">Select…</option>
+                    <option value="Included">Included in scope</option>
+                    <option value="Not Included">Not included</option>
+                    <option value="Damaged Only">Included — damaged areas only</option>
+                  </select>
                 </div>
+
                 <div class="form-group">
-                  <label class="form-label" for="deductibleAmount">Deductible Amount</label>
-                  <input type="number" id="deductibleAmount" name="deductibleAmount" class="form-input" placeholder="0.00" min="0" step="0.01" readonly>
-                  <div class="form-hint">Pulled from your claim — confirm with your contractor</div>
+                  <label class="form-label" for="windowWraps">Window Wraps</label>
+                  <select id="windowWraps" name="windowWraps" class="form-select" onchange="handleWindowWrapsChange()">
+                    <option value="">Select…</option>
+                    <option value="Included - All">Included — all windows</option>
+                    <option value="Included - Damaged Only">Included — damaged windows only</option>
+                    <option value="Not Included">Not included</option>
+                  </select>
+                  <div id="windowWrapsColorGroup" style="display:none; margin-top:var(--sp-2);">
+                    <input type="text" id="windowWrapsColor" name="windowWrapsColor" class="form-input"
+                      placeholder="Window wrap color…">
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- ── Section 7: Homeowner Notes ── -->
+              <!-- Rotten Sheathing -->
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label" for="rottenSheathing">Rotten Sheathing Expectation</label>
+                  <select id="rottenSheathing" name="rottenSheathing" class="form-select" onchange="handleRottenSheathingChange()">
+                    <option value="Unexpected">Unexpected — not anticipated</option>
+                    <option value="Expected">Expected — I know some exists</option>
+                  </select>
+                </div>
+                <div id="rottenSheathingSqFtGroup" style="display:none;">
+                  <label class="form-label" for="rottenSheathingSqFt">Estimated sq ft of rotten sheathing</label>
+                  <input type="number" id="rottenSheathingSqFt" name="rottenSheathingSqFt" class="form-input"
+                    min="0" placeholder="0">
+                </div>
+              </div>
+
+              <!-- Rotten Sheathing Disclosure + Ack -->
+              <div class="disclosure-text" id="sidingDisclosureBox">
+                <h4 class="disclosure-heading">Rotten Sheathing</h4>
+                <p>Rotten or damaged wall sheathing cannot be fully inspected until the existing siding is removed. On the day of install, [Contractor] is required to replace all rotten sheathing found. Sheathing replacement costs will be communicated to me before work begins and submitted to my insurance company. If my insurance company will not pay for sheathing replacement, I will be responsible for the cost.</p>
+              </div>
+              <div class="ack-item">
+                <input type="checkbox" class="ack-checkbox" id="ackRottenSheathing" name="ackRottenSheathing">
+                <label class="ack-label" for="ackRottenSheathing">
+                  I have read and understand the Rotten Sheathing Disclosure above. <em>(Initial)</em>
+                </label>
+              </div>
+            </div><!-- /form-section siding -->
+            </div><!-- /sidingSection -->
+
+            <!-- ══ Section 8: Gutter Details (hidden for non-gutter claims) ══ -->
+            <div id="guttersSection" style="display:none;">
             <div class="form-section">
               <div class="section-header">
-                <h2>&#x1F4AC; Notes for Your Contractor</h2>
+                <h2>🌧️ Gutter Details</h2>
+                <p class="section-subtitle">Confirm your gutter and downspout specifications.</p>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label" for="gutterSize">Gutter Size</label>
+                  <select id="gutterSize" name="gutterSize" class="form-select">
+                    <option value="">Select size…</option>
+                    <option value='5" K-Style'>5" K-Style (standard)</option>
+                    <option value='6" K-Style'>6" K-Style (premium)</option>
+                    <option value="Half-Round">Half-Round</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="gutterColorInput">Gutter Color</label>
+                  <input type="text" id="gutterColorInput" name="gutterColorInput" class="form-input"
+                    placeholder="e.g., White, Musket Brown, Bronze…">
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label" for="downspoutColorType">Downspout Color</label>
+                  <select id="downspoutColorType" name="downspoutColorType" class="form-select" onchange="handleDownspoutColorChange()">
+                    <option value="">Select…</option>
+                    <option value="Same as gutters">Same as gutters</option>
+                    <option value="Other">Different color</option>
+                  </select>
+                  <div id="downspoutColorOtherGroup" style="display:none; margin-top:var(--sp-2);">
+                    <input type="text" id="downspoutColorOther" name="downspoutColorOther" class="form-input"
+                      placeholder="Downspout color…">
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="splashBlocks">Splash Blocks</label>
+                  <select id="splashBlocks" name="splashBlocks" class="form-select">
+                    <option value="">Select…</option>
+                    <option value="Include">Include splash blocks</option>
+                    <option value="Replace Existing">Replace existing only</option>
+                    <option value="Not Needed">Not needed</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="gutterNotes">Additional Gutter Notes (optional)</label>
+                <textarea id="gutterNotes" name="gutterNotes" class="form-textarea" rows="3"
+                  placeholder="Any special gutter requirements, custom miters, end caps, etc.…"></textarea>
+              </div>
+            </div><!-- /form-section gutters -->
+            </div><!-- /guttersSection -->
+
+            <!-- ══ Section 9: Work NOT Being Done ══ -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x274C; Work NOT Being Done</h2>
               </div>
               <div class="form-group">
-                <label class="form-label" for="homeownerNotes">Additional Notes or Instructions</label>
-                <textarea id="homeownerNotes" name="homeownerNotes" class="form-textarea" rows="4" placeholder="e.g., Gate code is 1234. Dog in backyard — please call before entering. I work from home Tuesdays — prefer not to start before 9am."></textarea>
-                <div class="form-hint">This will appear on the project confirmation document sent to your contractor.</div>
+                <label class="form-label" for="exclusions">Excluded Scope (Line Items or Trades)</label>
+                <textarea id="exclusions" name="exclusions" class="form-textarea" rows="4" placeholder="List any line items from the estimate or any trades that are excluded from this scope of work. e.g., Chimney cap replacement, HVAC flashing, Interior water damage, Siding trade."></textarea>
+                <div class="form-hint">This protects both you and your contractor from scope disputes. Be specific.</div>
               </div>
             </div>
 
-            <!-- ── Section 8: Acknowledgments ── -->
+            <!-- ══ Section 10: Project Notes ══ -->
             <div class="form-section">
               <div class="section-header">
-                <h2>&#x270F;&#xFE0F; Acknowledgments</h2>
+                <h2>&#x1F4AC; Project Notes</h2>
               </div>
-              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-6);">Please review and initial each item below before submitting your project confirmation.</p>
+              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5);">Any other information your contractor needs to know. Gate codes, pets, special access instructions, scheduling preferences, or anything else.</p>
+              <div class="form-group">
+                <label class="form-label" for="projectNotes">Notes</label>
+                <textarea id="projectNotes" name="projectNotes" class="form-textarea" rows="4" placeholder="e.g., Gate code 1234. Dog in backyard — please call before entering. I work from home — prefer not to start before 8am."></textarea>
+              </div>
+            </div>
+
+            <!-- ══ Section 11: Disclosures ══ -->
+            <div class="form-section">
+              <div class="section-header">
+                <h2>&#x270F;&#xFE0F; Disclosures &amp; Acknowledgments</h2>
+              </div>
+              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-6);">Please initial each item below. All four are required before you can submit.</p>
               <div class="ack-group">
+
+                <!-- Non-recoverable depreciation -->
                 <div class="ack-item">
-                  <input type="checkbox" class="ack-checkbox" id="ackBadDecking" name="ackBadDecking">
-                  <label class="ack-label" for="ackBadDecking">
-                    I understand that bad decking discovered during installation will be billed at the contractor's stated per-sheet rate.
-                    <span>This is standard — the estimate accounts for known decking; unexpected damage is billed separately.</span>
+                  <input type="checkbox" class="ack-checkbox" id="ackDepreciation" name="ackDepreciation">
+                  <label class="ack-label" for="ackDepreciation">
+                    <div class="disclosure-text" style="margin-bottom: var(--sp-2);">
+                      <strong>NON-RECOVERABLE DEPRECIATION:</strong> My insurance claim shows non-recoverable depreciation in the amount of <strong id="depreciationAmtDisplay">$___</strong>. I understand that this is money my insurance company will not be paying to me, but I will still be responsible for paying my contractor the full Replacement Cost Value (RCV) of my project.
+                    </div>
+                    I have read and understand the Non-Recoverable Depreciation disclosure above. <em>(Initial)</em>
+                    <span class="ack-sublabel">If your policy does not have non-recoverable depreciation, this acknowledgment confirms you have reviewed the financial details.</span>
                   </label>
                 </div>
-                <div class="ack-item">
-                  <input type="checkbox" class="ack-checkbox" id="ackProjectChanges" name="ackProjectChanges">
-                  <label class="ack-label" for="ackProjectChanges">
-                    I understand that any changes to this project scope after submission may require a change order signed by both parties.
-                    <span>Material or scope changes after installation begins may affect cost and timeline.</span>
-                  </label>
-                </div>
-                <div class="ack-item">
-                  <input type="checkbox" class="ack-checkbox" id="ackNonRecoverable" name="ackNonRecoverable">
-                  <label class="ack-label" for="ackNonRecoverable">
-                    I acknowledge any non-recoverable depreciation amount listed above is my out-of-pocket responsibility.
-                    <span>If no depreciation applies, this acknowledgment still confirms I have reviewed the financial details.</span>
-                  </label>
-                </div>
+
+                <!-- Payment terms -->
                 <div class="ack-item">
                   <input type="checkbox" class="ack-checkbox" id="ackPaymentTerms" name="ackPaymentTerms">
                   <label class="ack-label" for="ackPaymentTerms">
-                    I agree to the payment terms outlined in the signed contractor agreement.
-                    <span>Payment is due per the schedule in the contract I signed in the previous step.</span>
+                    <div class="disclosure-text" style="margin-bottom: var(--sp-2);">
+                      <strong>PAYMENT DUE 30 DAYS AFTER TRADE COMPLETED:</strong> I understand that full payment for completed work is due 30 days after that trade is completed. My contractor will contact my insurance company to confirm that a trade is completed, but it is my responsibility to ensure the balance due to my contractor is paid on time.
+                    </div>
+                    I have read and understand the Payment Terms disclosure above. <em>(Initial)</em>
                   </label>
                 </div>
-              </div>
-            </div>
+
+                <!-- Project changes -->
+                <div class="ack-item">
+                  <input type="checkbox" class="ack-checkbox" id="ackProjectChanges" name="ackProjectChanges">
+                  <label class="ack-label" for="ackProjectChanges">
+                    <div class="disclosure-text" style="margin-bottom: var(--sp-2);">
+                      <strong>PROJECT CHANGES:</strong> Should I make any changes to the project after signing this document, I understand that I will need to sign a revised document and the changes could delay my install date.
+                    </div>
+                    I have read and understand the Project Changes disclosure above. <em>(Initial)</em>
+                  </label>
+                </div>
+
+                <!-- Information correct -->
+                <div class="ack-item">
+                  <input type="checkbox" class="ack-checkbox" id="ackInfoCorrect" name="ackInfoCorrect">
+                  <label class="ack-label" for="ackInfoCorrect">
+                    <strong>THE ABOVE INFORMATION IS CORRECT.</strong> I have reviewed all selections and scope items in this Project Confirmation and confirm they are accurate to the best of my knowledge. <em>(Initial)</em>
+                    <span class="ack-sublabel">This does not modify your signed contract — it confirms the project details discussed.</span>
+                  </label>
+                </div>
+
+              </div><!-- /ack-group -->
+            </div><!-- /disclosures -->
 
             <!-- ── Form Actions ── -->
             <div class="form-actions">
               <button type="submit" class="button button-primary button-large" id="submitBtn" disabled>
                 Submit Project Confirmation &rarr;
               </button>
-              <a href="/contract-signing.html" id="backToContractLink" class="back-link">&larr; Back to Contract</a>
+              <a href="/dashboard.html" id="backToContractLink" class="back-link">&larr; Back to Dashboard</a>
             </div>
 
-          </form>
+          </form><!-- /confirmationForm -->
 
-          <!-- ── Success Screen (hidden until submit) ── -->
+          <!-- ── Success Screen ── -->
           <div id="successScreen" style="display: none;">
             <div class="success-wrapper">
               <div class="success-icon">&#x2705;</div>
               <h2 class="success-title">Confirmation Submitted!</h2>
-              <p class="success-subtitle">Your project details have been saved and sent to your contractor for signature. They'll be in touch to confirm your installation schedule.</p>
+              <p class="success-subtitle">Your project details have been saved and sent to your contractor. They'll be in touch to confirm your installation schedule.</p>
 
-              <!-- Envelope ID (shown when DocuSign envelope is created) -->
-              <div id="envelopeIdSection" style="display: none; margin-top: var(--sp-6); padding: var(--sp-4) var(--sp-5); background: rgba(20, 184, 166, 0.08); border: 1px solid rgba(20, 184, 166, 0.25); border-radius: var(--radius-md); text-align: left;">
-                <p style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--teal); margin-bottom: var(--sp-1);">DocuSign Confirmation</p>
+              <div id="envelopeIdSection" style="display: none; margin-top: var(--sp-6); padding: var(--sp-4) var(--sp-5); background: rgba(224, 123, 0, 0.08); border: 1px solid rgba(224, 123, 0, 0.25); border-radius: var(--radius-md); text-align: left;">
+                <p style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--amber); margin-bottom: var(--sp-1);">DocuSign Confirmation</p>
                 <p style="font-size: 0.85rem; color: var(--slate); margin-bottom: var(--sp-1);">Envelope ID:</p>
                 <p id="envelopeIdDisplay" style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--white); word-break: break-all;"></p>
               </div>
@@ -1055,37 +1434,35 @@
           </div>
 
         </div><!-- /pageContent -->
-
       </div>
     </main>
-
     <footer id="site-footer"></footer>
   </div>
 
-  <!-- Scripts -->
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
   <script>
     /**
-     * OtterQuote — Project Confirmation Page (D-110/D-111/D-112)
+     * Otter Quotes — Project Confirmation Page (D-110/D-111/D-112/D-155)
+     * Roofing flow — expanded from color-selection.html per D-155.
+     * Siding/gutters/windows flows to follow in a future session.
      *
      * URL params:
-     *   ?claim_id=XXX   — required; pulls claim + selected contractor + parsed_line_items
+     *   ?claim_id=XXX   — required
      *
      * Flow:
      *   1. Auth check (homeowner only)
-     *   2. Load claim, contractor, parsed_line_items
-     *   3. Homeowner fills scope/material/notes form
-     *   4. On submit: save project_confirmation JSONB to claims table
-     *   5. Call create-docusign-envelope Edge Function (document_type: 'project_confirmation')
-     *   6. Show success screen with confirmation envelope ID
-     *
-     * DocuSign call: real Edge Function invoke (wired Session 106, ClickUp 86e0vc0hv + 86e0vc0p7).
+     *   2. Load claim, contractor, winning quote (for shingle mftr/type/decking rate)
+     *   3. Auto-fill project overview section
+     *   4. Homeowner fills ~15 questions + initials 4 disclosures
+     *   5. On submit: save project_confirmation JSONB to claims table (D-112)
+     *   6. Call create-docusign-envelope Edge Function (document_type: 'project_confirmation')
+     *   7. Show success screen
      */
 
-    // ── State ──
+    // ── State ──────────────────────────────────────────────────────────────────
     const state = {
       claimId: null,
       claim: null,
@@ -1093,10 +1470,19 @@
       contractor: null,
       currentUser: null,
       homeownerName: null,
-      parsedLineItems: [],
+      winningQuote: null,
+      depreciation: null,
+      deckingRatePerSheet: null,
+      selectedTrades: [],   // populated from claim.selected_trades on init
+      isInsuranceClaim: false,
     };
 
-    // ── Helpers ──
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
     function showError(title, detail) {
       document.getElementById('pageLoading').style.display = 'none';
       document.getElementById('pageContent').style.display = 'none';
@@ -1112,177 +1498,556 @@
       return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    // ── Render Scope Table ──
-    function renderScopeTable(items) {
-      const container = document.getElementById('scopeTableContainer');
-      if (!items || items.length === 0) {
-        container.innerHTML = '<div class="scope-empty">&#x1F4AD; No scope items were parsed from your estimate. Your contractor will work from the full estimate on file.</div>';
-        return;
+    function getSelectVal(name) {
+      const el = document.querySelector(`select[name="${name}"]`);
+      return el ? el.value : null;
+    }
+
+    function getInputVal(id) {
+      const el = document.getElementById(id);
+      return el ? el.value : null;
+    }
+
+    function getInputValByName(name) {
+      const el = document.querySelector(`[name="${name}"]`);
+      return el ? el.value : null;
+    }
+
+    function getCheckVal(id) {
+      const el = document.getElementById(id);
+      return el ? el.checked : false;
+    }
+
+    function setVal(el, val) {
+      if (!el || val == null) return;
+      el.value = val;
+    }
+
+    function setCheckById(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.checked = !!val;
+    }
+
+    // ── Render Structure Cards ─────────────────────────────────────────────────
+    function renderStructureCards(count, existingStructures) {
+      const container = document.getElementById('structureCardsContainer');
+      container.innerHTML = '';
+
+      const defaults = ['Main House', 'Detached Garage', 'Barn / Workshop', 'Pool House', 'Other Structure'];
+      const ex = existingStructures || [];
+
+      for (let i = 0; i < count; i++) {
+        const s = ex[i] || {};
+        const defName = defaults[i] || `Structure ${i + 1}`;
+        const name = s.name || defName;
+
+        const roofAsphalt = s.roofAsphalt || '';
+        const roofMetal   = s.roofMetal   || '';
+        const siding      = s.siding      || '';
+        const gutters     = s.gutters     || '';
+        const downspouts  = s.downspouts  || '';
+        const skylightsReplace = s.skylightsReplace || '0';
+        const skylightsReflash = s.skylightsReflash || '0';
+
+        const opt = (val, label, selected) =>
+          `<option value="${escHtml(val)}" ${selected === val ? 'selected' : ''}>${escHtml(label)}</option>`;
+
+        container.innerHTML += `
+          <div class="structure-card">
+            <div class="structure-card-header">
+              <div class="structure-number">${i + 1}</div>
+              <div class="form-group" style="flex:1; margin:0;">
+                <input type="text"
+                  name="structure_${i}_name"
+                  class="form-input"
+                  value="${escHtml(name)}"
+                  placeholder="Structure name (e.g., Main House)"
+                  style="font-weight:600;"
+                >
+              </div>
+            </div>
+            <div class="structure-scope-grid">
+              <div class="structure-scope-item">
+                <div class="structure-scope-label">Roof — Asphalt</div>
+                <select name="structure_${i}_roofAsphalt" class="form-select">
+                  ${opt('', 'Select...', roofAsphalt)}
+                  ${opt('Full', 'FULL', roofAsphalt)}
+                  ${opt('Part/Repair', 'PART / REPAIR', roofAsphalt)}
+                  ${opt('None', 'NONE', roofAsphalt)}
+                  ${opt('Other', 'OTHER*', roofAsphalt)}
+                </select>
+              </div>
+              <div class="structure-scope-item">
+                <div class="structure-scope-label">Roof — Metal</div>
+                <select name="structure_${i}_roofMetal" class="form-select">
+                  ${opt('None', 'NONE', roofMetal)}
+                  ${opt('Full', 'FULL', roofMetal)}
+                  ${opt('Unsure', 'UNSURE', roofMetal)}
+                </select>
+              </div>
+              <div class="structure-scope-item">
+                <div class="structure-scope-label">Siding</div>
+                <select name="structure_${i}_siding" class="form-select">
+                  ${opt('None', 'NONE', siding)}
+                  ${opt('Full', 'FULL', siding)}
+                  ${opt('Part/Repair', 'PART / REPAIR', siding)}
+                  ${opt('Unsure', 'UNSURE', siding)}
+                </select>
+              </div>
+              <div class="structure-scope-item">
+                <div class="structure-scope-label">Gutters</div>
+                <select name="structure_${i}_gutters" class="form-select">
+                  ${opt('Unsure', 'UNSURE', gutters)}
+                  ${opt('No', 'NO', gutters)}
+                  ${opt('Yes', 'YES', gutters)}
+                </select>
+              </div>
+              <div class="structure-scope-item">
+                <div class="structure-scope-label">Downspouts</div>
+                <select name="structure_${i}_downspouts" class="form-select">
+                  ${opt('Unsure', 'UNSURE', downspouts)}
+                  ${opt('No', 'NO', downspouts)}
+                  ${opt('Yes', 'YES', downspouts)}
+                </select>
+              </div>
+            </div>
+            <div class="structure-skylight-row">
+              <div class="form-group">
+                <label class="form-label"># Skylights to REPLACE</label>
+                <input type="number" name="structure_${i}_skylightsReplace" class="form-input" value="${escHtml(skylightsReplace)}" min="0" max="20" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label class="form-label"># Skylights to REFLASH</label>
+                <input type="number" name="structure_${i}_skylightsReflash" class="form-input" value="${escHtml(skylightsReflash)}" min="0" max="20" placeholder="0">
+              </div>
+            </div>
+          </div>
+        `;
       }
-
-      // Filter for roofing-related items
-      const roofKeywords = /roof|shingle|felt|ice|ridge|flashing|valley|decking|deck|gutter|downspout|skylight|chimney|ventilation|vent|soffit|fascia|drip|underlayment/i;
-      const roofItems = items.filter(item => roofKeywords.test(item.description || ''));
-      const displayItems = roofItems.length > 0 ? roofItems : items;
-
-      let totalRCV = 0;
-      let totalACV = 0;
-
-      const rows = displayItems.map(item => {
-        const rcv = parseFloat(item.rcv) || 0;
-        const acv = parseFloat(item.acv) || 0;
-        const dep = parseFloat(item.depreciation) || 0;
-        totalRCV += rcv;
-        totalACV += acv;
-
-        return `<tr>
-          <td>${item.description || '—'}</td>
-          <td>${item.quantity ? item.quantity + (item.unit ? ' ' + item.unit : '') : '—'}</td>
-          <td class="amount">${rcv ? formatCurrency(rcv) : '—'}</td>
-          <td class="amount">${dep ? formatCurrency(dep) : '—'}</td>
-          <td class="amount">${acv ? formatCurrency(acv) : '—'}</td>
-        </tr>`;
-      }).join('');
-
-      container.innerHTML = `
-        <table class="scope-table">
-          <thead>
-            <tr>
-              <th>Description</th>
-              <th>Qty / Unit</th>
-              <th>RCV</th>
-              <th>Depreciation</th>
-              <th>ACV</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-            <tr class="total-row">
-              <td colspan="2">Totals</td>
-              <td class="amount">${formatCurrency(totalRCV)}</td>
-              <td class="amount">—</td>
-              <td class="amount">${formatCurrency(totalACV)}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p style="font-size:0.85rem;color:var(--slate);margin-top:var(--sp-3);">Showing ${displayItems.length} of ${items.length} line items from your estimate. Your contractor has the full estimate on file.</p>
-      `;
     }
 
-    // ── Populate form from existing project_confirmation (if any) ──
-    function populateExistingData(data) {
-      if (!data) return;
-      const fields = ['numStructures','structureNames','roofAsphaltScope','roofMetalScope','guttersScope','downspoutsScope',
-        'shingleManufacturer','shingleType','shingleColor','dripEdgeColor','valleyType','gutterGuards',
-        'skylightsAction','skylightCount','satelliteDish','badDeckingExpected','workNotBeingDone',
-        'chimney1Material','chimney1Cricket','chimney1ReflashOop','chimney2Material','chimney2Cricket','chimney2ReflashOop',
-        'nonRecoverableDepreciation','homeownerNotes'];
-      fields.forEach(f => {
-        const el = document.getElementById(f);
-        if (el && data[f] != null) el.value = data[f];
-      });
-      const ackFields = ['ackBadDecking','ackProjectChanges','ackNonRecoverable','ackPaymentTerms'];
-      ackFields.forEach(f => {
-        const el = document.getElementById(f);
-        if (el && data[f]) el.checked = true;
-      });
+    // ── Collect Structure Data ─────────────────────────────────────────────────
+    function collectStructureData() {
+      const count = parseInt(document.getElementById('numStructures').value) || 1;
+      const structures = [];
+      for (let i = 0; i < count; i++) {
+        structures.push({
+          name:              getInputValByName(`structure_${i}_name`)             || '',
+          roofAsphalt:       getSelectVal(`structure_${i}_roofAsphalt`)           || '',
+          roofMetal:         getSelectVal(`structure_${i}_roofMetal`)             || '',
+          siding:            getSelectVal(`structure_${i}_siding`)                || '',
+          gutters:           getSelectVal(`structure_${i}_gutters`)               || '',
+          downspouts:        getSelectVal(`structure_${i}_downspouts`)            || '',
+          skylightsReplace:  getInputValByName(`structure_${i}_skylightsReplace`) || '0',
+          skylightsReflash:  getInputValByName(`structure_${i}_skylightsReflash`) || '0',
+        });
+      }
+      return structures;
     }
 
-    // ── Validate all acks are checked ──
+    // ── Render Skylight Cards ──────────────────────────────────────────────────
+    function renderSkylightCards(existingSkylights) {
+      const container = document.getElementById('skylightCardsContainer');
+      container.innerHTML = '';
+      const ex = existingSkylights || [];
+
+      for (let i = 0; i < 4; i++) {
+        const s = ex[i] || {};
+        const scope = s.scope || 'N/A';
+        const isActive = scope !== 'N/A';
+
+        const opt = (val, label, selected) =>
+          `<option value="${escHtml(val)}" ${selected === val ? 'selected' : ''}>${escHtml(label)}</option>`;
+
+        container.innerHTML += `
+          <div class="skylight-card ${isActive ? 'active' : ''}" id="skylightCard${i}">
+            <div class="skylight-card-header">
+              <div class="skylight-number">${i + 1}</div>
+              <div class="form-group" style="flex:1; margin:0; flex-direction:row; align-items:center; gap:var(--sp-3);">
+                <span class="skylight-title">Skylight #${i + 1}</span>
+                <select name="skylight_${i}_scope" class="form-select" style="max-width:200px;" onchange="handleSkylightScopeChange(${i})">
+                  ${opt('N/A', 'N/A — Not Part of This Project', scope)}
+                  ${opt('Reflash', 'REFLASH', scope)}
+                  ${opt('Replace', 'REPLACE', scope)}
+                </select>
+              </div>
+            </div>
+            <div class="skylight-details">
+              <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                <div class="form-group">
+                  <label class="form-label">Length (inches)</label>
+                  <input type="number" name="skylight_${i}_length" class="form-input" value="${escHtml(s.length || '')}" placeholder="e.g., 24" min="0">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Width (inches)</label>
+                  <input type="number" name="skylight_${i}_width" class="form-input" value="${escHtml(s.width || '')}" placeholder="e.g., 36" min="0">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Hinge Position</label>
+                  <select name="skylight_${i}_hinge" class="form-select">
+                    ${opt('Top Hinge', 'Top Hinge', s.hinge)}
+                    ${opt('Middle Hinge', 'Middle Hinge', s.hinge)}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Operation</label>
+                  <select name="skylight_${i}_operation" class="form-select">
+                    ${opt('None', 'None (Fixed)', s.operation)}
+                    ${opt('Manual', 'Manual', s.operation)}
+                    ${opt('Solar', 'Solar', s.operation)}
+                    ${opt('Electric', 'Electric', s.operation)}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Blinds</label>
+                  <select name="skylight_${i}_blinds" class="form-select">
+                    ${opt('No Blinds', 'No Blinds', s.blinds)}
+                    ${opt('Room-Darkening', 'Room-Darkening', s.blinds)}
+                    ${opt('Light Filtering', 'Light Filtering', s.blinds)}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // ── Collect Skylight Data ──────────────────────────────────────────────────
+    function collectSkylightData() {
+      const skylights = [];
+      for (let i = 0; i < 4; i++) {
+        const scope = getSelectVal(`skylight_${i}_scope`) || 'N/A';
+        if (scope === 'N/A') {
+          skylights.push({ scope: 'N/A' });
+        } else {
+          skylights.push({
+            scope,
+            length:    getInputValByName(`skylight_${i}_length`)    || '',
+            width:     getInputValByName(`skylight_${i}_width`)     || '',
+            hinge:     getSelectVal(`skylight_${i}_hinge`)          || '',
+            operation: getSelectVal(`skylight_${i}_operation`)      || '',
+            blinds:    getSelectVal(`skylight_${i}_blinds`)         || '',
+          });
+        }
+      }
+      return skylights;
+    }
+
+    // ── Conditional Field Handlers ─────────────────────────────────────────────
+    function handleBadDeckingChange() {
+      const val = document.getElementById('badDecking').value;
+      const sheetsGroup = document.getElementById('badDeckingSheetsGroup');
+      if (sheetsGroup) {
+        sheetsGroup.style.display = val === 'Expected' ? 'block' : 'none';
+      }
+    }
+
+    function handleGutterGuardsChange() {
+      const val = document.getElementById('gutterGuards').value;
+      const notesGroup = document.getElementById('gutterGuardsNotesGroup');
+      if (notesGroup) {
+        notesGroup.style.display = val === 'On Some Gutters' ? 'block' : 'none';
+      }
+    }
+
+    function handleSkylightScopeChange(idx) {
+      const scope = getSelectVal(`skylight_${idx}_scope`);
+      const card = document.getElementById(`skylightCard${idx}`);
+      if (!card) return;
+      if (scope === 'N/A') {
+        card.classList.remove('active');
+      } else {
+        card.classList.add('active');
+      }
+    }
+
+    // ── Siding conditional handlers ────────────────────────────────────────────
+    function handleTrimColorChange() {
+      const val = document.getElementById('trimColorType').value;
+      const otherGroup = document.getElementById('trimColorOtherGroup');
+      if (otherGroup) otherGroup.style.display = val === 'Other' ? 'block' : 'none';
+    }
+
+    function handleWindowWrapsChange() {
+      const val = document.getElementById('windowWraps').value;
+      const colorGroup = document.getElementById('windowWrapsColorGroup');
+      if (colorGroup) {
+        colorGroup.style.display = (val === 'Included - All' || val === 'Included - Damaged Only') ? 'block' : 'none';
+      }
+    }
+
+    function handleRottenSheathingChange() {
+      const val = document.getElementById('rottenSheathing').value;
+      const sqFtGroup = document.getElementById('rottenSheathingSqFtGroup');
+      if (sqFtGroup) sqFtGroup.style.display = val === 'Expected' ? 'block' : 'none';
+    }
+
+    // ── Gutters conditional handlers ───────────────────────────────────────────
+    function handleDownspoutColorChange() {
+      const val = document.getElementById('downspoutColorType').value;
+      const otherGroup = document.getElementById('downspoutColorOtherGroup');
+      if (otherGroup) otherGroup.style.display = val === 'Other' ? 'block' : 'none';
+    }
+
+    // ── Validate & Enable Submit ───────────────────────────────────────────────
+    // ACK_IDS is built dynamically after trade detection runs in init().
+    // Always required: ackPaymentTerms, ackProjectChanges, ackInfoCorrect.
+    // Trade/claim-specific: ackBadDecking (roofing), ackRottenSheathing (siding),
+    //                       ackDepreciation (insurance claims only).
+    let ACK_IDS = ['ackPaymentTerms', 'ackProjectChanges', 'ackInfoCorrect'];
+
+    function buildAckIds() {
+      const ids = [];
+      const trades = state.selectedTrades;
+      const hasRoofing = trades.length === 0 || trades.includes('roofing');
+      const hasSiding  = trades.includes('siding');
+      if (hasRoofing)            ids.push('ackBadDecking');
+      if (hasSiding)             ids.push('ackRottenSheathing');
+      if (state.isInsuranceClaim) ids.push('ackDepreciation');
+      ids.push('ackPaymentTerms', 'ackProjectChanges', 'ackInfoCorrect');
+      return ids;
+    }
+
     function allAcksChecked() {
-      return ['ackBadDecking','ackProjectChanges','ackNonRecoverable','ackPaymentTerms']
-        .every(id => document.getElementById(id).checked);
+      return ACK_IDS.every(id => {
+        const el = document.getElementById(id);
+        // Skip hidden acks (trade not applicable)
+        if (!el) return true;
+        const section = el.closest('.ack-item');
+        if (section && section.style.display === 'none') return true;
+        return el.checked;
+      });
     }
 
     function updateSubmitBtn() {
       document.getElementById('submitBtn').disabled = !allAcksChecked();
     }
 
-    // ── Build confirmation payload ──
+    // ── Build Payload ──────────────────────────────────────────────────────────
     function buildPayload() {
-      const get = id => (document.getElementById(id) ? document.getElementById(id).value : null);
-      const getCheck = id => (document.getElementById(id) ? document.getElementById(id).checked : false);
+      const trades = state.selectedTrades;
+      const hasRoofing = trades.length === 0 || trades.includes('roofing');
+      const hasSiding  = trades.includes('siding');
+      const hasGutters = trades.includes('gutters') || trades.includes('downspouts');
 
       return {
+        // Which trades are confirmed in this submission
+        activeTrades: trades.length > 0 ? trades : ['roofing'],
         submittedAt: new Date().toISOString(),
-        // Structure
-        numStructures: get('numStructures'),
-        structureNames: get('structureNames'),
-        roofAsphaltScope: get('roofAsphaltScope'),
-        roofMetalScope: get('roofMetalScope'),
-        guttersScope: get('guttersScope'),
-        downspoutsScope: get('downspoutsScope'),
+
+        // Structures
+        numStructures:    parseInt(document.getElementById('numStructures').value) || 1,
+        structures:       collectStructureData(),
+
         // Materials
-        shingleManufacturer: get('shingleManufacturer'),
-        shingleType: get('shingleType'),
-        shingleColor: get('shingleColor'),
-        dripEdgeColor: get('dripEdgeColor'),
-        valleyType: get('valleyType'),
-        gutterGuards: get('gutterGuards'),
-        // Skylights & special
-        skylightsAction: get('skylightsAction'),
-        skylightCount: get('skylightCount') ? parseInt(get('skylightCount')) : 0,
-        satelliteDish: get('satelliteDish'),
-        badDeckingExpected: get('badDeckingExpected'),
-        workNotBeingDone: get('workNotBeingDone'),
-        // Chimney
-        chimney1Material: get('chimney1Material'),
-        chimney1Cricket: get('chimney1Cricket'),
-        chimney1ReflashOop: get('chimney1ReflashOop'),
-        chimney2Material: get('chimney2Material'),
-        chimney2Cricket: get('chimney2Cricket'),
-        chimney2ReflashOop: get('chimney2ReflashOop'),
-        // Financial
-        nonRecoverableDepreciation: get('nonRecoverableDepreciation') ? parseFloat(get('nonRecoverableDepreciation')) : 0,
-        deductibleAmount: get('deductibleAmount') ? parseFloat(get('deductibleAmount')) : 0,
-        // Notes
-        homeownerNotes: get('homeownerNotes'),
-        // Acks
-        ackBadDecking: getCheck('ackBadDecking'),
-        ackProjectChanges: getCheck('ackProjectChanges'),
-        ackNonRecoverable: getCheck('ackNonRecoverable'),
-        ackPaymentTerms: getCheck('ackPaymentTerms'),
+        shingleManufacturer: getSelectVal('shingleManufacturer')     || '',
+        shingleType:         getInputVal('shingleType')              || '',
+        shingleColor:        getInputVal('shingleColor')             || '',
+        dripEdgeColor:       getSelectVal('dripEdgeColor')           || '',
+        valleys:             getSelectVal('valleys')                 || '',
+        gutterGuards:        getSelectVal('gutterGuards')            || 'None',
+        gutterGuardsNotes:   getInputVal('gutterGuardsNotes')        || '',
+
+        // Vents
+        ventBox:             parseInt(getInputVal('ventBox'))  || 0,
+        ventRidge:           parseInt(getInputVal('ventRidge'))|| 0,
+        ventOther:           getInputVal('ventOther')          || '',
+
+        // Satellite dish
+        satelliteDish:       getSelectVal('satelliteDish')           || 'None',
+
+        // Bad decking
+        badDecking:          getSelectVal('badDecking')              || 'Unexpected',
+        badDeckingSheets:    parseInt(getInputVal('badDeckingSheets'))|| 0,
+
+        // Chimneys
+        chimney1Material:  getSelectVal('chimney1Material')  || '',
+        chimney1Size:      getSelectVal('chimney1Size')      || '',
+        chimney1Cricket:   getSelectVal('chimney1Cricket')   || '',
+        chimney1Reflash:   getSelectVal('chimney1Reflash')   || '',
+        chimney2Material:  getSelectVal('chimney2Material')  || '',
+        chimney2Size:      getSelectVal('chimney2Size')      || '',
+        chimney2Cricket:   getSelectVal('chimney2Cricket')   || '',
+        chimney2Reflash:   getSelectVal('chimney2Reflash')   || '',
+
+        // Skylights
+        skylights: collectSkylightData(),
+
+        // Exclusions & notes
+        exclusions:          getInputVal('exclusions')               || '',
+        projectNotes:        getInputVal('projectNotes')             || '',
+
+        // ── Siding (only populated when siding is an active trade) ──
+        ...(hasSiding ? {
+          // D-164/D-158 amendment: sidingMaterial, sidingProfile, sidingColor, trimColor
+          // are captured pre-bid in Hover and NOT re-entered on this form.
+          soffitFascia:          getSelectVal('soffitFascia')          || '',
+          windowWraps:           getSelectVal('windowWraps')           || '',
+          windowWrapsColor:      getInputVal('windowWrapsColor')       || '',
+          rottenSheathing:       getSelectVal('rottenSheathing')       || 'Unexpected',
+          rottenSheathingSqFt:   parseInt(getInputVal('rottenSheathingSqFt')) || 0,
+          ackRottenSheathing:    getCheckVal('ackRottenSheathing'),
+        } : {}),
+
+        // ── Gutters (only populated when gutters is an active trade) ──
+        ...(hasGutters ? {
+          gutterSize:            getSelectVal('gutterSize')            || '',
+          gutterColorInput:      getInputVal('gutterColorInput')       || '',
+          downspoutColorType:    getSelectVal('downspoutColorType')    || '',
+          downspoutColorOther:   getInputVal('downspoutColorOther')    || '',
+          splashBlocks:          getSelectVal('splashBlocks')          || '',
+          gutterNotes:           getInputVal('gutterNotes')            || '',
+        } : {}),
+
+        // Disclosures
+        ackBadDecking:       getCheckVal('ackBadDecking'),
+        ackDepreciation:     getCheckVal('ackDepreciation'),
+        ackPaymentTerms:     getCheckVal('ackPaymentTerms'),
+        ackProjectChanges:   getCheckVal('ackProjectChanges'),
+        ackInfoCorrect:      getCheckVal('ackInfoCorrect'),
+
+        // Auto-filled metadata (stored for audit trail)
+        _autoFill: {
+          homeownerName:     state.homeownerName     || '',
+          propertyAddress:   state.claim?.property_address || '',
+          shingleMftrFromBid: state.winningQuote?.brand || '',
+          shingleTypeFromBid: state.winningQuote?.product_line || '',
+          depreciation:      state.depreciation,
+          deckingRatePerSheet: state.deckingRatePerSheet,
+          contractorName:    state.contractor?.company_name || '',
+        },
       };
     }
 
-    // ── Trigger project confirmation DocuSign envelope ──
-    async function triggerProjectConfirmationDocuSign(claimId, payload) {
-      console.log('[OtterQuote] Creating project confirmation DocuSign envelope — claim:', claimId);
+    // ── Populate Existing Confirmation Data ────────────────────────────────────
+    function populateExistingData(data) {
+      if (!data) return;
 
+      // numStructures
+      if (data.numStructures) {
+        const numSel = document.getElementById('numStructures');
+        if (numSel) {
+          numSel.value = data.numStructures;
+          renderStructureCards(data.numStructures, data.structures || []);
+        }
+      }
+
+      // Materials
+      const setSelect = (name, val) => {
+        const el = document.querySelector(`select[name="${name}"]`);
+        if (el && val) el.value = val;
+      };
+      const setInput = (id, val) => {
+        const el = document.getElementById(id);
+        if (el && val != null) el.value = val;
+      };
+
+      setSelect('shingleManufacturer', data.shingleManufacturer);
+      setInput('shingleType',          data.shingleType);
+      setInput('shingleColor',         data.shingleColor);
+      setSelect('dripEdgeColor',       data.dripEdgeColor);
+      setSelect('valleys',             data.valleys);
+      setSelect('gutterGuards',        data.gutterGuards);
+      setInput('gutterGuardsNotes',    data.gutterGuardsNotes);
+
+      if (data.gutterGuards === 'On Some Gutters') handleGutterGuardsChange();
+
+      setInput('ventBox',    data.ventBox != null ? String(data.ventBox) : null);
+      setInput('ventRidge',  data.ventRidge != null ? String(data.ventRidge) : null);
+      setInput('ventOther',  data.ventOther);
+
+      setSelect('satelliteDish', data.satelliteDish);
+
+      setSelect('badDecking',       data.badDecking);
+      setInput('badDeckingSheets',  data.badDeckingSheets != null ? String(data.badDeckingSheets) : null);
+      if (data.badDecking === 'Expected') handleBadDeckingChange();
+
+      // Chimneys (use querySelector by name)
+      ['chimney1Material','chimney1Size','chimney1Cricket','chimney1Reflash',
+       'chimney2Material','chimney2Size','chimney2Cricket','chimney2Reflash'].forEach(n => {
+        setSelect(n, data[n]);
+      });
+
+      // Skylights
+      if (data.skylights && Array.isArray(data.skylights)) {
+        renderSkylightCards(data.skylights);
+      }
+
+      // Exclusions & notes
+      setInput('exclusions',    data.exclusions);
+      setInput('projectNotes',  data.projectNotes);
+
+      // ── Siding ── (D-164/D-158 amendment: sidingMaterial/sidingProfile/sidingColor/trimColor
+      // are captured pre-bid in Hover — not on this form. Only restore scope + disclosure fields.)
+      if (data.soffitFascia || data.windowWraps || data.rottenSheathing) {
+        const setSelectById = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+        setSelectById('soffitFascia',      data.soffitFascia);
+        setSelectById('windowWraps',       data.windowWraps);
+        setInput('windowWrapsColor',       data.windowWrapsColor);
+        if (data.windowWraps && data.windowWraps !== 'Not Included') handleWindowWrapsChange();
+        const rottenEl = document.getElementById('rottenSheathing');
+        if (rottenEl && data.rottenSheathing) rottenEl.value = data.rottenSheathing;
+        setInput('rottenSheathingSqFt', data.rottenSheathingSqFt != null ? String(data.rottenSheathingSqFt) : null);
+        if (data.rottenSheathing === 'Expected') handleRottenSheathingChange();
+        setCheckById('ackRottenSheathing', data.ackRottenSheathing);
+      }
+
+      // ── Gutters ──
+      if (data.gutterSize || data.gutterColorInput) {
+        const setSelectById = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+        setSelectById('gutterSize',         data.gutterSize);
+        setInput('gutterColorInput',        data.gutterColorInput);
+        setSelectById('downspoutColorType', data.downspoutColorType);
+        setInput('downspoutColorOther',     data.downspoutColorOther);
+        if (data.downspoutColorType === 'Other') handleDownspoutColorChange();
+        setSelectById('splashBlocks',       data.splashBlocks);
+        setInput('gutterNotes',             data.gutterNotes);
+      }
+
+      // Acks
+      setCheckById('ackBadDecking',    data.ackBadDecking);
+      setCheckById('ackDepreciation',  data.ackDepreciation);
+      setCheckById('ackPaymentTerms',  data.ackPaymentTerms);
+      setCheckById('ackProjectChanges', data.ackProjectChanges);
+      setCheckById('ackInfoCorrect',   data.ackInfoCorrect);
+
+      updateSubmitBtn();
+    }
+
+    // ── DocuSign Trigger ───────────────────────────────────────────────────────
+    async function triggerDocuSign(claimId) {
       const signerEmail = state.currentUser?.email;
-      const signerName = state.homeownerName || signerEmail || 'Homeowner';
+      const signerName  = state.homeownerName || signerEmail || 'Homeowner';
 
-      if (!signerEmail) {
-        throw new Error('Unable to determine homeowner email for DocuSign envelope.');
-      }
-      if (!state.contractorId) {
-        throw new Error('No contractor ID found — cannot create envelope.');
-      }
+      if (!signerEmail) throw new Error('Unable to determine homeowner email for DocuSign envelope.');
+      if (!state.contractorId) throw new Error('No contractor ID found — cannot create envelope.');
 
       const { data, error } = await sb.functions.invoke('create-docusign-envelope', {
         body: {
-          claim_id: claimId,
-          document_type: 'project_confirmation',
-          contractor_id: state.contractorId,
-          signer: {
-            email: signerEmail,
-            name: signerName,
-          },
+          claim_id:       claimId,
+          document_type:  'project_confirmation',
+          contractor_id:  state.contractorId,
+          signer: { email: signerEmail, name: signerName },
         },
       });
 
-      if (error) {
-        throw new Error(error.message || 'Failed to create project confirmation envelope.');
-      }
-
-      console.log('[OtterQuote] Project confirmation envelope created:', data?.envelope_id);
+      if (error) throw new Error(error.message || 'Failed to create project confirmation envelope.');
       return data;
     }
 
-    // ── Submit Handler ──
+    // ── Submit Handler ─────────────────────────────────────────────────────────
     async function handleSubmit(e) {
       e.preventDefault();
       if (!allAcksChecked()) return;
+
+      // Require shingle color
+      const shingleColor = getInputVal('shingleColor') || '';
+      if (!shingleColor.trim()) {
+        alert('Please enter your shingle color before submitting.');
+        document.getElementById('shingleColor').focus();
+        return;
+      }
 
       const submitBtn = document.getElementById('submitBtn');
       submitBtn.disabled = true;
@@ -1299,60 +2064,46 @@
 
         if (saveError) throw new Error('Failed to save project confirmation: ' + saveError.message);
 
-        // 2. Create project confirmation DocuSign envelope
+        // 2. Create DocuSign envelope (non-fatal)
         submitBtn.textContent = 'Sending for signature...';
         let envelopeResult = null;
         try {
-          envelopeResult = await triggerProjectConfirmationDocuSign(state.claimId, payload);
+          envelopeResult = await triggerDocuSign(state.claimId);
         } catch (dsErr) {
-          // DocuSign envelope creation is non-fatal — data is saved; log and continue
-          console.error('[OtterQuote] DocuSign envelope error (non-fatal):', dsErr.message);
+          console.error('[Otter Quotes] DocuSign envelope error (non-fatal):', dsErr.message);
         }
 
         // 3. Show success
         document.getElementById('confirmationForm').style.display = 'none';
-        const successScreen = document.getElementById('successScreen');
-        successScreen.style.display = 'block';
+        document.getElementById('successScreen').style.display = 'block';
 
-        // Display envelope ID if available
         if (envelopeResult?.envelope_id) {
-          const envelopeSection = document.getElementById('envelopeIdSection');
-          const envelopeDisplay = document.getElementById('envelopeIdDisplay');
-          if (envelopeSection && envelopeDisplay) {
-            envelopeDisplay.textContent = envelopeResult.envelope_id;
-            envelopeSection.style.display = 'block';
-          }
+          document.getElementById('envelopeIdDisplay').textContent = envelopeResult.envelope_id;
+          document.getElementById('envelopeIdSection').style.display = 'block';
         }
 
-        // Scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        // GA4 event
         if (typeof gtag !== 'undefined') {
-          gtag('event', 'project_confirmation_submitted', {
-            claim_id: state.claimId,
-          });
+          gtag('event', 'project_confirmation_submitted', { claim_id: state.claimId });
         }
 
       } catch (err) {
-        console.error('[OtterQuote] Project confirmation submit error:', err);
+        console.error('[Otter Quotes] Project confirmation submit error:', err);
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Project Confirmation →';
         alert('There was an error submitting your confirmation: ' + err.message + '\n\nPlease try again or contact support.');
       }
     }
 
-    // ── Initialization ──
+    // ── Initialization ─────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', async () => {
-      // Render nav
       if (typeof Nav !== 'undefined') Nav.renderHeader();
 
-      // Auth check — homeowner required
       const user = await Auth.requireAuth();
       if (!user) return;
       state.currentUser = user;
 
-      // Parse URL params
       const params = new URLSearchParams(window.location.search);
       const claimIdParam = params.get('claim_id');
 
@@ -1373,7 +2124,7 @@
         if (claimError || !claimData) throw new Error('Claim not found. Please return to your dashboard.');
         state.claim = claimData;
 
-        // Verify homeowner owns this claim
+        // ── Verify ownership ──
         const { data: profile } = await sb
           .from('profiles')
           .select('user_id, full_name')
@@ -1387,10 +2138,16 @@
           return;
         }
 
+        // ── Verify contract signed ──
+        if (!['contract_signed', 'awarded', 'completed'].includes(claimData.status)) {
+          showError('Contract not yet signed', 'Project confirmation is available after your contract is signed. Please complete the contract signing step first.');
+          return;
+        }
+
         // ── Get contractor ID ──
         state.contractorId = claimData.selected_contractor_id;
         if (!state.contractorId) {
-          showError('No contractor selected', 'No contractor has been selected for this claim yet. Please go back to your bids page and select a contractor first.');
+          showError('No contractor selected', 'No contractor has been selected for this claim yet.');
           return;
         }
 
@@ -1404,43 +2161,159 @@
         if (contractorError || !contractorData) throw new Error('Contractor not found.');
         state.contractor = contractorData;
 
-        // ── Load parsed line items ──
-        state.parsedLineItems = claimData.parsed_line_items || [];
+        // ── Load winning quote (for shingle mftr, type, decking rate) ──
+        const { data: quoteData } = await sb
+          .from('quotes')
+          .select('brand, product_line, decking_price_per_sheet, status')
+          .eq('claim_id', state.claimId)
+          .eq('contractor_id', state.contractorId)
+          .maybeSingle();
 
-        // ── Populate UI ──
+        state.winningQuote = quoteData || null;
+        state.deckingRatePerSheet = quoteData?.decking_price_per_sheet || null;
 
-        // Contractor card
+        // ── Extract depreciation from parsed_line_items ──
+        const lineItems = claimData.parsed_line_items;
+        if (lineItems) {
+          const dep = lineItems.summary?.depreciation
+            || lineItems.depreciation
+            || null;
+          if (dep != null && !isNaN(parseFloat(dep))) {
+            state.depreciation = parseFloat(dep);
+          }
+        }
+
+        // ── Populate auto-fill banner ──
+        document.getElementById('af-name').textContent =
+          state.homeownerName || user.email || '—';
+        document.getElementById('af-address').textContent =
+          claimData.property_address || '—';
+        document.getElementById('af-mftr').textContent =
+          quoteData?.brand || claimData.shingle_manufacturer || '—';
+        document.getElementById('af-type').textContent =
+          quoteData?.product_line || claimData.shingle_type || '—';
+        document.getElementById('af-depreciation').textContent =
+          state.depreciation != null ? formatCurrency(state.depreciation) : 'None / N/A';
+        document.getElementById('af-decking-rate').textContent =
+          state.deckingRatePerSheet != null ? formatCurrency(state.deckingRatePerSheet) + ' / sheet' : '—';
+
+        // ── Populate contractor card ──
         const avatarEl = document.getElementById('contractorAvatar');
         if (contractorData.logo_url) {
-          avatarEl.innerHTML = `<img src="${contractorData.logo_url}" alt="${contractorData.company_name}">`;
+          avatarEl.innerHTML = `<img src="${escHtml(contractorData.logo_url)}" alt="${escHtml(contractorData.company_name)}">`;
         } else {
-          avatarEl.textContent = contractorData.company_name ? contractorData.company_name.charAt(0).toUpperCase() : '🏠';
+          avatarEl.textContent = contractorData.company_name
+            ? contractorData.company_name.charAt(0).toUpperCase()
+            : '🏠';
         }
-        document.getElementById('contractorName').textContent = contractorData.company_name || 'Your Contractor';
-        document.getElementById('contractorMeta').textContent = contractorData.years_in_business
-          ? contractorData.years_in_business + ' years in business'
-          : 'Contractor details on file';
+        document.getElementById('contractorName').textContent =
+          contractorData.company_name || 'Your Contractor';
+        document.getElementById('contractorMeta').textContent =
+          contractorData.years_in_business
+            ? contractorData.years_in_business + ' years in business'
+            : 'Contractor details on file';
 
-        // Back link
-        document.getElementById('backToContractLink').href = `/contract-signing.html?claim_id=${state.claimId}`;
+        // ── Back link ──
+        document.getElementById('backToContractLink').href =
+          `/contract-signing.html?claim_id=${state.claimId}`;
 
-        // Scope table
-        renderScopeTable(state.parsedLineItems);
+        // ── Render structure cards (default: 1) ──
+        const existingConf = claimData.project_confirmation;
+        const initialStructures = existingConf?.numStructures || 1;
+        document.getElementById('numStructures').value = initialStructures;
+        renderStructureCards(initialStructures, existingConf?.structures || []);
 
-        // Pre-fill deductible from claim
-        if (claimData.deductible) {
-          const ded = parseFloat(claimData.deductible);
-          if (!isNaN(ded)) document.getElementById('deductibleAmount').value = ded.toFixed(2);
+        // ── Render skylight cards ──
+        renderSkylightCards(existingConf?.skylights || []);
+
+        // ── Color visualizer link ──
+        const vizLink = document.getElementById('colorVisualizerLink');
+        if (vizLink) vizLink.href = `/color-selection.html?claim_id=${state.claimId}`;
+
+        // ── Pre-fill shingle mftr/type from winning quote ──
+        if (quoteData?.brand) {
+          const mftrSel = document.querySelector('select[name="shingleManufacturer"]');
+          if (mftrSel) {
+            // Find matching option (case-insensitive)
+            const brand = quoteData.brand.trim();
+            for (const opt of mftrSel.options) {
+              if (opt.value.toLowerCase() === brand.toLowerCase()) {
+                mftrSel.value = opt.value;
+                break;
+              }
+            }
+          }
+        }
+        if (quoteData?.product_line) {
+          const typeInput = document.getElementById('shingleType');
+          if (typeInput && !typeInput.value) typeInput.value = quoteData.product_line;
         }
 
-        // Pre-populate if project_confirmation already exists (re-entry)
-        if (claimData.project_confirmation) {
-          populateExistingData(claimData.project_confirmation);
+        // ── Pre-fill depreciation amount in disclosure ──
+        const depDisplay = document.getElementById('depreciationAmtDisplay');
+        if (depDisplay) {
+          depDisplay.textContent = state.depreciation != null
+            ? formatCurrency(state.depreciation)
+            : '$___';
         }
 
-        // ── Wire acknowledgment checkboxes to submit button ──
-        ['ackBadDecking','ackProjectChanges','ackNonRecoverable','ackPaymentTerms'].forEach(id => {
-          document.getElementById(id).addEventListener('change', updateSubmitBtn);
+        // ── Pre-fill decking rate in bad decking ack ──
+        const deckingRateDisplay = document.getElementById('deckingRateDisplay');
+        if (deckingRateDisplay) {
+          deckingRateDisplay.textContent = state.deckingRatePerSheet != null
+            ? formatCurrency(state.deckingRatePerSheet) + ' per sheet'
+            : 'per contractor quote';
+        }
+
+        // ── Restore existing project_confirmation data if any ──
+        if (existingConf) {
+          populateExistingData(existingConf);
+        }
+
+        // ── Trade detection: show/hide trade-specific sections ──
+        // Fall back to roofing if no selected_trades column on claim.
+        const rawTrades = Array.isArray(claimData.selected_trades) ? claimData.selected_trades : [];
+        state.selectedTrades = rawTrades;
+        state.isInsuranceClaim = claimData.funding_type === 'insurance' || claimData.job_type?.includes('insurance');
+
+        const hasRoofing = rawTrades.length === 0 || rawTrades.some(t => t.toLowerCase() === 'roofing');
+        const hasSiding  = rawTrades.some(t => t.toLowerCase() === 'siding');
+        const hasGutters = rawTrades.some(t => ['gutters','downspouts','gutter'].includes(t.toLowerCase()));
+
+        // Show/hide section blocks
+        document.getElementById('roofingSections').style.display = hasRoofing ? '' : 'none';
+        document.getElementById('sidingSection').style.display   = hasSiding  ? '' : 'none';
+        document.getElementById('guttersSection').style.display  = hasGutters ? '' : 'none';
+
+        // Hide depreciation disclosure for retail claims (no depreciation applies)
+        const depAckItem = document.getElementById('ackDepreciation')?.closest('.ack-item');
+        if (depAckItem && !state.isInsuranceClaim) {
+          depAckItem.style.display = 'none';
+        }
+        // Hide bad decking disclosure for non-roofing claims
+        const badDeckingAckItem = document.getElementById('ackBadDecking')?.closest('.ack-item');
+        if (badDeckingAckItem && !hasRoofing) {
+          badDeckingAckItem.style.display = 'none';
+        }
+        // Hide rotten sheathing ack for non-siding claims
+        const rottenAckItem = document.getElementById('ackRottenSheathing')?.closest('.ack-item');
+        if (rottenAckItem && !hasSiding) {
+          rottenAckItem.style.display = 'none';
+        }
+
+        // Build dynamic ACK_IDS after trade detection
+        ACK_IDS = buildAckIds();
+
+        // ── Wire numStructures change ──
+        document.getElementById('numStructures').addEventListener('change', function () {
+          const saved = collectStructureData();
+          renderStructureCards(parseInt(this.value) || 1, saved);
+        });
+
+        // ── Wire ack checkboxes ──
+        ACK_IDS.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.addEventListener('change', updateSubmitBtn);
         });
 
         // ── Wire form submit ──
@@ -1451,7 +2324,7 @@
         document.getElementById('pageContent').style.display = 'block';
 
       } catch (err) {
-        console.error('[OtterQuote] Project confirmation init error:', err);
+        console.error('[Otter Quotes] Project confirmation init error:', err);
         showError('Unable to load project', err.message || 'Please try again or contact support.');
       }
     });

@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Submit for Bid — OtterQuote</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Submit for Bid — Otter Quotes</title>
   <meta name="description" content="Review and submit your project details for competitive bids from qualified contractors.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
@@ -299,7 +299,7 @@
 
     .checklist-material-selection {
       padding: var(--sp-3);
-      background: rgba(20,184,166,0.05);
+      background: rgba(224,123,0,0.05);
       border-radius: var(--radius-sm);
       border-left: 3px solid var(--amber);
       font-size: 0.95rem;
@@ -366,7 +366,7 @@
     .submit-section {
       margin-top: var(--sp-12);
       padding: var(--sp-8);
-      background: rgba(20,184,166,0.05);
+      background: rgba(224,123,0,0.05);
       border: 1px solid var(--amber);
       border-radius: var(--radius-lg);
       text-align: center;
@@ -501,11 +501,11 @@
       color: var(--white);
     }
     .job-type-btn:hover { border-color: var(--amber); }
-    .job-type-btn.selected { border-color: var(--amber); background: rgba(20,184,166,0.1); }
+    .job-type-btn.selected { border-color: var(--amber); background: rgba(224,123,0,0.1); }
     .job-type-btn strong { font-size: 0.95rem; margin-bottom: var(--sp-1); }
     .job-type-btn span { font-size: 0.8rem; color: var(--slate); }
     .conditional-section { animation: fadeUp 0.3s ease both; }
-    .callout-warning { background: rgba(20,184,166,0.08); border: 1px solid rgba(20,184,166,0.25); border-radius: var(--radius-md); padding: var(--sp-4); color: var(--amber); font-size: 0.9rem; }
+    .callout-warning { background: rgba(224,123,0,0.08); border: 1px solid rgba(224,123,0,0.25); border-radius: var(--radius-md); padding: var(--sp-4); color: var(--amber); font-size: 0.9rem; }
     .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--sp-6); }
     .char-count { font-size: 0.8rem; color: var(--slate); float: right; margin-top: var(--sp-2); }
     .file-upload { padding: var(--sp-4); background: rgba(255,255,255,0.03); border: 2px dashed rgba(255,255,255,0.2); border-radius: var(--radius-md); text-align: center; cursor: pointer; }
@@ -942,7 +942,7 @@
         <button class="modal-close" onclick="closeSwitchModal()" aria-label="Close">✕</button>
       </div>
       <div class="switch-modal-body">
-        <p>You are choosing to switch to a different OtterQuote contractor. Here is exactly what happens:</p>
+        <p>You are choosing to switch to a different Otter Quotes contractor. Here is exactly what happens:</p>
         <div class="switch-modal-warning">
           <strong>What changes immediately:</strong>
           <ul style="margin: var(--sp-2) 0 0 var(--sp-5); line-height: 1.8;">
@@ -954,7 +954,7 @@
         </div>
         <p>You will receive bids from other qualified contractors in your area. Once you select a new contractor, a new contract will be sent for signing.</p>
         <p style="color: var(--amber); font-size: 0.88rem;">⏱ This option is available up to <strong>3 days before your scheduled installation date</strong>. After that cutoff, switching is no longer available.</p>
-        <p>You do <strong>not</strong> need to contact your current contractor directly — OtterQuote handles the entire transition.</p>
+        <p>You do <strong>not</strong> need to contact your current contractor directly — Otter Quotes handles the entire transition.</p>
       </div>
       <div class="switch-modal-actions">
         <button class="btn btn-ghost" onclick="closeSwitchModal()">Cancel — Keep My Contractor</button>
@@ -1453,16 +1453,24 @@
             icon: '🎨'
           },
           {
-            id: 'color',
-            title: 'Color',
+            id: 'project_confirmation',
+            title: 'Project Confirmation',
             required: false,
-            status: 'unavailable',
-            filename: null,
-            description: 'Select a color once you\'ve chosen a contractor.',
-            note: 'Available after you select a contractor.',
-            buttons: [],
-            icon: '🌈',
-            disabled: true
+            status: currentClaim.project_confirmation
+              ? 'selected'
+              : (currentClaim.status === 'contract_signed' ? 'pending' : 'unavailable'),
+            filename: currentClaim.project_confirmation ? 'Roofing confirmation on file' : null,
+            description: 'Confirm project scope, materials, and details for your contractor.',
+            note: (!currentClaim.project_confirmation && currentClaim.status !== 'contract_signed')
+              ? 'Available after your contract is signed.'
+              : null,
+            buttons: currentClaim.project_confirmation
+              ? [{ label: 'Review Confirmation', action: 'navigate', data: `project-confirmation.html?claim_id=${currentClaim.id}` }]
+              : (currentClaim.status === 'contract_signed'
+                ? [{ label: 'Start Confirmation', action: 'navigate', data: `project-confirmation.html?claim_id=${currentClaim.id}` }]
+                : []),
+            icon: currentClaim.project_confirmation ? '✅' : '📋',
+            disabled: !currentClaim.project_confirmation && currentClaim.status !== 'contract_signed'
           }
         ];
 
@@ -1515,6 +1523,69 @@
           </div>
         `; // end template literal
         }).join(''); // end items.map
+
+        // ── D-164: Siding Design Gate CTA ────────────────────────────────────
+        // Retail siding bids are held until the homeowner completes their full
+        // Hover design (manufacturer + profile + color + trim).
+        const claimTrades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
+        const claimHasSiding    = claimTrades.some(t => (t || '').toLowerCase().includes('siding'));
+        const isRetailFunding   = currentClaim.funding_type === 'cash';
+        const sidingReleased    = !!currentClaim.siding_bid_released_at;
+
+        if (claimHasSiding && isRetailFunding) {
+          // Resolve Hover job link (hover.to/jobs/{id} — NOT app.hover.to per Session 238 fix)
+          let hoverJobId = null;
+          if (hoverOrder?.hover_job_id) {
+            hoverJobId = hoverOrder.hover_job_id;
+          } else {
+            const mf = currentClaim.measurements_filename || '';
+            const mMatch = mf.match(/hover[_-](\d{6,})[_-]/) || mf.match(/job[_-](\d{6,})/i) || mf.match(/(\d{6,})/);
+            if (mMatch) hoverJobId = mMatch[1];
+          }
+          const hoverLink = hoverJobId ? `https://hover.to/jobs/${hoverJobId}` : 'https://hover.to';
+
+          const ctaDiv = document.createElement('div');
+
+          if (!sidingReleased) {
+            // ── Gate NOT clear: prominent CTA card ───────────────────────
+            ctaDiv.style.cssText = 'margin-top:1.25rem;background:linear-gradient(135deg,#0f2942 0%,#0d3151 100%);border:2px solid var(--amber,#E07B00);border-radius:0.875rem;padding:1.25rem 1.5rem;';
+            ctaDiv.innerHTML = `
+              <div style="display:flex;align-items:flex-start;gap:1rem;">
+                <div style="font-size:2rem;flex-shrink:0;line-height:1;">🏠</div>
+                <div style="flex:1;">
+                  <div style="font-weight:700;color:var(--amber,#E07B00);font-size:1rem;margin-bottom:0.5rem;">
+                    Design your siding on Hover
+                  </div>
+                  <div style="font-size:0.875rem;color:rgba(255,255,255,0.85);margin-bottom:1rem;line-height:1.55;">
+                    Siding pricing depends on <strong style="color:#fff;">manufacturer</strong>,
+                    <strong style="color:#fff;">profile</strong>,
+                    <strong style="color:#fff;">color</strong>, and
+                    <strong style="color:#fff;">trim</strong>.
+                    Once you've chosen all four in Hover, your siding bids will be released to contractors.
+                  </div>
+                  <a href="${hoverLink}" target="_blank" rel="noopener"
+                     style="display:inline-block;background:var(--amber,#E07B00);color:#0D1B2E;font-size:0.875rem;font-weight:700;text-decoration:none;padding:8px 20px;border-radius:0.5rem;transition:opacity 0.2s;"
+                     onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                    Design Your Siding in Hover →
+                  </a>
+                </div>
+              </div>
+            `;
+          } else {
+            // ── Gate cleared: brief confirmation ─────────────────────────
+            ctaDiv.style.cssText = 'margin-top:1rem;background:rgba(224,123,0,0.08);border:1px solid rgba(224,123,0,0.35);border-radius:0.75rem;padding:0.875rem 1.25rem;display:flex;align-items:center;gap:0.75rem;';
+            ctaDiv.innerHTML = `
+              <div style="font-size:1.25rem;flex-shrink:0;">✅</div>
+              <div style="font-size:0.875rem;color:rgba(255,255,255,0.9);">
+                <strong style="color:#FAC775;">Siding design locked in.</strong>
+                Contractors are now bidding on your siding project.
+                <a href="bids.html?claim_id=${encodeURIComponent(currentClaim.id)}"
+                   style="color:var(--amber,#E07B00);margin-left:0.25rem;text-decoration:none;">View bids →</a>
+              </div>
+            `;
+          }
+          container.appendChild(ctaDiv);
+        }
       }
 
       function updateProgressBar() {
@@ -1626,6 +1697,63 @@
           if (titleEl) titleEl.textContent = 'Your project is live!';
           if (textEl) textEl.textContent = 'Contractors are reviewing your details. You\'ll be notified of incoming bids.';
         }
+
+        // ── D-165: Per-trade status pills ─────────────────────────────────
+        // Show a trade-by-trade breakdown for:
+        //   • any multi-trade claim (≥2 trades), OR
+        //   • any retail single-trade claim where the release is pending.
+        // Each pill is driven by the corresponding *_bid_released_at column
+        // added by D-165 (v45 migration).
+        const bannerTrades = Array.isArray(currentClaim?.trades) ? currentClaim.trades : [];
+        const isRetailClaim = currentClaim?.funding_type === 'cash';
+
+        // Build a release map for all four trades
+        const releaseMap = {
+          roofing: !!currentClaim?.roofing_bid_released_at,
+          gutters: !!currentClaim?.gutters_bid_released_at,
+          siding:  !!currentClaim?.siding_bid_released_at,
+          windows: !!currentClaim?.windows_bid_released_at,
+        };
+
+        // For insurance claims, all trades are implicitly released (backfilled by v45
+        // or set at transition). For retail, a trade is pending if its timestamp is null.
+        const hasAnyUnreleased = isRetailClaim && bannerTrades.some(t => {
+          const k = (t || '').toLowerCase();
+          return Object.prototype.hasOwnProperty.call(releaseMap, k) && !releaseMap[k];
+        });
+        const showPills = bannerTrades.length >= 2 || hasAnyUnreleased;
+
+        if (showPills && bannerTrades.length > 0) {
+          const tradeLabels = { roofing: 'Roofing', siding: 'Siding', gutters: 'Gutters', windows: 'Windows' };
+
+          const pills = bannerTrades.map(t => {
+            const key   = (t || '').toLowerCase();
+            const label = tradeLabels[key] || t;
+            // Insurance claims: all trades are released. Retail: check release timestamp.
+            const released = !isRetailClaim
+              ? true
+              : (Object.prototype.hasOwnProperty.call(releaseMap, key) ? releaseMap[key] : true);
+
+            if (!released) {
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.5);color:#E07B00;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">🔒 ${label}: Waiting on design</span>`;
+            } else {
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(224,123,0,0.12);border:1px solid rgba(224,123,0,0.4);color:#FAC775;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">✓ ${label}: Collecting bids</span>`;
+            }
+          }).join('');
+
+          // Inject below the status text, but only once per page load
+          if (!document.getElementById('trade-status-pills')) {
+            const pillsContainer = document.createElement('div');
+            pillsContainer.id = 'trade-status-pills';
+            pillsContainer.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:0.5rem;';
+            pillsContainer.innerHTML = pills;
+            if (textEl?.parentNode) {
+              textEl.parentNode.insertBefore(pillsContainer, textEl.nextSibling);
+            }
+          }
+        }
+
+        if (banner) banner.classList.add('active');
       }
 
       function updateSubmitButton() {
@@ -2200,20 +2328,42 @@
         btn.classList.add('btn-loading');
 
         try {
+          const now = new Date().toISOString();
+          const isRetail = currentClaim.funding_type === 'cash';
+          const allTrades = currentClaim.selected_trades || currentClaim.trades || ['roofing'];
+
           if (CONFIG.DEMO_MODE) {
             // Demo mode: update local object only
             currentClaim.ready_for_bids = true;
-            currentClaim.bids_submitted_at = new Date().toISOString();
+            currentClaim.bids_submitted_at = now;
             currentClaim.status = 'active';
           } else if (sb) {
-            // Live mode: update database
+            // ── D-165: Build per-trade release timestamp update ──────────────
+            // For each trade: if retail AND trade is siding, leave null (D-164
+            // Hover-design gate controls siding release for retail claims).
+            // For all other trades, set {trade}_bid_released_at = NOW().
+            const dbUpdate = {
+              ready_for_bids: true,
+              bids_submitted_at: now,
+              status: 'active',
+            };
+            const tradesToRelease = [];
+            for (const trade of allTrades) {
+              const t = (trade || '').toLowerCase();
+              if (isRetail && t === 'siding') {
+                // Held: D-164 gate — check-siding-design-completion sets this
+                console.log('submitForBids: siding held (retail — D-164 gate)');
+                continue;
+              }
+              if (['roofing', 'gutters', 'siding', 'windows'].includes(t)) {
+                dbUpdate[`${t}_bid_released_at`] = now;
+              }
+              tradesToRelease.push(t);
+            }
+
             const { data, error } = await sb
               .from('claims')
-              .update({
-                ready_for_bids: true,
-                bids_submitted_at: new Date().toISOString(),
-                status: 'active',
-              })
+              .update(dbUpdate)
               .eq('id', currentClaim.id)
               .select()
               .single();
@@ -2233,37 +2383,49 @@
             has_measurements: currentClaim.has_measurements,
           });
 
-          // ── Notify matching contractors via Edge Function ──
+          // ── D-165: Notify contractors per-trade ──────────────────────────
+          // One notify-contractors call per released trade so each contractor
+          // receives a trade-specific email (e.g. "Roofing Opportunity" vs
+          // "Gutters Opportunity"). Siding on retail claims is skipped here —
+          // check-siding-design-completion fires the notification when the
+          // Hover design is complete.
           if (!CONFIG.DEMO_MODE) {
             try {
               const addressParts = (currentClaim.property_address || '').split(',');
-              const city = currentClaim.address_city || addressParts[0]?.trim() || 'Unknown';
+              const city  = currentClaim.address_city  || addressParts[0]?.trim() || 'Unknown';
               const state = currentClaim.address_state || 'IN';
-              const zip = currentClaim.address_zip || currentClaim.property_address?.match(/\d{5}/)?.[0] || '';
+              const zip   = currentClaim.address_zip   || currentClaim.property_address?.match(/\d{5}/)?.[0] || '';
 
-              const notifyPayload = {
-                claim_id: currentClaim.id,
-                claim_city: city,
-                claim_state: state,
-                claim_zip: zip,
-                trade_types: currentClaim.selected_trades || currentClaim.trades || ['roofing'],
-                job_type: currentClaim.job_type || 'insurance_rcv',
-                urgency: currentClaim.urgency || 'flexible',
-              };
+              const tradesForNotify = allTrades.filter(trade => {
+                const t = (trade || '').toLowerCase();
+                if (isRetail && t === 'siding') return false; // D-164 gate holds siding
+                return true;
+              });
 
-              // Fire-and-forget: don't block the success UI on notification delivery
-              fetch(`${CONFIG.SUPABASE_URL}/functions/v1/notify-contractors`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${CONFIG.SUPABASE_ANON}`,
-                },
-                body: JSON.stringify(notifyPayload),
-              }).then(resp => resp.json())
-                .then(result => console.log('Contractor notification result:', result))
-                .catch(notifyErr => console.error('Contractor notification error (non-blocking):', notifyErr));
+              // Fire-and-forget per trade — don't block success UI
+              for (const trade of tradesForNotify) {
+                const notifyPayload = {
+                  claim_id: currentClaim.id,
+                  claim_city: city,
+                  claim_state: state,
+                  claim_zip: zip,
+                  trade_types: [trade],
+                  job_type: currentClaim.job_type || 'insurance_rcv',
+                  urgency: currentClaim.urgency || 'flexible',
+                };
+                fetch(`${CONFIG.SUPABASE_URL}/functions/v1/notify-contractors`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${CONFIG.SUPABASE_ANON}`,
+                  },
+                  body: JSON.stringify(notifyPayload),
+                }).then(resp => resp.json())
+                  .then(result => console.log(`Contractor notification result [${trade}]:`, result))
+                  .catch(notifyErr => console.error(`Contractor notification error [${trade}] (non-blocking):`, notifyErr));
+              }
             } catch (notifyErr) {
-              console.error('Error preparing contractor notification:', notifyErr);
+              console.error('Error preparing contractor notifications:', notifyErr);
             }
           }
         } catch (err) {

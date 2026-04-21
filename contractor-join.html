@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-    <title>Join OtterQuote — Homeowners Sign Your Contract Right Here</title>
-    <meta name="description" content="Apply to join OtterQuote's contractor network. Receive fully executed contracts with measurements, materials selected, and homeowner signatures — ready to install. No chasing prospects.">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>Join Otter Quotes — Homeowners Sign Your Contract Right Here</title>
+    <meta name="description" content="Apply to join Otter Quotes's contractor network. Receive fully executed contracts with measurements, project details confirmed, and homeowner signatures — ready to install. No chasing prospects.">
     <link rel="canonical" href="https://otterquote.com/contractor-join.html">
-    <meta property="og:title" content="Join OtterQuote — Homeowners Sign Your Contract Right Here">
-    <meta property="og:description" content="Apply to join OtterQuote's contractor network. Receive fully executed contracts with measurements, materials selected, and homeowner signatures — ready to install. No chasing prospects.">
+    <meta property="og:title" content="Join Otter Quotes — Homeowners Sign Your Contract Right Here">
+    <meta property="og:description" content="Apply to join Otter Quotes's contractor network. Receive fully executed contracts with measurements, project details confirmed, and homeowner signatures — ready to install. No chasing prospects.">
     <meta property="og:url" content="https://otterquote.com/contractor-join.html">
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="OtterQuote">
+    <meta property="og:site_name" content="Otter Quotes">
     <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
 
     <!-- Google Analytics -->
@@ -28,18 +28,16 @@
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Stylesheets -->
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
     <style>
         :root {
-            --navy: #0B1929;
+            --navy: #0D1B2E;
             --navy-2: #0F2440;
             --navy-3: #132D50;
-            --amber: #F59E0B;
+            --amber: #E07B00;
             --white: #FFFFFF;
             --slate: #94A3B8;
             --light: #E2E8F0;
@@ -56,8 +54,8 @@
             --radius-md: 0.5rem;
             --radius-lg: 0.75rem;
             --radius-xl: 1rem;
-            --font-body: 'DM Sans', sans-serif;
-            --font-heading: 'Playfair Display', serif;
+            --font-body: 'Rubik', sans-serif;
+            --font-heading: 'Rubik', serif;
         }
 
         * {
@@ -236,7 +234,7 @@
         textarea:focus {
             outline: none;
             border-color: var(--amber);
-            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+            box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
         }
 
         .checkbox-item {
@@ -288,7 +286,7 @@
             background-color: #DC2626;
             color: var(--white);
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(20, 184, 166, 0.3);
+            box-shadow: 0 4px 12px rgba(224, 123, 0, 0.3);
         }
 
         .submit-btn:active {
@@ -334,7 +332,7 @@
         <!-- Hero Section -->
         <section class="hero">
             <div class="container">
-                <h1>Join the OtterQuote Contractor Network</h1>
+                <h1>Join the Otter Quotes Contractor Network</h1>
                 <p>Homeowners sign your contract right here. No marketing expense, sales people, or sales expenses.</p>
             </div>
         </section>
@@ -342,7 +340,7 @@
         <!-- Value Proposition -->
         <section class="value-section">
             <div class="container">
-                <h2 style="font-family: var(--font-heading); font-size: 2rem; text-align: center; margin-bottom: var(--sp-8); color: var(--navy);">Why Join OtterQuote?</h2>
+                <h2 style="font-family: var(--font-heading); font-size: 2rem; text-align: center; margin-bottom: var(--sp-8); color: var(--navy);">Why Join Otter Quotes?</h2>
                 <div class="value-cards">
                     <div class="value-card">
                         <h3>Homeowners Sign Your Contract Right Here</h3>
@@ -388,16 +386,22 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="businessName" class="form-label">Business Name <span style="color:var(--slate);font-weight:400;font-size:0.85rem;">(optional)</span></label>
-                                <input type="text" id="businessName" name="businessName" class="form-input" placeholder="Your Company LLC">
+                                <label for="businessName" class="form-label required">Business Name</label>
+                                <input type="text" id="businessName" name="businessName" class="form-input" placeholder="Your Company LLC" required>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Owner Name <span style="color:var(--slate);font-weight:400;font-size:0.85rem;">(optional)</span></label>
+                                <label class="form-label required">Signer Name</label>
                                 <div style="display:flex;gap:0.5rem;">
-                                    <input type="text" id="ownerFirstName" name="ownerFirstName" class="form-input" placeholder="First">
-                                    <input type="text" id="ownerLastName" name="ownerLastName" class="form-input" placeholder="Last">
+                                    <input type="text" id="ownerFirstName" name="ownerFirstName" class="form-input" placeholder="First" required>
+                                    <input type="text" id="ownerLastName" name="ownerLastName" class="form-input" placeholder="Last" required>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="signerTitle" class="form-label required">Signer Title</label>
+                            <input type="text" id="signerTitle" name="signerTitle" class="form-input" placeholder="Owner / President / Authorized Officer" required>
+                            <p style="font-size:0.85rem; color:var(--slate); margin-top:var(--sp-2);">You must be authorized to bind the business. The name and title you enter here will appear on the IC 24-5-11 attestation and the DocuSign Partner Agreement.</p>
                         </div>
                     </fieldset>
 
@@ -406,13 +410,13 @@
                         <h3><span></span>Platform Agreement</h3>
 
                         <div class="info-box">
-                            OtterQuote collects the homeowner's deductible on your behalf before you start. This is a core platform feature and cannot be opted out of.
+                            Otter Quotes collects the homeowner's deductible on your behalf before you start. This is a core platform feature and cannot be opted out of.
                         </div>
 
                         <div class="checkbox-item" style="margin-bottom: var(--sp-6);">
                             <input type="checkbox" id="agreeToPartnerAgreement" name="agreeToPartnerAgreement" required>
                             <label for="agreeToPartnerAgreement">
-                                I have reviewed the <a href="/contractor-agreement.html" target="_blank" style="color: var(--amber); text-decoration: none; font-weight: 600;">OtterQuote Contractor Partner Agreement</a> and understand I will be asked to sign it via DocuSign
+                                I have reviewed the <a href="/contractor-agreement.html" target="_blank" style="color: var(--amber); text-decoration: none; font-weight: 600;">Otter Quotes Contractor Partner Agreement</a> and understand I will be asked to sign it via DocuSign
                             </label>
                         </div>
                     </fieldset>
@@ -423,22 +427,85 @@
 
                         <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy);">
                             <p style="margin-bottom: var(--sp-4);">Before you sign up, we want to be straight with you about one thing.</p>
-                            <p style="margin-bottom: var(--sp-4);">Homeowners on OtterQuote can switch to a different contractor in our network up to 3 days before their scheduled installation date. No questions asked.</p>
+                            <p style="margin-bottom: var(--sp-4);">Homeowners on Otter Quotes can switch to a different contractor in our network up to 3 days before their scheduled installation date. No questions asked.</p>
                             <p style="margin-bottom: var(--sp-4);">We've all been there. Sometimes an employee drops the ball. Sometimes the homeowner changes their mind for no good reason at all. Whatever the case, it's going to happen occasionally — and we'd rather you know that upfront than be surprised by it.</p>
                             <p style="margin-bottom: var(--sp-4);">Here's what that means for you:</p>
                             <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
-                                <li style="margin-bottom: var(--sp-2);">OtterQuote handles the switch entirely. You don't make any calls, send any emails, or do anything.</li>
+                                <li style="margin-bottom: var(--sp-2);">Otter Quotes handles the switch entirely. You don't make any calls, send any emails, or do anything.</li>
                                 <li style="margin-bottom: var(--sp-2);">Your platform fee is refunded in full. You're not out a dollar.</li>
                                 <li style="margin-bottom: var(--sp-2);">The homeowner selects another contractor in the network.</li>
                             </ul>
-                            <p style="margin-bottom: var(--sp-4);">You'll lose a project here and there. You'll also pick up projects from homeowners who switched away from someone else. That's the deal. A platform where homeowners feel protected is a platform that keeps growing — and more homeowners on OtterQuote means more projects for every contractor in the network.</p>
+                            <p style="margin-bottom: var(--sp-4);">You'll lose a project here and there. You'll also pick up projects from homeowners who switched away from someone else. That's the deal. A platform where homeowners feel protected is a platform that keeps growing — and more homeowners on Otter Quotes means more projects for every contractor in the network.</p>
                             <p style="font-weight: 600; color: var(--navy);">By checking the box below, you acknowledge that this cancellation right exists, that you're agreeing to it as a condition of working on the platform, and that you understand a platform fee refund is your sole remedy if a homeowner exercises it.</p>
                         </div>
 
                         <div class="checkbox-item" style="margin-top: var(--sp-4); margin-bottom: var(--sp-6);">
                             <input type="checkbox" id="agreeToCancellationPolicy" name="agreeToCancellationPolicy" required>
                             <label for="agreeToCancellationPolicy">
-                                I understand that homeowners may switch contractors within the OtterQuote network up to 3 days before installation. If this occurs, I will receive a full refund of my platform fee. I agree to this policy as a condition of participating in the OtterQuote platform.
+                                I understand that homeowners may switch contractors within the Otter Quotes network up to 3 days before installation. If this occurs, I will receive a full refund of my platform fee. I agree to this policy as a condition of participating in the Otter Quotes platform.
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <!-- D-170: IC 24-5-11 Attestation + Joint-and-Several Indemnity -->
+                    <fieldset class="form-fieldset">
+                        <h3><span></span>Contractor Attestation &amp; Indemnity</h3>
+
+                        <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy);">
+                            <p style="margin-bottom: var(--sp-4);">Otter Quotes is a lead-matching and payments platform. We do not perform your work, supervise your crews, or warrant the materials you install. Every contractor on the platform represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
+                            <p style="margin-bottom: var(--sp-4);">By checking the box below, you personally and on behalf of the business attest that:</p>
+                            <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
+                                <li style="margin-bottom: var(--sp-2);">You hold all licenses, registrations, and permits required to perform the work you bid on in every jurisdiction where the home is located.</li>
+                                <li style="margin-bottom: var(--sp-2);">You carry and will maintain Commercial General Liability insurance of at least <strong>$1,000,000 per occurrence / $2,000,000 aggregate</strong>, including products-completed operations and contractual liability coverage, with Stellar Edge Services, LLC named as additional insured on a primary and non-contributory basis.</li>
+                                <li style="margin-bottom: var(--sp-2);">You will comply with Indiana Code 24-5-11 (Home Improvement Contracts Act) on every project booked through the platform, including the statutory written-contract, disclosure, and cancellation-right requirements.</li>
+                                <li style="margin-bottom: var(--sp-2);">You will indemnify, defend, and hold harmless Stellar Edge Services, LLC, Otter Quotes, and their officers, employees, and agents from and against any and all claims, damages, losses, liabilities, fines, penalties, and reasonable attorneys' fees arising out of or relating to your work, your employees or subcontractors, your failure to maintain required insurance or licensing, or any violation of IC 24-5-11 or other applicable law. This indemnity is <strong>joint and several</strong> with any co-contractor, subcontractor, or affiliate you engage on the project, and survives termination of your participation on the platform.</li>
+                            </ul>
+                            <p style="font-weight: 600; color: var(--navy);">Electronic acceptance below, together with the name and title entered above and the timestamp and IP address captured at acceptance, constitutes your signature under the federal E-SIGN Act and the Indiana Uniform Electronic Transactions Act.</p>
+                        </div>
+
+                        <div class="checkbox-item" style="margin-top: var(--sp-4); margin-bottom: var(--sp-6);">
+                            <input type="checkbox" id="agreeToAttestation" name="agreeToAttestation" required>
+                            <label for="agreeToAttestation">
+                                I am authorized to bind the business named above. I attest to the licensing, insurance, IC 24-5-11 compliance, and joint-and-several indemnity obligations stated above, and I intend this electronic acceptance to be my signature.
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <!-- TCPA SMS Consent -->
+                    <fieldset class="form-fieldset">
+                        <h3><span></span>SMS Notifications</h3>
+
+                        <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy);">
+                            Otter Quotes uses SMS to notify you of new project opportunities, bid updates, and important platform communications.
+                        </div>
+
+                        <div class="checkbox-item" style="margin-top: var(--sp-4); margin-bottom: var(--sp-6);">
+                            <input type="checkbox" id="agreeTcpaSms" name="agreeTcpaSms" required>
+                            <label for="agreeTcpaSms">
+                                I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe.
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <!-- 1099-NEC Tax Reporting Disclosure (86e0zj7j4 — disclosure version 1099-nec-v1-2026-04) -->
+                    <fieldset class="form-fieldset">
+                        <h3><span></span>Tax Reporting Notice</h3>
+
+                        <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy);">
+                            <p style="margin-bottom: var(--sp-4);">Otter Quotes pays contractors for project-based work facilitated through the platform. Because you are an independent contractor — not an employee — Otter Quotes does not withhold federal, state, or local taxes from your fees.</p>
+                            <p style="margin-bottom: var(--sp-4);">Federal law requires us to report payments made to independent contractors. Specifically:</p>
+                            <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
+                                <li style="margin-bottom: var(--sp-2);"><strong>If you receive $600 or more from Otter Quotes in a calendar year</strong>, we are required to file a Form 1099-NEC with the IRS reporting those payments. You will receive a copy no later than January 31 of the following year.</li>
+                                <li style="margin-bottom: var(--sp-2);">You are responsible for estimating and remitting all applicable federal income tax, self-employment tax, and state and local taxes on income earned through the platform.</li>
+                                <li style="margin-bottom: var(--sp-2);">Otter Quotes may be required to collect your taxpayer identification information (W-9) before issuing payment. Failure to provide accurate information may result in backup withholding at the applicable IRS rate.</li>
+                            </ul>
+                            <p style="font-weight: 600; color: var(--navy);">We recommend consulting a qualified tax professional regarding your obligations as an independent contractor.</p>
+                        </div>
+
+                        <div class="checkbox-item" style="margin-top: var(--sp-4); margin-bottom: var(--sp-6);">
+                            <input type="checkbox" id="agree1099Nec" name="agree1099Nec" required>
+                            <label for="agree1099Nec">
+                                I understand that Otter Quotes will issue a Form 1099-NEC if I receive $600 or more through the platform in a calendar year, that no taxes are withheld from my payments, and that I am solely responsible for all federal, state, and local tax obligations on income earned through the platform.
                             </label>
                         </div>
                     </fieldset>
@@ -467,9 +534,29 @@
             const businessName = (formData.get('businessName') || '').trim();
             const firstName    = (formData.get('ownerFirstName') || '').trim();
             const lastName     = (formData.get('ownerLastName') || '').trim();
+            const signerTitle  = (formData.get('signerTitle')    || '').trim();
+            const attestationChecked = document.getElementById('agreeToAttestation').checked;
+            const tcpaSmsChecked = document.getElementById('agreeTcpaSms').checked;
+            const nec1099Checked = document.getElementById('agree1099Nec').checked;
 
             if (!email) {
                 alert('Please enter your business email address.');
+                return;
+            }
+            if (!businessName || !firstName || !lastName || !signerTitle) {
+                alert('Please enter your business name and the signer\u2019s first name, last name, and title. These appear on your IC 24-5-11 attestation.');
+                return;
+            }
+            if (!attestationChecked) {
+                alert('You must accept the contractor attestation and indemnity before we can send your login link.');
+                return;
+            }
+            if (!tcpaSmsChecked) {
+                alert('You must agree to receive transactional SMS from Otter Quotes before we can send your login link.');
+                return;
+            }
+            if (!nec1099Checked) {
+                alert('You must acknowledge the tax reporting notice before we can send your login link.');
                 return;
             }
 
@@ -489,12 +576,28 @@
                 // Send magic link immediately — no other fields required
                 await Auth.sendMagicLink(email, 'contractor');
 
-                // Store any optional info for post-auth profile pre-fill
+                // Store profile + D-170 attestation payload for post-auth write
+                // (handleAuthCallback in js/auth.js persists these to contractors + calls
+                //  the record-attestation Edge Function to capture IP server-side.)
                 localStorage.setItem('cs_contractor_signup', JSON.stringify({
                     email: email,
                     company_name: businessName,
                     contact_name: [firstName, lastName].filter(Boolean).join(' '),
+                    signer_first_name: firstName,
+                    signer_last_name: lastName,
+                    signer_title: signerTitle,
                     role: 'contractor',
+                    sms_consent_ts: tcpaSmsChecked ? new Date().toISOString() : null,
+                    attestation: {
+                        text_version: 'ic-24511-v1-2026-04',
+                        accepted: true,
+                        accepted_client_ts: new Date().toISOString(),
+                        user_agent: navigator.userAgent,
+                        platform_agreement_ack: true,
+                        cancellation_policy_ack: true,
+                        tax_1099_nec_ack: true,
+                        tax_1099_nec_version: '1099-nec-v1-2026-04',
+                    },
                 }));
                 localStorage.setItem('cs_auth_role', 'contractor');
 
@@ -503,8 +606,11 @@
                 document.getElementById('contractorForm').style.display = 'none';
                 window.scrollTo({ top: 0, behavior: 'smooth' });
 
-                // GA4
-                gtag('event', 'contractor_signup', { email: email });
+                // GA4 conversion event — contractor funnel
+                gtag('event', 'contractor_signup', {
+                    trade_types: [],  // trade selection happens post-signup in profile setup
+                    source: new URLSearchParams(location.search).get('utm_source') || 'direct',
+                });
 
             } catch (error) {
                 console.error('Error sending magic link:', error);

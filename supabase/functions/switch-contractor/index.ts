@@ -340,30 +340,48 @@ support@otterquote.com | (844) 875-3412`;
       console.log("[switch-contractor] Contractor notification email sent:", emailSent);
     }
 
-    // ── 10. Re-notify contractor network ──────────────────────────────────
-    // Fire-and-forget — don't block the response on this
+    // ── 10. Re-notify contractor network (D-165: per-trade, release-aware) ──
+    // Fire one notify-contractors call per released trade. A trade is "released"
+    // if its *_bid_released_at timestamp is non-null on the claim record (which
+    // uses select("*") above and therefore includes all v45 columns).
+    // This ensures retail siding claims that haven't completed their Hover design
+    // (siding_bid_released_at IS NULL) do NOT re-notify siding contractors on switch.
+    // Fire-and-forget — don't block the response on this.
     try {
       const addressParts = (claim.property_address || "").split(",");
-      const notifyPayload = {
-        claim_id: claim_id,
+      const notifyBase = {
+        claim_id:    claim_id,
         claim_city:  claim.address_city  || addressParts[0]?.trim() || "Unknown",
         claim_state: claim.address_state || "IN",
         claim_zip:   claim.address_zip   || claim.property_address?.match(/\d{5}/)?.[0] || "",
-        trade_types: claim.selected_trades || claim.trades || ["roofing"],
         job_type:    claim.job_type || "insurance_rcv",
         urgency:     claim.urgency  || "flexible",
       };
 
-      fetch(`${supabaseUrl}/functions/v1/notify-contractors`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${serviceKey}`,
-        },
-        body: JSON.stringify(notifyPayload),
-      }).then(r => r.json())
-        .then(result => console.log("[switch-contractor] notify-contractors result:", result))
-        .catch(err => console.error("[switch-contractor] notify-contractors error (non-blocking):", err));
+      const allTrades: string[] = claim.selected_trades || claim.trades || ["roofing"];
+      const KNOWN_TRADES = ["roofing", "gutters", "siding", "windows"];
+      const releasedTrades = allTrades.filter((t: string) => {
+        const tl = t.toLowerCase();
+        if (!KNOWN_TRADES.includes(tl)) return true; // unknown = conservative include
+        const col = `${tl}_bid_released_at` as keyof typeof claim;
+        return !!(claim as any)[col];
+      });
+
+      if (releasedTrades.length === 0) {
+        console.log("[switch-contractor] No released trades — skipping re-notification (all held by gates)");
+      } else {
+        for (const trade of releasedTrades) {
+          const notifyPayload = { ...notifyBase, trade_types: [trade] };
+          fetch(`${supabaseUrl}/functions/v1/notify-contractors`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+            body: JSON.stringify(notifyPayload),
+          }).then(r => r.json())
+            .then(result => console.log(`[switch-contractor] notify-contractors [${trade}] result:`, result))
+            .catch(err => console.error(`[switch-contractor] notify-contractors [${trade}] error (non-blocking):`, err));
+        }
+        console.log(`[switch-contractor] Re-notification fired for trades: [${releasedTrades.join(", ")}]`);
+      }
     } catch (notifyErr) {
       console.error("[switch-contractor] Error firing notify-contractors:", notifyErr);
     }

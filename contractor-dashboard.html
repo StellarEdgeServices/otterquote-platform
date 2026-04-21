@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-    <title>Contractor Dashboard — OtterQuote</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>Contractor Dashboard — Otter Quotes</title>
 
     <!-- GA4 -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -19,9 +19,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-
-    <!-- Design System & Navigation -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Design System & Navigation -->
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
 
@@ -71,7 +71,7 @@
 
         .stat-card:hover {
             border-color: var(--amber);
-            box-shadow: 0 4px 12px rgba(20, 184, 166, 0.1);
+            box-shadow: 0 4px 12px rgba(224, 123, 0, 0.1);
         }
 
         .stat-card-label {
@@ -288,7 +288,7 @@
 
         .nav-card:hover {
             border-color: var(--amber);
-            box-shadow: 0 8px 20px rgba(20, 184, 166, 0.15);
+            box-shadow: 0 8px 20px rgba(224, 123, 0, 0.15);
             transform: translateY(-2px);
         }
 
@@ -410,7 +410,7 @@
         /* ─── Pending Approval Banner ─── */
         .pending-approval-banner {
             background: #FEF3C7;
-            border-left: 4px solid #F59E0B;
+            border-left: 4px solid #E07B00;
             border-radius: var(--radius-md);
             padding: var(--sp-6);
             margin-bottom: var(--sp-8);
@@ -688,7 +688,7 @@
                     </p>
                     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                         <button id="dunningRetryBtn" onclick="retryDunningPayment()" style="background: #EF4444; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-weight: 600; font-size: 0.875rem; cursor: pointer;">Retry Payment Now</button>
-                        <a href="contractor-settings.html" style="background: #0B1929; color: #F59E0B; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-weight: 600; font-size: 0.875rem; cursor: pointer; text-decoration: none; display: inline-block;">Update Card</a>
+                        <a href="contractor-settings.html" style="background: #0D1B2E; color: #E07B00; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-weight: 600; font-size: 0.875rem; cursor: pointer; text-decoration: none; display: inline-block;">Update Card</a>
                     </div>
                 </div>
             </div>
@@ -715,12 +715,12 @@
             <div class="agreement-modal">
                 <div class="agreement-modal-header">
                     <h2>Contractor Partner Agreement</h2>
-                    <p>Before using OtterQuote, please review and accept our Contractor Partner Agreement.</p>
+                    <p>Before using Otter Quotes, please review and accept our Contractor Partner Agreement.</p>
                 </div>
                 <a href="/contractor-agreement.html" target="_blank" class="agreement-modal-link">📄 Read Full Agreement</a>
                 <div class="agreement-modal-checkbox">
                     <input type="checkbox" id="agreementCheckbox" name="agreementCheckbox">
-                    <label for="agreementCheckbox">I have read and agree to the OtterQuote Contractor Partner Agreement</label>
+                    <label for="agreementCheckbox">I have read and agree to the Otter Quotes Contractor Partner Agreement</label>
                 </div>
                 <button id="acceptAgreementBtn" class="agreement-modal-button" disabled>Accept and Continue</button>
             </div>
@@ -1393,7 +1393,7 @@
                         body: {
                             amount: activeDunningRecord.amount_cents,
                             currency: 'usd',
-                            description: 'OtterQuote platform fee retry for claim ' + activeDunningRecord.claim_id,
+                            description: 'Otter Quotes platform fee retry for claim ' + activeDunningRecord.claim_id,
                             metadata: {
                                 claim_id: activeDunningRecord.claim_id,
                                 contractor_id: currentContractor.id,

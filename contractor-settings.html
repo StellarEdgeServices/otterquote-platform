@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
-  <title>Settings & Preferences | OtterQuote Contractor Portal</title>
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Settings & Preferences | Otter Quotes Contractor Portal</title>
 
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -23,19 +23,17 @@
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Design System -->
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/nav.css">
 
   <style>
     :root {
-      --navy: #0B1929;
+      --navy: #0D1B2E;
       --navy-2: #0F2440;
       --navy-3: #132D50;
-      --amber: #F59E0B;
+      --amber: #E07B00;
       --white: #FFFFFF;
       --slate: #94A3B8;
       --light: #E2E8F0;
@@ -52,9 +50,9 @@
       --radius-md: 0.5rem;
       --radius-lg: 0.75rem;
       --radius-xl: 1rem;
-      --font-body: 'DM Sans', sans-serif;
-      --font-heading: 'Playfair Display', serif;
-      --font-mono: 'DM Mono', monospace;
+      --font-body: 'Rubik', sans-serif;
+      --font-heading: 'Rubik', serif;
+      --font-mono: 'Rubik', monospace;
     }
 
     * {
@@ -395,7 +393,7 @@
     .notification-item input[type="text"]:focus {
       outline: none;
       border-color: var(--amber);
-      box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+      box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
     }
 
     .remove-btn {
@@ -529,6 +527,85 @@
       font-weight: 600;
     }
 
+    /* ── Template slot grid (PC templates — D-161) ── */
+    .template-slots-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--sp-6);
+      margin-top: var(--sp-4);
+    }
+    .template-slot {
+      border: 1px solid var(--light);
+      border-radius: var(--radius-md);
+      padding: var(--sp-6);
+      background: rgba(255,255,255,0.5);
+    }
+    .template-slot-header {
+      font-weight: 600;
+      color: var(--navy);
+      margin-bottom: var(--sp-2);
+      font-size: 0.95rem;
+    }
+    .template-slot-subtext {
+      font-size: 0.85rem;
+      color: var(--slate);
+      margin-bottom: var(--sp-4);
+    }
+    .template-file-display {
+      background: var(--light);
+      padding: var(--sp-3);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--sp-3);
+    }
+    .template-file-name {
+      font-weight: 500;
+      color: var(--navy);
+      font-size: 0.875rem;
+      word-break: break-word;
+      margin-bottom: var(--sp-1);
+    }
+    .template-file-date {
+      font-size: 0.8rem;
+      color: var(--slate);
+    }
+    .template-upload-box {
+      border: 2px dashed var(--light);
+      border-radius: var(--radius-md);
+      padding: var(--sp-4);
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: rgba(11,25,41,0.02);
+    }
+    .template-upload-box:hover {
+      border-color: var(--amber);
+      background: rgba(245,158,11,0.05);
+    }
+    .template-upload-box input[type="file"] { display: none; }
+    .template-upload-label {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--sp-2);
+      cursor: pointer;
+    }
+    .template-upload-icon { font-size: 1.5rem; }
+    .template-upload-text { font-size: 0.85rem; color: var(--navy); font-weight: 500; }
+    .template-upload-hint { font-size: 0.75rem; color: var(--slate); margin-top: var(--sp-1); }
+    .btn-small {
+      padding: var(--sp-2) var(--sp-3);
+      font-size: 0.85rem;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+    .btn-small-primary { background: var(--amber); color: var(--navy); }
+    .btn-small-primary:hover { background: #d97706; }
+    .btn-small-secondary { background: transparent; color: var(--amber); border: 1px solid var(--amber); }
+    .btn-small-secondary:hover { background: var(--amber); color: var(--navy); }
+
     /* ── Save button ── */
     .save-button {
       background: var(--amber);
@@ -583,7 +660,7 @@
   <main>
     <div class="page-header">
       <h1>Settings & Preferences</h1>
-      <p class="page-subtitle">Manage your auto-bid settings, notifications, and review how OtterQuote pricing works.</p>
+      <p class="page-subtitle">Manage your auto-bid settings, notifications, and review how Otter Quotes pricing works.</p>
     </div>
 
     <!-- Notification Preferences                -->
@@ -658,7 +735,7 @@
     <div class="settings-card">
       <div class="settings-card-title">Auto-Bid Settings</div>
       <div class="settings-card-subtitle">
-        When auto-bid is enabled, OtterQuote will automatically place bids on your behalf for matching insurance full roof replacement opportunities in your service area.
+        When auto-bid is enabled, Otter Quotes will automatically place bids on your behalf for matching insurance full roof replacement opportunities in your service area.
       </div>
 
       <!-- Master toggle -->
@@ -675,7 +752,7 @@
       <div class="autobid-details hidden" id="autoBidDetails">
 
         <div class="info-box" style="margin-top: 0;">
-          <strong>How it works:</strong> When a homeowner in your service area submits an insurance claim for a full roof replacement, OtterQuote will automatically place a bid on your behalf at the insurance company's approved RCV (Replacement Cost Value) amount plus any approved supplements. The homeowner sees your bid instantly and can sign a contract right away. You can manually generate a more tailored bid after reviewing the customer's request.
+          <strong>How it works:</strong> When a homeowner in your service area submits an insurance claim for a full roof replacement, Otter Quotes will automatically place a bid on your behalf at the insurance company's approved RCV (Replacement Cost Value) amount plus any approved supplements. The homeowner sees your bid instantly and can sign a contract right away. You can manually generate a more tailored bid after reviewing the customer's request.
         </div>
 
         <!-- Summary of what auto-bid matches on -->
@@ -1141,7 +1218,7 @@
       </div>
 
       <!-- Status display: No payment methods on file (amber) -->
-      <div id="pmStatusNoPayment" style="padding: var(--sp-6); background: #FFFBEB; border: 1px solid #F59E0B; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
+      <div id="pmStatusNoPayment" style="padding: var(--sp-6); background: #FFFBEB; border: 1px solid #E07B00; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
         <div style="font-size: 0.9rem; color: #92400E; font-weight: 600; margin-bottom: var(--sp-2);">⚠️ Payment Method Required</div>
         <p style="font-size: 0.875rem; color: #78350F; margin-bottom: 0; line-height: 1.5;">
           A payment method is required before you can receive projects. Add a bank account (<strong>no processing fee</strong>) or credit/debit card to get started.
@@ -1155,7 +1232,7 @@
       <div id="pmEncourageBanner" style="padding: var(--sp-6); background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
         <div style="font-size: 0.95rem; font-weight: 600; color: #1E3A5F; margin-bottom: var(--sp-3);">Protect Your Reputation &mdash; Add a Backup Payment Method</div>
         <p style="font-size: 0.85rem; color: #334155; line-height: 1.7; margin-bottom: var(--sp-4);">
-          When a homeowner signs a contract with you through OtterQuote, your platform fee is charged automatically. If the charge fails, we're required to notify the homeowner &mdash; and that conversation can raise questions about your business that no contractor wants to answer.
+          When a homeowner signs a contract with you through Otter Quotes, your platform fee is charged automatically. If the charge fails, we're required to notify the homeowner &mdash; and that conversation can raise questions about your business that no contractor wants to answer.
         </p>
         <p style="font-size: 0.85rem; color: #334155; line-height: 1.7; margin-bottom: var(--sp-4);">
           Adding a second payment method ensures your projects are delivered seamlessly, even if your primary method has a temporary issue. Most contractors keep a bank account on file as their backup &mdash; bank transfers have no processing fee and are the most reliable payment method.
@@ -1163,7 +1240,7 @@
         <p style="font-size: 0.85rem; color: #334155; line-height: 1.7; margin-bottom: var(--sp-6);">
           This isn't about us collecting fees faster. It's about making sure that when a homeowner chooses you, the experience is seamless from start to finish.
         </p>
-        <button class="btn btn-primary" onclick="initializeStripeSetup('us_bank_account')" style="background: #1E3A5F; color: #F59E0B; border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;">
+        <button class="btn btn-primary" onclick="initializeStripeSetup('us_bank_account')" style="background: #1E3A5F; color: #E07B00; border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;">
           Add Backup Payment Method
         </button>
       </div>
@@ -1225,7 +1302,7 @@
     <div class="settings-card">
       <div class="settings-card-title">How Our Pricing Works</div>
       <div class="settings-card-subtitle">
-        You only pay for what OtterQuote delivers. Our fee is a percentage of the job value, based on which services we successfully complete for your project.
+        You only pay for what Otter Quotes delivers. Our fee is a percentage of the job value, based on which services we successfully complete for your project.
       </div>
 
       <!-- Tier 1: Signed Contract -->
@@ -1234,7 +1311,7 @@
         <div class="pricing-content">
           <div class="pricing-label">Signed Contract</div>
           <div class="pricing-description">
-            Once a homeowner selects you, OtterQuote handles the contract signing — you sign first, then the homeowner. Both signatures happen on our platform. You receive a fully signed contract, not just a lead.
+            Once a homeowner selects you, Otter Quotes handles the contract signing — you sign first, then the homeowner. Both signatures happen on our platform. You receive a fully signed contract, not just a lead.
           </div>
         </div>
         <div class="pricing-fee">5%</div>
@@ -1244,7 +1321,7 @@
       <div class="fee-summary">
         <div class="fee-summary-label">Your platform fee per project:</div>
         <div class="fee-summary-amount">5% of job value</div>
-        <div class="fee-summary-note">Charged when a homeowner signs a contract with you through OtterQuote</div>
+        <div class="fee-summary-note">Charged when a homeowner signs a contract with you through Otter Quotes</div>
       </div>
     </div>
 
@@ -1271,22 +1348,22 @@
         </div>
       </div>
 
-      <div id="repairsDetails" class="hidden" style="margin-top:var(--sp-6); padding:var(--sp-6); background:#FFFBEB; border:1px solid #F59E0B; border-radius:var(--radius-md);">
+      <div id="repairsDetails" class="hidden" style="margin-top:var(--sp-6); padding:var(--sp-6); background:#FFFBEB; border:1px solid #E07B00; border-radius:var(--radius-md);">
         <p style="font-size:0.9rem; color:var(--navy); margin-bottom:var(--sp-4);">
           <strong>Show-Up Guarantee Agreement</strong>
         </p>
         <p style="font-size:0.85rem; color:#4B5563; margin-bottom:var(--sp-4); line-height:1.6;">
-          By accepting repair work, you agree to the OtterQuote show-up guarantee: if you schedule a repair diagnostic visit and fail to appear without 24 hours notice, <strong>OtterQuote will pay the homeowner $100 and charge your account $250.</strong>
+          By accepting repair work, you agree to the Otter Quotes show-up guarantee: if you schedule a repair diagnostic visit and fail to appear without 24 hours notice, <strong>Otter Quotes will pay the homeowner $100 and charge your account $250.</strong>
         </p>
         <label style="display:flex; align-items:flex-start; gap:var(--sp-3); cursor:pointer; margin-bottom:var(--sp-6);">
           <input type="checkbox" id="guaranteeCheck" style="width:1rem; height:1rem; margin-top:3px; accent-color:var(--amber); flex-shrink:0;">
           <span style="font-size:0.85rem; color:var(--navy);">
-            I agree to the show-up guarantee terms. If I no-show a scheduled repair visit, I authorize OtterQuote to charge $250 to my payment method and disburse $100 to the homeowner.
+            I agree to the show-up guarantee terms. If I no-show a scheduled repair visit, I authorize Otter Quotes to charge $250 to my payment method and disburse $100 to the homeowner.
           </span>
         </label>
 
         <!-- Diagnostic Fee -->
-        <div style="border-top:1px solid #F59E0B; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
+        <div style="border-top:1px solid #E07B00; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
           <div style="font-weight:600; color:var(--navy); margin-bottom:var(--sp-3);">Diagnostic Fee?</div>
           <div style="display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-4); font-size:0.875rem;">
             <label style="display:flex; align-items:center; gap:var(--sp-2); cursor:pointer;">
@@ -1303,15 +1380,140 @@
         </div>
 
         <!-- Notes to the Customer -->
-        <div style="border-top:1px solid #F59E0B; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
+        <div style="border-top:1px solid #E07B00; padding-top:var(--sp-4); margin-bottom:var(--sp-4);">
           <label style="font-size:0.875rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Notes to the Customer</label>
           <p style="font-size:0.8rem; color:#6B7280; margin-bottom:var(--sp-2);">These notes will appear on your repair listing. Use them to set expectations, explain your diagnostic process, or highlight your expertise.</p>
           <textarea id="repairNotesToCustomer" name="repairNotesToCustomer" placeholder="e.g., Our diagnostic technician will assess the damage, photograph all affected areas, and provide a written repair estimate on-site. No commitment required." style="width:100%; min-height:80px; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem; resize:vertical;" maxlength="1000"></textarea>
         </div>
 
-        <div style="border-top:1px solid #F59E0B; padding-top:var(--sp-4);">
+        <div style="border-top:1px solid #E07B00; padding-top:var(--sp-4);">
           <button class="save-button" onclick="saveSettings()" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Save Repair Settings</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- IC 24-5-11 Attestation (D-170)          -->
+    <!-- Only shown to contractors who predate   -->
+    <!-- the contractor-join attestation flow.   -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card" id="attestationCard" style="display:none; border-left: 4px solid #dc2626;">
+      <div class="settings-card-title" style="color:#991b1b;">⚠️ Contractor Attestation Required</div>
+      <div class="settings-card-subtitle">
+        Otter Quotes has updated its terms. Before you can submit new bids, please confirm the following IC 24-5-11 attestation and joint-and-several indemnity.
+      </div>
+
+      <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy); padding: var(--sp-4); background:#F8FAFC; border:1px solid #E2E8F0; border-radius: var(--radius-md); margin-bottom: var(--sp-4);">
+        <p style="margin-bottom: var(--sp-4);">Otter Quotes is a lead-matching and payments platform. We do not perform your work or warrant your materials. Every contractor represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
+        <p style="margin-bottom: var(--sp-4);">By accepting below, you personally and on behalf of the business attest that:</p>
+        <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
+          <li style="margin-bottom: var(--sp-2);">You hold all licenses, registrations, and permits required in every jurisdiction where you bid.</li>
+          <li style="margin-bottom: var(--sp-2);">You carry and maintain CGL insurance of at least <strong>$1M per occurrence / $2M aggregate</strong>, with products-completed operations and contractual liability coverage, naming Stellar Edge Services, LLC as additional insured on a primary and non-contributory basis.</li>
+          <li style="margin-bottom: var(--sp-2);">You comply with Indiana Code 24-5-11 (Home Improvement Contracts Act) on every platform project.</li>
+          <li style="margin-bottom: var(--sp-2);">You indemnify, defend, and hold harmless Stellar Edge Services, LLC, Otter Quotes, and their officers, employees, and agents from any claims, damages, losses, liabilities, fines, penalties, and reasonable attorneys' fees arising out of or relating to your work, crews, subcontractors, failure to maintain insurance or licensing, or any violation of IC 24-5-11 or other applicable law. This indemnity is <strong>joint and several</strong> with any co-contractor, subcontractor, or affiliate on the project, and survives termination.</li>
+        </ul>
+        <p style="font-weight:600; color:var(--navy);">Electronic acceptance below — together with the name, title, timestamp, and IP captured — constitutes your signature under the federal E-SIGN Act and the Indiana UETA.</p>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-4); margin-bottom: var(--sp-4);">
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Signer Name</label>
+          <input type="text" id="attSignerName" placeholder="First and last name" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Signer Title</label>
+          <input type="text" id="attSignerTitle" placeholder="Owner / President / Authorized Officer" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+      </div>
+
+      <label style="display:flex; align-items:flex-start; gap:var(--sp-3); cursor:pointer; margin-bottom:var(--sp-4);">
+        <input type="checkbox" id="attAccept" style="width:1rem; height:1rem; margin-top:3px; accent-color:var(--amber); flex-shrink:0;">
+        <span style="font-size:0.9rem; color:var(--navy);">
+          I am authorized to bind the business named above. I attest to the licensing, insurance, IC 24-5-11 compliance, and joint-and-several indemnity obligations stated above, and I intend this electronic acceptance to be my signature.
+        </span>
+      </label>
+
+      <div>
+        <button class="save-button" onclick="saveAttestation()" id="attSaveBtn" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Accept &amp; Continue</button>
+        <span id="attSaveStatus" style="margin-left: var(--sp-3); font-size:0.85rem; color:var(--slate);"></span>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- CGL Certificate of Insurance (D-170)    -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card" id="coiCard">
+      <div class="settings-card-title">Commercial General Liability Certificate</div>
+      <div class="settings-card-subtitle">
+        Otter Quotes requires a current CGL certificate of insurance on file at all times. Required minimums: <strong>$1,000,000 per occurrence / $2,000,000 aggregate</strong>, products-completed operations, contractual liability, with Stellar Edge Services, LLC named as additional insured on a primary and non-contributory basis. We'll remind you 30, 14, and 7 days before expiration. An expired or missing COI automatically suspends bidding.
+      </div>
+
+      <!-- Status banner — populated by loadCoiStatus() -->
+      <div id="coiStatusBanner" style="padding: var(--sp-4); border-radius: var(--radius-md); margin-bottom: var(--sp-4); display:none; font-size: 0.9rem;"></div>
+
+      <!-- Current COI summary -->
+      <div id="coiSummary" style="display:none; padding: var(--sp-4); background:#F8FAFC; border:1px solid #E2E8F0; border-radius: var(--radius-md); margin-bottom: var(--sp-4);">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap: var(--sp-4);">
+          <div>
+            <div style="font-size:0.75rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; margin-bottom:4px;">Insurer</div>
+            <div id="coiInsurerDisplay" style="color:var(--navy); font-weight:600;">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; margin-bottom:4px;">Policy #</div>
+            <div id="coiPolicyDisplay" style="color:var(--navy); font-weight:600;">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; margin-bottom:4px;">Expires</div>
+            <div id="coiExpiresDisplay" style="color:var(--navy); font-weight:600;">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.05em; font-weight:600; margin-bottom:4px;">Certificate</div>
+            <div><a id="coiFileLink" href="#" target="_blank" style="color:var(--amber); font-weight:600;">View PDF</a></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload / replace form -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-4); margin-bottom: var(--sp-4);">
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Insurer</label>
+          <input type="text" id="coiInsurer" placeholder="e.g., Nationwide" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Policy Number</label>
+          <input type="text" id="coiPolicyNumber" placeholder="Policy #" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Expiration Date</label>
+          <input type="date" id="coiExpiresAt" style="width:100%; padding:var(--sp-3); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.875rem;">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-2);">Certificate PDF</label>
+          <input type="file" id="coiFileInput" accept=".pdf,.jpg,.jpeg,.png" style="width:100%; padding:var(--sp-2); border:1px solid #CBD5E1; border-radius:var(--radius-md); font-size:0.8rem;">
+        </div>
+      </div>
+
+      <div>
+        <button class="save-button" onclick="saveCoi()" id="coiSaveBtn" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Upload / Update Certificate</button>
+        <span id="coiSaveStatus" style="margin-left: var(--sp-3); font-size:0.85rem; color:var(--slate);"></span>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- Project Confirmation Templates (D-161) -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card">
+      <div class="settings-card-title">Project Confirmation Templates</div>
+      <div class="settings-card-subtitle">
+        Upload a confirmation template for each trade and funding type you use. After a homeowner signs the main contract, Otter Quotes selects the matching template automatically. You can also manage these on your Profile page.
+      </div>
+
+      <div style="padding: var(--sp-4); background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius-md); margin-bottom: var(--sp-6); font-size: 0.875rem; color: #78350F;">
+        <strong>⚠️ Upload one template per trade + funding type.</strong> Confirmation docs differ by trade and by insurance vs. retail — same as your contracts. Store only the slots you actively use.
+      </div>
+
+      <div id="pcTemplatesSettingsGrid" style="gap: var(--sp-6); margin-top: var(--sp-4);">
+        <div style="color: var(--slate); font-size: 0.875rem; padding: var(--sp-4);">Loading templates…</div>
       </div>
     </div>
 
@@ -1404,8 +1606,8 @@
         style: {
           base: {
             fontSize: '14px',
-            color: '#0B1929',
-            fontFamily: 'DM Sans, sans-serif',
+            color: '#0D1B2E',
+            fontFamily: 'Rubik, sans-serif',
             '::placeholder': { color: '#94A3B8' }
           },
           invalid: { color: '#EF4444' }
@@ -1463,7 +1665,7 @@
           ? '<span style="font-size:0.7rem;background:#FEF3C7;color:#92400E;padding:2px 6px;border-radius:4px;margin-left:8px;">Processing fee</span>'
           : '<span style="font-size:0.7rem;background:#D1FAE5;color:#065F46;padding:2px 6px;border-radius:4px;margin-left:8px;">Free</span>';
         const defaultBadge = m.is_default
-          ? '<span style="font-size:0.7rem;background:#0B1929;color:#F59E0B;padding:2px 8px;border-radius:4px;margin-left:8px;font-weight:600;">DEFAULT</span>'
+          ? '<span style="font-size:0.7rem;background:#0D1B2E;color:#E07B00;padding:2px 8px;border-radius:4px;margin-left:8px;font-weight:600;">DEFAULT</span>'
           : '';
         const setDefaultBtn = !m.is_default
           ? `<button onclick="setDefaultMethod('${m.id}')" style="font-size:0.78rem;color:#0369A1;background:none;border:none;cursor:pointer;padding:4px 0;text-decoration:underline;">Set as Default</button>`
@@ -1932,6 +2134,229 @@
     });
 
     // ── Initialize: Load settings from Supabase ──
+    // ── Project Confirmation Templates (D-161) — Settings page copy of the 8-slot grid ──
+
+    const PC_SETTINGS_SLOTS = [
+      { trade: 'roofing',  fundingType: 'insurance', label: 'Roofing — Insurance' },
+      { trade: 'roofing',  fundingType: 'retail',    label: 'Roofing — Retail' },
+      { trade: 'siding',   fundingType: 'insurance', label: 'Siding — Insurance' },
+      { trade: 'siding',   fundingType: 'retail',    label: 'Siding — Retail' },
+      { trade: 'gutters',  fundingType: 'insurance', label: 'Gutters — Insurance' },
+      { trade: 'gutters',  fundingType: 'retail',    label: 'Gutters — Retail' },
+      { trade: 'windows',  fundingType: 'insurance', label: 'Windows — Insurance' },
+      { trade: 'windows',  fundingType: 'retail',    label: 'Windows — Retail' },
+    ];
+
+    async function loadPcTemplatesSettings() {
+      const gridContainer = document.getElementById('pcTemplatesSettingsGrid');
+      if (!gridContainer) return;
+
+      let pcTemplates = {};
+      if (contractorRecord && sb && !CONFIG.DEMO_MODE) {
+        try {
+          const { data } = await sb.from('contractors')
+            .select('color_confirmation_template')
+            .eq('id', contractorRecord.id)
+            .single();
+          pcTemplates = data?.color_confirmation_template || {};
+          if (contractorRecord) contractorRecord.color_confirmation_template = pcTemplates;
+        } catch (err) {
+          console.error('Error loading PC templates (settings):', err);
+        }
+      }
+
+      // Session 254: XSS hardening — build DOM instead of templated innerHTML
+      // so that DB-sourced file_url / filename values can never inject markup.
+      gridContainer.innerHTML = '';
+      const grid = document.createElement('div');
+      grid.className = 'template-slots-grid';
+
+      for (const slot of PC_SETTINGS_SLOTS) {
+        const slotKey  = `${slot.trade}/${slot.fundingType}`;
+        const inputId  = `pcs_${slot.trade}_${slot.fundingType}_input`;
+        const slotData = pcTemplates[slotKey];
+
+        const cell = document.createElement('div');
+        cell.className = 'template-slot';
+
+        const header = document.createElement('div');
+        header.className = 'template-slot-header';
+        header.textContent = slot.label;
+        cell.appendChild(header);
+
+        if (slotData && slotData.file_url) {
+          const fileUrl = String(slotData.file_url);
+          const uploadDate = slotData.uploaded_at
+            ? new Date(slotData.uploaded_at).toLocaleDateString()
+            : 'Unknown date';
+          const fileName = fileUrl.split('/').pop().split('?')[0] || 'template.pdf';
+
+          const fileDisplay = document.createElement('div');
+          fileDisplay.className = 'template-file-display';
+
+          const nameEl = document.createElement('div');
+          nameEl.className = 'template-file-name';
+          nameEl.textContent = fileName;
+
+          const dateEl = document.createElement('div');
+          dateEl.className = 'template-file-date';
+          dateEl.textContent = 'Uploaded: ' + uploadDate;
+
+          fileDisplay.appendChild(nameEl);
+          fileDisplay.appendChild(dateEl);
+          cell.appendChild(fileDisplay);
+
+          const btnRow = document.createElement('div');
+          btnRow.style.cssText = 'display: flex; gap: var(--sp-3); flex-wrap: wrap;';
+
+          const viewBtn = document.createElement('button');
+          viewBtn.className = 'btn-small btn-small-primary';
+          viewBtn.textContent = 'View';
+          viewBtn.addEventListener('click', () => viewPcTemplateSettings(fileUrl));
+
+          const replaceBtn = document.createElement('button');
+          replaceBtn.className = 'btn-small btn-small-secondary';
+          replaceBtn.textContent = 'Replace';
+          replaceBtn.addEventListener('click', () => replacePcTemplateSettings(slotKey, inputId));
+
+          btnRow.appendChild(viewBtn);
+          btnRow.appendChild(replaceBtn);
+          cell.appendChild(btnRow);
+
+          const fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.id = inputId;
+          fileInput.accept = '.pdf';
+          fileInput.style.display = 'none';
+          fileInput.addEventListener('change', function () { uploadPcTemplateFileSettings(slotKey, this); });
+          cell.appendChild(fileInput);
+        } else {
+          const subtext = document.createElement('div');
+          subtext.className = 'template-slot-subtext';
+          subtext.textContent = 'No template uploaded';
+          cell.appendChild(subtext);
+
+          const uploadBox = document.createElement('div');
+          uploadBox.className = 'template-upload-box';
+          uploadBox.addEventListener('click', () => {
+            const inp = document.getElementById(inputId);
+            if (inp) inp.click();
+          });
+
+          const label = document.createElement('label');
+          label.setAttribute('for', inputId);
+          label.className = 'template-upload-label';
+
+          const iconEl = document.createElement('div');
+          iconEl.className = 'template-upload-icon';
+          iconEl.textContent = '📋';
+
+          const textEl = document.createElement('div');
+          textEl.className = 'template-upload-text';
+          textEl.textContent = 'Upload Template';
+
+          const hintEl = document.createElement('div');
+          hintEl.className = 'template-upload-hint';
+          hintEl.textContent = 'PDF format, max 10MB';
+
+          label.appendChild(iconEl);
+          label.appendChild(textEl);
+          label.appendChild(hintEl);
+          uploadBox.appendChild(label);
+
+          const fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.id = inputId;
+          fileInput.accept = '.pdf';
+          fileInput.addEventListener('change', function () { uploadPcTemplateFileSettings(slotKey, this); });
+          uploadBox.appendChild(fileInput);
+
+          cell.appendChild(uploadBox);
+        }
+
+        grid.appendChild(cell);
+      }
+
+      gridContainer.appendChild(grid);
+    }
+
+    async function viewPcTemplateSettings(fileUrl) {
+      if (!fileUrl) { alert('No file available for this slot.'); return; }
+      try {
+        const pathMatch = fileUrl.match(/contractor-templates\/(.+?)(\?|$)/);
+        const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : fileUrl;
+        const { data, error } = await sb.storage.from('contractor-templates').createSignedUrl(storagePath, 3600);
+        if (error || !data?.signedUrl) {
+          alert('Unable to open template. Please try uploading again or contact support.');
+          return;
+        }
+        window.open(data.signedUrl, '_blank');
+      } catch (err) {
+        console.error('viewPcTemplateSettings error:', err);
+        alert('Unable to open template. Please try again.');
+      }
+    }
+
+    function replacePcTemplateSettings(slotKey, inputId) {
+      let input = document.getElementById(inputId);
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'file';
+        input.id = inputId;
+        input.accept = '.pdf';
+        input.style.display = 'none';
+        input.onchange = function() { uploadPcTemplateFileSettings(slotKey, this); };
+        document.body.appendChild(input);
+      }
+      input.click();
+    }
+
+    async function uploadPcTemplateFileSettings(slotKey, inputElement) {
+      if (!inputElement.files.length) return;
+      const file = inputElement.files[0];
+      if (file.type !== 'application/pdf') { alert('Please upload a PDF file.'); return; }
+      if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+      if (!contractorRecord || !sb) { alert('Not connected to database.'); return; }
+
+      try {
+        const [trade, funding] = slotKey.split('/');
+        const timestamp = Date.now();
+        const filePath = `${contractorRecord.id}/pc_${trade}_${funding}_${timestamp}.pdf`;
+
+        const { error: uploadError } = await sb.storage
+          .from('contractor-templates')
+          .upload(filePath, file, { contentType: 'application/pdf' });
+        if (uploadError) throw uploadError;
+
+        const { data: fresh } = await sb.from('contractors')
+          .select('color_confirmation_template')
+          .eq('id', contractorRecord.id)
+          .single();
+        const existing = fresh?.color_confirmation_template || {};
+        const updated  = {
+          ...existing,
+          [slotKey]: { file_url: filePath, uploaded_at: new Date().toISOString() },
+        };
+
+        const { data, error: updateError } = await sb.from('contractors')
+          .update({
+            color_confirmation_template:  updated,
+            pc_template_migration_pending: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', contractorRecord.id)
+          .select()
+          .single();
+        if (updateError) throw updateError;
+
+        contractorRecord = data;
+        await loadPcTemplatesSettings();
+      } catch (err) {
+        console.error('Error uploading PC template (settings):', err);
+        alert('Failed to upload template. Please try again.');
+      }
+    }
+
     async function initSettings() {
       currentUser = await Auth.requireAuth('contractor');
       if (!currentUser && !CONFIG.DEMO_MODE) return;
@@ -2087,9 +2512,239 @@
 
           // Update payment method UI
           updatePaymentMethodUI();
+
+          // Load PC template grid (D-161)
+          await loadPcTemplatesSettings();
+
+          // D-170: populate COI status + form from contractor record
+          loadCoiStatus(data);
+          // D-170: show the attestation card if this contractor hasn't signed yet
+          loadAttestationCard(data);
         } catch (err) {
           console.error('Error initializing settings:', err);
         }
+      }
+    }
+
+    // ── D-170: COI load/save ──────────────────────────────────
+    function loadCoiStatus(c) {
+      const banner   = document.getElementById('coiStatusBanner');
+      const summary  = document.getElementById('coiSummary');
+      const insurerInput = document.getElementById('coiInsurer');
+      const policyInput  = document.getElementById('coiPolicyNumber');
+      const expiresInput = document.getElementById('coiExpiresAt');
+      if (!banner) return;
+
+      // Pre-fill form with existing values so contractor can edit/renew
+      if (c.coi_insurer)        insurerInput.value = c.coi_insurer;
+      if (c.coi_policy_number)  policyInput.value  = c.coi_policy_number;
+      if (c.coi_expires_at)     expiresInput.value = String(c.coi_expires_at).slice(0, 10);
+
+      if (c.coi_file_url && c.coi_expires_at) {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const exp   = new Date(c.coi_expires_at + 'T00:00:00');
+        const daysLeft = Math.floor((exp - today) / (1000*60*60*24));
+        document.getElementById('coiInsurerDisplay').textContent  = c.coi_insurer || '—';
+        document.getElementById('coiPolicyDisplay').textContent   = c.coi_policy_number || '—';
+        document.getElementById('coiExpiresDisplay').textContent  =
+          exp.toLocaleDateString() + (daysLeft >= 0 ? ` (${daysLeft} days left)` : ' (expired)');
+        const fileLink = document.getElementById('coiFileLink');
+        // coi_file_url stores a storage path — build a signed URL on demand
+        fileLink.onclick = async (ev) => {
+          ev.preventDefault();
+          try {
+            const { data, error } = await sb.storage
+              .from('contractor-documents')
+              .createSignedUrl(c.coi_file_url, 300);
+            if (error) throw error;
+            window.open(data.signedUrl, '_blank');
+          } catch (err) {
+            alert('Could not open certificate: ' + (err.message || err));
+          }
+        };
+        summary.style.display = 'block';
+
+        if (daysLeft < 0) {
+          banner.style.display = 'block';
+          banner.style.background = '#FEE2E2';
+          banner.style.border = '1px solid #FCA5A5';
+          banner.style.color = '#991B1B';
+          banner.innerHTML = '<strong>Your CGL certificate is expired.</strong> Bidding is suspended until you upload a current certificate.';
+        } else if (daysLeft <= 30) {
+          banner.style.display = 'block';
+          banner.style.background = '#FEF3C7';
+          banner.style.border = '1px solid #E07B00';
+          banner.style.color = '#78350F';
+          banner.innerHTML = `<strong>Your CGL certificate expires in ${daysLeft} days.</strong> Upload a renewed certificate to avoid a bidding suspension.`;
+        } else {
+          banner.style.display = 'block';
+          banner.style.background = '#DCFCE7';
+          banner.style.border = '1px solid #86EFAC';
+          banner.style.color = '#14532D';
+          banner.innerHTML = `<strong>CGL certificate current</strong> — expires ${exp.toLocaleDateString()}.`;
+        }
+      } else {
+        banner.style.display = 'block';
+        banner.style.background = '#FEE2E2';
+        banner.style.border = '1px solid #FCA5A5';
+        banner.style.color = '#991B1B';
+        banner.innerHTML = '<strong>No CGL certificate on file.</strong> You cannot submit bids until a current certificate is uploaded.';
+      }
+    }
+
+    // Show the attestation card only for contractors who don't have an accepted
+    // attestation on file (i.e., signed up before the D-170 flow existed).
+    function loadAttestationCard(c) {
+      const card = document.getElementById('attestationCard');
+      if (!card) return;
+      if (c.attestation_accepted_at) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = 'block';
+      // Pre-fill signer name with contact_name if we have it
+      if (c.contact_name) document.getElementById('attSignerName').value = c.contact_name;
+      // Scroll into view if user landed here from the bid-form redirect
+      if (location.search.indexOf('reason=attestation_required') !== -1) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    async function saveAttestation() {
+      const btn = document.getElementById('attSaveBtn');
+      const status = document.getElementById('attSaveStatus');
+      const name = (document.getElementById('attSignerName').value || '').trim();
+      const title = (document.getElementById('attSignerTitle').value || '').trim();
+      const checked = document.getElementById('attAccept').checked;
+
+      if (!name || !title) { alert('Enter the signer name and title.'); return; }
+      if (!checked) { alert('Please check the acceptance box.'); return; }
+
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Saving…';
+      status.textContent = '';
+
+      const now = new Date().toISOString();
+      const payload = {
+        text_version:       'ic-24511-v1-2026-04',
+        accepted:           true,
+        accepted_client_ts: now,
+        user_agent:         navigator.userAgent,
+        signer_name:        name,
+        signer_title:       title,
+        source:             'contractor-settings',
+      };
+
+      try {
+        const { data, error } = await sb.from('contractors')
+          .update({
+            ic_24511_attestation:     payload,
+            attestation_accepted_at:  now,
+            attestation_signer_name:  name,
+            attestation_signer_title: title,
+            attestation_text_version: payload.text_version,
+            updated_at:               now,
+          })
+          .eq('id', contractorRecord.id)
+          .select()
+          .single();
+        if (error) throw error;
+
+        // Stamp IP server-side so the on-record IP is trustworthy
+        try {
+          await sb.rpc('record_attestation_ip', { p_contractor_id: contractorRecord.id });
+        } catch (ipErr) {
+          console.warn('record_attestation_ip RPC failed (non-fatal):', ipErr);
+        }
+
+        contractorRecord = data;
+        status.textContent = 'Attestation recorded.';
+        status.style.color = '#14532D';
+        loadAttestationCard(data);
+      } catch (err) {
+        console.error('Error saving attestation:', err);
+        status.textContent = 'Failed: ' + (err.message || err);
+        status.style.color = '#991B1B';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    }
+
+    async function saveCoi() {
+      const btn      = document.getElementById('coiSaveBtn');
+      const status   = document.getElementById('coiSaveStatus');
+      const insurer  = (document.getElementById('coiInsurer').value || '').trim();
+      const policy   = (document.getElementById('coiPolicyNumber').value || '').trim();
+      const expires  = document.getElementById('coiExpiresAt').value;
+      const fileIn   = document.getElementById('coiFileInput');
+      const file     = fileIn.files && fileIn.files[0];
+
+      if (!insurer || !policy || !expires) {
+        alert('Please enter the insurer, policy number, and expiration date.');
+        return;
+      }
+      // Require a file only if contractor doesn't already have one on record,
+      // OR if the expiration date is changing (new cert expected).
+      const needFile = !contractorRecord.coi_file_url || contractorRecord.coi_expires_at !== expires;
+      if (needFile && !file) {
+        alert('Please attach the updated certificate PDF.');
+        return;
+      }
+      // Soft sanity check on expiration
+      const today = new Date(); today.setHours(0,0,0,0);
+      if (new Date(expires + 'T00:00:00') < today) {
+        if (!confirm('That expiration date is in the past. Continue anyway?')) return;
+      }
+
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Uploading…';
+      status.textContent = '';
+
+      try {
+        let filePath = contractorRecord.coi_file_url;
+        if (file) {
+          const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+          filePath = `${currentUser.id}/coi/coi-${Date.now()}.${ext}`;
+          const { error: upErr } = await sb.storage
+            .from('contractor-documents')
+            .upload(filePath, file, { contentType: file.type || 'application/pdf', upsert: true });
+          if (upErr) throw upErr;
+        }
+
+        const { data, error } = await sb.from('contractors')
+          .update({
+            coi_file_url:      filePath,
+            coi_insurer:       insurer,
+            coi_policy_number: policy,
+            coi_expires_at:    expires,
+            coi_uploaded_at:   new Date().toISOString(),
+            // Reset reminder stamps when a new cert is uploaded so the
+            // nightly sweep re-qualifies reminders against the new expiry.
+            coi_reminder_30_sent_at: null,
+            coi_reminder_14_sent_at: null,
+            coi_reminder_7_sent_at:  null,
+            coi_expired_notified_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', contractorRecord.id)
+          .select()
+          .single();
+        if (error) throw error;
+
+        contractorRecord = data;
+        status.textContent = 'Saved.';
+        status.style.color = '#14532D';
+        loadCoiStatus(data);
+      } catch (err) {
+        console.error('Error saving COI:', err);
+        status.textContent = 'Failed: ' + (err.message || err);
+        status.style.color = '#991B1B';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
       }
     }
 

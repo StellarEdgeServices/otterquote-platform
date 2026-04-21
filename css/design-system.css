@@ -1,29 +1,32 @@
+/* Google Fonts — Rubik */
+@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap');
+
 /**
  * OtterQuote — Design System
- * Deep teal palette, DM Sans + Playfair Display
+ * Navy + Amber brand palette, Rubik
  */
 
 /* ── Design Tokens ── */
 :root {
-  /* Primary palette — deep ocean teal */
-  --navy:       #0A1E2C;
-  --navy-2:     #0E2A3B;
-  --navy-3:     #12354A;
-  --mid:        #1A4560;
+  /* Primary palette — Midnight Navy */
+  --navy:       #0D1B2E;
+  --navy-2:     #162338;
+  --navy-3:     #1C2E45;
+  --mid:        #2A3F5C;
 
-  /* Accent — teal (primary) */
-  --amber:      #14B8A6;
-  --amber-2:    #0D9488;
-  --amber-light:#CCFBF1;
-  --amber-glow: rgba(20, 184, 166, 0.15);
+  /* Accent — Deep Amber */
+  --amber:      #E07B00;
+  --amber-2:    #A85C00;
+  --amber-light:#FAC775;
+  --amber-glow: rgba(224, 123, 0, 0.15);
 
   /* Neutrals */
   --white:      #FFFFFF;
-  --offwhite:   #F8FAFC;
+  --offwhite:   #F8F9FC;
   --light:      #E2E8F0;
-  --slate:      #94A3B8;
+  --slate:      #8A9BAB;
   --gray:       #64748B;
-  --dark-gray:  #475569;
+  --dark-gray:  #3D4F60;
 
   /* Semantic */
   --green:      #10B981;
@@ -34,9 +37,9 @@
   --blue-light: #DBEAFE;
 
   /* Typography */
-  --font-body:    'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-heading: 'Playfair Display', Georgia, serif;
-  --font-mono:    'DM Mono', 'Fira Code', monospace;
+  --font-body:    'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-heading: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    'Fira Code', 'Consolas', 'Courier New', monospace;
 
   /* Spacing scale (4px base) */
   --sp-1: 4px;   --sp-2: 8px;   --sp-3: 12px;  --sp-4: 16px;
@@ -67,8 +70,8 @@ html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
 
 body {
   font-family: var(--font-body);
-  background: var(--navy);
-  color: var(--white);
+  background: #F8F9FC;
+  color: #3D4F60;
   overflow-x: hidden;
   min-height: 100vh;
   line-height: 1.6;
@@ -85,12 +88,13 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
   line-height: 1.2;
   font-weight: 700;
+  color: #0D1B2E;
 }
 
-h1 { font-size: clamp(2rem, 5vw, 3.5rem); }
-h2 { font-size: clamp(1.5rem, 3.5vw, 2.5rem); }
-h3 { font-size: clamp(1.25rem, 2.5vw, 1.75rem); }
-h4 { font-size: 1.25rem; }
+h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700; }
+h2 { font-size: clamp(1.5rem, 3.5vw, 2.5rem); font-weight: 600; }
+h3 { font-size: clamp(1.25rem, 2.5vw, 1.75rem); font-weight: 600; }
+h4 { font-size: 1.25rem; font-weight: 500; }
 
 p { line-height: 1.7; color: var(--slate); }
 a { color: var(--amber); text-decoration: none; transition: color var(--duration) var(--ease); }
@@ -169,7 +173,7 @@ a:hover { color: var(--amber-2); }
   font-size: 1rem;
   font-weight: 600;
   padding: var(--sp-3) var(--sp-6);
-  border-radius: var(--radius-full);
+  border-radius: 8px;
   border: none;
   cursor: pointer;
   transition: all var(--duration) var(--ease);
@@ -178,23 +182,23 @@ a:hover { color: var(--amber-2); }
 }
 
 .btn-primary {
-  background: var(--amber);
-  color: var(--navy);
+  background: #E07B00;
+  color: #0D1B2E;
 }
 .btn-primary:hover {
-  background: var(--amber-2);
-  color: var(--navy);
+  background: #A85C00;
+  color: #0D1B2E;
   transform: translateY(-1px);
   box-shadow: var(--shadow-glow);
 }
 
 .btn-secondary {
-  background: transparent;
-  color: var(--amber);
-  border: 2px solid var(--amber);
+  background: #0D1B2E;
+  color: #F8F9FC;
+  border: 2px solid #0D1B2E;
 }
 .btn-secondary:hover {
-  background: var(--amber-glow);
+  background: #162338;
   transform: translateY(-1px);
 }
 
@@ -205,6 +209,16 @@ a:hover { color: var(--amber-2); }
 }
 .btn-ghost:hover {
   background: rgba(255,255,255,0.1);
+}
+
+/* Ghost on light background */
+.btn-ghost-light {
+  background: transparent;
+  color: #0D1B2E;
+  border: 1px solid #0D1B2E;
+}
+.btn-ghost-light:hover {
+  background: rgba(13,27,46,0.06);
 }
 
 .btn-sm { font-size: 0.875rem; padding: var(--sp-2) var(--sp-4); }

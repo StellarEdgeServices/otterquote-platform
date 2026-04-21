@@ -1,3 +1,6 @@
+# Redirect Netlify backup URL to primary domain (301 permanent)
+https://jade-alpaca-b82b5e.netlify.app/* https://otterquote.com/:splat 301!
+
 /ref/:code  /ref.html?code=:code  200
 https://stellaredgeservices.com/* /stellar-edge.html 200
 https://www.stellaredgeservices.com/* /stellar-edge.html 200

@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Otter Quotes for Home Inspectors — Get Paid for Referrals</title>
+<meta name="description" content="When you find damage, Otter Quotes is your answer. Give your clients competing contractor bids and earn $200 per completed job over $10K. No anti-rebating issues — it's clean.">
+<link rel="canonical" href="https://otterquote.com/inspector-landing.html">
+<meta property="og:title" content="Otter Quotes for Home Inspectors — Get Paid for Referrals">
+<meta property="og:description" content="When you find damage, Otter Quotes is your answer. Give your clients competing contractor bids and earn $200 per completed job.">
+<meta property="og:url" content="https://otterquote.com/inspector-landing.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+/* ── Hero Section ── */
+.hero {
+  padding: var(--sp-20) var(--sp-8);
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.hero-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  margin-bottom: var(--sp-4);
+  color: var(--white);
+  line-height: 1.2;
+}
+
+.hero .subtitle {
+  font-size: 1.15rem;
+  color: var(--slate);
+  line-height: 1.8;
+  margin-bottom: var(--sp-8);
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero .hero-amount {
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: var(--amber);
+  font-family: var(--font-heading);
+  margin-bottom: var(--sp-3);
+}
+
+.hero-cta {
+  display: inline-block;
+}
+
+/* ── Credibility Bar ── */
+.credibility-section {
+  padding: var(--sp-10) var(--sp-8);
+  background: var(--navy);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  text-align: center;
+}
+
+.credibility-box {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-5);
+  background: rgba(224, 123, 0, 0.06);
+  border: 1px solid rgba(224, 123, 0, 0.15);
+  border-radius: var(--radius-md);
+}
+
+.credibility-box p {
+  font-size: 0.95rem;
+  color: var(--slate);
+  line-height: 1.8;
+  margin: 0;
+}
+
+.credibility-highlight {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+/* ── Value Props (3-Card) ── */
+.value-section {
+  padding: var(--sp-14) var(--sp-8);
+  background: var(--navy-2);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.value-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.value-card {
+  padding: var(--sp-6);
+  background: rgba(224, 123, 0, 0.04);
+  border: 1px solid rgba(224, 123, 0, 0.12);
+  border-radius: var(--radius-md);
+}
+
+.value-card h3 {
+  font-size: 1.05rem;
+  color: var(--amber);
+  margin-bottom: var(--sp-3);
+}
+
+.value-card p {
+  font-size: 0.9rem;
+  color: var(--slate);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ── What You Get Section ── */
+.toolkit-preview-section {
+  padding: var(--sp-14) var(--sp-8);
+  background: var(--navy);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.section-header {
+  text-align: center;
+  margin-bottom: var(--sp-10);
+}
+
+.section-header h2 {
+  font-size: clamp(1.8rem, 4vw, 2.3rem);
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.section-header p {
+  font-size: 1rem;
+  color: var(--slate);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.toolkit-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-5);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.toolkit-item {
+  padding: var(--sp-5);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.toolkit-item-icon {
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: var(--sp-3);
+}
+
+.toolkit-item h3 {
+  font-size: 0.95rem;
+  color: var(--white);
+  margin-bottom: var(--sp-2);
+}
+
+.toolkit-item p {
+  font-size: 0.85rem;
+  color: var(--slate);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── Signup Form Section ── */
+.form-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.form-container {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.form-container h2 {
+  text-align: center;
+  margin-bottom: var(--sp-2);
+  color: var(--white);
+  font-size: 1.9rem;
+}
+
+.form-subtitle {
+  text-align: center;
+  color: var(--slate);
+  margin-bottom: var(--sp-8);
+  font-size: 0.95rem;
+}
+
+.partner-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.form-group input, .form-group select {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  transition: all var(--duration) var(--ease);
+}
+
+.form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.form-group input:focus, .form-group select:focus {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
+}
+
+.form-group select option {
+  background: var(--navy);
+  color: var(--white);
+}
+
+.optional-label {
+  font-weight: 400;
+  color: var(--slate);
+  font-size: 0.8rem;
+}
+
+.form-submit {
+  padding: var(--sp-4) var(--sp-6);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  font-family: var(--font-body);
+  margin-top: var(--sp-2);
+}
+
+.form-submit:hover:not(:disabled) {
+  background: var(--amber-2);
+  transform: translateY(-2px);
+}
+
+.form-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-note {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--slate);
+  margin-top: var(--sp-2);
+  line-height: 1.6;
+}
+
+/* ── Post-Signup Toolkit ── */
+.toolkit-wrapper {
+  display: none;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.toolkit-header {
+  text-align: center;
+  margin-bottom: var(--sp-8);
+}
+
+.toolkit-header h3 {
+  color: var(--amber);
+  font-size: 1.75rem;
+  margin-bottom: var(--sp-3);
+}
+
+.toolkit-header p {
+  color: var(--slate);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.toolkit-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-5);
+}
+
+.toolkit-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.toolkit-card-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.toolkit-card h4 {
+  color: var(--white);
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.toolkit-hint {
+  font-size: 0.82rem;
+  color: var(--slate);
+  margin-bottom: var(--sp-3);
+  line-height: 1.5;
+}
+
+.ref-link-display {
+  padding: var(--sp-3) var(--sp-4);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--white);
+  word-break: break-all;
+  margin-bottom: var(--sp-3);
+}
+
+.template-box {
+  padding: var(--sp-4);
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--slate);
+  white-space: pre-wrap;
+  line-height: 1.7;
+  margin-bottom: var(--sp-3);
+  font-family: var(--font-body);
+}
+
+.copy-btn {
+  padding: var(--sp-2) var(--sp-4);
+  background: transparent;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  color: var(--amber);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all var(--duration) var(--ease);
+}
+
+.copy-btn:hover {
+  background: var(--amber-glow);
+}
+
+.toolkit-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+.stat-box {
+  background: rgba(224, 123, 0, 0.06);
+  border: 1px solid rgba(224, 123, 0, 0.15);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  text-align: center;
+}
+
+.stat-number {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--amber);
+  font-family: var(--font-heading);
+  line-height: 1;
+  margin-bottom: var(--sp-2);
+}
+
+.stat-label {
+  font-size: 0.78rem;
+  color: var(--slate);
+  line-height: 1.4;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .hero {
+    padding: var(--sp-12) var(--sp-5);
+  }
+
+  .value-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolkit-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .toolkit-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .hero .hero-amount {
+    font-size: 2rem;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ── Header ── -->
+<header id="header"></header>
+
+<main>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1>When You Find Damage, What Do You Tell the Homeowner?</h1>
+      <div class="hero-amount">$200</div>
+      <p class="subtitle">Otter Quotes is your answer. Your clients get competing contractor bids. You earn $200 per completed job over $10K. No anti-rebating issues — it's clean.</p>
+      <div class="hero-cta">
+        <a href="#signup" class="btn btn-primary">Get My Referral Link</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Credibility Bar ── -->
+  <section class="credibility-section">
+    <div class="credibility-box">
+      <p>
+        Built by <span class="credibility-highlight">Dustin Stohler</span>, who grew Stay Dry Roofing from <span class="credibility-highlight">$0 to $10M</span> here in Indianapolis. He saw the problem from the contractor side — now he's fixing it.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── Three-Card Value Props ── -->
+  <section class="value-section">
+    <div class="value-grid">
+      <div class="value-card">
+        <h3>Your Clients Get Real Options</h3>
+        <p>Competing bids from local contractors — not one contractor's pitch. Their licensing, insurance, and review information is gathered in one place so your clients can compare with confidence.</p>
+      </div>
+      <div class="value-card">
+        <h3>You Earn Real Money</h3>
+        <p>$200 per completed job over $10K, plus a $50 bonus for every job your recruited inspectors send. Simple, transparent, no MLM.</p>
+      </div>
+      <div class="value-card">
+        <h3>Zero Compliance Risk</h3>
+        <p>Home inspectors aren't insurance agents, so anti-rebating rules don't apply. This is a straightforward referral arrangement — clean, professional, and allowed under ASHI and InterNACHI guidelines.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── What You Get ── -->
+  <section class="toolkit-preview-section">
+    <div class="section-header">
+      <h2>What You Get</h2>
+      <p>Everything you need to start earning today</p>
+    </div>
+    <div class="toolkit-preview-grid">
+      <div class="toolkit-item">
+        <div class="toolkit-item-icon">🔗</div>
+        <h3>Referral Link</h3>
+        <p>Unique URL with your code — every client you send is tracked back to you.</p>
+      </div>
+      <div class="toolkit-item">
+        <div class="toolkit-item-icon">📋</div>
+        <h3>Report Insert</h3>
+        <p>Ready-to-copy text for your inspection report's "Next Steps" section.</p>
+      </div>
+      <div class="toolkit-item">
+        <div class="toolkit-item-icon">💬</div>
+        <h3>Text & Email Templates</h3>
+        <p>Pre-written messages. Just fill in the client's name and send.</p>
+      </div>
+      <div class="toolkit-item">
+        <div class="toolkit-item-icon">📊</div>
+        <h3>Real-Time Dashboard</h3>
+        <p>Track your referrals, completed jobs, and commissions earned.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Signup Form ── -->
+  <section class="form-section" id="signup">
+    <div class="form-container">
+      <h2>Get Your Referral Link</h2>
+      <p class="form-subtitle">Takes less than a minute. Free to join.</p>
+
+      <!-- Signup Form -->
+      <form class="partner-form" id="partnerForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" name="firstName" required placeholder="John">
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" name="lastName" required placeholder="Doe">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required placeholder="john@inspectionco.com">
+        </div>
+
+        <div class="form-group">
+          <label for="phone">Phone</label>
+          <input type="tel" id="phone" name="phone" required placeholder="(555) 123-4567">
+        </div>
+
+        <div class="form-group">
+          <label for="company">Company Name</label>
+          <input type="text" id="company" name="company" required placeholder="ABC Home Inspections">
+        </div>
+
+        <div class="form-group">
+          <label for="certification">
+            Certification <span class="optional-label">(optional)</span>
+          </label>
+          <select id="certification" name="certification">
+            <option value="">Select if applicable</option>
+            <option value="ashi">ASHI Member</option>
+            <option value="internachi">InterNACHI Member</option>
+            <option value="nahi">NAHI Member</option>
+            <option value="other">Other Certification</option>
+            <option value="none">Not Certified</option>
+          </select>
+        </div>
+
+        <button type="submit" class="form-submit" id="submitBtn">
+          Get My Referral Link
+        </button>
+
+        <p class="form-note">
+          By signing up, you agree to our <a href="/terms.html" style="color:var(--amber)">Terms of Service</a>. Referral commission ($200) and recruit bonus ($50) paid on jobs over $10,000 that complete through the platform.
+        </p>
+      </form>
+
+      <!-- Partner Toolkit (shown after successful signup) -->
+      <div class="toolkit-wrapper" id="toolkitWrapper">
+
+        <div class="toolkit-header">
+          <h3>You're In — Here's Your Toolkit</h3>
+          <p>Four ways to put your link to work. Use whichever fits your workflow.</p>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="toolkit-stats">
+          <div class="stat-box">
+            <div class="stat-number" id="statReferrals">0</div>
+            <div class="stat-label">Referrals Sent</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number" id="statJobs">0</div>
+            <div class="stat-label">Jobs Completed</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number" id="statEarned">$0</div>
+            <div class="stat-label">Commissions Earned</div>
+          </div>
+        </div>
+
+        <!-- 1. Your Link -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">🔗</span>
+            <h4>Your Referral Link</h4>
+          </div>
+          <p class="toolkit-hint">Every client you send through this link is tracked back to you.</p>
+          <div class="ref-link-display" id="refLinkDisplay"></div>
+          <button class="copy-btn" onclick="copyItem('link')">Copy Link</button>
+        </div>
+
+        <!-- 2. Text Message -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">💬</span>
+            <h4>Text Message Template</h4>
+          </div>
+          <p class="toolkit-hint">Edit the name, then paste into any text thread with your client. Works on iPhone and Android.</p>
+          <div class="template-box" id="textTemplate"></div>
+          <button class="copy-btn" onclick="copyItem('text')">Copy Text Message</button>
+        </div>
+
+        <!-- 3. Email Template -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">📧</span>
+            <h4>Email Template</h4>
+          </div>
+          <p class="toolkit-hint">Copy this, paste into a new email, fill in the bracketed fields, and send. Takes 30 seconds.</p>
+          <div class="template-box" id="emailTemplate"></div>
+          <button class="copy-btn" onclick="copyItem('email')">Copy Email</button>
+        </div>
+
+        <!-- 4. Report Insert -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">📋</span>
+            <h4>Inspection Report Insert</h4>
+          </div>
+          <p class="toolkit-hint">Paste this into your report template's "Recommended Next Steps" or "Contractor Resources" section so it appears automatically on every report.</p>
+          <div class="template-box" id="reportTemplate"></div>
+          <button class="copy-btn" onclick="copyItem('report')">Copy Report Text</button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Footer ── -->
+<footer class="footer" id="footer"></footer>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+/**
+ * Inspector Landing Page
+ * Focused cold outreach landing page for home inspectors.
+ * Handles signup form submission: creates a record in referral_agents with agent_type='home_inspector',
+ * generates a unique referral code, and displays the inspector's link.
+ */
+
+// Module-scoped recruit context. Populated by detectRecruitCode() on DOM ready
+// and consumed by handleSignup() when the user submits the form.
+let recruitContext = { recruitCode: null, recruiterId: null };
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof initNav === 'function') initNav();
+  document.getElementById('partnerForm').addEventListener('submit', handleSignup);
+  detectRecruitCode();
+
+  // Track landing page view with UTM params
+  captureUTMParams();
+});
+
+/**
+ * Capture and store UTM parameters for GA4 tracking
+ */
+function captureUTMParams() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const utm = {
+    source: urlParams.get('utm_source'),
+    medium: urlParams.get('utm_medium'),
+    campaign: urlParams.get('utm_campaign'),
+    content: urlParams.get('utm_content'),
+    term: urlParams.get('utm_term')
+  };
+
+  // Track page view with UTM context
+  if (typeof gtag === 'function') {
+    gtag('event', 'page_view', {
+      utm_source: utm.source,
+      utm_medium: utm.medium,
+      utm_campaign: utm.campaign,
+      utm_content: utm.content,
+      utm_term: utm.term,
+      page_title: document.title
+    });
+  }
+}
+
+/**
+ * Detect whether this visitor arrived via a recruit link.
+ * Checks localStorage (set by recruit.html) first, then falls back to the
+ * ?recruit= URL param. If a valid active recruiter is found, uses that context.
+ */
+async function detectRecruitCode() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const recruitCode = localStorage.getItem('cs_recruit_code') || urlParams.get('recruit');
+  if (!recruitCode) return;
+
+  try {
+    // Public read allowed by existing RLS on referral_agents
+    const { data: recruiter, error } = await sb
+      .from('referral_agents')
+      .select('id, first_name, last_name, company')
+      .eq('recruit_code', recruitCode)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Recruit code lookup failed:', error.message);
+      return;
+    }
+    if (!recruiter) {
+      return;
+    }
+
+    recruitContext = { recruitCode, recruiterId: recruiter.id };
+
+  } catch (err) {
+    console.warn('Recruit code lookup threw:', err);
+  }
+}
+
+/**
+ * Generate a short unique referral code (8 chars, URL-safe)
+ */
+function generateRefCode(firstName, lastName) {
+  const base = (firstName.slice(0, 3) + lastName.slice(0, 3)).toLowerCase().replace(/[^a-z]/g, '');
+  const rand = Math.random().toString(36).slice(2, 6);
+  return base + rand;
+}
+
+/**
+ * Handle form submission
+ */
+async function handleSignup(e) {
+  e.preventDefault();
+
+  const firstName    = document.getElementById('firstName').value.trim();
+  const lastName     = document.getElementById('lastName').value.trim();
+  const email        = document.getElementById('email').value.trim();
+  const phone        = document.getElementById('phone').value.trim();
+  const company      = document.getElementById('company').value.trim();
+  const certification = document.getElementById('certification').value;
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Setting up your account...';
+
+  try {
+    const uniqueCode = generateRefCode(firstName, lastName);
+
+    // RLS: "Public can register as partner" allows anon insert where user_id IS NULL
+    const { data, error } = await sb
+      .from('referral_agents')
+      .insert({
+        agent_type:       'home_inspector',
+        first_name:       firstName,
+        last_name:        lastName,
+        email,
+        phone,
+        company:          company,
+        unique_code:      uniqueCode,
+        metadata:         { certification: certification || null },
+        recruited_by_id:  recruitContext.recruiterId || null,
+        recruited_at:     recruitContext.recruiterId ? new Date().toISOString() : null,
+        // user_id intentionally NULL — linked post-magic-link in auth.js
+        // commission totals maintained by DB trigger — do NOT set manually
+      })
+      .select('id, unique_code')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    // Use DB-returned unique_code (trigger may have changed it if there was a collision)
+    const finalCode = data?.unique_code || uniqueCode;
+
+    // Use ref.html?code= URL pattern (consistent with the rest of the system)
+    const refLink = `${CONFIG.SITE_URL}/ref.html?code=${finalCode}`;
+    const fullName = `${firstName} ${lastName}`;
+
+    // Store data for post-auth user_id linking
+    localStorage.setItem('cs_partner_signup', JSON.stringify({
+      email: email,
+      unique_code: finalCode,
+    }));
+    localStorage.setItem('cs_auth_role', 'home_inspector');
+
+    // Recruit code has now been consumed — clear it so a future signup on
+    // this device doesn't accidentally attribute to the same recruiter.
+    localStorage.removeItem('cs_recruit_code');
+
+    // Send magic link so inspector can access their dashboard
+    if (window.Auth) {
+      await Auth.sendMagicLink(email, 'home_inspector');
+    }
+
+    // Show toolkit, hide form
+    document.getElementById('partnerForm').style.display = 'none';
+    document.getElementById('toolkitWrapper').style.display = 'block';
+    document.getElementById('refLinkDisplay').textContent = refLink;
+
+    // Populate templates
+    populateTemplates(refLink, fullName, company);
+
+    // Track in GA
+    if (typeof gtag === 'function') {
+      gtag('event', 'inspector_signup', {
+        partner_type: 'home_inspector',
+        certification: certification || 'none'
+      });
+    }
+
+  } catch (err) {
+    console.error('Signup error:', err);
+    alert(`Something went wrong: ${err.message}. Please try again or email us at support@otterquote.com`);
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Get My Referral Link';
+  }
+}
+
+/**
+ * Populate the text, email, and report templates with real data
+ */
+function populateTemplates(refLink, fullName, company) {
+  document.getElementById('textTemplate').textContent =
+`Hi [Client name], this is ${fullName} from ${company}. I found some items that need contractor attention on your property. Otter Quotes will get you competing bids from local contractors so you can compare your options and sign a contract without the runaround. Here's my referral link: ${refLink}`;
+
+  document.getElementById('emailTemplate').textContent =
+`Subject: Next Steps for Your Home Inspection Repairs
+
+Hi [Client name],
+
+During the inspection at [property address], I identified items that need contractor attention. I wanted to send you a resource that makes the repair process straightforward.
+
+Otter Quotes gives contractors everything they need to bid accurately on your project, so you get bids on exactly what you need — not ballpark numbers from a quick walk-around. No high-pressure sales pitches. No being ghosted after a site visit. Just clear, apples-to-apples bids from local contractors — with their licensing, insurance, and review information gathered in one place so you can compare with confidence — and a simple contract signing process. It's free for homeowners.
+
+Get started here: ${refLink}
+
+Best,
+${fullName}
+${company}`;
+
+  document.getElementById('reportTemplate').textContent =
+`RECOMMENDED NEXT STEPS
+
+For the items noted above that require contractor work, I recommend getting competing bids before committing to any single contractor. Otter Quotes is a platform that gives contractors professional measurements and documentation so they can provide accurate bids — not estimates based on a quick look. The result: clear, comparable bids and a straightforward contract signing process. Free for homeowners.
+
+Get started: ${refLink}
+Referred by ${fullName}, ${company}`;
+}
+
+/**
+ * Copy a specific item to clipboard
+ */
+function copyItem(type) {
+  let text = '';
+  let btnSelector = '';
+
+  if (type === 'link') {
+    text = document.getElementById('refLinkDisplay').textContent;
+    btnSelector = '[onclick="copyItem(\'link\')"]';
+  } else if (type === 'text') {
+    text = document.getElementById('textTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'text\')"]';
+  } else if (type === 'email') {
+    text = document.getElementById('emailTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'email\')"]';
+  } else if (type === 'report') {
+    text = document.getElementById('reportTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'report\')"]';
+  }
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector(btnSelector);
+    const original = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = original, 2000);
+  });
+}
+</script>
+
+</body>
+</html>
