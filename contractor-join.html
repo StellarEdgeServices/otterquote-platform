@@ -66,8 +66,8 @@
 
         body {
             font-family: var(--font-body);
-            color: var(--navy);
-            background-color: var(--white);
+            color: var(--white);
+            background-color: var(--navy);
             line-height: 1.6;
         }
 
@@ -108,7 +108,7 @@
         /* Value Proposition Cards */
         .value-section {
             padding: var(--sp-24) var(--sp-6);
-            background-color: var(--light);
+            background-color: var(--navy-2);
         }
 
         .value-cards {
@@ -119,23 +119,28 @@
         }
 
         .value-card {
-            background: var(--white);
+            background: rgba(255,255,255,0.04);
             padding: var(--sp-8);
             border-radius: var(--radius-lg);
             border-left: 4px solid var(--amber);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            border-right: 1px solid rgba(255,255,255,0.06);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
         }
 
         .value-card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+            border-color: rgba(224,123,0,0.35);
+            border-left-color: var(--amber);
         }
 
         .value-card h3 {
             font-family: var(--font-heading);
             font-size: 1.5rem;
-            color: var(--navy);
+            color: var(--white);
             margin-bottom: var(--sp-4);
         }
 
@@ -147,21 +152,23 @@
         /* Form Section */
         .form-section {
             padding: var(--sp-24) var(--sp-6);
+            background: var(--navy-2);
         }
 
         .form-container {
             max-width: 800px;
             margin: 0 auto;
-            background: var(--white);
+            background: rgba(255,255,255,0.03);
             padding: var(--sp-12);
             border-radius: var(--radius-lg);
-            border: 1px solid var(--light);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 8px 40px rgba(0,0,0,0.3);
         }
 
         .form-section h2 {
             font-family: var(--font-heading);
             font-size: 2.5rem;
-            color: var(--navy);
+            color: var(--white);
             text-align: center;
             margin-bottom: var(--sp-12);
         }
@@ -169,7 +176,7 @@
         .form-fieldset {
             margin-bottom: var(--sp-12);
             padding-bottom: var(--sp-12);
-            border-bottom: 1px solid var(--light);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
         }
 
         .form-fieldset:last-of-type {
@@ -179,7 +186,7 @@
         .form-fieldset h3 {
             font-family: var(--font-heading);
             font-size: 1.25rem;
-            color: var(--navy);
+            color: var(--white);
             margin-bottom: var(--sp-6);
             display: flex;
             align-items: center;
@@ -207,7 +214,7 @@
         .form-label {
             display: block;
             font-weight: 600;
-            color: var(--navy);
+            color: var(--white);
             margin-bottom: var(--sp-2);
             font-size: 0.95rem;
         }
@@ -222,12 +229,16 @@
         textarea {
             width: 100%;
             padding: var(--sp-3) var(--sp-4);
-            border: 1px solid var(--light);
+            border: 1px solid rgba(255,255,255,0.12);
             border-radius: var(--radius-md);
             font-family: var(--font-body);
             font-size: 1rem;
+            background: rgba(255,255,255,0.06);
+            color: var(--white);
             transition: border-color 0.3s ease, box-shadow 0.3s ease;
         }
+        .form-input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.35); }
+        .form-select option { background: var(--navy-2); color: var(--white); }
 
         .form-input:focus,
         .form-select:focus,
@@ -253,17 +264,17 @@
         .checkbox-item label {
             cursor: pointer;
             font-size: 0.95rem;
-            color: var(--navy);
+            color: var(--slate);
         }
 
         .info-box {
-            background-color: rgba(11, 25, 41, 0.05);
+            background-color: rgba(224,123,0,0.07);
             border-left: 4px solid var(--amber);
             padding: var(--sp-6);
             border-radius: var(--radius-md);
             margin-bottom: var(--sp-6);
             font-size: 0.95rem;
-            color: var(--navy);
+            color: var(--slate);
             line-height: 1.6;
         }
 
@@ -283,7 +294,7 @@
         }
 
         .submit-btn:hover {
-            background-color: #DC2626;
+            background-color: #C06900;
             color: var(--white);
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(224, 123, 0, 0.3);
@@ -340,7 +351,7 @@
         <!-- Value Proposition -->
         <section class="value-section">
             <div class="container">
-                <h2 style="font-family: var(--font-heading); font-size: 2rem; text-align: center; margin-bottom: var(--sp-8); color: var(--navy);">Why Join Otter Quotes?</h2>
+                <h2 style="font-family: var(--font-heading); font-size: 2rem; text-align: center; margin-bottom: var(--sp-8); color: var(--white);">Why Join Otter Quotes?</h2>
                 <div class="value-cards">
                     <div class="value-card">
                         <h3>Homeowners Sign Your Contract Right Here</h3>
@@ -425,7 +436,7 @@
                     <fieldset class="form-fieldset">
                         <h3><span></span>Homeowner Cancellation Policy</h3>
 
-                        <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy);">
+                        <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--slate);">
                             <p style="margin-bottom: var(--sp-4);">Before you sign up, we want to be straight with you about one thing.</p>
                             <p style="margin-bottom: var(--sp-4);">Homeowners on Otter Quotes can switch to a different contractor in our network up to 3 days before their scheduled installation date. No questions asked.</p>
                             <p style="margin-bottom: var(--sp-4);">We've all been there. Sometimes an employee drops the ball. Sometimes the homeowner changes their mind for no good reason at all. Whatever the case, it's going to happen occasionally — and we'd rather you know that upfront than be surprised by it.</p>
@@ -436,7 +447,7 @@
                                 <li style="margin-bottom: var(--sp-2);">The homeowner selects another contractor in the network.</li>
                             </ul>
                             <p style="margin-bottom: var(--sp-4);">You'll lose a project here and there. You'll also pick up projects from homeowners who switched away from someone else. That's the deal. A platform where homeowners feel protected is a platform that keeps growing — and more homeowners on Otter Quotes means more projects for every contractor in the network.</p>
-                            <p style="font-weight: 600; color: var(--navy);">By checking the box below, you acknowledge that this cancellation right exists, that you're agreeing to it as a condition of working on the platform, and that you understand a platform fee refund is your sole remedy if a homeowner exercises it.</p>
+                            <p style="font-weight: 600; color: var(--white);">By checking the box below, you acknowledge that this cancellation right exists, that you're agreeing to it as a condition of working on the platform, and that you understand a platform fee refund is your sole remedy if a homeowner exercises it.</p>
                         </div>
 
                         <div class="checkbox-item" style="margin-top: var(--sp-4); margin-bottom: var(--sp-6);">
@@ -624,4 +635,4 @@
         }
     </script>
 </body>
-</html>
+</htm
