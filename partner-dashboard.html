@@ -771,6 +771,9 @@
             </div>
         </div>
 
+        <!-- W-9 Status Card — D-172 (rendered by renderW9Card()) -->
+        <div id="w9Upload"></div>
+
         <!-- Quick Actions -->
         <h2 class="section-header">Quick Actions</h2>
         <div class="quick-actions-grid">
@@ -1087,7 +1090,116 @@ Let me know if you have any questions!
             document.getElementById('profileServiceArea').value = currentPartner.service_area || '';
             document.getElementById('profileWebsite').value = currentPartner.website || '';
             document.getElementById('profileBio').value = currentPartner.bio || '';
+
+            // Render W-9 status card (D-172)
+            renderW9Card();
         }
+
+        // ── W-9 Card — D-172 ────────────────────────────────────────────────────
+        function renderW9Card() {
+            const card = document.getElementById('w9Upload');
+            if (!card || !currentPartner) return;
+
+            const { payments_blocked, w9_submitted_at, w9_verified_at } = currentPartner;
+
+            // Only show when the partner has been notified, blocked, or has a submission on file
+            if (!payments_blocked && !w9_submitted_at) {
+                card.innerHTML = '';
+                return;
+            }
+
+            if (w9_verified_at) {
+                // State 3: Verified
+                card.innerHTML = `
+                    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:20px 24px;margin-bottom:var(--sp-6);">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <span style="font-size:1.5rem;">✅</span>
+                            <div>
+                                <div style="font-weight:700;color:#15803d;font-size:1rem;">W-9 Verified</div>
+                                <div style="color:#166534;font-size:0.875rem;margin-top:2px;">Verified on ${new Date(w9_verified_at).toLocaleDateString()}. Commission payments are enabled.</div>
+                            </div>
+                        </div>
+                    </div>`;
+            } else if (w9_submitted_at) {
+                // State 2: Submitted, pending review
+                card.innerHTML = `
+                    <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:12px;padding:20px 24px;margin-bottom:var(--sp-6);">
+                        <div style="display:flex;align-items:flex-start;gap:12px;">
+                            <span style="font-size:1.5rem;">📋</span>
+                            <div style="flex:1;">
+                                <div style="font-weight:700;color:#1d4ed8;font-size:1rem;">W-9 Received — Under Review</div>
+                                <div style="color:#1e40af;font-size:0.875rem;margin-top:4px;">Submitted on ${new Date(w9_submitted_at).toLocaleDateString()}. Our team will review your W-9 and enable payments promptly.</div>
+                                <div style="margin-top:12px;">
+                                    <input type="file" id="w9FileInput" accept="application/pdf" style="display:none;" onchange="uploadW9(this)">
+                                    <span onclick="document.getElementById('w9FileInput').click()" style="font-size:0.8rem;color:#2563eb;text-decoration:underline;cursor:pointer;">Need to replace your W-9? Upload a new one</span>
+                                    <div id="w9UploadStatus" style="font-size:0.8rem;margin-top:6px;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+            } else {
+                // State 1: Action required — payments blocked, no submission yet
+                card.innerHTML = `
+                    <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:20px 24px;margin-bottom:var(--sp-6);">
+                        <div style="display:flex;align-items:flex-start;gap:12px;">
+                            <span style="font-size:1.5rem;">⚠️</span>
+                            <div style="flex:1;">
+                                <div style="font-weight:700;color:#92400e;font-size:1rem;">Action Required: Submit Your W-9</div>
+                                <div style="color:#78350f;font-size:0.875rem;margin-top:4px;line-height:1.5;">Commission payments are held until we have a completed IRS Form W-9 on file. This is required by the IRS for any partner receiving $600 or more in referral payments per year.</div>
+                                <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                                    <button class="btn" onclick="document.getElementById('w9FileInput').click()" style="background:#d97706;border-color:#d97706;font-size:0.9rem;padding:10px 20px;">Upload W-9 PDF</button>
+                                    <a href="https://www.irs.gov/pub/irs-pdf/fw9.pdf" target="_blank" style="font-size:0.85rem;color:#92400e;">Download blank W-9 from IRS →</a>
+                                </div>
+                                <input type="file" id="w9FileInput" accept="application/pdf" style="display:none;" onchange="uploadW9(this)">
+                                <div id="w9UploadStatus" style="font-size:0.85rem;margin-top:10px;"></div>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        async function uploadW9(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const statusEl = document.getElementById('w9UploadStatus');
+            if (statusEl) statusEl.textContent = 'Uploading…';
+
+            try {
+                const { data: sessionData } = await sb.auth.getSession();
+                const token = sessionData?.session?.access_token;
+                if (!token) throw new Error('Not authenticated — please refresh and try again');
+
+                const formData = new FormData();
+                formData.append('w9_file', file);
+
+                const res = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/submit-partner-w9`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: formData,
+                });
+
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || `Upload failed (HTTP ${res.status})`);
+
+                // Refresh partner row and re-render the card
+                const { data: updatedPartner } = await sb
+                    .from('referral_agents')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .single();
+
+                if (updatedPartner) {
+                    currentPartner = updatedPartner;
+                    renderW9Card();
+                }
+
+            } catch (err) {
+                console.error('W-9 upload error:', err);
+                if (statusEl) statusEl.innerHTML = `<span style="color:#dc2626;">Upload failed: ${err.message}</span>`;
+            }
+        }
+        // ── End W-9 Card ─────────────────────────────────────────────────────────
 
         async function loadReferrals() {
             if (!currentPartner || !sb) return;

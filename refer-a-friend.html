@@ -857,6 +857,9 @@
       // Fetch or create referral code
       await fetchOrCreateReferralCode();
 
+      // Show W-9 blocked banner if applicable (D-172)
+      renderW9Banner();
+
       // Display referral link
       displayReferralLink();
 
@@ -870,19 +873,44 @@
       await loadReferrals();
     }
 
+    // State for W-9 banner (D-172)
+    let currentAgent = null;
+
+    function renderW9Banner() {
+      if (!currentAgent) return;
+      const { payments_blocked, w9_notification_sent_at, w9_submitted_at } = currentAgent;
+      if (!payments_blocked || !w9_notification_sent_at || w9_submitted_at) return;
+
+      // Insert banner before hero section
+      const hero = document.querySelector('.hero-section');
+      if (!hero) return;
+
+      const banner = document.createElement('div');
+      banner.id = 'w9Banner';
+      banner.style.cssText = 'background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:16px 20px;margin-bottom:1.5rem;display:flex;align-items:flex-start;gap:12px;';
+      banner.innerHTML = `
+        <span style="font-size:1.25rem;flex-shrink:0;">⚠️</span>
+        <div>
+          <strong style="color:#92400e;font-size:0.95rem;">W-9 Required Before Payment</strong>
+          <p style="margin:4px 0 0;color:#78350f;font-size:0.875rem;line-height:1.5;">Your referral generated a commission, but it's on hold until we receive your W-9. <a href="/partner-dashboard.html#w9Upload" style="color:#d97706;font-weight:600;">Upload your W-9 in your partner dashboard →</a></p>
+        </div>`;
+      hero.parentNode.insertBefore(banner, hero);
+    }
+
     async function fetchOrCreateReferralCode() {
       if (!currentUser) return;
 
       // Check if user has a referral entry
       const { data, error } = await sb
         .from('referral_agents')
-        .select('code')
+        .select('code, payments_blocked, w9_notification_sent_at, w9_submitted_at')
         .eq('user_id', currentUser.id)
         .eq('agent_type', 'customer')
         .single();
 
       if (data) {
         userReferralCode = data.code;
+        currentAgent = data;
       } else {
         // Create new referral entry with generated code
         const code = generateCode();
