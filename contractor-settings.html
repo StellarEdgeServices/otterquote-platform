@@ -80,20 +80,22 @@
     }
 
     .page-header {
-      margin-bottom: var(--sp-12);
+      margin: calc(-1 * var(--sp-8)) calc(-1 * var(--sp-4)) var(--sp-10);
+      padding: var(--sp-10) var(--sp-8);
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
     }
 
     .page-header h1 {
       font-family: var(--font-heading);
       font-size: 2.25rem;
       font-weight: 700;
-      color: var(--navy);
+      color: var(--white);
       margin-bottom: var(--sp-2);
     }
 
     .page-subtitle {
       font-size: 0.95rem;
-      color: var(--slate);
+      color: rgba(255, 255, 255, 0.7);
       line-height: 1.6;
     }
 
@@ -637,6 +639,11 @@
     @media (max-width: 768px) {
       main {
         padding: var(--sp-6) var(--sp-4);
+      }
+
+      .page-header {
+        margin: calc(-1 * var(--sp-6)) calc(-1 * var(--sp-4)) var(--sp-8);
+        padding: var(--sp-8) var(--sp-5);
       }
 
       .page-header h1 {
@@ -3091,4 +3098,31 @@
         status.style.color = '#065F46';
         status.style.display = 'block';
         btn.textContent = 'Sent!';
-        btn.style.backgroundColor = '#
+        btn.style.backgroundColor = '#10B981';
+        btn.style.color = '#FFFFFF';
+        setTimeout(() => {
+          btn.textContent = 'Send Feature Request';
+          btn.style.backgroundColor = '';
+          btn.style.color = '';
+          btn.disabled = false;
+          setTimeout(() => { status.style.display = 'none'; }, 5000);
+        }, 2000);
+      } catch (err) {
+        console.error('Feature request error:', err);
+        status.textContent = 'Error submitting request. Please try again.';
+        status.style.color = '#EF4444';
+        status.style.display = 'block';
+        btn.textContent = 'Error — Try Again';
+        btn.style.backgroundColor = '#EF4444';
+        btn.style.color = '#FFFFFF';
+        btn.disabled = false;
+        setTimeout(() => {
+          btn.textContent = 'Send Feature Request';
+          btn.style.backgroundColor = '';
+          btn.style.color = '';
+        }, 3000);
+      }
+    };
+
+    // ── Initialize ──
+    document.addEventListener('DOMContentLoade

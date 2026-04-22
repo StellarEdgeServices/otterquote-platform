@@ -42,9 +42,13 @@
         .sales-banner p { font-family: var(--font-body); font-size: 0.95rem; color: var(--navy); margin: 0; }
         .sales-banner strong { color: var(--amber); }
 
-        .page-header { margin-bottom: var(--sp-8); }
-        .page-header h1 { font-family: var(--font-heading); font-size: 2.5rem; font-weight: 700; color: var(--navy); margin-bottom: var(--sp-2); line-height: 1.1; }
-        .page-header p { font-family: var(--font-body); font-size: 1.125rem; color: var(--slate); margin: 0; }
+        .page-header {
+            margin: calc(-1 * var(--sp-8)) calc(-1 * var(--sp-4)) var(--sp-8);
+            padding: var(--sp-10) var(--sp-8);
+            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+        }
+        .page-header h1 { font-family: var(--font-heading); font-size: 2.5rem; font-weight: 700; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.1; }
+        .page-header p { font-family: var(--font-body); font-size: 1.125rem; color: rgba(255, 255, 255, 0.7); margin: 0; }
 
         .filter-section {
             background: var(--white); border: 1px solid #E5E7EB; border-radius: var(--radius-lg);
@@ -158,6 +162,7 @@
 
         @media (max-width: 768px) {
             main { padding: var(--sp-4) var(--sp-3); }
+            .page-header { margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-3)) var(--sp-6); padding: var(--sp-8) var(--sp-5); }
             .page-header h1 { font-size: 1.75rem; }
             .filter-section { grid-template-columns: 1fr; }
             .opportunity-header { flex-direction: column; align-items: flex-start; }
@@ -961,10 +966,4 @@
 
             const tradeDisplay = (o.trades || []).map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ') || 'Not specified';
             const urgencyDisplay = urgencyLabels[o.urgency] || o.urgency || 'Flexible';
-            const urgencyNote = o.urgency === 'asap' && o.urgencyDeadline
-                ? ' (by ' + new Date(o.urgencyDeadline).toLocaleDateString('en-US', {month:'short',day:'numeric'}) + ')'
-                : '';
-
-            document.getElementById('detailModalBody').innerHTML = `
-                <div>
-                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transf
+            const urgencyNote = o.urgency === 'asap' && o.urgencyD

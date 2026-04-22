@@ -34,14 +34,16 @@
         }
 
         .dashboard-hero {
-            margin-bottom: var(--sp-12);
+            margin: calc(-1 * var(--sp-8)) calc(-1 * var(--sp-4)) var(--sp-10);
+            padding: var(--sp-10) var(--sp-8);
+            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
         }
 
         .dashboard-hero h1 {
             font-family: var(--font-heading);
             font-size: 2.5rem;
             font-weight: 700;
-            color: var(--navy);
+            color: var(--white);
             margin-bottom: var(--sp-2);
             line-height: 1.1;
         }
@@ -642,6 +644,11 @@
         @media (max-width: 768px) {
             main {
                 padding: var(--sp-4) var(--sp-3);
+            }
+
+            .dashboard-hero {
+                margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-3)) var(--sp-8);
+                padding: var(--sp-8) var(--sp-5);
             }
 
             .dashboard-hero h1 {
@@ -1485,16 +1492,4 @@
               sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
             }
             if (sb) {
-              const { data: { subscription } } = sb.auth.onAuthStateChange((event) => {
-                if (event === 'INITIAL_SESSION') {
-                  subscription.unsubscribe();
-                  init().then(() => checkDunningStatus());
-                }
-              });
-            } else {
-              init().then(() => checkDunningStatus());
-            }
-        });
-    </script>
-</body>
-</html>
+              const { data: { subscription } } = sb.auth.onAut
