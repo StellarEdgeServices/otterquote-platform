@@ -226,6 +226,48 @@
       border-radius: var(--radius-sm);
       border-left: 3px solid var(--amber);
     }
+    /* Pre-expiry warning (bids expiring within 3 days) */
+    .bid-expiry-warning {
+      font-size: 0.85rem;
+      color: #D97706;
+      margin-bottom: var(--sp-4);
+      padding: var(--sp-2) var(--sp-3);
+      background: var(--amber-glow);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--amber);
+    }
+    /* Expiry info button (?) on expired notice */
+    .expiry-info-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: rgba(217,119,6,0.2);
+      border: 1px solid rgba(217,119,6,0.5);
+      color: #D97706;
+      font-size: 0.65rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-left: 6px;
+      vertical-align: middle;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .expiry-info-btn:hover { background: rgba(217,119,6,0.35); }
+    /* Expiry tooltip copy block */
+    .expiry-tooltip {
+      display: none;
+      margin-top: var(--sp-3);
+      padding: var(--sp-3) var(--sp-4);
+      background: rgba(15,23,42,0.95);
+      border: 1px solid rgba(245,158,11,0.25);
+      border-radius: var(--radius-sm);
+      font-size: 0.8rem;
+      color: #CBD5E1;
+      line-height: 1.65;
+    }
     /* All-expired banner */
     .all-expired-banner {
       display: flex;
@@ -1043,9 +1085,22 @@
                             currentClaim.job_type === 'retail' ? 'Retail' :
                             currentClaim.job_type === 'repair' ? 'Repair' : 'Project';
 
-        // Expired date notice
+        // Pre-expiry warning for active bids expiring within 3 days
+        const daysUntilExpiry = (!isExpired && bid.expires_at)
+          ? Math.ceil((new Date(bid.expires_at) - new Date()) / (1000 * 60 * 60 * 24))
+          : null;
+        const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry <= 3 && daysUntilExpiry > 0;
+        const expiryWarning = isExpiringSoon
+          ? `<div class="bid-expiry-warning">⚠️ This bid expires in ${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'}. Select this contractor now to lock in this price.</div>`
+          : '';
+
+        // Expired date notice with info tooltip
         const expiryNotice = isExpired
-          ? `<div class="bid-expiry-notice">⏰ This bid expired on ${bid.expires_at ? formatDate(bid.expires_at) : 'an earlier date'}.</div>`
+          ? `<div class="bid-expiry-notice">
+              ⏰ This bid expired on ${bid.expires_at ? formatDate(bid.expires_at) : 'an earlier date'}.
+              <button class="expiry-info-btn" onclick="toggleExpiryTooltip(event)" aria-label="Why do bids expire?">?</button>
+              <div class="expiry-tooltip">Contractors can't predict the future. Costs change and crews get busy. To avoid misunderstandings, bids on Otter Quotes expire after 14 days. If you want to move forward with this bid, the contractor will probably renew it at same or similar terms. We just don't want anyone to commit to promises they can't keep. Ask this contractor to renew this bid. If nothing has changed, you'll be able to accept it as soon as it is updated.</div>
+            </div>`
           : '';
 
         // Net-to-contractor transparency line
@@ -1090,6 +1145,7 @@
               </div>
             </div>
 
+            ${expiryWarning}
             ${expiryNotice}
 
             <!-- ── PRICING ── -->
@@ -1534,57 +1590,4 @@
 
       // Certifications
       const certs = parseCerts(c.specialties);
-      document.getElementById('profileCerts').innerHTML = `
-        <h3>Certifications</h3>
-        ${certs.length > 0 ? `
-          <div class="cert-list">
-            ${certs.map(cert => `
-              <div class="cert-item">
-                <div class="cert-badge">🏆</div>
-                <span class="cert-item-text">${esc(cert)}</span>
-              </div>
-            `).join('')}
-          </div>
-        ` : '<p style="color:var(--slate);">No certifications listed.</p>'}
-      `;
-
-      // License & Insurance
-      document.getElementById('profileLicense').innerHTML = `
-        <h3>License & Verification</h3>
-        <div style="display:flex;flex-direction:column;gap:var(--sp-3);">
-          <div class="team-item">
-            <span class="bid-badge ${c.verified ? 'verified' : 'warning'}">${c.verified ? '✓ Verified Contractor' : '⚠ Pending Verification'}</span>
-            ${c.license_number ? `<span style="color:var(--slate);font-size:0.85rem;margin-left:var(--sp-2);">#${esc(c.license_number)}</span>` : ''}
-          </div>
-        </div>
-      `;
-
-      // Select CTA — any contractor can be selected; signing happens after selection
-      document.getElementById('profileSelectCTA').innerHTML = `
-        <h3>Ready to Choose ${esc(c.company_name)}?</h3>
-        <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. The contract will be sent to both you and the contractor for signature. You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.</p>
-        <button class="btn btn-primary btn-lg" onclick="selectContractor('${bid.id}')">Select ${esc(c.company_name)}</button>
-      `;
-
-      gtag('event', 'view_contractor_profile', {
-        contractor_id: contractorId,
-        company_name: c.company_name,
-      });
-    };
-
-    window.closeProfile = function() {
-      document.getElementById('profileView').classList.remove('active');
-      document.getElementById('comparisonView').style.display = 'block';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    // ── Select Contractor ──
-    let pendingBidId = null;
-
-    window.selectContractor = function(bidId) {
-      const bid = bids.find(b => b.id === bidId);
-      if (!bid) return;
-
-      // Guard: already awarded or signed — should not reach here via button, but protect anyway
-      if (currentClaim && (currentClaim.status === 'awarded' || currentClaim.status === 'contract_signed')) {
-        document.getElementById('modalTitle').textContent = 'Projec
+      document.getElementById('profileCerts').innerHTM
