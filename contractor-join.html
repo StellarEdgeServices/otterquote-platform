@@ -382,7 +382,32 @@
                 <div id="successMessage" class="success-message">
                     <div style="font-size: 2rem; margin-bottom: var(--sp-3);">✉️</div>
                     <strong style="font-size: 1.1rem; display: block; margin-bottom: var(--sp-2);">Check your email!</strong>
-                    We've sent you a secure login link. Click it to access your contractor portal and complete your profile.
+                    <p style="margin-bottom: var(--sp-4); color: #065F46;">We've sent you a secure login link. Click it to access your contractor portal and complete your profile.</p>
+
+                    <div style="background: rgba(6,95,70,0.08); border: 1px solid rgba(6,95,70,0.2); border-radius: 0.5rem; padding: 1rem 1.25rem; margin-top: 1rem; text-align: left;">
+                        <strong style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: #065F46;">⏱ Approval Timeline</strong>
+                        <p style="font-size: 0.9rem; color: #065F46; margin-bottom: 0.75rem;">Most applications are reviewed within <strong>2–5 business days</strong>.</p>
+
+                        <strong style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: #065F46;">📋 What Happens Next</strong>
+                        <ol style="font-size: 0.9rem; color: #065F46; margin: 0 0 0.75rem 1.25rem; padding: 0;">
+                            <li style="margin-bottom: 0.3rem;">Complete your profile after clicking the login link.</li>
+                            <li style="margin-bottom: 0.3rem;">Our team reviews your license, insurance, and service area.</li>
+                            <li>You'll receive an approval email with full portal access once review is&nbsp;complete.</li>
+                        </ol>
+
+                        <strong style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: #065F46;">✅ Have These Ready</strong>
+                        <ul style="font-size: 0.9rem; color: #065F46; margin: 0 0 0 1.25rem; padding: 0;">
+                            <li style="margin-bottom: 0.3rem;">CGL Certificate of Insurance (COI) — current, naming Stellar Edge Services LLC as additional insured</li>
+                            <li style="margin-bottom: 0.3rem;">Contractor license number (if required in your service area)</li>
+                            <li>Your contract template (optional but recommended — if you don't upload one, OtterQuote's standard agreement governs)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Platform Fee Disclosure (86e10t2a0) — shown before form -->
+                <div style="background: rgba(224,123,0,0.07); border-left: 4px solid var(--amber); border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 1.5rem;">
+                    <strong style="display: block; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--amber); margin-bottom: 0.4rem;">Platform Fee</strong>
+                    <p style="font-size: 0.95rem; color: var(--slate); margin: 0;">5% of the signed contract value — charged at contract execution. No monthly fees, no upfront costs. You only pay when a homeowner signs your contract.</p>
                 </div>
 
                 <form id="contractorForm">
@@ -464,7 +489,7 @@
                         <h3><span></span>Contractor Attestation &amp; Indemnity</h3>
 
                         <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy);">
-                            <p style="margin-bottom: var(--sp-4);">Otter Quotes is a lead-matching and payments platform. We do not perform your work, supervise your crews, or warrant the materials you install. Every contractor on the platform represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
+                            <p style="margin-bottom: var(--sp-4);">Otter Quotes is a contract-ready project matching and payments platform. We do not perform your work, supervise your crews, or warrant the materials you install. Every contractor on the platform represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
                             <p style="margin-bottom: var(--sp-4);">By checking the box below, you personally and on behalf of the business attest that:</p>
                             <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
                                 <li style="margin-bottom: var(--sp-2);">You hold all licenses, registrations, and permits required to perform the work you bid on in every jurisdiction where the home is located.</li>
@@ -577,60 +602,4 @@
                 if (window.CONFIG && window.CONFIG.DEMO_MODE) {
                     document.getElementById('successMessage').classList.add('show');
                     document.getElementById('contractorForm').style.display = 'none';
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                    return;
-                }
-
-                if (!window.Auth) {
-                    throw new Error('Auth module not loaded');
-                }
-
-                // Send magic link immediately — no other fields required
-                await Auth.sendMagicLink(email, 'contractor');
-
-                // Store profile + D-170 attestation payload for post-auth write
-                // (handleAuthCallback in js/auth.js persists these to contractors + calls
-                //  the record-attestation Edge Function to capture IP server-side.)
-                localStorage.setItem('cs_contractor_signup', JSON.stringify({
-                    email: email,
-                    company_name: businessName,
-                    contact_name: [firstName, lastName].filter(Boolean).join(' '),
-                    signer_first_name: firstName,
-                    signer_last_name: lastName,
-                    signer_title: signerTitle,
-                    role: 'contractor',
-                    sms_consent_ts: tcpaSmsChecked ? new Date().toISOString() : null,
-                    attestation: {
-                        text_version: 'ic-24511-v1-2026-04',
-                        accepted: true,
-                        accepted_client_ts: new Date().toISOString(),
-                        user_agent: navigator.userAgent,
-                        platform_agreement_ack: true,
-                        cancellation_policy_ack: true,
-                        tax_1099_nec_ack: true,
-                        tax_1099_nec_version: '1099-nec-v1-2026-04',
-                    },
-                }));
-                localStorage.setItem('cs_auth_role', 'contractor');
-
-                // Show confirmation and hide form
-                document.getElementById('successMessage').classList.add('show');
-                document.getElementById('contractorForm').style.display = 'none';
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-
-                // GA4 conversion event — contractor funnel
-                gtag('event', 'contractor_signup', {
-                    trade_types: [],  // trade selection happens post-signup in profile setup
-                    source: new URLSearchParams(location.search).get('utm_source') || 'direct',
-                });
-
-            } catch (error) {
-                console.error('Error sending magic link:', error);
-                alert('An error occurred. Please try again: ' + (error.message || 'Unknown error'));
-            }
-        });
-
-        // Post-auth redirect listener
-        if (window.Auth && window.Auth.onAuthStateChangeListener) {
-            Auth.onAuthStateChangeListener();
-    
+                 
