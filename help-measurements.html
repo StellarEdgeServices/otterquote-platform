@@ -21,6 +21,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
+    <!-- Stripe.js — required for card payment on Hover purchase -->
+    <script src="https://js.stripe.com/v3/"></script>
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
@@ -623,6 +625,18 @@
                     </button>
                     <button class="action-btn btn-outline" onclick="goBack()">← Choose Different Option</button>
                 </div>
+
+                <!-- Stripe card form — shown after clicking Purchase, hidden by default -->
+                <div id="hoverPaymentForm" style="display:none; margin-top:1.5rem; padding:1.5rem; background:#F8F9FC; border:1.5px solid #D0D9E3; border-radius:8px;">
+                    <p style="font-size:0.875rem; color:#3D4F60; margin:0 0 1rem; font-weight:500;">💳 Enter your card details to complete the $79 purchase:</p>
+                    <div id="hoverCardElement" style="padding:0.75rem; border:1.5px solid #CBD5E1; border-radius:6px; background:white;"></div>
+                    <div id="hoverCardErrors" style="color:#DC2626; font-size:0.8rem; margin-top:0.4rem; min-height:1.1rem;"></div>
+                    <div class="button-row" style="margin-top:1.25rem;">
+                        <button class="action-btn btn-green" id="payHoverBtn" onclick="confirmHoverPayment()">Pay $79 Securely</button>
+                        <button class="action-btn btn-outline" onclick="cancelHoverPayment()">Cancel</button>
+                    </div>
+                    <p style="font-size:0.75rem; color:#64748B; margin:0.75rem 0 0; text-align:center;">🔒 Payment secured by Stripe. Your card info is never stored on our servers.</p>
+                </div>
             </div>
 
             <!-- Hover Payment Success -->
@@ -832,31 +846,113 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // ── Hover Purchase ──
+        // ── Hover Purchase — Stripe state ──
+        let hoverStripe = null;
+        let hoverCardElement = null;
+        let hoverClientSecret = null;
+        let hoverPaymentIntentId = null;
+
+        function initHoverStripe() {
+            if (hoverStripe) return;
+            if (typeof CONFIG === 'undefined' || !CONFIG.STRIPE_PK) {
+                throw new Error('Stripe publishable key not configured.');
+            }
+            hoverStripe = Stripe(CONFIG.STRIPE_PK);
+        }
+
+        // Step 1 — Create PaymentIntent and show card form (no charge yet)
         async function purchaseHover() {
             const btn = document.getElementById('purchaseHoverBtn');
             const originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> Processing...';
+            btn.innerHTML = '<span class="spinner"></span> Loading...';
 
             try {
-                // Create payment intent
+                initHoverStripe();
+
+                // Create the PaymentIntent server-side — returns client_secret
                 const paymentResult = await Services.createHoverPaymentIntent({
                     claim_id: currentClaim?.id,
                     amount: 7900, // $79 in cents
                     description: 'Hover 3D Measurement Report',
                 });
 
-                if (paymentResult.placeholder) {
-                    // Stripe not yet configured — show placeholder success
-                    showMessage('Payment processing is not yet configured. Your order has been recorded.', 'success');
+                if (!paymentResult?.client_secret) {
+                    throw new Error('Could not initialize payment. Please try again.');
                 }
 
-                // Create Hover order with full address + homeowner details
+                hoverClientSecret = paymentResult.client_secret;
+                hoverPaymentIntentId = paymentResult.payment_intent_id;
+
+                // Mount Stripe Card Element into the form
+                const elements = hoverStripe.elements();
+                hoverCardElement = elements.create('card', {
+                    style: {
+                        base: {
+                            fontSize: '15px',
+                            color: '#0D1B2E',
+                            fontFamily: 'Rubik, sans-serif',
+                            '::placeholder': { color: '#94A3B8' }
+                        },
+                        invalid: { color: '#EF4444' }
+                    }
+                });
+                hoverCardElement.mount('#hoverCardElement');
+                hoverCardElement.on('change', (e) => {
+                    document.getElementById('hoverCardErrors').textContent = e.error ? e.error.message : '';
+                });
+
+                // Show card form, hide purchase button
+                btn.style.display = 'none';
+                document.getElementById('hoverPaymentForm').style.display = 'block';
+
+            } catch (err) {
+                console.error('Hover payment init error:', err);
+                showMessage('Could not initialize payment. Please try again.', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // Step 2 — Confirm card payment, then (and only then) create Hover order
+        async function confirmHoverPayment() {
+            const payBtn = document.getElementById('payHoverBtn');
+            const originalText = payBtn.innerHTML;
+            payBtn.disabled = true;
+            payBtn.innerHTML = '<span class="spinner"></span> Processing...';
+            document.getElementById('hoverCardErrors').textContent = '';
+
+            try {
+                if (!hoverStripe || !hoverCardElement || !hoverClientSecret) {
+                    throw new Error('Payment not initialized. Please refresh and try again.');
+                }
+
+                // Charge the card — this is the real money movement
+                const { paymentIntent, error: stripeError } = await hoverStripe.confirmCardPayment(
+                    hoverClientSecret,
+                    { payment_method: { card: hoverCardElement } }
+                );
+
+                if (stripeError) {
+                    // Stripe declined or card error — surface to user, don't create order
+                    document.getElementById('hoverCardErrors').textContent = stripeError.message;
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = originalText;
+                    return;
+                }
+
+                if (paymentIntent.status !== 'succeeded') {
+                    throw new Error(`Unexpected payment status: ${paymentIntent.status}. Please contact support.`);
+                }
+
+                // Payment confirmed — safe to create the Hover order
+                payBtn.innerHTML = '<span class="spinner"></span> Ordering your report...';
+
                 const homeownerName = currentProfile?.full_name
                     || `${currentProfile?.first_name || ''} ${currentProfile?.last_name || ''}`.trim()
                     || 'Homeowner';
-                const hoverResult = await Services.createHoverOrder({
+
+                await Services.createHoverOrder({
                     claim_id: currentClaim?.id,
                     user_id: currentUser?.id,
                     address_line_1: currentProfile?.address_line1
@@ -871,121 +967,16 @@
                     deliverable_type_id: 2, // Roof Only
                 });
 
-                // Show success
+                // Show success state
                 document.getElementById('hoverSection').querySelector('.section-card').style.display = 'none';
                 document.getElementById('hoverSuccessSection').classList.add('active');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
 
                 gtag('event', 'hover_purchased', {
                     claim_id: currentClaim?.id,
+                    payment_intent_id: paymentIntent.id,
                     amount: 79,
                 });
+
             } catch (err) {
-                console.error('Hover purchase error:', err);
-                showMessage('Something went wrong with your purchase. Your order has been saved — our team will follow up.', 'error');
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
-        }
-
-        // ── Adjuster Email ──
-        function setupListeners() {
-            ['adjusterName', 'adjusterEmail'].forEach(id => {
-                document.getElementById(id).addEventListener('input', () => {
-                    updateEmailPreview();
-                    validateForm();
-                });
-            });
-        }
-
-        function updateEmailPreview() {
-            const adjName = document.getElementById('adjusterName').value || '[Adjuster Name]';
-            const homeownerName = currentProfile
-                ? `${currentProfile.first_name || ''} ${currentProfile.last_name || ''}`.trim()
-                : 'the homeowner';
-            const homeownerPhone = currentProfile?.phone || '';
-
-            let preview = `Hi ${adjName},\n\n`;
-            preview += `I'm following up on my recent property inspection. Could you please share any property measurements you have on file? These would help me get accurate repair estimates.\n\n`;
-            preview += `You can reply directly to this email with the documents attached.\n\n`;
-            preview += `Thank you,\n${homeownerName}`;
-            if (homeownerPhone) preview += `\n${homeownerPhone}`;
-
-            document.getElementById('emailPreview').textContent = preview;
-        }
-
-        function validateForm() {
-            const name = document.getElementById('adjusterName').value.trim();
-            const email = document.getElementById('adjusterEmail').value.trim();
-            const isValid = name.length > 0 && email.includes('@') && email.includes('.');
-            document.getElementById('sendMeasurementEmailBtn').disabled = !isValid;
-        }
-
-        async function sendMeasurementEmail() {
-            const btn = document.getElementById('sendMeasurementEmailBtn');
-            const originalText = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> Sending...';
-
-            try {
-                const adjusterName = document.getElementById('adjusterName').value.trim();
-                const adjusterEmail = document.getElementById('adjusterEmail').value.trim();
-                const adjusterPhone = document.getElementById('adjusterPhone').value.trim();
-                const homeownerName = currentProfile
-                    ? `${currentProfile.first_name || ''} ${currentProfile.last_name || ''}`.trim()
-                    : '';
-
-                // Save adjuster info
-                if (currentClaim) {
-                    await sb.from('claims').update({
-                        adjuster_name: adjusterName,
-                        adjuster_email: adjusterEmail,
-                        adjuster_phone: adjusterPhone || null,
-                    }).eq('id', currentClaim.id);
-                }
-
-                // Auto-fill adjuster knowledge base
-                await Services.findOrCreateAdjuster({
-                    adjuster_name: adjusterName,
-                    adjuster_email: adjusterEmail,
-                    adjuster_phone: adjusterPhone || null,
-                    carrier_id: currentClaim?.carrier_id || null,
-                });
-
-                // Send email
-                const result = await Services.sendAdjusterEmail({
-                    claim_id: currentClaim?.id,
-                    adjuster_name: adjusterName,
-                    adjuster_email: adjusterEmail,
-                    homeowner_name: homeownerName,
-                    homeowner_phone: currentProfile?.phone || '',
-                    claim_number: currentClaim?.claim_number || '',
-                    request_type: 'measurements',
-                });
-
-                if (result.success) {
-                    document.querySelectorAll('.flow-section').forEach(s => s.classList.remove('active'));
-                    document.getElementById('emailSuccessSection').classList.add('active');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-
-                    gtag('event', 'measurement_email_sent', {
-                        edge_function_pending: result.edge_function_pending || false,
-                    });
-                }
-            } catch (err) {
-                console.error('Send error:', err);
-                showMessage('Something went wrong. Your request has been saved.', 'error');
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
-        }
-
-        // ── Utility ──
-        function showMessage(text, type) {
-            const el = document.getElementById('statusMessage');
-            el.textContent = text;
-            el.className = `status-message ${type}`;
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    </script>
-</body>
-</html>
+       
