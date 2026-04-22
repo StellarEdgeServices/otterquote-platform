@@ -104,6 +104,37 @@
         .empty-state-text { font-family: var(--font-body); font-size: 1rem; color: var(--slate); margin-bottom: var(--sp-6); }
         .results-count { font-family: var(--font-body); font-size: 0.95rem; color: var(--slate); margin-bottom: var(--sp-6); }
 
+        /* ── Early-adopter empty state (86e112r60) ── */
+        .empty-state-early {
+            max-width: 620px;
+            margin: var(--sp-6) auto var(--sp-12);
+            background: linear-gradient(145deg, #0D1B2E 0%, #162233 100%);
+            border: 1px solid rgba(224,123,0,0.35);
+            border-radius: var(--radius-lg);
+            padding: var(--sp-10) var(--sp-8);
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        .esa-otter { font-size: 3.5rem; display: block; margin-bottom: var(--sp-4); }
+        .esa-headline { font-family: var(--font-heading); font-size: 1.75rem; font-weight: 700; color: #F1F5F9; margin-bottom: var(--sp-3); line-height: 1.25; }
+        .esa-headline em { font-style: normal; color: var(--amber); }
+        .esa-sub { font-family: var(--font-body); font-size: 1rem; color: #94A3B8; line-height: 1.7; margin-bottom: var(--sp-5); max-width: 480px; margin-left: auto; margin-right: auto; }
+        .esa-notify-pill { display: inline-flex; align-items: center; gap: var(--sp-2); background: rgba(224,123,0,0.12); border: 1px solid rgba(224,123,0,0.35); border-radius: 99px; padding: var(--sp-2) var(--sp-5); font-family: var(--font-body); font-size: 0.875rem; color: var(--amber); font-weight: 600; margin-bottom: var(--sp-8); }
+        .esa-checklist { text-align: left; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); border-radius: var(--radius-md); padding: var(--sp-5) var(--sp-6); }
+        .esa-checklist-heading { font-family: var(--font-body); font-size: 0.75rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: var(--sp-4); }
+        .esa-item { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-3) 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .esa-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .esa-item-num { width: 24px; height: 24px; background: rgba(224,123,0,0.18); border: 1px solid rgba(224,123,0,0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-body); font-size: 0.75rem; font-weight: 700; color: var(--amber); flex-shrink: 0; margin-top: 2px; }
+        .esa-item-text { flex: 1; }
+        .esa-item-label { font-family: var(--font-body); font-size: 0.95rem; font-weight: 600; color: #E2E8F0; display: block; margin-bottom: 3px; }
+        .esa-item-desc { font-family: var(--font-body); font-size: 0.82rem; color: #64748B; display: block; margin-bottom: var(--sp-2); }
+        .esa-item-link { display: inline-block; padding: 5px 14px; background: rgba(224,123,0,0.15); border: 1px solid rgba(224,123,0,0.4); color: var(--amber); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 0.8rem; font-weight: 700; text-decoration: none; transition: all 0.2s ease; }
+        .esa-item-link:hover { background: var(--amber); color: #fff; }
+        @media (max-width: 768px) {
+            .empty-state-early { padding: var(--sp-8) var(--sp-5); }
+            .esa-headline { font-size: 1.4rem; }
+        }
+
         /* ── Scope Toggle ── */
         .scope-toggle-row { margin-bottom: var(--sp-4); }
         .btn-scope { background: none; border: 1px solid #D1D5DB; border-radius: var(--radius-md); padding: var(--sp-2) var(--sp-4); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; color: var(--navy); cursor: pointer; display: inline-flex; align-items: center; gap: var(--sp-2); transition: all 0.2s; }
@@ -111,6 +142,19 @@
         .scope-content { background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: var(--radius-md); padding: var(--sp-4); margin-bottom: var(--sp-4); }
         .scope-label { font-size: 0.75rem; font-weight: 700; color: #15803D; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: var(--sp-2); }
         .scope-text { font-family: var(--font-body); font-size: 0.875rem; color: #065F46; white-space: pre-wrap; margin: 0; line-height: 1.65; }
+
+        /* ── Document Links (86e10t26y) ── */
+        .docs-section { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-4); flex-wrap: wrap; }
+        .docs-label { font-family: var(--font-body); font-size: 0.75rem; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: 0.05em; margin-right: var(--sp-1); }
+        .doc-link-btn { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: #F8FAFC; border: 1px solid #D1D5DB; border-radius: var(--radius-md); font-family: var(--font-body); font-size: 0.82rem; font-weight: 600; color: var(--navy); cursor: pointer; transition: all 0.15s ease; }
+        .doc-link-btn:hover { border-color: var(--amber); background: #FFFBEB; }
+        .doc-link-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* ── Bid Expiry Countdown (86e10t2bh / D-150) ── */
+        .expiry-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px; font-family: var(--font-body); font-size: 0.78rem; font-weight: 700; border: 1px solid transparent; }
+        .expiry-neutral { background: #F3F4F6; color: #374151; border-color: #E5E7EB; }
+        .expiry-amber  { background: #FEF3C7; color: #92400E; border-color: #FDE68A; }
+        .expiry-red    { background: #FEE2E2; color: #DC2626; border-color: #FECACA; }
 
         @media (max-width: 768px) {
             main { padding: var(--sp-4) var(--sp-3); }
@@ -130,7 +174,7 @@
     <main>
         <div class="sales-banner">
             <span class="sales-banner-icon">&#x1F4BC;</span>
-            <p><strong>Fully executed, ready-to-install contracts.</strong> Not leads &mdash; we're your sales team that doesn't need a truck, a manager, or an advance.</p>
+            <p><strong>Fully executed, ready-to-install contracts.</strong> Not referrals &mdash; we're your sales team that doesn't need a truck, a manager, or an advance.</p>
         </div>
 
         <div class="page-header">
@@ -216,6 +260,7 @@
         let currentUser = null;
         let allOpportunities = [];
         let currentContractor = null;
+        const oppDocMap = {}; // claimId → { estimateFilename, measurementsAvailable } — populated by getDocLinksHtml()
 
         // =============================================================
         // ZIP CODE DISTANCE CALCULATION (Option C — zip centroids)
@@ -470,6 +515,8 @@
                     contractorScopeSummary: claim.contractor_scope_summary || null,
                     fundingType: claim.funding_type || (claim.job_type?.startsWith('insurance') ? 'insurance' : 'cash'),
                     releasedTrades: releasedTrades,
+                    bidWindowExpiresAt: claim.bid_window_expires_at || null,  // D-150 / 86e10t2bh
+                    estimateFilename: claim.estimate_filename || null,         // 86e10t26y
                   };
                 });
 
@@ -544,7 +591,8 @@
                 estimateAvailable: true, measurementsAvailable: true, claimFiledDate: '2026-03-15',
                 distance: 5, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
                 homeownerNotes: null, fundingType: 'insurance',
-                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false },
+                bidWindowExpiresAt: '2026-04-30T23:59:59Z', estimateFilename: null
             },
             {
                 id: 'OQ-2026-0047', location: 'Carmel', zip: '46032', jobType: 'insurance_acv',
@@ -554,7 +602,8 @@
                 estimateAvailable: true, measurementsAvailable: false, claimFiledDate: '2026-03-14',
                 distance: 18, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
                 homeownerNotes: 'Two-story home. Ladder access on south side only.', fundingType: 'insurance',
-                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false },
+                bidWindowExpiresAt: '2026-04-23T23:59:59Z', estimateFilename: null
             },
             {
                 id: 'OQ-2026-0046', location: 'Fishers', zip: '46037', jobType: 'retail',
@@ -564,7 +613,8 @@
                 estimateAvailable: false, measurementsAvailable: true, claimFiledDate: '2026-03-13',
                 distance: 22, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
                 homeownerNotes: null, fundingType: 'cash',
-                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false },
+                bidWindowExpiresAt: null, estimateFilename: null
             },
             {
                 id: 'OQ-2026-0045', location: 'Noblesville', zip: '46060', jobType: 'repair',
@@ -575,7 +625,8 @@
                 distance: 25, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
                 homeownerNotes: 'Damage on north-facing slope near chimney. Have leftover shingles in garage — confirmed GAF Timberline HD Charcoal.',
                 fundingType: 'insurance', repairType: 'blown_off',
-                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false },
+                bidWindowExpiresAt: null, estimateFilename: null
             },
             {
                 id: 'OQ-2026-0044', location: 'Greenwood', zip: '46142', jobType: 'insurance_rcv',
@@ -587,7 +638,8 @@
                 urgencyReason: 'Real estate closing April 15',
                 homeownerNotes: 'House is under contract. Must have roof complete before closing on April 15. Buyer inspection passed contingent on roof.',
                 fundingType: 'insurance',
-                releasedTrades: { roofing: true, gutters: true, siding: false, windows: false }
+                releasedTrades: { roofing: true, gutters: true, siding: false, windows: false },
+                bidWindowExpiresAt: '2026-04-22T23:59:59Z', estimateFilename: null
             },
             {
                 // Demo: retail roofing + siding — siding held pending Hover design
@@ -599,7 +651,8 @@
                 distance: 8, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
                 homeownerNotes: 'Full exterior project. Siding on north and west sides only.',
                 fundingType: 'cash',
-                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false }
+                releasedTrades: { roofing: true, gutters: false, siding: false, windows: false },
+                bidWindowExpiresAt: null, estimateFilename: null
             }
         ];
 
@@ -681,10 +734,116 @@
 
         function fmt(v) { return v.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:0}); }
 
+        // ── Bid Expiry Countdown (86e10t2bh / D-150) ──────────────────────────
+        function getExpiryCountdownHtml(opp) {
+            if (!opp.bidWindowExpiresAt) return '';
+            const now    = new Date();
+            const expiry = new Date(opp.bidWindowExpiresAt);
+            const diffMs = expiry - now;
+            if (diffMs <= 0) return '<span class="expiry-badge expiry-red">&#x23F0; Bid window closed</span>';
+            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+            if (diffDays <= 1) return '<span class="expiry-badge expiry-red">&#x23F0; Closes today</span>';
+            if (diffDays <= 3) return '<span class="expiry-badge expiry-amber">&#x23F0; Closes in ' + diffDays + ' days</span>';
+            return '<span class="expiry-badge expiry-neutral">&#x23F0; Closes in ' + diffDays + ' days</span>';
+        }
+
+        // ── Document Links (86e10t26y) ─────────────────────────────────────────
+        function getDocLinksHtml(opp) {
+            // Populate oppDocMap so async click handlers can access filenames without inline escaping
+            oppDocMap[opp.id] = { estimateFilename: opp.estimateFilename || null, measurementsAvailable: !!opp.measurementsAvailable };
+            const parts = [];
+            if (opp.estimateFilename) {
+                parts.push('<button class="doc-link-btn" id="loss-' + opp.id + '" onclick="openEstimatePdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4C4; Loss Sheet</button>');
+            }
+            if (opp.measurementsAvailable) {
+                parts.push('<button class="doc-link-btn" id="hover-' + opp.id + '" onclick="openHoverPdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4CF; Hover PDF</button>');
+            }
+            if (!parts.length) return '';
+            return '<div class="docs-section"><span class="docs-label">Documents</span>' + parts.join('') + '</div>';
+        }
+
+        async function openEstimatePdf(claimId) {
+            if (!sb) { alert('Not connected. Please refresh and try again.'); return; }
+            const docInfo = oppDocMap[claimId];
+            if (!docInfo?.estimateFilename) return;
+            const btn = document.getElementById('loss-' + claimId);
+            if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
+            try {
+                const { data, error } = await sb.storage
+                    .from('claim-documents')
+                    .createSignedUrl(docInfo.estimateFilename, 3600);
+                if (error || !data?.signedUrl) throw error || new Error('No URL returned');
+                window.open(data.signedUrl, '_blank');
+            } catch (err) {
+                console.error('Failed to open loss sheet:', err);
+                alert('Unable to open the loss sheet. Please try again.');
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4C4; Loss Sheet'; }
+            }
+        }
+
+        async function openHoverPdf(claimId) {
+            if (!sb) { alert('Not connected. Please refresh and try again.'); return; }
+            const btn = document.getElementById('hover-' + claimId);
+            if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
+            try {
+                const { data, error } = await sb.functions.invoke('get-hover-pdf', {
+                    body: { claim_id: claimId, format: 'url' }
+                });
+                if (error) throw error;
+                if (!data?.url) throw new Error('No PDF URL returned');
+                window.open(data.url, '_blank');
+            } catch (err) {
+                console.error('Failed to open Hover PDF:', err);
+                alert('Hover measurement PDF is not available for this project yet. The measurement may still be in progress.');
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; Hover PDF'; }
+            }
+        }
+
         function render(opps) {
             const el = document.getElementById('opportunitiesContainer');
             if (!opps.length) {
-                el.innerHTML = '<div class="empty-state"><span class="empty-state-icon">&#x1F4ED;</span><h2 class="empty-state-title">No opportunities found</h2><p class="empty-state-text">Try adjusting your filters to see more available projects.</p></div>';
+                // Differentiate: zero base opportunities (chicken-and-egg, new market)
+                // vs. filtered to zero (contractor applied filters that narrowed results)
+                if (allOpportunities.length === 0) {
+                    el.innerHTML = `
+                        <div class="empty-state-early">
+                            <span class="esa-otter">&#x1F9A6;</span>
+                            <h2 class="esa-headline">You&rsquo;re in early.<br><em>The best contractors always are.</em></h2>
+                            <p class="esa-sub">We&rsquo;re actively recruiting homeowners in your service area right now. The moment a matching project comes in, you&rsquo;ll be the first to know &mdash; we won&rsquo;t make you check back.</p>
+                            <div class="esa-notify-pill">&#x1F4F2;&nbsp; Text &amp; email the instant a match drops &mdash; guaranteed.</div>
+                            <div class="esa-checklist">
+                                <span class="esa-checklist-heading">While you wait &mdash; lock in your spot:</span>
+                                <div class="esa-item">
+                                    <div class="esa-item-num">1</div>
+                                    <div class="esa-item-text">
+                                        <span class="esa-item-label">Complete your contractor profile</span>
+                                        <span class="esa-item-desc">Homeowners review your profile before approving a bid. A complete profile wins more jobs.</span>
+                                        <a href="contractor-dashboard.html#profile" class="esa-item-link">Go to Profile &#x2192;</a>
+                                    </div>
+                                </div>
+                                <div class="esa-item">
+                                    <div class="esa-item-num">2</div>
+                                    <div class="esa-item-text">
+                                        <span class="esa-item-label">Upload your contract templates</span>
+                                        <span class="esa-item-desc">Pre-loaded contracts let you close in minutes. When a project drops, speed wins.</span>
+                                        <a href="contractor-dashboard.html#documents" class="esa-item-link">Upload Templates &#x2192;</a>
+                                    </div>
+                                </div>
+                                <div class="esa-item">
+                                    <div class="esa-item-num">3</div>
+                                    <div class="esa-item-text">
+                                        <span class="esa-item-label">Confirm your service area &amp; trade preferences</span>
+                                        <span class="esa-item-desc">Accurate settings mean we only ping you on jobs you actually want &mdash; no noise, no misses.</span>
+                                        <a href="contractor-dashboard.html#settings" class="esa-item-link">Update Settings &#x2192;</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                } else {
+                    el.innerHTML = '<div class="empty-state"><span class="empty-state-icon">&#x1F4ED;</span><h2 class="empty-state-title">No opportunities match your filters</h2><p class="empty-state-text">Try adjusting your filters to see more available projects.</p></div>';
+                }
                 return;
             }
             el.innerHTML = opps.map(o => {
@@ -733,7 +892,7 @@
                     + '<div class="opportunity-header"><div>'
                     + '<h2 class="opportunity-id">Project in ' + o.location + (o.zip ? ', IN ' + o.zip : '') + '</h2>'
                     + '<p class="opportunity-location">' + o.location + ', ' + o.zip + (o.distance !== null ? ' &mdash; ~' + o.distance + ' mi away' : '') + '</p>'
-                    + '</div><div class="header-badges">' + getJobTypeBadge(o.jobType) + getMultiTradeBadge(o.trades) + getUrgentBadge(o) + '</div></div>'
+                    + '</div><div class="header-badges">' + getJobTypeBadge(o.jobType) + getMultiTradeBadge(o.trades) + getUrgentBadge(o) + getExpiryCountdownHtml(o) + '</div></div>'
                     + '<div class="badge-group" style="margin-bottom:4px">' + getTradeBadges(o.trades) + '</div>'
                     + getTradeReleaseBadges(o)
                     + '<div style="margin-bottom:var(--sp-4)"></div>'
@@ -746,9 +905,13 @@
                     + (o.estimateAvailable ? '<span class="badge badge-available">Insurance Estimate &#x2713;</span>' : '')
                     + (o.measurementsAvailable ? '<span class="badge badge-available">Measurements &#x2713;</span>' : '<span class="badge badge-pending">Measurements Pending</span>')
                     + '</div>'
+                    + getDocLinksHtml(o)
                     + notes
                     + scopeHtml
-                    + '<div class="info-block" style="margin-bottom:var(--sp-6)"><span class="info-label">Submitted</span><span class="info-value">' + new Date(o.claimFiledDate).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}) + '</span></div>'
+                    + '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:var(--sp-6);flex-wrap:wrap;gap:var(--sp-2);">'
+                    + '<div class="info-block"><span class="info-label">Submitted</span><span class="info-value">' + new Date(o.claimFiledDate).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}) + '</span></div>'
+                    + '<span style="font-family:var(--font-body);font-size:0.72rem;color:#CBD5E1;font-weight:500;letter-spacing:0.02em;">ID: ' + escHtml(String(o.id)) + '</span>'
+                    + '</div>'
                     + feeHtml
                     + '<div class="actions-row"><button class="btn btn-secondary" onclick="showDetails(\'' + o.id + '\')">Details</button><a href="contractor-bid-form.html?project=' + o.id + '" class="btn btn-primary">Submit Bid</a></div>'
                     + '</div>';
@@ -804,100 +967,4 @@
 
             document.getElementById('detailModalBody').innerHTML = `
                 <div>
-                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Job Type</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${jobTypeLabels[o.jobType] || o.jobType || 'N/A'}</div>
-                </div>
-                <div>
-                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Trade(s)</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${tradeDisplay}</div>
-                </div>
-                <div>
-                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Urgency</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${urgencyDisplay}${urgencyNote}</div>
-                </div>
-                <div>
-                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Damage Type</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${o.damageType || 'N/A'}${o.damageDetail ? ' — ' + o.damageDetail : ''}</div>
-                </div>
-                ${o.estimatedValue ? `<div>
-                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Est. Value</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${fmt(o.estimatedValue)}</div>
-                </div>` : ''}
-                ${o.material ? `<div>
-                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Material</div>
-                    <div style="font-size:1rem;font-weight:500;color:#0D1B2E;">${o.material}</div>
-                </div>` : ''}
-                ${o.homeownerNotes ? `<div style="grid-column:1/-1;">
-                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;">Homeowner Notes</div>
-                    <div style="font-size:0.9rem;color:#0D1B2E;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px;padding:.75rem 1rem;">${o.homeownerNotes}</div>
-                </div>` : ''}
-            `;
-
-            document.getElementById('detailModalFooter').innerHTML =
-                `<button onclick="closeDetailModal()" style="background:#F3F4F6;color:#0D1B2E;border:1px solid #D1D5DB;border-radius:6px;padding:.6rem 1.25rem;font-family:'Rubik',sans-serif;font-weight:600;cursor:pointer;">Close</button>
-                 <a href="contractor-bid-form.html?project=${o.id}" style="background:#E07B00;color:#fff;border:none;border-radius:6px;padding:.6rem 1.25rem;font-family:'Rubik',sans-serif;font-weight:600;text-decoration:none;">Submit Bid →</a>`;
-
-            document.getElementById('detailModal').style.display = 'block';
-            document.body.style.overflow = 'hidden';
-        }
-
-        function closeDetailModal() {
-            document.getElementById('detailModal').style.display = 'none';
-            document.body.style.overflow = '';
-        }
-
-        function applyFilters() {
-            let f = [...allOpportunities];
-            const jt = document.getElementById('jobTypeFilter').value;
-            if (jt) f = f.filter(o => o.jobType === jt);
-            const tr = document.getElementById('tradeFilter').value;
-            if (tr === 'multi') f = f.filter(o => o.trades && o.trades.length > 1);
-            else if (tr) f = f.filter(o => o.trades && o.trades.includes(tr));
-            const mt = document.getElementById('materialFilter').value;
-            if (mt) f = f.filter(o => { const m=(o.material||'').toLowerCase(); if(mt==='architectural')return m.includes('architectural'); if(mt==='designer')return m.includes('designer'); if(mt==='metal-seam')return m.includes('standing seam'); if(mt==='metal-fastener')return m.includes('exposed fastener'); return true; });
-            const dist = document.getElementById('distanceFilter').value;
-            // When distance is null (unknown zip), include the opportunity regardless of
-            // the distance filter — don't hide jobs just because the zip isn't in our table.
-            if (dist) f = f.filter(o => o.distance === null || o.distance <= parseInt(dist));
-            const sort = document.getElementById('sortFilter').value;
-            if (sort==='value-high') f.sort((a,b)=>(b.estimatedValue||0)-(a.estimatedValue||0));
-            // Sort null distances to the end so known-distance results appear first.
-            else if (sort==='closest') f.sort((a,b)=>{
-              if (a.distance === null && b.distance === null) return 0;
-              if (a.distance === null) return 1;
-              if (b.distance === null) return -1;
-              return a.distance - b.distance;
-            });
-            else if (sort==='urgent-first') f.sort((a,b)=>{ if(a.urgency==='asap'&&b.urgency!=='asap')return -1; if(b.urgency==='asap'&&a.urgency!=='asap')return 1; return 0; });
-            document.getElementById('resultsCount').textContent = f.length + ' opportunit' + (f.length!==1?'ies':'y') + ' available';
-            render(f);
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            // Ensure Supabase client is initialized
-            if (!sb && typeof supabase !== 'undefined') {
-              sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
-            }
-            const startInit = () => {
-              init().then(() => {
-                ['jobTypeFilter','tradeFilter','materialFilter','distanceFilter','sortFilter'].forEach(id => {
-                    document.getElementById(id).addEventListener('change', applyFilters);
-                });
-              });
-            };
-            // Wait for Supabase auth to fully initialize (INITIAL_SESSION)
-            // before querying RLS-protected tables
-            if (sb) {
-              const { data: { subscription } } = sb.auth.onAuthStateChange((event) => {
-                if (event === 'INITIAL_SESSION') {
-                  subscription.unsubscribe();
-                  startInit();
-                }
-              });
-            } else {
-              startInit();
-            }
-        });
-    </script>
-</body>
-</html>
+                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transf

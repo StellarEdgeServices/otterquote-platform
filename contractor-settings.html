@@ -1311,7 +1311,7 @@
         <div class="pricing-content">
           <div class="pricing-label">Signed Contract</div>
           <div class="pricing-description">
-            Once a homeowner selects you, Otter Quotes handles the contract signing — you sign first, then the homeowner. Both signatures happen on our platform. You receive a fully signed contract, not just a lead.
+            Once a homeowner selects you, Otter Quotes handles the contract signing — you sign first, then the homeowner. Both signatures happen on our platform. You receive a fully signed contract, not just a referral.
           </div>
         </div>
         <div class="pricing-fee">5%</div>
@@ -1404,7 +1404,7 @@
       </div>
 
       <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy); padding: var(--sp-4); background:#F8FAFC; border:1px solid #E2E8F0; border-radius: var(--radius-md); margin-bottom: var(--sp-4);">
-        <p style="margin-bottom: var(--sp-4);">Otter Quotes is a lead-matching and payments platform. We do not perform your work or warrant your materials. Every contractor represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
+        <p style="margin-bottom: var(--sp-4);">Otter Quotes is a contract-ready project matching and payments platform. We do not perform your work or warrant your materials. Every contractor represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
         <p style="margin-bottom: var(--sp-4);">By accepting below, you personally and on behalf of the business attest that:</p>
         <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
           <li style="margin-bottom: var(--sp-2);">You hold all licenses, registrations, and permits required in every jurisdiction where you bid.</li>
@@ -1446,6 +1446,17 @@
       <div class="settings-card-title">Commercial General Liability Certificate</div>
       <div class="settings-card-subtitle">
         Otter Quotes requires a current CGL certificate of insurance on file at all times. Required minimums: <strong>$1,000,000 per occurrence / $2,000,000 aggregate</strong>, products-completed operations, contractual liability, with Stellar Edge Services, LLC named as additional insured on a primary and non-contributory basis. We'll remind you 30, 14, and 7 days before expiration. An expired or missing COI automatically suspends bidding.
+      </div>
+
+      <!-- COI Minimum Requirements (86e10t2cx) — shown inline so contractors know what to request from their insurer -->
+      <div style="background: rgba(14,116,144,0.05); border: 1px solid rgba(14,116,144,0.2); border-radius: 0.5rem; padding: 0.875rem 1rem; margin-bottom: 1rem;">
+        <strong style="display: block; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: #0e7490; margin-bottom: 0.5rem;">What Your COI Must Show</strong>
+        <ul style="margin: 0 0 0 1.1rem; padding: 0; font-size: 0.875rem; line-height: 1.6; color: var(--slate);">
+          <li style="margin-bottom: 0.25rem;"><strong style="color: var(--navy);">Coverage limits:</strong> $1,000,000 per occurrence / $2,000,000 aggregate</li>
+          <li style="margin-bottom: 0.25rem;"><strong style="color: var(--navy);">Coverage types:</strong> Products-Completed Operations + Contractual Liability</li>
+          <li><strong style="color: var(--navy);">Additional insured:</strong> Stellar Edge Services, LLC — primary and non-contributory</li>
+        </ul>
+        <p style="font-size: 0.8rem; color: var(--slate); margin: 0.5rem 0 0;">Share these requirements with your insurance agent — they'll know exactly what to add to your certificate.</p>
       </div>
 
       <!-- Status banner — populated by loadCoiStatus() -->
@@ -3080,41 +3091,4 @@
         status.style.color = '#065F46';
         status.style.display = 'block';
         btn.textContent = 'Sent!';
-        btn.style.backgroundColor = '#10B981';
-        btn.style.color = '#FFFFFF';
-        setTimeout(() => {
-          btn.textContent = 'Send Feature Request';
-          btn.style.backgroundColor = '';
-          btn.style.color = '';
-          btn.disabled = false;
-          setTimeout(() => { status.style.display = 'none'; }, 5000);
-        }, 2000);
-      } catch (err) {
-        console.error('Feature request error:', err);
-        status.textContent = 'Error submitting request. Please try again.';
-        status.style.color = '#EF4444';
-        status.style.display = 'block';
-        btn.textContent = 'Error — Try Again';
-        btn.style.backgroundColor = '#EF4444';
-        btn.style.color = '#FFFFFF';
-        btn.disabled = false;
-        setTimeout(() => {
-          btn.textContent = 'Send Feature Request';
-          btn.style.backgroundColor = '';
-          btn.style.color = '';
-        }, 3000);
-      }
-    };
-
-    // ── Initialize ──
-    document.addEventListener('DOMContentLoaded', () => {
-      // Ensure Supabase client is initialized (fixes race condition with config.js)
-      if (!sb && typeof supabase !== 'undefined') {
-        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
-      }
-      initSettings();
-      updateAutoBidUI();
-    });
-  </script>
-</body>
-</html>
+        btn.style.backgroundColor = '#

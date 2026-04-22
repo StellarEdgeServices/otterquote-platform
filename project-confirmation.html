@@ -1326,6 +1326,23 @@
             </div><!-- /form-section gutters -->
             </div><!-- /guttersSection -->
 
+            <!-- ══ Section 9: Windows (Coming Soon) ══ -->
+            <div id="windowsSection" style="display:none;">
+            <div class="form-section">
+              <div class="section-header">
+                <h2>🪟 Windows</h2>
+                <p class="section-subtitle">Window project confirmation is coming soon.</p>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:1rem;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:var(--radius-md);padding:var(--sp-5) var(--sp-6);">
+                <div style="font-size:1.6rem;flex-shrink:0;margin-top:2px;">🪟</div>
+                <div>
+                  <div style="font-weight:600;color:var(--white);margin-bottom:var(--sp-2);">Window scope confirmation is on the way.</div>
+                  <div style="font-size:0.9rem;color:var(--slate);line-height:1.6;">We're finalizing the window scope workflow. Your project coordinator will reach out directly to confirm window specifications before your contractor begins work. No action needed from you on this page.</div>
+                </div>
+              </div>
+            </div><!-- /form-section windows -->
+            </div><!-- /windowsSection -->
+
             <!-- ══ Section 9: Work NOT Being Done ══ -->
             <div class="form-section">
               <div class="section-header">
@@ -2279,11 +2296,13 @@
         const hasRoofing = rawTrades.length === 0 || rawTrades.some(t => t.toLowerCase() === 'roofing');
         const hasSiding  = rawTrades.some(t => t.toLowerCase() === 'siding');
         const hasGutters = rawTrades.some(t => ['gutters','downspouts','gutter'].includes(t.toLowerCase()));
+        const hasWindows = rawTrades.some(t => t.toLowerCase() === 'windows');
 
         // Show/hide section blocks
         document.getElementById('roofingSections').style.display = hasRoofing ? '' : 'none';
         document.getElementById('sidingSection').style.display   = hasSiding  ? '' : 'none';
         document.getElementById('guttersSection').style.display  = hasGutters ? '' : 'none';
+        document.getElementById('windowsSection').style.display  = hasWindows ? '' : 'none';
 
         // Hide depreciation disclosure for retail claims (no depreciation applies)
         const depAckItem = document.getElementById('ackDepreciation')?.closest('.ack-item');

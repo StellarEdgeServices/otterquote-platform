@@ -26,10 +26,10 @@
 .page-hero {
   padding: var(--sp-16) 0 var(--sp-12);
   text-align: center;
-  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+  background: var(--navy); background-image: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.12) 0%, transparent 65%);
 }
-.page-hero h1 { margin-bottom: var(--sp-4); }
-.page-hero p { max-width: 600px; margin: 0 auto; font-size: 1.1rem; }
+.page-hero h1 { margin-bottom: var(--sp-4); color: var(--white); }
+.page-hero p { max-width: 600px; margin: 0 auto; font-size: 1.1rem; color: var(--slate); }
 
 .faq-list {
   max-width: 720px;
@@ -38,7 +38,9 @@
 
 .faq-item {
   border-bottom: 1px solid rgba(255,255,255,0.06);
+  transition: padding-left 0.2s;
 }
+.faq-item.open { padding-left: 8px; border-left: 2px solid var(--amber); }
 
 .faq-question {
   width: 100%;
@@ -103,8 +105,10 @@
 .cta-bottom {
   text-align: center;
   padding: var(--sp-16) 0 var(--sp-20);
+  background: var(--navy);
+  background-image: radial-gradient(ellipse at 50% 100%, rgba(224,123,0,0.1) 0%, transparent 60%);
 }
-.cta-bottom h2 { margin-bottom: var(--sp-4); }
+.cta-bottom h2 { margin-bottom: var(--sp-4); color: var(--white); }
 .cta-bottom p { max-width: 500px; margin: 0 auto var(--sp-8); font-size: 1.1rem; }
 </style>
 
@@ -241,7 +245,7 @@
   </div>
 </section>
 
-<section class="section">
+<section class="section" style="background: var(--navy-2);">
   <div class="container">
     <div class="faq-list">
 

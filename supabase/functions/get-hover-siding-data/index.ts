@@ -282,14 +282,28 @@ serve(async (req) => {
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
 
+      // Resolve the raw item list: live Hover API first, then cached material_list fallback.
+      // The fallback fires when Hover API is unavailable (e.g. transient outage, cross-account
+      // job ID in test data) and hover_orders.measurements_json contains a cached material_list.
+      let listItemsResolved: any[] | null = null;
       if (mlResponse.ok) {
         const mlData = await mlResponse.json();
         // Hover may return the list under different keys depending on version
-        const listItems: any[] =
+        listItemsResolved =
           mlData?.list_items ??
           mlData?.listItems ??
           mlData?.data ??
           (Array.isArray(mlData) ? mlData : []);
+      } else {
+        console.warn(`Hover material_list API returned ${mlResponse.status} for job ${hoverId} - checking measurements_json cache`);
+        if (Array.isArray(storedMeasurementsJson?.material_list)) {
+          listItemsResolved = storedMeasurementsJson.material_list;
+          console.log(`Using ${listItemsResolved.length} cached material items from hover_orders.measurements_json`);
+        }
+      }
+
+      if (listItemsResolved !== null) {
+        const listItems: any[] = listItemsResolved;
 
         // Separate siding materials from labor items
         const sidingItems = listItems.filter((item: any) => {

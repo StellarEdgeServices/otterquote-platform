@@ -213,3 +213,63 @@
 @media (max-width: 480px) {
   .footer-grid { grid-template-columns: 1fr; }
 }
+
+/* ═══════════════════════════════════════════════════
+   NAV/FOOTER REFRESH — April 2026
+   ═══════════════════════════════════════════════════ */
+
+/* ── Better nav logo sizing for portrait otter icon ── */
+.nav-logo-icon {
+  height: 40px !important;
+  width: auto !important;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* ── Nav CTA button (Get Started) in desktop nav ── */
+.nav-cta-btn {
+  background: linear-gradient(135deg, #F08C00, #E07B00);
+  color: #0D1B2E;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(224,123,0,0.3);
+}
+.nav-cta-btn:hover {
+  background: linear-gradient(135deg, #E07B00, #C06900);
+  color: #0D1B2E;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(224,123,0,0.45);
+}
+
+/* ── Footer amber accent on headings ── */
+.footer-heading {
+  color: var(--amber) !important;
+  letter-spacing: 0.12em;
+}
+
+/* ── Footer link hover refinement ── */
+.footer-col a:hover {
+  color: var(--amber-light) !important;
+  padding-left: 4px;
+  transition: all 0.18s ease;
+}
+
+/* ── Footer bottom border top softened ── */
+.footer-bottom {
+  border-top: 1px solid rgba(224,123,0,0.12);
+}
+
+/* ── Sticky nav shadow on scroll ── */
+#site-header.scrolled {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  border-bottom-color: rgba(224,123,0,0.1);
+}

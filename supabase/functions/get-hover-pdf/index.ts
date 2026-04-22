@@ -54,12 +54,12 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    // ── Parse request ──────────────────────────────────────────────
+    // -- Parse request --
     const { claim_id, format = "stream" } = await req.json();
 
     if (!claim_id) {
@@ -69,7 +69,7 @@ serve(async (req) => {
       );
     }
 
-    // ── Authenticate caller ────────────────────────────────────────
+    // -- Authenticate caller --
     // Service role skips auth. Anon/JWT callers must own the claim.
     const authHeader = req.headers.get("Authorization");
     if (authHeader && !authHeader.includes(supabaseKey)) {
@@ -83,21 +83,37 @@ serve(async (req) => {
           { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      // Verify ownership
+      // Verify ownership OR active contractor status
+      // Homeowners who own the claim may always access.
+      // Active contractors may also access (they need Hover PDFs to bid). (86e10t26y)
       const { data: claim, error: claimErr } = await supabase
         .from("claims")
         .select("id, user_id")
         .eq("id", claim_id)
         .single();
-      if (claimErr || !claim || claim.user_id !== user.id) {
+      if (claimErr || !claim) {
         return new Response(
           JSON.stringify({ error: "Claim not found or access denied" }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      if (claim.user_id !== user.id) {
+        // Caller is not the homeowner -- allow only if they are an active contractor
+        const { data: contractor } = await supabase
+          .from("contractors")
+          .select("id, status")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (!contractor || contractor.status !== "active") {
+          return new Response(
+            JSON.stringify({ error: "Access denied -- active contractor account required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
     }
 
-    // ── Rate limit ─────────────────────────────────────────────────
+    // -- Rate limit --
     const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
       p_function_name: FUNCTION_NAME,
       p_caller_id: claim_id,
@@ -118,7 +134,7 @@ serve(async (req) => {
       );
     }
 
-    // ── Look up hover_order for this claim ─────────────────────────
+    // -- Look up hover_order for this claim --
     const { data: order, error: orderError } = await supabase
       .from("hover_orders")
       .select("id, hover_job_id, status, measurements_json")
@@ -146,32 +162,32 @@ serve(async (req) => {
       );
     }
 
-    // ── Get valid Hover access token ───────────────────────────────
+    // -- Get valid Hover access token --
     const accessToken = await getValidAccessToken(supabase);
     if (!accessToken) {
       return new Response(
         JSON.stringify({
-          error: "Hover authentication failed — no valid access token",
+          error: "Hover authentication failed -- no valid access token",
           detail: "OtterQuote's Hover OAuth token may need re-authorization",
         }),
         { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // ── Fetch PDF from Hover API ───────────────────────────────────
-    console.log(`Fetching Hover PDF for job_id=${jobId}`);
+    // -- Fetch PDF from Hover API --
+    console.log("Fetching Hover PDF for job_id=" + jobId);
     const pdfResponse = await fetch(
-      `${HOVER_API_BASE}/api/v1/jobs/${jobId}/measurements.pdf`,
+      HOVER_API_BASE + "/api/v1/jobs/" + jobId + "/measurements.pdf",
       {
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: "Bearer " + accessToken,
           Accept: "application/pdf",
         },
       }
     );
 
     if (!pdfResponse.ok) {
-      console.error(`Hover PDF fetch failed: ${pdfResponse.status} ${pdfResponse.statusText}`);
+      console.error("Hover PDF fetch failed: " + pdfResponse.status + " " + pdfResponse.statusText);
       return new Response(
         JSON.stringify({
           error: "Failed to fetch PDF from Hover",
@@ -183,13 +199,13 @@ serve(async (req) => {
     }
 
     const pdfBytes = await pdfResponse.arrayBuffer();
-    console.log(`PDF fetched: ${pdfBytes.byteLength} bytes for job ${jobId}`);
+    console.log("PDF fetched: " + pdfBytes.byteLength + " bytes for job " + jobId);
 
-    // ── Return PDF ─────────────────────────────────────────────────
+    // -- Return PDF --
     if (format === "url") {
       // Upload to Supabase Storage under claim-documents/{claim_id}/hover_measurements.pdf
       // then return a signed URL with 10-minute TTL
-      const storagePath = `${claim_id}/hover_measurements_${jobId}.pdf`;
+      const storagePath = claim_id + "/hover_measurements_" + jobId + ".pdf";
 
       const { error: uploadError } = await supabase.storage
         .from(STORAGE_BUCKET)
@@ -234,13 +250,13 @@ serve(async (req) => {
         headers: {
           ...corsHeaders,
           "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename="hover_measurements_${jobId}.pdf"`,
-          "Content-Length": pdfBytes.byteLength.toString(),
+          "Content-Disposition": "inline; filename=\"hover_measurements_" + jobId + ".pdf\"",
+          "Content-Length": String(pdfBytes.byteLength),
         },
       });
     }
   } catch (error) {
-    console.error(`${FUNCTION_NAME} error:`, error);
+    console.error(FUNCTION_NAME + " error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unexpected error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -249,7 +265,7 @@ serve(async (req) => {
 });
 
 
-// ── Token management (same pattern as hover-webhook) ──────────────
+// -- Token management (same pattern as hover-webhook) --
 
 async function getValidAccessToken(supabase: any): Promise<string | null> {
   const { data: tokens, error } = await supabase
@@ -273,10 +289,10 @@ async function getValidAccessToken(supabase: any): Promise<string | null> {
   }
 
   // Refresh
-  const clientId = Deno.env.get("HOVER_CLIENT_ID")!;
-  const clientSecret = Deno.env.get("HOVER_CLIENT_SECRET")!;
+  const clientId = Deno.env.get("HOVER_CLIENT_ID");
+  const clientSecret = Deno.env.get("HOVER_CLIENT_SECRET");
 
-  const refreshResponse = await fetch(`${HOVER_API_BASE}/oauth/token`, {
+  const refreshResponse = await fetch(HOVER_API_BASE + "/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -504,3 +504,149 @@ a:hover { color: var(--amber-2); }
   h1 { font-size: 1.75rem; }
   h2 { font-size: 1.5rem; }
 }
+
+/* ═══════════════════════════════════════════════════
+   DESIGN REFRESH — April 2026
+   Premium dark-theme utilities and component upgrades
+   ═══════════════════════════════════════════════════ */
+
+/* ── Enhanced Buttons ── */
+.btn-primary {
+  background: linear-gradient(135deg, #F08C00 0%, #E07B00 100%);
+  color: #0D1B2E;
+  box-shadow: 0 2px 10px rgba(224,123,0,0.30);
+  letter-spacing: 0.015em;
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #E07B00 0%, #C06900 100%);
+  color: #0D1B2E;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(224,123,0,0.45);
+}
+/* Outlined white button — for use on dark backgrounds */
+.btn-outline {
+  background: transparent;
+  color: var(--white);
+  border: 2px solid rgba(255,255,255,0.28);
+}
+.btn-outline:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.5);
+  color: var(--white);
+  transform: translateY(-1px);
+}
+
+/* ── Pulsing CTA animation ── */
+@keyframes ctaPulse {
+  0%, 100% { box-shadow: 0 2px 10px rgba(224,123,0,0.30); }
+  50%       { box-shadow: 0 6px 28px rgba(224,123,0,0.55); }
+}
+.btn-primary-pulse { animation: ctaPulse 2.4s ease-in-out infinite; }
+
+/* ── Enhanced Cards ── */
+.card {
+  background: var(--navy-2);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-8);
+  transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.45);
+  border-color: rgba(224,123,0,0.22);
+}
+
+/* ── Dark Section Utilities ── */
+.section-dark   { background: var(--navy);   padding: var(--sp-20) 0; }
+.section-dark-2 { background: var(--navy-2); padding: var(--sp-20) 0; }
+.section-dark   h2, .section-dark   h3 { color: var(--white); }
+.section-dark-2 h2, .section-dark-2 h3 { color: var(--white); }
+
+/* ── Icon Wrapper (replaces emoji) ── */
+.icon-wrap {
+  width: 54px;
+  height: 54px;
+  border-radius: var(--radius-md);
+  background: rgba(224,123,0,0.11);
+  border: 1px solid rgba(224,123,0,0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--sp-4);
+  flex-shrink: 0;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.icon-wrap svg { width: 26px; height: 26px; stroke: var(--amber); fill: none;
+  stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.card:hover .icon-wrap { background: rgba(224,123,0,0.18); border-color: rgba(224,123,0,0.38); }
+
+/* ── Amber Accent Divider ── */
+.accent-divider {
+  width: 48px; height: 3px;
+  background: linear-gradient(90deg, var(--amber), rgba(224,123,0,0.25));
+  border-radius: var(--radius-full);
+  margin: var(--sp-3) auto var(--sp-6);
+}
+.accent-divider-left { margin-left: 0; }
+
+/* ── Step Number Enhancement ── */
+.step-number {
+  background: linear-gradient(135deg, #F08C00, #E07B00);
+  box-shadow: 0 4px 14px rgba(224,123,0,0.38);
+}
+
+/* ── Subtle Dot Grid Background ── */
+.bg-dots {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ── Trust Badge Row (dark) ── */
+.trust-badge-dark {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--radius-md);
+}
+.trust-badge-dark svg { stroke: var(--amber); flex-shrink: 0; }
+.trust-badge-dark-text strong { color: var(--white); font-size: 0.95rem; display: block; margin-bottom: 2px; }
+.trust-badge-dark-text span   { color: var(--slate); font-size: 0.825rem; }
+
+/* ── Hero CTA Check Items ── */
+.hero-check-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.75);
+}
+.hero-check-item svg { stroke: var(--green); flex-shrink: 0; }
+
+/* ── Guarantee Banner (refined) ── */
+.guarantee-banner {
+  margin-top: var(--sp-8);
+  padding: var(--sp-6) var(--sp-8);
+  border-radius: var(--radius-lg);
+  background: rgba(16,185,129,0.07);
+  border: 1px solid rgba(16,185,129,0.2);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  text-align: left;
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.guarantee-banner svg { stroke: var(--green); flex-shrink: 0; margin-top: 2px; }
+.guarantee-banner p { color: rgba(255,255,255,0.82); font-size: 0.92rem; line-height: 1.65; margin: 0; }
+.guarantee-banner p strong { color: var(--green); }
+
+/* ── Scrollbar refinement ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--navy-2); }
+::-webkit-scrollbar-thumb { background: var(--amber); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #F08C00; }
