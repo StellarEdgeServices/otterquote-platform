@@ -104,6 +104,37 @@
         .empty-state-text { font-family: var(--font-body); font-size: 1rem; color: var(--slate); margin-bottom: var(--sp-6); }
         .results-count { font-family: var(--font-body); font-size: 0.95rem; color: var(--slate); margin-bottom: var(--sp-6); }
 
+        /* ── Early-adopter empty state (86e112r60) ── */
+        .empty-state-early {
+            max-width: 620px;
+            margin: var(--sp-6) auto var(--sp-12);
+            background: linear-gradient(145deg, #0D1B2E 0%, #162233 100%);
+            border: 1px solid rgba(224,123,0,0.35);
+            border-radius: var(--radius-lg);
+            padding: var(--sp-10) var(--sp-8);
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        .esa-otter { font-size: 3.5rem; display: block; margin-bottom: var(--sp-4); }
+        .esa-headline { font-family: var(--font-heading); font-size: 1.75rem; font-weight: 700; color: #F1F5F9; margin-bottom: var(--sp-3); line-height: 1.25; }
+        .esa-headline em { font-style: normal; color: var(--amber); }
+        .esa-sub { font-family: var(--font-body); font-size: 1rem; color: #94A3B8; line-height: 1.7; margin-bottom: var(--sp-5); max-width: 480px; margin-left: auto; margin-right: auto; }
+        .esa-notify-pill { display: inline-flex; align-items: center; gap: var(--sp-2); background: rgba(224,123,0,0.12); border: 1px solid rgba(224,123,0,0.35); border-radius: 99px; padding: var(--sp-2) var(--sp-5); font-family: var(--font-body); font-size: 0.875rem; color: var(--amber); font-weight: 600; margin-bottom: var(--sp-8); }
+        .esa-checklist { text-align: left; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); border-radius: var(--radius-md); padding: var(--sp-5) var(--sp-6); }
+        .esa-checklist-heading { font-family: var(--font-body); font-size: 0.75rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: var(--sp-4); }
+        .esa-item { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-3) 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .esa-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .esa-item-num { width: 24px; height: 24px; background: rgba(224,123,0,0.18); border: 1px solid rgba(224,123,0,0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-body); font-size: 0.75rem; font-weight: 700; color: var(--amber); flex-shrink: 0; margin-top: 2px; }
+        .esa-item-text { flex: 1; }
+        .esa-item-label { font-family: var(--font-body); font-size: 0.95rem; font-weight: 600; color: #E2E8F0; display: block; margin-bottom: 3px; }
+        .esa-item-desc { font-family: var(--font-body); font-size: 0.82rem; color: #64748B; display: block; margin-bottom: var(--sp-2); }
+        .esa-item-link { display: inline-block; padding: 5px 14px; background: rgba(224,123,0,0.15); border: 1px solid rgba(224,123,0,0.4); color: var(--amber); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 0.8rem; font-weight: 700; text-decoration: none; transition: all 0.2s ease; }
+        .esa-item-link:hover { background: var(--amber); color: #fff; }
+        @media (max-width: 768px) {
+            .empty-state-early { padding: var(--sp-8) var(--sp-5); }
+            .esa-headline { font-size: 1.4rem; }
+        }
+
         /* ── Scope Toggle ── */
         .scope-toggle-row { margin-bottom: var(--sp-4); }
         .btn-scope { background: none; border: 1px solid #D1D5DB; border-radius: var(--radius-md); padding: var(--sp-2) var(--sp-4); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; color: var(--navy); cursor: pointer; display: inline-flex; align-items: center; gap: var(--sp-2); transition: all 0.2s; }
@@ -773,7 +804,46 @@
         function render(opps) {
             const el = document.getElementById('opportunitiesContainer');
             if (!opps.length) {
-                el.innerHTML = '<div class="empty-state"><span class="empty-state-icon">&#x1F4ED;</span><h2 class="empty-state-title">No opportunities found</h2><p class="empty-state-text">Try adjusting your filters to see more available projects.</p></div>';
+                // Differentiate: zero base opportunities (chicken-and-egg, new market)
+                // vs. filtered to zero (contractor applied filters that narrowed results)
+                if (allOpportunities.length === 0) {
+                    el.innerHTML = `
+                        <div class="empty-state-early">
+                            <span class="esa-otter">&#x1F9A6;</span>
+                            <h2 class="esa-headline">You&rsquo;re in early.<br><em>The best contractors always are.</em></h2>
+                            <p class="esa-sub">We&rsquo;re actively recruiting homeowners in your service area right now. The moment a matching project comes in, you&rsquo;ll be the first to know &mdash; we won&rsquo;t make you check back.</p>
+                            <div class="esa-notify-pill">&#x1F4F2;&nbsp; Text &amp; email the instant a match drops &mdash; guaranteed.</div>
+                            <div class="esa-checklist">
+                                <span class="esa-checklist-heading">While you wait &mdash; lock in your spot:</span>
+                                <div class="esa-item">
+                                    <div class="esa-item-num">1</div>
+                                    <div class="esa-item-text">
+                                        <span class="esa-item-label">Complete your contractor profile</span>
+                                        <span class="esa-item-desc">Homeowners review your profile before approving a bid. A complete profile wins more jobs.</span>
+                                        <a href="contractor-dashboard.html#profile" class="esa-item-link">Go to Profile &#x2192;</a>
+                                    </div>
+                                </div>
+                                <div class="esa-item">
+                                    <div class="esa-item-num">2</div>
+                                    <div class="esa-item-text">
+                                        <span class="esa-item-label">Upload your contract templates</span>
+                                        <span class="esa-item-desc">Pre-loaded contracts let you close in minutes. When a project drops, speed wins.</span>
+                                        <a href="contractor-dashboard.html#documents" class="esa-item-link">Upload Templates &#x2192;</a>
+                                    </div>
+                                </div>
+                                <div class="esa-item">
+                                    <div class="esa-item-num">3</div>
+                                    <div class="esa-item-text">
+                                        <span class="esa-item-label">Confirm your service area &amp; trade preferences</span>
+                                        <span class="esa-item-desc">Accurate settings mean we only ping you on jobs you actually want &mdash; no noise, no misses.</span>
+                                        <a href="contractor-dashboard.html#settings" class="esa-item-link">Update Settings &#x2192;</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                } else {
+                    el.innerHTML = '<div class="empty-state"><span class="empty-state-icon">&#x1F4ED;</span><h2 class="empty-state-title">No opportunities match your filters</h2><p class="empty-state-text">Try adjusting your filters to see more available projects.</p></div>';
+                }
                 return;
             }
             el.innerHTML = opps.map(o => {
@@ -892,4 +962,9 @@
             const tradeDisplay = (o.trades || []).map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ') || 'Not specified';
             const urgencyDisplay = urgencyLabels[o.urgency] || o.urgency || 'Flexible';
             const urgencyNote = o.urgency === 'asap' && o.urgencyDeadline
-                ? ' (by ' + new Date(o.urgencyDeadline).toLocaleDateString('en-US', {month:'short',da
+                ? ' (by ' + new Date(o.urgencyDeadline).toLocaleDateString('en-US', {month:'short',day:'numeric'}) + ')'
+                : '';
+
+            document.getElementById('detailModalBody').innerHTML = `
+                <div>
+                    <div style="font-size:0.75rem;font-weight:600;color:#94A3B8;text-transf
