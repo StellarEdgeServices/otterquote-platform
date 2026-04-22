@@ -536,6 +536,19 @@
             font-weight: 700;
         }
 
+        /* D-180: Payout approval status badges (shown alongside commission amount) */
+        .payout-badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+        .payout-badge-pending  { background: #FEF3C7; color: #92400E; }
+        .payout-badge-rejected { background: #FEE2E2; color: #991B1B; }
+
         .table-filters {
             margin-bottom: var(--sp-6);
             display: flex;
@@ -1201,6 +1214,9 @@ Let me know if you have any questions!
         }
         // ── End W-9 Card ─────────────────────────────────────────────────────────
 
+        // D-180: Map referral_id → payout approval status for commission badges
+        let payoutStatusByReferral = {};
+
         async function loadReferrals() {
             if (!currentPartner || !sb) return;
 
@@ -1214,6 +1230,31 @@ Let me know if you have any questions!
 
                 if (referrals) {
                     allReferrals = referrals;
+
+                    // D-180: Load payout approval status for these referrals so the
+                    // dashboard can show "Pending — typically 5 days" or "Under Review"
+                    // badges on commission rows. Only fetch for referrals that have a
+                    // commission_amount set (job_completed or later status).
+                    const referralIds = referrals
+                        .filter(r => r.commission_amount > 0)
+                        .map(r => r.id);
+
+                    if (referralIds.length > 0) {
+                        const { data: approvals } = await sb
+                            .from('payout_approvals')
+                            .select('referral_id, status, payout_type')
+                            .in('referral_id', referralIds)
+                            .eq('payout_type', 'commission_referral')
+                            .order('created_at', { ascending: false });
+
+                        payoutStatusByReferral = {};
+                        (approvals || []).forEach(a => {
+                            // Only record if not already set (newest row wins)
+                            if (!payoutStatusByReferral[a.referral_id]) {
+                                payoutStatusByReferral[a.referral_id] = a.status;
+                            }
+                        });
+                    }
                 }
             } catch (err) {
                 console.error('Error loading referrals:', err);
@@ -1482,7 +1523,20 @@ Let me know if you have any questions!
                 // Schema uses homeowner_name and commission_amount
                 const clientName = ref.homeowner_name || ref.homeowner_email || 'Visitor';
                 const jobValue = ref.job_value ? `$${Number(ref.job_value).toLocaleString()}` : '—';
-                const commission = ref.commission_amount ? `$${Number(ref.commission_amount).toLocaleString()}` : '—';
+                const commissionAmt = ref.commission_amount ? `$${Number(ref.commission_amount).toLocaleString()}` : '—';
+
+                // D-180: Show payout approval status badge alongside commission amount.
+                // Status meanings for partner display (deliberately not showing rejection_reason):
+                //   pending_approval → amber "Pending — typically 5 days"
+                //   rejected         → red "Under Review — our team will be in touch"
+                //   approved / auto_approved / pre_approved → no badge (commission showing normally)
+                const payoutStatus = payoutStatusByReferral[ref.id] || null;
+                let payoutBadge = '';
+                if (payoutStatus === 'pending_approval') {
+                    payoutBadge = '<span class="payout-badge payout-badge-pending" title="Your commission is pending approval — typically within 5 business days">Pending — typically 5 days</span>';
+                } else if (payoutStatus === 'rejected') {
+                    payoutBadge = '<span class="payout-badge payout-badge-rejected" title="Your commission is under review — our team will be in touch">Under Review — our team will be in touch</span>';
+                }
 
                 return `
                     <tr>
@@ -1490,7 +1544,7 @@ Let me know if you have any questions!
                         <td>${dateStr}</td>
                         <td><span class="status-badge ${statusClass}">${statusLabels[ref.status] || ref.status}</span></td>
                         <td>${jobValue}</td>
-                        <td>${commission}</td>
+                        <td>${commissionAmt}${payoutBadge}</td>
                     </tr>
                 `;
             }).join('');

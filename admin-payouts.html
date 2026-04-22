@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Commission Payouts | Otter Quotes</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+    <style>
+        :root {
+            --navy:   #0D1B2E;
+            --amber:  #E07B00;
+            --white:  #FFFFFF;
+            --slate:  #94A3B8;
+            --light:  #E2E8F0;
+            --red:    #EF4444;
+            --green:  #10B981;
+            --teal:   #14B8A6;
+        }
+
+        body {
+            background-color: var(--navy);
+            color: #1F2937;
+            font-family: 'Rubik', sans-serif;
+        }
+
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        /* ── Header ─────────────────────────────────────────── */
+        .admin-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+        .admin-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .admin-badge {
+            background: var(--amber);
+            color: var(--navy);
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+        .admin-header h1 {
+            font-size: 2.5rem;
+            color: var(--white);
+            margin: 0;
+        }
+        .logout-btn {
+            background: var(--white);
+            color: var(--navy);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover { background: var(--light); }
+
+        /* ── Admin nav links ────────────────────────────────── */
+        .admin-nav {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+        .admin-nav a {
+            color: var(--slate);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+        }
+        .admin-nav a:hover  { background: rgba(255,255,255,0.08); color: var(--white); }
+        .admin-nav a.active { background: rgba(255,255,255,0.12); color: var(--white); }
+
+        /* ── Summary cards ──────────────────────────────────── */
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .summary-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .summary-card-label {
+            font-size: 0.8rem;
+            color: var(--slate);
+            margin-bottom: 0.4rem;
+            font-weight: 500;
+        }
+        .summary-card-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--navy);
+        }
+        .summary-card-sub {
+            font-size: 0.8rem;
+            color: var(--slate);
+            margin-top: 0.25rem;
+        }
+        .summary-card.pending   .summary-card-value { color: #D97706; }
+        .summary-card.approved  .summary-card-value { color: var(--green); }
+        .summary-card.rejected  .summary-card-value { color: var(--red); }
+
+        /* ── Filter tabs ────────────────────────────────────── */
+        .filter-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .filter-tab {
+            background: rgba(255,255,255,0.08);
+            color: var(--slate);
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: 'Rubik', sans-serif;
+            transition: all 0.2s;
+        }
+        .filter-tab:hover  { background: rgba(255,255,255,0.12); color: var(--white); }
+        .filter-tab.active { background: var(--amber); color: var(--navy); }
+
+        /* ── Table ──────────────────────────────────────────── */
+        .table-wrapper {
+            background: var(--white);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .payout-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        .payout-table thead {
+            background: #F8FAFC;
+        }
+        .payout-table th {
+            padding: 0.875rem 1rem;
+            text-align: left;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--slate);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--light);
+        }
+        .payout-table td {
+            padding: 0.875rem 1rem;
+            border-bottom: 1px solid #F1F5F9;
+            color: #374151;
+            vertical-align: top;
+        }
+        .payout-table tbody tr:last-child td { border-bottom: none; }
+        .payout-table tbody tr:hover { background: #FAFAFA; }
+
+        /* ── Status badges ──────────────────────────────────── */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-pending     { background: #FEF3C7; color: #92400E; }
+        .badge-approved    { background: #D1FAE5; color: #065F46; }
+        .badge-auto        { background: #DBEAFE; color: #1E40AF; }
+        .badge-rejected    { background: #FEE2E2; color: #991B1B; }
+        .badge-pre         { background: #F3F4F6; color: #6B7280; }
+
+        /* ── Action buttons ─────────────────────────────────── */
+        .action-btn {
+            border: none;
+            padding: 0.4rem 0.875rem;
+            border-radius: 0.4rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'Rubik', sans-serif;
+            transition: all 0.2s;
+        }
+        .btn-approve {
+            background: #D1FAE5;
+            color: #065F46;
+            margin-right: 0.4rem;
+        }
+        .btn-approve:hover:not(:disabled) { background: #A7F3D0; }
+        .btn-reject  { background: #FEE2E2; color: #991B1B; }
+        .btn-reject:hover:not(:disabled)  { background: #FECACA; }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ── Inline rejection textarea ───────────────────────── */
+        .reject-inline {
+            margin-top: 0.5rem;
+        }
+        .reject-reason-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.5rem;
+            border: 1px solid #E2E8F0;
+            border-radius: 0.4rem;
+            font-size: 0.8rem;
+            font-family: 'Rubik', sans-serif;
+            resize: vertical;
+            min-height: 60px;
+        }
+        .reject-confirm-btn {
+            margin-top: 0.4rem;
+            background: var(--red);
+            color: white;
+            border: none;
+            padding: 0.4rem 0.875rem;
+            border-radius: 0.4rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'Rubik', sans-serif;
+        }
+        .reject-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .reject-cancel-btn {
+            margin-top: 0.4rem;
+            margin-left: 0.4rem;
+            background: #F1F5F9;
+            color: #374151;
+            border: none;
+            padding: 0.4rem 0.875rem;
+            border-radius: 0.4rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'Rubik', sans-serif;
+        }
+
+        /* ── Empty / loading ────────────────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1.5rem;
+            color: var(--slate);
+        }
+        .loading-spinner {
+            text-align: center;
+            padding: 2rem;
+            color: var(--slate);
+        }
+
+        /* ── Partner name ───────────────────────────────────── */
+        .partner-name { font-weight: 600; color: var(--navy); }
+        .trigger-text { font-size: 0.75rem; color: var(--slate); margin-top: 2px; }
+        .amount-cell  { font-weight: 700; color: var(--navy); }
+
+        /* ── Auth error ─────────────────────────────────────── */
+        #authError {
+            display: none;
+            background: #FEE2E2;
+            color: #991B1B;
+            padding: 1rem 1.5rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            .admin-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+            .admin-header h1 { font-size: 1.75rem; }
+            .payout-table th:nth-child(5),
+            .payout-table td:nth-child(5),
+            .payout-table th:nth-child(6),
+            .payout-table td:nth-child(6) { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<main>
+    <!-- Header -->
+    <div class="admin-header">
+        <div class="admin-title">
+            <span class="admin-badge">ADMIN</span>
+            <h1>Commission Payouts</h1>
+        </div>
+        <button class="logout-btn" onclick="handleLogout()">Log Out</button>
+    </div>
+
+    <!-- Admin nav -->
+    <div class="admin-nav">
+        <a href="admin-contractors.html">Contractors</a>
+        <a href="admin-referrals.html">Referrals</a>
+        <a href="admin-payouts.html" class="active">Payouts</a>
+    </div>
+
+    <div id="authError">You must be signed in as dustinstohler1@gmail.com to view this page.</div>
+
+    <!-- Summary cards -->
+    <div class="summary-cards">
+        <div class="summary-card pending">
+            <div class="summary-card-label">Pending Approval</div>
+            <div class="summary-card-value" id="cardPendingCount">—</div>
+            <div class="summary-card-sub" id="cardPendingAmount">loading…</div>
+        </div>
+        <div class="summary-card approved">
+            <div class="summary-card-label">Approved This Month</div>
+            <div class="summary-card-value" id="cardApprovedCount">—</div>
+            <div class="summary-card-sub" id="cardApprovedAmount">loading…</div>
+        </div>
+        <div class="summary-card approved">
+            <div class="summary-card-label">Auto-Approved This Month</div>
+            <div class="summary-card-value" id="cardAutoCount">—</div>
+            <div class="summary-card-sub" id="cardAutoAmount">loading…</div>
+        </div>
+        <div class="summary-card rejected">
+            <div class="summary-card-label">Rejected</div>
+            <div class="summary-card-value" id="cardRejectedCount">—</div>
+            <div class="summary-card-sub">all time</div>
+        </div>
+    </div>
+
+    <!-- Filter tabs -->
+    <div class="filter-tabs">
+        <button class="filter-tab active" onclick="setFilter('all')">All</button>
+        <button class="filter-tab" onclick="setFilter('pending_approval')">Pending</button>
+        <button class="filter-tab" onclick="setFilter('approved')">Approved</button>
+        <button class="filter-tab" onclick="setFilter('auto_approved')">Auto-Approved</button>
+        <button class="filter-tab" onclick="setFilter('rejected')">Rejected</button>
+        <button class="filter-tab" onclick="setFilter('pre_approved')">Pre-Approved</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrapper">
+        <div id="loadingSpinner" class="loading-spinner">Loading payouts…</div>
+        <table class="payout-table" id="payoutsTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Partner</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Trigger</th>
+                    <th>Created</th>
+                    <th>Auto-Approves</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="payoutsTableBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty-state" style="display:none;">
+            No payouts found for this filter.
+        </div>
+    </div>
+</main>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+    let sb           = null;
+    let currentUser  = null;
+    let allPayouts   = [];
+    let currentFilter = 'all';
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    async function init() {
+        if (typeof CONFIG === 'undefined' || !CONFIG.SUPABASE_URL) {
+            document.getElementById('authError').style.display = 'block';
+            document.getElementById('authError').textContent = 'Configuration error — CONFIG not loaded.';
+            return;
+        }
+
+        const { createClient } = window.supabase;
+        sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+
+        // Handle auth callback (magic link)
+        const hash = window.location.hash;
+        if (hash && hash.includes('access_token')) {
+            const { data, error } = await sb.auth.getSession();
+            if (!error && data.session) {
+                window.history.replaceState(null, '', window.location.pathname);
+            }
+        }
+
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session || session.user.email !== 'dustinstohler1@gmail.com') {
+            document.getElementById('authError').style.display = 'block';
+            document.getElementById('loadingSpinner').style.display = 'none';
+            return;
+        }
+
+        currentUser = session.user;
+        await loadPayouts();
+    }
+
+    // ── Load payouts ──────────────────────────────────────────────────────────
+    async function loadPayouts() {
+        try {
+            const { data, error } = await sb
+                .from('payout_approvals')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            allPayouts = data || [];
+            updateSummaryCards();
+            renderTable();
+        } catch (err) {
+            console.error('Error loading payouts:', err);
+            document.getElementById('loadingSpinner').textContent = 'Error loading payouts — check console.';
+        }
+    }
+
+    // ── Summary cards ─────────────────────────────────────────────────────────
+    function updateSummaryCards() {
+        const now      = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+        const pending  = allPayouts.filter(p => p.status === 'pending_approval');
+        const approved = allPayouts.filter(p => p.status === 'approved' && p.approved_at >= monthStart);
+        const auto     = allPayouts.filter(p => p.status === 'auto_approved' && p.approved_at >= monthStart);
+        const rejected = allPayouts.filter(p => p.status === 'rejected');
+
+        const sumAmount = (rows) => rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+        const fmt       = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+        document.getElementById('cardPendingCount').textContent  = pending.length;
+        document.getElementById('cardPendingAmount').textContent = fmt(sumAmount(pending)) + ' pending';
+        document.getElementById('cardApprovedCount').textContent  = approved.length;
+        document.getElementById('cardApprovedAmount').textContent = fmt(sumAmount(approved)) + ' this month';
+        document.getElementById('cardAutoCount').textContent      = auto.length;
+        document.getElementById('cardAutoAmount').textContent     = fmt(sumAmount(auto)) + ' this month';
+        document.getElementById('cardRejectedCount').textContent  = rejected.length;
+    }
+
+    // ── Filter ────────────────────────────────────────────────────────────────
+    function setFilter(filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-tab').forEach(btn => {
+            btn.classList.toggle('active', btn.textContent.toLowerCase().replace(/[\s-]/g, '_') === filter ||
+                (filter === 'all' && btn.textContent === 'All') ||
+                (filter === 'pending_approval' && btn.textContent === 'Pending') ||
+                (filter === 'approved' && btn.textContent === 'Approved') ||
+                (filter === 'auto_approved' && btn.textContent === 'Auto-Approved') ||
+                (filter === 'rejected' && btn.textContent === 'Rejected') ||
+                (filter === 'pre_approved' && btn.textContent === 'Pre-Approved')
+            );
+        });
+        renderTable();
+    }
+
+    // ── Render table ──────────────────────────────────────────────────────────
+    function renderTable() {
+        const loadingEl = document.getElementById('loadingSpinner');
+        const tableEl   = document.getElementById('payoutsTable');
+        const emptyEl   = document.getElementById('emptyState');
+        const tbody     = document.getElementById('payoutsTableBody');
+
+        loadingEl.style.display = 'none';
+
+        const filtered = currentFilter === 'all'
+            ? allPayouts
+            : allPayouts.filter(p => p.status === currentFilter);
+
+        if (filtered.length === 0) {
+            tableEl.style.display  = 'none';
+            emptyEl.style.display  = 'block';
+            return;
+        }
+
+        tableEl.style.display = 'table';
+        emptyEl.style.display = 'none';
+
+        tbody.innerHTML = filtered.map(p => {
+            const statusBadge = {
+                pending_approval: '<span class="badge badge-pending">Pending</span>',
+                approved:         '<span class="badge badge-approved">Approved</span>',
+                auto_approved:    '<span class="badge badge-auto">Auto-Approved</span>',
+                rejected:         '<span class="badge badge-rejected">Rejected</span>',
+                pre_approved:     '<span class="badge badge-pre">Pre-Approved</span>',
+            }[p.status] || `<span class="badge badge-pre">${p.status}</span>`;
+
+            const payoutTypeLabel = p.payout_type === 'commission_referral' ? 'Referral' : 'Recruit Bonus';
+            const amount = '$' + Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const created = new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            const autoOn  = p.auto_approve_at
+                ? new Date(p.auto_approve_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                : '—';
+            const trigger = (p.trigger_event || '—').substring(0, 60);
+
+            const actionHtml = p.status === 'pending_approval'
+                ? `<button class="action-btn btn-approve" onclick="handleApprove('${p.id}', this)">Approve</button>
+                   <button class="action-btn btn-reject"  onclick="showRejectForm('${p.id}', this)">Reject</button>
+                   <div class="reject-inline" id="reject-form-${p.id}" style="display:none;">
+                     <textarea class="reject-reason-input" id="reject-reason-${p.id}"
+                       placeholder="Rejection reason (required)…" oninput="updateRejectBtn('${p.id}')"></textarea>
+                     <br>
+                     <button class="reject-confirm-btn" id="reject-btn-${p.id}"
+                       onclick="handleReject('${p.id}')" disabled>Confirm Reject</button>
+                     <button class="reject-cancel-btn" onclick="cancelRejectForm('${p.id}')">Cancel</button>
+                   </div>`
+                : '—';
+
+            return `<tr id="row-${p.id}">
+                <td>
+                    <div class="partner-name">${escapeHtml(p.partner_name || '—')}</div>
+                    <div class="trigger-text">${escapeHtml(trigger)}</div>
+                </td>
+                <td>${payoutTypeLabel}</td>
+                <td class="amount-cell">${amount}</td>
+                <td style="font-size:0.8rem;color:#64748B;">${escapeHtml(trigger)}</td>
+                <td>${created}</td>
+                <td>${autoOn}</td>
+                <td>${statusBadge}</td>
+                <td>${actionHtml}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // ── Approve ───────────────────────────────────────────────────────────────
+    async function handleApprove(approvalId, btn) {
+        btn.disabled = true;
+        btn.textContent = 'Approving…';
+
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            if (!session) throw new Error('Not authenticated');
+
+            const res = await fetch(
+                `${CONFIG.SUPABASE_URL}/functions/v1/approve-payout`,
+                {
+                    method:  'POST',
+                    headers: {
+                        'Content-Type':  'application/json',
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'apikey': CONFIG.SUPABASE_ANON,
+                    },
+                    body: JSON.stringify({ payout_approval_id: approvalId }),
+                }
+            );
+            const json = await res.json();
+            if (!res.ok || !json.ok) throw new Error(json.error || 'Approval failed');
+
+            // Update row in place
+            const approval = allPayouts.find(p => p.id === approvalId);
+            if (approval) {
+                approval.status = 'approved';
+                approval.approved_at = new Date().toISOString();
+            }
+            updateSummaryCards();
+            renderTable();
+
+        } catch (err) {
+            console.error('Approve error:', err);
+            btn.disabled = false;
+            btn.textContent = 'Approve';
+            alert('Approval failed: ' + err.message);
+        }
+    }
+
+    // ── Reject form ───────────────────────────────────────────────────────────
+    function showRejectForm(approvalId, btn) {
+        document.getElementById(`reject-form-${approvalId}`).style.display = 'block';
+        btn.style.display = 'none';
+    }
+
+    function cancelRejectForm(approvalId) {
+        document.getElementById(`reject-form-${approvalId}`).style.display = 'none';
+        // Re-find and show the reject button
+        const row = document.getElementById(`row-${approvalId}`);
+        if (row) {
+            const rejectBtn = row.querySelector('.btn-reject');
+            if (rejectBtn) rejectBtn.style.display = '';
+        }
+    }
+
+    function updateRejectBtn(approvalId) {
+        const reason = (document.getElementById(`reject-reason-${approvalId}`)?.value || '').trim();
+        const btn    = document.getElementById(`reject-btn-${approvalId}`);
+        if (btn) btn.disabled = reason.length < 5;
+    }
+
+    async function handleReject(approvalId) {
+        const reason = (document.getElementById(`reject-reason-${approvalId}`)?.value || '').trim();
+        if (reason.length < 5) {
+            alert('Please enter a rejection reason (at least 5 characters).');
+            return;
+        }
+
+        const confirmBtn = document.getElementById(`reject-btn-${approvalId}`);
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Rejecting…';
+
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            if (!session) throw new Error('Not authenticated');
+
+            const res = await fetch(
+                `${CONFIG.SUPABASE_URL}/functions/v1/reject-payout`,
+                {
+                    method:  'POST',
+                    headers: {
+                        'Content-Type':  'application/json',
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'apikey': CONFIG.SUPABASE_ANON,
+                    },
+                    body: JSON.stringify({
+                        payout_approval_id: approvalId,
+                        rejection_reason:   reason,
+                    }),
+                }
+            );
+            const json = await res.json();
+            if (!res.ok || !json.ok) throw new Error(json.error || 'Rejection failed');
+
+            // Update row in place
+            const approval = allPayouts.find(p => p.id === approvalId);
+            if (approval) {
+                approval.status           = 'rejected';
+                approval.rejected_at      = new Date().toISOString();
+                approval.rejection_reason = reason;
+            }
+            updateSummaryCards();
+            renderTable();
+
+        } catch (err) {
+            console.error('Reject error:', err);
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Confirm Reject';
+            alert('Rejection failed: ' + err.message);
+        }
+    }
+
+    // ── Logout ────────────────────────────────────────────────────────────────
+    async function handleLogout() {
+        await sb.auth.signOut();
+        window.location.href = 'login.html';
+    }
+
+    // ── Utility ───────────────────────────────────────────────────────────────
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    // ── Bootstrap ─────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
