@@ -338,7 +338,11 @@
     </style>
 </head>
 <body>
-    <header id="site-header" data-auth="false"></header>
+    <!-- Bug 8 fix (86e110pup): was data-auth="false" which, combined with isContractor=true
+         (URL-based), caused nav.js to render hardcoded "Log Out" buttons unconditionally
+         for unauthenticated visitors. data-auth="true" enables dynamic auth slot rendering:
+         unauthenticated → "Get Started" + "Contractor Login"; authenticated → "Contractor Portal" + "Sign Out". -->
+    <header id="site-header" data-auth="true"></header>
 
     <main>
         <!-- Hero Section -->
@@ -602,4 +606,51 @@
                 if (window.CONFIG && window.CONFIG.DEMO_MODE) {
                     document.getElementById('successMessage').classList.add('show');
                     document.getElementById('contractorForm').style.display = 'none';
-                 
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                }
+
+                if (!window.Auth) {
+                    throw new Error('Auth module not loaded');
+                }
+
+                // Send magic link immediately — no other fields required
+                await Auth.sendMagicLink(email, 'contractor');
+
+                // Store profile + D-170 attestation payload for post-auth write
+                // (handleAuthCallback in js/auth.js persists these to contractors + calls
+                //  the record-attestation Edge Function to capture IP server-side.)
+                localStorage.setItem('cs_contractor_signup', JSON.stringify({
+                    email: email,
+                    company_name: businessName,
+                    contact_name: [firstName, lastName].filter(Boolean).join(' '),
+                    signer_first_name: firstName,
+                    signer_last_name: lastName,
+                    signer_title: signerTitle,
+                    role: 'contractor',
+                    sms_consent_ts: tcpaSmsChecked ? new Date().toISOString() : null,
+                    attestation: {
+                        text_version: 'ic-24511-v1-2026-04',
+                        accepted: true,
+                        accepted_client_ts: new Date().toISOString(),
+                        user_agent: navigator.userAgent,
+                        platform_agreement_ack: true,
+                        cancellation_policy_ack: true,
+                        tax_1099_nec_ack: true,
+                        tax_1099_nec_version: '1099-nec-v1-2026-04',
+                    },
+                }));
+                localStorage.setItem('cs_auth_role', 'contractor');
+
+                // Show confirmation and hide form
+                document.getElementById('successMessage').classList.add('show');
+                document.getElementById('contractorForm').style.display = 'none';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                // GA4 conversion event — contractor funnel
+                gtag('event', 'contractor_signup', {
+                    trade_types: [],  // trade selection happens post-signup in profile setup
+                    source: new URLSearchParams(location.search).get('utm_source') || 'direct',
+                });
+
+            } catch (e

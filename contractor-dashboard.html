@@ -733,6 +733,22 @@
             </div>
         </div>
 
+        <!-- CPA Re-acceptance Modal (shown when contractor.cpa_version !== CURRENT_CPA_VERSION) -->
+        <div class="agreement-modal-overlay" id="cpaReacceptModalOverlay">
+            <div class="agreement-modal">
+                <div class="agreement-modal-header">
+                    <h2>Updated Contractor Agreement</h2>
+                    <p>We've updated our Contractor Partner Agreement. Please review the changes and re-accept to continue using Otter Quotes.</p>
+                </div>
+                <a href="/contractor-agreement.html" target="_blank" class="agreement-modal-link">View the updated agreement →</a>
+                <div class="agreement-modal-checkbox">
+                    <input type="checkbox" id="cpaReacceptCheckbox" name="cpaReacceptCheckbox">
+                    <label for="cpaReacceptCheckbox">I have read and accept the updated Contractor Partner Agreement (version v1-2026-04)</label>
+                </div>
+                <button id="cpaReacceptBtn" class="agreement-modal-button" disabled>Accept and Continue</button>
+            </div>
+        </div>
+
         <!-- Getting Started Checklist -->
         <div class="getting-started-section" id="gettingStartedSection">
             <h2>Getting Started</h2>
@@ -855,6 +871,11 @@
     <script src="js/nav.js"></script>
 
     <script>
+        // CPA version — bump this string when the Contractor Partner Agreement changes.
+        // Any contractor whose contractors.cpa_version !== CURRENT_CPA_VERSION will be
+        // shown the re-acceptance modal on dashboard load and blocked from other pages.
+        const CURRENT_CPA_VERSION = 'v1-2026-04';
+
         // State
         let currentUser = null;
         let currentContractor = null;
@@ -954,6 +975,81 @@
                     } catch (err) {
                         console.error('Error accepting agreement:', err);
                         alert('An error occurred. Please try again.');
+                    }
+                });
+            }
+        }
+
+        // CPA Re-acceptance modal — wires checkbox/button and handles the accept flow.
+        // Called from init() when contractor.cpa_version !== CURRENT_CPA_VERSION.
+        function initCpaReacceptModal() {
+            const checkbox = document.getElementById('cpaReacceptCheckbox');
+            const button   = document.getElementById('cpaReacceptBtn');
+
+            if (checkbox) {
+                checkbox.addEventListener('change', () => {
+                    if (button) button.disabled = !checkbox.checked;
+                });
+            }
+
+            if (button) {
+                button.addEventListener('click', async () => {
+                    if (!currentContractor || !checkbox || !checkbox.checked || !sb) return;
+
+                    button.disabled = true;
+                    button.textContent = 'Saving…';
+
+                    try {
+                        const now = new Date().toISOString();
+
+                        // 1. Write cpa_version + cpa_accepted_at (covered by existing RLS UPDATE policy)
+                        const { error: updateErr } = await sb
+                            .from('contractors')
+                            .update({ cpa_version: CURRENT_CPA_VERSION, cpa_accepted_at: now })
+                            .eq('id', currentContractor.id);
+
+                        if (updateErr) {
+                            console.error('CPA update error:', updateErr);
+                            alert('Error saving agreement acceptance. Please try again.');
+                            button.disabled = false;
+                            button.textContent = 'Accept and Continue';
+                            return;
+                        }
+
+                        // 2. Record server-side IP via SECURITY DEFINER function (non-fatal)
+                        try {
+                            await sb.rpc('record_cpa_ip', { p_contractor_id: currentContractor.id });
+                        } catch (ipErr) {
+                            console.warn('record_cpa_ip failed (non-fatal):', ipErr);
+                        }
+
+                        // 3. Log to activity_log (non-fatal)
+                        try {
+                            await sb.from('activity_log').insert({
+                                user_id:    currentUser.id,
+                                event_type: 'cpa_accepted',
+                                title:      `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`,
+                                created_at: now,
+                            });
+                        } catch (logErr) {
+                            console.warn('Activity log failed (non-fatal):', logErr);
+                        }
+
+                        // 4. Update in-memory state
+                        currentContractor.cpa_version     = CURRENT_CPA_VERSION;
+                        currentContractor.cpa_accepted_at = now;
+
+                        // 5. Clear redirect guard so guard pages stop bouncing
+                        localStorage.removeItem('oq_cpa_redirect_guard');
+
+                        // 6. Close modal
+                        document.getElementById('cpaReacceptModalOverlay').classList.remove('show');
+
+                    } catch (err) {
+                        console.error('CPA re-acceptance error:', err);
+                        alert('An error occurred. Please try again.');
+                        button.disabled = false;
+                        button.textContent = 'Accept and Continue';
                     }
                 });
             }
@@ -1091,7 +1187,9 @@
                   .in('status', ['selected', 'awarded'])
                   .gte('updated_at', monthStart);
                 const totalEarnings = (earnData || []).reduce((sum, q) => sum + (parseFloat(q.fee_amount) || 0), 0);
-                document.getElementById('earningsAmount').textContent = '$' + totalEarnings.toLocaleString();
+                // Bug 7 fix (86e110pbh): toLocaleString() without options doesn't guarantee 2 decimal places
+                // (e.g. 637.5 → "$637.5"). Use explicit minimumFractionDigits/maximumFractionDigits.
+                document.getElementById('earningsAmount').textContent = '$' + totalEarnings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
                 // D-134 unsigned auto-bid section removed — contract signing now happens after
                 // homeowner selection, not at bid submission time.
@@ -1199,6 +1297,18 @@
             initAgreementModal();
           }
 
+          // CPA version check — show re-acceptance modal if the contractor's recorded
+          // version is behind CURRENT_CPA_VERSION.  Only runs after the initial
+          // agreement_accepted_at check so the two modals never stack.
+          if (currentContractor && currentContractor.agreement_accepted_at &&
+              currentContractor.cpa_version !== CURRENT_CPA_VERSION) {
+            document.getElementById('cpaReacceptModalOverlay').classList.add('show');
+            initCpaReacceptModal();
+          } else {
+            // CPA is current — clear any stale redirect guard from guard pages
+            localStorage.removeItem('oq_cpa_redirect_guard');
+          }
+
           // Show Getting Started checklist if profile is incomplete
           if (currentContractor) {
             const { completedCount, totalSteps } = calculateProfileCompletion(currentContractor);
@@ -1211,15 +1321,18 @@
           populateDashboard();
         }
 
+        // calculateProfileCompletion must use the exact same 7 checks as
+        // showGettingStartedChecklist so the progress bar always matches the
+        // checklist items the contractor sees (fix: 86e110n5u).
         function calculateProfileCompletion(contractor) {
             const completionStatus = {
-                logo: !!(contractor.company_logo_url && contractor.company_logo_url.trim()),
-                photos: Array.isArray(contractor.gallery_photos) && contractor.gallery_photos.length > 0,
-                bio: !!(contractor.about_us && contractor.about_us.trim().length > 0),
-                reviews: !!(contractor.google_reviews_url && contractor.google_reviews_url.trim()),
-                servicearea: Array.isArray(contractor.service_counties) && contractor.service_counties.length > 0,
-                autobid: contractor.auto_bid_enabled === true,
-                contracts: false // Always incomplete for now
+                business_info:    !!(contractor.company_name && contractor.company_name.trim()),
+                insurance:        !!(contractor.has_workers_comp || contractor.has_general_liability),
+                service_area:     Array.isArray(contractor.service_counties) && contractor.service_counties.length > 0,
+                contract_template:!!(contractor.contract_templates && Object.keys(contractor.contract_templates).length > 0),
+                payment_method:   !!(contractor.stripe_payment_method_id),
+                preferred_brands: Array.isArray(contractor.preferred_brands) && contractor.preferred_brands.length > 0,
+                agreement:        !!contractor.agreement_accepted_at
             };
 
             const completedCount = Object.values(completionStatus).filter(v => v).length;
@@ -1361,135 +1474,4 @@
                     msgEl.innerHTML =
                         'Your payment of <strong>' + feeStr + '</strong> for ' + projectDesc +
                         ' was declined. Please update your card or retry the payment to keep this project. ' +
-                        '<strong style="color:#DC2626;">If not resolved by 10:00 AM the next business day, the homeowner will be offered another contractor.</strong>';
-
-                    banner.style.display = 'block';
-                }
-            } catch (err) {
-                console.warn('Dunning check error:', err);
-            }
-        }
-
-        // Retry payment with current payment method
-        window.retryDunningPayment = async function() {
-            if (!activeDunningRecord || !currentContractor || !sb) return;
-
-            const btn = document.getElementById('dunningRetryBtn');
-            btn.disabled = true;
-            btn.textContent = 'Retrying...';
-
-            try {
-                // Check if contractor now has a valid payment method
-                const { data: contractor } = await sb
-                    .from('contractors')
-                    .select('stripe_payment_method_id, stripe_customer_id')
-                    .eq('id', currentContractor.id)
-                    .single();
-
-                if (!contractor || !contractor.stripe_payment_method_id) {
-                    alert('No payment method on file. Please add a card in Settings first.');
-                    btn.disabled = false;
-                    btn.textContent = 'Retry Payment Now';
-                    return;
-                }
-
-                // Retry the charge via create-payment-intent
-                const { data: paymentResult, error: paymentErr } = await sb.functions.invoke(
-                    'create-payment-intent',
-                    {
-                        body: {
-                            amount: activeDunningRecord.amount_cents,
-                            currency: 'usd',
-                            description: 'Otter Quotes platform fee retry for claim ' + activeDunningRecord.claim_id,
-                            metadata: {
-                                claim_id: activeDunningRecord.claim_id,
-                                contractor_id: currentContractor.id,
-                                type: 'platform_fee',
-                            },
-                            contractor_id: currentContractor.id,
-                            off_session: true,
-                        }
-                    }
-                );
-
-                if (paymentErr || !paymentResult || !paymentResult.succeeded) {
-                    const errMsg = paymentResult?.error || paymentErr?.message || 'Payment still failing';
-                    alert('Payment failed again: ' + errMsg + '. Please update your card in Settings.');
-                    btn.disabled = false;
-                    btn.textContent = 'Retry Payment Now';
-                    return;
-                }
-
-                // Payment succeeded — resolve the dunning record
-                await sb.from('payment_failures').update({
-                    dunning_status: 'resolved',
-                    resolved_at: new Date().toISOString(),
-                }).eq('id', activeDunningRecord.id);
-
-                // Update quote payment status
-                if (activeDunningRecord.quote_id) {
-                    await sb.from('quotes').update({
-                        payment_intent_id: paymentResult.payment_intent_id,
-                        payment_status: 'succeeded',
-                    }).eq('id', activeDunningRecord.quote_id);
-                }
-
-                // Now proceed with the award flow
-                if (activeDunningRecord.claim_id && activeDunningRecord.quote_id) {
-                    // Get bid details
-                    const { data: quote } = await sb
-                        .from('quotes')
-                        .select('total_price, contractor_id')
-                        .eq('id', activeDunningRecord.quote_id)
-                        .single();
-
-                    if (quote) {
-                        // Award the claim
-                        await sb.from('claims').update({
-                            selected_contractor_id: quote.contractor_id,
-                            selected_bid_amount: quote.total_price,
-                            status: 'awarded',
-                        }).eq('id', activeDunningRecord.claim_id);
-
-                        // Award the quote
-                        await sb.from('quotes').update({
-                            status: 'awarded',
-                        }).eq('id', activeDunningRecord.quote_id);
-
-                        // Decline other quotes
-                        await sb.from('quotes').update({
-                            status: 'declined',
-                        }).eq('claim_id', activeDunningRecord.claim_id)
-                          .neq('id', activeDunningRecord.quote_id);
-                    }
-                }
-
-                // Success — hide the banner
-                document.getElementById('dunningAlertBanner').style.display = 'none';
-                activeDunningRecord = null;
-
-                btn.textContent = 'Payment Resolved!';
-                btn.style.backgroundColor = '#10B981';
-                alert('Payment successful! The project has been awarded to you. Refresh the page to see updates.');
-
-            } catch (err) {
-                console.error('Retry payment error:', err);
-                alert('An error occurred. Please try again or contact support.');
-                btn.disabled = false;
-                btn.textContent = 'Retry Payment Now';
-            }
-        };
-
-        // Initialize on load — wait for Supabase auth to be fully ready
-        // before running init(). The INITIAL_SESSION event fires once the
-        // client has restored the session from localStorage AND set the
-        // auth header on the REST client.  Without this, queries that
-        // depend on RLS (like the claims/opportunities count) can silently
-        // return empty results because the JWT hasn't been attached yet.
-        document.addEventListener('DOMContentLoaded', () => {
-            // Ensure Supabase client is initialized (fixes race condition with config.js)
-            if (!sb && typeof supabase !== 'undefined') {
-              sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
-            }
-            if (sb) {
-              const { data: { subscription } } = sb.auth.onAut
+      

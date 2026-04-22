@@ -1256,9 +1256,9 @@
 
             // Contract template
             updateContractTemplateView();
-
-            // Project confirmation template
-            updateConfirmationTemplateView();
+            // Note: PC template grid (D-161) is rendered by loadPcTemplates()
+            // called from DOMContentLoaded — updateConfirmationTemplateView() was
+            // retired (86e110nay/86e110ngd fix).
         }
 
         // ── Populate edit fields from contractor data ──
@@ -1741,10 +1741,11 @@
             const userId = currentUser.id;
 
             // Document subfolders matching the upload structure in auth.js and contractor-profile.html
+            // friendlyName: override the raw storage filename with a human-readable label (Bug 9 fix)
             const documentTypes = [
-                { subfolder: 'license', label: 'Contractor License', elementId: 'licenseDocumentView' },
-                { subfolder: 'insurance', label: 'Insurance Certificates', elementId: 'wcInsuranceDocumentView' },
-                { subfolder: 'profile', label: 'Profile Photos', elementId: 'glInsuranceDocumentView' }
+                { subfolder: 'license',    label: 'Contractor License',      elementId: 'licenseDocumentView',     friendlyName: null },
+                { subfolder: 'insurance',  label: 'Insurance Certificates',   elementId: 'wcInsuranceDocumentView', friendlyName: null },
+                { subfolder: 'profile',    label: 'Profile Photos',           elementId: 'glInsuranceDocumentView', friendlyName: 'Profile Photo' }
             ];
 
             try {
@@ -1777,11 +1778,13 @@
                             if (signError) throw signError;
 
                             const uploadDate = new Date(docFile.created_at).toLocaleDateString();
+                            // Bug 9 fix: use friendlyName if defined, otherwise fall back to raw storage filename
+                            const displayName = doc.friendlyName || docFile.name;
                             let html = `
                                 <div class="document-info">
                                     <div class="document-icon">📄</div>
                                     <div class="document-details">
-                                        <div class="document-name">${docFile.name}</div>
+                                        <div class="document-name">${displayName}</div>
                                         <div class="document-date">Uploaded: ${uploadDate}</div>
                                     </div>
                                 </div>
@@ -1797,7 +1800,7 @@
                                         <div class="document-icon">📄</div>
                                         <div class="document-details">
                                             <div class="document-name">${realFiles.length} file(s) uploaded</div>
-                                            <div class="document-date">Latest: ${docFile.name} (${uploadDate})</div>
+                                            <div class="document-date">Latest: ${displayName} (${uploadDate})</div>
                                         </div>
                                     </div>
                                     <div class="document-actions">
@@ -1808,9 +1811,18 @@
 
                             document.getElementById(doc.elementId).innerHTML = html;
                         } else {
-                            document.getElementById(doc.elementId).innerHTML = `
-                                <span style="color: var(--slate);">Not uploaded</span>
-                            `;
+                            // Bug 6 fix: insurance subfolder may be empty because the contractor
+                            // confirmed coverage via checkbox rather than uploading a PDF.
+                            // If the DB flags are set, show "Confirmed on file" to match the
+                            // Credentials section — both reflect the same underlying data.
+                            let noFileHtml;
+                            if (doc.subfolder === 'insurance' &&
+                                (contractorRecord?.has_workers_comp || contractorRecord?.has_general_liability)) {
+                                noFileHtml = `<span style="color: var(--success, #2e7d32);">Confirmed on file (no PDF uploaded)</span>`;
+                            } else {
+                                noFileHtml = `<span style="color: var(--slate);">Not uploaded</span>`;
+                            }
+                            document.getElementById(doc.elementId).innerHTML = noFileHtml;
                         }
                     } catch (err) {
                         console.error(`Error loading ${doc.subfolder} documents:`, err);
@@ -2414,36 +2426,4 @@
                 statusEl.style.color = 'var(--green)';
                 statusEl.textContent = '✓ Mapping saved';
                 setTimeout(() => closeFieldMappingModal(), 800);
-            } catch (err) {
-                console.error('Error saving field mappings:', err);
-                statusEl.style.color = '#e53935';
-                statusEl.textContent = 'Failed to save. Please try again.';
-            }
-        }
-
-        // Initialize on load
-        document.addEventListener('DOMContentLoaded', async () => {
-            // Show incomplete-profile banner if redirected from bid form
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('incomplete') === 'bid') {
-                const banner = document.getElementById('incompleteBanner');
-                if (banner) {
-                    banner.style.display = 'block';
-                    banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            }
-
-            // Ensure Supabase client is initialized (fixes race condition with config.js)
-            if (!sb && typeof supabase !== 'undefined') {
-              sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
-            }
-            await initProfile();
-
-            // Load documents and templates after contractor record is loaded
-            await loadDocuments();
-            await loadContractTemplates();
-            await loadPcTemplates();
-        });
-    </script>
-</body>
-</html>
+            } catch (e

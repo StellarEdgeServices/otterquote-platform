@@ -4025,4 +4025,591 @@
           const otherDesc = document.getElementById('otherBidDescription')?.value?.trim();
           if (!otherDesc) {
             alert('Please describe your pricing approach in the "Other" description field.');
-          
+            return;
+          }
+        }
+      }
+
+      if (!bidForm.checkValidity()) {
+        alert('Please fill in all required fields');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting…';
+
+      try {
+        const formData = new FormData(bidForm);
+
+        if (CONFIG.DEMO_MODE) {
+          await new Promise(resolve => setTimeout(resolve, 800));
+        } else if (sb && currentUser && currentClaim) {
+          const totalPrice = parseFloat(document.getElementById('totalPrice').value) || 0;
+          const feePercentage = 5.0;
+
+          // Insurance jobs: fee is based on RCV from loss sheet, not bid amount
+          let feeBase = totalPrice;
+          if (currentClaim.job_type === 'insurance_rcv' && currentClaim.parsed_line_items) {
+            const pli = typeof currentClaim.parsed_line_items === 'string'
+              ? JSON.parse(currentClaim.parsed_line_items)
+              : currentClaim.parsed_line_items;
+            if (pli && pli.summary && pli.summary.rcv) {
+              feeBase = pli.summary.rcv;
+            }
+          }
+
+          const scopeSummary = JSON.stringify({
+            brand: formData.get('brandProduct') || null,
+            estimated_start_date: formData.get('startDate') || null,
+            estimated_completion_time: formData.get('completionTime') || null,
+          });
+
+          if (!currentContractor) {
+            throw new Error('Your contractor profile could not be loaded. Please refresh and try again.');
+          }
+
+          // ── Build value_adds JSON ──
+          const gutterOption = formData.get('gutterOption') || 'none';
+          const chimneyFlashingOption = formData.get('chimneyFlashing') || 'na';
+
+          const valueAdds = {
+            bid_type_option: bidTypeOption,
+            other_bid_description: bidTypeOption === 'other' ? (formData.get('otherBidDescription') || null) : null,
+
+            gutters: {
+              option: gutterOption,
+              additional_cost_5inch: gutterOption === '5inch_additional' ? (parseFloat(formData.get('gutter5AdditionalCost')) || null) : null,
+              additional_cost_6inch: gutterOption === '6inch_additional' ? (parseFloat(formData.get('gutter6AdditionalCost')) || null) : null,
+              other_text: gutterOption === 'other' ? (formData.get('gutterOtherText') || null) : null,
+            },
+
+            gutter_guards: {
+              pricing_on_request: formData.get('gutterGuardPricingOnRequest') === 'on',
+              mesh_oop: parseFloat(formData.get('gutterGuardMeshOop')) || null,
+              screw_in_oop: parseFloat(formData.get('gutterGuardScrewInOop')) || null,
+              notes: formData.get('gutterGuardNotes') || null,
+            },
+
+            // Chimney Flashing / Reflash — merged (86e10t28v); chimney_flashing / chimney_reflash preserved as null for backward compat
+            chimney: {
+              type:      formData.get('chimneyType') || 'na',
+              option:    formData.get('chimneyType') !== 'na' ? (formData.get('chimneyOption') || 'included') : null,
+              oop_price: formData.get('chimneyOption') === 'oop' ? (parseFloat(formData.get('chimneyOopPrice')) || null) : null,
+            },
+            chimney_flashing: null, // deprecated — replaced by chimney (86e10t28v)
+            chimney_reflash:  null, // deprecated — replaced by chimney (86e10t28v)
+
+            skylights: formData.get('skylights') || 'na',
+
+            other_shingles: Array.from(document.querySelectorAll('input[name="bidOtherShingles"]:checked')).map(cb => cb.value),
+            other_shingles_notes: formData.get('shingleOtherNotes') || null,
+
+            underlayment: {
+              type:  formData.get('underlaymentType') || null,
+              notes: formData.get('underlaymentNotes') || null,
+            },
+
+            // Ice & Water Shield (86e10t28b)
+            ice_water_shield: {
+              coverage: formData.get('iceWaterShield') || 'not_applicable',
+            },
+
+            ventilation: {
+              ridge_vent_included: formData.get('ridgeVentIncluded') === 'on',
+              ridge_vent_oop:      parseFloat(formData.get('ridgeVentOopPrice')) || null,
+              notes:               formData.get('ventilationNotes') || null,
+            },
+
+            starter_strip: formData.get('starterStrip') || null,
+
+            // Drip Edge (86e10t28h)
+            drip_edge: {
+              option:    formData.get('dripEdgeOption') || 'na',
+              oop_price: formData.get('dripEdgeOption') === 'oop' ? (parseFloat(formData.get('dripEdgeOopPrice')) || null) : null,
+            },
+
+            warranties: collectAllWarrantyData(),
+
+            other_trades_covered: {
+              siding_full:     formData.get('tradeCoveredSidingFull') || null,
+              siding_repair:   formData.get('tradeCoveredSidingRepair') || null,
+              gutters_full:    formData.get('tradeCoveredGuttersFull') || null,
+              gutters_repair:  formData.get('tradeCoveredGuttersRepair') || null,
+              interior:        formData.get('tradeCoveredInterior') || null,
+              paint:           formData.get('tradeCoveredPaint') || null,
+              windows:         formData.get('tradeCoveredWindows') || null,
+              other:           formData.get('tradeCoveredOther') || null,
+              additional_notes: formData.get('tradesCoveredAdditionalNotes') || null,
+            },
+
+            other_offers: formData.get('valueAddsOtherOffers') || null,
+          };
+
+          // Append gutter trade fields if this is a gutter bid
+          if (gutterTradeActive) {
+            valueAdds.gutters = valueAdds.gutters || {};
+            valueAdds.gutters.linearFootage = parseFloat(document.getElementById('gutterLinearFootage')?.value) || null;
+            valueAdds.gutter_5inch_price = parseFloat(document.getElementById('gutter5InchPrice')?.value) || null;
+            valueAdds.gutter_6inch_price = parseFloat(document.getElementById('gutter6InchPrice')?.value) || null;
+            valueAdds.gutter_guards_retail = collectGutterGuards();
+            valueAdds.rotten_wood_pricing = document.getElementById('rottenWoodPricing')?.value?.trim() || null;
+            valueAdds.gutter_additional_notes = document.getElementById('gutterAdditionalNotes')?.value?.trim() || null;
+            valueAdds.gutter_warranty = document.getElementById('gutterWarrantyInfo')?.value?.trim() || null;
+          }
+
+          // Append siding trade fields if this is a siding retail bid
+          if (sidingTradeActive) {
+            const productSupplyEl = document.querySelector('[name="sidingProductSupply"]:checked');
+            valueAdds.siding_product_supply = productSupplyEl?.value || null;
+            valueAdds.siding_equivalent_product = document.getElementById('sidingEquivalentProduct')?.value?.trim() || null;
+            valueAdds.siding_rotten_sheathing_pricing = document.getElementById('sidingRottenSheathingPricing')?.value?.trim() || null;
+            valueAdds.siding_additional_notes = document.getElementById('sidingAdditionalNotes')?.value?.trim() || null;
+            valueAdds.siding_warranty = document.getElementById('sidingWarrantyInfo')?.value?.trim() || null;
+            // Pricing fields (siding-only jobs)
+            const trades = Array.isArray(currentClaim?.trades) ? currentClaim.trades : [];
+            if (!trades.includes('roofing')) {
+              valueAdds.siding_install_per_square = parseFloat(document.getElementById('sidingInstallPerSquare')?.value) || null;
+              valueAdds.siding_trim_price         = parseFloat(document.getElementById('sidingTrimPrice')?.value) || null;
+              valueAdds.siding_window_wrap_price  = parseFloat(document.getElementById('sidingWindowWrapPrice')?.value) || null;
+              valueAdds.siding_teardown_price     = parseFloat(document.getElementById('sidingTeardownPrice')?.value) || null;
+            }
+          }
+
+          // ── Second-Layer Tear-Off Contingency (retail roofing) ──
+          const slcPerSq  = parseFloat(document.getElementById('slcPricePerSquare')?.value)     || null;
+          const slcFlat   = parseFloat(document.getElementById('slcFlatFeeAlternative')?.value) || null;
+          const slcMethod = document.querySelector('input[name="slcMethod"]:checked')?.value    || null;
+          if (slcPerSq != null || slcFlat != null) {
+            valueAdds.secondLayerContingency = {
+              pricePerSquare:     slcPerSq,
+              flatFeeAlternative: slcFlat,
+              method:             slcMethod || 'per_square',
+            };
+          }
+
+          // ── Wizard Step 3 fields ──
+          if (wizardMode) {
+            const bundleNote = document.getElementById('wizardBundleNote')?.value?.trim() || null;
+            const rationale  = document.getElementById('wizardRationale')?.value?.trim()  || null;
+            if (bundleNote) valueAdds.wizard_bundle_note = bundleNote;
+            if (rationale)  valueAdds.wizard_rationale   = rationale;
+            // Record which trades were bid in this wizard session
+            valueAdds.wizard_trade_queue = wizardTradeQueue.length > 0 ? wizardTradeQueue : null;
+          }
+
+          const quoteData = {
+            claim_id: currentClaim.id,
+            contractor_id: currentContractor.id,
+            total_price: totalPrice,
+            fee_percentage: feePercentage,
+            fee_amount: feeBase * (feePercentage / 100),
+            scope_summary: scopeSummary,
+            notes: formData.get('homeownerMessage') || null,
+            decking_price_per_sheet: parseFloat(formData.get('deckingPricePerSheet')) || null,
+            full_redeck_price: parseFloat(formData.get('fullRedeckPrice')) || null,
+            supplement_acknowledged: formData.get('supplementAcknowledged') === 'on',
+            trade_type: formData.get('tradeType') || 'roofing',
+            value_adds: valueAdds,
+            // Per-trade price breakdown for wizard (multi-trade) bids
+            per_trade_breakdown: (wizardMode && Object.keys(wizardTradePrices).length > 0) ? wizardTradePrices : null,
+            is_auto_bid: false,
+          };
+
+          if (changeBidMode && existingQuote) {
+            const { error: updateError } = await sb
+              .from('quotes')
+              .update({
+                total_price: quoteData.total_price,
+                fee_percentage: quoteData.fee_percentage,
+                fee_amount: quoteData.fee_amount,
+                scope_summary: quoteData.scope_summary,
+                notes: quoteData.notes,
+                decking_price_per_sheet: quoteData.decking_price_per_sheet,
+                full_redeck_price: quoteData.full_redeck_price,
+                supplement_acknowledged: quoteData.supplement_acknowledged,
+                trade_type: quoteData.trade_type,
+                value_adds: quoteData.value_adds,
+                per_trade_breakdown: quoteData.per_trade_breakdown,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existingQuote.id);
+
+            if (updateError) throw updateError;
+
+            try {
+              await sb.from('notifications').insert({
+                user_id: currentClaim.user_id || null,
+                claim_id: currentClaim.id,
+                channel: 'dashboard',
+                notification_type: 'bid_updated',
+                recipient: '',
+                message_preview: `${currentContractor.company_name || 'A contractor'} has updated their bid for your project. Please review the new figures.`,
+                created_at: new Date().toISOString(),
+              });
+            } catch (notifErr) {
+              console.warn('Notification insert failed (non-fatal):', notifErr);
+            }
+
+            try {
+              await sb.from('activity_log').insert({
+                user_id: currentUser.id,
+                event_type: 'bid_updated',
+                title: `Bid updated for project ${currentClaim.id?.slice(0, 8) || '…'}`,
+                created_at: new Date().toISOString(),
+              });
+            } catch (logErr) {
+              console.warn('Activity log failed (non-fatal):', logErr);
+            }
+
+            gtag('event', 'bid_updated', {
+              claim_id: currentClaim.id,
+              bid_amount: quoteData.total_price,
+            });
+
+            // Send bid update confirmation email to contractor (non-fatal)
+            try {
+              await sb.functions.invoke('notify-contractors', {
+                body: {
+                  event_type: 'bid_update_confirmed',
+                  claim_id: currentClaim.id,
+                  contractor_id: currentContractor.id,
+                },
+              });
+            } catch (notifErr) {
+              console.warn('Bid update confirmation email failed (non-fatal):', notifErr);
+            }
+
+          } else {
+            const { data: insertedQuote, error } = await sb
+              .from('quotes')
+              .insert(quoteData)
+              .select('id')
+              .single();
+
+            if (error) throw error;
+
+            // Store the new quote ID for contract signing
+            window._newQuoteId = insertedQuote?.id || null;
+
+            // GA4 conversion event — bid funnel
+            gtag('event', 'bid_submit', {
+              trade_types: Array.isArray(currentClaim.trades) ? currentClaim.trades : [],
+              job_type: isRetailJob ? 'retail' : 'insurance',
+              bid_amount: quoteData.total_price,
+            });
+          }
+        }
+
+        // Show success
+        bidForm.style.display = 'none';
+        const changeBidBanner = document.getElementById('changeBidBanner');
+        if (changeBidBanner) changeBidBanner.style.display = 'none';
+        if (changeBidMode) {
+          successState.innerHTML = `
+            <div class="success-icon">✓</div>
+            <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: var(--sp-3);">Bid updated!</div>
+            <div>Your updated bid has been saved. The homeowner has been notified and will see your revised figures.</div>
+            <div style="margin-top: 1rem;"><a href="contractor-dashboard.html" style="color: var(--amber); font-weight: 600; text-decoration: none;">← Back to Dashboard</a></div>
+          `;
+        } else {
+          // NEW BID: Bid submitted — contract signing happens after homeowner selects
+          successState.innerHTML = `
+            <div class="success-icon">✓</div>
+            <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: var(--sp-3);">Bid submitted!</div>
+            <div>Your bid is live. If the homeowner selects you, the contract will be sent to both of you for signature.</div>
+            <div style="margin-top: 1rem;"><a href="contractor-dashboard.html" style="color: var(--amber); font-weight: 600; text-decoration: none;">← Back to Dashboard</a></div>
+          `;
+        }
+        successState.classList.add('show');
+        // Clear wizard localStorage state on successful submission
+        clearWizardState();
+      } catch (err) {
+        console.error('Error submitting bid:', err);
+        alert('Error submitting bid: ' + (err.message || 'Unknown error'));
+        submitBtn.disabled = false;
+        submitBtn.textContent = changeBidMode ? 'Update Bid' : 'Submit Bid';
+      }
+    });
+
+    // ── Multi-Trade & Bundled Bid Logic ──
+    function initTradeSelection(trades) {
+      if (!trades || trades.length <= 1) return;
+
+      const card = document.getElementById('tradeSelectionCard');
+      const checkboxContainer = document.getElementById('tradeCheckboxes');
+      const bundledOption = document.getElementById('bundledBidOption');
+      const breakdownCard = document.getElementById('perTradeBreakdown');
+      const breakdownFields = document.getElementById('tradeBreakdownFields');
+      card.style.display = 'block';
+
+      const icons = { roofing: '🏠', siding: '🧱', gutters: '🌧️', windows: '🪟' };
+      const labels = { roofing: 'Roofing', siding: 'Siding', gutters: 'Gutters', windows: 'Windows' };
+
+      checkboxContainer.innerHTML = trades.map(t =>
+        '<label style="display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);background:var(--white);border:2px solid #E5E7EB;border-radius:var(--radius-md);cursor:pointer;transition:all 0.2s;">'
+        + '<input type="checkbox" class="trade-check" value="' + t + '" checked>'
+        + '<span style="font-size:1.1rem;">' + (icons[t]||'') + '</span>'
+        + '<span style="font-weight:600;color:var(--navy);">' + (labels[t]||t) + '</span></label>'
+      ).join('');
+
+      const tradeChecks = document.querySelectorAll('.trade-check');
+      const bundledCheck = document.getElementById('isBundledBid');
+
+      function updateTradeState() {
+        const selected = [...tradeChecks].filter(c => c.checked).map(c => c.value);
+        document.getElementById('selectedTradeType').value = selected[0] || 'roofing';
+        document.getElementById('bundledTradesHidden').value = JSON.stringify(selected);
+
+        bundledOption.style.display = selected.length >= 2 ? 'block' : 'none';
+        if (selected.length < 2) {
+          bundledCheck.checked = false;
+          breakdownCard.style.display = 'none';
+        }
+        updateBundledState();
+      }
+
+      function updateBundledState() {
+        const isBundled = bundledCheck.checked;
+        const selected = [...tradeChecks].filter(c => c.checked).map(c => c.value);
+        document.getElementById('isBundledBidHidden').value = isBundled ? 'true' : 'false';
+
+        if (isBundled && selected.length >= 2) {
+          breakdownCard.style.display = 'block';
+          breakdownFields.innerHTML = selected.map(t =>
+            '<div style="display:flex;align-items:center;gap:var(--sp-4);margin-bottom:var(--sp-4);">'
+            + '<span style="min-width:100px;font-weight:600;color:var(--navy);">' + (icons[t]||'') + ' ' + (labels[t]||t) + '</span>'
+            + '<div class="input-prefix" style="flex:1;">'
+            + '<span>$</span>'
+            + '<input type="number" class="trade-price" data-trade="' + t + '" step="0.01" min="0" placeholder="Price for ' + (labels[t]||t).toLowerCase() + '">'
+            + '</div></div>'
+          ).join('');
+
+          breakdownFields.querySelectorAll('.trade-price').forEach(inp => {
+            inp.addEventListener('input', () => {
+              const breakdown = {};
+              breakdownFields.querySelectorAll('.trade-price').forEach(p => {
+                if (p.value) breakdown[p.dataset.trade] = parseFloat(p.value);
+              });
+              document.getElementById('perTradeBreakdownHidden').value = JSON.stringify(breakdown);
+            });
+          });
+        } else {
+          breakdownCard.style.display = 'none';
+        }
+      }
+
+      tradeChecks.forEach(c => c.addEventListener('change', updateTradeState));
+      bundledCheck.addEventListener('change', updateBundledState);
+      updateTradeState();
+    }
+
+    // ── Initialize ──
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!sb && typeof supabase !== 'undefined') {
+        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+      }
+
+      // Wire up bid type UI
+      initBidTypeUI();
+
+      // Wire up chimney type toggle (86e10t28v)
+      initChimneyToggle();
+
+      async function startUp() {
+        await init();
+        updateFeeCalculator();
+
+        // Set default start date to today
+        const today = new Date().toISOString().split('T')[0];
+        const startDateEl = document.getElementById('startDate');
+        if (startDateEl && !startDateEl.value) startDateEl.value = today;
+
+        const urlParams = new URLSearchParams(window.location.search);
+
+        // action=sign is deprecated — contract signing now happens after homeowner selection,
+        // not at bid submission time. If a contractor arrives via an old link, show them their bid.
+        const actionParam = urlParams.get('action');
+        if (actionParam === 'sign') {
+          console.log('action=sign is deprecated — contract signing occurs after homeowner selection');
+          // Fall through to normal bid form behavior
+        }
+
+        // Multi-trade project check (non-wizard path)
+        const tradesParam = urlParams.get('trades');
+        if (tradesParam) {
+          try { initTradeSelection(JSON.parse(tradesParam)); } catch(e) {}
+        } else if (currentClaim && currentClaim.trades && currentClaim.trades.length > 1) {
+          initTradeSelection(currentClaim.trades);
+        }
+
+        // Apply retail / trade-specific form customizations
+        applyJobTypeCustomizations();
+
+        // ── Wizard initialization (D-162): multi-trade retail only ──
+        // initWizard runs AFTER applyJobTypeCustomizations so isRetailJob / trade flags are set.
+        if (currentClaim) {
+          const claimTrades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
+          if (isRetailJob && claimTrades.length >= 2) {
+            // Try restoring wizard state from localStorage
+            const saved = loadWizardState();
+            initWizard(claimTrades);  // sets wizardMode if eligible
+
+            if (wizardMode) {
+              if (saved && saved.wizardTradeQueue && saved.wizardTradeQueue.length > 0) {
+                wizardTradeQueue    = saved.wizardTradeQueue;
+                wizardSelectedTrades = saved.wizardSelectedTrades || [...wizardTradeQueue];
+                const restoreStep  = changeBidMode ? 2 : (saved.wizardStep || 1);
+                const restoreIdx   = changeBidMode ? 0 : (saved.wizardCurrentTradeIdx || 0);
+                wizardGoTo(restoreStep, restoreIdx, false);
+              } else if (changeBidMode) {
+                // Change-bid with no saved state: jump to step 2 per D-162 spec
+                wizardGoTo(2, 0, false);
+              }
+              // Push initial history entry so first popstate works
+              history.replaceState(
+                { wizardStep: wizardStep, wizardTradeIdx: wizardCurrentTradeIdx },
+                '', location.href
+              );
+            }
+          }
+        }
+      }
+
+      // Wait for Supabase auth to be fully initialized before running startup.
+      // getSession() resolves once the session is ready, which is more reliable
+      // than INITIAL_SESSION when config.js already created the client before
+      // this listener could be registered (fix: 86e110mxp).
+      if (sb) {
+        sb.auth.getSession().then(() => startUp());
+      } else {
+        startUp();
+      }
+    });
+    // ═══════════════════════════════════════════════════════════════
+    // CONTRACT SIGNING — IC 24-5-11 Contractor-Signs-First Flow
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * DEPRECATED: This function is no longer called after bid submission.
+     * Contract signing now happens after homeowner selection, not at bid time.
+     * Kept for backward compatibility but should not be triggered in normal flow.
+     * IC 24-5-11: Contractor signs first, then homeowner — both after selection.
+     */
+    async function initContractorSigning() {
+      const loadingEl = document.getElementById('contractorDocusignLoading');
+      const errorEl = document.getElementById('contractorDocusignError');
+      const containerEl = document.getElementById('contractorDocusignContainer');
+      const signedEl = document.getElementById('contractorDocusignSigned');
+      const skipEl = document.getElementById('contractorSignSkip');
+
+      loadingEl.style.display = 'block';
+      errorEl.style.display = 'none';
+      containerEl.style.display = 'none';
+      signedEl.style.display = 'none';
+      skipEl.style.display = 'none';
+
+      try {
+        // Build signer info from the contractor's profile
+        const signerName = currentContractor.company_name || currentContractor.owner_name || 'Contractor';
+        const signerEmail = currentContractor.email || currentUser.email;
+
+        const { data: result, error: invokeError } = await sb.functions.invoke('create-docusign-envelope', {
+          body: {
+            claim_id: currentClaim.id,
+            document_type: 'contractor_sign',
+            contractor_id: currentContractor.id,
+            quote_id: window._newQuoteId || null,
+            signer: {
+              email: signerEmail,
+              name: signerName,
+            },
+          },
+        });
+
+        if (invokeError) {
+          throw new Error(invokeError.message || 'Failed to create DocuSign envelope');
+        }
+
+        // Store envelope ID
+        window._contractorEnvelopeId = result.envelope_id;
+
+        // Load signing URL in iframe
+        loadingEl.style.display = 'none';
+        containerEl.style.display = 'block';
+        skipEl.style.display = 'block';
+        document.getElementById('contractorDocusignFrame').src = result.signing_url;
+
+        gtag('event', 'contractor_docusign_envelope_created', {
+          claim_id: currentClaim.id,
+          contractor_id: currentContractor.id,
+          envelope_id: result.envelope_id,
+        });
+
+      } catch (err) {
+        console.error('Contractor signing initialization error:', err);
+        loadingEl.style.display = 'none';
+        errorEl.style.display = 'block';
+        skipEl.style.display = 'block';
+        document.getElementById('contractorDocusignErrorDetail').textContent = err.message;
+      }
+    }
+
+    // Listen for DocuSign iframe postMessage (signing complete)
+    window.addEventListener('message', function(event) {
+      if (event.data && typeof event.data === 'string') {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'session_end' || data.event === 'signing_complete') {
+            onContractorSigningComplete();
+          }
+        } catch (e) {
+          if (event.data.includes('signed=contractor') || event.data.includes('signing_complete')) {
+            onContractorSigningComplete();
+          }
+        }
+      }
+    });
+
+    // Check if returning from DocuSign redirect (iframe return URL)
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('signed') === 'contractor') {
+        // We're inside the DocuSign iframe — notify parent
+        if (window.self !== window.top) {
+          window.parent.postMessage(JSON.stringify({ type: 'session_end', event: 'signing_complete' }), '*');
+          document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#16a34a;font-size:1.2rem;">Contract signed! Returning...</div>';
+        }
+      }
+    })();
+
+    async function onContractorSigningComplete() {
+      const loadingEl = document.getElementById('contractorDocusignLoading');
+      const containerEl = document.getElementById('contractorDocusignContainer');
+      const errorEl = document.getElementById('contractorDocusignError');
+      const signedEl = document.getElementById('contractorDocusignSigned');
+      const skipEl = document.getElementById('contractorSignSkip');
+
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (containerEl) containerEl.style.display = 'none';
+      if (errorEl) errorEl.style.display = 'none';
+      if (signedEl) signedEl.style.display = 'block';
+      if (skipEl) skipEl.style.display = 'none';
+
+      // Update the quote with contractor_signed_at
+      if (window._newQuoteId || (currentClaim && currentContractor)) {
+        try {
+          const updateFilter = window._newQuoteId
+            ? sb.from('quotes').update({ contractor_signed_at: new Date().toISOString() }).eq('id', window._newQuoteId)
+            : sb.from('quotes').update({ contractor_signed_at: new Date().toISOString() })
+                .eq('claim_id', currentClaim.id)
+                .eq('contractor_id', currentContractor.id);
+          const { error } = await updateFilter;
+          if (error) console.error('Error updating contractor_signed_at:', error);
+        } catch (err) {
+          console.error('Error updating quote:', err);
+        }
+      }
+
+      gtag('event', 'contractor_contract_signed', {
+        claim_id: currentClaim?.id,
+  
