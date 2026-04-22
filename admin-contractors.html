@@ -631,6 +631,22 @@
                 <button class="logout-btn" onclick="logout()">Log Out</button>
             </div>
 
+            <!-- Admin nav links (D-180) -->
+            <div style="display:flex;gap:0.75rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+                <a href="admin-contractors.html"
+                   style="color:#fff;text-decoration:none;font-weight:600;font-size:0.875rem;padding:0.5rem 1rem;border-radius:0.5rem;background:rgba(255,255,255,0.12);">
+                    Contractors
+                </a>
+                <a href="admin-referrals.html"
+                   style="color:#94A3B8;text-decoration:none;font-weight:500;font-size:0.875rem;padding:0.5rem 1rem;border-radius:0.5rem;">
+                    Referrals
+                </a>
+                <a href="admin-payouts.html"
+                   style="color:#94A3B8;text-decoration:none;font-weight:500;font-size:0.875rem;padding:0.5rem 1rem;border-radius:0.5rem;">
+                    Payouts
+                </a>
+            </div>
+
             <!-- Summary Cards -->
             <div class="summary-cards">
                 <div class="summary-card">
@@ -671,15 +687,24 @@
             <!-- Contractors List -->
             <div id="contractorsContainer"></div>
 
-            <!-- ── Cron Health ─────────────────────────────────────── -->
+            <!-- ── Platform Monitoring ─────────────────────────────── -->
             <div id="cronHealthSection" style="margin-top:2rem;">
-                <button
-                    id="cronHealthToggle"
-                    onclick="toggleCronHealth()"
-                    style="display:flex;align-items:center;gap:0.5rem;background:none;border:1px solid #334155;color:#94a3b8;font-size:0.875rem;font-weight:600;padding:0.6rem 1rem;border-radius:0.5rem;cursor:pointer;letter-spacing:0.03em;text-transform:uppercase;"
-                >
-                    <span id="cronHealthChevron">▶</span> Cron Health
-                </button>
+                <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                    <button
+                        id="cronHealthToggle"
+                        onclick="toggleCronHealth()"
+                        style="display:flex;align-items:center;gap:0.5rem;background:none;border:1px solid #334155;color:#94a3b8;font-size:0.875rem;font-weight:600;padding:0.6rem 1rem;border-radius:0.5rem;cursor:pointer;letter-spacing:0.03em;text-transform:uppercase;"
+                    >
+                        <span id="cronHealthChevron">▶</span> Platform Monitoring
+                    </button>
+                    <button
+                        id="runHealthCheckBtn"
+                        onclick="runHealthCheckNow()"
+                        style="display:none;align-items:center;gap:0.4rem;background:#0D1B2E;border:1px solid #E07B00;color:#E07B00;font-size:0.8rem;font-weight:600;padding:0.5rem 0.9rem;border-radius:0.5rem;cursor:pointer;"
+                    >
+                        ▶ Run Health Check Now
+                    </button>
+                </div>
                 <div id="cronHealthPanel" style="display:none;margin-top:0.75rem;overflow-x:auto;">
                     <div id="cronHealthContent" style="color:#94a3b8;font-size:0.875rem;">Loading…</div>
                 </div>
@@ -1242,29 +1267,7 @@
                 renderContractors();
                 alert('Contractor approved and welcome email sent');
             } catch (err) {
-                console.error('Error approving contractor:', err);
-                alert('Failed to approve contractor');
-            }
-        }
-
-        function openRejectModal(contractorId, companyName) {
-            document.getElementById('rejectCompanyName').textContent = companyName;
-            document.getElementById('rejectReason').value = '';
-            document.getElementById('rejectError').style.display = 'none';
-            const modal = document.getElementById('rejectModal');
-            modal.dataset.contractorId = contractorId;
-            modal.classList.add('show');
-        }
-
-        function closeRejectModal() {
-            document.getElementById('rejectModal').classList.remove('show');
-        }
-
-        async function submitReject() {
-            const contractorId = document.getElementById('rejectModal').dataset.contractorId;
-            const reason = document.getElementById('rejectReason').value.trim();
-
-            if (!reason) {
+                console.error('Error approving contractor:', e            if (!reason) {
                 document.getElementById('rejectError').textContent = 'Please provide a reason for rejection';
                 document.getElementById('rejectError').style.display = 'block';
                 return;
@@ -1281,4 +1284,261 @@
                     }
                 });
 
-    
+                if (response.error) throw response.error;
+
+                const c = contractors.find(x => x.id === contractorId);
+                if (c) {
+                    c.status = 'inactive';
+                    c.rejected_at = new Date().toISOString();
+                    c.rejection_reason = reason;
+                }
+
+                closeRejectModal();
+                updateSummaryCards();
+                renderContractors();
+                alert('Application rejected');
+            } catch (err) {
+                console.error('Error rejecting contractor:', err);
+                document.getElementById('rejectError').textContent = 'Failed to reject application';
+                document.getElementById('rejectError').style.display = 'block';
+            }
+        }
+
+        // =============================================================================
+        // PLATFORM MONITORING -- Cron Health + Edge Function Health
+        // Added Thread 2C (ClickUp 86e112rak) -- platform-health-check system
+        // =============================================================================
+
+        let cronHealthLoaded = false;
+
+        function toggleCronHealth() {
+            const panel   = document.getElementById('cronHealthPanel');
+            const chevron = document.getElementById('cronHealthChevron');
+            const btn     = document.getElementById('runHealthCheckBtn');
+            const isOpen  = panel.style.display !== 'none';
+
+            if (isOpen) {
+                panel.style.display = 'none';
+                chevron.textContent = '\u25b6';
+                btn.style.display = 'none';
+            } else {
+                panel.style.display = 'block';
+                chevron.textContent = '\u25bc';
+                btn.style.display = 'flex';
+                if (!cronHealthLoaded) {
+                    loadCronHealth();
+                    cronHealthLoaded = true;
+                }
+            }
+        }
+
+        async function loadCronHealth() {
+            if (!sb) return;
+            const content = document.getElementById('cronHealthContent');
+            content.innerHTML = '<span style="color:#94a3b8">Loading\u2026</span>';
+
+            try {
+                // Fetch cron_health rows (all -- EF and cron job rows)
+                const { data: cronRows, error: cronErr } = await sb
+                    .from('cron_health')
+                    .select('*')
+                    .order('job_name', { ascending: true });
+
+                if (cronErr) throw cronErr;
+
+                // Fetch unacknowledged alerts
+                const { data: alertRows, error: alertErr } = await sb
+                    .from('platform_alerts_log')
+                    .select('*')
+                    .is('acknowledged_at', null)
+                    .order('sent_at', { ascending: false })
+                    .limit(50);
+
+                if (alertErr) throw alertErr;
+
+                // Split cron rows: EF health rows (ef-*) vs cron job rows
+                const efRows  = (cronRows || []).filter(r => r.job_name.startsWith('ef-'));
+                const jobRows = (cronRows || []).filter(r => !r.job_name.startsWith('ef-'));
+
+                let html = '';
+
+                // -- Active Alerts -----------------------------------------------
+                if (alertRows && alertRows.length > 0) {
+                    html += '<div style="margin-bottom:1.5rem;">';
+                    html += '<div style="font-size:0.8rem;font-weight:700;color:#ef4444;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">';
+                    html += '\u26a0\ufe0f Active Alerts (' + alertRows.length + ')</div>';
+                    html += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem;">';
+                    html += '<thead><tr style="background:#1e293b;color:#94a3b8;">';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Time</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Type</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Function</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Message</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Action</th>';
+                    html += '</tr></thead><tbody>';
+
+                    for (const a of alertRows) {
+                        const sentAt  = a.sent_at ? new Date(a.sent_at).toLocaleString() : '\u2014';
+                        const typeTag = alertTypeLabel(a.alert_type);
+                        const msg     = escHtml(a.message || '').split('\\n')[0];
+                        html += '<tr style="border-bottom:1px solid #1e293b;">';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#cbd5e1;white-space:nowrap;">' + sentAt + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;">' + typeTag + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#e2e8f0;font-family:monospace;">' + escHtml(a.function_name) + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#94a3b8;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + msg + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;">';
+                        html += '<button onclick="acknowledgeAlert(\'' + a.id + '\')" style="background:#0D1B2E;border:1px solid #334155;color:#94a3b8;font-size:0.75rem;padding:0.25rem 0.6rem;border-radius:0.3rem;cursor:pointer;">Acknowledge</button>';
+                        html += '</td></tr>';
+                    }
+                    html += '</tbody></table></div>';
+                } else {
+                    html += '<div style="color:#22c55e;font-size:0.8rem;margin-bottom:1.25rem;">\u2705 No active alerts</div>';
+                }
+
+                // -- Edge Function Health ----------------------------------------
+                html += '<div style="margin-bottom:1.5rem;">';
+                html += '<div style="font-size:0.8rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">Edge Function Health</div>';
+                if (efRows.length === 0) {
+                    html += '<div style="color:#64748b;font-size:0.8rem;">No health ping data yet. Run a health check to populate.</div>';
+                } else {
+                    html += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem;">';
+                    html += '<thead><tr style="background:#1e293b;color:#94a3b8;">';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Function</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Last Ping</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Status</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:right;">Pings</th>';
+                    html += '</tr></thead><tbody>';
+                    for (const r of efRows) {
+                        const fnName  = r.job_name.replace(/^ef-/, '');
+                        const lastRun = r.last_run_at ? timeAgo(r.last_run_at) : '\u2014';
+                        const badge   = statusBadge(r.last_run_status, r.last_error);
+                        html += '<tr style="border-bottom:1px solid #1e293b;">';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#e2e8f0;font-family:monospace;">' + escHtml(fnName) + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#cbd5e1;">' + lastRun + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;">' + badge + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#64748b;text-align:right;">' + (r.run_count || 0) + '</td>';
+                        html += '</tr>';
+                    }
+                    html += '</tbody></table>';
+                }
+                html += '</div>';
+
+                // -- Cron Job Health ---------------------------------------------
+                html += '<div>';
+                html += '<div style="font-size:0.8rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">Cron Job Health</div>';
+                if (jobRows.length === 0) {
+                    html += '<div style="color:#64748b;font-size:0.8rem;">No cron health data yet.</div>';
+                } else {
+                    html += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem;">';
+                    html += '<thead><tr style="background:#1e293b;color:#94a3b8;">';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Job</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Last Run</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Status</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:left;">Error</th>';
+                    html += '<th style="padding:0.4rem 0.6rem;text-align:right;">Runs</th>';
+                    html += '</tr></thead><tbody>';
+                    for (const r of jobRows) {
+                        const lastRun = r.last_run_at ? timeAgo(r.last_run_at) : '\u2014';
+                        const badge   = statusBadge(r.last_run_status, r.last_error);
+                        const errText = r.last_error ? escHtml(r.last_error.substring(0, 60)) + (r.last_error.length > 60 ? '\u2026' : '') : '\u2014';
+                        html += '<tr style="border-bottom:1px solid #1e293b;">';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#e2e8f0;font-family:monospace;">' + escHtml(r.job_name) + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#cbd5e1;">' + lastRun + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;">' + badge + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#64748b;font-size:0.75rem;">' + errText + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem;color:#64748b;text-align:right;">' + (r.run_count || 0) + '</td>';
+                        html += '</tr>';
+                    }
+                    html += '</tbody></table>';
+                }
+                html += '</div>';
+
+                content.innerHTML = html;
+            } catch (err) {
+                console.error('loadCronHealth error:', err);
+                content.innerHTML = '<span style="color:#ef4444">Failed to load monitoring data: ' + escHtml(String(err)) + '</span>';
+            }
+        }
+
+        // Trigger platform-health-check Edge Function manually
+        async function runHealthCheckNow() {
+            if (!sb) return;
+            const btn = document.getElementById('runHealthCheckBtn');
+            btn.textContent = '\u23f3 Running\u2026';
+            btn.disabled = true;
+
+            try {
+                const { data, error } = await sb.functions.invoke('platform-health-check', { body: {} });
+                if (error) throw error;
+                const totalAlerts = data && data.totalAlerts != null ? data.totalAlerts : 0;
+                btn.textContent = totalAlerts > 0
+                    ? '\u26a0\ufe0f ' + totalAlerts + ' alert(s) fired'
+                    : '\u2705 All clear';
+            } catch (err) {
+                console.error('Health check error:', err);
+                btn.textContent = '\u274c Error';
+            } finally {
+                btn.disabled = false;
+                setTimeout(function() { btn.textContent = '\u25b6 Run Health Check Now'; }, 4000);
+                cronHealthLoaded = false;
+                await loadCronHealth();
+            }
+        }
+
+        // Acknowledge an alert (sets acknowledged_at via SECURITY DEFINER RPC)
+        async function acknowledgeAlert(alertId) {
+            if (!sb) return;
+            try {
+                const { error } = await sb.rpc('acknowledge_alert', { p_id: alertId });
+                if (error) throw error;
+                cronHealthLoaded = false;
+                await loadCronHealth();
+            } catch (err) {
+                console.error('acknowledgeAlert error:', err);
+                alert('Failed to acknowledge alert');
+            }
+        }
+
+        // -- Rendering helpers --------------------------------------------------
+
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function timeAgo(isoString) {
+            const diff = Date.now() - new Date(isoString).getTime();
+            if (diff < 60000)    return 'just now';
+            if (diff < 3600000)  return Math.floor(diff / 60000) + 'm ago';
+            if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+            return Math.floor(diff / 86400000) + 'd ago';
+        }
+
+        function statusBadge(status, error) {
+            if (status === 'success') {
+                return '<span style="background:#14532d;color:#86efac;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">OK</span>';
+            }
+            if (status === 'error') {
+                const tip = error ? ' title="' + escHtml(error) + '"' : '';
+                return '<span' + tip + ' style="background:#7f1d1d;color:#fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">ERROR</span>';
+            }
+            return '<span style="background:#1e293b;color:#64748b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">\u2014</span>';
+        }
+
+        function alertTypeLabel(alertType) {
+            const map = {
+                'ef_silent_failure': '<span style="background:#7c2d12;color:#fdba74;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">EF FAILURE</span>',
+                'cron_staleness':    '<span style="background:#713f12;color:#fde68a;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">STALE</span>',
+                'cron_error':        '<span style="background:#7f1d1d;color:#fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">CRON ERROR</span>',
+                'rate_limit':        '<span style="background:#312e81;color:#a5b4fc;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">RATE LIMIT</span>',
+            };
+            return map[alertType] || '<span style="background:#1e293b;color:#94a3b8;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">' + escHtml(alertType) + '</span>';
+        }
+
+        init();
+
+    </script>
+</body>
+</html>

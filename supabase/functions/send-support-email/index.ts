@@ -38,6 +38,17 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Health check ping -- returns immediately without doing real work.
+  // Called by platform-health-check every 15 minutes.
+  try {
+    const bodyPeek = await req.clone().json().catch(() => ({}));
+    if (bodyPeek?.health_check === true) {
+      return new Response(JSON.stringify({ status: "ok" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
+      });
+    }
+  } catch { /* no-op */ }
+
   try {
     const { from_name, from_email, subject, message, to_email, html } = await req.json();
 

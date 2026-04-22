@@ -133,6 +133,18 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Health check ping -- returns immediately without doing real work.
+  // The platform-health-check function uses a service-role bearer token,
+  // so we check for health_check before the admin JWT gate.
+  try {
+    const bodyPeek = await req.clone().json().catch(() => ({}));
+    if (bodyPeek?.health_check === true) {
+      return new Response(JSON.stringify({ status: "ok" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
+      });
+    }
+  } catch { /* no-op */ }
+
   try {
     // Get the JWT from Authorization header
     const authHeader = req.headers.get("authorization");
