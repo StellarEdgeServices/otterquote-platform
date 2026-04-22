@@ -670,6 +670,20 @@
 
             <!-- Contractors List -->
             <div id="contractorsContainer"></div>
+
+            <!-- ── Cron Health ─────────────────────────────────────── -->
+            <div id="cronHealthSection" style="margin-top:2rem;">
+                <button
+                    id="cronHealthToggle"
+                    onclick="toggleCronHealth()"
+                    style="display:flex;align-items:center;gap:0.5rem;background:none;border:1px solid #334155;color:#94a3b8;font-size:0.875rem;font-weight:600;padding:0.6rem 1rem;border-radius:0.5rem;cursor:pointer;letter-spacing:0.03em;text-transform:uppercase;"
+                >
+                    <span id="cronHealthChevron">▶</span> Cron Health
+                </button>
+                <div id="cronHealthPanel" style="display:none;margin-top:0.75rem;overflow-x:auto;">
+                    <div id="cronHealthContent" style="color:#94a3b8;font-size:0.875rem;">Loading…</div>
+                </div>
+            </div>
         </div>
     </main>
 
@@ -762,6 +776,7 @@
                 document.getElementById('adminContainer').style.display = 'block';
                 await loadContractors();
                 updateSummaryCards();
+                await loadCronHealth();
             } catch (err) {
                 console.error('Authorization error:', err);
                 showUnauthorized();
@@ -1266,35 +1281,4 @@
                     }
                 });
 
-                if (response.error) throw response.error;
-
-                const c = contractors.find(x => x.id === contractorId);
-                if (c) {
-                    c.status = 'inactive';
-                    c.rejected_at = new Date().toISOString();
-                    c.rejection_reason = reason;
-                }
-
-                closeRejectModal();
-                updateSummaryCards();
-                renderContractors();
-                alert('Contractor rejected and notification email sent');
-            } catch (err) {
-                console.error('Error rejecting contractor:', err);
-                alert('Failed to reject contractor');
-            }
-        }
-
-        async function logout() {
-            try {
-                await Auth.logout();
-            } catch (err) {
-                console.error('Error logging out:', err);
-            }
-        }
-
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', init);
-    </script>
-</body>
-</html>
+    

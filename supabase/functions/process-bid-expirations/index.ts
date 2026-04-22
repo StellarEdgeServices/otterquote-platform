@@ -879,5 +879,4 @@ serve(async (req) => {
 
   console.log("[process-bid-expirations] Run complete:", JSON.stringify(result));
 
-  return jsonResponse(result, 200, corsHeaders);
-});
+  // ── Write cron health record (non-fatal) ─�

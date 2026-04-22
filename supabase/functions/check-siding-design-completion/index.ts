@@ -68,6 +68,19 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
+// ── Cron health helper ───────────────────────────────────────────────────────
+async function writeCronHealth(supabase: any, status: "success" | "error", error?: string): Promise<void> {
+  try {
+    await supabase.rpc("record_cron_health", {
+      p_job_name: "check-siding-design-completion",
+      p_status:   status,
+      p_error:    error ?? null,
+    });
+  } catch (e) {
+    console.warn("[D-164] cron_health write failed (non-fatal):", e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: buildCorsHeaders(req) });
@@ -110,6 +123,7 @@ serve(async (req) => {
 
     if (claimsErr) {
       console.error("[D-164] Failed to load claims:", claimsErr.message);
+      await writeCronHealth(supabase, "error", `claims query failed: ${claimsErr.message}`);
       return new Response(JSON.stringify({ ok: false, error: claimsErr.message }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -118,6 +132,7 @@ serve(async (req) => {
 
     if (!claims || claims.length === 0) {
       console.log("[D-164] No qualifying claims found.");
+      await writeCronHealth(supabase, "success");
       return new Response(JSON.stringify({ ok: true, checked: 0, released: 0 }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -150,6 +165,13 @@ serve(async (req) => {
     const released = results.filter((r: any) => r.released).length;
     console.log(`[D-164] Done. Checked: ${sidingClaims.length}, Released: ${released}`);
 
+    const errorResults = results.filter((r: any) => r.error);
+    const cronStatus   = errorResults.length > 0 ? "error" : "success";
+    const cronError    = errorResults.length > 0
+      ? errorResults.slice(0, 3).map((r: any) => `${r.claim_id}: ${r.error}`).join("; ")
+      : null;
+    await writeCronHealth(supabase, cronStatus, cronError ?? undefined);
+
     return new Response(
       JSON.stringify({ ok: true, checked: sidingClaims.length, released, results }),
       { status: 200, headers: { "Content-Type": "application/json" } }
@@ -157,6 +179,7 @@ serve(async (req) => {
 
   } catch (err) {
     console.error("[D-164] Unexpected error:", err);
+    await writeCronHealth(supabase, "error", `unexpected: ${String(err)}`);
     return new Response(JSON.stringify({ ok: false, error: String(err) }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -401,45 +424,4 @@ async function getValidAccessToken(supabase: any): Promise<string | null> {
   }
 
   const token = tokens[0];
-  const expiresAt = new Date(token.expires_at);
-  const now = new Date();
-
-  if (expiresAt.getTime() - now.getTime() > 5 * 60 * 1000) {
-    return token.access_token;
-  }
-
-  const clientId     = Deno.env.get("HOVER_CLIENT_ID")!;
-  const clientSecret = Deno.env.get("HOVER_CLIENT_SECRET")!;
-
-  const refreshRes = await fetch(`${HOVER_API_BASE}/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type:    "refresh_token",
-      client_id:     clientId,
-      client_secret: clientSecret,
-      refresh_token: token.refresh_token,
-    }),
-  });
-
-  if (!refreshRes.ok) {
-    console.error("[D-164] Hover token refresh failed:", refreshRes.status);
-    return null;
-  }
-
-  const newTokenData = await refreshRes.json();
-  const newExpiresAt = new Date(
-    Date.now() + (newTokenData.expires_in || 7200) * 1000
-  ).toISOString();
-
-  await supabase
-    .from("hover_tokens")
-    .update({
-      access_token:  newTokenData.access_token,
-      refresh_token: newTokenData.refresh_token || token.refresh_token,
-      expires_at:    newExpiresAt,
-    })
-    .eq("id", token.id);
-
-  return newTokenData.access_token;
-}
+  const expiresAt = new Date(token.e
