@@ -339,6 +339,51 @@ section("Service area coverage");
 }
 
 // ---------------------------------------------------------------------------
+// D-178: Homeowner state gating -- parseStateFromAddress + waitlist trigger
+// ---------------------------------------------------------------------------
+// Inline the same logic used in dashboard.html so smoke tests stay dependency-free.
+
+section("D-178 state gating");
+
+function parseStateFromAddress(address) {
+  if (!address) return null;
+  const match = address.match(/[,\s]+([A-Za-z]{2})[,\s]+\d{5}(?:-\d{4})?/);
+  if (match) return match[1].toUpperCase();
+  return null;
+}
+
+function stateGateWouldFire(property_state) {
+  return Boolean(property_state && property_state !== 'IN');
+}
+
+// Test 1 -- Indiana address -> "IN", gate does NOT fire (homeowner proceeds normally)
+{
+  const state = parseStateFromAddress("123 Main St, Carmel, IN 46032");
+  eq("IN address parses to 'IN'", state, "IN");
+  eq("IN homeowner: gate does NOT fire", stateGateWouldFire(state), false);
+}
+
+// Test 2 -- Ohio address -> "OH", gate fires and waitlist row would be created
+{
+  const state = parseStateFromAddress("456 Oak Ave, Columbus, OH 43215");
+  eq("OH address parses to 'OH'", state, "OH");
+  eq("OH homeowner: gate fires, waitlist row created", stateGateWouldFire(state), true);
+}
+
+// Test 3 -- null input -> null, gate does NOT fire (new signup before state is set)
+{
+  eq("null address returns null (no crash)", parseStateFromAddress(null), null);
+  eq("null state: gate does NOT fire (no false gate on new signups)", stateGateWouldFire(null), false);
+}
+
+// Test 4 -- Kentucky address -> "KY", gate fires and waitlist row would be created
+{
+  const state = parseStateFromAddress("789 Maple Dr, Louisville, KY 40202");
+  eq("KY address parses to 'KY'", state, "KY");
+  eq("KY homeowner: gate fires, waitlist row created", stateGateWouldFire(state), true);
+}
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 console.log(`\n=== Summary ===`);

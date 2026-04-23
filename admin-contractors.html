@@ -673,6 +673,10 @@
                     <div class="summary-card-label" style="color: #92400e;">COI Expiring ≤30d</div>
                     <div class="summary-card-value" id="coiExpiringCount" style="color: #d97706;">—</div>
                 </div>
+                <div class="summary-card" style="border-left: 4px solid #0ea5e9;">
+                    <div class="summary-card-label" style="color: #0c4a6e;">Waitlisted Homeowners</div>
+                    <div class="summary-card-value" id="waitlistCount" style="color: #0369a1;">—</div>
+                </div>
             </div>
 
             <!-- Filter Tabs -->
@@ -707,6 +711,28 @@
                 </div>
                 <div id="cronHealthPanel" style="display:none;margin-top:0.75rem;overflow-x:auto;">
                     <div id="cronHealthContent" style="color:#94a3b8;font-size:0.875rem;">Loading…</div>
+                </div>
+            </div>
+
+            <!-- ── D-178: Expansion Waitlist by State ────────────────── -->
+            <div id="waitlistSection" style="margin-top:2rem;">
+                <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                    <button
+                        id="waitlistToggle"
+                        onclick="toggleWaitlistPanel()"
+                        style="display:flex;align-items:center;gap:0.5rem;background:none;border:1px solid #334155;color:#94a3b8;font-size:0.875rem;font-weight:600;padding:0.6rem 1rem;border-radius:0.5rem;cursor:pointer;letter-spacing:0.03em;text-transform:uppercase;"
+                    >
+                        <span id="waitlistChevron">&#9654;</span> Expansion Waitlist
+                    </button>
+                    <button
+                        id="refreshWaitlistBtn"
+                        onclick="loadWaitlistStats()"
+                        style="display:none;align-items:center;gap:0.4rem;background:#0D1B2E;border:1px solid #0ea5e9;color:#0ea5e9;font-size:0.8rem;font-weight:600;padding:0.5rem 0.9rem;border-radius:0.5rem;cursor:pointer;"
+                    >&#8635; Refresh</button>
+                    <span id="waitlistLastRefreshed" style="display:none;color:#64748b;font-size:0.75rem;"></span>
+                </div>
+                <div id="waitlistPanel" style="display:none;margin-top:0.75rem;overflow-x:auto;">
+                    <div id="waitlistContent" style="color:#94a3b8;font-size:0.875rem;">Loading…</div>
                 </div>
             </div>
         </div>
@@ -802,6 +828,7 @@
                 await loadContractors();
                 updateSummaryCards();
                 await loadCronHealth();
+                loadWaitlistStats(); // D-178: populate waitlist summary card on load (non-blocking)
             } catch (err) {
                 console.error('Authorization error:', err);
                 showUnauthorized();
@@ -1524,7 +1551,7 @@
                 const tip = error ? ' title="' + escHtml(error) + '"' : '';
                 return '<span' + tip + ' style="background:#7f1d1d;color:#fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">ERROR</span>';
             }
-            return '<span style="background:#1e293b;color:#64748b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">\u2014</span>';
+            return '<span style="background:#1e293b;color:#64748b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">—</span>';
         }
 
         function alertTypeLabel(alertType) {
@@ -1537,8 +1564,107 @@
             return map[alertType] || '<span style="background:#1e293b;color:#94a3b8;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">' + escHtml(alertType) + '</span>';
         }
 
-        init();
+        // =============================================================================
+        // D-178: Expansion Waitlist -- by-state analytics
+        // =============================================================================
 
-    </script>
-</body>
-</html>
+        let waitlistLoaded = false;
+
+        function toggleWaitlistPanel() {
+            const panel   = document.getElementById('waitlistPanel');
+            const chevron = document.getElementById('waitlistChevron');
+            const btn     = document.getElementById('refreshWaitlistBtn');
+            const ts      = document.getElementById('waitlistLastRefreshed');
+            const isOpen  = panel.style.display !== 'none';
+
+            if (isOpen) {
+                panel.style.display = 'none';
+                chevron.textContent = '\u25b6';
+                btn.style.display   = 'none';
+                ts.style.display    = 'none';
+            } else {
+                panel.style.display = 'block';
+                chevron.textContent = '\u25bc';
+                btn.style.display   = 'flex';
+                ts.style.display    = 'inline';
+                if (!waitlistLoaded) {
+                    loadWaitlistStats();
+                    waitlistLoaded = true;
+                }
+            }
+        }
+
+        async function loadWaitlistStats() {
+            if (!sb) return;
+            const content = document.getElementById('waitlistContent');
+            content.innerHTML = '<span style="color:#94a3b8">Loading\u2026</span>';
+
+            try {
+                // Fetch all waitlist rows for grouping
+                const { data, error } = await sb
+                    .from('expansion_waitlist')
+                    .select('state, opted_in, created_at')
+                    .order('state', { ascending: true });
+
+                if (error) throw error;
+
+                // Update summary card
+                const total = (data || []).length;
+                const el = document.getElementById('waitlistCount');
+                if (el) el.textContent = total;
+
+                if (!data || data.length === 0) {
+                    content.innerHTML = '<span style="color:#64748b;font-size:0.85rem;">No waitlisted homeowners yet.</span>';
+                    document.getElementById('waitlistLastRefreshed').textContent = 'Refreshed ' + timeAgo(new Date().toISOString());
+                    return;
+                }
+
+                // Group by state
+                const byState = {};
+                for (const row of data) {
+                    const s = row.state || 'Unknown';
+                    if (!byState[s]) byState[s] = { total: 0, opted_in: 0 };
+                    byState[s].total++;
+                    if (row.opted_in) byState[s].opted_in++;
+                }
+
+                // Sort by total desc
+                const sorted = Object.entries(byState).sort((a, b) => b[1].total - a[1].total);
+
+                let html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">';
+                html += '<thead><tr style="border-bottom:1px solid #334155;">';
+                html += '<th style="text-align:left;padding:0.4rem 0.6rem;color:#94a3b8;font-weight:600;">State</th>';
+                html += '<th style="text-align:right;padding:0.4rem 0.6rem;color:#94a3b8;font-weight:600;">Total</th>';
+                html += '<th style="text-align:right;padding:0.4rem 0.6rem;color:#94a3b8;font-weight:600;">Opted In</th>';
+                html += '<th style="text-align:right;padding:0.4rem 0.6rem;color:#94a3b8;font-weight:600;">Opt-In %</th>';
+                html += '</tr></thead><tbody>';
+
+                for (const [state, counts] of sorted) {
+                    const pct = counts.total > 0 ? Math.round(counts.opted_in / counts.total * 100) : 0;
+                    const pctColor = pct >= 50 ? '#86efac' : pct >= 25 ? '#fde68a' : '#94a3b8';
+                    html += '<tr style="border-bottom:1px solid #1e293b;">';
+                    html += '<td style="padding:0.4rem 0.6rem;color:#e2e8f0;font-weight:600;">' + escHtml(state) + '</td>';
+                    html += '<td style="padding:0.4rem 0.6rem;text-align:right;color:#e2e8f0;">' + counts.total + '</td>';
+                    html += '<td style="padding:0.4rem 0.6rem;text-align:right;color:#e2e8f0;">' + counts.opted_in + '</td>';
+                    html += '<td style="padding:0.4rem 0.6rem;text-align:right;color:' + pctColor + ';font-weight:600;">' + pct + '%</td>';
+                    html += '</tr>';
+                }
+
+                // Totals row
+                const totalOptIn = data.filter(r => r.opted_in).length;
+                const totalPct   = total > 0 ? Math.round(totalOptIn / total * 100) : 0;
+                html += '<tr style="border-top:2px solid #475569;background:#0f172a;">';
+                html += '<td style="padding:0.5rem 0.6rem;color:#cbd5e1;font-weight:700;">TOTAL</td>';
+                html += '<td style="padding:0.5rem 0.6rem;text-align:right;color:#cbd5e1;font-weight:700;">' + total + '</td>';
+                html += '<td style="padding:0.5rem 0.6rem;text-align:right;color:#cbd5e1;font-weight:700;">' + totalOptIn + '</td>';
+                html += '<td style="padding:0.5rem 0.6rem;text-align:right;color:#cbd5e1;font-weight:700;">' + totalPct + '%</td>';
+                html += '</tr>';
+
+                html += '</tbody></table>';
+                content.innerHTML = html;
+
+                document.getElementById('waitlistLastRefreshed').textContent = 'Refreshed ' + timeAgo(new Date().toISOString());
+
+            } catch (err) {
+                console.error('loadWaitlistStats error:', err);
+                content.innerHTML = '<span style="color:#ef4444;">Failed to load waitlist data: ' + escHt
