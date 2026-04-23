@@ -343,7 +343,12 @@ const Services = {
       address_line_1, address_city, address_state, address_zip,
       homeowner_name, homeowner_email, homeowner_phone,
       amount_charged, deliverable_type_id = 2,
+      payment_intent_id,  // D-181: required — Stripe PaymentIntent for the $79 Hover fee
     } = params;
+
+    if (!payment_intent_id) {
+      throw new Error('Missing payment_intent_id — $79 Hover payment must complete before ordering (D-181).');
+    }
 
     // Save order to database first
     const { data: order, error } = await sb
@@ -377,6 +382,7 @@ const Services = {
           homeowner_email,
           homeowner_phone,
           deliverable_type_id,
+          payment_intent_id,  // D-181
         }
       });
 
@@ -466,17 +472,4 @@ const Services = {
     }
 
     // Create new adjuster
-    const { data: newAdj, error } = await sb
-      .from('adjusters')
-      .insert({ adjuster_name, adjuster_email, adjuster_phone, carrier_id })
-      .select()
-      .single();
-
-    if (error) {
-      console.warn('Could not create adjuster record:', error);
-      return null;
-    }
-
-    return newAdj;
-  },
-};
+    const { data: newAdj, error } 

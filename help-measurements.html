@@ -588,7 +588,7 @@
                 <p>Hover uses advanced technology to create a 3D model of your property from photos you take with your phone. The result is a professional measurement report accurate enough for contractors to provide detailed, precise bids.</p>
 
                 <div class="rebate-callout">
-                    <strong>Rebate guarantee:</strong> If you select a contractor through Otter Quotes, the $79 Hover fee will be fully rebated to you. You only pay if you don't use our platform.
+                    <strong>How the $79 works:</strong> You pay $79 now to order your Hover measurement report. <strong>When your project closes with an Otter Quotes contractor, the full $79 is rebated to your original payment method.</strong> If you don't complete your project with an Otter Quotes contractor, you keep the Hover report — it's yours forever, reusable for future exterior projects.
                 </div>
 
                 <div class="hover-steps">
@@ -965,18 +965,10 @@
                     homeowner_phone: currentProfile?.phone || '',
                     amount_charged: 79.00,
                     deliverable_type_id: 2, // Roof Only
+                    payment_intent_id: paymentIntent.id, // D-181: verification guard in EF
                 });
 
                 // Show success state
                 document.getElementById('hoverSection').querySelector('.section-card').style.display = 'none';
                 document.getElementById('hoverSuccessSection').classList.add('active');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-
-                gtag('event', 'hover_purchased', {
-                    claim_id: currentClaim?.id,
-                    payment_intent_id: paymentIntent.id,
-                    amount: 79,
-                });
-
-            } catch (err) {
-       
+             

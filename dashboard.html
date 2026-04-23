@@ -1215,7 +1215,8 @@
       let carriers = [];
       let isEditingClaim = false;
       let uploadsInProgress = {};
-      let hoverOrder = null; // Most recent hover_orders row for this claim (or null)
+      let hoverOrder = null; // Most recent ACTIVE hover_orders row for this claim (or null)
+      let hoverRebateOrder = null; // D-181: Most recent hover_orders row (any status) for rebate state
 
       // ── Demo Mode ──
       let isDemo = false;
@@ -1399,6 +1400,24 @@
             } catch (hoErr) {
               console.warn('[Dashboard] Could not load hover order (non-fatal):', hoErr);
               hoverOrder = null;
+            }
+
+            // D-181: Fetch the most recent hover_orders row (any status) for rebate display.
+            // Separate from hoverOrder above because the rebate card also shows for
+            // photos_submitted / processing / complete orders.
+            try {
+              const { data: rebateData } = await sb
+                .from('hover_orders')
+                .select('id, homeowner_charge_amount, homeowner_stripe_payment_intent_id, rebate_due, rebate_paid_at')
+                .eq('claim_id', data.id)
+                .not('homeowner_stripe_payment_intent_id', 'is', null)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              hoverRebateOrder = rebateData || null;
+            } catch (rbErr) {
+              console.warn('[Dashboard] Could not load rebate state (non-fatal):', rbErr);
+              hoverRebateOrder = null;
             }
           }
 
@@ -1877,6 +1896,64 @@
           </div>
         `; // end template literal
         }).join(''); // end items.map
+
+        // ── D-181: Hover Measurement Payment + Rebate Status ─────────────────
+        // Shown whenever the homeowner has paid the $79 Hover fee. States:
+        //   1. Paid — rebate owed on project completion (rebate_due=true, no rebate_paid_at)
+        //   2. Rebated on [date] (rebate_paid_at populated)
+        //   3. Charge recorded but rebate flag cleared without timestamp — defensive display.
+        if (hoverRebateOrder && hoverRebateOrder.homeowner_stripe_payment_intent_id) {
+          const amt = Number(hoverRebateOrder.homeowner_charge_amount || 0) / 100;
+          const amtLabel = `$${amt.toFixed(0)}`;
+          const rebateCard = document.createElement('div');
+          rebateCard.style.cssText = 'margin-top:1.25rem;background:var(--navy-2,#0f2942);border:1px solid rgba(255,255,255,0.08);border-radius:0.875rem;padding:1.25rem 1.5rem;';
+
+          let headerLine = '';
+          let bodyLine = '';
+          let badgeColor = '';
+          if (hoverRebateOrder.rebate_paid_at) {
+            const d = new Date(hoverRebateOrder.rebate_paid_at);
+            const dateStr = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            headerLine = 'Hover measurement fee rebated';
+            bodyLine = `Your ${amtLabel} Hover measurement fee was rebated to your original payment method on ${dateStr}. Refunds typically show on your statement within 5–10 business days.`;
+            badgeColor = '#10B981'; // green
+          } else if (hoverRebateOrder.rebate_due) {
+            headerLine = `Hover fee paid — ${amtLabel} rebate pending`;
+            bodyLine = `You've paid ${amtLabel} for your Hover measurement report. When your project closes with an Otter Quotes contractor, the full ${amtLabel} is rebated to your original payment method automatically.`;
+            badgeColor = 'var(--amber,#E07B00)';
+          } else {
+            headerLine = `Hover fee paid — ${amtLabel}`;
+            bodyLine = `Your ${amtLabel} Hover measurement payment is on file.`;
+            badgeColor = '#64748B';
+          }
+
+          // DOM construction (XSS-safe per Deploy Review Checklist #34 / post-XSS remediation).
+          const wrap = document.createElement('div');
+          wrap.style.cssText = 'display:flex;align-items:flex-start;gap:1rem;';
+
+          const icon = document.createElement('div');
+          icon.textContent = '💳';
+          icon.style.cssText = 'font-size:1.75rem;flex-shrink:0;line-height:1;';
+
+          const content = document.createElement('div');
+          content.style.cssText = 'flex:1;';
+
+          const header = document.createElement('div');
+          header.textContent = headerLine;
+          header.style.cssText = `font-weight:700;color:${badgeColor};font-size:1rem;margin-bottom:0.5rem;`;
+
+          const body = document.createElement('div');
+          body.textContent = bodyLine;
+          body.style.cssText = 'font-size:0.875rem;color:rgba(255,255,255,0.85);line-height:1.55;';
+
+          content.appendChild(header);
+          content.appendChild(body);
+          wrap.appendChild(icon);
+          wrap.appendChild(content);
+          rebateCard.appendChild(wrap);
+
+          container.appendChild(rebateCard);
+        }
 
         // ── D-164: Siding Design Gate CTA ────────────────────────────────────
         // Retail siding bids are held until the homeowner completes their full
@@ -2537,88 +2614,4 @@
 
           showSuccess(`${type === 'estimate' ? 'Estimate' : 'Measurements'} uploaded successfully.`);
 
-          gtag('event', 'file_upload', {
-            upload_type: type,
-            file_size: file.size,
-          });
-
-          // ── Background loss sheet parsing ──────────────────────────────
-          // Fire-and-forget: parse the estimate PDF in the background after upload.
-          // Only runs for PDF estimate uploads in live mode. Does not block the UI.
-          if (type === 'estimate' && !CONFIG.DEMO_MODE && uploadedStoragePath && file.type === 'application/pdf') {
-            (async () => {
-              try {
-                console.log('[dashboard] Triggering background loss sheet parse for claim:', currentClaim.id);
-                const parseResult = await sb.functions.invoke('parse-loss-sheet', {
-                  body: {
-                    claim_id: currentClaim.id,
-                    storage_path: uploadedStoragePath,
-                  },
-                });
-                if (parseResult.error) {
-                  console.warn('[dashboard] Loss sheet parse returned error:', parseResult.error);
-                } else {
-                  console.log('[dashboard] Loss sheet parsed successfully:', parseResult.data);
-                }
-              } catch (parseErr) {
-                // Non-fatal — homeowner UX is unaffected
-                console.warn('[dashboard] Loss sheet parse call failed (non-fatal):', parseErr);
-              }
-            })();
-          }
-        } catch (err) {
-          console.error('Upload error:', err);
-          showError('Upload failed. Please try again.');
-          if (uploadsInProgress[type]) {
-            const progressEl = document.getElementById(`upload-progress-${type}`);
-            if (progressEl) progressEl.classList.remove('active');
-          }
-        } finally {
-          uploadsInProgress[type] = false;
-        }
-      }
-
-      // ── Help Modal ──
-      window.showHelpModal = function(type) {
-        const modal = document.getElementById('help-modal');
-        const title = document.getElementById('help-modal-title');
-        const content = document.getElementById('help-modal-content');
-
-        const helpContent = {
-          estimate: {
-            title: 'Insurance Estimate',
-            html: `
-              <div class="help-text">
-                <p>Your insurance adjuster should have provided an estimate or inspection report. This document helps contractors understand the scope of work and provides evidence of covered damage.</p>
-                <h4 style="margin-top: var(--sp-6); margin-bottom: var(--sp-3);">What to upload:</h4>
-                <ul style="margin-left: var(--sp-6); color: var(--slate);">
-                  <li>Insurance adjuster's official estimate</li>
-                  <li>Preliminary damage assessment</li>
-                  <li>Photos from the insurance inspection</li>
-                </ul>
-                <p style="margin-top: var(--sp-6);">If you don't have this document yet, contact your insurance company to request it. Most carriers provide estimates within 5-10 business days of filing a claim.</p>
-              </div>
-            `
-          },
-          measurements: {
-            title: 'Measurements',
-            html: `
-              <div class="help-text">
-                <p>While optional, measurements and photos help contractors provide more accurate bids. This can include square footage, roof pitch, material specifications, and damage photos.</p>
-                <h4 style="margin-top: var(--sp-6); margin-bottom: var(--sp-3);">What to upload:</h4>
-                <ul style="margin-left: var(--sp-6); color: var(--slate);">
-                  <li>Roof measurements (square footage, pitch)</li>
-                  <li>Photos of the damaged area</li>
-                  <li>Inspection reports from contractors</li>
-                  <li>Roof age or warranty information</li>
-                </ul>
-                <p style="margin-top: var(--sp-6);">Need help measuring? We recommend using a tape measure for ground-level measurements, or hiring a professional surveyor for precise roof measurements.</p>
-              </div>
-            `
-          }
-        };
-
-        const info = helpContent[type];
-        if (info) {
-          title.textContent = info.title;
-          content.i
+     
