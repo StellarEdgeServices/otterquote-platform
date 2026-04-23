@@ -2062,6 +2062,18 @@ async function handleContractorSign(
     bidData = bd;
   }
 
+  // Guard: reject if the bid has expired (D-150)
+  if (bidData?.bid_status === 'expired') {
+    console.warn(`create-docusign-envelope: bid ${bidData?.id} is expired — blocking envelope creation`);
+    return new Response(
+      JSON.stringify({
+        error: "bid_expired",
+        message: "This bid has expired and cannot proceed to signing. The contractor must renew their bid first.",
+      }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
   // Fetch contractor's contract template from storage
   // Determine trade + funding type to select the right template
   const trades = claimData?.selected_trades || [];

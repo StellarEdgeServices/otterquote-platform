@@ -728,6 +728,15 @@
             <input type="checkbox" id="notifAutoBid" checked>
             <label for="notifAutoBid">Auto-bid placed on your behalf</label>
           </div>
+          <!-- D-150: Bid expiration notifications -->
+          <div class="notification-checkbox">
+            <input type="checkbox" id="notifBidExpired" checked>
+            <label for="notifBidExpired">Bid expired — get notified so you can renew</label>
+          </div>
+          <div class="notification-checkbox">
+            <input type="checkbox" id="notifBidRenewalRequested" checked>
+            <label for="notifBidRenewalRequested">Bid renewal confirmed</label>
+          </div>
         </div>
       </div>
       <div style="margin-top: var(--sp-6); border-top: 1px solid var(--light); padding-top: var(--sp-4);">
@@ -735,6 +744,27 @@
       </div>
     </div>
 
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- Bid Auto-Renew Default (D-150)         -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card">
+      <div class="settings-card-title">Bid Auto-Renew</div>
+      <div class="settings-card-subtitle">
+        Each bid you submit is valid for 14 days. When auto-renew is on, your bids automatically stay active for up to 3 additional 14-day windows (42 days total) without any manual effort.
+      </div>
+      <div class="autobid-toggle-row" style="margin-top:var(--sp-4);">
+        <label class="switch">
+          <input type="checkbox" id="autoRenewBidsToggle" checked>
+          <span class="slider"></span>
+        </label>
+        <div class="autobid-toggle-label">Auto-renew my bids (up to 3 renewals / 42 days total)</div>
+      </div>
+      <p style="font-size:0.8rem;color:var(--slate);margin:var(--sp-3) 0 0;">You can also set this per-bid when submitting. This setting is your default.</p>
+      <div style="margin-top: var(--sp-6); border-top: 1px solid var(--light); padding-top: var(--sp-4);">
+        <button class="save-button" onclick="saveSettings()" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Save Bid Settings</button>
+      </div>
+    </div>
 
     <!-- ═══════════════════════════════════════ -->
     <!-- Auto-Bid Settings (LIVE — Insurance)   -->
@@ -2538,6 +2568,14 @@
             if (prefs.deductible_collected !== undefined) document.getElementById('notifDeductibleCollected').checked = prefs.deductible_collected;
             if (prefs.reminder_48h !== undefined) document.getElementById('notif48hReminder').checked = prefs.reminder_48h;
             if (prefs.auto_bid_placed !== undefined) document.getElementById('notifAutoBid').checked = prefs.auto_bid_placed;
+            // D-150: bid expiration prefs
+            if (prefs.bid_expired !== undefined) document.getElementById('notifBidExpired').checked = prefs.bid_expired;
+            if (prefs.bid_renewal_requested !== undefined) document.getElementById('notifBidRenewalRequested').checked = prefs.bid_renewal_requested;
+          }
+
+          // D-150: load auto_renew_bids default toggle
+          if (data.auto_renew_bids !== undefined && data.auto_renew_bids !== null) {
+            document.getElementById('autoRenewBidsToggle').checked = data.auto_renew_bids;
           }
 
           // Update payment method UI
@@ -2835,7 +2873,10 @@
           deductible_collected: document.getElementById('notifDeductibleCollected').checked,
           reminder_48h: document.getElementById('notif48hReminder').checked,
           auto_bid_placed: document.getElementById('notifAutoBid').checked,
+          bid_expired: document.getElementById('notifBidExpired').checked, // D-150
+          bid_renewal_requested: document.getElementById('notifBidRenewalRequested').checked, // D-150
         },
+        auto_renew_bids: document.getElementById('autoRenewBidsToggle').checked, // D-150
         updated_at: new Date().toISOString(),
       };
 

@@ -577,15 +577,34 @@
                 }
 
                 // Also exclude opportunities this contractor has already bid on
+                // D-150: keep opportunities where prior bid is expired — show rebid indicator instead
                 if (currentContractor) {
                   const { data: myBids } = await sb
                     .from('quotes')
-                    .select('claim_id')
+                    .select('id, claim_id, bid_status')
                     .eq('contractor_id', currentContractor.id);
 
                   if (myBids && myBids.length > 0) {
-                    const myBidClaimIds = new Set(myBids.map(b => b.claim_id));
-                    allOpportunities = allOpportunities.filter(o => !myBidClaimIds.has(o.id));
+                    // Build map: claim_id → {quoteId, bidStatus}
+                    const myBidMap = {};
+                    myBids.forEach(b => { myBidMap[b.claim_id] = { quoteId: b.id, bidStatus: b.bid_status }; });
+
+                    // Only fully exclude non-expired active bids
+                    allOpportunities = allOpportunities.filter(o => {
+                      const bid = myBidMap[o.id];
+                      if (!bid) return true; // no bid — show normally
+                      if (bid.bidStatus === 'expired') return true; // expired — keep, flag below
+                      return false; // active bid — exclude
+                    });
+
+                    // Attach expired bid metadata to opportunities for rebid indicator (D-150)
+                    allOpportunities.forEach(o => {
+                      const bid = myBidMap[o.id];
+                      if (bid && bid.bidStatus === 'expired') {
+                        o.hasExpiredBid = true;
+                        o.expiredQuoteId = bid.quoteId;
+                      }
+                    });
                   }
                 }
               }
@@ -930,7 +949,12 @@
                     + '<span style="font-family:var(--font-body);font-size:0.72rem;color:#CBD5E1;font-weight:500;letter-spacing:0.02em;">ID: ' + escHtml(String(o.id)) + '</span>'
                     + '</div>'
                     + feeHtml
-                    + '<div class="actions-row"><button class="btn btn-secondary" onclick="showDetails(\'' + o.id + '\')">Details</button><a href="contractor-bid-form.html?project=' + o.id + '" class="btn btn-primary">Submit Bid</a></div>'
+                    + (o.hasExpiredBid ? '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:0.5rem;padding:0.5rem 0.875rem;margin-bottom:var(--sp-4);font-size:0.82rem;color:#92400E;display:flex;align-items:center;gap:0.5rem;"><span>⏰</span><span>Your previous bid on this project expired. <strong>Renew it</strong> to stay in contention.</span></div>' : '')
+                    + '<div class="actions-row"><button class="btn btn-secondary" onclick="showDetails(\'' + o.id + '\')">Details</button>'
+                    + (o.hasExpiredBid
+                        ? '<a href="contractor-bid-form.html?renew=true&quote_id=' + o.expiredQuoteId + '&claim_id=' + o.id + '" class="btn btn-primary" style="background:#15803D;">🔄 Renew Bid</a>'
+                        : '<a href="contractor-bid-form.html?project=' + o.id + '" class="btn btn-primary">Submit Bid</a>')
+                    + '</div>'
                     + '</div>';
             }).join('');
         }

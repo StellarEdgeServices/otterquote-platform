@@ -602,10 +602,24 @@
         }
 
         // Show "Select This Contractor" if claim is still in bidding (not yet awarded)
+        // D-150: also disable if the contractor's bid has expired
         if (claim && claim.status !== 'awarded') {
           const ctaBtn = document.getElementById('ctaSelectBtn');
           ctaBtn.style.display = 'inline-flex';
-          ctaBtn.textContent = `Select ${esc(c.company_name)}`;
+          if (bid && bid.bid_status === 'expired') {
+            // Expired bid — disable the button and show a notice
+            ctaBtn.disabled = true;
+            ctaBtn.textContent = 'Bid Expired';
+            ctaBtn.style.opacity = '0.5';
+            ctaBtn.style.cursor = 'not-allowed';
+            // Insert expired notice below the button
+            const noticeEl = document.createElement('div');
+            noticeEl.style.cssText = 'margin-top:0.75rem;padding:0.6rem 1rem;background:#FFF7ED;border:1px solid #FED7AA;border-radius:0.5rem;font-size:0.85rem;color:#92400E;';
+            noticeEl.innerHTML = `⏰ This contractor's bid expired before a decision was made. They can <a href="contractor-bid-form.html?renew=true&quote_id=${encodeURIComponent(bid.id)}&claim_id=${encodeURIComponent(claimId)}" style="color:#92400E;font-weight:600;">renew their bid</a> from the contractor portal to become selectable again.`;
+            ctaBtn.parentNode.insertBefore(noticeEl, ctaBtn.nextSibling);
+          } else {
+            ctaBtn.textContent = `Select ${esc(c.company_name)}`;
+          }
         }
 
         document.getElementById('ctaTitle').textContent = `Ready to Choose ${c.company_name}?`;

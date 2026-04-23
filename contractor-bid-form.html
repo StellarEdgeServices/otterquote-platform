@@ -1113,6 +1113,17 @@
       </div>
     </div>
 
+    <!-- D-150: Renewal mode banner (shown when ?renew=true) -->
+    <div id="renewBidBanner" style="display:none; background:#F0FDF4; border:2px solid #16A34A; border-radius:0.75rem; padding:1rem 1.5rem; margin-bottom:1.5rem;">
+      <div style="display:flex; align-items:flex-start; gap:0.75rem;">
+        <span style="font-size:1.4rem; flex-shrink:0;">🔄</span>
+        <div>
+          <div style="font-weight:700; color:#15803D; margin-bottom:0.25rem;">Renewing your expired bid.</div>
+          <div style="font-size:0.9rem; color:#166534;">Your previous bid details are pre-filled below. Adjust anything if needed, then click <strong>Renew Bid</strong> to re-submit with a fresh 14-day validity window. Max 3 renewals total (42 days).</div>
+        </div>
+      </div>
+    </div>
+
     <div class="page-header">
       <h1 id="pageHeading">Submit Your Bid</h1>
       <div class="project-id">Project ID: <strong id="projectIdDisplay">CS-2026-0001</strong></div>
@@ -1990,6 +2001,17 @@
         <textarea id="wizardRationale" name="wizardRationale" placeholder="Add any final notes — scheduling flexibility, crew size, your experience with this type of project, etc." style="min-height:120px;width:100%;padding:var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.875rem;resize:vertical;" maxlength="2000"></textarea>
       </div>
 
+      <!-- D-150: Bid validity notice + auto-renew default -->
+      <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:var(--radius-md);padding:var(--sp-4) var(--sp-5);margin-bottom:var(--sp-6);">
+        <div style="font-size:0.78rem;font-weight:700;color:#15803D;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--sp-2);">Bid Validity — 14 Days</div>
+        <p style="font-size:0.875rem;color:#065F46;margin:0 0 var(--sp-3);line-height:1.5;">Your bid will be visible to the homeowner for 14 days. Auto-renew keeps you in the running without manual effort.</p>
+        <label style="display:flex;align-items:center;gap:var(--sp-3);cursor:pointer;user-select:none;">
+          <input type="checkbox" id="autoRenewToggle" checked style="width:18px;height:18px;accent-color:#15803D;cursor:pointer;">
+          <span style="font-size:0.9rem;font-weight:600;color:#065F46;">Auto-renew my bid for up to 3 additional 14-day windows</span>
+        </label>
+        <p style="font-size:0.78rem;color:#15803D;margin:var(--sp-2) 0 0;line-height:1.5;">Max 3 auto-renewals (42 days total). You can turn this off in Settings at any time.</p>
+      </div>
+
       <div class="wizard-nav" style="border-top:none;padding-top:0;">
         <button type="button" class="btn-wizard btn-wizard-back" id="wizardStep3Back" onclick="wizardBack()">← Back</button>
       </div>
@@ -2107,6 +2129,7 @@
     let currentClaim = null;
     let currentContractor = null;
     let changeBidMode = false;
+    let renewMode = false; // true when ?renew=true is in the URL (expired bid renewal — D-150)
     let existingQuote = null;
     let claimRcv = null; // RCV from parsed line items or rcv_amount column
 
@@ -3095,6 +3118,9 @@
                 if (existingQuoteData) {
                   existingQuote = existingQuoteData;
                   changeBidMode = true;
+                  // D-150: detect renewal mode (?renew=true in URL)
+                  const urlParams = new URLSearchParams(window.location.search);
+                  renewMode = urlParams.get('renew') === 'true' && existingQuoteData.bid_status === 'expired';
                   activateChangeBidMode(existingQuoteData);
                 }
               } catch (err) {
@@ -3111,13 +3137,28 @@
     // ── Change Bid Mode ──
     function activateChangeBidMode(quote) {
       const heading = document.getElementById('pageHeading');
-      if (heading) heading.textContent = 'Change Your Bid';
-      document.title = 'Change Your Bid | Otter Quotes Contractor Portal';
       const submitBtnEl = document.getElementById('submitBtn');
-      if (submitBtnEl) submitBtnEl.textContent = 'Update Bid';
 
-      const banner = document.getElementById('changeBidBanner');
-      if (banner) banner.style.display = 'block';
+      if (renewMode) {
+        // D-150: Renewal mode — expired bid
+        if (heading) heading.textContent = 'Renew Your Bid';
+        document.title = 'Renew Your Bid | Otter Quotes Contractor Portal';
+        if (submitBtnEl) submitBtnEl.textContent = 'Renew Bid';
+        const renewBanner = document.getElementById('renewBidBanner');
+        if (renewBanner) renewBanner.style.display = 'block';
+        // Pre-check auto-renew toggle for renewals
+        const arToggle = document.getElementById('autoRenewToggle');
+        if (arToggle) arToggle.checked = true;
+      } else {
+        if (heading) heading.textContent = 'Change Your Bid';
+        document.title = 'Change Your Bid | Otter Quotes Contractor Portal';
+        if (submitBtnEl) submitBtnEl.textContent = 'Update Bid';
+        const banner = document.getElementById('changeBidBanner');
+        if (banner) banner.style.display = 'block';
+        // D-150: restore auto_renew toggle from existing quote (35b parity)
+        const arToggleChange = document.getElementById('autoRenewToggle');
+        if (arToggleChange) arToggleChange.checked = quote.auto_renew ?? true;
+      }
 
       const scope = (() => {
         try { return JSON.parse(quote.scope_summary || '{}'); } catch(e) { return {}; }
@@ -4225,6 +4266,7 @@
             // Per-trade price breakdown for wizard (multi-trade) bids
             per_trade_breakdown: (wizardMode && Object.keys(wizardTradePrices).length > 0) ? wizardTradePrices : null,
             is_auto_bid: false,
+            auto_renew: document.getElementById('autoRenewToggle')?.checked ?? true, // D-150
           };
 
           if (changeBidMode && existingQuote) {
@@ -4242,6 +4284,14 @@
                 trade_type: quoteData.trade_type,
                 value_adds: quoteData.value_adds,
                 per_trade_breakdown: quoteData.per_trade_breakdown,
+                auto_renew: quoteData.auto_renew,
+                // D-150: renewal — reset bid window
+                ...(renewMode ? {
+                  bid_status: 'submitted',
+                  expired_at: null,
+                  expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+                  renewals_count: (existingQuote.renewals_count || 0) + 1,
+                } : {}),
                 updated_at: new Date().toISOString(),
               })
               .eq('id', existingQuote.id);
@@ -4279,16 +4329,17 @@
             });
 
             // Send bid update confirmation email to contractor (non-fatal)
+            // D-150: for renewal mode send bid_renewal_requested; otherwise bid_update_confirmed
             try {
               await sb.functions.invoke('notify-contractors', {
                 body: {
-                  event_type: 'bid_update_confirmed',
+                  event_type: renewMode ? 'bid_renewal_requested' : 'bid_update_confirmed',
                   claim_id: currentClaim.id,
                   contractor_id: currentContractor.id,
                 },
               });
             } catch (notifErr) {
-              console.warn('Bid update confirmation email failed (non-fatal):', notifErr);
+              console.warn('Bid update/renewal confirmation email failed (non-fatal):', notifErr);
             }
 
           } else {
@@ -4317,7 +4368,12 @@
         const changeBidBanner = document.getElementById('changeBidBanner');
         if (changeBidBanner) changeBidBanner.style.display = 'none';
         if (changeBidMode) {
-          successState.innerHTML = `
+          successState.innerHTML = renewMode ? `
+            <div class="success-icon">✓</div>
+            <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: var(--sp-3);">Bid renewed! 🔄</div>
+            <div>Your bid is active again for a fresh 14-day window. We'll send you a confirmation email shortly.</div>
+            <div style="margin-top: 1rem;"><a href="contractor-dashboard.html" style="color: var(--amber); font-weight: 600; text-decoration: none;">← Back to Dashboard</a></div>
+          ` : `
             <div class="success-icon">✓</div>
             <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: var(--sp-3);">Bid updated!</div>
             <div>Your updated bid has been saved. The homeowner has been notified and will see your revised figures.</div>
@@ -4339,7 +4395,7 @@
         console.error('Error submitting bid:', err);
         alert('Error submitting bid: ' + (err.message || 'Unknown error'));
         submitBtn.disabled = false;
-        submitBtn.textContent = changeBidMode ? 'Update Bid' : 'Submit Bid';
+        submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
       }
     });
 
@@ -4546,69 +4602,4 @@
         window._contractorEnvelopeId = result.envelope_id;
 
         // Load signing URL in iframe
-        loadingEl.style.display = 'none';
-        containerEl.style.display = 'block';
-        skipEl.style.display = 'block';
-        document.getElementById('contractorDocusignFrame').src = result.signing_url;
-
-        gtag('event', 'contractor_docusign_envelope_created', {
-          claim_id: currentClaim.id,
-          contractor_id: currentContractor.id,
-          envelope_id: result.envelope_id,
-        });
-
-      } catch (err) {
-        console.error('Contractor signing initialization error:', err);
-        loadingEl.style.display = 'none';
-        errorEl.style.display = 'block';
-        skipEl.style.display = 'block';
-        document.getElementById('contractorDocusignErrorDetail').textContent = err.message;
-      }
-    }
-
-    // Listen for DocuSign iframe postMessage (signing complete)
-    window.addEventListener('message', function(event) {
-      if (event.data && typeof event.data === 'string') {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'session_end' || data.event === 'signing_complete') {
-            onContractorSigningComplete();
-          }
-        } catch (e) {
-          if (event.data.includes('signed=contractor') || event.data.includes('signing_complete')) {
-            onContractorSigningComplete();
-          }
-        }
-      }
-    });
-
-    // Check if returning from DocuSign redirect (iframe return URL)
-    (function() {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('signed') === 'contractor') {
-        // We're inside the DocuSign iframe — notify parent
-        if (window.self !== window.top) {
-          window.parent.postMessage(JSON.stringify({ type: 'session_end', event: 'signing_complete' }), '*');
-          document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#16a34a;font-size:1.2rem;">Contract signed! Returning...</div>';
-        }
-      }
-    })();
-
-    async function onContractorSigningComplete() {
-      const loadingEl = document.getElementById('contractorDocusignLoading');
-      const containerEl = document.getElementById('contractorDocusignContainer');
-      const errorEl = document.getElementById('contractorDocusignError');
-      const signedEl = document.getElementById('contractorDocusignSigned');
-      const skipEl = document.getElementById('contractorSignSkip');
-
-      if (loadingEl) loadingEl.style.display = 'none';
-      if (containerEl) containerEl.style.display = 'none';
-      if (errorEl) errorEl.style.display = 'none';
-      if (signedEl) signedEl.style.display = 'block';
-      if (skipEl) skipEl.style.display = 'none';
-
-      // Update the quote with contractor_signed_at
-      if (window._newQuoteId || (currentClaim && currentContractor)) {
-        try {
-          const updateFilter = window._newQuoteId
-            ? sb.from('quotes').update({ contractor_signed_at: new Date().toISOString() }).e
+        loadingEl.style.d
