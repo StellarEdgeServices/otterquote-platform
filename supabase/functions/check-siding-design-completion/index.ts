@@ -262,6 +262,7 @@ async function evaluateClaim(
 
   // ── Fetch material list from Hover ───────────────────────────
   let allSidingItems: any[] = [];
+  let rawMaterialList: any[] = [];   // full list (all trades) — persisted to DB at gate release
 
   try {
     const mlRes = await fetch(
@@ -274,6 +275,8 @@ async function evaluateClaim(
       const listItems: any[] =
         mlData?.list_items ?? mlData?.listItems ?? mlData?.data ??
         (Array.isArray(mlData) ? mlData : []);
+
+      rawMaterialList = listItems;   // capture full list before trade filter
 
       allSidingItems = listItems.filter((item: any) => {
         const tt = (item.tradeType || item.trade_type || "").toUpperCase();
@@ -311,6 +314,22 @@ async function evaluateClaim(
   }
 
   console.log(`[D-164] ✅ Siding bids RELEASED for claim ${claimId}`);
+
+  // ── Persist material_list to hover_orders (D-164 decision, Apr 22 2026) ─
+  // Saves the full Hover material list so SOW generation never needs a
+  // second API call. Non-fatal: a failed write doesn't block the release.
+  if (rawMaterialList.length > 0) {
+    const { error: mlSaveErr } = await supabase
+      .from("hover_orders")
+      .update({ material_list: rawMaterialList })
+      .eq("claim_id", claimId)
+      .eq("status", "complete");
+    if (mlSaveErr) {
+      console.warn(`[D-164] material_list save failed for claim ${claimId} (non-fatal):`, mlSaveErr.message);
+    } else {
+      console.log(`[D-164] material_list persisted for claim ${claimId} (${rawMaterialList.length} items)`);
+    }
+  }
 
   // ── Notify contractors (siding trade only) ───────────────────
   try {

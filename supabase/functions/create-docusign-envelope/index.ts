@@ -2817,4 +2817,19 @@ serve(async (req) => {
         throw new Error(`Unhandled document type: ${document_type}`);
     }
 
-  } catch
+  } catch (error) {
+    console.error("create-docusign-envelope error:", error);
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "An unexpected error occurred";
+
+    return new Response(
+      JSON.stringify({
+        error: message,
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
