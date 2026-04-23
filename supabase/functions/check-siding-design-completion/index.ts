@@ -451,37 +451,4 @@ async function getValidAccessToken(supabase: any): Promise<string | null> {
   }
 
   const clientId     = Deno.env.get("HOVER_CLIENT_ID")!;
-  const clientSecret = Deno.env.get("HOVER_CLIENT_SECRET")!;
-
-  const refreshRes = await fetch(`${HOVER_API_BASE}/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type:    "refresh_token",
-      client_id:     clientId,
-      client_secret: clientSecret,
-      refresh_token: token.refresh_token,
-    }),
-  });
-
-  if (!refreshRes.ok) {
-    console.error("[D-164] Hover token refresh failed:", refreshRes.status);
-    return null;
-  }
-
-  const newTokenData = await refreshRes.json();
-  const newExpiresAt = new Date(
-    Date.now() + (newTokenData.expires_in || 7200) * 1000
-  ).toISOString();
-
-  await supabase
-    .from("hover_tokens")
-    .update({
-      access_token:  newTokenData.access_token,
-      refresh_token: newTokenData.refresh_token || token.refresh_token,
-      expires_at:    newExpiresAt,
-    })
-    .eq("id", token.id);
-
-  return newTokenData.access_token;
-}
+  const clientSecret = Deno.env.get("HOVER_CLIENT_SECRET"
