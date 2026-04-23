@@ -81,23 +81,54 @@ function base64urlDecode(str: string): Uint8Array {
   return new Uint8Array(binary.split("").map((c) => c.charCodeAt(0)));
 }
 
+// ASN.1 DER helper for PKCS#1 -> PKCS#8 wrapping
+function encodeAsn1TLV(tag: number, content: Uint8Array): Uint8Array {
+  const len = content.length;
+  let header: Uint8Array;
+  if (len < 128) {
+    header = new Uint8Array([tag, len]);
+  } else if (len < 256) {
+    header = new Uint8Array([tag, 0x81, len]);
+  } else {
+    header = new Uint8Array([tag, 0x82, (len >> 8) & 0xff, len & 0xff]);
+  }
+  const out = new Uint8Array(header.length + len);
+  out.set(header, 0);
+  out.set(content, header.length);
+  return out;
+}
+
+function wrapPkcs1InPkcs8(pkcs1Der: Uint8Array): Uint8Array {
+  // AlgorithmIdentifier SEQUENCE { OID rsaEncryption, NULL }
+  const algId = new Uint8Array([
+    0x30, 0x0d,
+    0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+    0x05, 0x00,
+  ]);
+  const version = new Uint8Array([0x02, 0x01, 0x00]);
+  const octetString = encodeAsn1TLV(0x04, pkcs1Der);
+  const inner = new Uint8Array(version.length + algId.length + octetString.length);
+  inner.set(version, 0);
+  inner.set(algId, version.length);
+  inner.set(octetString, version.length + algId.length);
+  return encodeAsn1TLV(0x30, inner);
+}
+
 async function importRsaPrivateKey(pemBase64: string): Promise<CryptoKey> {
-  // Handle both PEM format (-----BEGIN/END headers) and raw base64-encoded DER.
   // Strip PEM headers/footers if present, then strip all whitespace before atob().
   // Deno's atob() is strict — any non-base64 char (including PEM dashes) throws.
   const b64 = pemBase64
     .replace(/-----BEGIN[^-]*-----/g, "")
     .replace(/-----END[^-]*-----/g, "")
     .replace(/\s+/g, "");
-  const pemBinary = atob(b64);
-  const pemBytes = new Uint8Array(pemBinary.split("").map((c) => c.charCodeAt(0)));
-  return await crypto.subtle.importKey(
-    "pkcs8",
-    pemBytes,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
+  const der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const algo = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
+  // Try PKCS#8 first; fall back to wrapping PKCS#1 in PKCS#8 envelope
+  try {
+    return await crypto.subtle.importKey("pkcs8", der, algo, false, ["sign"]);
+  } catch {
+    return await crypto.subtle.importKey("pkcs8", wrapPkcs1InPkcs8(der), algo, false, ["sign"]);
+  }
 }
 
 async function createJwtAssertion(
@@ -759,7 +790,7 @@ async function fetchHoverMeasurements(supabase: any, claimId: string): Promise<{
   try {
     const { data: order } = await supabase
       .from("hover_orders")
-      .select("hover_job_id, measurements_json")
+      .select("hover_job_id, measurements_json, material_list")
       .eq("claim_id", claimId)
       .eq("status", "complete")
       .order("created_at", { ascending: false })
@@ -803,15 +834,23 @@ async function fetchHoverMeasurements(supabase: any, claimId: string): Promise<{
 
     if (!roofSqFtRaw && !wallSqFtRaw && !perimeterFtRaw) return null;
 
-    // ── Siding design attributes from cached material_list ─────────
-    // Populated when get-hover-siding-data fallback writes material_list into
-    // hover_orders.measurements_json. Gracefully null for jobs without the cache.
+    // ── Siding design attributes from material_list ───────────────
+    // Primary source: hover_orders.material_list (JSONB column written by
+    // check-siding-design-completion at D-164 gate release — v55, Apr 2026).
+    // Fallback: measurements_json.material_list (legacy records pre-v55).
+    // Gracefully null for jobs without any cached material data.
     let sidingDesign: { manufacturer: string | null; profile: string | null; color: string | null; trim: string | null } | null = null;
-    if (Array.isArray((mj as any)?.material_list) && (mj as any).material_list.length > 0) {
+    const persistedList: any[] | null =
+      Array.isArray(order.material_list) && order.material_list.length > 0
+        ? order.material_list
+        : Array.isArray((mj as any)?.material_list) && (mj as any).material_list.length > 0
+          ? (mj as any).material_list
+          : null;
+    if (persistedList) {
       const SIDING_MFRS   = ["james hardie", "lp smartside", "lp smart side", "certainteed", "alside", "gentek", "mastic", "royal", "kaycan", "ply gem", "mitten"];
       const SIDING_PROFS  = ["lap siding", "plank", "shake", "shingle", "panel", "board & batten", "board and batten", "dutch lap"];
       const TRIM_INDS     = ["trim", "fascia", "corner", "j-trim", "j trim", "frieze", "soffit", "rake", "starter strip", "window trim", "door trim"];
-      const rawList: any[] = (mj as any).material_list;
+      const rawList: any[] = persistedList;
       const sidingItems = rawList.filter((item: any) => {
         const tt = (item.tradeType || item.trade_type || "").toUpperCase();
         return tt.includes("SIDING") || tt.includes("WALL") ||
@@ -2778,19 +2817,4 @@ serve(async (req) => {
         throw new Error(`Unhandled document type: ${document_type}`);
     }
 
-  } catch (error) {
-    console.error("create-docusign-envelope error:", error);
-
-    const message =
-      error instanceof Error
-        ? error.message
-        : "An unexpected error occurred";
-
-    return new Response(
-      JSON.stringify({
-        error: message,
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-});
+  } catch
