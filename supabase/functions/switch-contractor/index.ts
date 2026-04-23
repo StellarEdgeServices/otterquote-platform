@@ -200,7 +200,13 @@ serve(async (req) => {
   const sb = createClient(supabaseUrl, serviceKey);
 
   try {
-    const { claim_id, reason } = await req.json();
+    const body = await req.json();
+    const { claim_id, reason } = body;
+    // D-171: survey payload (optional — backwards compatible)
+    const surveyReasons: string[] = Array.isArray(body.survey_reasons) ? body.survey_reasons : [];
+    const surveyNotes: string = typeof body.survey_notes === "string"
+      ? body.survey_notes.trim().slice(0, 1000)
+      : "";
 
     if (!claim_id) {
       return jsonResponse({ error: "claim_id is required" }, 400);
@@ -286,6 +292,24 @@ serve(async (req) => {
       return jsonResponse({ error: "Failed to reset claim status. Please try again." }, 500);
     }
 
+    // ── 7b. Persist D-171 survey payload ─────────────────────────────────
+    if (surveyReasons.length > 0 || surveyNotes) {
+      const surveyPayload = {
+        reasons: surveyReasons,
+        notes: surveyNotes,
+        submitted_at: new Date().toISOString(),
+      };
+      const { error: surveyError } = await sb
+        .from("claims")
+        .update({ switch_reason_survey: surveyPayload })
+        .eq("id", claim_id);
+      if (surveyError) {
+        console.warn("[switch-contractor] Survey persist failed (non-critical):", surveyError);
+      } else {
+        console.log("[switch-contractor] Survey saved:", JSON.stringify(surveyPayload));
+      }
+    }
+
     // ── 8. Stripe refund ──────────────────────────────────────────────────
     let refundResult = { success: false, refundId: undefined as string | undefined, error: "No payment found" };
 
@@ -340,6 +364,44 @@ support@otterquote.com | (844) 875-3412`;
       console.log("[switch-contractor] Contractor notification email sent:", emailSent);
     }
 
+    // ── 9b. Support notification — D-171 survey payload ──────────────────
+    // Email Dustin with the homeowner's switch reason so support can
+    // personally confirm next-contractor placement (D-171 spec requirement).
+    if (mailgunKey && mailgunDomain) {
+      const reasonsLine = surveyReasons.length > 0
+        ? surveyReasons.join(", ")
+        : "(none selected)";
+      const notesLine = surveyNotes || "(none provided)";
+      const propertyAddress = claim.property_address || "Unknown address";
+      const supportEmailText = `[Action Required] Homeowner contractor switch — ${propertyAddress}
+
+A homeowner has submitted a contractor switch request. Per D-171, please contact them directly to confirm their next contractor placement.
+
+Claim ID:        ${claim_id}
+Property:        ${propertyAddress}
+Original contractor: ${contractorName}
+Refund issued:   ${refundResult.success ? "Yes" : "Pending"}
+
+--- Homeowner Switch Survey ---
+Reasons selected: ${reasonsLine}
+Additional notes: ${notesLine}
+
+Please reach out to the homeowner to confirm their new contractor placement.
+Admin: https://otterquote.com/admin-contractors.html
+
+— OtterQuote automated alert`;
+
+      await sendEmail(
+        mailgunKey,
+        mailgunDomain,
+        "dustinstohler1@gmail.com",
+        `OtterQuote <notifications@${mailgunDomain}>`,
+        `[Action Required] Homeowner switch request — ${propertyAddress}`,
+        supportEmailText
+      );
+      console.log("[switch-contractor] Support notification sent to Dustin.");
+    }
+
     // ── 10. Re-notify contractor network (D-165: per-trade, release-aware) ──
     // Fire one notify-contractors call per released trade. A trade is "released"
     // if its *_bid_released_at timestamp is non-null on the claim record (which
@@ -359,52 +421,4 @@ support@otterquote.com | (844) 875-3412`;
       };
 
       const allTrades: string[] = claim.selected_trades || claim.trades || ["roofing"];
-      const KNOWN_TRADES = ["roofing", "gutters", "siding", "windows"];
-      const releasedTrades = allTrades.filter((t: string) => {
-        const tl = t.toLowerCase();
-        if (!KNOWN_TRADES.includes(tl)) return true; // unknown = conservative include
-        const col = `${tl}_bid_released_at` as keyof typeof claim;
-        return !!(claim as any)[col];
-      });
-
-      if (releasedTrades.length === 0) {
-        console.log("[switch-contractor] No released trades — skipping re-notification (all held by gates)");
-      } else {
-        for (const trade of releasedTrades) {
-          const notifyPayload = { ...notifyBase, trade_types: [trade] };
-          fetch(`${supabaseUrl}/functions/v1/notify-contractors`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
-            body: JSON.stringify(notifyPayload),
-          }).then(r => r.json())
-            .then(result => console.log(`[switch-contractor] notify-contractors [${trade}] result:`, result))
-            .catch(err => console.error(`[switch-contractor] notify-contractors [${trade}] error (non-blocking):`, err));
-        }
-        console.log(`[switch-contractor] Re-notification fired for trades: [${releasedTrades.join(", ")}]`);
-      }
-    } catch (notifyErr) {
-      console.error("[switch-contractor] Error firing notify-contractors:", notifyErr);
-    }
-
-    // ── 11. Activity log ──────────────────────────────────────────────────
-    await sb.from("activity_log").insert({
-      claim_id:    claim_id,
-      event_type:  "contractor_switched",
-      description: `Homeowner switched contractors. Original contractor: ${contractorName}. Refund: ${refundResult.success ? "issued" : "pending"}.`,
-      created_at:  new Date().toISOString(),
-    }).catch(err => console.warn("[switch-contractor] Activity log insert failed (non-critical):", err));
-
-    // ── Done ──────────────────────────────────────────────────────────────
-    return jsonResponse({
-      success: true,
-      message: "Contractor switch initiated. Your project is back in open bidding.",
-      refund_issued: refundResult.success,
-      refund_id: refundResult.refundId || null,
-      contractor_notified: emailSent,
-    });
-
-  } catch (err) {
-    console.error("[switch-contractor] Unhandled error:", err);
-    return jsonResponse({ error: "An unexpected error occurred. Please try again." }, 500);
-  }
-});
+      const KNOWN_TRADES = ["roofing", "g

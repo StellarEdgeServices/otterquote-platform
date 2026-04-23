@@ -612,6 +612,80 @@
     .switch-btn-wrapper:hover .switch-tooltip {
       display: block;
     }
+    /* D-171 survey step */
+    .switch-survey-step { display: block; }
+    .switch-success-step { display: none; }
+    .switch-survey-step.hidden { display: none; }
+    .switch-success-step.visible { display: block; }
+    .switch-reason-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--sp-2);
+      margin: var(--sp-3) 0 var(--sp-4);
+    }
+    .switch-reason-label {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-md);
+      padding: var(--sp-2) var(--sp-3);
+      cursor: pointer;
+      font-size: 0.88rem;
+      color: var(--slate);
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      user-select: none;
+    }
+    .switch-reason-label:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.18);
+      color: var(--white);
+    }
+    .switch-reason-label input[type="checkbox"] {
+      accent-color: var(--teal);
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+    }
+    .switch-reason-label.checked {
+      background: rgba(20, 184, 166, 0.1);
+      border-color: rgba(20, 184, 166, 0.4);
+      color: var(--white);
+    }
+    .switch-notes-field {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-md);
+      color: var(--white);
+      font-size: 0.9rem;
+      padding: var(--sp-3);
+      resize: vertical;
+      min-height: 72px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .switch-notes-field::placeholder { color: var(--slate); opacity: 0.7; }
+    .switch-notes-field:focus { outline: none; border-color: var(--teal); }
+    .switch-success-panel {
+      text-align: center;
+      padding: var(--sp-5) var(--sp-4);
+    }
+    .switch-success-icon { font-size: 2.5rem; margin-bottom: var(--sp-3); }
+    .switch-success-panel h3 { color: var(--white); margin: 0 0 var(--sp-3); font-size: 1.1rem; }
+    .switch-success-panel p { color: var(--slate); font-size: 0.92rem; line-height: 1.7; margin: 0 0 var(--sp-3); }
+    .switch-consequence-note {
+      background: rgba(239, 68, 68, 0.07);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: var(--radius-md);
+      padding: var(--sp-3) var(--sp-4);
+      margin-bottom: var(--sp-4);
+      font-size: 0.85rem;
+      color: var(--slate);
+      line-height: 1.6;
+    }
+    .switch-consequence-note strong { color: rgba(255,255,255,0.8); }
 
     /* Responsive */
     @media (max-width: 768px) {
@@ -666,6 +740,13 @@
 
       .switch-modal-actions {
         flex-direction: column-reverse;
+      }
+
+      .switch-reason-grid {
+        grid-template-columns: 1fr;
+      }
+      .switch-reason-label[id="reason-label-other"] {
+        grid-column: span 1;
       }
 
       .submit-section {
@@ -1054,33 +1135,65 @@
     </div>
   </div>
 
-  <!-- Switch Contractor Confirmation Modal -->
+  <!-- Switch Contractor Modal (D-171: survey + success steps) -->
   <div id="switch-contractor-modal" class="switch-modal-overlay">
     <div class="switch-modal">
       <div class="switch-modal-header">
-        <h2>🔄 Switch Contractors?</h2>
+        <h2>🔄 What happened? Can we fix it?</h2>
         <button class="modal-close" onclick="closeSwitchModal()" aria-label="Close">✕</button>
       </div>
-      <div class="switch-modal-body">
-        <p>You are choosing to switch to a different Otter Quotes contractor. Here is exactly what happens:</p>
-        <div class="switch-modal-warning">
-          <strong>What changes immediately:</strong>
-          <ul style="margin: var(--sp-2) 0 0 var(--sp-5); line-height: 1.8;">
-            <li>Your current contract is voided</li>
-            <li>Your project returns to open bidding for the entire contractor network</li>
-            <li>Your original contractor is notified and released from the project</li>
-            <li>Their platform fee is refunded in full — you are not charged</li>
-          </ul>
+
+      <!-- Step 1: Survey -->
+      <div id="switch-survey-step" class="switch-survey-step">
+        <div class="switch-modal-body">
+          <p style="margin-bottom: var(--sp-2);">Select all that apply:</p>
+          <div class="switch-reason-grid">
+            <label class="switch-reason-label" id="reason-label-unresponsive">
+              <input type="checkbox" name="switch_reason" value="unresponsive" onchange="toggleReasonLabel(this)">
+              Unresponsive
+            </label>
+            <label class="switch-reason-label" id="reason-label-scope">
+              <input type="checkbox" name="switch_reason" value="changed_scope" onchange="toggleReasonLabel(this)">
+              Changed scope
+            </label>
+            <label class="switch-reason-label" id="reason-label-pricing">
+              <input type="checkbox" name="switch_reason" value="pricing_disagreement" onchange="toggleReasonLabel(this)">
+              Pricing disagreement
+            </label>
+            <label class="switch-reason-label" id="reason-label-personality">
+              <input type="checkbox" name="switch_reason" value="personality_fit" onchange="toggleReasonLabel(this)">
+              Personality fit
+            </label>
+            <label class="switch-reason-label" id="reason-label-other" style="grid-column: span 2;">
+              <input type="checkbox" name="switch_reason" value="other" onchange="toggleReasonLabel(this)">
+              Other
+            </label>
+          </div>
+          <p style="margin-bottom: var(--sp-2); font-size: 0.88rem;">Tell us more (optional):</p>
+          <textarea id="switch-notes" class="switch-notes-field" placeholder="Any additional context helps us find you a better match…" maxlength="1000"></textarea>
+          <div class="switch-consequence-note" style="margin-top: var(--sp-4);">
+            <strong>What happens when you submit:</strong> Your current contract is voided, your project returns to open bidding, and your contractor's platform fee is refunded. An Otter Quotes team member will contact you directly to confirm your next contractor placement.
+          </div>
         </div>
-        <p>You will receive bids from other qualified contractors in your area. Once you select a new contractor, a new contract will be sent for signing.</p>
-        <p style="color: var(--amber); font-size: 0.88rem;">⏱ This option is available up to <strong>3 days before your scheduled installation date</strong>. After that cutoff, switching is no longer available.</p>
-        <p>You do <strong>not</strong> need to contact your current contractor directly — Otter Quotes handles the entire transition.</p>
+        <div class="switch-modal-actions">
+          <button class="btn btn-ghost" onclick="closeSwitchModal()">Cancel — Keep My Contractor</button>
+          <button class="btn btn-danger" id="submit-switch-btn" onclick="submitSwitchSurvey()">
+            Submit Switch Request
+          </button>
+        </div>
       </div>
-      <div class="switch-modal-actions">
-        <button class="btn btn-ghost" onclick="closeSwitchModal()">Cancel — Keep My Contractor</button>
-        <button class="btn btn-danger" id="confirm-switch-btn" onclick="confirmSwitchContractor()">
-          Yes, Switch Contractors
-        </button>
+
+      <!-- Step 2: Success -->
+      <div id="switch-success-step" class="switch-success-step">
+        <div class="switch-success-panel">
+          <div class="switch-success-icon">✅</div>
+          <h3>We've got you.</h3>
+          <p>An Otter Quotes team member will reach out shortly to get you matched with a new contractor from our network.</p>
+          <p style="font-size: 0.85rem; color: var(--slate); opacity: 0.8;">Your current contractor has been notified and their platform fee has been refunded. You do not need to contact them directly.</p>
+        </div>
+        <div class="switch-modal-actions" style="justify-content: center;">
+          <button class="btn btn-secondary" onclick="closeSwitchModal()">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2508,90 +2621,4 @@
         const info = helpContent[type];
         if (info) {
           title.textContent = info.title;
-          content.innerHTML = info.html;
-          modal.classList.add('active');
-        }
-      };
-
-      // ── Job Type Selection ──
-      window.selectJobType = function(type) {
-        document.querySelectorAll('.job-type-btn').forEach(b => b.classList.remove('selected'));
-        document.querySelector(`[data-type="${type}"]`).classList.add('selected');
-
-        // Hide all conditional sections
-        document.getElementById('repairFields').style.display = 'none';
-        document.getElementById('acvFields').style.display = 'none';
-        document.getElementById('retailFields').style.display = 'none';
-
-        // Show relevant section
-        if (type === 'repair') document.getElementById('repairFields').style.display = 'block';
-        if (type === 'insurance_acv') document.getElementById('acvFields').style.display = 'block';
-        if (type === 'retail') document.getElementById('retailFields').style.display = 'block';
-
-        // Store selection
-        window.selectedJobType = type;
-      };
-
-      window.showJobTypeHelp = function() {
-        const modal = document.getElementById('help-modal');
-        const title = document.getElementById('help-modal-title');
-        const content = document.getElementById('help-modal-content');
-
-        title.textContent = 'Job Type Help';
-        content.innerHTML = `
-          <div class="help-text">
-            <p><strong>How do I know which option to choose?</strong></p>
-            <ul style="margin-left: var(--sp-6); color: var(--slate); line-height: 1.8;">
-              <li><strong>Insurance (RCV)</strong> — Your policy covers the full replacement cost. The insurance company will pay the contractor directly or reimburse you for the full amount.</li>
-              <li><strong>Insurance (ACV)</strong> — Your policy pays actual cash value, which accounts for depreciation. You may have a difference between what insurance pays and the full replacement cost.</li>
-              <li><strong>Retail / Cash</strong> — You're paying out-of-pocket with no insurance involvement. This might be for aesthetic improvements or damage not covered by insurance.</li>
-              <li><strong>Repair Only</strong> — You're having a partial roof repair, not a full replacement. This is more complex because we need to match your existing shingles.</li>
-            </ul>
-            <p style="margin-top: var(--sp-6);">If you're unsure, check your insurance policy documents or contact your insurance agent.</p>
-          </div>
-        `;
-        modal.classList.add('active');
-      };
-
-      // ── Submit for Bids ──
-      async function submitForBids() {
-        if (!currentClaim) return;
-
-        // ── Claim progression gate (defensive double-check) ──
-        const isInsurance = currentClaim.funding_type === 'insurance';
-        if (!isInsurance && !currentClaim.has_measurements) {
-          showError('Retail projects require property measurements before bidding. Please upload measurements or use your Hover link.');
-          return;
-        }
-
-        const btn = document.getElementById('submit-btn');
-        btn.disabled = true;
-        btn.classList.add('btn-loading');
-
-        try {
-          const now = new Date().toISOString();
-          const isRetail = currentClaim.funding_type === 'cash';
-          const allTrades = currentClaim.selected_trades || currentClaim.trades || ['roofing'];
-
-          if (CONFIG.DEMO_MODE) {
-            // Demo mode: update local object only
-            currentClaim.ready_for_bids = true;
-            currentClaim.bids_submitted_at = now;
-            currentClaim.status = 'active';
-          } else if (sb) {
-            // ── D-165: Build per-trade release timestamp update ──────────────
-            // For each trade: if retail AND trade is siding, leave null (D-164
-            // Hover-design gate controls siding release for retail claims).
-            // For all other trades, set {trade}_bid_released_at = NOW().
-            const dbUpdate = {
-              ready_for_bids: true,
-              bids_submitted_at: now,
-              status: 'active',
-            };
-            const tradesToRelease = [];
-            for (const trade of allTrades) {
-              const t = (trade || '').toLowerCase();
-              if (isRetail && t === 'siding') {
-                // Held: D-164 gate — check-siding-design-completion sets this
-                console.log('submitForBids: siding held (retail — D-164 gate)');
-   
+          content.i
