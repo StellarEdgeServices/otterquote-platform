@@ -1360,15 +1360,4 @@
   copyBtn.addEventListener('click', () => {
     const link = referralCode.textContent;
     navigator.clipboard.writeText(link).then(() => {
-      const originalText = copyBtn.textContent;
-      copyBtn.textContent = 'Copied!';
-      setTimeout(() => {
-        copyBtn.textContent = originalText;
-      }, 2000);
-    }).catch(() => {
-      alert('Could not copy. Please try again.');
-    });
-  });
-
-  // Dashboard button
-  dashboardBtn.addEventListener('click', (
+      const originalText = copy

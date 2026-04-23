@@ -649,37 +649,4 @@
 
                 // GA4 conversion event — contractor funnel
                 gtag('event', 'contractor_signup', {
-                    trade_types: [],  // trade selection happens post-signup in profile setup
-                    source: new URLSearchParams(location.search).get('utm_source') || 'direct',
-                });
-
-            } catch (error) {
-                console.error('Error sending magic link:', error);
-                alert('An error occurred. Please try again: ' + (error.message || 'Unknown error'));
-            }
-        });
-
-        // GA4 funnel step — fire once when contractor first interacts with the signup form
-        (function() {
-            var formStartFired = false;
-            var contractorForm = document.getElementById('contractorForm');
-            if (contractorForm) {
-                contractorForm.addEventListener('focusin', function() {
-                    if (!formStartFired) {
-                        formStartFired = true;
-                        gtag('event', 'form_start', {
-                            form_name: 'contractor_signup',
-                            source_page: 'contractor-join',
-                        });
-                    }
-                });
-            }
-        })();
-
-        // Post-auth redirect listener
-        if (window.Auth && window.Auth.onAuthStateChangeListener) {
-            Auth.onAuthStateChangeListener();
-        }
-    </script>
-</body>
-</html>
+                    trade_types: [],  // t

@@ -107,3 +107,17 @@ $$;
 GRANT EXECUTE ON FUNCTION record_cpa_ip(uuid) TO authenticated;
 
 -- ── 4. Verification ─────────────────────────────────────────────────────────
+-- After applying, confirm columns exist and backfill ran:
+--
+--   SELECT id, cpa_version, cpa_accepted_at
+--   FROM contractors
+--   LIMIT 5;
+--
+-- Expected: all rows show cpa_version = 'v1-2026-04' and a non-null timestamp.
+--
+-- To test the re-acceptance modal, manually set one test contractor:
+--
+--   UPDATE contractors SET cpa_version = 'v0-test'
+--   WHERE id = '<test-contractor-id>';
+--
+-- Then load contractor-dashboard.html — the CPA re-acceptance modal should appear.

@@ -416,28 +416,4 @@
 <section class="cta-bottom">
   <div class="container">
     <h2>Still Have Questions?</h2>
-    <p>We're here to help. Get started and we'll walk you through everything.</p>
-    <a href="get-started.html" class="btn btn-primary btn-lg">Get Started Free</a>
-  </div>
-</section>
-
-<footer id="site-footer"></footer>
-
-<script src="js/config.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/nav.js"></script>
-<script>
-// FAQ accordion
-document.querySelectorAll('.faq-question').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const item = btn.closest('.faq-item');
-    const wasOpen = item.classList.contains('open');
-    // Close all
-    document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
-    // Toggle clicked
-    if (!wasOpen) item.classList.add('open');
-  });
-});
-</script>
-</body>
-</html>
+    <p>We're here to help. Get started and we'l

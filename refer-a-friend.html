@@ -1198,11 +1198,4 @@ Best regards`;
       }
     }
 
-    function populateReferralsTable(referrals) {
-      const tbody = document.getElementById('referrals-tbody');
-      tbody.innerHTML = referrals.map(ref => {
-        // Use actual per-row commission if present (reflects current $200
-        // structure per D-139). Fall back to $200 for older rows with no
-        // commission_amount persisted.
-        const amount = Number(ref.commission_amount) || 200;
-        const amo
+    function populateReferralsTable(

@@ -306,6 +306,22 @@
                 <button class="logout-btn" onclick="logout()">Log Out</button>
             </div>
 
+            <!-- Admin nav links (D-180) -->
+            <div style="display:flex;gap:0.75rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+                <a href="admin-contractors.html"
+                   style="color:#94A3B8;text-decoration:none;font-weight:500;font-size:0.875rem;padding:0.5rem 1rem;border-radius:0.5rem;">
+                    Contractors
+                </a>
+                <a href="admin-referrals.html"
+                   style="color:#fff;text-decoration:none;font-weight:600;font-size:0.875rem;padding:0.5rem 1rem;border-radius:0.5rem;background:rgba(255,255,255,0.12);">
+                    Referrals
+                </a>
+                <a href="admin-payouts.html"
+                   style="color:#94A3B8;text-decoration:none;font-weight:500;font-size:0.875rem;padding:0.5rem 1rem;border-radius:0.5rem;">
+                    Payouts
+                </a>
+            </div>
+
             <!-- Summary Cards -->
             <div class="summary-cards">
                 <div class="summary-card">
@@ -547,33 +563,4 @@
         async function manualUnblock(agentId) {
             if (!confirm('Manually unblock this partner without a W-9 on file? Only do this for grandfathered or exceptional cases.')) return;
 
-            const { error } = await sb
-                .from('referral_agents')
-                .update({ payments_blocked: false })
-                .eq('id', agentId);
-
-            if (error) {
-                showToast('Error unblocking partner: ' + error.message);
-                return;
-            }
-
-            showToast('Partner unblocked');
-            await loadPartners();
-        }
-
-        function showToast(msg) {
-            const el = document.getElementById('toast');
-            el.textContent = msg;
-            el.classList.add('show');
-            setTimeout(() => el.classList.remove('show'), 3500);
-        }
-
-        function escHtml(str) {
-            if (!str) return '';
-            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        }
-
-        window.addEventListener('DOMContentLoaded', init);
-    </script>
-</body>
-</html>
+            const { e
