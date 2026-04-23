@@ -1231,7 +1231,8 @@
         // ── Bid Expiration Guard (D-150) ──
         // If the selected bid is expired, show a clear error state instead of
         // the signing UI. The homeowner can request an updated bid from here.
-        if (state.bid?.bid_status === 'expired') {
+        // Checks both is_expired boolean and bid_status string for robustness.
+        if (state.bid?.is_expired || state.bid?.bid_status === 'expired') {
           document.getElementById('pageLoading').style.display = 'none';
           // Wire the renewal button to this specific bid
           const renewalBtn = document.getElementById('renewalBtnSigning');
