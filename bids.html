@@ -1590,4 +1590,471 @@
 
       // Certifications
       const certs = parseCerts(c.specialties);
-      document.getElementById('profileCerts').innerHTM
+      document.getElementById('profileCerts').innerHTML = `
+        <h3>Certifications</h3>
+        ${certs.length > 0 ? `
+          <div class="cert-list">
+            ${certs.map(cert => `
+              <div class="cert-item">
+                <div class="cert-badge">🏆</div>
+                <span class="cert-item-text">${esc(cert)}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<p style="color:var(--slate);">No certifications listed.</p>'}
+      `;
+
+      // License & Insurance
+      document.getElementById('profileLicense').innerHTML = `
+        <h3>License & Verification</h3>
+        <div style="display:flex;flex-direction:column;gap:var(--sp-3);">
+          <div class="team-item">
+            <span class="bid-badge ${c.verified ? 'verified' : 'warning'}">${c.verified ? '✓ Verified Contractor' : '⚠ Pending Verification'}</span>
+            ${c.license_number ? `<span style="color:var(--slate);font-size:0.85rem;margin-left:var(--sp-2);">#${esc(c.license_number)}</span>` : ''}
+          </div>
+        </div>
+      `;
+
+      // Select CTA — any contractor can be selected; signing happens after selection
+      document.getElementById('profileSelectCTA').innerHTML = `
+        <h3>Ready to Choose ${esc(c.company_name)}?</h3>
+        <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. The contract will be sent to both you and the contractor for signature. You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.</p>
+        <button class="btn btn-primary btn-lg" onclick="selectContractor('${bid.id}')">Select ${esc(c.company_name)}</button>
+      `;
+
+      gtag('event', 'view_contractor_profile', {
+        contractor_id: contractorId,
+        company_name: c.company_name,
+      });
+    };
+
+    window.closeProfile = function() {
+      document.getElementById('profileView').classList.remove('active');
+      document.getElementById('comparisonView').style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // ── Select Contractor ──
+    let pendingBidId = null;
+
+    window.selectContractor = function(bidId) {
+      const bid = bids.find(b => b.id === bidId);
+      if (!bid) return;
+
+      // Guard: already awarded or signed — should not reach here via button, but protect anyway
+      if (currentClaim && (currentClaim.status === 'awarded' || currentClaim.status === 'contract_signed')) {
+        document.getElementById('modalTitle').textContent = 'Project Already Awarded';
+        document.getElementById('modalBody').textContent = 'This project has already been awarded to a contractor.';
+        document.getElementById('modalActions').style.display = 'none';
+        document.getElementById('confirmModal').classList.add('active');
+        return;
+      }
+
+      const c = contractors[bid.contractor_id] || {};
+      pendingBidId = bidId;
+
+      document.getElementById('modalBody').innerHTML =
+        `You're selecting <span class="contractor-highlight">${esc(c.company_name || 'this contractor')}</span>. Once confirmed, the contract will be sent to both you and the contractor for signature. Continue?`;
+      document.getElementById('modalActions').style.display = 'flex';
+      document.getElementById('modalSpinner').style.display = 'none';
+      document.getElementById('modalConfirmBtn').disabled = false;
+      document.getElementById('confirmModal').classList.add('active');
+    };
+
+    window.closeModal = function() {
+      document.getElementById('confirmModal').classList.remove('active');
+      pendingBidId = null;
+    };
+
+    // ── Request Updated Bid (expired bids) ──
+    // Notifies the contractor via dashboard notification and sends admin a support email.
+    // Non-blocking: errors are caught and surfaced via button text only.
+    window.requestBidRenewal = async function(bidId) {
+      const bid = bids.find(b => b.id === bidId);
+      if (!bid) return;
+      const c = contractors[bid.contractor_id] || {};
+
+      const btn = document.getElementById('renewalBtn-' + bidId);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Sending request…';
+      }
+
+      let notifOk = false;
+      let emailOk = false;
+
+      try {
+        // 1. Insert dashboard notification for the contractor (they'll see it on next login)
+        if (c.user_id) {
+          const { error: notifErr } = await sb.from('notifications').insert({
+            user_id: c.user_id,
+            notification_type: 'bid_renewal_requested',
+            channel: 'dashboard',
+            title: 'Homeowner requesting updated bid',
+            message: `A homeowner is requesting an updated bid on ${currentClaim ? (currentClaim.property_address || 'their project') : 'their project'}.`,
+            message_preview: `A homeowner is requesting an updated bid on ${currentClaim ? (currentClaim.property_address || 'their project') : 'their project'}.`,
+            metadata: JSON.stringify({ quote_id: bidId, claim_id: currentClaim ? currentClaim.id : null }),
+          });
+          if (!notifErr) notifOk = true;
+          else console.warn('requestBidRenewal — notification insert error:', notifErr);
+        }
+      } catch (err) {
+        console.warn('requestBidRenewal — notification step error:', err);
+      }
+
+      try {
+        // 2. Send support email so admin has visibility and can follow up if contractor is unresponsive
+        const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': CONFIG.SUPABASE_ANON,
+          },
+          body: JSON.stringify({
+            subject: '[Bid Renewal Requested] ' + (c.company_name || 'Contractor') + ' — ' + (currentClaim ? (currentClaim.property_address || currentClaim.id) : 'Unknown Claim'),
+            message: [
+              'A homeowner has requested an updated bid from a contractor whose bid has expired.',
+              '',
+              'Contractor: ' + (c.company_name || 'Unknown'),
+              'Property: ' + (currentClaim ? (currentClaim.property_address || 'N/A') : 'N/A'),
+              'Claim ID: ' + (currentClaim ? currentClaim.id : 'N/A'),
+              'Quote ID: ' + bidId,
+              '',
+              'The contractor has been notified via their dashboard' + (notifOk ? '.' : ' (notification may have failed — check manually).'),
+            ].join('\n'),
+          }),
+        });
+        if (resp.ok) emailOk = true;
+      } catch (err) {
+        console.warn('requestBidRenewal — email step error:', err);
+      }
+
+      // Update button to reflect outcome
+      if (btn) {
+        if (notifOk || emailOk) {
+          btn.textContent = '✓ Request Sent';
+          btn.style.background = '#059669'; // green — success
+          btn.style.cursor = 'default';
+        } else {
+          // Both steps failed — let homeowner try again
+          btn.disabled = false;
+          btn.textContent = 'Request Updated Bid';
+          btn.style.background = '';
+          console.warn('requestBidRenewal — both notification and email failed for bid', bidId);
+        }
+      }
+
+      gtag('event', 'bid_renewal_requested', {
+        bid_id: bidId,
+        contractor_id: bid.contractor_id,
+        success: notifOk || emailOk,
+      });
+    };
+
+    // ── Toggle expiry tooltip (? button on expired bid notice) ──
+    window.toggleExpiryTooltip = function(event) {
+      event.stopPropagation();
+      const btn = event.currentTarget;
+      const tooltip = btn.nextElementSibling;
+      if (tooltip && tooltip.classList.contains('expiry-tooltip')) {
+        const isVisible = tooltip.style.display === 'block';
+        tooltip.style.display = isVisible ? 'none' : 'block';
+      }
+    };
+
+    // requestAgreement (D-134) — REMOVED: no longer needed. Signing happens after
+    // homeowner selection, not before. All contractors are selectable regardless of
+    // signing status.
+
+    window.confirmSelection = async function() {
+      if (!pendingBidId) return;
+      const bidId = pendingBidId;
+      const bid = bids.find(b => b.id === bidId);
+      if (!bid) return;
+
+      // Check if claim is already awarded or signed — show a specific message instead of a generic error
+      if (currentClaim && (currentClaim.status === 'awarded' || currentClaim.status === 'contract_signed')) {
+        document.getElementById('modalTitle').textContent = currentClaim.status === 'contract_signed' ? 'Contract Already Signed' : 'Project Already Awarded';
+        document.getElementById('modalBody').textContent = currentClaim.status === 'contract_signed'
+          ? 'This project has already been awarded and the contract has been signed.'
+          : 'This project has already been awarded to a contractor.';
+        document.getElementById('modalActions').style.display = 'none';
+        document.getElementById('modalSpinner').style.display = 'none';
+        return;
+      }
+
+      // Show loading state
+      document.getElementById('modalConfirmBtn').disabled = true;
+      document.getElementById('modalActions').style.display = 'none';
+      document.getElementById('modalSpinner').style.display = 'block';
+      document.getElementById('modalTitle').textContent = 'Processing...';
+      document.getElementById('modalBody').textContent = 'Awarding the project...';
+
+      try {
+        // ── Step 0: Check if contractor has a saved payment method ──
+        // Required for post-signing charging (D-127): charge happens after contract is signed, not here
+        document.getElementById('modalBody').textContent = 'Verifying contractor payment method...';
+
+        const { data: contractorPM, error: pmCheckErr } = await sb
+          .from('contractors')
+          .select('stripe_payment_method_id, stripe_customer_id, company_name, user_id')
+          .eq('id', bid.contractor_id)
+          .single();
+
+        if (pmCheckErr) {
+          console.error('Could not check contractor payment method:', pmCheckErr);
+        }
+
+        if (!contractorPM || !contractorPM.stripe_payment_method_id) {
+          // No payment method on file — notify contractor and tell homeowner to wait
+          document.getElementById('modalTitle').textContent = 'Almost There';
+          document.getElementById('modalBody').innerHTML =
+            'This contractor hasn\'t set up their payment method yet. We\'re notifying them now. Please check back soon — most contractors resolve this within a few hours.';
+          document.getElementById('modalSpinner').style.display = 'none';
+          document.getElementById('modalActions').innerHTML =
+            '<button class="btn btn-secondary" onclick="closeModal()">OK, I\'ll Check Back</button>';
+          document.getElementById('modalActions').style.display = 'flex';
+
+          // Create in-app notification for the contractor
+          try {
+            if (contractorPM && contractorPM.user_id) {
+              await sb.from('notifications').insert({
+                user_id: contractorPM.user_id,
+                notification_type: 'payment_method_needed',
+                channel: 'dashboard',
+                title: 'Payment Method Required',
+                message: 'A homeowner wants to select you, but you don\'t have a payment method on file. Please add one in Settings.',
+                metadata: { claim_id: currentClaim.id, quote_id: bidId },
+              });
+            }
+          } catch (notifErr) {
+            console.warn('Could not send notification to contractor:', notifErr);
+          }
+
+          gtag('event', 'contractor_no_payment_method', {
+            bid_id: bidId,
+            contractor_id: bid.contractor_id,
+          });
+          return;
+        }
+
+        // ── Step 1: Award the contractor (no payment charge here) ──
+        // Payment will be charged by docusign-webhook after contract signing (D-127)
+        document.getElementById('modalBody').textContent = 'Awarding the project...';
+
+        // 1. Update claim status to 'awarded' and store winning contractor
+        const { error: claimErr } = await sb
+          .from('claims')
+          .update({
+            selected_contractor_id: bid.contractor_id,
+            selected_bid_amount: bid.total_price,
+            status: 'awarded',
+          })
+          .eq('id', currentClaim.id);
+        if (claimErr) throw claimErr;
+
+        // 3. Update winning quote status to 'awarded'
+        const { error: winErr } = await sb
+          .from('quotes')
+          .update({ status: 'awarded' })
+          .eq('id', bidId);
+        if (winErr) throw winErr;
+
+        // 4. Decline all other quotes for this claim
+        const { error: rejectErr } = await sb
+          .from('quotes')
+          .update({ status: 'declined' })
+          .eq('claim_id', currentClaim.id)
+          .neq('id', bidId);
+        if (rejectErr) throw rejectErr;
+
+        gtag('event', 'contractor_selected', {
+          bid_id: bidId,
+          contractor_id: bid.contractor_id,
+          price: bid.total_price,
+        });
+
+        // 5. Proceed to contract signing — contract distributed to both parties after selection
+        window.location.href = `contract-signing.html?claim_id=${encodeURIComponent(currentClaim.id)}&contractor_id=${encodeURIComponent(bid.contractor_id)}&quote_id=${encodeURIComponent(bidId)}`;
+
+      } catch (err) {
+        console.error('Selection error:', err);
+
+        let errorTitle = 'Something Went Wrong';
+        let errorMessage = 'There was a problem awarding this project. Please try again.';
+
+        if (err.message && err.message.includes('Payment')) {
+          errorTitle = 'Unable to Process Payment';
+          errorMessage = 'Unable to process the contractor\'s payment method. Please select another contractor or contact support.';
+        }
+
+        document.getElementById('modalTitle').textContent = errorTitle;
+        document.getElementById('modalBody').textContent = errorMessage;
+        document.getElementById('modalSpinner').style.display = 'none';
+        document.getElementById('modalActions').style.display = 'flex';
+        document.getElementById('modalConfirmBtn').disabled = false;
+      }
+    };
+
+    // ── View Toggle ──
+    window.setView = function(view) {
+      currentView = view;
+      document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+      // Future: implement list view layout
+      renderBids();
+    };
+
+    // ── Helpers ──
+    function esc(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatDate(dateStr) {
+      try {
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch { return dateStr; }
+    }
+
+    function formatWarranty(bid) {
+      const parts = [];
+      if (bid.workmanship_warranty_years) parts.push(`${bid.workmanship_warranty_years}yr workmanship`);
+      if (bid.manufacturer_warranty_years) parts.push(`${bid.manufacturer_warranty_years}yr manufacturer`);
+      return parts.length > 0 ? parts.join(' + ') : (bid.warranty_summary || 'TBD');
+    }
+
+    function parseCerts(certs) {
+      if (!certs) return [];
+      if (Array.isArray(certs)) return certs;
+      try { return JSON.parse(certs); } catch { return certs.split(',').map(s => s.trim()); }
+    }
+
+    function parseJSON(val) {
+      if (!val) return null;
+      if (Array.isArray(val)) return val;
+      try { return JSON.parse(val); } catch { return null; }
+    }
+
+    // Render value_adds (contractor distinguishing features) as a clean bulleted section
+    function renderValueAdds(bid) {
+      const va = typeof bid.value_adds === 'string' ? parseJSON(bid.value_adds) : bid.value_adds;
+      if (!va) return '';
+
+      const items = [];
+
+      // Gutters
+      if (va.gutters && va.gutters.option && va.gutters.option !== 'none') {
+        const opt = va.gutters.option;
+        if (opt === '5inch_included') items.push('✓ 5" gutters included at no out-of-pocket cost');
+        else if (opt === '6inch_included') items.push('✓ 6" gutters included at no out-of-pocket cost');
+        else if (opt === '5inch_additional') items.push(`5" gutters available for +$${(va.gutters.additional_cost_5inch || 0).toLocaleString()}`);
+        else if (opt === '6inch_additional') items.push(`6" gutters available for +$${(va.gutters.additional_cost_6inch || 0).toLocaleString()}`);
+        else if (opt === 'other' && va.gutters.other_text) items.push('Gutters: ' + esc(va.gutters.other_text));
+      }
+
+      // Chimney Flashing
+      if (va.chimney_flashing && va.chimney_flashing !== 'na') {
+        if (va.chimney_flashing === 'replace') items.push('✓ Chimney flashing replaced (included)');
+        else if (va.chimney_flashing === 'reuse') items.push('Chimney flashing reused if in good condition');
+      }
+
+      // Gutter Guards
+      if (va.gutter_guards && va.gutter_guards.option === 'available') {
+        const type = va.gutter_guards.type === 'other' ? (va.gutter_guards.type_other || 'custom type') : (va.gutter_guards.type || 'mesh');
+        const price = va.gutter_guards.oop_price ? `+$${va.gutter_guards.oop_price.toLocaleString()} OOP` : 'price on request';
+        items.push(`Gutter guards available (${esc(type)}) — ${price}`);
+      }
+
+      // Skylights
+      if (va.skylights && va.skylights !== 'na') {
+        if (va.skylights === 'reflash') items.push('✓ Skylights reflashed (included)');
+        else if (va.skylights === 'replace') items.push('Skylights can be replaced');
+      }
+
+      // Chimney Reflash
+      if (va.chimney_reflash && va.chimney_reflash.option && va.chimney_reflash.option !== 'na') {
+        if (va.chimney_reflash.option === 'included') items.push('✓ Chimney reflash included at no additional cost');
+        else if (va.chimney_reflash.option === 'oop') items.push(`Chimney reflash available for +$${(va.chimney_reflash.oop_price || 0).toLocaleString()} OOP`);
+      }
+
+      // Other offers
+      if (va.other_offers && va.other_offers.trim()) {
+        items.push(esc(va.other_offers.trim()));
+      }
+
+      // Other Shingles Available — new array format or legacy object format
+      let shingleItems = [];
+      if (va.other_shingles) {
+        if (Array.isArray(va.other_shingles) && va.other_shingles.length > 0) {
+          // New format: ["GAF|Timberline HDZ", "Owens Corning|Duration", ...]
+          // Group by brand for display
+          const byBrand = {};
+          va.other_shingles.forEach(v => {
+            const parts = v.split('|');
+            const brand = parts[0] || 'Other';
+            const product = parts[1] || v;
+            if (!byBrand[brand]) byBrand[brand] = [];
+            byBrand[brand].push(product);
+          });
+          Object.keys(byBrand).forEach(brand => {
+            shingleItems.push(`<strong>${esc(brand)}:</strong> ${byBrand[brand].map(p => esc(p)).join(', ')}`);
+          });
+        } else if (typeof va.other_shingles === 'object' && !Array.isArray(va.other_shingles)) {
+          // Legacy format: {impact: true, designer: true, metal: false, ...}
+          const labels = { impact: 'Impact Resistant (Class 4)', designer: 'Designer / Luxury', metal: 'Metal Roofing', premium_arch: 'Premium Architectural' };
+          Object.keys(labels).forEach(key => {
+            if (va.other_shingles[key]) shingleItems.push(esc(labels[key]));
+          });
+          if (va.other_shingles.other_text) shingleItems.push(esc(va.other_shingles.other_text));
+        }
+      }
+
+      if (items.length === 0 && shingleItems.length === 0) return '';
+
+      let html = '';
+
+      if (items.length > 0) {
+        html += `
+          <div style="margin: var(--sp-4) 0; padding: var(--sp-4); background: #F0FDF4; border: 1px solid #86EFAC; border-radius: var(--radius-md);">
+            <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #166534; margin-bottom: var(--sp-2);">What's Included / Available</div>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-1);">
+              ${items.map(item => `<li style="font-size: 0.875rem; color: #14532D;">${item}</li>`).join('')}
+            </ul>
+          </div>
+        `;
+      }
+
+      if (shingleItems.length > 0) {
+        const notesHtml = (va.other_shingles_notes || (va.other_shingles && typeof va.other_shingles === 'object' && !Array.isArray(va.other_shingles) && va.other_shingles.notes))
+          ? `<div style="margin-top:var(--sp-2);font-size:0.8rem;color:#374151;font-style:italic;">${esc(va.other_shingles_notes || va.other_shingles.notes)}</div>`
+          : '';
+        html += `
+          <div style="margin: var(--sp-4) 0; padding: var(--sp-4); background: #EFF6FF; border: 1px solid #93C5FD; border-radius: var(--radius-md);">
+            <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1E3A5F; margin-bottom: var(--sp-2);">Also Available at Insurance Price</div>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-1);">
+              ${shingleItems.map(item => `<li style="font-size: 0.875rem; color: #1E3A5F;">${item}</li>`).join('')}
+            </ul>
+            ${notesHtml}
+            <div style="margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid #BFDBFE;font-size:0.75rem;color:#6B7280;">⚠️ Different warranty terms may apply to shingles other than the contractor's preferred product. Ask the contractor about specific warranty coverage before making your selection.</div>
+          </div>
+        `;
+      }
+
+      return html;
+    }
+
+    // ── Init ──
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+  </script>
+
+</body>
+</html>
