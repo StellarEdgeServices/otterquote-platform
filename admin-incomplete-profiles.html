@@ -646,17 +646,16 @@
 
             try {
                 // Fetch contractor records and last-login data in parallel.
-                // admin_contractor_last_logins is a view in the public schema that joins
-                // contractors with auth.users; it is restricted server-side to the admin
-                // email via auth.email(), so no service role key is needed client-side.
+                // get_contractor_last_logins() is a SECURITY DEFINER RPC that replaces the
+                // revoked admin_contractor_last_logins view (Session 349 security fix, 86e11fa1g).
+                // Gated server-side to dustinstohler1@gmail.com via auth.email() check.
                 const [contractorsResult, loginResult] = await Promise.all([
                     adminSb
                         .from('contractors')
                         .select('id, user_id, email, company_name, phone, trades, service_counties, has_workers_comp, has_general_liability, status, created_at')
                         .order('created_at', { ascending: false }),
                     adminSb
-                        .from('admin_contractor_last_logins')
-                        .select('contractor_id, last_sign_in_at'),
+                        .rpc('get_contractor_last_logins'),
                 ]);
 
                 if (contractorsResult.error) throw contractorsResult.error;
@@ -760,3 +759,4 @@
     </script>
 </body>
 </html>
+                                                         
