@@ -22,3 +22,7 @@ supabase/.temp/
 # Repo-level tooling (allowed)
 !scripts/
 !scripts/*
+
+# Sensitive local auth snapshots — never commit
+.stohler_auth_snapshot.json
+us-counties.json.bak
