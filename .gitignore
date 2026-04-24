@@ -18,3 +18,7 @@ supabase/.temp/
 *.py
 *.sh
 *.ipynb
+
+# Repo-level tooling (allowed)
+!scripts/
+!scripts/*
