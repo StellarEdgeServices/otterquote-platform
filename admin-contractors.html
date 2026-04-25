@@ -817,6 +817,14 @@
             initSupabase();
 
             try {
+                // Wait for Auth module to be ready before checking user
+                // (fixes magic link timing issue: ClickUp 86e0zr91f)
+                if (typeof Auth === 'undefined' || !Auth.getUser) {
+                    console.warn('Auth module not ready, retrying...');
+                    setTimeout(init, 100);
+                    return;
+                }
+
                 currentUser = await Auth.getUser();
 
                 if (!currentUser) {
@@ -829,7 +837,16 @@
                     return;
                 }
 
-                document.getElementById('adminContainer').style.display = 'block';
+                // Ensure DOM is ready before showing container
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', function showAdmin() {
+                        document.getElementById('adminContainer').style.display = 'block';
+                        document.removeEventListener('DOMContentLoaded', showAdmin);
+                    });
+                } else {
+                    document.getElementById('adminContainer').style.display = 'block';
+                }
+
                 await loadContractors();
                 updateSummaryCards();
                 await loadCronHealth();
@@ -1651,21 +1668,4 @@
                 if (el) el.textContent = total;
 
                 if (!data || data.length === 0) {
-                    content.innerHTML = '<span style="color:#64748b;font-size:0.85rem;">No waitlisted homeowners yet.</span>';
-                    document.getElementById('waitlistLastRefreshed').textContent = 'Refreshed ' + timeAgo(new Date().toISOString());
-                    return;
-                }
-
-                // Group by state
-                const byState = {};
-                for (const row of data) {
-                    const s = row.state || 'Unknown';
-                    if (!byState[s]) byState[s] = { total: 0, opted_in: 0 };
-                    byState[s].total++;
-                    if (row.opted_in) byState[s].opted_in++;
-                }
-
-                // Sort by total desc
-                const sorted = Object.entries(byState).sort((a, b) => b[1].total - a[1].total);
-
-                let html = '<table st
+           
