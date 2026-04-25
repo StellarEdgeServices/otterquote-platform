@@ -1423,34 +1423,29 @@
         }
 
         if (matchingTemplate && matchingTemplate.file_url) {
-          // We have a template URL — try to get a signed URL for display
-          // Extract the storage path from the public URL if possible
+          // Generate a signed URL for display.
+          // Handles both bare storage paths ("contractor-id/file.pdf") and legacy full
+          // public URLs — mirrors the same pattern used in contractor-profile.html.
           const fileUrl = matchingTemplate.file_url;
+          const pathMatch = fileUrl.match(/contractor-templates\/(.+?)(\?|$)/);
+          const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : fileUrl;
 
-          // If it's a Supabase storage public URL, create a signed URL for embed
-          if (fileUrl.includes('contractor-templates')) {
-            // Extract path after /contractor-templates/
-            const pathMatch = fileUrl.match(/contractor-templates\/(.+)$/);
-            if (pathMatch) {
-              const storagePath = decodeURIComponent(pathMatch[1]);
-              const { data: signedUrlData, error: signedUrlError } = await sb.storage
-                .from('contractor-templates')
-                .createSignedUrl(storagePath, 3600); // 1 hour expiry
+          const { data: signedUrlData, error: signedUrlError } = await sb.storage
+            .from('contractor-templates')
+            .createSignedUrl(storagePath, 3600); // 1 hour expiry
 
-              if (!signedUrlError && signedUrlData?.signedUrl) {
-                state.templateUrl = signedUrlData.signedUrl;
-                container.innerHTML = `
-                  <iframe src="${esc(signedUrlData.signedUrl)}" class="contract-pdf-embed" title="Contract Template Preview"></iframe>
-                  <p style="color: var(--slate); font-size: 0.85rem; margin-top: var(--sp-2); text-align: center;">
-                    This is ${esc(state.contractor.company_name || 'your contractor')}'s contract template. It will be auto-filled with your project details during signing.
-                  </p>
-                `;
-                return;
-              }
-            }
+          if (!signedUrlError && signedUrlData?.signedUrl) {
+            state.templateUrl = signedUrlData.signedUrl;
+            container.innerHTML = `
+              <iframe src="${esc(signedUrlData.signedUrl)}" class="contract-pdf-embed" title="Contract Template Preview"></iframe>
+              <p style="color: var(--slate); font-size: 0.85rem; margin-top: var(--sp-2); text-align: center;">
+                This is ${esc(state.contractor.company_name || 'your contractor')}'s contract template. It will be auto-filled with your project details during signing.
+              </p>
+            `;
+            return;
           }
 
-          // Fallback: use the URL directly
+          // Fallback: use the URL directly (only if signed URL generation fails)
           state.templateUrl = fileUrl;
           container.innerHTML = `
             <iframe src="${esc(fileUrl)}" class="contract-pdf-embed" title="Contract Template Preview"></iframe>
@@ -1848,4 +1843,4 @@
     // ── Escape HTML ──
     function esc(str) {
       if (!str) return '';
-      const div = document.createElement('d
+      const div = document.createElement('d                                                                                                                                                                       
