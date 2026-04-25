@@ -4,7 +4,6 @@
 
 [build]
   publish = "."
-  ignore = "exit 0"
 
 # Staging context — deploys to staging--jade-alpaca-b82b5e.netlify.app
 [context.staging]
