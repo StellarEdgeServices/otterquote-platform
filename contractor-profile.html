@@ -1577,6 +1577,7 @@
         async function uploadContractTemplate() {
             const input = document.getElementById('contractPdfInput');
             const status = document.getElementById('contractUploadStatus');
+            if (!input) return; // UI replaced by contractTemplatesGrid (IMP-009)
             if (!input.files.length) return;
 
             const file = input.files[0];
