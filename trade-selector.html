@@ -1435,4 +1435,27 @@
         if (user && !CONFIG?.DEMO_MODE && window.sb) {
           try {
             const { data: existingClaim } = await window.sb
-              .from('claim
+              .from('claims')
+              .select('id')
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+          if (existingClaim) {
+            window.location.href = '/dashboard.html';
+            return;
+          }
+        } catch (e) {
+          console.warn('[trade-selector] Returning-user guard failed:', e);
+        }
+      }
+    } catch (err) {
+      console.error('[trade-selector] initPage error:', err);
+    }
+  }
+
+document.addEventListener('DOMContentLoaded', initPage);
+</script>
+</body>
+</html>
