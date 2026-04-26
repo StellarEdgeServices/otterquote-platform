@@ -2619,4 +2619,122 @@
                 [filenameField]: file.name,
               })
               .eq('id', currentClaim.id)
-  
+                .select('id')
+              .single();
+
+            if (updateError) throw updateError;
+
+            // F-005 fix: trigger parse-loss-sheet for estimate uploads so
+            // RCV/ACV are written back to claims.rcv_amount / claims.acv_amount
+            if (type === 'estimate' && uploadedStoragePath) {
+              try {
+                await sb.functions.invoke('parse-loss-sheet', {
+                  body: {
+                    claim_id: currentClaim.id,
+                    storage_path: uploadedStoragePath,
+                  }
+                });
+              } catch (parseErr) {
+                // Non-fatal — parsing failure doesn't block the upload
+                console.warn('[uploadFile] parse-loss-sheet failed (non-fatal):', parseErr);
+              }
+            }
+          }
+
+          // Update local claim state
+          currentClaim[updateField] = true;
+          currentClaim[filenameField] = file.name;
+
+          // Refresh UI
+          renderChecklist();
+          updateSubmitButton();
+          updateProgressBar();
+
+          // Hide progress bar after a short delay
+          setTimeout(() => {
+            if (progressEl) progressEl.classList.remove('active');
+            uploadsInProgress[type] = false;
+          }, 1000);
+
+          const label = type === 'estimate' ? 'Estimate' : 'Measurements';
+          showSuccess(`${label} uploaded successfully!`);
+
+        } catch (err) {
+          console.error('[uploadFile] Error:', err);
+          uploadsInProgress[type] = false;
+          const progressEl = document.getElementById(`upload-progress-${type}`);
+          if (progressEl) progressEl.classList.remove('active');
+          showError('Upload failed. Please try again.');
+        }
+      }
+
+      // ── Submit for Bids ──
+      async function submitForBids() {
+        const btn = document.getElementById('submit-btn');
+        if (!currentClaim) return;
+        btn.disabled = true;
+        btn.textContent = 'Submitting…';
+
+        try {
+          if (!CONFIG.DEMO_MODE && sb && currentClaim.id) {
+            const { error } = await sb
+              .from('claims')
+              .update({ status: 'active', submitted_at: new Date().toISOString() })
+              .eq('id', currentClaim.id);
+
+            if (error) throw error;
+
+            // Notify contractors via Edge Function (non-fatal)
+            try {
+              await sb.functions.invoke('notify-contractors', {
+                body: { claim_id: currentClaim.id }
+              });
+            } catch (notifyErr) {
+              console.warn('[submitForBids] notify-contractors failed (non-fatal):', notifyErr);
+            }
+          }
+
+          // Update local state
+          if (currentClaim) currentClaim.status = 'active';
+
+          // Show success state
+          const submitSection = document.getElementById('submit-ready-section');
+          const successSection = document.getElementById('submit-success');
+          if (submitSection) submitSection.style.display = 'none';
+          if (successSection) successSection.classList.add('active');
+
+          // Update status banner
+          await updateStatusBanner();
+
+        } catch (err) {
+          console.error('[submitForBids] Error:', err);
+          btn.disabled = false;
+          btn.textContent = 'Submit for Bids';
+          showError('Failed to submit your project. Please try again.');
+        }
+      }
+
+      // ── Notifications ──
+      function showError(message) {
+        const el = document.getElementById('error-message');
+        const textEl = document.getElementById('error-text');
+        if (!el || !textEl) return;
+        textEl.textContent = message;
+        el.classList.add('active');
+        setTimeout(() => el.classList.remove('active'), 5000);
+      }
+
+      function showSuccess(message) {
+        const el = document.getElementById('success-message');
+        const textEl = document.getElementById('success-text');
+        if (!el || !textEl) return;
+        textEl.textContent = message;
+        el.classList.add('active');
+        setTimeout(() => el.classList.remove('active'), 4000);
+      }
+
+      document.addEventListener('DOMContentLoaded', init);
+
+    </script>
+  </body>
+</html>
