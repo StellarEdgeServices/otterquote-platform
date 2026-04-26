@@ -1316,7 +1316,14 @@
                 renderContractors();
                 alert('Contractor approved and welcome email sent');
             } catch (err) {
-                console.error('Error approving contractor:', e            if (!reason) {
+                console.error('Error approving contractor:', err);
+                document.getElementById('approveError').textContent = 'Failed to approve contractor. Please try again.';
+            }
+        }
+
+        async function rejectContractor(contractorId) {
+            const reason = document.getElementById('rejectReason')?.value?.trim();
+            if (!reason) {
                 document.getElementById('rejectError').textContent = 'Please provide a reason for rejection';
                 document.getElementById('rejectError').style.display = 'block';
                 return;
