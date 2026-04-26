@@ -732,10 +732,10 @@
 
         async function init() {
             // Initialize our own Supabase client using the anon key
-            if (typeof supabase !== 'undefined' && window.CONFIG) {
+            if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
                 adminSb = supabase.createClient(
-                    window.CONFIG.SUPABASE_URL,
-                    window.CONFIG.SUPABASE_ANON
+                    CONFIG.SUPABASE_URL,
+                    CONFIG.SUPABASE_ANON
                 );
             }
 

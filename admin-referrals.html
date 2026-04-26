@@ -568,4 +568,29 @@
         async function manualUnblock(agentId) {
             if (!confirm('Manually unblock this partner without a W-9 on file? Only do this for grandfathered or exceptional cases.')) return;
 
-            const { e
+            const { error } = await sb
+                .from('referral_agents')
+                .update({ payments_blocked: false })
+                .eq('id', agentId);
+
+            if (error) {
+                showToast('Error unblocking partner: ' + error.message);
+                return;
+            }
+
+            showToast('Partner manually unblocked ✅');
+            await loadPartners();
+        }
+
+        function showToast(msg) {
+            const el = document.getElementById('toast');
+            if (!el) return;
+            el.textContent = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3500);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

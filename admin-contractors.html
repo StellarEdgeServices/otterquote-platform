@@ -1668,4 +1668,50 @@
                 if (el) el.textContent = total;
 
                 if (!data || data.length === 0) {
-           
+                               content.innerHTML = '<span style="color:#64748b;font-size:0.875rem;">No waitlist entries yet.</span>';
+                    const tsEl = document.getElementById('waitlistLastRefreshed');
+                    if (tsEl) { tsEl.textContent = 'Last refreshed: ' + new Date().toLocaleTimeString(); }
+                    return;
+                }
+
+                // Group by state
+                const byState = {};
+                for (const row of data) {
+                    const st = row.state || 'Unknown';
+                    if (!byState[st]) byState[st] = { total: 0, optedIn: 0 };
+                    byState[st].total++;
+                    if (row.opted_in) byState[st].optedIn++;
+                }
+
+                // Render table
+                let html = '<table style="width:100%;border-collapse:collapse;font-size:0.875rem;">';
+                html += '<thead><tr style="border-bottom:1px solid #e2e8f0;">';
+                html += '<th style="text-align:left;padding:6px 10px;color:#64748b;font-weight:600;">State</th>';
+                html += '<th style="text-align:right;padding:6px 10px;color:#64748b;font-weight:600;">Total</th>';
+                html += '<th style="text-align:right;padding:6px 10px;color:#64748b;font-weight:600;">Opted In</th>';
+                html += '</tr></thead><tbody>';
+
+                for (const [state, counts] of Object.entries(byState).sort((a,b) => a[0].localeCompare(b[0]))) {
+                    html += `<tr style="border-bottom:1px solid #f1f5f9;">`;
+                    html += `<td style="padding:6px 10px;font-weight:500;">${state}</td>`;
+                    html += `<td style="padding:6px 10px;text-align:right;">${counts.total}</td>`;
+                    html += `<td style="padding:6px 10px;text-align:right;">${counts.optedIn}</td>`;
+                    html += `</tr>`;
+                }
+                html += '</tbody></table>';
+                content.innerHTML = html;
+
+                const tsEl = document.getElementById('waitlistLastRefreshed');
+                if (tsEl) { tsEl.textContent = 'Last refreshed: ' + new Date().toLocaleTimeString(); }
+
+            } catch (err) {
+                console.error('loadWaitlistStats error:', err);
+                const content = document.getElementById('waitlistContent');
+                if (content) content.innerHTML = '<span style="color:#ef4444;">Failed to load waitlist data.</span>';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
