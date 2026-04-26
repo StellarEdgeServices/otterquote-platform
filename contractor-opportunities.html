@@ -1031,5 +1031,78 @@
             if (modal) modal.style.display = 'none';
         }
 
+
         function applyFilters() {
-            const jobType  = document.getElementB
+            const jobType  = document.getElementById('jobTypeFilter')  ? document.getElementById('jobTypeFilter').value  : '';
+            const trade    = document.getElementById('tradeFilter')     ? document.getElementById('tradeFilter').value    : '';
+            const material = document.getElementById('materialFilter')  ? document.getElementById('materialFilter').value  : '';
+            const distance = document.getElementById('distanceFilter')  ? document.getElementById('distanceFilter').value  : '';
+            const sort     = document.getElementById('sortFilter')      ? document.getElementById('sortFilter').value     : 'newest';
+
+            let filtered = allOpportunities.slice();
+
+            if (jobType) {
+                filtered = filtered.filter(o => o.jobType === jobType);
+            }
+
+            if (trade) {
+                if (trade === 'multi') {
+                    filtered = filtered.filter(o => Array.isArray(o.trades) && o.trades.length > 1);
+                } else {
+                    filtered = filtered.filter(o => {
+                        const trades = Array.isArray(o.trades) ? o.trades : [o.trades];
+                        return trades.includes(trade);
+                    });
+                }
+            }
+
+            if (material) {
+                const matKeywords = {
+                    'architectural': ['architectural'],
+                    'designer':      ['designer'],
+                    'metal-seam':    ['standing seam', 'metal seam'],
+                    'metal-fastener':['exposed fastener', 'metal fastener']
+                };
+                const keywords = matKeywords[material] || [material];
+                filtered = filtered.filter(o => {
+                    if (!o.material) return false;
+                    const mat = o.material.toLowerCase();
+                    return keywords.some(k => mat.includes(k));
+                });
+            }
+
+            if (distance) {
+                const maxMi = Number(distance);
+                filtered = filtered.filter(o => typeof o.distance === 'number' ? o.distance <= maxMi : true);
+            }
+
+            if (sort === 'value-high') {
+                filtered.sort((a, b) => (b.estimatedValue || 0) - (a.estimatedValue || 0));
+            } else if (sort === 'closest') {
+                filtered.sort((a, b) => (a.distance || 999) - (b.distance || 999));
+            } else if (sort === 'urgent-first') {
+                filtered.sort((a, b) => {
+                    const aU = a.urgency === 'asap' ? 0 : 1;
+                    const bU = b.urgency === 'asap' ? 0 : 1;
+                    return aU - bU;
+                });
+            }
+
+            const countEl = document.getElementById('resultsCount');
+            if (countEl) {
+                const n = filtered.length;
+                countEl.textContent = n === 1 ? '1 opportunity available' : n + ' opportunities available';
+            }
+
+            render(filtered);
+        }
+
+        ['jobTypeFilter','tradeFilter','materialFilter','distanceFilter','sortFilter'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', applyFilters);
+        });
+
+document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
