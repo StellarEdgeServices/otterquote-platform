@@ -1363,6 +1363,7 @@
               trades: selections.trades.map(t => t.trade),
               job_type: jobType,
               property_address: propertyAddress,
+              property_state: profile?.address_state || null,
               updated_at: new Date().toISOString(),
               // Referral attribution — null if no ?ref= or ?partner_id= was present
               ...(referralSource && { referral_source: referralSource }),

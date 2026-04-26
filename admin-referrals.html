@@ -424,7 +424,7 @@
         async function loadPartners() {
             const { data, error } = await sb
                 .from('referral_agents')
-                .select('id, name, email, agent_type, created_at, payments_blocked, w9_file_url, w9_submitted_at, w9_verified_at, w9_notification_sent_at')
+                .select('id, first_name, last_name, email, agent_type, created_at, payments_blocked, w9_file_url, w9_submitted_at, w9_verified_at, w9_notification_sent_at')
                 .order('created_at', { ascending: false });
 
             if (error) {
@@ -502,7 +502,7 @@
                 const actions = buildActions(p);
                 return `
                 <tr>
-                    <td><strong>${escHtml(p.name || '—')}</strong></td>
+                    <td><strong>${escHtml(([p.first_name, p.last_name].filter(Boolean).join(' ')) || '—')}</strong></td>
                     <td>${escHtml(p.email || '—')}</td>
                     <td>${typeBadge(p.agent_type)}</td>
                     <td>${fmtDate(p.created_at)}</td>
