@@ -998,4 +998,40 @@
                 flexible: 'Flexible',
                 '30_days': 'Within 30 Days',
                 '2_weeks': 'Within 2 Weeks',
-    
+                    'asap': 'As Soon As Possible'
+            };
+
+            const jobLabel = jobTypeLabels[o.jobType] || o.jobType || '—';
+            const urgencyLabel = urgencyLabels[o.urgency] || o.urgency || 'Flexible';
+            const locationDisplay = o.location + (o.zip ? ', IN ' + o.zip : '');
+            const tradeDisplay = (Array.isArray(o.trades) ? o.trades : [o.trades])
+                .map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ');
+
+            document.getElementById('detailModalTitle').textContent = 'Project in ' + locationDisplay;
+            document.getElementById('detailModalLocation').textContent = locationDisplay;
+
+            document.getElementById('detailModalBody').innerHTML = `
+                <div><strong style="display:block;font-size:0.75rem;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Trade(s)</strong><span>${escHtml(tradeDisplay)}</span></div>
+                <div><strong style="display:block;font-size:0.75rem;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Job Type</strong><span>${escHtml(jobLabel)}</span></div>
+                <div><strong style="display:block;font-size:0.75rem;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Urgency</strong><span>${escHtml(urgencyLabel)}</span></div>
+                <div><strong style="display:block;font-size:0.75rem;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Est. Value</strong><span>${o.estimatedValue ? '$' + Number(o.estimatedValue).toLocaleString() : '—'}</span></div>
+            `;
+
+            document.getElementById('detailModalFooter').innerHTML = `
+                <button class="btn btn-secondary" onclick="closeDetailModal()" style="padding:0.625rem 1.25rem;">Close</button>
+                <a href="contractor-bid-form.html?claim_id=${o.id}" class="btn" style="padding:0.625rem 1.5rem;">Bid on This Project &rarr;</a>
+            `;
+
+            const modal = document.getElementById('detailModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeDetailModal() {
+            const modal = document.getElementById('detailModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
