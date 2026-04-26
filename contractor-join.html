@@ -654,4 +654,13 @@
 
                 // GA4 conversion event — contractor funnel
                 gtag('event', 'contractor_signup', {
-                    trade_types: [],  // t
+                    trade_types: [],  // trade types collected post-login
+                });
+            } catch (err) {
+                console.error('Contractor signup error:', err);
+                alert(err.message || 'Something went wrong. Please try again or contact support@otterquote.com.');
+            }
+        });
+    </script>
+</body>
+</html>

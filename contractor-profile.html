@@ -2430,4 +2430,26 @@
 
             const statusEl = document.getElementById('fieldMappingSaveStatus');
             statusEl.style.display = 'block';
-            st
+            statusEl.textContent = 'Field mapping saved.';
+            statusEl.style.color = '#065F46';
+
+            try {
+                const { error } = await sb
+                    .from('contractors')
+                    .update({ contract_templates: updatedTemplates })
+                    .eq('id', contractorRecord.id);
+                if (error) throw error;
+                contractorRecord.contract_templates = updatedTemplates;
+                statusEl.textContent = '\u2705 Field mapping saved.';
+                setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+            } catch (err) {
+                console.error('saveFieldMappings error:', err);
+                statusEl.textContent = 'Error saving. Please try again.';
+                statusEl.style.color = '#DC2626';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initProfile);
+    </script>
+</body>
+</html>

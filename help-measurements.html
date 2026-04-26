@@ -976,4 +976,14 @@
                 // Show success state
                 document.getElementById('hoverSection').querySelector('.section-card').style.display = 'none';
                 document.getElementById('hoverSuccessSection').classList.add('active');
-             
+
+            } catch (err) {
+                console.error('Hover payment confirmation error:', err);
+                payBtn.disabled = false;
+                payBtn.innerHTML = originalText;
+                document.getElementById('hoverCardErrors').textContent = err.message || 'Payment failed. Please try again.';
+            }
+        }
+    </script>
+</body>
+</html>

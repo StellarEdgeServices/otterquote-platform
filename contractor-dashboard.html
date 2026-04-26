@@ -1489,4 +1489,42 @@
                     activeDunningRecord = failures[0];
                     const banner = document.getElementById('dunningAlertBanner');
                     const msgEl = document.getElementById('dunningAlertMessage');
-                    const feeStr = '$' + (activeDunningRecord.amount_cents / 100).
+                    const feeStr = '$' + (activeDunningRecord.amount_cents / 100).toFixed(2);
+                    if (msgEl) {
+                        msgEl.textContent = `You have an overdue payment of ${feeStr}. Please update your payment method to continue bidding on new projects.`;
+                    }
+                    if (banner) {
+                        banner.style.display = 'flex';
+                    }
+                }
+            } catch (err) {
+                console.warn('[Dashboard] checkDunningStatus error:', err);
+            }
+        }
+
+        async function retryDunningPayment() {
+            if (!activeDunningRecord || !sb) return;
+            const btn = document.getElementById('dunningRetryBtn');
+            if (btn) { btn.disabled = true; btn.textContent = 'Retrying…'; }
+            try {
+                const { error } = await sb
+                    .from('payment_failures')
+                    .update({ dunning_status: 'retried' })
+                    .eq('id', activeDunningRecord.id);
+                if (error) throw error;
+                const banner = document.getElementById('dunningAlertBanner');
+                if (banner) banner.style.display = 'none';
+                activeDunningRecord = null;
+            } catch (err) {
+                console.warn('[Dashboard] retryDunningPayment error:', err);
+                if (btn) { btn.disabled = false; btn.textContent = 'Retry Payment Now'; }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await init();
+            await checkDunningStatus();
+        });
+    </script>
+</body>
+</html>

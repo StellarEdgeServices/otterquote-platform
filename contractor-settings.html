@@ -3167,4 +3167,15 @@
         }, 2000);
       } catch (err) {
         console.error('Feature request error:', err);
-        status.textContent = 'Error submi
+        status.textContent = 'Error submitting your request. Please try again.';
+        status.style.color = '#EF4444';
+        status.style.display = 'block';
+        btn.textContent = 'Send Feature Request';
+        btn.disabled = false;
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', initSettings);
+  </script>
+</body>
+</html>

@@ -1083,9 +1083,9 @@
 
       try {
         const user = await Auth.getUser();
-        if (user && window.sb) {
+        if (user && sb) {
           const filePath = `${user.id}/loss-sheets/${Date.now()}-${file.name}`;
-          const { error } = await window.sb.storage
+          const { error } = await sb.storage
             .from('claim-documents')
             .upload(filePath, file);
 
@@ -1261,10 +1261,10 @@
     // Look up a referral agent by unique_code or UUID and return their id.
     // Returns null if not found or on any error.
     async function resolveReferralAgentId(partnerIdParam) {
-      if (!partnerIdParam || !window.sb) return null;
+      if (!partnerIdParam || !sb) return null;
       try {
         // Try unique_code match first (the value partners share in URLs)
-        let { data } = await window.sb
+        let { data } = await sb
           .from('referral_agents')
           .select('id')
           .eq('unique_code', partnerIdParam.toUpperCase())
@@ -1276,7 +1276,7 @@
         // Fall back to direct UUID match
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (uuidPattern.test(partnerIdParam)) {
-          const { data: byId } = await window.sb
+          const { data: byId } = await sb
             .from('referral_agents')
             .select('id')
             .eq('id', partnerIdParam)
@@ -1312,7 +1312,7 @@
 
         // Try to save to Supabase if authenticated
         const user = await Auth.getUser();
-        if (user && window.sb) {
+        if (user && sb) {
           try {
             // Determine job type
             let jobType = null;
@@ -1333,7 +1333,7 @@
 
             // Fetch profile address for property_address
             let propertyAddress = null;
-            const { data: profile } = await window.sb
+            const { data: profile } = await sb
               .from('profiles')
               .select('address_street, address_city, address_state, address_zip')
               .eq('id', user.id)
@@ -1344,7 +1344,7 @@
             }
 
             // Update or create claim
-            const { data: existingClaim } = await window.sb
+            const { data: existingClaim } = await sb
               .from('claims')
               .select('id')
               .eq('user_id', user.id)
@@ -1363,6 +1363,7 @@
               trades: selections.trades.map(t => t.trade),
               job_type: jobType,
               property_address: propertyAddress,
+              property_state: profile?.address_state || null,
               updated_at: new Date().toISOString(),
               // Referral attribution — null if no ?ref= or ?partner_id= was present
               ...(referralSource && { referral_source: referralSource }),
@@ -1370,12 +1371,12 @@
             };
 
             if (existingClaim) {
-              await window.sb
+              await sb
                 .from('claims')
                 .update(claimData)
                 .eq('id', existingClaim.id);
             } else {
-              await window.sb
+              await sb
                 .from('claims')
                 .insert({
                   user_id: user.id,
@@ -1431,7 +1432,30 @@
         // Returning-user guard: if this user already has a claim, skip the intake
         // wizard and go straight to their dashboard. This prevents a returning user
         // who clicks a magic link (which lands here) from having to redo the intake.
-        if (user && !CONFIG?.DEMO_MODE && window.sb) {
+        if (user && !CONFIG?.DEMO_MODE && sb) {
           try {
-            const { data: existingClaim } = await window.sb
-              .from('claim
+            const { data: existingClaim } = await sb
+              .from('claims')
+              .select('id')
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+          if (existingClaim) {
+            window.location.href = '/dashboard.html';
+            return;
+          }
+        } catch (e) {
+          console.warn('[trade-selector] Returning-user guard failed:', e);
+        }
+      }
+    } catch (err) {
+      console.error('[trade-selector] initPage error:', err);
+    }
+  }
+
+document.addEventListener('DOMContentLoaded', initPage);
+</script>
+</body>
+</html>

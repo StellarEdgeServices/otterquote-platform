@@ -1365,4 +1365,12 @@
   copyBtn.addEventListener('click', () => {
     const link = referralCode.textContent;
     navigator.clipboard.writeText(link).then(() => {
-      const originalText = copy
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = '\u2713 Copied!';
+      setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
+    }).catch(() => {});
+  });
+})();
+</script>
+</body>
+</html>

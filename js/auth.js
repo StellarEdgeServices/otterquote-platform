@@ -10,11 +10,53 @@ function escapeHtml(str) {
 }
 
 window.Auth = {
-  /** Get current session */
+  /** Get current session — waits for Supabase auth initialization to complete.
+   *
+   * Supabase JS v2 initializes its auth client asynchronously from localStorage
+   * behind an internal mutex lock. If getSession() is called at DOMContentLoaded,
+   * that lock may not have resolved yet, causing getSession() to return null even
+   * when a valid session is stored. Subscribing to onAuthStateChange first ensures
+   * we capture the INITIAL_SESSION event that fires once initialization completes.
+   *
+   * F-007 fix — replaces the bare sb.auth.getSession() call with a race between:
+   *   (a) onAuthStateChange INITIAL_SESSION event (fires when lock resolves)
+   *   (b) sb.auth.getSession() immediate return (succeeds if lock already resolved)
+   *   (c) 3-second safety timeout (resolves null to prevent indefinite hang)
+   */
   async getSession() {
     if (!sb) return null;
-    const { data: { session } } = await sb.auth.getSession();
-    return session;
+    return new Promise((resolve) => {
+      let resolved = false;
+      let unsubscribe = null;
+
+      const finish = (session) => {
+        if (resolved) return;
+        resolved = true;
+        try { if (unsubscribe) unsubscribe(); } catch (e) { /* ignore */ }
+        resolve(session);
+      };
+
+      // (a) Subscribe to auth state change — fires INITIAL_SESSION once the
+      //     Supabase client finishes reading from localStorage.
+      try {
+        const { data } = sb.auth.onAuthStateChange((_event, session) => {
+          finish(session);
+        });
+        if (data?.subscription?.unsubscribe) {
+          unsubscribe = () => data.subscription.unsubscribe();
+        }
+      } catch (e) {
+        // onAuthStateChange not available — fall through to getSession()
+      }
+
+      // (b) Also attempt immediate getSession() — succeeds if lock already resolved.
+      sb.auth.getSession()
+        .then(({ data: { session } }) => { if (session) finish(session); })
+        .catch(() => { /* ignore, handled by timeout */ });
+
+      // (c) Safety timeout: 3 seconds. Prevents indefinite hang on unexpected failures.
+      setTimeout(() => finish(null), 3000);
+    });
   },
 
   /** Get current user */

@@ -471,5 +471,18 @@ const Services = {
       return existing;
     }
 
-    // Create new adjuster
-    const { data: newAdj, error } 
+    const { data: newAdj, error } = await sb
+      .from('adjusters')
+      .insert({
+        adjuster_name,
+        adjuster_email: adjuster_email || null,
+        adjuster_phone: adjuster_phone || null,
+        carrier_id: carrier_id || null,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return newAdj;
+  },
+};

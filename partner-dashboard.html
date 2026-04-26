@@ -1588,4 +1588,13 @@ Let me know if you have any questions!`;
             const referralLink = document.getElementById('referralLink').textContent;
 
             if (widgetStyle === 'button') {
-                return `<a href="${referralLink}" style="display: inline-block; padding: 12px 24px; background-color: #E07B00; color: #0
+                return `<a href="${referralLink}" style="display: inline-block; padding: 12px 24px; background-color: #E07B00; color: #00D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600; font-family: Rubik, sans-serif; font-size: 0.9rem;">Get a Free Contractor Quote</a>`;
+            } else {
+                return `<div style="padding: 20px; background: #0D1B2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; max-width: 320px;"><div style="font-size: 1rem; font-weight: 700; color: #FFFFFF; margin-bottom: 8px;">Get a Free Quote</div><div style="font-size: 0.875rem; color: #94A3B8; margin-bottom: 16px;">Connect with qualified contractors and get quotes instantly</div><a href="${referralLink}" style="display: inline-block; padding: 10px 20px; background-color: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600;">Get Started</a></div>`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

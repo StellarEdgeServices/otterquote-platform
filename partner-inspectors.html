@@ -1104,4 +1104,21 @@ function copyItem(type) {
     text = document.getElementById('emailTemplate').textContent;
     btnSelector = '[onclick="copyItem(\'email\')"]';
   } else if (type === 'report') {
-    text = document.getElement
+    text = document.getElementById('reportTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'report\')"]';
+  }
+
+  if (!text) return;
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector(btnSelector);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '\u2713 Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 2000);
+    }
+  }).catch(() => {});
+}
+    </script>
+</body>
+</html>

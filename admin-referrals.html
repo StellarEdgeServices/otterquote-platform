@@ -388,7 +388,7 @@
         let currentFilter = 'all';
         let allPartners   = [];
         let currentUser   = null;
-        let sb            = null;
+        sb = null;
 
         function initSupabase() {
             if (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON) {
@@ -424,7 +424,7 @@
         async function loadPartners() {
             const { data, error } = await sb
                 .from('referral_agents')
-                .select('id, name, email, agent_type, created_at, payments_blocked, w9_file_url, w9_submitted_at, w9_verified_at, w9_notification_sent_at')
+                .select('id, first_name, last_name, email, agent_type, created_at, payments_blocked, w9_file_url, w9_submitted_at, w9_verified_at, w9_notification_sent_at')
                 .order('created_at', { ascending: false });
 
             if (error) {
@@ -437,6 +437,14 @@
             allPartners = data || [];
             updateSummaryCards();
             renderTable();
+        }
+
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
         }
 
         function updateSummaryCards() {
@@ -502,7 +510,7 @@
                 const actions = buildActions(p);
                 return `
                 <tr>
-                    <td><strong>${escHtml(p.name || '—')}</strong></td>
+                    <td><strong>${escHtml(([p.first_name, p.last_name].filter(Boolean).join(' ')) || '—')}</strong></td>
                     <td>${escHtml(p.email || '—')}</td>
                     <td>${typeBadge(p.agent_type)}</td>
                     <td>${fmtDate(p.created_at)}</td>
@@ -568,4 +576,29 @@
         async function manualUnblock(agentId) {
             if (!confirm('Manually unblock this partner without a W-9 on file? Only do this for grandfathered or exceptional cases.')) return;
 
-            const { e
+            const { error } = await sb
+                .from('referral_agents')
+                .update({ payments_blocked: false })
+                .eq('id', agentId);
+
+            if (error) {
+                showToast('Error unblocking partner: ' + error.message);
+                return;
+            }
+
+            showToast('Partner manually unblocked ✅');
+            await loadPartners();
+        }
+
+        function showToast(msg) {
+            const el = document.getElementById('toast');
+            if (!el) return;
+            el.textContent = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3500);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

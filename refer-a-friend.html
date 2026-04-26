@@ -1203,4 +1203,28 @@ Best regards`;
       }
     }
 
-    function populateReferralsTable(
+    function populateReferralsTable(referrals) {
+      const tbody = document.getElementById('referrals-tbody') || document.getElementById('referrals-table-body');
+      if (!tbody) return;
+      tbody.innerHTML = referrals.map(r => {
+        const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+        const status = r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : 'Pending';
+        const statusColor = r.status === 'completed' ? '#10B981' : r.status === 'signed' ? '#F59E0B' : '#94A3B8';
+        return `<tr><td>${r.referee_email || '—'}</td><td style="color:${statusColor};font-weight:600;">${status}</td><td>${date}</td></tr>`;
+      }).join('');
+    }
+
+    function calculateSummary(referrals) {
+      const total = referrals.length;
+      const completed = referrals.filter(r => r.status === 'completed').length;
+      const earned = completed * 50;
+      const el = document.getElementById('referral-summary');
+      if (el) {
+        el.textContent = total + ' referral' + (total !== 1 ? 's' : '') + ' \u00b7 ' + completed + ' completed \u00b7 $' + earned + ' earned';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

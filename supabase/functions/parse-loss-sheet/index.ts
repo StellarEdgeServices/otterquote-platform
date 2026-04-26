@@ -372,12 +372,18 @@ serve(async (req) => {
     const scopeSummary = buildScopeSummary(parsed);
 
     // ── Store results in claims table ──────────────────────────────
+    // Extract RCV and ACV from summary for direct column storage (F-005 fix)
+    const rcvAmount = parsed.summary?.rcv ?? null;
+    const acvAmount = parsed.summary?.acv ?? null;
+
     const { error: updateError } = await supabase
       .from("claims")
       .update({
         parsed_line_items: parsed,
         contractor_scope_summary: scopeSummary,
         loss_sheet_parsed_at: new Date().toISOString(),
+        rcv_amount: rcvAmount,
+        acv_amount: acvAmount,
       })
       .eq("id", claim_id);
 

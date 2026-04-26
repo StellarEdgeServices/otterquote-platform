@@ -4607,4 +4607,20 @@
         window._contractorEnvelopeId = result.envelope_id;
 
         // Load signing URL in iframe
-        loadingEl.style.d
+        loadingEl.style.display = 'none';
+        containerEl.style.display = 'block';
+        const frame = document.getElementById('contractorDocusignFrame');
+        if (frame && result.signing_url) {
+          frame.src = result.signing_url;
+        }
+      } catch (err) {
+        console.error('[ContractorSigning] initContractorSigning error:', err);
+        loadingEl.style.display = 'none';
+        errorEl.style.display = 'block';
+        const errDetail = document.getElementById('contractorDocusignErrorDetail');
+        if (errDetail) errDetail.textContent = err.message || 'Please try again or contact support.';
+      }
+    }
+  </script>
+</body>
+</html>
