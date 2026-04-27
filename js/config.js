@@ -3,7 +3,7 @@
  * All environment-specific values in one place.
  */
 
-const CONFIG = {
+var CONFIG = {
   // ── Supabase ──
   SUPABASE_URL:  'https://yeszghaspzwwstvsrioa.supabase.co',
   SUPABASE_ANON: 'sb_publishable_mKmYIsRMc6dCG8ZrGGbyyw_l_MOTwZP',
