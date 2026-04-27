@@ -458,6 +458,19 @@
   phoneInput.addEventListener('input', formatPhone);
   phoneInput.addEventListener('change', formatPhone); // fires once after autofill completes
 
+  // D-189: Fire HubSpot contact creation — non-blocking, best-effort.
+  // Called immediately after validation passes. Errors must never surface to the user.
+  function fireHubSpotContact(data) {
+    fetch(CONFIG.SUPABASE_URL + '/functions/v1/create-hubspot-contact', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': CONFIG.SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify(data),
+    }).catch(function() {}); // Intentionally fire-and-forget — do not await
+  }
+
   // Form submission
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -495,6 +508,15 @@
     // Loading state
     submitBtn.classList.add('btn-loading');
     submitBtn.disabled = true;
+
+    // D-189: Create HubSpot contact immediately on successful page 1 submission
+    fireHubSpotContact({
+      email: email,
+      firstname: firstName,
+      lastname: lastName,
+      phone: phone,
+      address: address,
+    });
 
     try {
       // 1. Save lead to profiles table (upsert)
