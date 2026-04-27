@@ -1023,21 +1023,14 @@
                     </div>
                 </div>
 
-                <!-- Edit Mode -->
+                <!-- Edit Mode — D-192: checkbox style (state → Entire State / Specific Counties → county checkboxes) -->
                 <div id="serviceAreaEdit" style="display: none;">
-                    <div class="form-group">
-                        <label for="editServiceCounties" class="form-label">Service Counties</label>
-                        <textarea id="editServiceCounties" class="form-input" placeholder="Enter the counties you serve, separated by commas (e.g., Hamilton, Marion, Boone)" style="min-height: 80px;"></textarea>
-                        <p style="font-size: 0.85rem; color: var(--slate); margin-top: 0.5rem;">Enter county names separated by commas. This helps homeowners find contractors in their area.</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="editServiceStates" class="form-label">Service States</label>
-                        <textarea id="editServiceStates" class="form-input" placeholder="Enter state abbreviations, separated by commas (e.g., IN, OH, KY)" style="min-height: 80px;"></textarea>
-                        <p style="font-size: 0.85rem; color: var(--slate); margin-top: 0.5rem;">Enter state abbreviations (e.g., IN, OH, IL). This helps us match you with opportunities in your service area.</p>
-                    </div>
-
-                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-8);">
+                    <p style="font-size:0.85rem; color:var(--slate); margin-bottom:var(--sp-4);">Select the states you serve. For each state, choose full state coverage or specific counties.</p>
+                    <!-- State selection grid (populated by SVC.buildGrid) -->
+                    <div id="svc-state-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--sp-2);max-height:210px;overflow-y:auto;border:1px solid var(--light);border-radius:var(--radius-md);padding:var(--sp-3);margin-bottom:var(--sp-4);background:#fff;"></div>
+                    <!-- Per-state county config panels (populated when states are checked) -->
+                    <div id="svc-county-configs" style="display:flex;flex-direction:column;gap:var(--sp-4);margin-bottom:var(--sp-6);"></div>
+                    <div style="display:flex; gap:var(--sp-4);">
                         <button class="btn btn-primary" onclick="saveProfile('serviceArea')">Save Changes</button>
                         <button class="btn btn-secondary" onclick="toggleEdit('serviceArea')">Cancel</button>
                     </div>
@@ -1068,7 +1061,8 @@
                         <div><strong>Contract Price:</strong> → Bid amount</div>
                         <div><strong>Material:</strong> → Shingle brand/type</div>
                         <div><strong>Warranty:</strong> → Warranty years</div>
-                        <div><strong>Statement of Work:</strong> → Scope of work summary</div>
+                        <div><strong>Statement of Work:</strong> → Scope of work / SOW</div>
+                        <div></div>
                     </div>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--sp-3);">
                         Tip: Include these exact labels in your contract to enable auto-fill. Fields not found will be left blank for manual entry. After uploading a template, click <strong>Review Mapping</strong> to customize which labels Otter Quotes looks for.
@@ -1175,6 +1169,91 @@
         let contractorRecord = null;
         let contractorCertifications = [];
 
+        // ── Service Area Checkbox UI — D-192 ──
+        const SVC = {
+          FIPS: {AL:'01',AK:'02',AZ:'04',AR:'05',CA:'06',CO:'08',CT:'09',DE:'10',FL:'12',GA:'13',HI:'15',ID:'16',IL:'17',IN:'18',IA:'19',KS:'20',KY:'21',LA:'22',ME:'23',MD:'24',MA:'25',MI:'26',MN:'27',MS:'28',MO:'29',MT:'30',NE:'31',NV:'32',NH:'33',NJ:'34',NM:'35',NY:'36',NC:'37',ND:'38',OH:'39',OK:'40',OR:'41',PA:'42',RI:'44',SC:'45',SD:'46',TN:'47',TX:'48',UT:'49',VT:'50',VA:'51',WA:'53',WV:'54',WI:'55',WY:'56'},
+          NAMES: {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'},
+          cache: {},
+
+          async fetchCounties(abbr) {
+            if (this.cache[abbr]) return this.cache[abbr];
+            const fips = this.FIPS[abbr]; if (!fips) return [];
+            try {
+              const r = await fetch(`https://api.census.gov/data/2020/dec/pl?get=NAME&for=county:*&in=state:${fips}`);
+              const d = await r.json();
+              const list = d.slice(1).map(row => row[0].replace(/, [^,]+$/, '')).sort();
+              this.cache[abbr] = list;
+              return list;
+            } catch(e) { console.error('County fetch failed for', abbr, e); return []; }
+          },
+
+          buildGrid(selectedStates) {
+            const grid = document.getElementById('svc-state-grid');
+            if (!grid) return;
+            grid.innerHTML = Object.keys(this.FIPS).sort().map(abbr => `<label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${this.NAMES[abbr]}"><input type="checkbox" class="svc-state-cb" data-abbr="${abbr}" style="accent-color:var(--amber);width:14px;height:14px;flex-shrink:0;" ${selectedStates.includes(abbr)?'checked':''} onchange="SVC.onStateToggle('${abbr}')"><span>${abbr} — ${this.NAMES[abbr]}</span></label>`).join('');
+          },
+
+          async onStateToggle(abbr) {
+            const cb = document.querySelector(`.svc-state-cb[data-abbr="${abbr}"]`);
+            if (cb && cb.checked) { await this.addCountyConfig(abbr, 'entire', []); }
+            else { const el = document.getElementById(`svc-config-${abbr}`); if (el) el.remove(); }
+          },
+
+          async addCountyConfig(abbr, mode, selectedCounties) {
+            if (document.getElementById(`svc-config-${abbr}`)) return;
+            const configs = document.getElementById('svc-county-configs');
+            if (!configs) return;
+            const div = document.createElement('div');
+            div.id = `svc-config-${abbr}`;
+            div.style.cssText = 'border:1px solid var(--light);border-radius:var(--radius-md);padding:var(--sp-4);background:#F8FAFC;';
+            div.innerHTML = `<div style="font-weight:600;margin-bottom:var(--sp-3);color:var(--navy);">${this.NAMES[abbr]}</div><div style="display:flex;gap:var(--sp-6);margin-bottom:var(--sp-3);"><label style="display:flex;align-items:center;gap:6px;font-size:0.875rem;cursor:pointer;"><input type="radio" name="svc-mode-${abbr}" value="entire" ${mode!=='specific'?'checked':''} style="accent-color:var(--amber);" onchange="SVC.onModeChange('${abbr}','entire')"> Entire State</label><label style="display:flex;align-items:center;gap:6px;font-size:0.875rem;cursor:pointer;"><input type="radio" name="svc-mode-${abbr}" value="specific" ${mode==='specific'?'checked':''} style="accent-color:var(--amber);" onchange="SVC.onModeChange('${abbr}','specific')"> Specific Counties</label></div><div id="svc-counties-${abbr}" style="${mode==='specific'?'':'display:none;'}"><div style="font-size:0.8rem;color:var(--slate);">Loading counties…</div></div>`;
+            const existing = Array.from(configs.children);
+            const after = existing.find(el => el.id.replace('svc-config-','') > abbr);
+            if (after) configs.insertBefore(div, after); else configs.appendChild(div);
+            if (mode === 'specific') await this.loadCountyCheckboxes(abbr, selectedCounties);
+          },
+
+          async onModeChange(abbr, mode) {
+            const box = document.getElementById(`svc-counties-${abbr}`);
+            if (!box) return;
+            if (mode === 'specific') {
+              box.style.display = '';
+              if (!box.querySelector('.svc-county-cb')) await this.loadCountyCheckboxes(abbr, []);
+            } else { box.style.display = 'none'; }
+          },
+
+          async loadCountyCheckboxes(abbr, selected) {
+            const box = document.getElementById(`svc-counties-${abbr}`);
+            if (!box) return;
+            box.innerHTML = '<div style="font-size:0.8rem;color:var(--slate);padding:var(--sp-2);">Loading counties…</div>';
+            const counties = await this.fetchCounties(abbr);
+            if (!counties.length) { box.innerHTML = '<div style="font-size:0.8rem;color:#991B1B;">Could not load counties. Check your connection and try again.</div>'; return; }
+            box.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:3px;max-height:190px;overflow-y:auto;border:1px solid var(--light);border-radius:var(--radius-sm);padding:var(--sp-2);background:#fff;">${counties.map(c=>`<label style="display:flex;align-items:center;gap:5px;font-size:0.78rem;cursor:pointer;"><input type="checkbox" class="svc-county-cb" data-state="${abbr}" value="${c}" style="accent-color:var(--amber);width:12px;height:12px;" ${selected.includes(c)?'checked':''}>${c}</label>`).join('')}</div><div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-3);"><button type="button" style="font-size:0.75rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;" onclick="SVC.selectAll('${abbr}',true)">Select All</button><button type="button" style="font-size:0.75rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;" onclick="SVC.selectAll('${abbr}',false)">Clear All</button></div>`;
+          },
+
+          selectAll(abbr, checked) { document.querySelectorAll(`.svc-county-cb[data-state="${abbr}"]`).forEach(cb => cb.checked = checked); },
+
+          collect() {
+            const states = [], counties = [];
+            document.querySelectorAll('.svc-state-cb:checked').forEach(cb => {
+              const abbr = cb.dataset.abbr; states.push(abbr);
+              const mode = document.querySelector(`input[name="svc-mode-${abbr}"]:checked`)?.value;
+              if (mode === 'specific') document.querySelectorAll(`.svc-county-cb[data-state="${abbr}"]:checked`).forEach(c => counties.push(c.value));
+            });
+            return { service_states: states, service_counties: counties };
+          },
+
+          async populate(savedStates, savedCounties) {
+            this.buildGrid(savedStates);
+            // If only 1 state and counties saved, assign all counties to that state
+            for (const abbr of savedStates) {
+              const countyList = savedStates.length === 1 ? savedCounties : [];
+              const mode = countyList.length > 0 ? 'specific' : 'entire';
+              await this.addCountyConfig(abbr, mode, countyList);
+            }
+          }
+        };
+
         // ── Initialize: Load contractor data from Supabase ──
         async function initProfile() {
             currentUser = await Auth.requireAuth('contractor');
@@ -1237,9 +1316,10 @@
 
                     document.getElementById('statJobs').textContent = statsResult.count || '0';
 
-                // B-2 fix: render template grids on page load (not just after upload)
+                    // B-2 fix: render template grids on page load (not just after upload)
                     await loadContractTemplates();
                     await loadPcTemplates();
+
                 } catch (err) {
                     console.error('Error initializing profile:', err);
                 }
@@ -1274,7 +1354,16 @@
                 ? trades.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ')
                 : '—';
             document.getElementById('viewBrands').textContent = c.preferred_brands ? c.preferred_brands.join(', ') : '—';
-            document.getElementById('viewServiceArea').textContent = c.service_area_description || c.service_counties ? (c.service_counties || []).join(', ') : '—';
+            // D-192: display service area as state coverage summary
+            const svStates = c.service_states || [];
+            const svCounties = c.service_counties || [];
+            if (!svStates.length) {
+                document.getElementById('viewServiceArea').textContent = c.service_area_description || '—';
+            } else if (!svCounties.length) {
+                document.getElementById('viewServiceArea').textContent = svStates.map(s => (SVC.NAMES[s] || s) + ' (full state)').join(', ');
+            } else {
+                document.getElementById('viewServiceArea').textContent = svCounties.join(', ') + ' (' + svStates.join(', ') + ')';
+            }
 
             // Contract template
             updateContractTemplateView();
@@ -1295,11 +1384,8 @@
             document.getElementById('editAboutUs').value = c.about_us || '';
             document.getElementById('editWhyChoose').value = c.why_choose_us || '';
 
-            // Service area
-            const serviceCounties = c.service_counties || [];
-            const serviceStates = c.service_states || [];
-            document.getElementById('editServiceCounties').value = serviceCounties.join(', ');
-            document.getElementById('editServiceStates').value = serviceStates.join(', ');
+            // Service area — D-192: build checkbox UI from saved data
+            // (SVC.populate is async; grid builds on toggleEdit('serviceArea') to avoid loading all counties on page load)
 
             // Review links — populate edit inputs and rebuild view mode
             document.getElementById('googleReviewsUrl').value = c.google_reviews_url || '';
@@ -1388,8 +1474,19 @@
             const editEl = document.getElementById(section + 'Edit');
 
             if (viewEl && editEl) {
-                viewEl.style.display = viewEl.style.display === 'none' ? 'block' : 'none';
-                editEl.style.display = editEl.style.display === 'none' ? 'block' : 'none';
+                const opening = editEl.style.display === 'none';
+                viewEl.style.display = opening ? 'none' : 'block';
+                editEl.style.display = opening ? 'block' : 'none';
+
+                // D-192: initialize service area checkbox UI when opening edit mode
+                if (section === 'serviceArea' && opening && contractorRecord) {
+                    const savedStates = contractorRecord.service_states || [];
+                    const savedCounties = contractorRecord.service_counties || [];
+                    // Clear any previous state
+                    const configs = document.getElementById('svc-county-configs');
+                    if (configs) configs.innerHTML = '';
+                    SVC.populate(savedStates, savedCounties);
+                }
             }
         }
 
@@ -1508,18 +1605,8 @@
                     alert('Failed to save changes. Please try again.');
                 }
             } else if (section === 'serviceArea') {
-                const countiesStr = document.getElementById('editServiceCounties').value.trim();
-                const statesStr = document.getElementById('editServiceStates').value.trim();
-
-                // Parse comma-separated values into arrays
-                const service_counties = countiesStr
-                    .split(',')
-                    .map(c => c.trim())
-                    .filter(c => c.length > 0);
-                const service_states = statesStr
-                    .split(',')
-                    .map(s => s.trim().toUpperCase())
-                    .filter(s => s.length > 0);
+                // D-192: collect from checkbox UI
+                const { service_states, service_counties } = SVC.collect();
 
                 const updates = {
                     service_counties: service_counties,
@@ -2354,17 +2441,17 @@
         // ── Field Mapping Modal ──
 
         const DEFAULT_FIELD_MAPPINGS = {
-            homeowner_name:    { label: 'Name',           description: 'Homeowner name' },
-            property_address:  { label: 'Address:',       description: 'Property address' },
-            homeowner_phone:   { label: 'Phone',          description: 'Homeowner phone' },
-            homeowner_email:   { label: 'Email:',         description: 'Homeowner email' },
-            insurance_carrier: { label: 'Insurance Co',   description: 'Insurance carrier' },
-            claim_number:      { label: 'Claim #',        description: 'Claim number' },
-            deductible:        { label: 'Deductible:',    description: 'Deductible amount' },
-            contract_price:    { label: 'Contract Price:', description: 'Bid amount' },
-            material:          { label: 'Material:',      description: 'Shingle brand/type' },
-            warranty:          { label: 'Warranty:',      description: 'Warranty years' },
-            sow:               { label: 'Statement of Work:', description: 'Scope of work summary' }
+            homeowner_name:    { label: 'Name',                description: 'Homeowner name' },
+            property_address:  { label: 'Address:',            description: 'Property address' },
+            homeowner_phone:   { label: 'Phone',               description: 'Homeowner phone' },
+            homeowner_email:   { label: 'Email:',              description: 'Homeowner email' },
+            insurance_carrier: { label: 'Insurance Co',        description: 'Insurance carrier' },
+            claim_number:      { label: 'Claim #',             description: 'Claim number' },
+            deductible:        { label: 'Deductible:',         description: 'Deductible amount' },
+            contract_price:    { label: 'Contract Price:',     description: 'Bid amount' },
+            material:          { label: 'Material:',           description: 'Shingle brand/type' },
+            warranty:          { label: 'Warranty:',           description: 'Warranty years' },
+            statement_of_work: { label: 'Statement of Work:',  description: 'Scope of work / SOW' }
         };
 
         let fieldMappingCurrentTrade = null;

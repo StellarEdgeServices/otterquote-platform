@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+  <title>Auto-Bid Settings | Otter Quotes Contractor Portal</title>
+
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-JNQ6XR3LX2');
+  </script>
+
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Design System -->
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+
+  <style>
+    :root {
+      --navy: #0D1B2E;
+      --navy-2: #0F2440;
+      --navy-3: #132D50;
+      --amber: #E07B00;
+      --white: #FFFFFF;
+      --slate: #94A3B8;
+      --light: #E2E8F0;
+      --sp-1: 0.25rem;
+      --sp-2: 0.5rem;
+      --sp-3: 0.75rem;
+      --sp-4: 1rem;
+      --sp-6: 1.5rem;
+      --sp-8: 2rem;
+      --sp-10: 2.5rem;
+      --sp-12: 3rem;
+      --sp-16: 4rem;
+      --sp-24: 6rem;
+      --radius-sm: 0.375rem;
+      --radius-md: 0.5rem;
+      --radius-lg: 0.75rem;
+      --radius-xl: 1rem;
+      --font-body: 'Rubik', sans-serif;
+      --font-heading: 'Rubik', serif;
+      --font-mono: 'Rubik', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { font-family: var(--font-body); color: var(--navy); background-color: #F8FAFC; line-height: 1.6; }
+
+    main {
+      flex: 1;
+      padding: var(--sp-8) var(--sp-4);
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .page-header {
+      margin: calc(-1 * var(--sp-8)) calc(-1 * var(--sp-4)) var(--sp-10);
+      padding: var(--sp-10) var(--sp-8);
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+    }
+    .page-header h1 { font-family: var(--font-heading); font-size: 2.25rem; font-weight: 700; color: var(--white); margin-bottom: var(--sp-2); }
+    .page-subtitle { font-size: 0.95rem; color: rgba(255,255,255,0.7); line-height: 1.6; }
+
+    .settings-card {
+      background: var(--white);
+      border: 1px solid #CBD5E1;
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+    }
+    .settings-card-title { font-family: var(--font-heading); font-size: 1.125rem; font-weight: 600; color: var(--navy); margin-bottom: var(--sp-2); }
+    .settings-card-subtitle { font-size: 0.875rem; color: var(--slate); margin-bottom: var(--sp-6); line-height: 1.5; }
+
+    /* ── Toggle switch ── */
+    .switch { position: relative; width: 48px; height: 28px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #CBD5E1; transition: 0.3s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 3px; bottom: 3px; background-color: var(--white); transition: 0.3s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--amber); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* ── Auto-Bid ── */
+    .autobid-toggle-row { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4) 0; }
+    .autobid-toggle-label { font-weight: 600; color: var(--navy); font-size: 1rem; }
+    .autobid-status { font-size: 0.8rem; font-weight: 600; padding: var(--sp-1) var(--sp-3); border-radius: var(--radius-sm); }
+    .autobid-status.active { background: #D1FAE5; color: #065F46; }
+    .autobid-status.inactive { background: #FEE2E2; color: #991B1B; }
+    .autobid-details { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: var(--radius-lg); padding: var(--sp-6); margin-top: var(--sp-4); }
+    .autobid-details.hidden { display: none; }
+    .autobid-summary-box { background: var(--navy-3); color: var(--white); border-radius: var(--radius-md); padding: var(--sp-6); margin-top: var(--sp-6); }
+    .autobid-summary-title { font-weight: 600; font-size: 0.9rem; color: var(--amber); margin-bottom: var(--sp-3); }
+    .autobid-summary-item { font-size: 0.85rem; color: #E0E7FF; padding: var(--sp-2) 0; display: flex; gap: var(--sp-3); }
+    .autobid-summary-item .check { color: #34D399; font-weight: 700; }
+    .info-box { background: #EFF6FF; border-left: 3px solid var(--amber); padding: var(--sp-4); border-radius: var(--radius-sm); margin-top: var(--sp-4); font-size: 0.85rem; line-height: 1.6; color: var(--navy-3); }
+
+    .future-tier-card { background: #F3F4F6; border: 2px dashed #D1D5DB; border-radius: var(--radius-lg); padding: var(--sp-6); opacity: 0.7; margin-top: var(--sp-6); }
+    .future-tier-label { font-weight: 600; color: #6B7280; margin-bottom: var(--sp-2); display: flex; align-items: center; gap: var(--sp-3); }
+    .future-tier-description { font-size: 0.875rem; color: #9CA3AF; line-height: 1.5; }
+    .badge { display: inline-block; padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+    .badge.coming-soon { background: #E5E7EB; color: #6B7280; }
+
+    .save-button {
+      background: var(--amber);
+      color: var(--navy);
+      padding: var(--sp-4) var(--sp-8);
+      border: none;
+      border-radius: var(--radius-md);
+      font-family: var(--font-body);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+    .save-button:hover { background: #DDA500; }
+    .save-button:active { transform: scale(0.98); }
+
+    @media (max-width: 768px) {
+      main { padding: var(--sp-6) var(--sp-4); }
+      .page-header { margin: calc(-1 * var(--sp-6)) calc(-1 * var(--sp-4)) var(--sp-8); padding: var(--sp-8) var(--sp-5); }
+      .page-header h1 { font-size: 1.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <header id="site-header" data-active="auto-bids" data-auth="false"></header>
+
+  <main>
+    <div class="page-header">
+      <h1>Auto-Bid Settings</h1>
+      <p class="page-subtitle">Configure your auto-bid preferences for insurance roofing opportunities. When enabled, Otter Quotes places bids on your behalf for matching jobs in your service area.</p>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- Auto-Bid Settings (LIVE — Insurance)   -->
+    <!-- D-193: Moved from contractor-settings  -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card">
+      <div class="settings-card-title">Auto-Bid Settings</div>
+      <div class="settings-card-subtitle">
+        When auto-bid is enabled, Otter Quotes will automatically place bids on your behalf for matching insurance full roof replacement opportunities in your service area.
+      </div>
+
+      <!-- Master toggle -->
+      <div class="autobid-toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="autoBidToggle">
+          <span class="slider"></span>
+        </label>
+        <div class="autobid-toggle-label">Enable Auto-Bid for Insurance Roofing <span style="font-weight:400; font-size:0.85rem; color:var(--slate);">(for RCV policies only)</span></div>
+        <span class="autobid-status inactive" id="autoBidStatusBadge">OFF</span>
+      </div>
+
+      <!-- Details panel (shown when toggle is on) -->
+      <div class="autobid-details hidden" id="autoBidDetails">
+
+        <div class="info-box" style="margin-top: 0;">
+          <strong>How it works:</strong> When a homeowner in your service area submits an insurance claim for a full roof replacement, Otter Quotes will automatically place a bid on your behalf at the insurance company's approved RCV (Replacement Cost Value) amount plus any approved supplements. The homeowner sees your bid instantly and can sign a contract right away. You can manually generate a more tailored bid after reviewing the customer's request.
+        </div>
+
+        <!-- Summary of what auto-bid matches on -->
+        <div class="autobid-summary-box">
+          <div class="autobid-summary-title">Your Auto-Bid Will Match On:</div>
+          <div class="autobid-summary-item">
+            <span class="check">&#10003;</span>
+            <span><strong>Funding type:</strong> RCV insurance claims only</span>
+          </div>
+          <div class="autobid-summary-item">
+            <span class="check">&#10003;</span>
+            <span><strong>Scope:</strong> Full roof replacement only (not repairs)</span>
+          </div>
+          <div class="autobid-summary-item">
+            <span class="check">&#10003;</span>
+            <span><strong>Trade:</strong> Roofing</span>
+          </div>
+          <div class="autobid-summary-item">
+            <span class="check">&#10003;</span>
+            <span><strong>Price:</strong> RCV amount from the insurance estimate</span>
+          </div>
+          <div class="autobid-summary-item">
+            <span class="check">&#10003;</span>
+            <span><strong>Location:</strong> Within your configured service area &nbsp;<a href="/contractor-profile.html" style="color:var(--amber);font-size:0.85rem;font-weight:600;text-decoration:none;">Manage service area →</a></span>
+          </div>
+        </div>
+
+        <div class="info-box">
+          <strong>Tip:</strong> Auto-bid gives you a huge advantage. Homeowners are far more likely to sign when a contract is ready immediately. You can still manually bid on opportunities that don't match your auto-bid criteria.
+        </div>
+
+        <!-- See what my auto bid looks like -->
+        <div style="margin-top: var(--sp-4);">
+          <button type="button" onclick="toggleBidPreview()" id="bidPreviewToggleBtn" style="background: var(--navy-3); color: var(--amber); border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer; width: 100%;">
+            👁 See What My Auto Bid Looks Like
+          </button>
+          <div id="bidPreviewPanel" style="display:none; margin-top: var(--sp-4); border: 2px solid var(--amber); border-radius: var(--radius-lg); overflow: hidden;">
+            <div style="background: var(--navy); color: var(--white); padding: var(--sp-4) var(--sp-6); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--amber);">Sample Auto-Bid Preview — What the Homeowner Sees</div>
+            <div style="background: var(--white); padding: var(--sp-6);" id="bidPreviewContent">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: var(--sp-4);">
+                <div>
+                  <div style="font-weight:700; font-size:1.1rem; color:var(--navy);" id="previewCompanyName">Your Company Name</div>
+                  <div style="font-size:0.85rem; color:var(--slate);">Full Roof Replacement — RCV Insurance Bid</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:0.8rem; color:var(--slate);">Bid Amount</div>
+                  <div style="font-family:var(--font-mono); font-size:1.4rem; font-weight:700; color:var(--navy);">$[RCV + Supplements]</div>
+                </div>
+              </div>
+              <div style="border-top:1px solid var(--light); padding-top:var(--sp-4); margin-top:var(--sp-4);">
+                <p style="font-size:0.85rem; color:#374151; line-height:1.7; margin-bottom:var(--sp-4);">
+                  Thank you for considering <strong id="previewCompanyNameIntro">your company</strong>. Our team will review your request and send an updated bid if we can do something that better meets your needs. In the meantime, here is our standard offer for full roof replacements covered by RCV insurance policies. If this offer meets your needs, please sign our agreement and we will call you within 48 hours to get you on our calendar and finalize any other details.
+                </p>
+                <p style="font-size:0.8rem; font-weight:700; color:#991B1B; margin-bottom:var(--sp-4); letter-spacing:0.3px;">THIS OFFER IS NOT VALID FOR ACV POLICIES OR OUT OF POCKET JOBS.</p>
+              </div>
+              <div style="border-top:1px solid var(--light); padding-top:var(--sp-4);">
+                <div style="font-size:0.85rem; font-weight:600; color:var(--navy); margin-bottom:var(--sp-2);">WHAT'S INCLUDED:</div>
+                <div id="previewIncludesList" style="font-size:0.85rem; color:#374151; line-height:2;"></div>
+              </div>
+              <div id="previewWarrantySection" style="border-top:1px solid var(--light); padding-top:var(--sp-4); margin-top:var(--sp-4); display:none;">
+                <div style="font-size:0.85rem; font-weight:600; color:var(--navy); margin-bottom:var(--sp-2);">Warranty:</div>
+                <div id="previewWarrantyList" style="font-size:0.85rem; color:#374151; line-height:2;"></div>
+                <div style="font-size:0.75rem; color:var(--slate); margin-top:var(--sp-2); font-style:italic;" id="previewWarrantyDisclaimer"></div>
+              </div>
+              <div id="previewReviewsSection" style="border-top:1px solid var(--light); padding-top:var(--sp-4); margin-top:var(--sp-4); display:none;">
+                <div style="font-size:0.85rem; font-weight:600; color:var(--navy); margin-bottom:var(--sp-3);">What Our Customers Say:</div>
+                <div id="previewReviewsList" style="display:flex; flex-wrap:wrap; gap:var(--sp-3); font-size:0.85rem;"></div>
+              </div>
+              <div style="margin-top:var(--sp-4); padding:var(--sp-3); background:#FFFBEB; border-radius:var(--radius-sm); font-size:0.8rem; color:#92400E;">
+                ⚡ This bid is auto-generated at the RCV + supplements amount. Your contractor may adjust the bid after reviewing your specific claim details.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Auto-Bid Value Adds -->
+        <div style="margin-top: var(--sp-6); border-top: 1px solid var(--light); padding-top: var(--sp-6);">
+          <div style="font-size: 1rem; font-weight: 600; color: var(--navy); margin-bottom: var(--sp-2);">What's Included With Every Auto-Bid?</div>
+          <p style="font-size: 0.85rem; color: #92400E; background: #FFFBEB; border-left: 3px solid var(--amber); border-radius: var(--radius-sm); padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-4); line-height: 1.6;">
+            <strong>THESE ARE THE TERMS YOU OFFER CLIENTS FOR ANY FULL RCV ROOF.</strong> THE CLIENT WILL HAVE THE OPPORTUNITY TO ACCEPT YOUR CONTRACT WITH THESE TERMS. Do not include a benefit unless it is available for all roofs paid for by RCV policies. You can customize your offerings for specific jobs manually after reviewing the details of the job.
+          </p>
+
+          <!-- Gutters -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Gutters</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="none" checked> Not included / N/A</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="5inch_included"> 5&quot; gutters included (no out-of-pocket for homeowner)</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="6inch_included"> 6&quot; gutters included (no out-of-pocket for homeowner)</label>
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterOption" value="other" style="margin-top:3px;"> Other: <input type="text" name="abGutterOther" placeholder="Describe..." style="margin-left:4px; flex:1; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></label>
+            </div>
+          </div>
+
+          <!-- Chimney Flashing -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Chimney Flashing</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abChimneyFlashing" value="na" checked> N/A</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abChimneyFlashing" value="replace"> Replacement Included</label>
+            </div>
+          </div>
+
+          <!-- Gutter Guards -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Gutter Guards</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterGuards" value="insurance_covered" checked> As covered by insurance or paid for by homeowner.</label>
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer; flex-wrap: wrap;"><input type="radio" name="abGutterGuards" value="included" style="margin-top:3px;"> Included — Type:
+                <select name="abGutterGuardType" style="margin-left:4px; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"><option value="mesh">Mesh</option><option value="screw_in">Screw-In</option><option value="other">Other</option></select>
+              </label>
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterGuards" value="other" style="margin-top:3px;"> Other: <input type="text" name="abGutterGuardsOther" placeholder="Describe your gutter guard offering..." style="margin-left:4px; flex:1; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></label>
+            </div>
+          </div>
+
+          <!-- Chimney Reflash -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Chimney Reflash</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abChimneyReflash" value="na" checked> N/A</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abChimneyReflash" value="included"> Included at no cost</label>
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abChimneyReflash" value="oop" style="margin-top:3px;"> OOP cost of $<input type="number" name="abChimneyReflashOop" min="0" step="1" placeholder="0" style="width:80px; padding:2px 6px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></label>
+            </div>
+          </div>
+
+          <!-- Preferred Shingle & Materials -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-1); color: var(--navy);">Preferred Shingle &amp; Materials</h4>
+            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-3);">Your preferred shingle is the product your auto-bid is based on. Warranty terms you set below apply to this shingle.</p>
+            <div style="display:flex; flex-direction:column; gap:var(--sp-3);">
+              <div>
+                <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-1);">Preferred Shingle Brand</label>
+                <input type="text" id="abPreferredShingleBrand" name="abPreferredShingleBrand" placeholder="e.g., GAF, Owens Corning, CertainTeed..." style="width:100%; padding: var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem;">
+              </div>
+              <div>
+                <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-1);">Preferred Shingle Line / Product</label>
+                <input type="text" id="abPreferredShingleLine" name="abPreferredShingleLine" placeholder="e.g., Timberline HDZ, Duration, Landmark Pro..." style="width:100%; padding: var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Other Shingles Available -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-1); color: var(--navy);">Other Shingles Available</h4>
+            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-4); line-height:1.5;">These shingles are available for install at the price the insurance is paying. Warranty terms may be different from those offered for your preferred shingle.</p>
+            <!-- GAF -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">GAF</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Timberline HDZ" style="accent-color:var(--amber);"> Timberline HDZ</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Timberline UHDZ" style="accent-color:var(--amber);"> Timberline UHDZ</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Timberline CS" style="accent-color:var(--amber);"> Timberline CS (Cool Series)</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Camelot II" style="accent-color:var(--amber);"> Camelot II</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Grand Sequoia" style="accent-color:var(--amber);"> Grand Sequoia</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Grand Canyon" style="accent-color:var(--amber);"> Grand Canyon</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="GAF|Sovereign" style="accent-color:var(--amber);"> Sovereign</label>
+              </div>
+            </div>
+            <!-- Owens Corning -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">Owens Corning</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Duration" style="accent-color:var(--amber);"> Duration</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Duration FLEX" style="accent-color:var(--amber);"> Duration FLEX</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Duration Storm" style="accent-color:var(--amber);"> Duration Storm</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|TruDefinition Duration" style="accent-color:var(--amber);"> TruDefinition Duration</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Oakridge" style="accent-color:var(--amber);"> Oakridge</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Owens Corning|Berkshire Collection" style="accent-color:var(--amber);"> Berkshire Collection</label>
+              </div>
+            </div>
+            <!-- CertainTeed -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">CertainTeed</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Landmark" style="accent-color:var(--amber);"> Landmark</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Landmark Pro" style="accent-color:var(--amber);"> Landmark Pro</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Landmark Premium" style="accent-color:var(--amber);"> Landmark Premium</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Landmark TL" style="accent-color:var(--amber);"> Landmark TL</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Grand Manor" style="accent-color:var(--amber);"> Grand Manor</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Carriage House" style="accent-color:var(--amber);"> Carriage House</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="CertainTeed|Presidential Shake TL" style="accent-color:var(--amber);"> Presidential Shake TL</label>
+              </div>
+            </div>
+            <!-- Atlas -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">Atlas</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Atlas|StormMaster Slate" style="accent-color:var(--amber);"> StormMaster Slate</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Atlas|StormMaster Shake" style="accent-color:var(--amber);"> StormMaster Shake</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Atlas|ProLam AR" style="accent-color:var(--amber);"> ProLam AR</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Atlas|Pinnacle Pristine" style="accent-color:var(--amber);"> Pinnacle Pristine</label>
+              </div>
+            </div>
+            <!-- Malarkey -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">Malarkey</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Malarkey|Legacy" style="accent-color:var(--amber);"> Legacy</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Malarkey|Vista" style="accent-color:var(--amber);"> Vista</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Malarkey|Windsor" style="accent-color:var(--amber);"> Windsor</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="Malarkey|Highlander NEX" style="accent-color:var(--amber);"> Highlander NEX</label>
+              </div>
+            </div>
+            <!-- IKO -->
+            <div style="margin-bottom:var(--sp-4);">
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">IKO</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="IKO|Dynasty" style="accent-color:var(--amber);"> Dynasty</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="IKO|Cambridge" style="accent-color:var(--amber);"> Cambridge</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="IKO|Nordic" style="accent-color:var(--amber);"> Nordic</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="IKO|Crowne Slate" style="accent-color:var(--amber);"> Crowne Slate</label>
+              </div>
+            </div>
+            <!-- TAMKO -->
+            <div>
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--light);">TAMKO</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2);">
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="TAMKO|Heritage" style="accent-color:var(--amber);"> Heritage</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="TAMKO|Heritage Vintage" style="accent-color:var(--amber);"> Heritage Vintage</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="TAMKO|Heritage Woodgate" style="accent-color:var(--amber);"> Heritage Woodgate</label>
+                <label style="display:flex;align-items:center;gap:var(--sp-2);font-size:0.8rem;cursor:pointer;"><input type="checkbox" name="abOtherShingles" value="TAMKO|Elite Glass-Seal" style="accent-color:var(--amber);"> Elite Glass-Seal</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Underlayment -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Underlayment</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abUnderlayment" value="synthetic" checked style="accent-color:var(--amber);"> Synthetic</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abUnderlayment" value="felt" style="accent-color:var(--amber);"> Felt</label>
+            </div>
+          </div>
+
+          <!-- Starter Strip -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Starter Strip</h4>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abStarterStrip" value="eaves" checked style="accent-color:var(--amber);"> Eaves</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abStarterStrip" value="rakes" style="accent-color:var(--amber);"> Rakes</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abStarterStrip" value="eaves_and_rakes" style="accent-color:var(--amber);"> Eaves and Rakes</label>
+              <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abStarterStrip" value="none" style="accent-color:var(--amber);"> None</label>
+            </div>
+          </div>
+
+          <!-- Ventilation -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Ventilation</h4>
+            <div style="display:flex; flex-direction:column; gap:var(--sp-2);">
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;">
+                <input type="checkbox" name="abVentRidgeUpgrade" id="abVentRidgeUpgrade" style="width:16px;height:16px;accent-color:var(--amber);">
+                Free Ridge Vent Upgrade
+              </label>
+              <label style="display:flex; align-items:flex-start; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;">
+                <input type="checkbox" name="abVentOtherCheck" id="abVentOtherCheck" style="width:16px;height:16px;margin-top:3px;accent-color:var(--amber);">
+                Other: <input type="text" id="abVentOtherText" name="abVentOtherText" placeholder="Describe ventilation offering..." style="margin-left:4px; flex:1; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;">
+              </label>
+            </div>
+          </div>
+
+          <!-- Free Attic Inspection / Other Services -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Attic Inspection &amp; Other Services</h4>
+            <div style="display:flex; flex-direction:column; gap:var(--sp-2);">
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;">
+                <input type="checkbox" name="abFreeAtticInspection" id="abFreeAtticInspection" style="width:16px;height:16px;accent-color:var(--amber);">
+                Free Attic Inspection
+              </label>
+              <div>
+                <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-1);">Other Services Included</label>
+                <textarea id="abOtherServices" name="abOtherServices" placeholder="Describe any other services included with your bid (e.g., free annual roof inspection, satellite measurement, photos documenting damage)..." style="width:100%; min-height:70px; padding:var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem; resize:vertical;" maxlength="1000"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cleanup Guarantee -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-1); color: var(--navy);">Cleanup Guarantee</h4>
+            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-2);">Describe your cleanup commitment to homeowners.</p>
+            <textarea id="abCleanupGuarantee" name="abCleanupGuarantee" placeholder="e.g., We perform a thorough magnetic nail sweep, remove all debris, and leave your property cleaner than we found it. Guaranteed." style="width:100%; min-height:70px; padding:var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem; resize:vertical;" maxlength="1000"></textarea>
+          </div>
+
+          <!-- Property Protection Services -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Property Protection Services</h4>
+            <div style="display:flex; flex-direction:column; gap:var(--sp-2);">
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;">
+                <input type="checkbox" name="abPropEquipter" id="abPropEquipter" style="width:16px;height:16px;accent-color:var(--amber);">
+                Equipter (debris containment lift)
+              </label>
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;">
+                <input type="checkbox" name="abPropCatchAll" id="abPropCatchAll" style="width:16px;height:16px;accent-color:var(--amber);">
+                Catch-All (ground protection tarps / containment system)
+              </label>
+              <label style="display:flex; align-items:flex-start; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;">
+                <input type="checkbox" name="abPropOtherCheck" id="abPropOtherCheck" style="width:16px;height:16px;margin-top:3px;accent-color:var(--amber);">
+                Other: <input type="text" id="abPropOtherText" name="abPropOtherText" placeholder="Describe other property protection..." style="margin-left:4px; flex:1; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;">
+              </label>
+            </div>
+          </div>
+
+          <!-- Warranty -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-1); color: var(--navy);">Warranty</h4>
+            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-3);">Select the warranty types you offer and describe each one. Check a box to enable it and appear on your bid.</p>
+            <div style="padding: var(--sp-3); background:#FFFBEB; border-left:3px solid var(--amber); border-radius:var(--radius-sm); margin-bottom:var(--sp-4); font-size:0.8rem; color:#92400E; line-height:1.5;">
+              ⚠️ <strong>Disclaimer (shown to homeowners):</strong> Warranty terms listed below apply only to your Preferred Shingle. Different warranty terms may apply if the homeowner selects a different shingle.
+            </div>
+            <!-- Material Defects -->
+            <div style="border:1px solid var(--light); border-radius:var(--radius-md); padding:var(--sp-3); margin-bottom:var(--sp-3); background:white;">
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; font-weight:600; cursor:pointer; margin-bottom:var(--sp-2);">
+                <input type="checkbox" id="abWarrMaterialDefects" name="abWarrMaterialDefects" style="width:16px;height:16px;accent-color:var(--amber);">
+                Material Defects Warranty
+              </label>
+              <textarea id="abWarrMaterialDefectsDesc" name="abWarrMaterialDefectsDesc" placeholder="e.g., 30-year manufacturer warranty against material defects on GAF Timberline HDZ shingles." style="width:100%; min-height:60px; padding:var(--sp-2) var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.8rem; resize:vertical;" maxlength="500"></textarea>
+            </div>
+            <!-- Labor -->
+            <div style="border:1px solid var(--light); border-radius:var(--radius-md); padding:var(--sp-3); margin-bottom:var(--sp-3); background:white;">
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; font-weight:600; cursor:pointer; margin-bottom:var(--sp-2);">
+                <input type="checkbox" id="abWarrLabor" name="abWarrLabor" style="width:16px;height:16px;accent-color:var(--amber);">
+                Labor Warranty
+              </label>
+              <textarea id="abWarrLaborDesc" name="abWarrLaborDesc" placeholder="e.g., 10-year workmanship warranty on all labor and installation." style="width:100%; min-height:60px; padding:var(--sp-2) var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.8rem; resize:vertical;" maxlength="500"></textarea>
+            </div>
+            <!-- Algae -->
+            <div style="border:1px solid var(--light); border-radius:var(--radius-md); padding:var(--sp-3); margin-bottom:var(--sp-3); background:white;">
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; font-weight:600; cursor:pointer; margin-bottom:var(--sp-2);">
+                <input type="checkbox" id="abWarrAlgae" name="abWarrAlgae" style="width:16px;height:16px;accent-color:var(--amber);">
+                Algae Resistance Warranty
+              </label>
+              <textarea id="abWarrAlgaeDesc" name="abWarrAlgaeDesc" placeholder="e.g., 25-year algae resistance warranty on StainGuard Plus shingles." style="width:100%; min-height:60px; padding:var(--sp-2) var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.8rem; resize:vertical;" maxlength="500"></textarea>
+            </div>
+            <!-- Hail -->
+            <div style="border:1px solid var(--light); border-radius:var(--radius-md); padding:var(--sp-3); margin-bottom:var(--sp-3); background:white;">
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; font-weight:600; cursor:pointer; margin-bottom:var(--sp-2);">
+                <input type="checkbox" id="abWarrHail" name="abWarrHail" style="width:16px;height:16px;accent-color:var(--amber);">
+                Hail Damage Warranty
+              </label>
+              <textarea id="abWarrHailDesc" name="abWarrHailDesc" placeholder="e.g., Class 4 impact-resistant shingles with 10-year hail warranty." style="width:100%; min-height:60px; padding:var(--sp-2) var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.8rem; resize:vertical;" maxlength="500"></textarea>
+            </div>
+            <!-- Wind -->
+            <div style="border:1px solid var(--light); border-radius:var(--radius-md); padding:var(--sp-3); margin-bottom:var(--sp-3); background:white;">
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; font-weight:600; cursor:pointer; margin-bottom:var(--sp-2);">
+                <input type="checkbox" id="abWarrWind" name="abWarrWind" style="width:16px;height:16px;accent-color:var(--amber);">
+                Wind Damage Warranty
+              </label>
+              <textarea id="abWarrWindDesc" name="abWarrWindDesc" placeholder="e.g., 15-year wind warranty up to 130 mph with proper installation." style="width:100%; min-height:60px; padding:var(--sp-2) var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.8rem; resize:vertical;" maxlength="500"></textarea>
+            </div>
+            <!-- Warranty Notes -->
+            <div>
+              <label style="font-size:0.85rem; font-weight:600; color:var(--navy); display:block; margin-bottom:var(--sp-1);">Additional Warranty Notes</label>
+              <textarea id="abWarrNotes" name="abWarrNotes" placeholder="Any additional notes about your warranty terms, registration requirements, transferability, etc." style="width:100%; min-height:70px; padding:var(--sp-3); border:1px solid var(--light); border-radius:var(--radius-md); font-family:var(--font-body); font-size:0.875rem; resize:vertical;" maxlength="1000"></textarea>
+            </div>
+          </div>
+
+          <!-- Other Special Offers -->
+          <div style="margin-bottom: var(--sp-2); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-2); color: var(--navy);">Other Special Offers</h4>
+            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-2);">Financing, extended warranties, free inspections, etc.</p>
+            <textarea name="abOtherOffers" id="abOtherOffers" placeholder="e.g., 0% financing for 12 months, free annual inspection for 5 years..." style="width:100%; min-height:80px; padding: var(--sp-3); border:1px solid var(--light); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 0.875rem; resize: vertical;" maxlength="2000"></textarea>
+          </div>
+
+          <!-- Other Trades Covered by Insurance -->
+          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-1); color: var(--navy);">Other Trades Covered by Insurance</h4>
+            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-3); line-height:1.5;">Which trades are you willing to perform if covered by insurance? These will appear on your bid so homeowners know what you can handle.</p>
+            <div style="display:flex; flex-direction:column; gap:var(--sp-2);">
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;"><input type="checkbox" id="abTradeSidingFull" name="abOtherTrades" value="siding_full" style="width:16px;height:16px;accent-color:var(--amber);"> Siding (full replace)</label>
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;"><input type="checkbox" id="abTradeSidingRepair" name="abOtherTrades" value="siding_repair" style="width:16px;height:16px;accent-color:var(--amber);"> Siding (repair)</label>
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;"><input type="checkbox" id="abTradeGuttersFull" name="abOtherTrades" value="gutters_full" style="width:16px;height:16px;accent-color:var(--amber);"> Gutters (full replace)</label>
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;"><input type="checkbox" id="abTradeGuttersRepair" name="abOtherTrades" value="gutters_repair" style="width:16px;height:16px;accent-color:var(--amber);"> Gutters (repair)</label>
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;"><input type="checkbox" id="abTradeInterior" name="abOtherTrades" value="interior_repairs" style="width:16px;height:16px;accent-color:var(--amber);"> Interior repairs</label>
+              <label style="display:flex; align-items:center; gap:var(--sp-2); font-size:0.875rem; cursor:pointer;"><input type="checkbox" id="abTradePaint" name="abOtherTrades" value="paint" style="width:16px;height:16px;accent-color:var(--amber);"> Paint</label>
+            </div>
+          </div>
+
+          <!-- Section Save Button -->
+          <div style="margin-top:var(--sp-4); border-top:1px solid var(--light); padding-top:var(--sp-4);">
+            <button class="save-button" onclick="saveAutoBidSettings()" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Save Auto-Bid Settings</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Future: Retail auto-bid -->
+      <div class="future-tier-card">
+        <div class="future-tier-label">
+          Auto-Bid for Retail Jobs
+          <span class="badge coming-soon">Coming Soon</span>
+        </div>
+        <div class="future-tier-description">
+          Set custom pricing per material type for retail (non-insurance) roofing opportunities. Coming after insurance auto-bid is established.
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Config + Auth -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+
+  <script>
+    // ── Globals ──
+    let sb = null;
+    let currentUser = null;
+    let contractorRecord = null;
+
+    // ── Supabase init ──
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY) {
+        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+      }
+      await initAutoBids();
+    });
+
+    // ── Auto-Bid Toggle Logic ──
+    const autoBidToggle = document.getElementById('autoBidToggle');
+    const autoBidDetails = document.getElementById('autoBidDetails');
+    const autoBidStatusBadge = document.getElementById('autoBidStatusBadge');
+
+    function updateAutoBidUI() {
+      if (autoBidToggle.checked) {
+        autoBidDetails.classList.remove('hidden');
+        autoBidStatusBadge.textContent = 'ACTIVE';
+        autoBidStatusBadge.className = 'autobid-status active';
+      } else {
+        autoBidDetails.classList.add('hidden');
+        autoBidStatusBadge.textContent = 'OFF';
+        autoBidStatusBadge.className = 'autobid-status inactive';
+      }
+    }
+
+    autoBidToggle.addEventListener('change', updateAutoBidUI);
+
+    // ── Initialize: load auto-bid data from Supabase ──
+    async function initAutoBids() {
+      currentUser = await Auth.requireAuth('contractor');
+      if (!currentUser && !CONFIG.DEMO_MODE) return;
+
+      if (currentUser && !CONFIG.DEMO_MODE && sb) {
+        try {
+          const { data, error } = await sb
+            .from('contractors')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .single();
+
+          if (error) { console.error('Error loading contractor:', error); return; }
+          contractorRecord = data;
+
+          // CPA version guard
+          if (contractorRecord.cpa_version !== (typeof CURRENT_CPA_VERSION !== 'undefined' ? CURRENT_CPA_VERSION : contractorRecord.cpa_version)) {
+            if (!localStorage.getItem('oq_cpa_redirect_guard')) {
+              localStorage.setItem('oq_cpa_redirect_guard', '1');
+              window.location.href = '/contractor-dashboard.html';
+              return;
+            }
+          }
+
+          // Populate auto-bid toggle
+          if (data.auto_bid_enabled !== undefined && data.auto_bid_enabled !== null) {
+            autoBidToggle.checked = data.auto_bid_enabled;
+          }
+          updateAutoBidUI();
+
+          // Populate auto_bid_value_adds fields
+          if (data.auto_bid_value_adds) {
+            const va = typeof data.auto_bid_value_adds === 'string'
+              ? JSON.parse(data.auto_bid_value_adds)
+              : data.auto_bid_value_adds;
+
+            if (va.gutters?.option) {
+              const r = document.querySelector(`input[name="abGutterOption"][value="${va.gutters.option}"]`);
+              if (r) r.checked = true;
+              if (va.gutters.other_text) { const el = document.querySelector('input[name="abGutterOther"]'); if (el) el.value = va.gutters.other_text; }
+            }
+            if (va.chimney_flashing) { const r = document.querySelector(`input[name="abChimneyFlashing"][value="${va.chimney_flashing}"]`); if (r) r.checked = true; }
+            if (va.gutter_guards?.option) {
+              const r = document.querySelector(`input[name="abGutterGuards"][value="${va.gutter_guards.option}"]`); if (r) r.checked = true;
+              if (va.gutter_guards.type) { const s = document.querySelector('select[name="abGutterGuardType"]'); if (s) s.value = va.gutter_guards.type; }
+              if (va.gutter_guards.other_text) { const el = document.querySelector('input[name="abGutterGuardsOther"]'); if (el) el.value = va.gutter_guards.other_text; }
+            }
+            if (va.chimney_reflash?.option) {
+              const r = document.querySelector(`input[name="abChimneyReflash"][value="${va.chimney_reflash.option}"]`); if (r) r.checked = true;
+              if (va.chimney_reflash.oop_price) { const el = document.querySelector('input[name="abChimneyReflashOop"]'); if (el) el.value = va.chimney_reflash.oop_price; }
+            }
+            if (va.preferred_shingle) {
+              if (va.preferred_shingle.brand && document.getElementById('abPreferredShingleBrand')) document.getElementById('abPreferredShingleBrand').value = va.preferred_shingle.brand;
+              if (va.preferred_shingle.line && document.getElementById('abPreferredShingleLine')) document.getElementById('abPreferredShingleLine').value = va.preferred_shingle.line;
+            }
+            if (va.other_shingles && Array.isArray(va.other_shingles)) {
+              va.other_shingles.forEach(v => {
+                const cb = document.querySelector(`input[name="abOtherShingles"][value="${v}"]`);
+                if (cb) cb.checked = true;
+              });
+            }
+            if (va.other_trades && Array.isArray(va.other_trades)) {
+              va.other_trades.forEach(v => {
+                const cb = document.querySelector(`input[name="abOtherTrades"][value="${v}"]`);
+                if (cb) cb.checked = true;
+              });
+            }
+            if (va.underlayment) { const r = document.querySelector(`input[name="abUnderlayment"][value="${va.underlayment}"]`); if (r) r.checked = true; }
+            if (va.starter_strip) { const r = document.querySelector(`input[name="abStarterStrip"][value="${va.starter_strip}"]`); if (r) r.checked = true; }
+            if (va.ventilation) {
+              if (va.ventilation.free_ridge_vent && document.getElementById('abVentRidgeUpgrade')) document.getElementById('abVentRidgeUpgrade').checked = va.ventilation.free_ridge_vent;
+              if (va.ventilation.other_check && document.getElementById('abVentOtherCheck')) document.getElementById('abVentOtherCheck').checked = va.ventilation.other_check;
+              if (va.ventilation.other_text && document.getElementById('abVentOtherText')) document.getElementById('abVentOtherText').value = va.ventilation.other_text;
+            }
+            if (va.attic_inspection) {
+              if (va.attic_inspection.free && document.getElementById('abFreeAtticInspection')) document.getElementById('abFreeAtticInspection').checked = va.attic_inspection.free;
+              if (va.attic_inspection.other_services && document.getElementById('abOtherServices')) document.getElementById('abOtherServices').value = va.attic_inspection.other_services;
+            }
+            if (va.cleanup_guarantee && document.getElementById('abCleanupGuarantee')) document.getElementById('abCleanupGuarantee').value = va.cleanup_guarantee;
+            if (va.property_protection) {
+              if (va.property_protection.equipter && document.getElementById('abPropEquipter')) document.getElementById('abPropEquipter').checked = va.property_protection.equipter;
+              if (va.property_protection.catch_all && document.getElementById('abPropCatchAll')) document.getElementById('abPropCatchAll').checked = va.property_protection.catch_all;
+              if (va.property_protection.other_check && document.getElementById('abPropOtherCheck')) document.getElementById('abPropOtherCheck').checked = va.property_protection.other_check;
+              if (va.property_protection.other_text && document.getElementById('abPropOtherText')) document.getElementById('abPropOtherText').value = va.property_protection.other_text;
+            }
+            if (va.warranty) {
+              const w = va.warranty;
+              if (w.material_defects) { if (document.getElementById('abWarrMaterialDefects')) document.getElementById('abWarrMaterialDefects').checked = w.material_defects.offered; if (document.getElementById('abWarrMaterialDefectsDesc')) document.getElementById('abWarrMaterialDefectsDesc').value = w.material_defects.description || ''; }
+              if (w.labor) { if (document.getElementById('abWarrLabor')) document.getElementById('abWarrLabor').checked = w.labor.offered; if (document.getElementById('abWarrLaborDesc')) document.getElementById('abWarrLaborDesc').value = w.labor.description || ''; }
+              if (w.algae) { if (document.getElementById('abWarrAlgae')) document.getElementById('abWarrAlgae').checked = w.algae.offered; if (document.getElementById('abWarrAlgaeDesc')) document.getElementById('abWarrAlgaeDesc').value = w.algae.description || ''; }
+              if (w.hail) { if (document.getElementById('abWarrHail')) document.getElementById('abWarrHail').checked = w.hail.offered; if (document.getElementById('abWarrHailDesc')) document.getElementById('abWarrHailDesc').value = w.hail.description || ''; }
+              if (w.wind) { if (document.getElementById('abWarrWind')) document.getElementById('abWarrWind').checked = w.wind.offered; if (document.getElementById('abWarrWindDesc')) document.getElementById('abWarrWindDesc').value = w.wind.description || ''; }
+              if (w.notes && document.getElementById('abWarrNotes')) document.getElementById('abWarrNotes').value = w.notes;
+            }
+            if (va.other_offers && document.getElementById('abOtherOffers')) document.getElementById('abOtherOffers').value = va.other_offers;
+          }
+        } catch (err) {
+          console.error('Error initializing auto-bids:', err);
+        }
+      }
+    }
+
+    // ── Save auto-bid settings to Supabase ──
+    async function saveAutoBidSettings() {
+      const button = document.querySelector('.save-button');
+      const originalText = button.textContent;
+
+      const abGutterOpt = document.querySelector('input[name="abGutterOption"]:checked')?.value || 'none';
+      const abGutterGuards = document.querySelector('input[name="abGutterGuards"]:checked')?.value || 'insurance_covered';
+
+      const payload = {
+        auto_bid_enabled: autoBidToggle.checked,
+        auto_bid_settings: {
+          funding_type: 'insurance',
+          scope: 'full_replacement',
+          trade: 'roofing',
+          pricing: 'rcv',
+        },
+        auto_bid_value_adds: {
+          gutters: {
+            option: abGutterOpt,
+            other_text: abGutterOpt === 'other' ? (document.querySelector('input[name="abGutterOther"]')?.value || null) : null,
+          },
+          chimney_flashing: document.querySelector('input[name="abChimneyFlashing"]:checked')?.value || 'na',
+          gutter_guards: {
+            option: abGutterGuards,
+            type: abGutterGuards === 'included' ? (document.querySelector('select[name="abGutterGuardType"]')?.value || 'mesh') : null,
+            other_text: abGutterGuards === 'other' ? (document.querySelector('input[name="abGutterGuardsOther"]')?.value || null) : null,
+          },
+          chimney_reflash: {
+            option: document.querySelector('input[name="abChimneyReflash"]:checked')?.value || 'na',
+            oop_price: document.querySelector('input[name="abChimneyReflash"]:checked')?.value === 'oop'
+              ? (parseFloat(document.querySelector('input[name="abChimneyReflashOop"]')?.value) || null)
+              : null,
+          },
+          preferred_shingle: {
+            brand: document.getElementById('abPreferredShingleBrand')?.value?.trim() || null,
+            line: document.getElementById('abPreferredShingleLine')?.value?.trim() || null,
+          },
+          other_shingles: Array.from(document.querySelectorAll('input[name="abOtherShingles"]:checked')).map(cb => cb.value),
+          underlayment: document.querySelector('input[name="abUnderlayment"]:checked')?.value || 'synthetic',
+          starter_strip: document.querySelector('input[name="abStarterStrip"]:checked')?.value || 'eaves',
+          ventilation: {
+            free_ridge_vent: document.getElementById('abVentRidgeUpgrade')?.checked || false,
+            other_check: document.getElementById('abVentOtherCheck')?.checked || false,
+            other_text: document.getElementById('abVentOtherText')?.value?.trim() || null,
+          },
+          attic_inspection: {
+            free: document.getElementById('abFreeAtticInspection')?.checked || false,
+            other_services: document.getElementById('abOtherServices')?.value?.trim() || null,
+          },
+          cleanup_guarantee: document.getElementById('abCleanupGuarantee')?.value?.trim() || null,
+          property_protection: {
+            equipter: document.getElementById('abPropEquipter')?.checked || false,
+            catch_all: document.getElementById('abPropCatchAll')?.checked || false,
+            other_check: document.getElementById('abPropOtherCheck')?.checked || false,
+            other_text: document.getElementById('abPropOtherText')?.value?.trim() || null,
+          },
+          warranty: {
+            material_defects: { offered: document.getElementById('abWarrMaterialDefects')?.checked || false, description: document.getElementById('abWarrMaterialDefectsDesc')?.value?.trim() || null },
+            labor: { offered: document.getElementById('abWarrLabor')?.checked || false, description: document.getElementById('abWarrLaborDesc')?.value?.trim() || null },
+            algae: { offered: document.getElementById('abWarrAlgae')?.checked || false, description: document.getElementById('abWarrAlgaeDesc')?.value?.trim() || null },
+            hail: { offered: document.getElementById('abWarrHail')?.checked || false, description: document.getElementById('abWarrHailDesc')?.value?.trim() || null },
+            wind: { offered: document.getElementById('abWarrWind')?.checked || false, description: document.getElementById('abWarrWindDesc')?.value?.trim() || null },
+            notes: document.getElementById('abWarrNotes')?.value?.trim() || null,
+          },
+          other_offers: document.getElementById('abOtherOffers')?.value?.trim() || null,
+          other_trades: Array.from(document.querySelectorAll('input[name="abOtherTrades"]:checked')).map(cb => cb.value),
+          review_sites: {},
+        },
+        updated_at: new Date().toISOString(),
+      };
+
+      button.textContent = 'Saving...';
+      button.disabled = true;
+
+      if (!contractorRecord || !sb) {
+        button.textContent = 'Error — Not Connected';
+        button.style.backgroundColor = '#EF4444';
+        button.style.color = '#FFFFFF';
+        setTimeout(() => { button.textContent = originalText; button.style.backgroundColor = ''; button.style.color = ''; button.disabled = false; }, 2000);
+        return;
+      }
+
+      try {
+        const { error } = await sb
+          .from('contractors')
+          .update(payload)
+          .eq('id', contractorRecord.id);
+
+        if (error) throw error;
+
+        Object.assign(contractorRecord, payload);
+
+        button.textContent = 'Saved!';
+        button.style.backgroundColor = '#10B981';
+        setTimeout(() => { button.textContent = originalText; button.style.backgroundColor = ''; button.disabled = false; }, 2000);
+
+        gtag('event', 'auto_bid_settings_saved', { contractor_id: contractorRecord.id, auto_bid_enabled: payload.auto_bid_enabled });
+      } catch (err) {
+        console.error('Error saving auto-bid settings:', err);
+        button.textContent = 'Error — Try Again';
+        button.style.backgroundColor = '#EF4444';
+        button.style.color = '#FFFFFF';
+        setTimeout(() => { button.textContent = originalText; button.style.backgroundColor = ''; button.style.color = ''; button.disabled = false; }, 2000);
+      }
+    }
+
+    // ── Bid Preview Toggle ──
+    window.toggleBidPreview = function() {
+      const panel = document.getElementById('bidPreviewPanel');
+      const btn = document.getElementById('bidPreviewToggleBtn');
+      if (panel.style.display === 'none') {
+        updateBidPreview();
+        panel.style.display = 'block';
+        btn.textContent = '▲ Hide Bid Preview';
+      } else {
+        panel.style.display = 'none';
+        btn.textContent = '👁 See What My Auto Bid Looks Like';
+      }
+    };
+
+    function updateBidPreview() {
+      const companyName = contractorRecord?.company_name || contractorRecord?.contact_name || 'Your Company';
+      document.getElementById('previewCompanyName').textContent = companyName;
+      const introEl = document.getElementById('previewCompanyNameIntro');
+      if (introEl) introEl.textContent = companyName;
+
+      const items = [];
+      const brand = document.getElementById('abPreferredShingleBrand')?.value?.trim();
+      const line = document.getElementById('abPreferredShingleLine')?.value?.trim();
+      if (brand || line) items.push('🏗 Preferred Shingle: ' + [brand, line].filter(Boolean).join(' — '));
+
+      const gutterOpt = document.querySelector('input[name="abGutterOption"]:checked')?.value;
+      if (gutterOpt === '5inch_included') items.push('✅ 5" Gutters Included');
+      else if (gutterOpt === '6inch_included') items.push('✅ 6" Gutters Included');
+
+      const ggOpt = document.querySelector('input[name="abGutterGuards"]:checked')?.value;
+      if (ggOpt === 'included') { const ggType = document.querySelector('select[name="abGutterGuardType"]')?.value || ''; items.push('✅ Gutter Guards Included' + (ggType ? ' (' + ggType + ')' : '')); }
+      else if (ggOpt === 'insurance_covered') items.push('🛡 Gutter Guards: As covered by insurance or paid for by homeowner');
+      else if (ggOpt === 'other') { const ggOther = document.querySelector('input[name="abGutterGuardsOther"]')?.value?.trim(); if (ggOther) items.push('ℹ️ Gutter Guards: ' + ggOther); }
+
+      if (document.getElementById('abVentRidgeUpgrade')?.checked) items.push('✅ Free Ridge Vent Upgrade');
+      const ventOther = document.getElementById('abVentOtherText')?.value?.trim();
+      if (document.getElementById('abVentOtherCheck')?.checked && ventOther) items.push('✅ ' + ventOther);
+
+      if (document.getElementById('abFreeAtticInspection')?.checked) items.push('✅ Free Attic Inspection');
+      const otherSvcs = document.getElementById('abOtherServices')?.value?.trim();
+      if (otherSvcs) items.push('✅ ' + otherSvcs);
+
+      const cleanup = document.getElementById('abCleanupGuarantee')?.value?.trim();
+      if (cleanup) items.push('🧹 Cleanup: ' + cleanup);
+
+      const ppItems = [];
+      if (document.getElementById('abPropEquipter')?.checked) ppItems.push('Equipter');
+      if (document.getElementById('abPropCatchAll')?.checked) ppItems.push('Catch-All');
+      const ppOther = document.getElementById('abPropOtherText')?.value?.trim();
+      if (document.getElementById('abPropOtherCheck')?.checked && ppOther) ppItems.push(ppOther);
+      if (ppItems.length) items.push('🛡 Property Protection: ' + ppItems.join(', '));
+
+      const otherOffers = document.getElementById('abOtherOffers')?.value?.trim();
+      if (otherOffers) items.push('🎁 ' + otherOffers);
+
+      const tradeLabels = { siding_full: 'Siding (full replace)', siding_repair: 'Siding (repair)', gutters_full: 'Gutters (full replace)', gutters_repair: 'Gutters (repair)', interior_repairs: 'Interior repairs', paint: 'Paint' };
+      const selectedTrades = Array.from(document.querySelectorAll('input[name="abOtherTrades"]:checked')).map(el => tradeLabels[el.value] || el.value);
+      if (selectedTrades.length) items.push('🏠 Other Trades (if covered by insurance): ' + selectedTrades.join(', '));
+
+      document.getElementById('previewIncludesList').innerHTML = items.length
+        ? items.map(i => '<div>' + i + '</div>').join('')
+        : '<div style="color:var(--slate);">No items configured yet — fill out the sections above.</div>';
+
+      // Warranty preview
+      const warrantyItems = [];
+      const shingleName = [brand, line].filter(Boolean).join(' ') || 'your preferred shingle';
+      if (document.getElementById('abWarrMaterialDefects')?.checked) { const d = document.getElementById('abWarrMaterialDefectsDesc')?.value?.trim(); warrantyItems.push('📋 Material Defects' + (d ? ': ' + d : '')); }
+      if (document.getElementById('abWarrLabor')?.checked) { const d = document.getElementById('abWarrLaborDesc')?.value?.trim(); warrantyItems.push('🔨 Labor' + (d ? ': ' + d : '')); }
+      if (document.getElementById('abWarrAlgae')?.checked) { const d = document.getElementById('abWarrAlgaeDesc')?.value?.trim(); warrantyItems.push('🌿 Algae Resistance' + (d ? ': ' + d : '')); }
+      if (document.getElementById('abWarrHail')?.checked) { const d = document.getElementById('abWarrHailDesc')?.value?.trim(); warrantyItems.push('🌨 Hail' + (d ? ': ' + d : '')); }
+      if (document.getElementById('abWarrWind')?.checked) { const d = document.getElementById('abWarrWindDesc')?.value?.trim(); warrantyItems.push('💨 Wind' + (d ? ': ' + d : '')); }
+      const wSection = document.getElementById('previewWarrantySection');
+      if (warrantyItems.length) {
+        wSection.style.display = 'block';
+        document.getElementById('previewWarrantyList').innerHTML = warrantyItems.map(i => '<div>' + i + '</div>').join('');
+        document.getElementById('previewWarrantyDisclaimer').textContent = '* Warranty terms apply only to ' + shingleName + '. Different warranty terms may apply to other shingles.';
+      } else {
+        wSection.style.display = 'none';
+      }
+
+      const rvSection = document.getElementById('previewReviewsSection');
+      if (rvSection) rvSection.style.display = 'none';
+    }
+  </script>
+</body>
+</html>

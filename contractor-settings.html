@@ -672,7 +672,7 @@
   <main>
     <div class="page-header">
       <h1>Settings & Preferences</h1>
-      <p class="page-subtitle">Manage your auto-bid settings, notifications, and review how Otter Quotes pricing works.</p>
+      <p class="page-subtitle">Manage your notification preferences, repair work settings, payment methods, and review how Otter Quotes pricing works.</p>
     </div>
 
     <!-- Notification Preferences                -->
@@ -772,16 +772,17 @@
     </div>
 
     <!-- ═══════════════════════════════════════ -->
-    <!-- Auto-Bid Settings (LIVE — Insurance)   -->
+    <!-- Auto-Bid Settings (D-193: moved page) -->
     <!-- ═══════════════════════════════════════ -->
-    <div class="settings-card">
-      <div class="settings-card-title">Auto-Bid Settings</div>
-      <div class="settings-card-subtitle">
-        When auto-bid is enabled, Otter Quotes will automatically place bids on your behalf for matching insurance full roof replacement opportunities in your service area.
-      </div>
+    <div class="settings-card" style="text-align:center; padding: var(--sp-10) var(--sp-8);">
+      <div style="font-size:2rem; margin-bottom:var(--sp-4);">⚡</div>
+      <div class="settings-card-title" style="margin-bottom:var(--sp-3);">Auto-Bid Settings</div>
+      <p style="font-size:0.9rem; color:var(--slate); margin-bottom:var(--sp-6); line-height:1.6;">Auto-bid settings have moved to their own dedicated page. Configure your auto-bid preferences, value-adds, shingles, warranties, and more.</p>
+      <a href="/contractor-auto-bids.html" style="display:inline-block; background:var(--amber); color:var(--navy); padding:var(--sp-4) var(--sp-8); border-radius:var(--radius-md); font-weight:600; font-size:0.95rem; text-decoration:none; transition:background-color 0.2s;" onmouseover="this.style.background='#DDA500'" onmouseout="this.style.background='var(--amber)'">Go to Auto-Bid Settings →</a>
+    </div>
 
-      <!-- Master toggle -->
-      <div class="autobid-toggle-row">
+    <!-- D-193: remaining old auto-bid HTML follows (being removed) -->
+      <div style="display:none" id="ab-removed-placeholder"><div class="autobid-toggle-row">
         <label class="switch">
           <input type="checkbox" id="autoBidToggle">
           <span class="slider"></span>
@@ -1204,17 +1205,7 @@
         </div>
       </div>
 
-      <!-- Future: Retail auto-bid -->
-      <div class="future-tier-card">
-        <div class="future-tier-label">
-          Auto-Bid for Retail Jobs
-          <span class="badge coming-soon">Coming Soon</span>
-        </div>
-        <div class="future-tier-description">
-          Set custom pricing per material type for retail (non-insurance) roofing opportunities. Coming after insurance auto-bid is established.
-        </div>
-      </div>
-    </div>
+    </div></div><!-- /ab-removed-placeholder (D-193: hidden old auto-bid HTML) -->
 
     <!-- ═══════════════════════════════════════ -->
     <!-- Payment Methods (Multi-Method)         -->
@@ -1412,7 +1403,7 @@
       </div>
 
       <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy); padding: var(--sp-4); background:#F8FAFC; border:1px solid #E2E8F0; border-radius: var(--radius-md); margin-bottom: var(--sp-4);">
-        <p style="margin-bottom: var(--sp-4);">Otter Quotes is a contractor matching and payments platform. We do not perform your work or warrant your materials. Every contractor represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
+        <p style="margin-bottom: var(--sp-4);">Otter Quotes is a contractor matching and payments platform. We do not perform your work or warrant your materials. Every contractor represents themselves — directly — as licensed, insured, and compliant with applicable law.</p>
         <p style="margin-bottom: var(--sp-4);">By accepting below, you personally and on behalf of the business attest that:</p>
         <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
           <li style="margin-bottom: var(--sp-2);">You hold all licenses, registrations, and permits required in every jurisdiction where you bid.</li>
@@ -1515,24 +1506,6 @@
       <div>
         <button class="save-button" onclick="saveCoi()" id="coiSaveBtn" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Upload / Update Certificate</button>
         <span id="coiSaveStatus" style="margin-left: var(--sp-3); font-size:0.85rem; color:var(--slate);"></span>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════ -->
-    <!-- Project Confirmation Templates (D-161) -->
-    <!-- ═══════════════════════════════════════ -->
-    <div class="settings-card">
-      <div class="settings-card-title">Project Confirmation Templates</div>
-      <div class="settings-card-subtitle">
-        Upload a confirmation template for each trade and funding type you use. After a homeowner signs the main contract, Otter Quotes selects the matching template automatically. You can also manage these on your Profile page.
-      </div>
-
-      <div style="padding: var(--sp-4); background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius-md); margin-bottom: var(--sp-6); font-size: 0.875rem; color: #78350F;">
-        <strong>⚠️ Upload one template per trade + funding type.</strong> Confirmation docs differ by trade and by insurance vs. retail — same as your contracts. Store only the slots you actively use.
-      </div>
-
-      <div id="pcTemplatesSettingsGrid" style="gap: var(--sp-6); margin-top: var(--sp-4);">
-        <div style="color: var(--slate); font-size: 0.875rem; padding: var(--sp-4);">Loading templates…</div>
       </div>
     </div>
 
@@ -2156,228 +2129,7 @@
     });
 
     // ── Initialize: Load settings from Supabase ──
-    // ── Project Confirmation Templates (D-161) — Settings page copy of the 8-slot grid ──
-
-    const PC_SETTINGS_SLOTS = [
-      { trade: 'roofing',  fundingType: 'insurance', label: 'Roofing — Insurance' },
-      { trade: 'roofing',  fundingType: 'retail',    label: 'Roofing — Retail' },
-      { trade: 'siding',   fundingType: 'insurance', label: 'Siding — Insurance' },
-      { trade: 'siding',   fundingType: 'retail',    label: 'Siding — Retail' },
-      { trade: 'gutters',  fundingType: 'insurance', label: 'Gutters — Insurance' },
-      { trade: 'gutters',  fundingType: 'retail',    label: 'Gutters — Retail' },
-      { trade: 'windows',  fundingType: 'insurance', label: 'Windows — Insurance' },
-      { trade: 'windows',  fundingType: 'retail',    label: 'Windows — Retail' },
-    ];
-
-    async function loadPcTemplatesSettings() {
-      const gridContainer = document.getElementById('pcTemplatesSettingsGrid');
-      if (!gridContainer) return;
-
-      let pcTemplates = {};
-      if (contractorRecord && sb && !CONFIG.DEMO_MODE) {
-        try {
-          const { data } = await sb.from('contractors')
-            .select('color_confirmation_template')
-            .eq('id', contractorRecord.id)
-            .single();
-          pcTemplates = data?.color_confirmation_template || {};
-          if (contractorRecord) contractorRecord.color_confirmation_template = pcTemplates;
-        } catch (err) {
-          console.error('Error loading PC templates (settings):', err);
-        }
-      }
-
-      // Session 254: XSS hardening — build DOM instead of templated innerHTML
-      // so that DB-sourced file_url / filename values can never inject markup.
-      gridContainer.innerHTML = '';
-      const grid = document.createElement('div');
-      grid.className = 'template-slots-grid';
-
-      for (const slot of PC_SETTINGS_SLOTS) {
-        const slotKey  = `${slot.trade}/${slot.fundingType}`;
-        const inputId  = `pcs_${slot.trade}_${slot.fundingType}_input`;
-        const slotData = pcTemplates[slotKey];
-
-        const cell = document.createElement('div');
-        cell.className = 'template-slot';
-
-        const header = document.createElement('div');
-        header.className = 'template-slot-header';
-        header.textContent = slot.label;
-        cell.appendChild(header);
-
-        if (slotData && slotData.file_url) {
-          const fileUrl = String(slotData.file_url);
-          const uploadDate = slotData.uploaded_at
-            ? new Date(slotData.uploaded_at).toLocaleDateString()
-            : 'Unknown date';
-          const fileName = fileUrl.split('/').pop().split('?')[0] || 'template.pdf';
-
-          const fileDisplay = document.createElement('div');
-          fileDisplay.className = 'template-file-display';
-
-          const nameEl = document.createElement('div');
-          nameEl.className = 'template-file-name';
-          nameEl.textContent = fileName;
-
-          const dateEl = document.createElement('div');
-          dateEl.className = 'template-file-date';
-          dateEl.textContent = 'Uploaded: ' + uploadDate;
-
-          fileDisplay.appendChild(nameEl);
-          fileDisplay.appendChild(dateEl);
-          cell.appendChild(fileDisplay);
-
-          const btnRow = document.createElement('div');
-          btnRow.style.cssText = 'display: flex; gap: var(--sp-3); flex-wrap: wrap;';
-
-          const viewBtn = document.createElement('button');
-          viewBtn.className = 'btn-small btn-small-primary';
-          viewBtn.textContent = 'View';
-          viewBtn.addEventListener('click', () => viewPcTemplateSettings(fileUrl));
-
-          const replaceBtn = document.createElement('button');
-          replaceBtn.className = 'btn-small btn-small-secondary';
-          replaceBtn.textContent = 'Replace';
-          replaceBtn.addEventListener('click', () => replacePcTemplateSettings(slotKey, inputId));
-
-          btnRow.appendChild(viewBtn);
-          btnRow.appendChild(replaceBtn);
-          cell.appendChild(btnRow);
-
-          const fileInput = document.createElement('input');
-          fileInput.type = 'file';
-          fileInput.id = inputId;
-          fileInput.accept = '.pdf';
-          fileInput.style.display = 'none';
-          fileInput.addEventListener('change', function () { uploadPcTemplateFileSettings(slotKey, this); });
-          cell.appendChild(fileInput);
-        } else {
-          const subtext = document.createElement('div');
-          subtext.className = 'template-slot-subtext';
-          subtext.textContent = 'No template uploaded';
-          cell.appendChild(subtext);
-
-          const uploadBox = document.createElement('div');
-          uploadBox.className = 'template-upload-box';
-          uploadBox.addEventListener('click', () => {
-            const inp = document.getElementById(inputId);
-            if (inp) inp.click();
-          });
-
-          const label = document.createElement('label');
-          label.setAttribute('for', inputId);
-          label.className = 'template-upload-label';
-
-          const iconEl = document.createElement('div');
-          iconEl.className = 'template-upload-icon';
-          iconEl.textContent = '📋';
-
-          const textEl = document.createElement('div');
-          textEl.className = 'template-upload-text';
-          textEl.textContent = 'Upload Template';
-
-          const hintEl = document.createElement('div');
-          hintEl.className = 'template-upload-hint';
-          hintEl.textContent = 'PDF format, max 10MB';
-
-          label.appendChild(iconEl);
-          label.appendChild(textEl);
-          label.appendChild(hintEl);
-          uploadBox.appendChild(label);
-
-          const fileInput = document.createElement('input');
-          fileInput.type = 'file';
-          fileInput.id = inputId;
-          fileInput.accept = '.pdf';
-          fileInput.addEventListener('change', function () { uploadPcTemplateFileSettings(slotKey, this); });
-          uploadBox.appendChild(fileInput);
-
-          cell.appendChild(uploadBox);
-        }
-
-        grid.appendChild(cell);
-      }
-
-      gridContainer.appendChild(grid);
-    }
-
-    async function viewPcTemplateSettings(fileUrl) {
-      if (!fileUrl) { alert('No file available for this slot.'); return; }
-      try {
-        const pathMatch = fileUrl.match(/contractor-templates\/(.+?)(\?|$)/);
-        const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : fileUrl;
-        const { data, error } = await sb.storage.from('contractor-templates').createSignedUrl(storagePath, 3600);
-        if (error || !data?.signedUrl) {
-          alert('Unable to open template. Please try uploading again or contact support.');
-          return;
-        }
-        window.open(data.signedUrl, '_blank');
-      } catch (err) {
-        console.error('viewPcTemplateSettings error:', err);
-        alert('Unable to open template. Please try again.');
-      }
-    }
-
-    function replacePcTemplateSettings(slotKey, inputId) {
-      let input = document.getElementById(inputId);
-      if (!input) {
-        input = document.createElement('input');
-        input.type = 'file';
-        input.id = inputId;
-        input.accept = '.pdf';
-        input.style.display = 'none';
-        input.onchange = function() { uploadPcTemplateFileSettings(slotKey, this); };
-        document.body.appendChild(input);
-      }
-      input.click();
-    }
-
-    async function uploadPcTemplateFileSettings(slotKey, inputElement) {
-      if (!inputElement.files.length) return;
-      const file = inputElement.files[0];
-      if (file.type !== 'application/pdf') { alert('Please upload a PDF file.'); return; }
-      if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
-      if (!contractorRecord || !sb) { alert('Not connected to database.'); return; }
-
-      try {
-        const [trade, funding] = slotKey.split('/');
-        const timestamp = Date.now();
-        const filePath = `${contractorRecord.id}/pc_${trade}_${funding}_${timestamp}.pdf`;
-
-        const { error: uploadError } = await sb.storage
-          .from('contractor-templates')
-          .upload(filePath, file, { contentType: 'application/pdf' });
-        if (uploadError) throw uploadError;
-
-        const { data: fresh } = await sb.from('contractors')
-          .select('color_confirmation_template')
-          .eq('id', contractorRecord.id)
-          .single();
-        const existing = fresh?.color_confirmation_template || {};
-        const updated  = {
-          ...existing,
-          [slotKey]: { file_url: filePath, uploaded_at: new Date().toISOString() },
-        };
-
-        const { data, error: updateError } = await sb.from('contractors')
-          .update({
-            color_confirmation_template:  updated,
-            pc_template_migration_pending: false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', contractorRecord.id)
-          .select()
-          .single();
-        if (updateError) throw updateError;
-
-        contractorRecord = data;
-        await loadPcTemplatesSettings();
-      } catch (err) {
-        console.error('Error uploading PC template (settings):', err);
-        alert('Failed to upload template. Please try again.');
-      }
-    }
+    // ── Project Confirmation Templates (D-194) moved to contractor-profile.html only ──
 
     async function initSettings() {
       currentUser = await Auth.requireAuth('contractor');
@@ -2547,8 +2299,7 @@
           // Update payment method UI
           updatePaymentMethodUI();
 
-          // Load PC template grid (D-161)
-          await loadPcTemplatesSettings();
+          // D-194: PC templates managed on contractor-profile.html only
 
           // D-170: populate COI status + form from contractor record
           loadCoiStatus(data);
