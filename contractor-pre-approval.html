@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>Complete Your Application — Otter Quotes</title>
+    <meta name="robots" content="noindex,nofollow">
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+    <style>
+        :root {
+            --navy: #0D1B2E; --navy-2: #0F2440; --navy-3: #132D50;
+            --amber: #E07B00; --white: #FFFFFF; --slate: #94A3B8; --light: #E2E8F0;
+            --sp-1:0.25rem; --sp-2:0.5rem; --sp-3:0.75rem; --sp-4:1rem;
+            --sp-6:1.5rem; --sp-8:2rem; --sp-12:3rem; --sp-16:4rem; --sp-24:6rem;
+            --radius-sm:0.375rem; --radius-md:0.5rem; --radius-lg:0.75rem; --radius-xl:1rem;
+            --font-body:'Rubik',sans-serif; --font-heading:'Rubik',serif;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:var(--font-body); color:var(--white); background-color:var(--navy); line-height:1.6; }
+        main { min-height:calc(100vh - 120px); padding: var(--sp-16) var(--sp-6); }
+        .wizard-outer { max-width:680px; margin:0 auto; }
+
+        /* Progress bar */
+        .progress-header { text-align:center; margin-bottom: var(--sp-12); }
+        .progress-header h1 { font-family:var(--font-heading); font-size:1.75rem; color:var(--white); margin-bottom: var(--sp-4); }
+        .progress-steps { display:flex; align-items:center; justify-content:center; gap:0; margin-bottom: var(--sp-2); }
+        .step-dot { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.85rem; font-weight:700; border:2px solid rgba(255,255,255,0.2); color:var(--slate); background:transparent; transition:all 0.3s; flex-shrink:0; }
+        .step-dot.active { border-color:var(--amber); color:var(--amber); background:rgba(224,123,0,0.12); }
+        .step-dot.done { border-color:var(--amber); background:var(--amber); color:var(--navy); }
+        .step-line { height:2px; width:48px; background:rgba(255,255,255,0.12); flex-shrink:0; }
+        .step-line.done { background:var(--amber); }
+        .step-labels { display:flex; align-items:flex-start; justify-content:center; gap:0; margin-top: var(--sp-2); }
+        .step-label { font-size:0.7rem; color:var(--slate); text-align:center; width:80px; line-height:1.3; }
+        .step-label.active { color:var(--amber); }
+        .step-label.done { color:rgba(255,255,255,0.6); }
+
+        /* Card */
+        .wizard-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:var(--radius-lg); padding: var(--sp-12); box-shadow:0 8px 40px rgba(0,0,0,0.3); }
+        .wizard-card h2 { font-family:var(--font-heading); font-size:1.5rem; color:var(--white); margin-bottom: var(--sp-2); }
+        .wizard-card .subtitle { color:var(--slate); font-size:0.9rem; margin-bottom: var(--sp-8); }
+
+        /* Form elements */
+        .form-group { margin-bottom: var(--sp-6); }
+        .form-label { display:block; font-weight:600; color:var(--white); margin-bottom: var(--sp-2); font-size:0.95rem; }
+        .form-label.required::after { content:' *'; color:#EF4444; }
+        .form-input, .form-select {
+            width:100%; padding: var(--sp-3) var(--sp-4); border:1px solid rgba(255,255,255,0.12);
+            border-radius:var(--radius-md); font-family:var(--font-body); font-size:1rem;
+            background:rgba(255,255,255,0.06); color:var(--white); transition:border-color 0.3s;
+        }
+        .form-input::placeholder { color:rgba(255,255,255,0.35); }
+        .form-input:focus, .form-select:focus { outline:none; border-color:var(--amber); box-shadow:0 0 0 3px rgba(224,123,0,0.1); }
+        .form-select option { background:var(--navy-2); color:var(--white); }
+        .form-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap: var(--sp-6); }
+
+        /* Checkboxes */
+        .check-group { display:flex; align-items:flex-start; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+        .check-group input[type=checkbox] { width:18px; height:18px; min-width:18px; cursor:pointer; accent-color:var(--amber); margin-top:2px; }
+        .check-group label { cursor:pointer; font-size:0.9rem; color:var(--slate); line-height:1.5; }
+
+        /* Trade checkboxes */
+        .trade-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap: var(--sp-3); }
+        .trade-card { border:1px solid rgba(255,255,255,0.12); border-radius:var(--radius-md); padding: var(--sp-3) var(--sp-4); cursor:pointer; transition:all 0.2s; display:flex; align-items:center; gap: var(--sp-2); background:rgba(255,255,255,0.03); }
+        .trade-card:hover { border-color:rgba(224,123,0,0.5); background:rgba(224,123,0,0.05); }
+        .trade-card.selected { border-color:var(--amber); background:rgba(224,123,0,0.1); }
+        .trade-card input { accent-color:var(--amber); }
+        .trade-card span { font-size:0.9rem; font-weight:600; color:var(--white); }
+
+        /* Info box */
+        .info-box { background:rgba(224,123,0,0.07); border-left:4px solid var(--amber); padding: var(--sp-6); border-radius:var(--radius-md); margin-bottom: var(--sp-6); font-size:0.9rem; color:var(--slate); line-height:1.7; }
+        .info-box p { margin-bottom: var(--sp-3); }
+        .info-box p:last-child { margin-bottom:0; }
+        .info-box ul { margin:0 0 var(--sp-3) var(--sp-5); padding:0; }
+        .info-box ul li { margin-bottom: var(--sp-2); }
+        .info-box strong { color:var(--white); }
+
+        /* Buttons */
+        .btn-primary { background:var(--amber); color:var(--navy); padding: var(--sp-4) var(--sp-8); border:none; border-radius:var(--radius-md); font-size:1rem; font-weight:700; cursor:pointer; font-family:var(--font-body); transition:all 0.3s; width:100%; margin-top: var(--sp-6); }
+        .btn-primary:hover { background:#C06900; color:var(--white); transform:translateY(-1px); }
+        .btn-primary:disabled { opacity:0.6; cursor:not-allowed; transform:none; }
+        .btn-secondary { background:transparent; color:var(--slate); padding: var(--sp-3) var(--sp-6); border:1px solid rgba(255,255,255,0.15); border-radius:var(--radius-md); font-size:0.9rem; cursor:pointer; font-family:var(--font-body); transition:all 0.3s; margin-top: var(--sp-3); width:100%; }
+        .btn-secondary:hover { border-color:rgba(255,255,255,0.35); color:var(--white); }
+
+        /* Upload area */
+        .upload-area { border:2px dashed rgba(255,255,255,0.2); border-radius:var(--radius-lg); padding: var(--sp-12); text-align:center; cursor:pointer; transition:all 0.3s; position:relative; }
+        .upload-area:hover, .upload-area.dragover { border-color:var(--amber); background:rgba(224,123,0,0.05); }
+        .upload-area input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; }
+        .upload-icon { font-size:2.5rem; margin-bottom: var(--sp-3); }
+        .upload-area h4 { color:var(--white); font-size:1rem; margin-bottom: var(--sp-2); }
+        .upload-area p { color:var(--slate); font-size:0.85rem; }
+        .upload-status { margin-top: var(--sp-4); padding: var(--sp-3) var(--sp-4); border-radius:var(--radius-md); font-size:0.9rem; display:none; }
+
+        /* States */
+        #panelLoading, #panelError, #panelSubmitted { text-align:center; padding: var(--sp-16) var(--sp-6); }
+        .spinner { width:40px; height:40px; border:3px solid rgba(255,255,255,0.1); border-top:3px solid var(--amber); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto var(--sp-6); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width:600px) { .wizard-card { padding: var(--sp-6); } main { padding: var(--sp-8) var(--sp-4); } }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-auth="false"></header>
+    <main>
+        <div class="wizard-outer">
+
+            <!-- Loading panel -->
+            <div id="panelLoading">
+                <div class="spinner"></div>
+                <p style="color:var(--slate);">Loading your application…</p>
+            </div>
+
+            <!-- Error panel -->
+            <div id="panelError" style="display:none;">
+                <div style="font-size:2rem; margin-bottom: var(--sp-4);">⚠️</div>
+                <h2 style="font-family:var(--font-heading); color:var(--white); margin-bottom: var(--sp-4);">Session Not Found</h2>
+                <p style="color:var(--slate); margin-bottom: var(--sp-8);">We couldn't verify your session. Please use the link in your email or start a new application.</p>
+                <a href="contractor-join.html" style="color:var(--amber); font-weight:600;">← Start Application</a>
+            </div>
+
+            <!-- Submitted panel -->
+            <div id="panelSubmitted" style="display:none;">
+                <div style="font-size:3rem; margin-bottom: var(--sp-6);">🎉</div>
+                <h2 style="font-family:var(--font-heading); font-size:2rem; color:var(--white); margin-bottom: var(--sp-4);">Application Submitted!</h2>
+                <p style="color:var(--slate); max-width:480px; margin:0 auto var(--sp-8);">Your application is under review. Our team will email you at <strong id="submittedEmail" style="color:var(--white);"></strong> within 2–5 business days with next steps.</p>
+                <div style="background:rgba(224,123,0,0.07); border-left:4px solid var(--amber); border-radius:var(--radius-md); padding: var(--sp-6); max-width:480px; margin:0 auto; text-align:left;">
+                    <strong style="color:var(--amber); display:block; margin-bottom: var(--sp-3);">While You Wait</strong>
+                    <ul style="color:var(--slate); margin-left: var(--sp-5); line-height:2;">
+                        <li>Gather your most recent COI for upload after approval</li>
+                        <li>Review the <a href="contractor-faq.html" style="color:var(--amber);">Contractor FAQ</a></li>
+                        <li>Questions? Email <a href="mailto:support@otterquote.com" style="color:var(--amber);">support@otterquote.com</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Active wizard panels -->
+            <div id="panelWizard" style="display:none;">
+                <!-- Progress header -->
+                <div class="progress-header">
+                    <h1>Complete Your Application</h1>
+                    <div class="progress-steps" id="progressSteps">
+                        <div class="step-dot done" id="dot1">✓</div>
+                        <div class="step-line" id="line12"></div>
+                        <div class="step-dot" id="dot2">2</div>
+                        <div class="step-line" id="line23"></div>
+                        <div class="step-dot" id="dot3">3</div>
+                        <div class="step-line" id="line34"></div>
+                        <div class="step-dot" id="dot4">4</div>
+                    </div>
+                    <div class="step-labels">
+                        <span class="step-label done" style="width:80px;">Contact Info</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label" id="lbl2" style="width:80px;">License &amp; Insurance</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label" id="lbl3" style="width:80px;">Agreements</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label" id="lbl4" style="width:80px;">Contract Template</span>
+                    </div>
+                </div>
+
+                <!-- Step 2: License & Insurance -->
+                <div id="step2" style="display:none;" class="wizard-card">
+                    <h2>License &amp; Insurance</h2>
+                    <p class="subtitle">Tell us about your trades and license status. You'll upload your Certificate of Insurance in your contractor profile after approval.</p>
+
+                    <div class="form-group">
+                        <label class="form-label required">Trades You Perform</label>
+                        <p style="font-size:0.85rem; color:var(--slate); margin-bottom: var(--sp-3);">Select all that apply — you can update this anytime in your profile.</p>
+                        <div class="trade-grid">
+                            <label class="trade-card" id="trade-roofing">
+                                <input type="checkbox" name="trades" value="roofing" onchange="toggleTradeCard(this)">
+                                <span>🏠 Roofing</span>
+                            </label>
+                            <label class="trade-card" id="trade-siding">
+                                <input type="checkbox" name="trades" value="siding" onchange="toggleTradeCard(this)">
+                                <span>🏗 Siding</span>
+                            </label>
+                            <label class="trade-card" id="trade-gutters">
+                                <input type="checkbox" name="trades" value="gutters" onchange="toggleTradeCard(this)">
+                                <span>💧 Gutters</span>
+                            </label>
+                            <label class="trade-card" id="trade-windows">
+                                <input type="checkbox" name="trades" value="windows" onchange="toggleTradeCard(this)">
+                                <span>🪟 Windows</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="licenseNumber" class="form-label">Contractor License Number</label>
+                        <input type="text" id="licenseNumber" class="form-input" placeholder="e.g. IN-123456">
+                        <p style="font-size:0.85rem; color:var(--slate); margin-top: var(--sp-2);">Leave blank if no municipal license is required in your service area — check the box below instead.</p>
+                    </div>
+
+                    <div class="check-group">
+                        <input type="checkbox" id="noLicenseRequired">
+                        <label for="noLicenseRequired">No contractor license is required in my primary service area</label>
+                    </div>
+
+                    <div class="info-box">
+                        <strong>Certificate of Insurance (COI)</strong>
+                        <p style="margin-top: var(--sp-2);">You'll upload your COI in your contractor profile after approval. Your COI must name <strong>Stellar Edge Services, LLC</strong> as additional insured with minimum $1M per occurrence / $2M aggregate General Liability coverage.</p>
+                    </div>
+
+                    <div class="check-group">
+                        <input type="checkbox" id="insuranceCommit" required>
+                        <label for="insuranceCommit">I carry (or will obtain) Commercial General Liability insurance meeting the platform requirements and will upload my COI before bidding on any projects.</label>
+                    </div>
+
+                    <button class="btn-primary" onclick="submitStep2()">Continue to Agreements →</button>
+                </div>
+
+                <!-- Step 3: Platform Agreements -->
+                <div id="step3" style="display:none;" class="wizard-card">
+                    <h2>Platform Agreements</h2>
+                    <p class="subtitle">Please review each section and check the box to confirm your acceptance.</p>
+
+                    <!-- Partner Agreement -->
+                    <div class="info-box">
+                        <strong>Contractor Partner Agreement</strong>
+                        <p style="margin-top: var(--sp-2);">By joining Otter Quotes, you agree to the terms of the <a href="/contractor-agreement.html" target="_blank" style="color:var(--amber); font-weight:600;">Otter Quotes Contractor Partner Agreement</a>. You will also be asked to sign it via DocuSign when your first project is matched. The platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs.</p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-8);">
+                        <input type="checkbox" id="agreeToPartnerAgreement" required>
+                        <label for="agreeToPartnerAgreement">I have reviewed the Contractor Partner Agreement and agree to its terms, including the platform fee structure.</label>
+                    </div>
+
+                    <!-- Cancellation Policy -->
+                    <div class="info-box">
+                        <strong>Homeowner Cancellation Policy</strong>
+                        <p style="margin-top: var(--sp-2);">Homeowners may switch to a different contractor in our network up to 3 days before their scheduled installation date, no questions asked. If this occurs: Otter Quotes handles the switch entirely, your platform fee is refunded in full, and the homeowner selects another contractor.</p>
+                        <p><strong style="color:var(--white);">A platform fee refund is your sole remedy if a homeowner exercises this right.</strong></p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-8);">
+                        <input type="checkbox" id="agreeToCancellationPolicy" required>
+                        <label for="agreeToCancellationPolicy">I understand homeowners may switch contractors up to 3 days before installation. I will receive a full platform fee refund. I agree to this as a condition of the platform.</label>
+                    </div>
+
+                    <!-- IC 24-5-11 Attestation -->
+                    <div class="info-box">
+                        <strong>Contractor Attestation &amp; Indemnity</strong>
+                        <p style="margin-top: var(--sp-2);">Otter Quotes is a contractor matching and payments platform. By accepting below, you personally and on behalf of the business attest that:</p>
+                        <ul style="margin-top: var(--sp-2);">
+                            <li>You hold all licenses required in every jurisdiction where you work.</li>
+                            <li>You carry CGL insurance of at least $1M/$2M with Stellar Edge Services, LLC as additional insured.</li>
+                            <li>You will comply with Indiana Code 24-5-11 on every Indiana project and all equivalent laws in other states.</li>
+                            <li>You will indemnify and hold harmless Stellar Edge Services, LLC from claims arising from your work, licensing failures, or law violations. This indemnity is <strong>joint and several</strong> and survives termination.</li>
+                        </ul>
+                        <p style="margin-top: var(--sp-3);"><strong style="color:var(--white);">Electronic acceptance constitutes your signature under the E-SIGN Act and UETA.</strong></p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-8);">
+                        <input type="checkbox" id="agreeToAttestation" required>
+                        <label for="agreeToAttestation">I am authorized to bind the business. I attest to the licensing, insurance, IC 24-5-11 compliance, and joint-and-several indemnity obligations above. I intend this electronic acceptance to be my signature.</label>
+                    </div>
+
+                    <!-- TCPA SMS -->
+                    <div class="info-box">
+                        <strong>SMS Notifications</strong>
+                        <p style="margin-top: var(--sp-2);">Otter Quotes uses SMS to notify you of new project opportunities, bid updates, and important platform communications.</p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-8);">
+                        <input type="checkbox" id="agreeTcpaSms" required>
+                        <label for="agreeTcpaSms">I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe.</label>
+                    </div>
+
+                    <!-- 1099-NEC -->
+                    <div class="info-box">
+                        <strong>Tax Reporting Notice</strong>
+                        <p style="margin-top: var(--sp-2);">Otter Quotes does not withhold taxes from your payments. If you receive $600 or more in a calendar year, we file a Form 1099-NEC with the IRS. You are responsible for all federal, state, and local tax obligations on income earned through the platform.</p>
+                        <p><strong style="color:var(--white);">We recommend consulting a qualified tax professional regarding your obligations as an independent contractor.</strong></p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-4);">
+                        <input type="checkbox" id="agree1099Nec" required>
+                        <label for="agree1099Nec">I understand Otter Quotes will issue Form 1099-NEC if I receive $600 or more through the platform in a calendar year. No taxes are withheld. I am solely responsible for all tax obligations on income earned through the platform.</label>
+                    </div>
+
+                    <button class="btn-primary" onclick="submitStep3()">Continue to Contract Template →</button>
+                </div>
+
+                <!-- Step 4: Contract Template -->
+                <div id="step4" style="display:none;" class="wizard-card">
+                    <h2>Upload Your Contract Template</h2>
+                    <p class="subtitle">Upload the contract you use with homeowners. This is what they'll sign on Otter Quotes. If you don't upload one now, OtterQuote's standard agreement governs — you can always add yours later.</p>
+
+                    <div class="info-box">
+                        <strong>What to Upload</strong>
+                        <p style="margin-top: var(--sp-2);">Your standard contract PDF for your primary trade. Otter Quotes will auto-fill the homeowner's name, address, and project details via DocuSign. You can upload templates for all 8 trade × funding-type combinations in your profile after approval.</p>
+                    </div>
+
+                    <!-- Trade + funding type selectors -->
+                    <div class="form-row" style="margin-bottom: var(--sp-6);">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="templateTrade" class="form-label required">Trade</label>
+                            <select id="templateTrade" class="form-select">
+                                <option value="">Select trade…</option>
+                                <option value="Roofing">Roofing</option>
+                                <option value="Siding">Siding</option>
+                                <option value="Gutters">Gutters</option>
+                                <option value="Windows">Windows</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="templateFunding" class="form-label required">Funding Type</label>
+                            <select id="templateFunding" class="form-select">
+                                <option value="">Select type…</option>
+                                <option value="Insurance (full replacement)">Insurance (full replacement)</option>
+                                <option value="Retail">Retail</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Upload area -->
+                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('templateFile').click()">
+                        <input type="file" id="templateFile" accept=".pdf" style="display:none;" onchange="handleFileSelect(this)">
+                        <div class="upload-icon">📄</div>
+                        <h4>Click to upload your contract PDF</h4>
+                        <p>PDF only · max 10MB</p>
+                        <div id="selectedFileName" style="margin-top: var(--sp-3); color:var(--amber); font-weight:600; display:none;"></div>
+                    </div>
+                    <div id="uploadStatus" class="upload-status"></div>
+
+                    <button class="btn-primary" id="uploadAndSubmitBtn" onclick="submitStep4()">Upload &amp; Submit Application →</button>
+                    <button class="btn-secondary" onclick="skipTemplateAndSubmit()">Skip — Use Otter Quotes Standard Agreement for Now</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <script src="js/config.js"></script>
+    <script src="js/nav.js"></script>
+
+    <script>
+    // D-190: Contractor pre-approval wizard — Steps 2, 3, 4
+    // Runs entirely off direct Supabase calls (no auth.js dependency for core logic).
+
+    let sb = null;
+    let currentUser = null;
+    let contractor = null;
+    let currentStep = 2;
+
+    function showPanel(name) {
+        ['panelLoading','panelError','panelSubmitted','panelWizard'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = (id === 'panel' + name.charAt(0).toUpperCase() + name.slice(1)) ? '' : 'none';
+        });
+    }
+
+    function updateProgress(activeStep) {
+        // Dots: 1=done, 2/3/4 = active or pending
+        for (let i = 2; i <= 4; i++) {
+            const dot = document.getElementById('dot' + i);
+            const lbl = document.getElementById('lbl' + i);
+            if (i < activeStep) {
+                dot.className = 'step-dot done'; dot.textContent = '✓';
+                if (lbl) { lbl.classList.remove('active'); lbl.classList.add('done'); }
+            } else if (i === activeStep) {
+                dot.className = 'step-dot active'; dot.textContent = String(i);
+                if (lbl) { lbl.classList.add('active'); lbl.classList.remove('done'); }
+            } else {
+                dot.className = 'step-dot'; dot.textContent = String(i);
+                if (lbl) { lbl.classList.remove('active','done'); }
+            }
+        }
+        // Lines
+        const line12 = document.getElementById('line12');
+        const line23 = document.getElementById('line23');
+        const line34 = document.getElementById('line34');
+        if (activeStep > 2) line12.classList.add('done'); else line12.classList.remove('done');
+        if (activeStep > 3) line23.classList.add('done'); else line23.classList.remove('done');
+        if (activeStep > 4) line34.classList.add('done'); else line34.classList.remove('done');
+    }
+
+    function showStep(n) {
+        currentStep = n;
+        updateProgress(n);
+        ['step2','step3','step4'].forEach(id => {
+            document.getElementById(id).style.display = (id === 'step' + n) ? '' : 'none';
+        });
+        showPanel('wizard');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleTradeCard(cb) {
+        const card = cb.closest('.trade-card');
+        if (card) card.classList.toggle('selected', cb.checked);
+    }
+
+    function handleFileSelect(input) {
+        const nameEl = document.getElementById('selectedFileName');
+        if (input.files.length) {
+            nameEl.textContent = '📎 ' + input.files[0].name;
+            nameEl.style.display = 'block';
+        }
+    }
+
+    function setUploadStatus(msg, type) {
+        const el = document.getElementById('uploadStatus');
+        el.style.display = 'block';
+        el.textContent = msg;
+        el.style.background = type === 'error' ? 'rgba(239,68,68,0.1)' :
+                              type === 'success' ? 'rgba(16,185,129,0.1)' :
+                              'rgba(245,158,11,0.1)';
+        el.style.color = type === 'error' ? '#ef4444' :
+                         type === 'success' ? '#10b981' : '#E07B00';
+        el.style.padding = '0.75rem 1rem';
+        el.style.borderRadius = '0.5rem';
+    }
+
+    // ── Step 2 submit ──────────────────────────────────────────────────────────
+    async function submitStep2() {
+        const selectedTrades = [...document.querySelectorAll('input[name="trades"]:checked')].map(cb => cb.value);
+        const licenseNumber  = document.getElementById('licenseNumber').value.trim();
+        const noLicense      = document.getElementById('noLicenseRequired').checked;
+        const insuranceOk    = document.getElementById('insuranceCommit').checked;
+
+        if (!selectedTrades.length) { alert('Please select at least one trade.'); return; }
+        if (!licenseNumber && !noLicense) { alert('Please enter your license number or check "No license required."'); return; }
+        if (!insuranceOk) { alert('Please confirm your insurance commitment before continuing.'); return; }
+
+        try {
+            const { error } = await sb.from('contractors')
+                .update({
+                    trades:            selectedTrades,
+                    license_number:    licenseNumber || null,
+                    no_license_required: noLicense,
+                    has_general_liability: true,
+                    onboarding_step:   2,
+                    updated_at:        new Date().toISOString(),
+                })
+                .eq('user_id', currentUser.id);
+
+            if (error) throw error;
+            contractor.onboarding_step = 2;
+            showStep(3);
+        } catch (err) {
+            console.error('Step 2 error:', err);
+            alert('Failed to save. Please try again.');
+        }
+    }
+
+    // ── Step 3 submit ──────────────────────────────────────────────────────────
+    async function submitStep3() {
+        const checks = ['agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation','agreeTcpaSms','agree1099Nec'];
+        for (const id of checks) {
+            if (!document.getElementById(id).checked) {
+                alert('Please review and accept all agreements before continuing.');
+                document.getElementById(id).scrollIntoView({ behavior:'smooth', block:'center' });
+                return;
+            }
+        }
+
+        const now = new Date().toISOString();
+        const attestation = {
+            text_version:           'ic-24511-v1-2026-04',
+            accepted:               true,
+            accepted_client_ts:     now,
+            user_agent:             navigator.userAgent,
+            platform_agreement_ack: true,
+            cancellation_policy_ack: true,
+            tax_1099_nec_ack:       true,
+            tax_1099_nec_version:   '1099-nec-v1-2026-04',
+        };
+
+        try {
+            const { error } = await sb.from('contractors')
+                .update({
+                    cpa_accepted_at:          now,
+                    cpa_version:              'v1-2026-04',
+                    attestation_signer_name:  contractor.contact_name || '',
+                    attestation_signer_title: contractor.attestation_signer_title || '',
+                    attestation_text_version: 'ic-24511-v1-2026-04',
+                    attestation_accepted_at:  now,
+                    ic_24511_attestation:     attestation,
+                    sms_consent_ts:           now,
+                    agreement_accepted_at:    now,
+                    agreement_version:        'v1-2026-04',
+                    onboarding_step:          3,
+                    updated_at:               now,
+                })
+                .eq('user_id', currentUser.id);
+
+            if (error) throw error;
+
+            // Call record-attestation Edge Function for server-side IP capture
+            try {
+                await sb.functions.invoke('record-attestation', {
+                    body: {
+                        contractor_id:    contractor.id,
+                        text_version:     'ic-24511-v1-2026-04',
+                        accepted_at:      now,
+                        accepted_client_ts: now,
+                    }
+                });
+            } catch (fnErr) {
+                // Non-fatal — IP capture fails silently; client-side record is primary
+                console.warn('record-attestation edge function error (non-fatal):', fnErr);
+            }
+
+            contractor.onboarding_step = 3;
+            showStep(4);
+        } catch (err) {
+            console.error('Step 3 error:', err);
+            alert('Failed to save agreements. Please try again.');
+        }
+    }
+
+    // ── Step 4 submit ──────────────────────────────────────────────────────────
+    async function submitStep4() {
+        const trade   = document.getElementById('templateTrade').value;
+        const funding = document.getElementById('templateFunding').value;
+        const file    = document.getElementById('templateFile').files[0];
+
+        if (!trade || !funding) { alert('Please select a trade and funding type before uploading.'); return; }
+        if (!file) { alert('Please select a PDF file to upload.'); return; }
+        if (file.type !== 'application/pdf') { alert('Please upload a PDF file.'); return; }
+        if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+
+        const btn = document.getElementById('uploadAndSubmitBtn');
+        btn.disabled = true;
+        btn.textContent = 'Uploading…';
+        setUploadStatus('Uploading contract template…', 'info');
+
+        try {
+            // Upload to contractor-templates bucket
+            const slotKey  = `${trade.toLowerCase()}/${funding.toLowerCase().replace(/\s+/g,'_').replace(/[()]/g,'')}`;
+            const filePath = `${contractor.id}/${slotKey}.pdf`;
+
+            const { error: uploadError } = await sb.storage
+                .from('contractor-templates')
+                .upload(filePath, file, { contentType: 'application/pdf', upsert: true });
+
+            if (uploadError) throw uploadError;
+
+            // Update contract_templates JSONB array
+            const existing = contractor.contract_templates || [];
+            const filtered = existing.filter(t => !(t.trade === trade && t.funding_type === funding));
+            const updated  = [...filtered, { trade, funding_type: funding, path: filePath, uploaded_at: new Date().toISOString() }];
+
+            await finishAndSubmit(updated);
+        } catch (err) {
+            console.error('Step 4 upload error:', err);
+            btn.disabled = false;
+            btn.textContent = 'Upload & Submit Application →';
+            setUploadStatus('Upload failed. Please try again.', 'error');
+        }
+    }
+
+    async function skipTemplateAndSubmit() {
+        if (!confirm('Are you sure you want to skip? You can upload your contract template in your profile after approval. Without a template, the Otter Quotes standard agreement will govern your projects.')) return;
+        await finishAndSubmit(contractor.contract_templates || []);
+    }
+
+    async function finishAndSubmit(contractTemplates) {
+        try {
+            const { error } = await sb.from('contractors')
+                .update({
+                    contract_templates: contractTemplates,
+                    status:             'pending_approval',
+                    onboarding_step:    4,
+                    updated_at:         new Date().toISOString(),
+                })
+                .eq('user_id', currentUser.id);
+
+            if (error) throw error;
+
+            // GA4
+            if (typeof gtag === 'function') {
+                gtag('event', 'contractor_signup_complete', { event_category: 'contractor_funnel' });
+            }
+
+            document.getElementById('submittedEmail').textContent = currentUser.email || '';
+            showPanel('submitted');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (err) {
+            console.error('finishAndSubmit error:', err);
+            alert('Failed to submit application. Please try again or contact support@otterquote.com.');
+        }
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+    async function init() {
+        showPanel('loading');
+
+        try {
+            if (!window.CONFIG) throw new Error('Config not loaded');
+            sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+
+            // Give Supabase a moment to process the URL hash (magic link token)
+            await new Promise(r => setTimeout(r, 400));
+
+            const { data: sessionData, error: sessionErr } = await sb.auth.getSession();
+
+            if (sessionErr || !sessionData?.session) {
+                showPanel('error');
+                return;
+            }
+
+            currentUser = sessionData.session.user;
+
+            // Load contractor record
+            let { data: ct, error: ctErr } = await sb.from('contractors')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .maybeSingle();
+
+            if (ctErr && ctErr.code !== 'PGRST116') throw ctErr;
+
+            if (!ct) {
+                // Contractor record doesn't exist yet — create from localStorage signup data
+                const signupRaw = localStorage.getItem('cs_contractor_signup');
+                const signup    = signupRaw ? JSON.parse(signupRaw) : {};
+                const insertRes = await sb.from('contractors').insert({
+                    user_id:                 currentUser.id,
+                    email:                   currentUser.email,
+                    company_name:            signup.company_name || '',
+                    contact_name:            signup.contact_name || '',
+                    attestation_signer_title: signup.signer_title || '',
+                    status:                  'pending_approval',
+                    onboarding_step:         1,
+                }).select().single();
+
+                if (insertRes.error) throw insertRes.error;
+                ct = insertRes.data;
+            }
+
+            contractor = ct;
+
+            // If already active, send to dashboard
+            if (contractor.status === 'active') {
+                window.location.href = 'contractor-dashboard.html';
+                return;
+            }
+
+            // If already submitted (step 4 done), show submitted panel
+            if (contractor.onboarding_step >= 4 || contractor.status === 'pending_approval' && contractor.onboarding_step >= 4) {
+                document.getElementById('submittedEmail').textContent = currentUser.email || '';
+                showPanel('submitted');
+                return;
+            }
+
+            // Determine which step to show
+            const step = Math.max(2, (contractor.onboarding_step || 1) + 1);
+            showStep(Math.min(step, 4));
+
+        } catch (err) {
+            console.error('Pre-approval init error:', err);
+            showPanel('error');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

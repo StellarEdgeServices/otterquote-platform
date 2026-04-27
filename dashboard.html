@@ -1358,6 +1358,18 @@
             console.error('[Dashboard] Error creating profile:', err);
             // Continue with local profile so UI still renders
           }
+        } else if (!currentProfile.full_name) {
+          // Profile row exists but name was never saved — derive from auth metadata and persist
+          const signupData = JSON.parse(sessionStorage.getItem('cs_signup') || '{}');
+          const firstName = signupData.first_name || currentUser.user_metadata?.full_name?.split(' ')[0] || '';
+          const lastName  = signupData.last_name  || currentUser.user_metadata?.full_name?.split(' ')[1] || '';
+          const derivedName = (firstName + ' ' + lastName).trim() || currentUser.email?.split('@')[0] || '';
+          if (derivedName) {
+            currentProfile.full_name = derivedName;
+            try { await Auth.updateProfile({ full_name: derivedName }); } catch(e) {
+              console.warn('[Dashboard] Could not persist derived name:', e);
+            }
+          }
         }
       }
 

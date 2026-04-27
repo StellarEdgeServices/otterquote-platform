@@ -1068,6 +1068,7 @@
                         <div><strong>Contract Price:</strong> → Bid amount</div>
                         <div><strong>Material:</strong> → Shingle brand/type</div>
                         <div><strong>Warranty:</strong> → Warranty years</div>
+                        <div><strong>Statement of Work:</strong> → Scope of work summary</div>
                     </div>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--sp-3);">
                         Tip: Include these exact labels in your contract to enable auto-fill. Fields not found will be left blank for manual entry. After uploading a template, click <strong>Review Mapping</strong> to customize which labels Otter Quotes looks for.
@@ -1236,6 +1237,9 @@
 
                     document.getElementById('statJobs').textContent = statsResult.count || '0';
 
+                // B-2 fix: render template grids on page load (not just after upload)
+                    await loadContractTemplates();
+                    await loadPcTemplates();
                 } catch (err) {
                     console.error('Error initializing profile:', err);
                 }
@@ -2359,7 +2363,8 @@
             deductible:        { label: 'Deductible:',    description: 'Deductible amount' },
             contract_price:    { label: 'Contract Price:', description: 'Bid amount' },
             material:          { label: 'Material:',      description: 'Shingle brand/type' },
-            warranty:          { label: 'Warranty:',      description: 'Warranty years' }
+            warranty:          { label: 'Warranty:',      description: 'Warranty years' },
+            sow:               { label: 'Statement of Work:', description: 'Scope of work summary' }
         };
 
         let fieldMappingCurrentTrade = null;

@@ -1196,40 +1196,6 @@
             </div>
           </div>
 
-          <!-- Review Sites -->
-          <div style="margin-bottom: var(--sp-4); padding: var(--sp-4); background: #F8FAFC; border-radius: var(--radius-md); border: 1px solid var(--light);">
-            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-1); color: var(--navy);">Your Reviews</h4>
-            <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-4); line-height:1.5;">Add a link to your reviews on each platform. Homeowners will be able to visit your review page directly from your bid. Leave a row blank to hide that platform.</p>
-            <div style="display:grid;grid-template-columns:110px 1fr;gap:var(--sp-1);align-items:center;font-size:0.75rem;font-weight:600;color:var(--slate);margin-bottom:var(--sp-2);">
-              <span>Platform</span><span>Review Page Link</span>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:var(--sp-2);">
-              <div style="display:grid;grid-template-columns:110px 1fr;gap:var(--sp-2);align-items:center;">
-                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">Google</span>
-                <input type="url" id="reviewGoogleUrl" placeholder="https://g.page/your-business" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;width:100%;">
-              </div>
-              <div style="display:grid;grid-template-columns:110px 1fr;gap:var(--sp-2);align-items:center;">
-                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">Yelp</span>
-                <input type="url" id="reviewYelpUrl" placeholder="https://yelp.com/biz/your-business" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;width:100%;">
-              </div>
-              <div style="display:grid;grid-template-columns:110px 1fr;gap:var(--sp-2);align-items:center;">
-                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">BBB</span>
-                <input type="url" id="reviewBbbUrl" placeholder="https://bbb.org/us/..." style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;width:100%;">
-              </div>
-              <div style="display:grid;grid-template-columns:110px 1fr;gap:var(--sp-2);align-items:center;">
-                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">Facebook</span>
-                <input type="url" id="reviewFbUrl" placeholder="https://facebook.com/your-page" style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;width:100%;">
-              </div>
-              <div style="display:grid;grid-template-columns:110px 1fr;gap:var(--sp-2);align-items:center;">
-                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">Angi</span>
-                <input type="url" id="reviewAngiUrl" placeholder="https://angi.com/companylist/..." style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;width:100%;">
-              </div>
-              <div style="display:grid;grid-template-columns:110px 1fr;gap:var(--sp-2);align-items:center;">
-                <span style="font-size:0.875rem;font-weight:600;color:var(--navy);">HomeAdvisor</span>
-                <input type="url" id="reviewHaUrl" placeholder="https://homeadvisor.com/rated...." style="padding:6px 8px;border:1px solid var(--light);border-radius:var(--radius-md);font-size:0.8rem;width:100%;">
-              </div>
-            </div>
-          </div>
 
           <!-- Section Save Button -->
           <div style="margin-top:var(--sp-4); border-top:1px solid var(--light); padding-top:var(--sp-4);">
@@ -1446,7 +1412,7 @@
       </div>
 
       <div class="info-box" style="font-size: 0.95rem; line-height: 1.7; color: var(--navy); padding: var(--sp-4); background:#F8FAFC; border:1px solid #E2E8F0; border-radius: var(--radius-md); margin-bottom: var(--sp-4);">
-        <p style="margin-bottom: var(--sp-4);">Otter Quotes is a contract-ready project matching and payments platform. We do not perform your work or warrant your materials. Every contractor represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
+        <p style="margin-bottom: var(--sp-4);">Otter Quotes is a contractor matching and payments platform. We do not perform your work or warrant your materials. Every contractor represents themselves — directly — as licensed, insured, and compliant with Indiana law.</p>
         <p style="margin-bottom: var(--sp-4);">By accepting below, you personally and on behalf of the business attest that:</p>
         <ul style="margin: 0 0 var(--sp-4) var(--sp-5); padding: 0;">
           <li style="margin-bottom: var(--sp-2);">You hold all licenses, registrations, and permits required in every jurisdiction where you bid.</li>
@@ -2496,12 +2462,7 @@
             if (va.review_sites) {
               const rv = va.review_sites;
               const sr = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
-              sr('reviewGoogleUrl', rv.google?.url);
-              sr('reviewYelpUrl', rv.yelp?.url);
-              sr('reviewBbbUrl', rv.bbb?.url);
-              sr('reviewFbUrl', rv.facebook?.url);
-              sr('reviewAngiUrl', rv.angi?.url);
-              sr('reviewHaUrl', rv.homeadvisor?.url);
+
             }
             if (va.ventilation) {
               if (va.ventilation.free_ridge_vent && document.getElementById('abVentRidgeUpgrade')) document.getElementById('abVentRidgeUpgrade').checked = va.ventilation.free_ridge_vent;
@@ -2944,12 +2905,7 @@
             notes_to_customer: document.getElementById('repairNotesToCustomer')?.value?.trim() || null,
           },
           review_sites: {
-            google: { url: document.getElementById('reviewGoogleUrl')?.value?.trim() || null },
-            yelp: { url: document.getElementById('reviewYelpUrl')?.value?.trim() || null },
-            bbb: { url: document.getElementById('reviewBbbUrl')?.value?.trim() || null },
-            facebook: { url: document.getElementById('reviewFbUrl')?.value?.trim() || null },
-            angi: { url: document.getElementById('reviewAngiUrl')?.value?.trim() || null },
-            homeadvisor: { url: document.getElementById('reviewHaUrl')?.value?.trim() || null },
+
           },
         };
       }
@@ -3081,12 +3037,7 @@
 
       // Reviews in bid preview
       const rvPlatforms = [
-        { name: 'Google', url: document.getElementById('reviewGoogleUrl')?.value?.trim() },
-        { name: 'Yelp', url: document.getElementById('reviewYelpUrl')?.value?.trim() },
-        { name: 'BBB', url: document.getElementById('reviewBbbUrl')?.value?.trim() },
-        { name: 'Facebook', url: document.getElementById('reviewFbUrl')?.value?.trim() },
-        { name: 'Angi', url: document.getElementById('reviewAngiUrl')?.value?.trim() },
-        { name: 'HomeAdvisor', url: document.getElementById('reviewHaUrl')?.value?.trim() },
+
       ].filter(p => p.url);
       const rvSection = document.getElementById('previewReviewsSection');
       const rvList = document.getElementById('previewReviewsList');
