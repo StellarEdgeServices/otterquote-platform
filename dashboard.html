@@ -2847,7 +2847,15 @@
         if (label) label.classList.toggle('selected', checkbox.checked);
       }
 
-      document.addEventListener('DOMContentLoaded', init);
+      document.addEventListener('DOMContentLoaded', () => {
+          let _initFired = false;
+          sb.auth.onAuthStateChange(async (event, session) => {
+              if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
+                  _initFired = true;
+                  await init();
+              }
+          });
+      });
 
     })();
     </script>
