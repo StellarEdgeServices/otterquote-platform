@@ -1305,6 +1305,18 @@
           </select>
         </div>
 
+        <!-- Number of Stories (roofing only) -->
+        <div class="form-group" id="numStoriesGroup">
+          <label for="numStories">Number of Stories *</label>
+          <select id="numStories" name="numStories" required>
+            <option value="">Select number of stories</option>
+            <option value="1">1 story</option>
+            <option value="2">2 stories</option>
+            <option value="3+">3+ stories</option>
+          </select>
+          <div class="form-help">Helps homeowners understand the scope and access requirements of your bid.</div>
+        </div>
+
         <!-- Decking Contingency (Required) -->
         <div class="form-section" id="deckingSection" style="grid-column: 1 / -1;">
           <h3 style="font-size: 1.1rem; margin-bottom: var(--sp-2);">Decking Contingency *</h3>
@@ -2152,14 +2164,14 @@
 
     // Form section IDs controlled by wizard per trade
     const WIZARD_ROOFING_SECTIONS = [
-      'brandProductGroup', 'deckingSection', 'valueAddsSection',
+      'brandProductGroup', 'numStoriesGroup', 'deckingSection', 'valueAddsSection',
       'secondLayerContingencySection', 'homeownerMsgGroup'
     ];
     const WIZARD_GUTTERS_SECTIONS  = ['gutterTradeSection', 'homeownerMsgGroup'];
     const WIZARD_SIDING_SECTIONS   = ['sidingTradeSection', 'homeownerMsgGroup'];
     const ALL_WIZARD_FORM_SECTIONS = [
       'bidTypeSection', 'retailPriceSection', 'brandProductGroup',
-      'deckingSection', 'supplementSection', 'valueAddsSection',
+      'numStoriesGroup', 'deckingSection', 'supplementSection', 'valueAddsSection',
       'secondLayerContingencySection', 'gutterTradeSection',
       'sidingTradeSection', 'homeownerMsgGroup', 'hoverRoofingPanel'
     ];
@@ -2699,6 +2711,11 @@
         if (brandEl) {
           brandEl.style.display = 'none';
           brandEl.querySelectorAll('[required]').forEach(el => el.removeAttribute('required'));
+        }
+        const numStoriesEl = document.getElementById('numStoriesGroup');
+        if (numStoriesEl) {
+          numStoriesEl.style.display = 'none';
+          numStoriesEl.querySelectorAll('[required]').forEach(el => el.removeAttribute('required'));
         }
         const shingleItem = document.getElementById('summaryShingle')?.closest('.summary-item');
         if (shingleItem) shingleItem.style.display = 'none';
@@ -4201,6 +4218,9 @@
             },
 
             other_offers: formData.get('valueAddsOtherOffers') || null,
+
+            // Number of stories (roofing only — captured at bid form)
+            num_stories: formData.get('numStories') || null,
           };
 
           // Append gutter trade fields if this is a gutter bid
