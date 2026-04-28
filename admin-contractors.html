@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - Contractors | Otter Quotes</title>
+    <title>Admin - Contractors | OtterQuote</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
@@ -656,31 +656,31 @@
             <div class="summary-cards">
                 <div class="summary-card">
                     <div class="summary-card-label">Pending Review</div>
-                    <div class="summary-card-value" id="pendingCount">—</div>
+                    <div class="summary-card-value" id="pendingCount">â</div>
                 </div>
                 <div class="summary-card">
                     <div class="summary-card-label">Active Contractors</div>
-                    <div class="summary-card-value" id="activeCount">—</div>
+                    <div class="summary-card-value" id="activeCount">â</div>
                 </div>
                 <div class="summary-card">
                     <div class="summary-card-label">Total Contractors</div>
-                    <div class="summary-card-value" id="totalCount">—</div>
+                    <div class="summary-card-value" id="totalCount">â</div>
                 </div>
                 <div class="summary-card" style="border-left: 4px solid #E07B00;">
-                    <div class="summary-card-label" style="color: #92400e;">⚠️ PC Template Nudge</div>
-                    <div class="summary-card-value" id="pcMigrationCount" style="color: #d97706;">—</div>
+                    <div class="summary-card-label" style="color: #92400e;">â ï¸ PC Template Nudge</div>
+                    <div class="summary-card-value" id="pcMigrationCount" style="color: #d97706;">â</div>
                 </div>
                 <div class="summary-card" style="border-left: 4px solid #dc2626;">
-                    <div class="summary-card-label" style="color: #991b1b;">⚠️ COI Missing / Expired</div>
-                    <div class="summary-card-value" id="coiMissingCount" style="color: #b91c1c;">—</div>
+                    <div class="summary-card-label" style="color: #991b1b;">â ï¸ COI Missing / Expired</div>
+                    <div class="summary-card-value" id="coiMissingCount" style="color: #b91c1c;">â</div>
                 </div>
                 <div class="summary-card" style="border-left: 4px solid #E07B00;">
-                    <div class="summary-card-label" style="color: #92400e;">COI Expiring ≤30d</div>
-                    <div class="summary-card-value" id="coiExpiringCount" style="color: #d97706;">—</div>
+                    <div class="summary-card-label" style="color: #92400e;">COI Expiring â¤30d</div>
+                    <div class="summary-card-value" id="coiExpiringCount" style="color: #d97706;">â</div>
                 </div>
                 <div class="summary-card" style="border-left: 4px solid #0ea5e9;">
                     <div class="summary-card-label" style="color: #0c4a6e;">Waitlisted Homeowners</div>
-                    <div class="summary-card-value" id="waitlistCount" style="color: #0369a1;">—</div>
+                    <div class="summary-card-value" id="waitlistCount" style="color: #0369a1;">â</div>
                 </div>
             </div>
 
@@ -688,15 +688,15 @@
             <div class="filter-tabs">
                 <button class="filter-tab active" onclick="setFilter('pending_approval')">Pending Review</button>
                 <button class="filter-tab" onclick="setFilter('all')">All Contractors</button>
-                <button class="filter-tab" onclick="setFilter('pc_migration_pending')" style="border-color: #E07B00; color: #92400e;">⚠️ Needs PC Template Update</button>
-                <button class="filter-tab" onclick="setFilter('coi_missing')" style="border-color: #dc2626; color: #991b1b;">⚠️ COI Missing / Expired</button>
-                <button class="filter-tab" onclick="setFilter('coi_expiring')" style="border-color: #E07B00; color: #92400e;">COI Expiring ≤30d</button>
+                <button class="filter-tab" onclick="setFilter('pc_migration_pending')" style="border-color: #E07B00; color: #92400e;">â ï¸ Needs PC Template Update</button>
+                <button class="filter-tab" onclick="setFilter('coi_missing')" style="border-color: #dc2626; color: #991b1b;">â ï¸ COI Missing / Expired</button>
+                <button class="filter-tab" onclick="setFilter('coi_expiring')" style="border-color: #E07B00; color: #92400e;">COI Expiring â¤30d</button>
             </div>
 
             <!-- Contractors List -->
             <div id="contractorsContainer"></div>
 
-            <!-- ── Platform Monitoring ─────────────────────────────── -->
+            <!-- ââ Platform Monitoring âââââââââââââââââââââââââââââââ -->
             <div id="cronHealthSection" style="margin-top:2rem;">
                 <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
                     <button
@@ -704,22 +704,22 @@
                         onclick="toggleCronHealth()"
                         style="display:flex;align-items:center;gap:0.5rem;background:none;border:1px solid #334155;color:#94a3b8;font-size:0.875rem;font-weight:600;padding:0.6rem 1rem;border-radius:0.5rem;cursor:pointer;letter-spacing:0.03em;text-transform:uppercase;"
                     >
-                        <span id="cronHealthChevron">▶</span> Platform Monitoring
+                        <span id="cronHealthChevron">â¶</span> Platform Monitoring
                     </button>
                     <button
                         id="runHealthCheckBtn"
                         onclick="runHealthCheckNow()"
                         style="display:none;align-items:center;gap:0.4rem;background:#0D1B2E;border:1px solid #E07B00;color:#E07B00;font-size:0.8rem;font-weight:600;padding:0.5rem 0.9rem;border-radius:0.5rem;cursor:pointer;"
                     >
-                        ▶ Run Health Check Now
+                        â¶ Run Health Check Now
                     </button>
                 </div>
                 <div id="cronHealthPanel" style="display:none;margin-top:0.75rem;overflow-x:auto;">
-                    <div id="cronHealthContent" style="color:#94a3b8;font-size:0.875rem;">Loading…</div>
+                    <div id="cronHealthContent" style="color:#94a3b8;font-size:0.875rem;">Loadingâ¦</div>
                 </div>
             </div>
 
-            <!-- ── D-178: Expansion Waitlist by State ────────────────── -->
+            <!-- ââ D-178: Expansion Waitlist by State ââââââââââââââââââ -->
             <div id="waitlistSection" style="margin-top:2rem;">
                 <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
                     <button
@@ -737,7 +737,7 @@
                     <span id="waitlistLastRefreshed" style="display:none;color:#64748b;font-size:0.75rem;"></span>
                 </div>
                 <div id="waitlistPanel" style="display:none;margin-top:0.75rem;overflow-x:auto;">
-                    <div id="waitlistContent" style="color:#94a3b8;font-size:0.875rem;">Loading…</div>
+                    <div id="waitlistContent" style="color:#94a3b8;font-size:0.875rem;">Loadingâ¦</div>
                 </div>
             </div>
         </div>
@@ -953,15 +953,15 @@
                             <div class="contractor-header-left">
                                 <div class="contractor-header-cell">
                                     <div class="contractor-header-cell-label">Company</div>
-                                    <div class="contractor-header-cell-value">${c.company_name || '—'}</div>
+                                    <div class="contractor-header-cell-value">${c.company_name || 'â'}</div>
                                 </div>
                                 <div class="contractor-header-cell">
                                     <div class="contractor-header-cell-label">Owner</div>
-                                    <div class="contractor-header-cell-value">${c.contact_name || '—'}</div>
+                                    <div class="contractor-header-cell-value">${c.contact_name || 'â'}</div>
                                 </div>
                                 <div class="contractor-header-cell">
                                     <div class="contractor-header-cell-label">Email</div>
-                                    <div class="contractor-header-cell-value">${c.email || '—'}</div>
+                                    <div class="contractor-header-cell-value">${c.email || 'â'}</div>
                                 </div>
                                 <div class="contractor-header-cell">
                                     <div class="contractor-header-cell-label">Applied</div>
@@ -971,16 +971,16 @@
                             <div class="contractor-header-badges">
                                 <span class="status-badge status-badge-${c.status}">${c.status.replace(/_/g, ' ')}</span>
                                 ${trades.map(t => `<span class="trade-badge">${t}</span>`).join('')}
-                                ${c.pc_template_migration_pending ? `<span style="background:#fef3c7;color:#92400e;border:1px solid #E07B00;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ PC Template</span>` : ''}
+                                ${c.pc_template_migration_pending ? `<span style="background:#fef3c7;color:#92400e;border:1px solid #E07B00;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">â ï¸ PC Template</span>` : ''}
                                 ${(() => {
                                     const s = coiState(c);
-                                    if (s === 'missing')  return `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ COI Missing</span>`;
-                                    if (s === 'expired')  return `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ COI Expired</span>`;
-                                    if (s === 'expiring') return `<span style="background:#fef3c7;color:#92400e;border:1px solid #E07B00;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">COI ≤30d</span>`;
+                                    if (s === 'missing')  return `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">â ï¸ COI Missing</span>`;
+                                    if (s === 'expired')  return `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">â ï¸ COI Expired</span>`;
+                                    if (s === 'expiring') return `<span style="background:#fef3c7;color:#92400e;border:1px solid #E07B00;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">COI â¤30d</span>`;
                                     return '';
                                 })()}
-                                ${c.attestation_accepted_at ? '' : `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ No Attestation</span>`}
-                                <span style="font-size: 1.2rem;">▼</span>
+                                ${c.attestation_accepted_at ? '' : `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">â ï¸ No Attestation</span>`}
+                                <span style="font-size: 1.2rem;">â¼</span>
                             </div>
                         </div>
 
@@ -994,15 +994,15 @@
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">Phone</div>
-                                    <div class="info-value">${c.phone || '—'}</div>
+                                    <div class="info-value">${c.phone || 'â'}</div>
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">Company</div>
-                                    <div class="info-value">${c.company_name || '—'}</div>
+                                    <div class="info-value">${c.company_name || 'â'}</div>
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">Owner</div>
-                                    <div class="info-value">${c.contact_name || '—'}</div>
+                                    <div class="info-value">${c.contact_name || 'â'}</div>
                                 </div>
                             </div>
 
@@ -1011,11 +1011,11 @@
                                 <div class="card-section-title">Service Area</div>
                                 <div class="info-row">
                                     <div class="info-label">Counties</div>
-                                    <div class="info-value">${(c.service_counties || []).join(', ') || '—'}</div>
+                                    <div class="info-value">${(c.service_counties || []).join(', ') || 'â'}</div>
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">States</div>
-                                    <div class="info-value">${(c.service_states || []).join(', ') || '—'}</div>
+                                    <div class="info-value">${(c.service_states || []).join(', ') || 'â'}</div>
                                 </div>
                             </div>
 
@@ -1024,27 +1024,27 @@
                                 <div class="card-section-title">Profile Completeness</div>
                                 <div class="checklist">
                                     <div class="checklist-item">
-                                        <div class="checklist-icon">${c.company_name && c.company_name.trim() ? '✅' : '⬜'}</div>
+                                        <div class="checklist-icon">${c.company_name && c.company_name.trim() ? 'â' : 'â¬'}</div>
                                         <div>Company information</div>
                                     </div>
                                     <div class="checklist-item">
-                                        <div class="checklist-icon">${c.has_workers_comp || c.has_general_liability ? '✅' : '⬜'}</div>
+                                        <div class="checklist-icon">${c.has_workers_comp || c.has_general_liability ? 'â' : 'â¬'}</div>
                                         <div>Insurance on file</div>
                                     </div>
                                     <div class="checklist-item">
-                                        <div class="checklist-icon">${(c.service_counties || []).length > 0 ? '✅' : '⬜'}</div>
+                                        <div class="checklist-icon">${(c.service_counties || []).length > 0 ? 'â' : 'â¬'}</div>
                                         <div>Service area</div>
                                     </div>
                                     <div class="checklist-item">
-                                        <div class="checklist-icon">${c.contract_templates && Object.keys(c.contract_templates).length > 0 ? '✅' : '⬜'}</div>
+                                        <div class="checklist-icon">${c.contract_templates && Object.keys(c.contract_templates).length > 0 ? 'â' : 'â¬'}</div>
                                         <div>Contract template</div>
                                     </div>
                                     <div class="checklist-item">
-                                        <div class="checklist-icon">⬜</div>
+                                        <div class="checklist-icon">â¬</div>
                                         <div>Payment method</div>
                                     </div>
                                     <div class="checklist-item">
-                                        <div class="checklist-icon">${c.agreement_accepted_at ? '✅' : '⬜'}</div>
+                                        <div class="checklist-icon">${c.agreement_accepted_at ? 'â' : 'â¬'}</div>
                                         <div>Agreement accepted</div>
                                     </div>
                                 </div>
@@ -1063,13 +1063,13 @@
                                         </div>
                                     `).join('')}
                                     <div style="margin-top: 0.75rem; padding: 0.75rem; background: var(--light); border-radius: 0.4rem; font-size: 0.875rem;">
-                                        Status: ${c.license_verified ? `✅ Verified ${new Date(c.license_verified_at).toLocaleDateString()}` : 'Not verified'}
+                                        Status: ${c.license_verified ? `â Verified ${new Date(c.license_verified_at).toLocaleDateString()}` : 'Not verified'}
                                     </div>
                                 ` : '<p style="color: var(--slate);">No license records submitted</p>'}
 
                                 <div class="button-row">
                                     <button class="btn-sm" onclick="openLicenseBoard('${c.service_states?.[0] || 'IN'}', '${c.contact_name}')">Search State License Board</button>
-                                    ${!c.license_verified ? `<button class="btn-sm btn-sm-primary" onclick="markLicenseVerified('${c.id}')">Mark as Verified ✓</button>` : ''}
+                                    ${!c.license_verified ? `<button class="btn-sm btn-sm-primary" onclick="markLicenseVerified('${c.id}')">Mark as Verified â</button>` : ''}
                                 </div>
                             </div>
 
@@ -1078,19 +1078,19 @@
                                 <div class="card-section-title">Insurance Verification</div>
                                 <div class="info-row">
                                     <div class="info-label">Workers Comp</div>
-                                    <div class="info-value">${c.workers_comp_carrier || '—'}</div>
+                                    <div class="info-value">${c.workers_comp_carrier || 'â'}</div>
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">General Liability</div>
-                                    <div class="info-value">${c.general_liability_carrier || '—'}</div>
+                                    <div class="info-value">${c.general_liability_carrier || 'â'}</div>
                                 </div>
                                 <div style="margin-top: 0.75rem; padding: 0.75rem; background: var(--light); border-radius: 0.4rem; font-size: 0.875rem;">
-                                    Status: ${c.insurance_verified ? `✅ Verified ${new Date(c.insurance_verified_at).toLocaleDateString()}` : (c.insurance_verification_sent_at ? `Email sent ${new Date(c.insurance_verification_sent_at).toLocaleDateString()}` : 'Not verified')}
+                                    Status: ${c.insurance_verified ? `â Verified ${new Date(c.insurance_verified_at).toLocaleDateString()}` : (c.insurance_verification_sent_at ? `Email sent ${new Date(c.insurance_verification_sent_at).toLocaleDateString()}` : 'Not verified')}
                                 </div>
 
                                 <div class="button-row">
                                     <button class="btn-sm" onclick="openInsuranceModal('${c.id}', '${c.company_name}')">Request Verification Email</button>
-                                    ${!c.insurance_verified ? `<button class="btn-sm btn-sm-primary" onclick="markInsuranceVerified('${c.id}')">Mark as Verified ✓</button>` : ''}
+                                    ${!c.insurance_verified ? `<button class="btn-sm btn-sm-primary" onclick="markInsuranceVerified('${c.id}')">Mark as Verified â</button>` : ''}
                                 </div>
                             </div>
 
@@ -1105,8 +1105,8 @@
                             <!-- Actions -->
                             ${isPending ? `
                                 <div class="actions-final">
-                                    <button class="btn-action btn-action-approve" onclick="openApproveConfirmModal('${c.id}', '${c.company_name}')">✓ Approve Contractor</button>
-                                    <button class="btn-action btn-action-reject" onclick="openRejectModal('${c.id}', '${c.company_name}')">✗ Reject Application</button>
+                                    <button class="btn-action btn-action-approve" onclick="openApproveConfirmModal('${c.id}', '${c.company_name}')">â Approve Contractor</button>
+                                    <button class="btn-action btn-action-reject" onclick="openRejectModal('${c.id}', '${c.company_name}')">â Reject Application</button>
                                 </div>
                             ` : ''}
                         </div>
@@ -1268,7 +1268,7 @@
                     c.admin_notes = notes;
                 }
 
-                statusDiv.textContent = 'Notes saved ✓';
+                statusDiv.textContent = 'Notes saved â';
                 statusDiv.style.color = 'var(--green)';
                 setTimeout(() => {
                     statusDiv.textContent = '';
@@ -1485,25 +1485,25 @@
                     if (dsRow) {
                         var meta = {};
                         try { meta = JSON.parse(dsRow.p_error || dsRow.last_error || '{}'); } catch(e) {}
-                        var used = meta.used != null ? meta.used : '—';
+                        var used = meta.used != null ? meta.used : 'â';
                         var limit = meta.limit != null ? meta.limit : 40;
                         var pct  = meta.percentUsed != null ? meta.percentUsed : null;
-                        var alertSent = meta.alertSent ? '⚠️ Alert sent' : 'No alert';
-                        var lastRun  = dsRow.last_run_at ? timeAgo(dsRow.last_run_at) : '—';
+                        var alertSent = meta.alertSent ? 'â ï¸ Alert sent' : 'No alert';
+                        var lastRun  = dsRow.last_run_at ? timeAgo(dsRow.last_run_at) : 'â';
                         var badge    = statusBadge(dsRow.last_run_status, dsRow.last_error);
                         var barColor = pct == null ? '#3b82f6' : (pct >= 80 ? '#ef4444' : pct >= 60 ? '#f59e0b' : '#22c55e');
                         var barWidth = pct != null ? Math.min(pct, 100) : 0;
                         html += '<div style="background:#1e293b;border-radius:6px;padding:0.75rem 1rem;margin-bottom:1rem;">';
                         html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">';
-                        html += '<span style="font-size:0.85rem;font-weight:600;color:#e2e8f0;">📧 DocuSign Envelopes</span>';
+                        html += '<span style="font-size:0.85rem;font-weight:600;color:#e2e8f0;">ð§ DocuSign Envelopes</span>';
                         html += '<span style="font-size:0.75rem;color:#64748b;">Last checked: ' + lastRun + ' &nbsp;' + badge + '</span>';
                         html += '</div>';
-                        html += '<div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.4rem;">Plan: Basic API Plan · Monthly limit: ' + limit + ' envelopes</div>';
+                        html += '<div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.4rem;">Plan: Basic API Plan Â· Monthly limit: ' + limit + ' envelopes</div>';
                         html += '<div style="display:flex;align-items:center;gap:0.75rem;">';
                         html += '<div style="flex:1;background:#0f172a;border-radius:4px;height:8px;overflow:hidden;">';
                         html += '<div style="width:' + barWidth + '%;height:100%;background:' + barColor + ';transition:width 0.3s;"></div>';
                         html += '</div>';
-                        html += '<span style="font-size:0.8rem;color:#e2e8f0;white-space:nowrap;">' + used + ' / ' + limit + ' (' + (pct != null ? pct : '—') + '%)</span>';
+                        html += '<span style="font-size:0.8rem;color:#e2e8f0;white-space:nowrap;">' + used + ' / ' + limit + ' (' + (pct != null ? pct : 'â') + '%)</span>';
                         html += '</div>';
                         html += '<div style="font-size:0.75rem;color:#64748b;margin-top:0.35rem;">' + alertSent + '</div>';
                         html += '</div>';
@@ -1613,7 +1613,7 @@
                 const tip = error ? ' title="' + escHtml(error) + '"' : '';
                 return '<span' + tip + ' style="background:#7f1d1d;color:#fca5a5;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">ERROR</span>';
             }
-            return '<span style="background:#1e293b;color:#64748b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">—</span>';
+            return '<span style="background:#1e293b;color:#64748b;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.72rem;font-weight:600;">â</span>';
         }
 
         function alertTypeLabel(alertType) {
@@ -1720,7 +1720,7 @@
         }
 
 
-        // ── Reject Modal ─────────────────────────────────────────────────────────
+        // ââ Reject Modal âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
         function openRejectModal(contractorId, companyName) {
             const modal = document.getElementById('rejectModal');
             modal.dataset.contractorId = contractorId;
@@ -1743,7 +1743,7 @@
             await rejectContractor(contractorId);
         }
 
-        // ── Logout ───────────────────────────────────────────────────────────────
+        // ââ Logout âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
         function logout() {
             if (typeof Auth !== 'undefined' && Auth.signOut) {
                 Auth.signOut()
