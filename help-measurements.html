@@ -867,6 +867,11 @@
 
         // Step 1 — Create PaymentIntent and show card form (no charge yet)
         async function purchaseHover() {
+            // BUG-7 fix: require a claim before creating a Stripe PaymentIntent
+            if (!currentClaim?.id) {
+                showMessage('Please complete your project details on the dashboard before purchasing measurements.', 'error');
+                return;
+            }
             const btn = document.getElementById('purchaseHoverBtn');
             const originalText = btn.innerHTML;
             btn.disabled = true;
@@ -998,6 +1003,31 @@
         }
 
         // ── Setup listeners ──────────────────────────────────────────────────────
+        // ── validateForm (module-scope) — called by prefillAdjusterInfo() ── BUG-6 fix
+        function validateForm() {
+            const emailField = document.getElementById('adjusterEmail');
+            const btn        = document.getElementById('sendMeasurementEmailBtn');
+            if (!emailField || !btn) return;
+            const email = emailField.value.trim();
+            btn.disabled = !email || !email.includes('@');
+        }
+
+        // ── updateEmailPreview (module-scope) — BUG-6 fix
+        function updateEmailPreview() {
+            const previewEl = document.getElementById('emailPreview');
+            if (!previewEl) return;
+            const adjName   = (document.getElementById('adjusterName')?.value  || '').trim() || 'Adjuster';
+            const ownerName = (currentProfile?.full_name ||
+                              ((currentProfile?.first_name || '') + ' ' + (currentProfile?.last_name || '')).trim() ||
+                              'Homeowner');
+            const ownerPhone = currentProfile?.phone || '';
+            previewEl.textContent =
+                'Hi ' + adjName + ',\n\n' +
+                'I would appreciate any property measurements you have on file from the inspection, if available.\n\n' +
+                'You can reply directly to this email with the documents attached.\n\n' +
+                'Thank you,\n' + ownerName + (ownerPhone ? '\n' + ownerPhone : '');
+        }
+
         function setupListeners() {
             const emailField = document.getElementById('adjusterEmail');
             const btn        = document.getElementById('sendMeasurementEmailBtn');
