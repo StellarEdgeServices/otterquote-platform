@@ -181,6 +181,54 @@ async function fireAlert(
   return { alerted: true, deduplicated: false };
 }
 
+/**
+ * 2-strikes gate (added Apr 30, 2026 — ClickUp 86e15mcmw):
+ * Before sending a Mailgun alert for an Edge Function failure, check whether
+ * a prior 'ef_failure_pending' row exists in platform_alerts_log within
+ * TWO_STRIKES_WINDOW_MS. If yes, this is the 2nd consecutive failure across
+ * two cron runs ~15 min apart — fire the real alert. If no, this is the 1st
+ * failure — INSERT a pending placeholder and suppress the email so a single
+ * transient timeout does not page Dustin.
+ *
+ * Window is 25 min — covers the next 15-min cron tick + jitter, but expires
+ * before an unrelated 30-min-later failure can chain. Recovery is implicit:
+ * when the function returns ok again, no row is inserted and the window
+ * naturally expires. No cleanup needed.
+ */
+const TWO_STRIKES_WINDOW_MS = 25 * 60 * 1000;
+
+async function hasPendingFailure(
+  supabase: ReturnType<typeof createClient>,
+  functionName: string,
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - TWO_STRIKES_WINDOW_MS).toISOString();
+  const { data } = await supabase
+    .from("platform_alerts_log")
+    .select("id")
+    .eq("function_name", functionName)
+    .eq("alert_type", "ef_failure_pending")
+    .gte("sent_at", cutoff)
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
+async function logPendingFailure(
+  supabase: ReturnType<typeof createClient>,
+  functionName: string,
+  errorText: string,
+): Promise<void> {
+  try {
+    await supabase.from("platform_alerts_log").insert({
+      alert_type:    "ef_failure_pending",
+      function_name: functionName,
+      message:       `1st-strike failure suppressed (2-strikes gate): ${errorText}`,
+      sent_at:       new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("[platform-health-check] Failed to log pending failure:", err);
+  }
+}
+
 // =============================================================================
 // PHASE 1 — Edge Function health pings
 // =============================================================================
@@ -260,25 +308,41 @@ async function runEdgeFunctionPings(
       console.warn(`[platform-health-check] cron_health write failed for ${cronKey}:`, err);
     }
 
-    // Fire alert if not ok
+    // Fire alert if not ok — gated by 2-strikes (Apr 30, 2026, ClickUp 86e15mcmw)
     if (result.status !== "ok") {
-      const subject = `OtterQuote Health Alert — ${result.functionName} is not responding`;
-      const message = [
-        `Edge Function: ${result.functionName}`,
-        `Status: ${result.status}`,
-        result.httpStatus ? `HTTP Status: ${result.httpStatus}` : null,
-        result.error ? `Error: ${result.error}` : null,
-        `Checked at: ${new Date().toISOString()}`,
-        "",
-        "This is an automated alert from OtterQuote platform monitoring.",
-        "Resolve this alert at: https://otterquote.com/admin-contractors.html",
-      ].filter(Boolean).join("\n");
+      const errorText = result.error ?? `HTTP ${result.httpStatus ?? "?"}`;
+      const isSecondStrike = await hasPendingFailure(supabase, result.functionName);
 
-      const { alerted } = await fireAlert(
-        supabase, mailgunApiKey, mailgunDomain,
-        "ef_silent_failure", result.functionName, subject, message,
-      );
-      if (alerted) alertsFired++;
+      if (!isSecondStrike) {
+        // 1st-strike: log pending row, suppress email. The next cron tick
+        // (~15 min) will either find this pending row and escalate, or skip
+        // because the function recovered.
+        await logPendingFailure(supabase, result.functionName, errorText);
+        console.log(
+          `[platform-health-check] 1st-strike (suppressed) for ${result.functionName}: ${errorText}`,
+        );
+      } else {
+        // 2nd-strike: fire the real alert.
+        const subject = `OtterQuote Health Alert — ${result.functionName} is not responding (2 consecutive failures)`;
+        const message = [
+          `Edge Function: ${result.functionName}`,
+          `Status: ${result.status}`,
+          result.httpStatus ? `HTTP Status: ${result.httpStatus}` : null,
+          result.error ? `Error: ${result.error}` : null,
+          `Checked at: ${new Date().toISOString()}`,
+          "",
+          "Two consecutive failures across two cron runs (~15 min apart) — first failure was suppressed by the 2-strikes gate; this is the second.",
+          "",
+          "This is an automated alert from OtterQuote platform monitoring.",
+          "Resolve this alert at: https://otterquote.com/admin-contractors.html",
+        ].filter(Boolean).join("\n");
+
+        const { alerted } = await fireAlert(
+          supabase, mailgunApiKey, mailgunDomain,
+          "ef_silent_failure", result.functionName, subject, message,
+        );
+        if (alerted) alertsFired++;
+      }
     }
   }
 
