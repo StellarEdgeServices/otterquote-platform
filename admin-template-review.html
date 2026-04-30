@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+    <meta charset="UTF-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Template Review | Otter Quotes</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+    <style>
+        :root {
+            --navy:   #0D1B2E;
+            --amber:  #E07B00;
+            --white:  #FFFFFF;
+            --slate:  #94A3B8;
+            --light:  #E2E8F0;
+            --red:    #EF4444;
+            --green:  #10B981;
+            --teal:   #14B8A6;
+        }
+        body { background-color: var(--navy); color: #1F2937; font-family: 'Rubik', sans-serif; }
+        main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+        .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+        .admin-title  { display: flex; align-items: center; gap: 1rem; }
+        .admin-badge  { background: var(--amber); color: var(--navy); padding: 0.4rem 0.8rem; border-radius: 0.5rem; font-weight: 700; font-size: 0.875rem; }
+        .admin-header h1 { font-size: 2.5rem; color: var(--white); margin: 0; }
+        .logout-btn  { background: var(--white); color: var(--navy); border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .logout-btn:hover { background: var(--light); }
+
+        .admin-nav { display: flex; gap: 0.75rem; margin-bottom: 2rem; }
+        .admin-nav a { color: var(--slate); text-decoration: none; font-weight: 500; font-size: 0.9rem; padding: 0.5rem 1rem; border-radius: 0.5rem; transition: all 0.2s; }
+        .admin-nav a:hover  { background: rgba(255,255,255,0.08); color: var(--white); }
+        .admin-nav a.active { background: rgba(255,255,255,0.12); color: var(--white); }
+
+        .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .summary-card { background: var(--white); border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .summary-card-label { font-size: 0.8rem; color: var(--slate); margin-bottom: 0.4rem; font-weight: 500; }
+        .summary-card-value { font-size: 2rem; font-weight: 700; color: var(--navy); }
+
+        .filter-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .filter-tab  { background: rgba(255,255,255,0.05); color: var(--slate); border: 1px solid rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
+        .filter-tab:hover  { background: rgba(255,255,255,0.1); color: var(--white); }
+        .filter-tab.active { background: var(--amber); color: var(--navy); border-color: var(--amber); font-weight: 600; }
+
+        .table-wrapper { background: var(--white); border-radius: 0.75rem; padding: 0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .template-table { width: 100%; border-collapse: collapse; }
+        .template-table th { background: var(--light); padding: 1rem; text-align: left; font-weight: 600; color: var(--navy); font-size: 0.85rem; }
+        .template-table td { padding: 1rem; border-top: 1px solid var(--light); font-size: 0.9rem; vertical-align: top; }
+        .template-table tr:hover { background: rgba(0,0,0,0.02); }
+
+        .status-badge { display: inline-block; padding: 0.25rem 0.65rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; }
+        .status-pending  { background: #FEF3C7; color: #92400E; }
+        .status-mapping  { background: #FEE2E2; color: #991B1B; }
+        .status-admin    { background: #DBEAFE; color: #1E40AF; }
+        .status-validated{ background: #D1FAE5; color: #065F46; }
+        .status-rejected { background: #FCE7F3; color: #9F1239; }
+
+        .anchor-summary { font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 0.8rem; color: var(--slate); }
+        .anchor-summary strong { color: var(--navy); }
+
+        .actions { display: flex; gap: 0.5rem; }
+        .btn-action { padding: 0.4rem 0.85rem; border-radius: 0.4rem; border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+        .btn-approve { background: var(--green); color: white; }
+        .btn-approve:hover { background: #059669; }
+        .btn-reject  { background: var(--red); color: white; }
+        .btn-reject:hover { background: #DC2626; }
+        .btn-view    { background: var(--light); color: var(--navy); text-decoration: none; display: inline-block; }
+        .btn-view:hover { background: #CBD5E1; }
+
+        .loading-spinner { padding: 3rem; text-align: center; color: var(--slate); }
+        .empty-state { padding: 3rem; text-align: center; color: var(--slate); }
+        #authError { padding: 2rem; text-align: center; color: var(--white); display: none; background: rgba(239,68,68,0.1); border: 1px solid var(--red); border-radius: 0.5rem; margin: 2rem 0; }
+
+        /* Detail drawer */
+        .drawer-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; }
+        .drawer { display: none; position: fixed; top: 0; right: 0; height: 100vh; width: min(640px, 100vw); background: var(--white); z-index: 101; box-shadow: -4px 0 24px rgba(0,0,0,0.2); overflow-y: auto; }
+        .drawer.open { display: block; }
+        .drawer-backdrop.open { display: block; }
+        .drawer-header { padding: 1.5rem; border-bottom: 1px solid var(--light); display: flex; justify-content: space-between; align-items: center; }
+        .drawer-header h2 { margin: 0; font-size: 1.25rem; color: var(--navy); }
+        .drawer-close { background: none; border: none; font-size: 1.5rem; color: var(--slate); cursor: pointer; }
+        .drawer-body { padding: 1.5rem; }
+        .anchor-grid { display: grid; grid-template-columns: 1fr; gap: 0.5rem; margin-top: 1rem; }
+        .anchor-row { padding: 0.6rem 0.85rem; border-radius: 0.4rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
+        .anchor-row.found { background: #D1FAE5; }
+        .anchor-row.missing { background: #FEE2E2; }
+        .anchor-row code { font-family: ui-monospace, monospace; }
+        .reject-form textarea { width: 100%; min-height: 100px; padding: 0.75rem; border: 1px solid var(--light); border-radius: 0.5rem; font-family: inherit; font-size: 0.9rem; margin-top: 0.5rem; }
+        .reject-form { padding-top: 1rem; border-top: 1px solid var(--light); margin-top: 1rem; display: none; }
+        .reject-form.open { display: block; }
+
+        @media (max-width: 768px) {
+            .template-table { font-size: 0.8rem; }
+            .template-table th, .template-table td { padding: 0.6rem; }
+        }
+    </style>
+</head>
+<body>
+
+<main>
+    <div class="admin-header">
+        <div class="admin-title">
+            <span class="admin-badge">ADMIN</span>
+            <h1>Template Review</h1>
+        </div>
+        <button class="logout-btn" onclick="handleLogout()">Log Out</button>
+    </div>
+
+    <div class="admin-nav">
+        <a href="admin-contractors.html">Contractors</a>
+        <a href="admin-referrals.html">Referrals</a>
+        <a href="admin-payouts.html">Payouts</a>
+        <a href="admin-template-review.html" class="active">Template Review</a>
+    </div>
+
+    <div id="authError">You must be signed in as an admin to view this page.</div>
+
+    <div class="summary-cards">
+        <div class="summary-card">
+            <div class="summary-card-label">Awaiting Admin Review</div>
+            <div class="summary-card-value" id="cardAwaitingCount">&mdash;</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-card-label">Auto-Validated (Tier 1)</div>
+            <div class="summary-card-value" id="cardAutoCount">&mdash;</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-card-label">Manual-Validated (Tier 2)</div>
+            <div class="summary-card-value" id="cardManualCount">&mdash;</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-card-label">Rejected</div>
+            <div class="summary-card-value" id="cardRejectedCount">&mdash;</div>
+        </div>
+    </div>
+
+    <div class="filter-tabs">
+        <button class="filter-tab active" data-filter="needs_review" onclick="setFilter('needs_review')">Needs Review</button>
+        <button class="filter-tab" data-filter="all" onclick="setFilter('all')">All</button>
+        <button class="filter-tab" data-filter="submitted_for_admin_review" onclick="setFilter('submitted_for_admin_review')">Submitted</button>
+        <button class="filter-tab" data-filter="manual_mapping_pending" onclick="setFilter('manual_mapping_pending')">Mapping Pending</button>
+        <button class="filter-tab" data-filter="auto_validated" onclick="setFilter('auto_validated')">Auto-Validated</button>
+        <button class="filter-tab" data-filter="manual_validated" onclick="setFilter('manual_validated')">Manual-Validated</button>
+        <button class="filter-tab" data-filter="admin_validated" onclick="setFilter('admin_validated')">Admin-Approved</button>
+        <button class="filter-tab" data-filter="rejected" onclick="setFilter('rejected')">Rejected</button>
+    </div>
+
+    <div class="table-wrapper">
+        <div id="loadingSpinner" class="loading-spinner">Loading templates&hellip;</div>
+        <table class="template-table" id="templatesTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Contractor</th>
+                    <th>Trade × Funding</th>
+                    <th>Anchors Found</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="templatesTableBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty-state" style="display:none;">No templates match this filter.</div>
+    </div>
+</main>
+
+<!-- Detail drawer -->
+<div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer">
+    <div class="drawer-header">
+        <h2 id="drawerTitle">Template Detail</h2>
+        <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+    let allTemplates = [];
+    let currentFilter = 'needs_review';
+    let currentUser = null;
+    let activeTemplateId = null;
+
+    async function init() {
+        if (typeof CONFIG === 'undefined' || !CONFIG.SUPABASE_URL) {
+            document.getElementById('authError').style.display = 'block';
+            document.getElementById('authError').textContent = 'Configuration error — CONFIG not loaded.';
+            return;
+        }
+
+        const { createClient } = window.supabase;
+        sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+
+        // Magic-link callback handler (consistent with other admin pages)
+        const hash = window.location.hash;
+        if (hash && hash.includes('access_token')) {
+            const { data, error } = await sb.auth.getSession();
+            if (!error && data.session) {
+                window.history.replaceState(null, '', window.location.pathname);
+            }
+        }
+
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session) {
+            document.getElementById('authError').style.display = 'block';
+            document.getElementById('loadingSpinner').style.display = 'none';
+            return;
+        }
+
+        // Verify admin role: check contractors.template_review_role = 'admin' for this user
+        const { data: contractor, error: contractorErr } = await sb
+            .from('contractors')
+            .select('id, email, template_review_role')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+
+        const isHardcodedAdmin = session.user.email === 'dustinstohler1@gmail.com';
+        const isFlaggedAdmin = contractor && contractor.template_review_role === 'admin';
+
+        if (!isHardcodedAdmin && !isFlaggedAdmin) {
+            document.getElementById('authError').style.display = 'block';
+            document.getElementById('loadingSpinner').style.display = 'none';
+            return;
+        }
+
+        currentUser = session.user;
+        await loadTemplates();
+    }
+
+    async function loadTemplates() {
+        try {
+            const { data, error } = await sb
+                .from('contractor_templates')
+                .select('*, contractors:contractor_id(id, company_name, email, contact_name)')
+                .order('updated_at', { ascending: false });
+
+            if (error) throw error;
+
+            allTemplates = data || [];
+            updateSummaryCards();
+            renderTable();
+        } catch (err) {
+            console.error('Error loading templates:', err);
+            document.getElementById('loadingSpinner').textContent = 'Error loading templates — see console.';
+        }
+    }
+
+    function updateSummaryCards() {
+        const counts = allTemplates.reduce((acc, t) => {
+            acc[t.status] = (acc[t.status] || 0) + 1;
+            return acc;
+        }, {});
+        document.getElementById('cardAwaitingCount').textContent =
+            (counts['submitted_for_admin_review'] || 0) + (counts['manual_mapping_pending'] || 0);
+        document.getElementById('cardAutoCount').textContent = counts['auto_validated'] || 0;
+        document.getElementById('cardManualCount').textContent = counts['manual_validated'] || 0;
+        document.getElementById('cardRejectedCount').textContent = counts['rejected'] || 0;
+    }
+
+    function setFilter(filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-tab').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.filter === filter);
+        });
+        renderTable();
+    }
+
+    function statusBadge(status) {
+        const map = {
+            'pending_validation':         { cls: 'status-pending',   label: 'Pending Validation' },
+            'auto_validated':             { cls: 'status-validated', label: 'Auto-Validated' },
+            'manual_mapping_pending':     { cls: 'status-mapping',   label: 'Mapping Pending' },
+            'manual_validated':           { cls: 'status-validated', label: 'Manual-Validated' },
+            'submitted_for_admin_review': { cls: 'status-admin',     label: 'Awaiting Admin' },
+            'admin_validated':            { cls: 'status-validated', label: 'Admin-Approved' },
+            'rejected':                   { cls: 'status-rejected',  label: 'Rejected' },
+        };
+        const e = map[status] || { cls: 'status-pending', label: status };
+        const span = document.createElement('span');
+        span.className = 'status-badge ' + e.cls;
+        span.textContent = e.label;
+        return span;
+    }
+
+    function renderTable() {
+        const loadingEl = document.getElementById('loadingSpinner');
+        const tableEl = document.getElementById('templatesTable');
+        const emptyEl = document.getElementById('emptyState');
+        const tbody = document.getElementById('templatesTableBody');
+
+        loadingEl.style.display = 'none';
+
+        const filtered = currentFilter === 'all'
+            ? allTemplates
+            : currentFilter === 'needs_review'
+                ? allTemplates.filter(t => t.status === 'submitted_for_admin_review' || t.status === 'manual_mapping_pending')
+                : allTemplates.filter(t => t.status === currentFilter);
+
+        if (filtered.length === 0) {
+            tableEl.style.display = 'none';
+            emptyEl.style.display = 'block';
+            return;
+        }
+
+        tableEl.style.display = 'table';
+        emptyEl.style.display = 'none';
+
+        tbody.innerHTML = '';
+        filtered.forEach(t => {
+            const tr = document.createElement('tr');
+
+            const tdContractor = document.createElement('td');
+            const company = t.contractors?.company_name || '(unknown)';
+            const email = t.contractors?.email || '';
+            tdContractor.innerHTML = '';
+            const strong = document.createElement('strong');
+            strong.textContent = company;
+            tdContractor.appendChild(strong);
+            tdContractor.appendChild(document.createElement('br'));
+            const small = document.createElement('small');
+            small.style.color = 'var(--slate)';
+            small.textContent = email;
+            tdContractor.appendChild(small);
+            tr.appendChild(tdContractor);
+
+            const tdTrade = document.createElement('td');
+            tdTrade.textContent = t.trade + ' × ' + t.funding_type;
+            tr.appendChild(tdTrade);
+
+            const tdAnchors = document.createElement('td');
+            const vr = t.validation_result || {};
+            const found = vr.requiredFoundCount;
+            const total = vr.requiredCount;
+            if (typeof found === 'number' && typeof total === 'number') {
+                tdAnchors.className = 'anchor-summary';
+                const s = document.createElement('strong');
+                s.textContent = found + ' / ' + total;
+                tdAnchors.appendChild(s);
+                tdAnchors.appendChild(document.createTextNode(' required found'));
+            } else {
+                tdAnchors.className = 'anchor-summary';
+                tdAnchors.textContent = '— not yet validated —';
+            }
+            tr.appendChild(tdAnchors);
+
+            const tdStatus = document.createElement('td');
+            tdStatus.appendChild(statusBadge(t.status));
+            tr.appendChild(tdStatus);
+
+            const tdSubmitted = document.createElement('td');
+            const ts = new Date(t.updated_at || t.created_at);
+            tdSubmitted.textContent = ts.toLocaleDateString() + ' ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            tr.appendChild(tdSubmitted);
+
+            const tdActions = document.createElement('td');
+            tdActions.className = 'actions';
+            const detailBtn = document.createElement('button');
+            detailBtn.className = 'btn-action btn-view';
+            detailBtn.textContent = 'Review';
+            detailBtn.onclick = () => openDrawer(t.id);
+            tdActions.appendChild(detailBtn);
+            tr.appendChild(tdActions);
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function openDrawer(templateId) {
+        const t = allTemplates.find(x => x.id === templateId);
+        if (!t) return;
+        activeTemplateId = templateId;
+
+        document.getElementById('drawerTitle').textContent =
+            (t.contractors?.company_name || '(unknown)') + ' — ' + t.trade + ' × ' + t.funding_type;
+
+        const body = document.getElementById('drawerBody');
+        body.innerHTML = '';
+
+        // PDF link (signed URL)
+        const pdfBlock = document.createElement('div');
+        pdfBlock.style.marginBottom = '1rem';
+        const pdfBtn = document.createElement('a');
+        pdfBtn.className = 'btn-action btn-view';
+        pdfBtn.textContent = 'Open contractor PDF';
+        pdfBtn.target = '_blank';
+        pdfBtn.href = '#';
+        pdfBtn.onclick = async (e) => {
+            e.preventDefault();
+            const { data, error } = await sb.storage.from('contractor-templates')
+                .createSignedUrl(t.pdf_storage_path, 600);
+            if (error) {
+                alert('Could not generate signed URL: ' + error.message);
+                return;
+            }
+            window.open(data.signedUrl, '_blank');
+        };
+        pdfBlock.appendChild(pdfBtn);
+        body.appendChild(pdfBlock);
+
+        // Validation result anchor list
+        const vr = t.validation_result || {};
+        const anchors = vr.anchors || [];
+        if (anchors.length > 0) {
+            const heading = document.createElement('h3');
+            heading.style.fontSize = '1rem';
+            heading.style.marginTop = '1.5rem';
+            heading.textContent = 'Required Anchors (' + (vr.requiredFoundCount ?? 0) + ' / ' + (vr.requiredCount ?? 0) + ')';
+            body.appendChild(heading);
+
+            const grid = document.createElement('div');
+            grid.className = 'anchor-grid';
+            anchors.forEach(a => {
+                const row = document.createElement('div');
+                row.className = 'anchor-row ' + (a.found ? 'found' : 'missing');
+                const left = document.createElement('div');
+                const code = document.createElement('code');
+                code.textContent = a.anchor;
+                left.appendChild(code);
+                left.appendChild(document.createElement('br'));
+                const desc = document.createElement('small');
+                desc.style.color = '#666';
+                desc.textContent = a.field;
+                left.appendChild(desc);
+                const right = document.createElement('span');
+                right.textContent = a.found ? (a.manualOverride ? 'mapped manually' : 'found') : 'missing';
+                right.style.fontWeight = '600';
+                row.appendChild(left);
+                row.appendChild(right);
+                grid.appendChild(row);
+            });
+            body.appendChild(grid);
+        }
+
+        // Action buttons
+        const actionRow = document.createElement('div');
+        actionRow.style.marginTop = '1.5rem';
+        actionRow.style.display = 'flex';
+        actionRow.style.gap = '0.5rem';
+
+        const approveBtn = document.createElement('button');
+        approveBtn.className = 'btn-action btn-approve';
+        approveBtn.textContent = 'Approve as Admin-Validated';
+        approveBtn.onclick = () => approveTemplate(t.id);
+        actionRow.appendChild(approveBtn);
+
+        const rejectBtn = document.createElement('button');
+        rejectBtn.className = 'btn-action btn-reject';
+        rejectBtn.textContent = 'Reject';
+        rejectBtn.onclick = () => toggleRejectForm();
+        actionRow.appendChild(rejectBtn);
+
+        body.appendChild(actionRow);
+
+        // Reject form (hidden by default)
+        const rejectForm = document.createElement('div');
+        rejectForm.className = 'reject-form';
+        rejectForm.id = 'rejectForm';
+        const rejectLabel = document.createElement('label');
+        rejectLabel.style.fontSize = '0.85rem';
+        rejectLabel.style.fontWeight = '600';
+        rejectLabel.textContent = 'Rejection reason (visible to contractor):';
+        rejectForm.appendChild(rejectLabel);
+        const ta = document.createElement('textarea');
+        ta.id = 'rejectReason';
+        ta.placeholder = 'e.g., Required anchors are not present even after manual mapping. Please re-upload a template that includes the listed required fields.';
+        rejectForm.appendChild(ta);
+        const submitReject = document.createElement('button');
+        submitReject.className = 'btn-action btn-reject';
+        submitReject.style.marginTop = '0.75rem';
+        submitReject.textContent = 'Confirm Reject';
+        submitReject.onclick = () => rejectTemplate(t.id);
+        rejectForm.appendChild(submitReject);
+        body.appendChild(rejectForm);
+
+        document.getElementById('drawer').classList.add('open');
+        document.getElementById('drawerBackdrop').classList.add('open');
+    }
+
+    function closeDrawer() {
+        document.getElementById('drawer').classList.remove('open');
+        document.getElementById('drawerBackdrop').classList.remove('open');
+        activeTemplateId = null;
+    }
+
+    function toggleRejectForm() {
+        document.getElementById('rejectForm').classList.toggle('open');
+    }
+
+    async function approveTemplate(id) {
+        if (!confirm('Approve this template as admin-validated? Contractor will be able to bid using this template.')) return;
+        const { error } = await sb.from('contractor_templates').update({
+            status: 'admin_validated',
+            reviewed_by: currentUser.id,
+            reviewed_at: new Date().toISOString(),
+            admin_notes: '(approved without notes)',
+        }).eq('id', id);
+        if (error) {
+            alert('Approve failed: ' + error.message);
+            return;
+        }
+        closeDrawer();
+        await loadTemplates();
+    }
+
+    async function rejectTemplate(id) {
+        const reason = document.getElementById('rejectReason').value.trim();
+        if (!reason) {
+            alert('Rejection reason is required.');
+            return;
+        }
+        const { error } = await sb.from('contractor_templates').update({
+            status: 'rejected',
+            reviewed_by: currentUser.id,
+            reviewed_at: new Date().toISOString(),
+            admin_notes: reason,
+        }).eq('id', id);
+        if (error) {
+            alert('Reject failed: ' + error.message);
+            return;
+        }
+        closeDrawer();
+        await loadTemplates();
+    }
+
+    async function handleLogout() {
+        await sb.auth.signOut();
+        window.location.href = '/login.html';
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>
