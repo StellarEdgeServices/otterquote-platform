@@ -295,16 +295,26 @@ Deno.serve(async (req: Request) => {
     }
 
     // Scan required anchors (case-sensitive substring match per manifest)
+    // manualOverrides values may be:
+    //   true         — contractor confirms the anchor exists (legacy binary; counts as found)
+    //   "alt label"  — contractor's actual PDF text for this anchor; re-scan PDF for this string
+    //   anything else — not overridden
     const anchorResults = tradeManifest.required.map((req: any) => {
       const literalMatch = pdfText.includes(req.anchor);
-      const overridden = manualOverrides && manualOverrides[req.anchor] === true;
+      const override = manualOverrides ? manualOverrides[req.anchor] : undefined;
+      const stringOverride = (typeof override === "string" && override.trim().length > 0)
+        ? override.trim()
+        : null;
+      const stringOverrideMatch = stringOverride !== null && pdfText.includes(stringOverride);
+      const overridden = override === true || stringOverrideMatch;
       return {
         anchor: req.anchor,
         field: req.field,
         tabType: req.tabType,
         source: req.source,
         found: literalMatch || overridden,
-        manualOverride: overridden,
+        manualOverride: overridden && !literalMatch,
+        manualOverrideValue: stringOverride,
       };
     });
 

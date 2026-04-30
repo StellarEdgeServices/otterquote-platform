@@ -55,6 +55,32 @@
       .val-action-btn.primary:disabled { background: #94A3B8; cursor: not-allowed; }
       .val-action-btn.secondary { background: #E07B00; color: white; }
       .val-action-btn.secondary:hover:not(:disabled) { background: #C26B00; }
+
+      /* Manual mapping modal (D-199 Tier 2) */
+      .val-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9000; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; }
+      .val-modal { background: #FFFFFF; color: #0D1B2E; border-radius: 8px; max-width: 760px; width: 100%; box-shadow: 0 18px 50px rgba(0,0,0,0.35); }
+      .val-modal-header { padding: 18px 22px; border-bottom: 1px solid #E5E7EB; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+      .val-modal-header h3 { margin: 0; font-size: 1.15rem; color: #0D1B2E; }
+      .val-modal-header p { margin: 6px 0 0; font-size: 0.9rem; color: #4B5563; }
+      .val-modal-close { background: none; border: none; font-size: 1.4rem; line-height: 1; cursor: pointer; color: #6B7280; }
+      .val-modal-body { padding: 18px 22px; max-height: 60vh; overflow-y: auto; }
+      .val-modal-footer { padding: 14px 22px; border-top: 1px solid #E5E7EB; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+      .val-anchor-row { padding: 14px; border: 1px solid #E5E7EB; border-radius: 6px; margin-bottom: 12px; background: #F9FAFB; }
+      .val-anchor-row.choice-have { border-color: #10B981; background: #ECFDF5; }
+      .val-anchor-row.choice-missing { border-color: #DC2626; background: #FEF2F2; }
+      .val-anchor-row code { font-family: ui-monospace, monospace; font-size: 0.85rem; background: #FFFFFF; border: 1px solid #E5E7EB; padding: 2px 6px; border-radius: 3px; }
+      .val-anchor-row .anchor-field-label { font-size: 0.78rem; color: #6B7280; margin-top: 2px; }
+      .val-anchor-row .anchor-choices { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+      .val-anchor-row .anchor-choice-btn { padding: 6px 12px; border-radius: 4px; border: 1px solid #D1D5DB; background: #FFFFFF; font-size: 0.82rem; font-weight: 600; cursor: pointer; color: #0D1B2E; }
+      .val-anchor-row .anchor-choice-btn.active { background: #0D1B2E; color: #FFFFFF; border-color: #0D1B2E; }
+      .val-anchor-row .anchor-choice-btn.missing.active { background: #DC2626; border-color: #DC2626; }
+      .val-anchor-row .anchor-input-wrap { margin-top: 10px; display: none; }
+      .val-anchor-row.choice-have .anchor-input-wrap { display: block; }
+      .val-anchor-row .anchor-input-wrap label { display: block; font-size: 0.82rem; color: #374151; margin-bottom: 4px; font-weight: 600; }
+      .val-anchor-row .anchor-input-wrap input { width: 100%; padding: 8px 10px; border: 1px solid #D1D5DB; border-radius: 4px; font-size: 0.9rem; box-sizing: border-box; }
+      .val-anchor-row .anchor-input-wrap small { display: block; margin-top: 4px; font-size: 0.75rem; color: #6B7280; }
+      .val-modal-summary { background: #F3F4F6; border-radius: 6px; padding: 10px 12px; font-size: 0.85rem; margin-bottom: 14px; }
+      .val-modal-error { color: #B91C1C; font-size: 0.85rem; margin-top: 8px; }
     `;
     document.head.appendChild(style);
   }
@@ -208,8 +234,8 @@
       mapBtn.type = 'button';
       mapBtn.className = 'val-action-btn primary';
       mapBtn.textContent = 'Map anchors manually';
-      mapBtn.disabled = true; // Phase 4B (deferred — coming soon)
-      mapBtn.title = 'Manual anchor mapping UI is coming in the next release. For now, please use the Request admin review option or upload a template that includes the required anchor strings listed above.';
+      mapBtn.title = 'Tell us the actual labels you used in your PDF for each missing field. We will re-validate against your input.';
+      mapBtn.addEventListener('click', () => openManualMappingModal(validationRow, cellEl));
       actions.appendChild(mapBtn);
 
       const reviewBtn = document.createElement('button');
@@ -293,10 +319,253 @@
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // D-199 Tier 2 — Manual anchor mapping modal
+  // ──────────────────────────────────────────────────────────────────────
+
+  function escapeAttr(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function openManualMappingModal(validationRow, cellEl) {
+    if (!validationRow || !validationRow.id) return;
+    ensureStylesInjected();
+
+    const vr = validationRow.validation_result || {};
+    const missing = (Array.isArray(vr.anchors) ? vr.anchors : []).filter(a => !a.found);
+    if (missing.length === 0) return;
+
+    // Build modal DOM
+    const backdrop = document.createElement('div');
+    backdrop.className = 'val-modal-backdrop';
+    backdrop.setAttribute('role', 'dialog');
+    backdrop.setAttribute('aria-modal', 'true');
+
+    const modal = document.createElement('div');
+    modal.className = 'val-modal';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'val-modal-header';
+    const headerInner = document.createElement('div');
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Map missing fields in your PDF';
+    headerInner.appendChild(h3);
+    const p = document.createElement('p');
+    p.textContent = 'For each field below, tell us the exact label you used in your PDF, or confirm your PDF does not contain it. We will re-validate against your input.';
+    headerInner.appendChild(p);
+    header.appendChild(headerInner);
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'val-modal-close';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('click', () => backdrop.remove());
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'val-modal-body';
+
+    const summary = document.createElement('div');
+    summary.className = 'val-modal-summary';
+    summary.textContent = missing.length + ' of ' + (vr.requiredCount || missing.length) + ' required anchors were not found in your uploaded PDF. Map each one below.';
+    body.appendChild(summary);
+
+    // For each missing anchor: render a row with two choice buttons + conditional input
+    const rowState = []; // [{ anchor, choice: 'have'|'missing'|null, value: string }]
+    missing.forEach((a, idx) => {
+      const state = { anchor: a.anchor, choice: null, value: '' };
+      rowState.push(state);
+
+      const row = document.createElement('div');
+      row.className = 'val-anchor-row';
+      row.dataset.anchor = a.anchor;
+
+      const expectedLine = document.createElement('div');
+      expectedLine.innerHTML = '<strong>Expected anchor:</strong> ';
+      const code = document.createElement('code');
+      code.textContent = a.anchor;
+      expectedLine.appendChild(code);
+      row.appendChild(expectedLine);
+
+      const fieldLabel = document.createElement('div');
+      fieldLabel.className = 'anchor-field-label';
+      fieldLabel.textContent = a.field + (a.source ? ' · ' + a.source : '');
+      row.appendChild(fieldLabel);
+
+      // Choices
+      const choices = document.createElement('div');
+      choices.className = 'anchor-choices';
+      const haveBtn = document.createElement('button');
+      haveBtn.type = 'button';
+      haveBtn.className = 'anchor-choice-btn';
+      haveBtn.textContent = 'My PDF has this (different label)';
+      const missBtn = document.createElement('button');
+      missBtn.type = 'button';
+      missBtn.className = 'anchor-choice-btn missing';
+      missBtn.textContent = 'My PDF does not have this field';
+      choices.appendChild(haveBtn);
+      choices.appendChild(missBtn);
+      row.appendChild(choices);
+
+      // Input wrap (shown only on "have" choice)
+      const inputWrap = document.createElement('div');
+      inputWrap.className = 'anchor-input-wrap';
+      const inputLabel = document.createElement('label');
+      inputLabel.textContent = 'Type the exact label/text from your PDF for this field:';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = 'e.g., ' + a.anchor.replace(/[\/]/g, '');
+      input.addEventListener('input', () => { state.value = input.value; });
+      inputWrap.appendChild(inputLabel);
+      inputWrap.appendChild(input);
+      const helper = document.createElement('small');
+      helper.textContent = 'Case-sensitive. Match the text exactly as it appears in your PDF.';
+      inputWrap.appendChild(helper);
+      row.appendChild(inputWrap);
+
+      const setChoice = (c) => {
+        state.choice = c;
+        haveBtn.classList.toggle('active', c === 'have');
+        missBtn.classList.toggle('active', c === 'missing');
+        row.classList.toggle('choice-have', c === 'have');
+        row.classList.toggle('choice-missing', c === 'missing');
+        if (c === 'have') {
+          setTimeout(() => input.focus(), 50);
+        }
+      };
+      haveBtn.addEventListener('click', () => setChoice('have'));
+      missBtn.addEventListener('click', () => setChoice('missing'));
+
+      body.appendChild(row);
+    });
+
+    const errEl = document.createElement('div');
+    errEl.className = 'val-modal-error';
+    body.appendChild(errEl);
+    modal.appendChild(body);
+
+    // Footer
+    const footer = document.createElement('div');
+    footer.className = 'val-modal-footer';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'val-action-btn secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => backdrop.remove());
+    footer.appendChild(cancelBtn);
+
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'val-action-btn primary';
+    submitBtn.textContent = 'Submit for re-validation';
+    footer.appendChild(submitBtn);
+
+    submitBtn.addEventListener('click', async () => {
+      errEl.textContent = '';
+      // Validate state
+      const incomplete = rowState.filter(s => s.choice === null);
+      if (incomplete.length > 0) {
+        errEl.textContent = 'Please make a choice for each field before submitting (' + incomplete.length + ' remaining).';
+        return;
+      }
+      const haveButEmpty = rowState.filter(s => s.choice === 'have' && (!s.value || !s.value.trim()));
+      if (haveButEmpty.length > 0) {
+        errEl.textContent = 'Please type the actual label for each "My PDF has this" entry.';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting…';
+
+      const overrides = {};
+      const missingFields = [];
+      rowState.forEach(s => {
+        if (s.choice === 'have') overrides[s.anchor] = s.value.trim();
+        else if (s.choice === 'missing') missingFields.push(s.anchor);
+      });
+
+      try {
+        // If the contractor marked any field as completely absent, we cannot self-validate —
+        // route the whole template to admin review with the typed alts attached as context.
+        if (missingFields.length > 0) {
+          if (typeof sb === 'undefined' || !sb) throw new Error('Database not connected.');
+          // First, persist the typed mappings so admin can see them
+          const { error: persistErr } = await sb
+            .from('contractor_templates')
+            .update({
+              manual_overrides: { ...overrides, _missing_fields: missingFields },
+              status: 'submitted_for_admin_review',
+            })
+            .eq('id', validationRow.id);
+          if (persistErr) throw persistErr;
+          backdrop.remove();
+          // Refresh the row in UI by re-fetching
+          const { data: refreshed } = await sb
+            .from('contractor_templates')
+            .select('*')
+            .eq('id', validationRow.id)
+            .single();
+          if (refreshed && cellEl) renderValidationRow(cellEl, refreshed);
+          alert('Submitted for admin review. We will notify you once a member of the OtterQuote team has looked at your template.');
+          return;
+        }
+
+        // Otherwise: call the EF for re-validation against typed overrides
+        const result = await callValidateEdgeFunction(validationRow.id, overrides);
+        if (result && result.error) {
+          errEl.textContent = 'Validation error: ' + result.error;
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Submit for re-validation';
+          return;
+        }
+        backdrop.remove();
+        // Refresh row
+        if (typeof sb !== 'undefined' && sb) {
+          const { data: refreshed } = await sb
+            .from('contractor_templates')
+            .select('*')
+            .eq('id', validationRow.id)
+            .single();
+          if (refreshed && cellEl) renderValidationRow(cellEl, refreshed);
+        }
+        if (result && result.status === 'manual_validated') {
+          alert('Validated. Your template now passes all required anchors and is ready for use on bids.');
+        } else if (result && result.status === 'manual_mapping_pending') {
+          alert('Some labels you provided still could not be matched in your PDF. Please double-check spelling and capitalization, or use "Request admin review" if you need help.');
+        }
+      } catch (err) {
+        console.error('[D-199] manual mapping submit error:', err);
+        errEl.textContent = 'Submission failed: ' + (err.message || err);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit for re-validation';
+      }
+    });
+
+    modal.appendChild(footer);
+    backdrop.appendChild(modal);
+
+    // ESC closes
+    backdrop.addEventListener('keydown', (e) => { if (e.key === 'Escape') backdrop.remove(); });
+    // Click outside modal closes
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+
+    document.body.appendChild(backdrop);
+    setTimeout(() => closeBtn.focus(), 30);
+  }
+
   // Expose
   window.D199 = {
     attachValidationStatus: attachValidationStatus,
     validateNewlyUploadedTemplate: validateNewlyUploadedTemplate,
     requestAdminReviewForTemplate: requestAdminReviewForTemplate,
+    openManualMappingModal: openManualMappingModal,
   };
 })();
