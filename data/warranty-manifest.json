@@ -1,0 +1,92 @@
+{
+  "_comment": "D-202 Manufacturer × Tier Warranty Manifest — v2 APPROVED Apr 30, 2026. Source-of-truth for the warranty_options table seed and the bid form Tier dropdown. Cert verification per D-204. OtterQuote is NOT the warrantor — manufacturers administer all programs.",
+  "version": "v2",
+  "approvedDate": "2026-04-30",
+  "decision": "D-202",
+  "schemaSource": "Stellar Edge Services/OtterQuote/Docs/D-199-D-202-design-artifacts/D-202-warranty-manifest-v2.md",
+  "refreshCadence": "quarterly",
+  "displayStringTemplate": "[Manufacturer] [Tier] — Material: [matY]; Labor: [labY]; [Tear-off: torY years if applicable]; Wind: [wind] mph; Hail: [hail]. Administered by [Manufacturer] under their [Tier] program; [if certRequired:] requires [certRequired] contractor — verified by OtterQuote per D-204. OtterQuote is not the warrantor.",
+  "manufacturers": [
+    {
+      "name": "GAF",
+      "certLookupUrl": "https://www.gaf.com/en-us/roofing/contractors",
+      "tiers": [
+        { "tier": "System Plus Limited Warranty", "materialYears": "Lifetime (limited)", "laborYears": null, "laborNote": "Manufacturer-only", "tearoffYears": null, "windMph": 130, "hailClass": "Standard", "certRequired": null },
+        { "tier": "Silver Pledge",                "materialYears": "50 (non-prorated)",   "laborYears": 10,   "tearoffYears": null, "windMph": 130, "hailClass": "Standard", "certRequired": "GAF Certified" },
+        { "tier": "Golden Pledge",                "materialYears": "50 (non-prorated)",   "laborYears": 25,   "tearoffYears": 25,   "windMph": 130, "hailClass": "Standard", "certRequired": "GAF Master Elite" }
+      ]
+    },
+    {
+      "name": "Owens Corning",
+      "certLookupUrl": "https://www.owenscorning.com/roofing/find-a-contractor",
+      "tiers": [
+        { "tier": "Standard Limited Warranty", "materialYears": "Lifetime (limited)", "laborYears": null, "tearoffYears": null, "windMph": 110, "hailClass": "Standard", "certRequired": null },
+        { "tier": "System Protection",         "materialYears": "Lifetime (non-prorated for limited period)", "laborYears": null, "tearoffYears": null, "windMph": 130, "hailClass": "Standard", "certRequired": null, "registrationRequired": true },
+        { "tier": "Preferred Protection",      "materialYears": "Lifetime", "laborYears": 10, "tearoffYears": 10, "windMph": 130, "hailClass": "Standard", "certRequired": "Preferred Contractor" },
+        { "tier": "Platinum Protection",       "materialYears": "50 (non-prorated)", "laborYears": 25, "tearoffYears": 25, "windMph": 130, "hailClass": "Standard", "certRequired": "Platinum Preferred Contractor" }
+      ]
+    },
+    {
+      "name": "CertainTeed",
+      "certLookupUrl": "https://www.certainteed.com/find-a-pro",
+      "tiers": [
+        { "tier": "Standard Limited (SureStart)", "materialYears": "Lifetime (limited)", "laborYears": 2, "laborNote": "SureStart period", "tearoffYears": null, "windMph": 110, "hailClass": "Standard", "certRequired": null },
+        { "tier": "SureStart Plus",               "materialYears": "Lifetime", "laborYears": 5,  "tearoffYears": null, "windMph": 110, "hailClass": "Standard", "certRequired": "SureStart Plus dealer" },
+        { "tier": "5-Star Warranty",              "materialYears": "50 (non-prorated)", "laborYears": 25, "tearoffYears": 25, "windMph": 130, "hailClass": "Standard", "certRequired": "5-Star contractor" }
+      ]
+    },
+    {
+      "name": "Tamko",
+      "certLookupUrl": "request-only — admin verification queue",
+      "tiers": [
+        { "tier": "Heritage Standard",       "materialYears": "30/40/50 (per product)", "laborYears": null, "tearoffYears": null, "windMph": 110, "hailClass": "Standard", "certRequired": null },
+        { "tier": "Heritage IR / Lifetime",  "materialYears": "Lifetime (limited)", "laborYears": null, "tearoffYears": null, "windMph": 130, "hailClass": "Class 4 (some products)", "certRequired": null },
+        { "tier": "Pro Certification",       "materialYears": "Per product", "laborYears": 5, "tearoffYears": null, "windMph": null, "windNote": "Per product", "hailClass": "Per product", "certRequired": "Tamko Pro contractor" }
+      ]
+    },
+    {
+      "name": "Atlas",
+      "certLookupUrl": "https://www.atlasroofing.com/contractors",
+      "tiers": [
+        { "tier": "Standard Limited", "materialYears": "Lifetime (limited)", "laborYears": null, "tearoffYears": null, "windMph": 130, "hailClass": "Standard", "certRequired": null },
+        { "tier": "Pro Plus",         "materialYears": "Lifetime", "laborYears": 15, "laborNote": "10–15 years", "tearoffYears": null, "windMph": 130, "hailClass": "Standard", "certRequired": "Atlas Pro Plus" },
+        { "tier": "Signature Select", "materialYears": "50 (non-prorated)", "laborYears": 25, "tearoffYears": 25, "windMph": 130, "hailClass": "Standard", "certRequired": "Atlas Signature Select" }
+      ]
+    },
+    {
+      "name": "IKO",
+      "certLookupUrl": "https://www.iko.com",
+      "tiers": [
+        { "tier": "Standard Limited",                  "materialYears": "Lifetime (limited)", "laborYears": null, "tearoffYears": null, "windMph": 110, "hailClass": "Standard", "certRequired": null },
+        { "tier": "Iron Clad Plus / Shield Pro Plus",  "materialYears": "Lifetime (limited)", "laborYears": 2,    "laborNote": "1–2 years", "tearoffYears": null, "windMph": 110, "hailClass": "Standard", "certRequired": "Shield Pro contractor" }
+      ]
+    },
+    {
+      "name": "Malarkey",
+      "certLookupUrl": "https://www.malarkeyroofing.com/contractor-locator",
+      "v2Note": "Pacific NW–origin, growing nationally; less common in IN. Verify against current docs at first quarterly refresh — Malarkey reorganized warranty programs in 2023.",
+      "tiers": [
+        { "tier": "Limited Lifetime",                                "materialYears": "Lifetime (limited)", "laborYears": null, "tearoffYears": null, "windMph": 110, "hailClass": "Standard", "certRequired": null },
+        { "tier": "Roof System Warranty (Emerald Pro)",              "materialYears": "Lifetime", "laborYears": 5,  "tearoffYears": null, "windMph": 130, "hailClass": "Standard", "certRequired": "Emerald Pro" },
+        { "tier": "Premium System Warranty (Emerald Pro Premium)",   "materialYears": "50 (non-prorated)", "laborYears": 15, "tearoffYears": null, "windMph": 130, "hailClass": "Standard", "certRequired": "Emerald Pro Premium" }
+      ]
+    },
+    {
+      "name": "PABCO",
+      "certLookupUrl": "https://www.pabcoroofing.com",
+      "v2Note": "West Coast manufacturer, expect <1% of IN bids. Starter coverage; refine after first PABCO bid.",
+      "tiers": [
+        { "tier": "Standard Limited",   "materialYears": "Lifetime (limited)", "laborYears": null, "tearoffYears": null, "windMph": 110, "hailClass": "Standard", "certRequired": null },
+        { "tier": "Paramount Premier",  "materialYears": "Lifetime", "laborYears": 10, "tearoffYears": null, "windMph": 130, "hailClass": "Standard", "certRequired": "PABCO Premier Roofer" }
+      ]
+    }
+  ],
+  "fallback": {
+    "manufacturer": "Other (free-text)",
+    "tier": "Other / Custom (free-text)",
+    "yearFields": ["materialYears", "laborYears", "windMph", "hailClass"],
+    "displayStringSuffix": "Administered by manufacturer; not verified by OtterQuote per D-204. OtterQuote is not the warrantor.",
+    "profileBadge": "Custom warranty — not OtterQuote-verified",
+    "adminReviewQueue": "admin-template-review.html (free-text entries flagged for possible manifest expansion)"
+  }
+}
