@@ -1,0 +1,238 @@
+{
+  "_comment": "D-200 Material Selection drop-down manifest — populates the homeowner Material Selection picker AND the contractor bid form material drop-downs. Cascading rule: selecting Manufacturer narrows Product Line; 'Generic' is always at the bottom. Shingle warranty terms NOT defined here — see warranty-manifest.json (D-202).",
+  "version": "v1",
+  "approvedDate": "2026-04-30",
+  "decision": "D-200",
+  "schemaSource": "Stellar Edge Services/OtterQuote/Docs/D-199-D-202-design-artifacts/D-200-roofing-form-schema-v2.md",
+  "rules": {
+    "genericAlwaysLast": true,
+    "ifNoneSelected": "Generic",
+    "displayOnSOW": "manufacturer + productLine when selected; 'Generic <category>' otherwise"
+  },
+  "trades": {
+    "roofing": {
+      "shingles": {
+        "_note": "Manufacturer × tier × cert is governed by warranty-manifest.json (D-202). Product Lines below are common SKUs grouped under each manufacturer for the homeowner-facing material picker only.",
+        "manufacturers": [
+          {
+            "name": "GAF",
+            "productLines": ["Royal Sovereign (3-tab)", "Timberline HDZ", "Timberline UHDZ", "Timberline AS II (impact)", "Camelot II", "Grand Sequoia", "Slateline"]
+          },
+          {
+            "name": "Owens Corning",
+            "productLines": ["Supreme (3-tab)", "TruDefinition Duration", "Duration STORM (impact)", "Duration FLEX (impact)", "Berkshire", "Woodmoor"]
+          },
+          {
+            "name": "CertainTeed",
+            "productLines": ["XT 25 (3-tab)", "Landmark", "Landmark PRO", "Landmark Premium", "NorthGate (impact)", "Presidential Shake", "Grand Manor"]
+          },
+          {
+            "name": "Tamko",
+            "productLines": ["Elite Glass-Seal (3-tab)", "Heritage", "Heritage IR (impact)", "Heritage Vintage", "Titan XT"]
+          },
+          {
+            "name": "Atlas",
+            "productLines": ["GlassMaster (3-tab)", "StormMaster Slate (impact)", "StormMaster Shake (impact)", "Pinnacle Pristine", "Pinnacle Impact (impact)"]
+          },
+          {
+            "name": "IKO",
+            "productLines": ["Marathon (3-tab)", "Cambridge", "Cambridge IR (impact)", "Dynasty", "Royal Estate"]
+          },
+          {
+            "name": "Malarkey",
+            "productLines": ["Dura-Seal (3-tab)", "Highlander NEX", "Vista AR", "Legacy (impact)", "Windsor (impact)"]
+          },
+          {
+            "name": "PABCO",
+            "productLines": ["Premier Radiance", "Prime", "Prestige", "Paramount Advantage (impact)"]
+          },
+          { "name": "Generic", "productLines": ["Generic 3-tab", "Generic Architectural", "Generic Luxury / Designer", "Generic Impact-rated"] }
+        ],
+        "types": ["3-tab", "Architectural", "Luxury / Designer", "Impact-rated"],
+        "impactClass": ["Class 4", "Class 3", "Class 2", "N/A"],
+        "colors": ["Charcoal / Black", "Weathered Wood", "Driftwood", "Pewter Gray", "Slate", "Estate Gray", "Hickory", "Barkwood", "Hunter Green", "Patriot Red", "Custom (specify in notes)"]
+      },
+      "underlayment": {
+        "manufacturers": [
+          { "name": "GAF", "productLines": ["Tiger Paw", "Deck-Armor", "FeltBuster", "Shingle-Mate (felt)"] },
+          { "name": "Owens Corning", "productLines": ["ProArmor", "RhinoRoof U20", "Deck Defense"] },
+          { "name": "CertainTeed", "productLines": ["DiamondDeck", "RoofRunner", "Roofers' Select (felt)"] },
+          { "name": "Atlas", "productLines": ["Summit 60", "Summit 180"] },
+          { "name": "Malarkey", "productLines": ["Right-Start UDL", "Secure Start (felt)"] },
+          { "name": "Generic", "productLines": ["Synthetic underlayment (15 lb-equiv)", "Synthetic underlayment (30 lb-equiv)", "Felt 15#", "Felt 30#"] }
+        ],
+        "types": ["Synthetic", "Felt"]
+      },
+      "hipRidgeCap": {
+        "manufacturers": [
+          { "name": "GAF", "productLines": ["TimberTex", "Seal-A-Ridge", "Z Ridge", "Ridglass"] },
+          { "name": "Owens Corning", "productLines": ["DecoRidge", "ProEdge"] },
+          { "name": "CertainTeed", "productLines": ["Mountain Ridge", "Cedar Crest", "ShadowRidge"] },
+          { "name": "Tamko", "productLines": ["Hip & Ridge"] },
+          { "name": "Atlas", "productLines": ["Pro-Cut Hip & Ridge"] },
+          { "name": "IKO", "productLines": ["Hip & Ridge 12", "Ultra HP"] },
+          { "name": "Malarkey", "productLines": ["EZ-Ridge"] },
+          { "name": "Generic", "productLines": ["Generic hip & ridge cap shingles", "Cut from field shingle"] }
+        ]
+      },
+      "starterStrip": {
+        "manufacturers": [
+          { "name": "GAF", "productLines": ["Pro-Start", "QuickStart", "WeatherBlocker"] },
+          { "name": "Owens Corning", "productLines": ["Starter Strip Plus", "Starter Strip Shingles"] },
+          { "name": "CertainTeed", "productLines": ["SwiftStart", "High-Performance Starter Shingle"] },
+          { "name": "Tamko", "productLines": ["Tamko Starter"] },
+          { "name": "Atlas", "productLines": ["Atlas Starter Strip"] },
+          { "name": "IKO", "productLines": ["Leading Edge Plus"] },
+          { "name": "Malarkey", "productLines": ["EZ-Start"] },
+          { "name": "Generic", "productLines": ["Generic starter strip", "Cut from field shingle"] }
+        ]
+      },
+      "dripEdge": {
+        "manufacturers": [
+          { "name": "Amerimax", "productLines": ["D-style", "F-style"] },
+          { "name": "Spectra Metal", "productLines": ["D-style", "F-style"] },
+          { "name": "Berger Building Products", "productLines": ["D-style", "F-style"] },
+          { "name": "Generic", "productLines": ["Generic galvanized D-style", "Generic galvanized F-style", "Generic aluminum D-style", "Generic aluminum F-style"] }
+        ],
+        "profiles": ["D-style (T-style)", "F-style (gutter apron)"],
+        "colors": ["White", "Almond / Beige", "Brown / Royal Brown", "Bronze", "Black", "Mill (unfinished)", "Match shingle (specify in notes)"]
+      },
+      "iceWaterShield": {
+        "manufacturers": [
+          { "name": "Grace (W. R. Grace / GCP)", "productLines": ["Ice & Water Shield"] },
+          { "name": "GAF", "productLines": ["WeatherWatch", "StormGuard"] },
+          { "name": "Owens Corning", "productLines": ["WeatherLock G", "WeatherLock Specialty Tile & Metal"] },
+          { "name": "CertainTeed", "productLines": ["WinterGuard HT", "WinterGuard Sand", "WinterGuard Metal"] },
+          { "name": "Tamko", "productLines": ["TW Underlayment", "TW Metal & Tile"] },
+          { "name": "Generic", "productLines": ["Generic ice & water shield (rubberized asphalt, granular)", "Generic ice & water shield (smooth, high-temp)"] }
+        ]
+      },
+      "ridgeVent": {
+        "manufacturers": [
+          { "name": "GAF", "productLines": ["Cobra Snow Country", "Cobra Ridge Runner", "Cobra Rigid Vent 3"] },
+          { "name": "Owens Corning", "productLines": ["VentSure 4-Ft Strip", "VentSure Rigid Roll"] },
+          { "name": "CertainTeed", "productLines": ["Ridge Vent (Rolled)", "Ridge Vent (Rigid)"] },
+          { "name": "Air Vent Inc.", "productLines": ["ShingleVent II", "Peak Performer", "FilterVent"] },
+          { "name": "Generic", "productLines": ["Rolled (mesh)", "Rigid plastic", "Static box / louver vent"] }
+        ],
+        "types": ["Rolled (mesh)", "Rigid plastic", "Static box / louver vent (when ridge venting infeasible)"]
+      },
+      "pipeBoots": {
+        "manufacturers": [
+          { "name": "Oatey", "productLines": ["No-Calk Lead", "All-Flash No-Calk", "AllFlash Plus", "Master Flash"] },
+          { "name": "Lifetime Tool", "productLines": ["Ultimate Pipe Flashing"] },
+          { "name": "Perma-Boot", "productLines": ["Perma-Boot 312", "Perma-Boot 2000"] },
+          { "name": "Generic", "productLines": ["Generic lead boot", "Generic rubber boot", "Generic silicone boot"] }
+        ],
+        "materials": ["Lead", "Rubber (EPDM)", "Silicone (high-temp / metal-roof)"]
+      }
+    },
+    "siding": {
+      "_note": "Each siding selection cascades: Manufacturer → Product Line → Profile → Color. Hover 3D Design Studio (D-164) is the canonical homeowner-facing color picker for siding — this manifest is the contractor-facing fallback list and validation set.",
+      "manufacturers": [
+        {
+          "name": "James Hardie",
+          "productLines": [
+            { "name": "HardiePlank Lap Siding",   "profiles": ["Smooth", "Cedarmill", "Beaded Smooth", "Beaded Cedarmill"] },
+            { "name": "HardiePanel Vertical",     "profiles": ["Smooth", "Cedarmill", "Stucco", "Sierra 8"] },
+            { "name": "HardieShingle",            "profiles": ["Straight Edge Panel", "Staggered Edge Panel", "Half-Round"] },
+            { "name": "HardieTrim",               "profiles": ["Smooth", "Rustic Grain"] }
+          ],
+          "colorSets": ["ColorPlus Statement Collection (~20 standard)", "ColorPlus Dream Collection (~700 ColorPlus)", "Primed for Field Paint"]
+        },
+        {
+          "name": "LP Building Solutions",
+          "productLines": [
+            { "name": "LP SmartSide Lap",   "profiles": ["Cedar Texture", "Smooth"] },
+            { "name": "LP SmartSide Panel", "profiles": ["Cedar Texture (vertical groove 4\"/8\"/12\" OC)", "Smooth"] },
+            { "name": "LP SmartSide Trim",  "profiles": ["Cedar Texture", "Smooth"] }
+          ],
+          "colorSets": ["ExpertFinish (16 prefinished)", "Primed for Field Paint"]
+        },
+        {
+          "name": "Royal Building Products",
+          "productLines": [
+            { "name": "Royal Estate",   "profiles": ["Double 4\" clapboard", "Double 4.5\" Dutch Lap", "Double 5\" clapboard"] },
+            { "name": "Royal Crest",    "profiles": ["Double 4\" clapboard", "Double 4.5\" Dutch Lap"] },
+            { "name": "Cedar Renditions","profiles": ["Hand-Split Shake", "Half-Round"] }
+          ],
+          "colorSets": ["Standard palette (~30)", "Premium palette (~15)"]
+        },
+        {
+          "name": "Mastic (Ply Gem)",
+          "productLines": [
+            { "name": "Cedar Discovery",  "profiles": ["Perfection Shingle", "Half-Round Shingle"] },
+            { "name": "Quest",            "profiles": ["Double 4\" clapboard", "Double 5\" clapboard"] },
+            { "name": "Structure",        "profiles": ["Insulated Double 4.5\" Dutch Lap"] },
+            { "name": "Board & Batten",   "profiles": ["Vertical 7\""] }
+          ],
+          "colorSets": ["Standard palette", "Designer palette"]
+        },
+        {
+          "name": "Alside",
+          "productLines": [
+            { "name": "Charter Oak",   "profiles": ["Double 4\" clapboard", "Triple 3\" clapboard"] },
+            { "name": "Williamsport", "profiles": ["Double 4.5\" Dutch Lap"] },
+            { "name": "Conquest",     "profiles": ["Double 4\" clapboard"] }
+          ],
+          "colorSets": ["Standard palette"]
+        },
+        { "name": "Generic", "productLines": [
+          { "name": "Generic Vinyl Lap",          "profiles": ["Double 4\" clapboard", "Double 4.5\" Dutch Lap", "Double 5\" clapboard"] },
+          { "name": "Generic Fiber-Cement Lap",   "profiles": ["Smooth", "Cedar Texture"] },
+          { "name": "Generic Engineered-Wood Lap","profiles": ["Smooth", "Cedar Texture"] },
+          { "name": "Generic Cedar Shingle",      "profiles": ["Straight Edge", "Staggered Edge"] }
+        ], "colorSets": ["Generic — color specified in notes"] }
+      ],
+      "primaryDesignSource": "Hover 3D Design Studio link — homeowner selects exact product/color in Hover; manifest values populate fallback contractor dropdowns and the SOW line items."
+    },
+    "gutters": {
+      "_note": "Gutter style + size + material + color all populate the contractor bid form. Color cascade: select material → narrow color list.",
+      "styles": ["K-style", "Half-Round", "Box / Commercial"],
+      "sizes": {
+        "K-style": ["5 inch", "6 inch", "7 inch (oversize)"],
+        "Half-Round": ["5 inch", "6 inch", "7 inch"],
+        "Box / Commercial": ["6 inch", "7 inch", "8 inch"]
+      },
+      "materials": [
+        { "name": "Aluminum (.027 gauge)",   "typical": "residential standard" },
+        { "name": "Aluminum (.032 gauge)",   "typical": "heavy-duty residential" },
+        { "name": "Galvanized Steel",        "typical": "rare; commercial / industrial" },
+        { "name": "Copper",                  "typical": "premium / historical homes" },
+        { "name": "Zinc",                    "typical": "premium / historical homes" }
+      ],
+      "colorsByMaterial": {
+        "Aluminum (.027 gauge)":   ["White", "Almond / Beige", "Royal Brown", "Musket Brown", "Black", "Bronze", "Pewter", "Sandtone", "Cream", "Tudor Brown", "Match drip edge (specify in notes)"],
+        "Aluminum (.032 gauge)":   ["White", "Almond / Beige", "Royal Brown", "Musket Brown", "Black", "Bronze", "Pewter", "Sandtone", "Cream", "Tudor Brown"],
+        "Galvanized Steel":        ["Mill (unfinished)", "Painted (specify color in notes)"],
+        "Copper":                  ["Natural copper (will patina)"],
+        "Zinc":                    ["Natural zinc"]
+      },
+      "downspouts": {
+        "sizes": ["2x3 (rectangular)", "3x4 (rectangular)", "4x5 (rectangular)", "3 inch (round)", "4 inch (round)"],
+        "rule": "Downspout color matches gutter color unless homeowner specifies otherwise."
+      },
+      "manufacturers": [
+        { "name": "Spectra Metal", "applies": ["Aluminum"] },
+        { "name": "Amerimax",       "applies": ["Aluminum"] },
+        { "name": "Berger Building Products", "applies": ["Aluminum", "Copper"] },
+        { "name": "Englert",        "applies": ["Aluminum", "Copper", "Zinc"] },
+        { "name": "Generic",        "applies": ["Aluminum", "Galvanized Steel", "Copper", "Zinc"] }
+      ]
+    },
+    "windows": {
+      "_note": "D-200 line-item windows scope is intentionally narrow at v1 — full window manifest deferred until first retail window job lands. v1 covers brand × series × frame material to support contractor bid form rendering.",
+      "manufacturers": [
+        { "name": "Andersen",      "series": ["100 Series", "200 Series", "400 Series", "A-Series"], "frameMaterials": ["Vinyl", "Wood-clad", "Fibrex", "Wood"] },
+        { "name": "Pella",         "series": ["Hurricane Shield", "Reserve", "Lifestyle", "Impervia", "350 Series"], "frameMaterials": ["Vinyl", "Wood-clad", "Fiberglass", "Wood"] },
+        { "name": "Marvin",        "series": ["Elevate", "Essential", "Signature Ultimate"], "frameMaterials": ["Wood", "Fiberglass", "Wood-clad"] },
+        { "name": "Milgard",       "series": ["Style Line", "Tuscany", "Trinsic", "Ultra"], "frameMaterials": ["Vinyl", "Fiberglass"] },
+        { "name": "ProVia",        "series": ["Aspect", "Aeris", "Endure", "ecoLite"], "frameMaterials": ["Vinyl", "Wood-clad"] },
+        { "name": "Simonton",      "series": ["Reflections 5500", "Asure", "Madeira", "Impressions 9800"], "frameMaterials": ["Vinyl"] },
+        { "name": "Generic",       "series": ["Generic vinyl double-hung", "Generic vinyl casement", "Generic vinyl slider", "Generic fiberglass double-hung"], "frameMaterials": ["Vinyl", "Fiberglass", "Aluminum"] }
+      ],
+      "styles": ["Double-hung", "Single-hung", "Casement", "Awning", "Slider", "Picture / Fixed", "Bay", "Bow", "Garden"],
+      "glassPackages": ["Double-pane Low-E", "Triple-pane Low-E", "Impact-rated (laminated)", "Tempered (where required)"]
+    }
+  }
+}
