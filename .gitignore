@@ -26,3 +26,8 @@ supabase/.temp/
 # Sensitive local auth snapshots — never commit
 .stohler_auth_snapshot.json
 us-counties.json.bak
+
+# E2E test artifacts
+tests/e2e/.test-state.json
+tests/e2e/test-results/
+tests/e2e/playwright-report/

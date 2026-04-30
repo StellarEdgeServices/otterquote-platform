@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "dist",
+    "baseUrl": "."
+  },
+  "include": [
+    "playwright.config.ts",
+    "helpers/**/*.ts",
+    "flows/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "playwright-report"
+  ]
+}

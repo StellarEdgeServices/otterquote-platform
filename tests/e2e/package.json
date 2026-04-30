@@ -1,0 +1,25 @@
+{
+  "name": "otterquote-e2e",
+  "version": "1.0.0",
+  "description": "Authenticated flow-test suite for OtterQuote. Covers contractor and homeowner journeys against staging.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:contractor": "playwright test flows/contractor-journey",
+    "test:homeowner": "playwright test flows/homeowner-journey",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "seed": "node seed/seed.mjs",
+    "teardown": "node seed/teardown.mjs",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0",
+    "dotenv": "^16.4.5"
+  }
+}
