@@ -38,7 +38,7 @@
             padding: 2rem 1.5rem;
         }
 
-        /* ââ Header âââââââââââââââââââââââââââââââââââââââââââ */
+        /* ── Header ─────────────────────────────────────────── */
         .admin-header {
             display: flex;
             align-items: center;
@@ -75,7 +75,7 @@
         }
         .logout-btn:hover { background: var(--light); }
 
-        /* ââ Admin nav links ââââââââââââââââââââââââââââââââââ */
+        /* ── Admin nav links ────────────────────────────────── */
         .admin-nav {
             display: flex;
             gap: 0.75rem;
@@ -93,7 +93,7 @@
         .admin-nav a:hover  { background: rgba(255,255,255,0.08); color: var(--white); }
         .admin-nav a.active { background: rgba(255,255,255,0.12); color: var(--white); }
 
-        /* ââ Summary cards ââââââââââââââââââââââââââââââââââââ */
+        /* ── Summary cards ──────────────────────────────────── */
         .summary-cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -126,7 +126,7 @@
         .summary-card.approved  .summary-card-value { color: var(--green); }
         .summary-card.rejected  .summary-card-value { color: var(--red); }
 
-        /* ââ Filter tabs ââââââââââââââââââââââââââââââââââââââ */
+        /* ── Filter tabs ────────────────────────────────────── */
         .filter-tabs {
             display: flex;
             gap: 0.5rem;
@@ -148,7 +148,7 @@
         .filter-tab:hover  { background: rgba(255,255,255,0.12); color: var(--white); }
         .filter-tab.active { background: var(--amber); color: var(--navy); }
 
-        /* ââ Table ââââââââââââââââââââââââââââââââââââââââââââ */
+        /* ── Table ──────────────────────────────────────────── */
         .table-wrapper {
             background: var(--white);
             border-radius: 0.75rem;
@@ -182,7 +182,7 @@
         .payout-table tbody tr:last-child td { border-bottom: none; }
         .payout-table tbody tr:hover { background: #FAFAFA; }
 
-        /* ââ Status badges ââââââââââââââââââââââââââââââââââââ */
+        /* ── Status badges ──────────────────────────────────── */
         .badge {
             display: inline-block;
             padding: 0.25rem 0.6rem;
@@ -196,7 +196,7 @@
         .badge-rejected    { background: #FEE2E2; color: #991B1B; }
         .badge-pre         { background: #F3F4F6; color: #6B7280; }
 
-        /* ââ Action buttons âââââââââââââââââââââââââââââââââââ */
+        /* ── Action buttons ─────────────────────────────────── */
         .action-btn {
             border: none;
             padding: 0.4rem 0.875rem;
@@ -217,7 +217,7 @@
         .btn-reject:hover:not(:disabled)  { background: #FECACA; }
         .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* ââ Inline rejection textarea âââââââââââââââââââââââââ */
+        /* ── Inline rejection textarea ───────────────────────── */
         .reject-inline {
             margin-top: 0.5rem;
         }
@@ -259,7 +259,7 @@
             font-family: 'Rubik', sans-serif;
         }
 
-        /* ââ Empty / loading ââââââââââââââââââââââââââââââââââ */
+        /* ── Empty / loading ────────────────────────────────── */
         .empty-state {
             text-align: center;
             padding: 3rem 1.5rem;
@@ -271,12 +271,12 @@
             color: var(--slate);
         }
 
-        /* ââ Partner name âââââââââââââââââââââââââââââââââââââ */
+        /* ── Partner name ───────────────────────────────────── */
         .partner-name { font-weight: 600; color: var(--navy); }
         .trigger-text { font-size: 0.75rem; color: var(--slate); margin-top: 2px; }
         .amount-cell  { font-weight: 700; color: var(--navy); }
 
-        /* ââ Auth error âââââââââââââââââââââââââââââââââââââââ */
+        /* ── Auth error ─────────────────────────────────────── */
         #authError {
             display: none;
             background: #FEE2E2;
@@ -322,22 +322,22 @@
     <div class="summary-cards">
         <div class="summary-card pending">
             <div class="summary-card-label">Pending Approval</div>
-            <div class="summary-card-value" id="cardPendingCount">â</div>
-            <div class="summary-card-sub" id="cardPendingAmount">loadingâ¦</div>
+            <div class="summary-card-value" id="cardPendingCount">&mdash;</div>
+            <div class="summary-card-sub" id="cardPendingAmount">loading&hellip;</div>
         </div>
         <div class="summary-card approved">
             <div class="summary-card-label">Approved This Month</div>
-            <div class="summary-card-value" id="cardApprovedCount">â</div>
-            <div class="summary-card-sub" id="cardApprovedAmount">loadingâ¦</div>
+            <div class="summary-card-value" id="cardApprovedCount">&mdash;</div>
+            <div class="summary-card-sub" id="cardApprovedAmount">loading&hellip;</div>
         </div>
         <div class="summary-card approved">
             <div class="summary-card-label">Auto-Approved This Month</div>
-            <div class="summary-card-value" id="cardAutoCount">â</div>
-            <div class="summary-card-sub" id="cardAutoAmount">loadingâ¦</div>
+            <div class="summary-card-value" id="cardAutoCount">&mdash;</div>
+            <div class="summary-card-sub" id="cardAutoAmount">loading&hellip;</div>
         </div>
         <div class="summary-card rejected">
             <div class="summary-card-label">Rejected</div>
-            <div class="summary-card-value" id="cardRejectedCount">â</div>
+            <div class="summary-card-value" id="cardRejectedCount">&mdash;</div>
             <div class="summary-card-sub">all time</div>
         </div>
     </div>
@@ -354,7 +354,7 @@
 
     <!-- Table -->
     <div class="table-wrapper">
-        <div id="loadingSpinner" class="loading-spinner">Loading payoutsâ¦</div>
+        <div id="loadingSpinner" class="loading-spinner">Loading payouts&hellip;</div>
         <table class="payout-table" id="payoutsTable" style="display:none;">
             <thead>
                 <tr>
@@ -385,11 +385,11 @@
     let allPayouts   = [];
     let currentFilter = 'all';
 
-    // ââ Init ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // ── Init ──────────────────────────────────────────────────────────────────
     async function init() {
         if (typeof CONFIG === 'undefined' || !CONFIG.SUPABASE_URL) {
             document.getElementById('authError').style.display = 'block';
-            document.getElementById('authError').textContent = 'Configuration error â CONFIG not loaded.';
+            document.getElementById('authError').textContent = 'Configuration error — CONFIG not loaded.';
             return;
         }
 
@@ -416,7 +416,7 @@
         await loadPayouts();
     }
 
-    // ââ Load payouts ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // ── Load payouts ──────────────────────────────────────────────────────────
     async function loadPayouts() {
         try {
             const { data, error } = await sb
@@ -431,11 +431,11 @@
             renderTable();
         } catch (err) {
             console.error('Error loading payouts:', err);
-            document.getElementById('loadingSpinner').textContent = 'Error loading payouts â check console.';
+            document.getElementById('loadingSpinner').textContent = 'Error loading payouts — check console.';
         }
     }
 
-    // ââ Summary cards âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // ── Summary cards ─────────────────────────────────────────────────────────
     function updateSummaryCards() {
         const now      = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -457,7 +457,7 @@
         document.getElementById('cardRejectedCount').textContent  = rejected.length;
     }
 
-    // ââ Filter ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // ── Filter ────────────────────────────────────────────────────────────────
     function setFilter(filter) {
         currentFilter = filter;
         document.querySelectorAll('.filter-tab').forEach(btn => {
@@ -473,7 +473,7 @@
         renderTable();
     }
 
-    // ââ Render table ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // ── Render table ──────────────────────────────────────────────────────────
     function renderTable() {
         const loadingEl = document.getElementById('loadingSpinner');
         const tableEl   = document.getElementById('payoutsTable');
@@ -509,25 +509,25 @@
             const created = new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             const autoOn  = p.auto_approve_at
                 ? new Date(p.auto_approve_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                : 'â';
-            const trigger = (p.trigger_event || 'â').substring(0, 60);
+                : '—';
+            const trigger = (p.trigger_event || '—').substring(0, 60);
 
             const actionHtml = p.status === 'pending_approval'
                 ? `<button class="action-btn btn-approve" onclick="handleApprove('${p.id}', this)">Approve</button>
                    <button class="action-btn btn-reject"  onclick="showRejectForm('${p.id}', this)">Reject</button>
                    <div class="reject-inline" id="reject-form-${p.id}" style="display:none;">
                      <textarea class="reject-reason-input" id="reject-reason-${p.id}"
-                       placeholder="Rejection reason (required)â¦" oninput="updateRejectBtn('${p.id}')"></textarea>
+                       placeholder="Rejection reason (required)…" oninput="updateRejectBtn('${p.id}')"></textarea>
                      <br>
                      <button class="reject-confirm-btn" id="reject-btn-${p.id}"
                        onclick="handleReject('${p.id}')" disabled>Confirm Reject</button>
                      <button class="reject-cancel-btn" onclick="cancelRejectForm('${p.id}')">Cancel</button>
                    </div>`
-                : 'â';
+                : '—';
 
             return `<tr id="row-${p.id}">
                 <td>
-                    <div class="partner-name">${escapeHtml(p.partner_name || 'â')}</div>
+                    <div class="partner-name">${escapeHtml(p.partner_name || '—')}</div>
                     <div class="trigger-text">${escapeHtml(trigger)}</div>
                 </td>
                 <td>${payoutTypeLabel}</td>
@@ -541,10 +541,10 @@
         }).join('');
     }
 
-    // ââ Approve âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // ── Approve ───────────────────────────────────────────────────────────────
     async function handleApprove(approvalId, btn) {
         btn.disabled = true;
-        btn.textContent = 'Approvingâ¦';
+        btn.textContent = 'Approving…';
 
         try {
             const { data: { session } } = await sb.auth.getSession();
@@ -582,7 +582,7 @@
         }
     }
 
-    // ââ Reject form âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // ── Reject form ───────────────────────────────────────────────────────────
     function showRejectForm(approvalId, btn) {
         document.getElementById(`reject-form-${approvalId}`).style.display = 'block';
         btn.style.display = 'none';
@@ -613,7 +613,7 @@
 
         const confirmBtn = document.getElementById(`reject-btn-${approvalId}`);
         confirmBtn.disabled = true;
-        confirmBtn.textContent = 'Rejectingâ¦';
+        confirmBtn.textContent = 'Rejecting…';
 
         try {
             const { data: { session } } = await sb.auth.getSession();
@@ -655,13 +655,13 @@
         }
     }
 
-    // ââ Logout ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // ── Logout ────────────────────────────────────────────────────────────────
     async function handleLogout() {
         await sb.auth.signOut();
         window.location.href = 'login.html';
     }
 
-    // ââ Utility âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // ── Utility ───────────────────────────────────────────────────────────────
     function escapeHtml(str) {
         if (!str) return '';
         return String(str)
@@ -672,8 +672,14 @@
             .replace(/'/g, '&#039;');
     }
 
-    // ââ Bootstrap âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-    document.addEventListener('DOMContentLoaded', init);
+    // ── Bootstrap ─────────────────────────────────────────────────────────────
+    let _initFired = false;
+        sb.auth.onAuthStateChange(async (event, session) => {
+            if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
+                _initFired = true;
+                await init();
+            }
+        });
 </script>
 </body>
 </html>
