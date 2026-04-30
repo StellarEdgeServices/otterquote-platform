@@ -1,0 +1,215 @@
+{
+  "_comment": "D-199 Required-Anchor Manifest v2 — APPROVED April 30, 2026. Machine-readable version for validate-contract-template Edge Function consumption. Authoritative source: Docs/D-199-D-202-design-artifacts/D-199-anchor-manifest-v2.md",
+  "version": "v2",
+  "approvedDate": "2026-04-30",
+  "decision": "D-199",
+  "anchorOptions": {
+    "anchorAllowWhiteSpaceInCharacters": "true",
+    "caseSensitive": true,
+    "anchorIgnoreIfNotPresentForOptional": true
+  },
+  "trades": {
+    "roofing": {
+      "retail": {
+        "slot": "roofing/retail",
+        "requiredCount": 13,
+        "required": [
+          { "anchor": "/Customer/",       "field": "Homeowner signature",              "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Customer_Date/",  "field": "Homeowner sign date",              "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "/Contractor/",     "field": "Contractor signature",             "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Contractor_Date/","field": "Contractor sign date",             "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "Name",             "field": "Customer name",                    "tabType": "text",       "source": "Party identification" },
+          { "anchor": "Address:",         "field": "Property address",                 "tabType": "text",       "source": "Property identification" },
+          { "anchor": "Contract Price:",  "field": "Total contract amount",            "tabType": "text",       "source": "Financial term" },
+          { "anchor": "Description:",     "field": "Job description / See Exhibit A",  "tabType": "text",       "source": "Scope reference (D-186)" },
+          { "anchor": "Material:",        "field": "Shingle product/brand",            "tabType": "text",       "source": "Material commitment" },
+          { "anchor": "Manufacturer's Warranty:", "field": "Auto-filled from D-202 manifest", "tabType": "text", "source": "D-202" },
+          { "anchor": "Workmanship Warranty:",    "field": "Contractor workmanship years",    "tabType": "text", "source": "Workmanship commitment" },
+          { "anchor": "Decking/Sheet:",   "field": "Per-sheet decking replacement price","tabType": "text",     "source": "Roofing contingency" },
+          { "anchor": "Start Date:",      "field": "Estimated start date",             "tabType": "text",       "source": "Scheduling commitment" }
+        ],
+        "optional": [
+          "City/Zip:", "Phone", "Email:", "Single Manufacture", "Shingle Type:", "Shingle Color:",
+          "Drip Edge Color:", "Vents", "Satellite", "Skylights", "Full Redeck:", "Permit Fee:",
+          "Dumpster Fee:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:",
+          "License #:", "Structures:", "Structure Names:", "Valley Type:", "Bad Decking:", "Project Notes:"
+        ]
+      },
+      "insurance": {
+        "slot": "roofing/insurance",
+        "requiredCount": 14,
+        "required": [
+          { "anchor": "/Customer/",       "field": "Homeowner signature",              "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Customer_Date/",  "field": "Homeowner sign date",              "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "/Contractor/",     "field": "Contractor signature",             "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Contractor_Date/","field": "Contractor sign date",             "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "Name",             "field": "Customer name",                    "tabType": "text",       "source": "Party identification" },
+          { "anchor": "Address:",         "field": "Property address",                 "tabType": "text",       "source": "Property identification" },
+          { "anchor": "Contract Price:",  "field": "Total contract amount (RCV-based)","tabType": "text",       "source": "Financial term" },
+          { "anchor": "Insurance Co",     "field": "Insurance carrier",                "tabType": "text",       "source": "Insurance-specific" },
+          { "anchor": "Claim #",          "field": "Carrier claim number",             "tabType": "text",       "source": "Insurance-specific" },
+          { "anchor": "DEDUCTIBLE:",      "field": "Homeowner deductible amount",      "tabType": "text",       "source": "Financial term" },
+          { "anchor": "Material:",        "field": "Shingle product/brand",            "tabType": "text",       "source": "Material commitment" },
+          { "anchor": "Manufacturer's Warranty:", "field": "Auto-filled from D-202 manifest", "tabType": "text", "source": "D-202 — required for insurance (no Exhibit A; contractor PDF is sole commitment record)" },
+          { "anchor": "Workmanship Warranty:",    "field": "Contractor workmanship years",    "tabType": "text", "source": "Workmanship commitment" },
+          { "anchor": "Decking/Sheet:",   "field": "Per-sheet decking replacement price","tabType": "text",     "source": "Roofing contingency" }
+        ],
+        "optional": [
+          "City/Zip:", "Phone", "Email:", "Single Manufacture", "Shingle Type:", "Shingle Color:",
+          "Drip Edge Color:", "Vents", "Satellite", "Skylights", "Full Redeck:", "Permit Fee:",
+          "Dumpster Fee:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:",
+          "License #:", "Structures:", "Structure Names:", "Valley Type:", "Bad Decking:", "Project Notes:",
+          "Non-Recoverable Dep:", "Work Not Done:", "Description:"
+        ]
+      }
+    },
+    "siding": {
+      "retail": {
+        "slot": "siding/retail",
+        "requiredCount": 13,
+        "required": [
+          { "anchor": "/Customer/",       "field": "Homeowner signature",              "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Customer_Date/",  "field": "Homeowner sign date",              "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "/Contractor/",     "field": "Contractor signature",             "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Contractor_Date/","field": "Contractor sign date",             "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "Name",             "field": "Customer name",                    "tabType": "text",       "source": "Party identification" },
+          { "anchor": "Address:",         "field": "Property address",                 "tabType": "text",       "source": "Property identification" },
+          { "anchor": "Contract Price:",  "field": "Total contract amount",            "tabType": "text",       "source": "Financial term" },
+          { "anchor": "Description:",     "field": "Job description / See Exhibit A",  "tabType": "text",       "source": "Scope reference (D-186)" },
+          { "anchor": "Siding Product:",  "field": "Siding product/brand",             "tabType": "text",       "source": "Material commitment" },
+          { "anchor": "Manufacturer's Warranty:", "field": "Auto-filled from D-202 manifest", "tabType": "text", "source": "D-202" },
+          { "anchor": "Workmanship Warranty:",    "field": "Contractor workmanship years",    "tabType": "text", "source": "Workmanship commitment" },
+          { "anchor": "Wall Substrate:",  "field": "Per-sheet sheathing replacement contingency", "tabType": "text", "source": "Siding contingency" },
+          { "anchor": "Start Date:",      "field": "Estimated start date",             "tabType": "text",       "source": "Scheduling commitment" }
+        ],
+        "optional": [
+          "City/Zip:", "Phone", "Email:", "Siding Color:", "Siding Profile:", "Trim Color:", "Trim Material:",
+          "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"
+        ]
+      },
+      "insurance": {
+        "slot": "siding/insurance",
+        "requiredCount": 14,
+        "required": [
+          { "anchor": "/Customer/",       "field": "Homeowner signature",              "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Customer_Date/",  "field": "Homeowner sign date",              "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "/Contractor/",     "field": "Contractor signature",             "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Contractor_Date/","field": "Contractor sign date",             "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "Name",             "field": "Customer name",                    "tabType": "text",       "source": "Party identification" },
+          { "anchor": "Address:",         "field": "Property address",                 "tabType": "text",       "source": "Property identification" },
+          { "anchor": "Contract Price:",  "field": "Total contract amount (RCV-based)","tabType": "text",       "source": "Financial term" },
+          { "anchor": "Insurance Co",     "field": "Insurance carrier",                "tabType": "text",       "source": "Insurance-specific" },
+          { "anchor": "Claim #",          "field": "Carrier claim number",             "tabType": "text",       "source": "Insurance-specific" },
+          { "anchor": "DEDUCTIBLE:",      "field": "Homeowner deductible amount",      "tabType": "text",       "source": "Financial term" },
+          { "anchor": "Siding Product:",  "field": "Siding product/brand",             "tabType": "text",       "source": "Material commitment" },
+          { "anchor": "Manufacturer's Warranty:", "field": "Auto-filled from D-202 manifest", "tabType": "text", "source": "D-202" },
+          { "anchor": "Workmanship Warranty:",    "field": "Contractor workmanship years",    "tabType": "text", "source": "Workmanship commitment" },
+          { "anchor": "Wall Substrate:",  "field": "Per-sheet sheathing replacement contingency", "tabType": "text", "source": "Siding contingency" }
+        ],
+        "optional": [
+          "City/Zip:", "Phone", "Email:", "Start Date:", "Siding Color:", "Siding Profile:", "Trim Color:", "Trim Material:",
+          "Description:", "Non-Recoverable Dep:", "Work Not Done:",
+          "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"
+        ]
+      }
+    },
+    "gutters": {
+      "retail": {
+        "slot": "gutters/retail",
+        "requiredCount": 12,
+        "required": [
+          { "anchor": "/Customer/",       "field": "Homeowner signature",              "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Customer_Date/",  "field": "Homeowner sign date",              "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "/Contractor/",     "field": "Contractor signature",             "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Contractor_Date/","field": "Contractor sign date",             "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "Name",             "field": "Customer name",                    "tabType": "text",       "source": "Party identification" },
+          { "anchor": "Address:",         "field": "Property address",                 "tabType": "text",       "source": "Property identification" },
+          { "anchor": "Contract Price:",  "field": "Total contract amount",            "tabType": "text",       "source": "Financial term" },
+          { "anchor": "Linear Feet:",     "field": "Gutter run linear footage",        "tabType": "text",       "source": "Scope measurement" },
+          { "anchor": "Gutter Size:",     "field": "Gutter size (5\"/6\"/etc.)",        "tabType": "text",       "source": "Specification" },
+          { "anchor": "Downspout Count:", "field": "Number of downspouts",             "tabType": "text",       "source": "Scope measurement" },
+          { "anchor": "Manufacturer's Warranty:", "field": "Auto-filled from D-202 manifest", "tabType": "text", "source": "D-202" },
+          { "anchor": "Workmanship Warranty:",    "field": "Contractor workmanship years",    "tabType": "text", "source": "Workmanship commitment" }
+        ],
+        "optional": [
+          "City/Zip:", "Phone", "Email:", "Start Date:", "Description:", "Gutter Color:", "Gutter Guards:",
+          "Splash Block Count:", "Hanger Spacing:", "Contractor:", "Contractor Phone:", "Contractor Email:",
+          "Contractor Address:", "License #:", "Project Notes:"
+        ]
+      },
+      "insurance": {
+        "slot": "gutters/insurance",
+        "requiredCount": 13,
+        "required": [
+          { "anchor": "/Customer/",       "field": "Homeowner signature",              "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Customer_Date/",  "field": "Homeowner sign date",              "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "/Contractor/",     "field": "Contractor signature",             "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Contractor_Date/","field": "Contractor sign date",             "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "Name",             "field": "Customer name",                    "tabType": "text",       "source": "Party identification" },
+          { "anchor": "Address:",         "field": "Property address",                 "tabType": "text",       "source": "Property identification" },
+          { "anchor": "Contract Price:",  "field": "Total contract amount (RCV-based)","tabType": "text",       "source": "Financial term" },
+          { "anchor": "Insurance Co",     "field": "Insurance carrier",                "tabType": "text",       "source": "Insurance-specific" },
+          { "anchor": "Claim #",          "field": "Carrier claim number",             "tabType": "text",       "source": "Insurance-specific" },
+          { "anchor": "DEDUCTIBLE:",      "field": "Homeowner deductible amount",      "tabType": "text",       "source": "Financial term" },
+          { "anchor": "Linear Feet:",     "field": "Gutter run linear footage",        "tabType": "text",       "source": "Scope measurement" },
+          { "anchor": "Gutter Size:",     "field": "Gutter size",                      "tabType": "text",       "source": "Specification" },
+          { "anchor": "Downspout Count:", "field": "Number of downspouts",             "tabType": "text",       "source": "Scope measurement" }
+        ],
+        "optional": [
+          "City/Zip:", "Phone", "Email:", "Start Date:", "Manufacturer's Warranty:", "Workmanship Warranty:",
+          "Gutter Color:", "Gutter Guards:", "Splash Block Count:", "Hanger Spacing:",
+          "Description:", "Non-Recoverable Dep:", "Work Not Done:",
+          "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"
+        ]
+      }
+    },
+    "windows": {
+      "retail": {
+        "slot": "windows/retail",
+        "requiredCount": 11,
+        "required": [
+          { "anchor": "/Customer/",           "field": "Homeowner signature",          "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Customer_Date/",      "field": "Homeowner sign date",          "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "/Contractor/",         "field": "Contractor signature",         "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Contractor_Date/",    "field": "Contractor sign date",         "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "Name",                 "field": "Customer name",                "tabType": "text",       "source": "Party identification" },
+          { "anchor": "Address:",             "field": "Property address",             "tabType": "text",       "source": "Property identification" },
+          { "anchor": "Contract Price:",      "field": "Total contract amount",        "tabType": "text",       "source": "Financial term" },
+          { "anchor": "Window Manufacturer:", "field": "Window manufacturer",          "tabType": "text",       "source": "Specification" },
+          { "anchor": "Window Count:",        "field": "Number of windows",            "tabType": "text",       "source": "Scope measurement" },
+          { "anchor": "Manufacturer's Warranty:", "field": "Auto-filled from D-202 manifest", "tabType": "text", "source": "D-202" },
+          { "anchor": "Workmanship Warranty:",    "field": "Contractor workmanship years",    "tabType": "text", "source": "Workmanship commitment" }
+        ],
+        "optional": [
+          "City/Zip:", "Phone", "Email:", "Start Date:", "Description:", "Window Series:", "Glass Package:",
+          "Frame Color:", "Trim Notes:", "Contractor:", "Contractor Phone:", "Contractor Email:",
+          "Contractor Address:", "License #:", "Project Notes:"
+        ]
+      },
+      "insurance": {
+        "slot": "windows/insurance",
+        "requiredCount": 12,
+        "required": [
+          { "anchor": "/Customer/",           "field": "Homeowner signature",              "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Customer_Date/",      "field": "Homeowner sign date",              "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "/Contractor/",         "field": "Contractor signature",             "tabType": "signHere",   "source": "HICA" },
+          { "anchor": "/Contractor_Date/",    "field": "Contractor sign date",             "tabType": "dateSigned", "source": "HICA" },
+          { "anchor": "Name",                 "field": "Customer name",                    "tabType": "text",       "source": "Party identification" },
+          { "anchor": "Address:",             "field": "Property address",                 "tabType": "text",       "source": "Property identification" },
+          { "anchor": "Contract Price:",      "field": "Total contract amount (RCV-based)","tabType": "text",       "source": "Financial term" },
+          { "anchor": "Insurance Co",         "field": "Insurance carrier",                "tabType": "text",       "source": "Insurance-specific" },
+          { "anchor": "Claim #",              "field": "Carrier claim number",             "tabType": "text",       "source": "Insurance-specific" },
+          { "anchor": "DEDUCTIBLE:",          "field": "Homeowner deductible amount",      "tabType": "text",       "source": "Financial term" },
+          { "anchor": "Window Manufacturer:", "field": "Window manufacturer",              "tabType": "text",       "source": "Specification" },
+          { "anchor": "Window Count:",        "field": "Number of windows",                "tabType": "text",       "source": "Scope measurement" }
+        ],
+        "optional": [
+          "City/Zip:", "Phone", "Email:", "Start Date:", "Manufacturer's Warranty:", "Workmanship Warranty:",
+          "Window Series:", "Glass Package:", "Frame Color:", "Trim Notes:",
+          "Description:", "Non-Recoverable Dep:", "Work Not Done:",
+          "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"
+        ]
+      }
+    }
+  }
+}
