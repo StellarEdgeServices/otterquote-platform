@@ -881,7 +881,7 @@
         // 2. Mark winning quote
         const { error: winErr } = await sb
           .from('quotes')
-          .update({ status: 'awarded' })
+          .update({ status: 'selected' })  // Forge L1 D-159 fix: DB constraint quotes.status ∈ {draft,submitted,selected,declined,expired}
           .eq('id', bid.id);
         if (winErr) throw winErr;
 
