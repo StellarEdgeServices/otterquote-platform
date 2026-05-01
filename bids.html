@@ -95,6 +95,33 @@
     .guarantee-banner strong { color: var(--amber); }
 
     /* ════════════════════════════════════════ */
+    /* BID VIEW TOGGLE + COMPARISON TABLE */
+    /* ════════════════════════════════════════ */
+    .bids-view-toggle { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-6); padding: 4px; background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-full); width: fit-content; }
+    .bids-view-btn { background: transparent; border: none; color: rgba(255,255,255,0.65); font-family: var(--font-body); font-size: 0.85rem; font-weight: 600; padding: 8px 18px; border-radius: var(--radius-full); cursor: pointer; transition: all 0.15s; }
+    .bids-view-btn:hover { color: var(--white); }
+    .bids-view-btn.active { background: var(--amber); color: var(--navy); }
+    .bids-compare { display: none; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .bids-compare.active { display: block; }
+    .compare-table { display: grid; gap: 0; border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-lg); overflow: hidden; background: var(--navy-2); min-width: 640px; }
+    .compare-table > div { padding: var(--sp-3) var(--sp-4); border-right: 1px solid rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.04); display: flex; align-items: center; min-height: 48px; }
+    .compare-table > div:last-child, .compare-table > div.compare-section-header:last-child { border-bottom: none; }
+    .compare-corner { background: rgba(224,123,0,0.04); }
+    .compare-header { background: rgba(224,123,0,0.04); flex-direction: column !important; align-items: center !important; gap: 2px; text-align: center; }
+    .compare-header-name { font-size: 0.95rem; font-weight: 700; color: var(--white); line-height: 1.2; }
+    .compare-header-price { font-size: 1rem; font-weight: 700; color: var(--amber); }
+    .compare-header-meta { font-size: 0.7rem; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.04em; }
+    .compare-section-header { grid-column: 1 / -1; background: rgba(255,255,255,0.04); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--slate); min-height: 36px !important; padding: var(--sp-2) var(--sp-4) !important; }
+    .compare-row-label { background: rgba(255,255,255,0.02); font-size: 0.85rem; font-weight: 600; color: rgba(255,255,255,0.85); }
+    .compare-cell { font-size: 0.85rem; color: var(--white); justify-content: center; text-align: center; line-height: 1.4; }
+    .compare-cell.cell-included { color: var(--green); font-weight: 600; }
+    .compare-cell.cell-oop { color: var(--amber); font-weight: 600; }
+    .compare-cell.cell-excluded, .compare-cell.cell-na { color: rgba(255,255,255,0.4); }
+    .compare-cell.cell-accent { font-size: 1.1rem; font-weight: 700; color: var(--amber); }
+    .compare-row.identical .compare-row-label, .compare-row.identical .compare-cell { opacity: 0.55; }
+    .bids-compare-empty { text-align: center; padding: var(--sp-12) var(--sp-6); color: var(--slate); background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-lg); }
+
+    /* ════════════════════════════════════════ */
     /* CONTRACTOR PROFILE (Deep Dive) */
     /* ════════════════════════════════════════ */
     .profile-view { display: none; }
@@ -393,8 +420,17 @@
             <p>Your project is live and contractors have been notified. Bids typically start coming in within a few hours. We'll notify you via text and email when each bid arrives.</p>
           </div>
 
+          <!-- Bid View Toggle (Cards / Compare) — D-186 bid comparison feature -->
+          <div id="bidsViewToggle" class="bids-view-toggle" style="display:none;" role="tablist" aria-label="Bid view">
+            <button class="bids-view-btn active" data-view="cards" onclick="switchBidsView('cards')" role="tab" aria-selected="true">Cards</button>
+            <button class="bids-view-btn" data-view="compare" onclick="switchBidsView('compare')" role="tab" aria-selected="false">Compare</button>
+          </div>
+
           <!-- Bids Grid -->
           <div id="bidsGrid" class="bids-grid"></div>
+
+          <!-- Bid Comparison Table (hidden by default; rendered by renderBidsCompare()) -->
+          <div id="bidsCompare" class="bids-compare" aria-live="polite"></div>
         </div>
 
         <!-- ── CONTRACTOR PROFILE VIEW ── -->
@@ -1076,6 +1112,9 @@
       const allExpired = bids.length > 0 && bids.every(b => b.bid_status === 'expired');
       const aeb = document.getElementById('allExpiredBanner');
       if (aeb) aeb.style.display = allExpired ? 'flex' : 'none';
+
+      // Show/hide the Cards/Compare view toggle (D-186 — needs 2+ active bids)
+      refreshBidsViewToggle();
 
       grid.innerHTML = bids.map((bid, idx) => {
         const c = contractors[bid.contractor_id] || {};
@@ -1998,6 +2037,206 @@
     }
 
     // Render value_adds (contractor distinguishing features) as a clean bulleted section
+    // ────────────────────────────────────────────────────────────────
+    // BID COMPARISON VIEW (ClickUp 86e15kdp9)
+    // Side-by-side table showing what each bid INCLUDES, EXCLUDES, or has
+    // available OUT-OF-POCKET across canonical roofing categories.
+    // Rows where all bids match get dimmed so differences pop visually.
+    // ────────────────────────────────────────────────────────────────
+
+    function switchBidsView(viewName) {
+      const grid = document.getElementById('bidsGrid');
+      const compare = document.getElementById('bidsCompare');
+      const buttons = document.querySelectorAll('.bids-view-btn');
+      if (!grid || !compare) return;
+      if (viewName === 'compare') {
+        grid.style.display = 'none';
+        compare.classList.add('active');
+        renderBidsCompare();
+      } else {
+        grid.style.display = 'grid';
+        compare.classList.remove('active');
+      }
+      buttons.forEach(btn => {
+        const isActive = btn.dataset.view === viewName;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+    }
+
+    function _vaParse(bid) {
+      return typeof bid.value_adds === 'string' ? parseJSON(bid.value_adds) : (bid.value_adds || {});
+    }
+
+    // Cell accessors return { display: string, key: string, cls: 'cell-included'|'cell-oop'|'cell-excluded'|'cell-na'|'' }
+    function _accTotal(bid) { const p = bid.total_price || 0; return { display: '$' + p.toLocaleString(), key: String(p), cls: 'cell-accent' }; }
+    function _accStart(bid) { return bid.start_date ? { display: formatDate(bid.start_date), key: bid.start_date, cls: '' } : { display: '—', key: 'na', cls: 'cell-na' }; }
+    function _accCompletion(bid) { const v = getScopeSummary(bid).completion_time; return v ? { display: v, key: v, cls: '' } : { display: '—', key: 'na', cls: 'cell-na' }; }
+    function _accWorkmanship(bid) { const y = bid.workmanship_warranty_years; return y ? { display: y + ' ' + (y === 1 ? 'year' : 'years'), key: String(y), cls: '' } : { display: '—', key: 'na', cls: 'cell-na' }; }
+    function _accMfrWarranty(bid) {
+      if (bid.warranty_snapshot) { const f = String(bid.warranty_snapshot).split(' — ')[0] || bid.warranty_snapshot; return { display: f, key: f, cls: '' }; }
+      const va = _vaParse(bid);
+      if (Array.isArray(va.warranties) && va.warranties[0]) { const f = va.warranties[0].label || va.warranties[0]; return { display: String(f), key: String(f), cls: '' }; }
+      return { display: '—', key: 'na', cls: 'cell-na' };
+    }
+    function _accBrand(bid) { const v = getScopeSummary(bid).brand; return v ? { display: v, key: v, cls: '' } : { display: '—', key: 'na', cls: 'cell-na' }; }
+    function _accUnderlayment(bid) {
+      const u = _vaParse(bid).underlayment;
+      if (!u || !u.type) return { display: '—', key: 'na', cls: 'cell-na' };
+      const map = { synthetic: 'Synthetic', felt_15: 'Felt #15', felt_30: 'Felt #30', rubberized: 'Rubberized', other: u.notes || 'Other' };
+      const d = map[u.type] || u.type;
+      return { display: d, key: u.type, cls: '' };
+    }
+    function _accIceWater(bid) {
+      const c = (_vaParse(bid).ice_water_shield || {}).coverage;
+      if (!c || c === 'not_applicable') return { display: '—', key: 'na', cls: 'cell-na' };
+      const map = { standard: 'Standard (eaves & valleys)', enhanced: 'Enhanced (full deck)' };
+      return { display: map[c] || c, key: c, cls: 'cell-included' };
+    }
+    function _accDripEdge(bid) {
+      const d = _vaParse(bid).drip_edge;
+      if (!d || !d.option || d.option === 'na') return { display: '—', key: 'na', cls: 'cell-na' };
+      if (d.option === 'oop') {
+        const lbl = d.oop_price ? '+$' + Number(d.oop_price).toLocaleString() + ' OOP' : 'OOP (price on request)';
+        return { display: lbl, key: 'oop', cls: 'cell-oop' };
+      }
+      const map = { included_black: '✓ Included (black)', included_white: '✓ Included (white)', included_custom: '✓ Included (custom)' };
+      return { display: map[d.option] || '✓ Included', key: 'included', cls: 'cell-included' };
+    }
+    function _accStarter(bid) {
+      const s = _vaParse(bid).starter_strip;
+      if (!s) return { display: '—', key: 'na', cls: 'cell-na' };
+      const map = { rakes_and_eaves: '✓ Rakes & eaves', eaves_only: '✓ Eaves only', rakes_only: '✓ Rakes only', not_included: '✗ Not included' };
+      const cls = s === 'not_included' ? 'cell-excluded' : 'cell-included';
+      return { display: map[s] || s, key: s, cls: cls };
+    }
+    function _accChimney(bid) {
+      const c = _vaParse(bid).chimney;
+      if (!c || !c.type || c.type === 'na') return { display: '— No chimney', key: 'na', cls: 'cell-na' };
+      const typeLbl = c.type === 'flash' ? 'Flash' : c.type === 'reflash' ? 'Reflash' : 'Flash + reflash';
+      if (c.option === 'included') return { display: '✓ ' + typeLbl + ' included', key: 'included-' + c.type, cls: 'cell-included' };
+      if (c.option === 'reuse') return { display: '✓ Reuse existing', key: 'reuse', cls: 'cell-included' };
+      if (c.option === 'oop') {
+        const lbl = c.oop_price ? typeLbl + ': +$' + Number(c.oop_price).toLocaleString() + ' OOP' : typeLbl + ': OOP';
+        return { display: lbl, key: 'oop-' + c.type, cls: 'cell-oop' };
+      }
+      return { display: typeLbl, key: c.type, cls: '' };
+    }
+    function _accSkylights(bid) {
+      const s = _vaParse(bid).skylights;
+      if (!s || s === 'na') return { display: '— No skylights', key: 'na', cls: 'cell-na' };
+      const map = { reflash: '✓ Reflash included', replace: '✓ Replace included' };
+      return { display: map[s] || s, key: s, cls: 'cell-included' };
+    }
+    function _accVentilation(bid) {
+      const v = _vaParse(bid).ventilation;
+      if (!v) return { display: '—', key: 'na', cls: 'cell-na' };
+      if (v.ridge_vent_included) return { display: '✓ Ridge vent included', key: 'included', cls: 'cell-included' };
+      if (v.ridge_vent_oop) return { display: '+$' + Number(v.ridge_vent_oop).toLocaleString() + ' OOP', key: 'oop-' + v.ridge_vent_oop, cls: 'cell-oop' };
+      return { display: '— Existing ventilation', key: 'na', cls: 'cell-na' };
+    }
+    function _accGutters(bid) {
+      const g = _vaParse(bid).gutters;
+      if (!g || !g.option || g.option === 'none') return { display: '✗ Not offered', key: 'excluded', cls: 'cell-excluded' };
+      if (g.option === '5inch_included') return { display: '✓ 5-inch included', key: 'incl-5', cls: 'cell-included' };
+      if (g.option === '6inch_included') return { display: '✓ 6-inch included', key: 'incl-6', cls: 'cell-included' };
+      if (g.option === '5inch_additional') { const p = g.additional_cost_5inch ? '+$' + Number(g.additional_cost_5inch).toLocaleString() : 'extra'; return { display: '5-inch: ' + p, key: 'addl-5', cls: 'cell-oop' }; }
+      if (g.option === '6inch_additional') { const p = g.additional_cost_6inch ? '+$' + Number(g.additional_cost_6inch).toLocaleString() : 'extra'; return { display: '6-inch: ' + p, key: 'addl-6', cls: 'cell-oop' }; }
+      if (g.option === 'other') return { display: g.other_text || 'Custom', key: 'custom', cls: '' };
+      return { display: '—', key: 'na', cls: 'cell-na' };
+    }
+    function _accGutterGuards(bid) {
+      const g = _vaParse(bid).gutter_guards;
+      if (!g) return { display: '—', key: 'na', cls: 'cell-na' };
+      if (g.pricing_on_request) return { display: 'Available on request', key: 'request', cls: '' };
+      const parts = [];
+      if (g.mesh_oop) parts.push('Mesh: +$' + Number(g.mesh_oop).toLocaleString());
+      if (g.screw_in_oop) parts.push('Screw-in: +$' + Number(g.screw_in_oop).toLocaleString());
+      if (parts.length === 0) return { display: '✗ Not offered', key: 'excluded', cls: 'cell-excluded' };
+      return { display: parts.join(' / '), key: 'oop', cls: 'cell-oop' };
+    }
+    function _accDecking(bid) {
+      const d = _vaParse(bid).secondLayerContingency;
+      if (!d) return { display: '—', key: 'na', cls: 'cell-na' };
+      if (d.pricePerSquare) return { display: '$' + Number(d.pricePerSquare).toLocaleString() + '/sq', key: 'sq-' + d.pricePerSquare, cls: '' };
+      if (d.flatFeeAlternative) return { display: 'Flat: $' + Number(d.flatFeeAlternative).toLocaleString(), key: 'flat-' + d.flatFeeAlternative, cls: '' };
+      return { display: '—', key: 'na', cls: 'cell-na' };
+    }
+
+    function renderBidsCompare() {
+      const compare = document.getElementById('bidsCompare');
+      if (!compare) return;
+      const activeBids = bids.filter(b => b.bid_status !== 'expired');
+      if (activeBids.length < 2) {
+        compare.innerHTML = '<div class="bids-compare-empty">Comparison requires at least 2 active bids. We\'ll switch this on automatically once your second bid arrives.</div>';
+        return;
+      }
+
+      const SECTIONS = [
+        { name: 'Headline', rows: [
+          { label: 'Total price', acc: _accTotal },
+          { label: 'Start date', acc: _accStart },
+          { label: 'Completion time', acc: _accCompletion },
+          { label: 'Workmanship warranty', acc: _accWorkmanship },
+          { label: "Manufacturer's warranty", acc: _accMfrWarranty }
+        ]},
+        { name: 'Materials', rows: [
+          { label: 'Shingle brand', acc: _accBrand },
+          { label: 'Underlayment', acc: _accUnderlayment },
+          { label: 'Ice & water shield', acc: _accIceWater },
+          { label: 'Drip edge', acc: _accDripEdge },
+          { label: 'Starter strip', acc: _accStarter }
+        ]},
+        { name: 'Roof Add-ons', rows: [
+          { label: 'Chimney work', acc: _accChimney },
+          { label: 'Skylights', acc: _accSkylights },
+          { label: 'Ventilation', acc: _accVentilation }
+        ]},
+        { name: 'Other Trades', rows: [
+          { label: 'Gutters', acc: _accGutters },
+          { label: 'Gutter guards', acc: _accGutterGuards }
+        ]},
+        { name: 'Contingencies', rows: [
+          { label: 'Decking ($/sheet)', acc: _accDecking }
+        ]}
+      ];
+
+      // Header row: corner cell + N contractor headers
+      const corner = '<div class="compare-corner"></div>';
+      const headerCells = activeBids.map(bid => {
+        const c = contractors[bid.contractor_id] || {};
+        const name = esc(c.company_name || 'Contractor');
+        const price = '$' + (bid.total_price || 0).toLocaleString();
+        const isLowest = activeBids.length > 1 && bid.total_price === Math.min(...activeBids.map(b => b.total_price || Infinity));
+        const meta = isLowest ? '<div class="compare-header-meta" style="color:var(--green);">Best price</div>' : '';
+        return '<div class="compare-header"><div class="compare-header-name">' + name + '</div><div class="compare-header-price">' + price + '</div>' + meta + '</div>';
+      }).join('');
+
+      const sectionsHtml = SECTIONS.map(section => {
+        const sectionHeader = '<div class="compare-section-header">' + esc(section.name) + '</div>';
+        const rowsHtml = section.rows.map(row => {
+          const cells = activeBids.map(bid => row.acc(bid));
+          const allEqual = cells.every(c => c.key === cells[0].key);
+          const rowCls = 'compare-row' + (allEqual ? ' identical' : '');
+          const labelCell = '<div class="compare-row-label">' + esc(row.label) + '</div>';
+          const cellsHtml = cells.map(c => '<div class="compare-cell ' + (c.cls || '') + '">' + esc(c.display) + '</div>').join('');
+          return '<div class="' + rowCls + '" style="display:contents;">' + labelCell + cellsHtml + '</div>';
+        }).join('');
+        return sectionHeader + rowsHtml;
+      }).join('');
+
+      const gridCols = '180px repeat(' + activeBids.length + ', minmax(140px, 1fr))';
+      compare.innerHTML = '<div class="compare-table" style="grid-template-columns: ' + gridCols + ';">' + corner + headerCells + sectionsHtml + '</div>';
+    }
+
+    // Show/hide the view toggle whenever bids are rendered. Called from renderBids() tail.
+    function refreshBidsViewToggle() {
+      const toggle = document.getElementById('bidsViewToggle');
+      if (!toggle) return;
+      const activeCount = bids.filter(b => b.bid_status !== 'expired').length;
+      toggle.style.display = activeCount >= 2 ? 'flex' : 'none';
+    }
+
     function renderValueAdds(bid) {
       const va = typeof bid.value_adds === 'string' ? parseJSON(bid.value_adds) : bid.value_adds;
       if (!va) return '';
