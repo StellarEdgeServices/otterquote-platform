@@ -1368,8 +1368,39 @@
 
     // ── Structured warranty details ──────────────────────────────────────
     function renderWarrantyDetails(bid) {
+      // D-202 Phase 2 — prefer manufacturer × tier snapshot; fall back to legacy va.warranties (Session 463)
       const va = typeof bid.value_adds === 'string' ? parseJSON(bid.value_adds) : bid.value_adds;
-      if (!va || !Array.isArray(va.warranties) || va.warranties.length === 0) return '';
+
+      // Path A: D-202 manifest selection (warranty_option_id present) or custom (snapshot only)
+      if (bid.warranty_snapshot) {
+        const isCustom = !bid.warranty_option_id;
+        const customBadge = isCustom
+          ? `<div style="margin-bottom:var(--sp-2);padding:6px 10px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:4px;font-size:0.72rem;color:#FCD34D;font-weight:600;">⚠️ Custom warranty — not OtterQuote-verified</div>`
+          : '';
+        const workmanshipRow = bid.workmanship_warranty_years
+          ? `<div style="font-size:0.8rem;color:var(--slate);margin-top:var(--sp-2);">Workmanship warranty: <span style="color:var(--white);font-weight:600;">${bid.workmanship_warranty_years} ${bid.workmanship_warranty_years === 1 ? 'year' : 'years'}</span></div>`
+          : '';
+        return `
+          <div style="margin:var(--sp-4) 0;padding:var(--sp-4);background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius-md);">
+            <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--slate);margin-bottom:var(--sp-3);">Warranty Coverage</div>
+            ${customBadge}
+            <div style="font-size:0.85rem;color:var(--white);line-height:1.55;font-style:italic;">${esc(bid.warranty_snapshot)}</div>
+            ${workmanshipRow}
+          </div>`;
+      }
+
+      // Path B: legacy va.warranties array fallback (in-flight bids pre-dating D-202 Phase 2)
+      if (!va || !Array.isArray(va.warranties) || va.warranties.length === 0) {
+        // Path C: minimal — workmanship-only display when nothing else is available
+        if (bid.workmanship_warranty_years) {
+          return `
+            <div style="margin:var(--sp-4) 0;padding:var(--sp-4);background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius-md);">
+              <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--slate);margin-bottom:var(--sp-3);">Warranty Coverage</div>
+              <div style="font-size:0.8rem;color:var(--slate);">Workmanship warranty: <span style="color:var(--white);font-weight:600;">${bid.workmanship_warranty_years} ${bid.workmanship_warranty_years === 1 ? 'year' : 'years'}</span></div>
+            </div>`;
+        }
+        return '';
+      }
       const rows = va.warranties.map(w => {
         const parts = [];
         if (w.labor?.years) parts.push(`Labor ${w.labor.years} yr`);
@@ -1941,9 +1972,16 @@
     }
 
     function formatWarranty(bid) {
+      // D-202 Phase 2 — prefer manufacturer × tier snapshot; fall back to legacy fields (Session 463)
       const parts = [];
+      if (bid.warranty_snapshot) {
+        // Surface the manufacturer/tier label from the snapshot's first segment (before " — ")
+        const head = String(bid.warranty_snapshot).split(' — ')[0].trim();
+        if (head) parts.push(head);
+      }
       if (bid.workmanship_warranty_years) parts.push(`${bid.workmanship_warranty_years}yr workmanship`);
-      if (bid.manufacturer_warranty_years) parts.push(`${bid.manufacturer_warranty_years}yr manufacturer`);
+      // Legacy fallback for in-flight bids that pre-date D-202 Phase 2
+      if (parts.length === 0 && bid.manufacturer_warranty_years) parts.push(`${bid.manufacturer_warranty_years}yr manufacturer`);
       return parts.length > 0 ? parts.join(' + ') : (bid.warranty_summary || 'TBD');
     }
 
@@ -2066,13 +2104,7 @@
       return html;
     }
 
-    let _initFired = false;
-        sb.auth.onAuthStateChange(async (event, session) => {
-            if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-                _initFired = true;
-                await init();
-            }
-        });
+    document.addEventListener('DOMContentLoaded', init);
   })();
   </script>
 </body>

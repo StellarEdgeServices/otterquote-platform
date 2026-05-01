@@ -1619,23 +1619,89 @@
             </div>
           </div>
 
-          <!-- ── Warranty Builder ── -->
+          <!-- ── Warranty Builder (D-202 Phase 2) ── -->
           <div class="va-box" id="warrantyBuilderBox">
-            <h4>Warranties</h4>
-            <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Add one or more warranties you are offering. You can load a saved template or build from scratch.</p>
+            <h4>Manufacturer's Warranty</h4>
+            <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Select the manufacturer warranty program you are offering with this bid. The selected tier auto-populates the structured fields shown to the homeowner and printed on the contract per D-202. OtterQuote is not the warrantor — manufacturers administer all programs.</p>
 
-            <!-- Template loader bar -->
-            <div class="warranty-template-bar" id="warrantyTemplateBar" style="display:none;">
-              <select id="warrantyTemplateSelect">
-                <option value="">— Select saved template —</option>
-              </select>
-              <button type="button" class="btn-sm" onclick="loadWarrantyTemplate()">Load Template</button>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);margin-bottom:var(--sp-3);">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" for="warrantyManufacturer" style="font-size:0.85rem;">Manufacturer</label>
+                <select id="warrantyManufacturer" name="warrantyManufacturer" style="width:100%;padding:var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.875rem;background:#FFFFFF;">
+                  <option value="">— Loading manufacturers… —</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" for="warrantyTier" style="font-size:0.85rem;">Tier / Program</label>
+                <select id="warrantyTier" name="warrantyTier" disabled style="width:100%;padding:var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.875rem;background:#FFFFFF;">
+                  <option value="">— Select manufacturer first —</option>
+                </select>
+              </div>
             </div>
 
-            <div class="warranty-builder">
-              <div class="warranty-cards-container" id="warrantyCardsContainer"></div>
-              <button type="button" class="btn-sm primary" style="margin-top:var(--sp-4);" onclick="addWarrantyCard()">+ Add Warranty</button>
+            <div id="warrantyDisplayBlock" style="display:none;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-3);">
+              <div id="warrantyDisplayString" style="font-size:0.875rem;color:#0F172A;line-height:1.6;margin-bottom:var(--sp-3);font-style:italic;"></div>
+              <table style="width:100%;font-size:0.825rem;border-collapse:collapse;">
+                <tbody>
+                  <tr><td style="padding:4px 8px;color:#6B7280;width:35%;">Material</td><td id="warrantyMaterial" style="padding:4px 8px;font-weight:500;color:#0F172A;">—</td></tr>
+                  <tr><td style="padding:4px 8px;color:#6B7280;">Labor</td><td id="warrantyLabor" style="padding:4px 8px;font-weight:500;color:#0F172A;">—</td></tr>
+                  <tr><td style="padding:4px 8px;color:#6B7280;">Tear-off</td><td id="warrantyTearoff" style="padding:4px 8px;font-weight:500;color:#0F172A;">—</td></tr>
+                  <tr><td style="padding:4px 8px;color:#6B7280;">Wind</td><td id="warrantyWind" style="padding:4px 8px;font-weight:500;color:#0F172A;">—</td></tr>
+                  <tr><td style="padding:4px 8px;color:#6B7280;">Hail</td><td id="warrantyHail" style="padding:4px 8px;font-weight:500;color:#0F172A;">—</td></tr>
+                  <tr><td style="padding:4px 8px;color:#6B7280;">Cert required</td><td id="warrantyCert" style="padding:4px 8px;font-weight:500;color:#0F172A;">—</td></tr>
+                </tbody>
+              </table>
             </div>
+
+            <div style="margin-bottom:var(--sp-3);">
+              <label style="display:flex;align-items:center;gap:var(--sp-2);cursor:pointer;font-size:0.85rem;color:#374151;">
+                <input type="checkbox" id="warrantyCustomToggle" name="warrantyCustomToggle" style="width:16px;height:16px;cursor:pointer;">
+                Use a custom warranty (off-manifest manufacturer or tier)
+              </label>
+            </div>
+
+            <div id="warrantyCustomBlock" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-3);">
+              <p style="font-size:0.8rem;color:#92400E;margin:0 0 var(--sp-3);">⚠️ Custom warranties bypass OtterQuote's manufacturer verification per D-204. The homeowner will see a "Custom warranty — not OtterQuote-verified" badge on this bid.</p>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);margin-bottom:var(--sp-3);">
+                <div>
+                  <label class="form-label" style="font-size:0.8rem;">Manufacturer name</label>
+                  <input type="text" id="warrantyCustomMfr" name="warrantyCustomMfr" placeholder="e.g., Brand X" style="width:100%;padding:var(--sp-2) var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-size:0.875rem;">
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.8rem;">Tier / program name</label>
+                  <input type="text" id="warrantyCustomTier" name="warrantyCustomTier" placeholder="e.g., Premium" style="width:100%;padding:var(--sp-2) var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-size:0.875rem;">
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:var(--sp-3);">
+                <div>
+                  <label class="form-label" style="font-size:0.78rem;">Material years</label>
+                  <input type="text" id="warrantyCustomMaterialYears" name="warrantyCustomMaterialYears" placeholder="30 / Lifetime" style="width:100%;padding:var(--sp-2);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-size:0.825rem;">
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.78rem;">Labor years</label>
+                  <input type="number" id="warrantyCustomLaborYears" name="warrantyCustomLaborYears" min="0" max="50" placeholder="0" style="width:100%;padding:var(--sp-2);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-size:0.825rem;">
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.78rem;">Wind (mph)</label>
+                  <input type="number" id="warrantyCustomWindMph" name="warrantyCustomWindMph" min="0" max="200" placeholder="110" style="width:100%;padding:var(--sp-2);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-size:0.825rem;">
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.78rem;">Hail class</label>
+                  <input type="text" id="warrantyCustomHailClass" name="warrantyCustomHailClass" placeholder="Standard / Class 4" style="width:100%;padding:var(--sp-2);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-size:0.825rem;">
+                </div>
+              </div>
+            </div>
+
+            <div style="padding-top:var(--sp-3);border-top:1px solid #E5E7EB;">
+              <label class="form-label" for="workmanshipYears" style="font-size:0.85rem;">
+                Workmanship warranty (years)
+                <span style="color:#6B7280;font-weight:400;font-size:0.78rem;display:block;margin-top:2px;">Your warranty on installation labor (separate from manufacturer warranty per D-202).</span>
+              </label>
+              <input type="number" id="workmanshipYears" name="workmanshipYears" min="0" max="50" placeholder="e.g., 5" style="max-width:140px;padding:var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-size:0.875rem;">
+            </div>
+
+            <input type="hidden" id="warrantyOptionIdHidden" name="warrantyOptionId">
+            <input type="hidden" id="warrantySnapshotHidden" name="warrantySnapshot">
           </div>
 
           <!-- ── Other Trades Covered by Insurance ── -->
@@ -3125,6 +3191,8 @@
             if (warrantyTemplates && warrantyTemplates.length > 0) {
               populateWarrantyTemplateDropdown(warrantyTemplates);
             }
+            // D-202 Phase 2 — wire warranty dropdowns once contractor is known (Session 463)
+            try { await initWarrantyDropdowns(null); } catch (e) { console.warn('[D-202] init wire failed:', e); }
 
             // Render contract template card now that both claim + contractor are loaded (86e10t277)
             renderContractTemplateCard();
@@ -3313,12 +3381,26 @@
       // Ice & Water Shield (86e10t28b)
       if (va.ice_water_shield?.coverage) setRadio('iceWaterShield', va.ice_water_shield.coverage);
 
-      // Warranties — clear existing cards and re-build from saved data (fix: reset warrantyCardCount to avoid index drift)
+      // D-202 Phase 2 prefill — prefer manifest selection; legacy va.warranties no longer rendered (Session 463)
       const wcContainer = document.getElementById('warrantyCardsContainer');
       if (wcContainer) wcContainer.innerHTML = '';
       warrantyCardCount = 0;
-      if (va.warranties && va.warranties.length > 0) {
-        va.warranties.forEach(w => addWarrantyCard(w));
+      // Apply D-202 selection from quote columns; fall back gracefully if none exist
+      try {
+        const hasD202 = !!(quote && (quote.warranty_option_id || quote.warranty_snapshot));
+        if (hasD202) {
+          await initWarrantyDropdowns({
+            warranty_option_id: quote.warranty_option_id || null,
+            warranty_snapshot: quote.warranty_snapshot || null,
+            warranty_is_custom: !quote.warranty_option_id && !!quote.warranty_snapshot,
+            workmanship_warranty_years: quote.workmanship_warranty_years != null ? quote.workmanship_warranty_years : null,
+          });
+        } else if (quote && quote.workmanship_warranty_years != null) {
+          // Legacy bid with workmanship year value but no manifest selection
+          await initWarrantyDropdowns({ workmanship_warranty_years: quote.workmanship_warranty_years });
+        }
+      } catch (e) {
+        console.warn('[D-202] prefill in activateChangeBidMode failed:', e);
       }
 
       // Other trades covered
@@ -3881,6 +3963,270 @@
     // ── Warranty Builder ──
     let warrantyCardCount = 0;
 
+    // ── D-202 Phase 2 — Manufacturer × Tier Warranty + D-199 bid-time gate ──
+    // (Session 463, Apr 30, 2026)
+    let __d202WarrantyOptionsCache = null;
+
+    async function loadWarrantyOptions() {
+      if (__d202WarrantyOptionsCache) return __d202WarrantyOptionsCache;
+      // sessionStorage cache (5-min TTL — manifest changes quarterly per D-202 v2)
+      try {
+        const cached = sessionStorage.getItem('d202_warranty_options');
+        const cachedAt = sessionStorage.getItem('d202_warranty_options_at');
+        if (cached && cachedAt && (Date.now() - parseInt(cachedAt) < 5 * 60 * 1000)) {
+          __d202WarrantyOptionsCache = JSON.parse(cached);
+          return __d202WarrantyOptionsCache;
+        }
+      } catch (e) { /* ignore — sessionStorage may be unavailable */ }
+
+      if (typeof sb === 'undefined' || !sb) return [];
+      try {
+        const { data, error } = await sb
+          .from('warranty_options')
+          .select('id,manufacturer,tier,material_years,labor_years,labor_note,tearoff_years,wind_mph,hail_class,cert_required,display_string')
+          .order('manufacturer', { ascending: true })
+          .order('tier', { ascending: true });
+        if (error) {
+          console.warn('[D-202] loadWarrantyOptions error:', error);
+          return [];
+        }
+        __d202WarrantyOptionsCache = data || [];
+        try {
+          sessionStorage.setItem('d202_warranty_options', JSON.stringify(__d202WarrantyOptionsCache));
+          sessionStorage.setItem('d202_warranty_options_at', String(Date.now()));
+        } catch (e) { /* ignore */ }
+        return __d202WarrantyOptionsCache;
+      } catch (e) {
+        console.warn('[D-202] loadWarrantyOptions threw:', e);
+        return [];
+      }
+    }
+
+    async function initWarrantyDropdowns(prefill) {
+      const mfrSel = document.getElementById('warrantyManufacturer');
+      if (!mfrSel) return;  // form may not be rendered yet (non-roofing flows)
+
+      // Avoid double-wiring on re-entry
+      if (mfrSel.dataset.d202Wired === '1') {
+        if (prefill) await __d202ApplyPrefill(prefill);
+        return;
+      }
+      mfrSel.dataset.d202Wired = '1';
+
+      const options = await loadWarrantyOptions();
+      const mfrs = Array.from(new Set(options.map(o => o.manufacturer))).sort();
+      mfrSel.innerHTML = '<option value="">— Select manufacturer —</option>'
+        + mfrs.map(m => `<option value="${escHtmlBid(m)}">${escHtmlBid(m)}</option>`).join('')
+        + '<option value="__OTHER__">Other (free-text)</option>';
+
+      mfrSel.addEventListener('change', onWarrantyManufacturerChange);
+      const tierSel = document.getElementById('warrantyTier');
+      if (tierSel) tierSel.addEventListener('change', onWarrantyTierChange);
+      const customToggle = document.getElementById('warrantyCustomToggle');
+      if (customToggle) customToggle.addEventListener('change', onWarrantyCustomToggle);
+
+      if (prefill) await __d202ApplyPrefill(prefill);
+    }
+
+    async function __d202ApplyPrefill(prefill) {
+      if (!prefill) return;
+      try {
+        const options = await loadWarrantyOptions();
+        if (prefill.workmanship_warranty_years != null) {
+          const w = document.getElementById('workmanshipYears');
+          if (w) w.value = prefill.workmanship_warranty_years;
+        }
+        if (prefill.warranty_option_id) {
+          const opt = options.find(o => o.id === prefill.warranty_option_id);
+          if (opt) {
+            const mfrSel = document.getElementById('warrantyManufacturer');
+            if (mfrSel) mfrSel.value = opt.manufacturer;
+            await onWarrantyManufacturerChange();
+            const tierSel = document.getElementById('warrantyTier');
+            if (tierSel) {
+              tierSel.value = opt.id;
+              await onWarrantyTierChange();
+            }
+          }
+        } else if (prefill.warranty_is_custom && prefill.warranty_snapshot) {
+          const cb = document.getElementById('warrantyCustomToggle');
+          if (cb) { cb.checked = true; onWarrantyCustomToggle(); }
+        }
+      } catch (e) {
+        console.warn('[D-202] __d202ApplyPrefill threw:', e);
+      }
+    }
+
+    async function onWarrantyManufacturerChange() {
+      const mfrSel = document.getElementById('warrantyManufacturer');
+      const tierSel = document.getElementById('warrantyTier');
+      const displayBlock = document.getElementById('warrantyDisplayBlock');
+      const customToggle = document.getElementById('warrantyCustomToggle');
+      if (!mfrSel || !tierSel) return;
+
+      const mfr = mfrSel.value;
+
+      tierSel.innerHTML = '<option value="">— Select tier —</option>';
+      tierSel.disabled = true;
+      if (displayBlock) displayBlock.style.display = 'none';
+      const optHidden = document.getElementById('warrantyOptionIdHidden');
+      const snapHidden = document.getElementById('warrantySnapshotHidden');
+      if (optHidden) optHidden.value = '';
+      if (snapHidden) snapHidden.value = '';
+
+      if (!mfr) return;
+
+      if (mfr === '__OTHER__') {
+        if (customToggle) { customToggle.checked = true; onWarrantyCustomToggle(); }
+        return;
+      }
+
+      if (customToggle && customToggle.checked) {
+        customToggle.checked = false;
+        onWarrantyCustomToggle();
+      }
+
+      const options = await loadWarrantyOptions();
+      const tiers = options.filter(o => o.manufacturer === mfr);
+      if (tiers.length === 0) return;
+
+      tierSel.innerHTML = '<option value="">— Select tier —</option>'
+        + tiers.map(t => `<option value="${escHtmlBid(t.id)}">${escHtmlBid(t.tier)}</option>`).join('');
+      tierSel.disabled = false;
+    }
+
+    async function onWarrantyTierChange() {
+      const tierSel = document.getElementById('warrantyTier');
+      const displayBlock = document.getElementById('warrantyDisplayBlock');
+      const optHidden = document.getElementById('warrantyOptionIdHidden');
+      const snapHidden = document.getElementById('warrantySnapshotHidden');
+      if (!tierSel) return;
+
+      const id = tierSel.value;
+      if (!id) {
+        if (displayBlock) displayBlock.style.display = 'none';
+        if (optHidden) optHidden.value = '';
+        if (snapHidden) snapHidden.value = '';
+        return;
+      }
+
+      const options = await loadWarrantyOptions();
+      const opt = options.find(o => o.id === id);
+      if (!opt) return;
+
+      const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      setText('warrantyDisplayString', opt.display_string || '');
+      setText('warrantyMaterial', opt.material_years || '—');
+      setText('warrantyLabor', opt.labor_years != null
+        ? (opt.labor_years + ' years' + (opt.labor_note ? ' (' + opt.labor_note + ')' : ''))
+        : (opt.labor_note || 'None'));
+      setText('warrantyTearoff', opt.tearoff_years != null ? (opt.tearoff_years + ' years') : '—');
+      setText('warrantyWind', opt.wind_mph != null ? (opt.wind_mph + ' mph') : '—');
+      setText('warrantyHail', opt.hail_class || '—');
+      setText('warrantyCert', opt.cert_required || 'None required');
+      if (displayBlock) displayBlock.style.display = '';
+
+      if (optHidden) optHidden.value = opt.id;
+      if (snapHidden) snapHidden.value = opt.display_string || '';
+    }
+
+    function onWarrantyCustomToggle() {
+      const cb = document.getElementById('warrantyCustomToggle');
+      const customBlock = document.getElementById('warrantyCustomBlock');
+      const mfrSel = document.getElementById('warrantyManufacturer');
+      const tierSel = document.getElementById('warrantyTier');
+      const displayBlock = document.getElementById('warrantyDisplayBlock');
+      const optHidden = document.getElementById('warrantyOptionIdHidden');
+      const snapHidden = document.getElementById('warrantySnapshotHidden');
+
+      if (cb && cb.checked) {
+        if (customBlock) customBlock.style.display = '';
+        if (displayBlock) displayBlock.style.display = 'none';
+        if (mfrSel && mfrSel.value !== '__OTHER__') mfrSel.value = '';
+        if (tierSel) { tierSel.value = ''; tierSel.disabled = true; }
+        if (optHidden) optHidden.value = '';
+        if (snapHidden) snapHidden.value = '';
+      } else {
+        if (customBlock) customBlock.style.display = 'none';
+      }
+    }
+
+    function getD202WarrantySelection() {
+      const cb = document.getElementById('warrantyCustomToggle');
+      const isCustom = cb && cb.checked === true;
+      const wmRaw = document.getElementById('workmanshipYears')?.value;
+      const wm = wmRaw !== '' && wmRaw != null ? parseInt(wmRaw) : null;
+      const workmanship = (wm != null && Number.isFinite(wm)) ? wm : null;
+
+      if (isCustom) {
+        const mfr = document.getElementById('warrantyCustomMfr')?.value?.trim() || null;
+        const tier = document.getElementById('warrantyCustomTier')?.value?.trim() || null;
+        const matY = document.getElementById('warrantyCustomMaterialYears')?.value?.trim() || null;
+        const labY = document.getElementById('warrantyCustomLaborYears')?.value?.trim() || null;
+        const wind = document.getElementById('warrantyCustomWindMph')?.value?.trim() || null;
+        const hail = document.getElementById('warrantyCustomHailClass')?.value?.trim() || null;
+
+        // If everything is blank, treat as no warranty selected
+        if (!mfr && !tier && !matY && !labY && !wind && !hail) {
+          return { warranty_option_id: null, warranty_snapshot: null, workmanship_warranty_years: workmanship, is_custom: false };
+        }
+
+        const labY_str = labY ? (labY + ' years') : 'None';
+        const matY_str = matY || 'Per manufacturer';
+        const wind_str = wind ? (wind + ' mph') : 'Per product';
+        const hail_str = hail || 'Standard';
+        const snapshot = (mfr || 'Custom') + ' ' + (tier || '') + ' — Material: ' + matY_str
+          + '; Labor: ' + labY_str + '; Wind: ' + wind_str + '; Hail: ' + hail_str
+          + '. Administered by manufacturer; not verified by OtterQuote per D-204. OtterQuote is not the warrantor.';
+
+        return {
+          warranty_option_id: null,
+          warranty_snapshot: snapshot,
+          workmanship_warranty_years: workmanship,
+          is_custom: true,
+          custom_payload: {
+            manufacturer: mfr,
+            tier: tier,
+            material_years: matY,
+            labor_years: labY,
+            wind_mph: wind,
+            hail_class: hail,
+          },
+        };
+      }
+
+      const optionId = document.getElementById('warrantyOptionIdHidden')?.value || null;
+      const snap = document.getElementById('warrantySnapshotHidden')?.value || null;
+      return {
+        warranty_option_id: optionId || null,
+        warranty_snapshot: snap || null,
+        workmanship_warranty_years: workmanship,
+        is_custom: false,
+      };
+    }
+
+    // ── D-199 client-side bid-time gate ──
+    async function checkBidCanSubmitGate(contractorId, trade, fundingType) {
+      if (typeof sb === 'undefined' || !sb || !contractorId) {
+        return { can_submit: false, reason: 'Cannot determine contractor identity. Please refresh and try again.', status: null };
+      }
+      try {
+        const { data, error } = await sb.rpc('bid_can_submit', {
+          p_contractor_id: contractorId,
+          p_trade: trade,
+          p_funding_type: fundingType,
+        });
+        if (error) {
+          console.warn('[D-199] bid_can_submit RPC error:', error);
+          return { can_submit: false, reason: 'Could not verify your contract template status. Please refresh and try again.', status: null };
+        }
+        return data || { can_submit: false, reason: 'Unknown error', status: null };
+      } catch (e) {
+        console.warn('[D-199] bid_can_submit threw:', e);
+        return { can_submit: false, reason: 'Network error verifying contract template. Please retry.', status: null };
+      }
+    }
+
     const WARRANTY_COVERAGE_LINES = [
       { key: 'material_defects', label: 'Material Defects Warranty' },
       { key: 'labor', label: 'Labor Warranty' },
@@ -4126,6 +4472,25 @@
         if (CONFIG.DEMO_MODE) {
           await new Promise(resolve => setTimeout(resolve, 800));
         } else if (sb && currentUser && currentClaim) {
+          // ── D-199 bid-time validation gate (Session 463) ──
+          // Block submit unless contractor has a validated template for this trade × funding_type.
+          if (currentContractor && currentContractor.id) {
+            const __gateTrade = (formData.get('tradeType') || currentClaim.selected_trades?.[0] || currentClaim.trades?.[0] || 'roofing').toLowerCase();
+            const __gateFundingRaw = currentClaim.funding_type ||
+              ((currentClaim.job_type && currentClaim.job_type.startsWith('insurance')) ? 'insurance' : 'retail');
+            const __gateFunding = (__gateFundingRaw === 'insurance') ? 'insurance' : 'retail';
+            const __gateResult = await checkBidCanSubmitGate(currentContractor.id, __gateTrade, __gateFunding);
+            if (!__gateResult.can_submit) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Submit Bid';
+              const __msg = (__gateResult.reason || 'Your contract template has not been validated for this trade and funding type.')
+                + '\n\nUpload and validate it on your profile before bidding.';
+              if (window.confirm(__msg + '\n\nClick OK to go to your profile.')) {
+                window.location.href = 'contractor-profile.html#templates';
+              }
+              return;
+            }
+          }
           const totalPrice = parseFloat(document.getElementById('totalPrice').value) || 0;
           const feePercentage = 5.0;
 
@@ -4210,7 +4575,7 @@
               oop_price: formData.get('dripEdgeOption') === 'oop' ? (parseFloat(formData.get('dripEdgeOopPrice')) || null) : null,
             },
 
-            warranties: collectAllWarrantyData(),
+            warranties: null, // D-202 Phase 2: superseded by quotes.warranty_option_id / warranty_snapshot (Session 463)
 
             other_trades_covered: {
               siding_full:     formData.get('tradeCoveredSidingFull') || null,
@@ -4282,6 +4647,9 @@
             valueAdds.wizard_trade_queue = wizardTradeQueue.length > 0 ? wizardTradeQueue : null;
           }
 
+          // D-202 Phase 2 — capture warranty selection BEFORE quoteData is built (Session 463)
+          const __d202Selection = getD202WarrantySelection();
+
           const quoteData = {
             claim_id: currentClaim.id,
             contractor_id: currentContractor.id,
@@ -4299,7 +4667,21 @@
             per_trade_breakdown: (wizardMode && Object.keys(wizardTradePrices).length > 0) ? wizardTradePrices : null,
             is_auto_bid: false,
             auto_renew: document.getElementById('autoRenewToggle')?.checked ?? true, // D-150
+            // D-202 Phase 2 — manufacturer × tier warranty selection (Session 463)
+            warranty_option_id: __d202Selection.warranty_option_id,
+            warranty_snapshot: __d202Selection.warranty_snapshot,
+            workmanship_warranty_years: __d202Selection.workmanship_warranty_years,
           };
+
+          // Flag custom warranties for admin review (D-202 v2 fallback path)
+          if (__d202Selection.is_custom) {
+            quoteData.value_adds = quoteData.value_adds || {};
+            quoteData.value_adds.warranty_admin_review = {
+              flagged_at: new Date().toISOString(),
+              payload: __d202Selection.custom_payload,
+              note: 'Custom warranty submitted via D-202 Phase 2 free-text fallback. Review for possible manifest expansion.',
+            };
+          }
 
           if (changeBidMode && existingQuote) {
             const { error: updateError } = await sb
@@ -4317,6 +4699,10 @@
                 value_adds: quoteData.value_adds,
                 per_trade_breakdown: quoteData.per_trade_breakdown,
                 auto_renew: quoteData.auto_renew,
+                // D-202 Phase 2 — write manufacturer × tier warranty fields on bid edit (Session 463)
+                warranty_option_id: quoteData.warranty_option_id,
+                warranty_snapshot: quoteData.warranty_snapshot,
+                workmanship_warranty_years: quoteData.workmanship_warranty_years,
                 // D-150: renewal — reset bid window
                 ...(renewMode ? {
                   bid_status: 'submitted',
@@ -4504,13 +4890,87 @@
     }
 
     // ── Initialize ──
-    let _initFired = false;
-        sb.auth.onAuthStateChange(async (event, session) => {
-            if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-                _initFired = true;
-                await init();
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!sb && typeof supabase !== 'undefined') {
+        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+      }
+
+      // Wire up bid type UI
+      initBidTypeUI();
+
+      // Wire up chimney type toggle (86e10t28v)
+      initChimneyToggle();
+
+      async function startUp() {
+        await init();
+        updateFeeCalculator();
+
+        // Set default start date to today
+        const today = new Date().toISOString().split('T')[0];
+        const startDateEl = document.getElementById('startDate');
+        if (startDateEl && !startDateEl.value) startDateEl.value = today;
+
+        const urlParams = new URLSearchParams(window.location.search);
+
+        // action=sign is deprecated — contract signing now happens after homeowner selection,
+        // not at bid submission time. If a contractor arrives via an old link, show them their bid.
+        const actionParam = urlParams.get('action');
+        if (actionParam === 'sign') {
+          console.log('action=sign is deprecated — contract signing occurs after homeowner selection');
+          // Fall through to normal bid form behavior
+        }
+
+        // Multi-trade project check (non-wizard path)
+        const tradesParam = urlParams.get('trades');
+        if (tradesParam) {
+          try { initTradeSelection(JSON.parse(tradesParam)); } catch(e) {}
+        } else if (currentClaim && currentClaim.trades && currentClaim.trades.length > 1) {
+          initTradeSelection(currentClaim.trades);
+        }
+
+        // Apply retail / trade-specific form customizations
+        applyJobTypeCustomizations();
+
+        // ── Wizard initialization (D-162): multi-trade retail only ──
+        // initWizard runs AFTER applyJobTypeCustomizations so isRetailJob / trade flags are set.
+        if (currentClaim) {
+          const claimTrades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
+          if (isRetailJob && claimTrades.length >= 2) {
+            // Try restoring wizard state from localStorage
+            const saved = loadWizardState();
+            initWizard(claimTrades);  // sets wizardMode if eligible
+
+            if (wizardMode) {
+              if (saved && saved.wizardTradeQueue && saved.wizardTradeQueue.length > 0) {
+                wizardTradeQueue    = saved.wizardTradeQueue;
+                wizardSelectedTrades = saved.wizardSelectedTrades || [...wizardTradeQueue];
+                const restoreStep  = changeBidMode ? 2 : (saved.wizardStep || 1);
+                const restoreIdx   = changeBidMode ? 0 : (saved.wizardCurrentTradeIdx || 0);
+                wizardGoTo(restoreStep, restoreIdx, false);
+              } else if (changeBidMode) {
+                // Change-bid with no saved state: jump to step 2 per D-162 spec
+                wizardGoTo(2, 0, false);
+              }
+              // Push initial history entry so first popstate works
+              history.replaceState(
+                { wizardStep: wizardStep, wizardTradeIdx: wizardCurrentTradeIdx },
+                '', location.href
+              );
             }
-        }););
+          }
+        }
+      }
+
+      // Wait for Supabase auth to be fully initialized before running startup.
+      // getSession() resolves once the session is ready, which is more reliable
+      // than INITIAL_SESSION when config.js already created the client before
+      // this listener could be registered (fix: 86e110mxp).
+      if (sb) {
+        sb.auth.getSession().then(() => startUp());
+      } else {
+        startUp();
+      }
+    });
     // ═══════════════════════════════════════════════════════════════
     // CONTRACT SIGNING — IC 24-5-11 Contractor-Signs-First Flow
     // ═══════════════════════════════════════════════════════════════
