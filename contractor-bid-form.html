@@ -1101,6 +1101,73 @@
       color: var(--slate);
       font-style: italic;
     }
+
+    /* ── Home Photos Card (86e0zdknj) ─────────────────────────────────────── */
+    .hover-thumb-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .hover-thumb-grid img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #BAE6FD;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .hover-thumb-grid img:hover {
+      transform: scale(1.04);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+    }
+    .hover-photo-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.90);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .hover-photo-modal-img {
+      max-width: 88vw;
+      max-height: 82vh;
+      border-radius: 8px;
+      object-fit: contain;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+    .hover-photo-modal-btn {
+      position: fixed;
+      background: rgba(255,255,255,0.18);
+      border: none;
+      color: #fff;
+      font-size: 1.6rem;
+      cursor: pointer;
+      border-radius: 50%;
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .hover-photo-modal-btn:hover { background: rgba(255,255,255,0.32); }
+    .hover-photo-modal-close { top: 18px; right: 22px; }
+    .hover-photo-modal-prev  { left: 18px; top: 50%; transform: translateY(-50%); }
+    .hover-photo-modal-next  { right: 18px; top: 50%; transform: translateY(-50%); }
+    #hoverPhotoModalCounter  {
+      position: fixed;
+      bottom: 26px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.8);
+      font-size: 0.9rem;
+      pointer-events: none;
+    }
+    @media (max-width: 600px) {
+      .hover-thumb-grid { grid-template-columns: repeat(2, 1fr); }
+    }
   </style>
 </head>
 <body>
@@ -1218,6 +1285,35 @@
         <button type="button" class="btn-wizard btn-wizard-next" id="wizardStep1Next" onclick="wizardNext()">
           Next: Enter Bid Details →
         </button>
+      </div>
+    </div>
+
+    <!-- Home Photos Card (86e0zdknj) — populated by initHoverHomePhotos() -->
+    <div class="form-card" id="hoverHomePhotosCard" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:var(--sp-3);margin-bottom:var(--sp-4);">
+        <div>
+          <div class="form-card-title" style="margin-bottom:4px;">📷 Home Photos</div>
+          <div id="hoverPhotosAddress" style="font-size:0.82rem;color:#64748B;"></div>
+        </div>
+        <div id="hoverPhotos3DBtn" style="display:none;">
+          <a id="hoverPhotos3DLink" href="#" target="_blank" rel="noopener"
+             style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#0EA5E9;color:#fff;font-size:0.82rem;font-weight:600;border-radius:var(--radius-sm);text-decoration:none;transition:background 0.15s;">
+            Open Hover 3D Design ↗
+          </a>
+        </div>
+      </div>
+      <!-- Loading state -->
+      <div id="hoverPhotosLoading" style="text-align:center;padding:var(--sp-6) 0;color:#6B7280;font-size:0.875rem;">
+        <span>Loading property photos…</span>
+      </div>
+      <!-- Thumbnail grid -->
+      <div id="hoverPhotosGrid" style="display:none;" class="hover-thumb-grid"></div>
+      <!-- More indicator (shown when >4 photos) -->
+      <div id="hoverPhotosMore" style="display:none;margin-top:var(--sp-2);font-size:0.8rem;color:#0369A1;"></div>
+      <!-- Empty state -->
+      <div id="hoverPhotosEmpty" style="display:none;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:var(--radius-md);padding:var(--sp-5);text-align:center;font-size:0.875rem;color:#6B7280;">
+        Property photos will appear here once Hover measurements are complete.
+        <div style="margin-top:var(--sp-2);"><a id="hoverPhotosDirectLink" href="#" target="_blank" rel="noopener" style="color:#0284C7;font-size:0.82rem;">View in Hover ↗</a></div>
       </div>
     </div>
 
@@ -2526,6 +2622,193 @@
         if (type || price != null) guards.push({ type, price });
       });
       return guards;
+    }
+
+
+    // ── Home Photos (86e0zdknj) ─────────────────────────────────────────────
+    // sessionStorage cache key: hover_photos_{claimId}, TTL 10 min
+    const HOVER_PHOTOS_TTL = 10 * 60 * 1000;
+
+    async function initHoverHomePhotos(claimId) {
+      if (!claimId) return;
+
+      const card = document.getElementById('hoverHomePhotosCard');
+      if (!card) return;
+
+      // Always show the card — empty state handles no-photo case
+      card.style.display = 'block';
+
+      // Check sessionStorage cache
+      let cached = null;
+      try {
+        const raw = sessionStorage.getItem('hover_photos_' + claimId);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Date.now() - parsed.ts < HOVER_PHOTOS_TTL) {
+            cached = parsed;
+          }
+        }
+      } catch (e) { /* ignore */ }
+
+      if (cached) {
+        renderHoverPhotos(cached, claimId);
+        return;
+      }
+
+      // Fetch from Edge Function
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/get-hover-siding-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (session?.access_token || ''),
+            'apikey': CONFIG.SUPABASE_ANON,
+          },
+          body: JSON.stringify({ claim_id: claimId }),
+        });
+
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        const payload = {
+          ts: Date.now(),
+          images: data.design_images || [],
+          hover_job_id: data.hover_job_id || null,
+          job_address: data.job_address || null,
+        };
+
+        // Cache result
+        try { sessionStorage.setItem('hover_photos_' + claimId, JSON.stringify(payload)); } catch (e) { /* ignore */ }
+
+        renderHoverPhotos(payload, claimId);
+      } catch (err) {
+        console.warn('[Home Photos] fetch error:', err);
+        // Show empty state on failure
+        document.getElementById('hoverPhotosLoading').style.display = 'none';
+        document.getElementById('hoverPhotosEmpty').style.display = 'block';
+      }
+    }
+
+    function renderHoverPhotos(payload, claimId) {
+      const loadingEl = document.getElementById('hoverPhotosLoading');
+      const gridEl    = document.getElementById('hoverPhotosGrid');
+      const moreEl    = document.getElementById('hoverPhotosMore');
+      const emptyEl   = document.getElementById('hoverPhotosEmpty');
+      const addrEl    = document.getElementById('hoverPhotosAddress');
+      const btn3D     = document.getElementById('hoverPhotos3DBtn');
+      const link3D    = document.getElementById('hoverPhotos3DLink');
+      const directLnk = document.getElementById('hoverPhotosDirectLink');
+
+      if (loadingEl) loadingEl.style.display = 'none';
+
+      // Address line
+      if (addrEl && payload.job_address) addrEl.textContent = payload.job_address;
+
+      // Hover job links
+      if (payload.hover_job_id) {
+        const jobUrl = 'https://hover.to/jobs/' + payload.hover_job_id;
+        if (link3D) link3D.href = jobUrl;
+        if (directLnk) directLnk.href = jobUrl;
+
+        // "Open Hover 3D Design" button — siding claims only
+        const isSiding = currentClaim && Array.isArray(currentClaim.trades) && currentClaim.trades.includes('siding');
+        if (isSiding && btn3D) btn3D.style.display = 'block';
+      }
+
+      const images = payload.images || [];
+
+      if (images.length === 0) {
+        if (emptyEl) emptyEl.style.display = 'block';
+        return;
+      }
+
+      // Render up to 4 thumbnails
+      if (gridEl) {
+        gridEl.innerHTML = '';
+        const shown = images.slice(0, 4);
+        shown.forEach((url, idx) => {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = 'Property view ' + (idx + 1);
+          img.loading = 'lazy';
+          img.onclick = () => openHoverPhotoModal(idx, images);
+          img.onerror = function () { this.parentElement?.remove(); };
+          gridEl.appendChild(img);
+        });
+        gridEl.style.display = 'grid';
+      }
+
+      // More indicator
+      if (moreEl && images.length > 4) {
+        moreEl.textContent = '+ ' + (images.length - 4) + ' more photos — click any photo to browse all';
+        moreEl.style.display = 'block';
+      }
+    }
+
+    // ── Photo Lightbox Modal ──────────────────────────────────────────────────
+    let _photoModalImages = [];
+    let _photoModalIdx = 0;
+
+    function _ensurePhotoModal() {
+      if (document.getElementById('hoverPhotoModal')) return;
+      const overlay = document.createElement('div');
+      overlay.id = 'hoverPhotoModal';
+      overlay.className = 'hover-photo-modal-overlay';
+      overlay.style.display = 'none';
+      overlay.innerHTML = `
+        <button class="hover-photo-modal-btn hover-photo-modal-close" id="hoverModalClose" aria-label="Close">✕</button>
+        <button class="hover-photo-modal-btn hover-photo-modal-prev" id="hoverModalPrev" aria-label="Previous">&#8249;</button>
+        <img id="hoverModalImg" class="hover-photo-modal-img" alt="Property photo">
+        <button class="hover-photo-modal-btn hover-photo-modal-next" id="hoverModalNext" aria-label="Next">&#8250;</button>
+        <div id="hoverPhotoModalCounter"></div>
+      `;
+      document.body.appendChild(overlay);
+
+      document.getElementById('hoverModalClose').onclick = closeHoverPhotoModal;
+      document.getElementById('hoverModalPrev').onclick  = () => _stepPhotoModal(-1);
+      document.getElementById('hoverModalNext').onclick  = () => _stepPhotoModal(1);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) closeHoverPhotoModal(); });
+    }
+
+    function openHoverPhotoModal(startIdx, images) {
+      _ensurePhotoModal();
+      _photoModalImages = images || [];
+      _photoModalIdx = startIdx;
+      _renderPhotoModal();
+      const modal = document.getElementById('hoverPhotoModal');
+      if (modal) modal.style.display = 'flex';
+      document.addEventListener('keydown', _photoModalKeyHandler);
+    }
+
+    function closeHoverPhotoModal() {
+      const modal = document.getElementById('hoverPhotoModal');
+      if (modal) modal.style.display = 'none';
+      document.removeEventListener('keydown', _photoModalKeyHandler);
+    }
+
+    function _stepPhotoModal(dir) {
+      _photoModalIdx = (_photoModalIdx + dir + _photoModalImages.length) % _photoModalImages.length;
+      _renderPhotoModal();
+    }
+
+    function _renderPhotoModal() {
+      const img     = document.getElementById('hoverModalImg');
+      const counter = document.getElementById('hoverPhotoModalCounter');
+      const prev    = document.getElementById('hoverModalPrev');
+      const next    = document.getElementById('hoverModalNext');
+      if (img) img.src = _photoModalImages[_photoModalIdx] || '';
+      if (counter) counter.textContent = (_photoModalIdx + 1) + ' / ' + _photoModalImages.length;
+      // Hide prev/next when only one photo
+      const multi = _photoModalImages.length > 1;
+      if (prev) prev.style.display = multi ? 'flex' : 'none';
+      if (next) next.style.display = multi ? 'flex' : 'none';
+    }
+
+    function _photoModalKeyHandler(e) {
+      if (e.key === 'Escape')      closeHoverPhotoModal();
+      if (e.key === 'ArrowLeft')   _stepPhotoModal(-1);
+      if (e.key === 'ArrowRight')  _stepPhotoModal(1);
     }
 
     // ── Hover Siding Data Loader ──
@@ -5012,6 +5295,11 @@
 
         // Apply retail / trade-specific form customizations
         applyJobTypeCustomizations();
+
+        // Home Photos card (86e0zdknj) — load after claim is available
+        if (currentClaim && currentClaim.id) {
+          initHoverHomePhotos(currentClaim.id);
+        }
 
         // ── Wizard initialization (D-162): multi-trade retail only ──
         // initWizard runs AFTER applyJobTypeCustomizations so isRetailJob / trade flags are set.
