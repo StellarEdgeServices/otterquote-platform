@@ -899,7 +899,7 @@
         </div>
       </div>
       <div class="state-gate-confirm" id="gate-confirm">✓ You're on the list. We'll reach out when we arrive in your area.</div>
-      <div class="state-gate-error" id="gate-error">Something went wrong saving your spot. Please try again or email support@otterquote.com.</div>
+      <div class="state-gate-error" id="gate-error" role="alert" aria-live="polite"></div>
       <button class="state-gate-btn" id="gate-save-btn" onclick="saveWaitlistSpot()">Save My Spot</button>
       <p class="state-gate-fine">Your information is kept private and used only to notify you of availability in your area. You may request account deletion at any time by emailing <a href="mailto:support@otterquote.com" style="color:rgba(255,255,255,0.55);">support@otterquote.com</a>.</p>
     </div>
@@ -1598,7 +1598,10 @@
           if (btn) { btn.textContent = 'Saved ✓'; }
         } catch (err) {
           console.warn('[StateGate] saveWaitlistSpot error:', err?.message || err);
-          if (errorEl) errorEl.style.display = 'block';
+          if (errorEl) {
+            errorEl.textContent = 'Something went wrong saving your spot. Please try again or email support@otterquote.com.';
+            errorEl.style.display = 'block';
+          }
           if (btn) { btn.disabled = false; btn.textContent = 'Save My Spot'; }
         }
       }

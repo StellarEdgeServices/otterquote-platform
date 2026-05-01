@@ -96,7 +96,10 @@ test.describe('Flow B — Homeowner Journey (Phase 1 Stub)', () => {
     // Page body must be visible and error-free
     await expect(page.locator('body')).toBeVisible();
     await expect(page.locator('body')).not.toContainText(/uncaught|typeerror|referenceerror/i);
-    await expect(page.locator('body')).not.toContainText(/something went wrong/i);
+    // Visibility-aware error check: the #gate-error div is in the DOM at all times
+    // (display:none by default) and only populated/shown if saveWaitlistSpot() throws.
+    // toContainText() reads textContent of hidden elements, so we use visibility instead.
+    await expect(page.locator('#gate-error')).not.toBeVisible();
 
     // Must not be redirected
     await expect(page).not.toHaveURL(/login|get-started/);
