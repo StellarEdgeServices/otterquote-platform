@@ -43,7 +43,7 @@ var CONFIG = {
   CANCELLATION_DAYS_BEFORE: 3,     // D-041
 
   // ── Site Info ──
-  SITE_NAME: 'OtterQuote',
+  SITE_NAME: 'Otter Quotes',
   SITE_URL:  'https://otterquote.com',
   SUPPORT_EMAIL: 'support@otterquote.com',
 
@@ -57,4 +57,3 @@ var CONFIG = {
 let sb;
 if (typeof supabase !== 'undefined') {
   sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
-}

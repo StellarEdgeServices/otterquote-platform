@@ -514,7 +514,7 @@
             .eq('id', validationRow.id)
             .single();
           if (refreshed && cellEl) renderValidationRow(cellEl, refreshed);
-          alert('Submitted for admin review. We will notify you once a member of the OtterQuote team has looked at your template.');
+          alert('Submitted for admin review. We will notify you once a member of the Otter Quotes team has looked at your template.');
           return;
         }
 
@@ -568,4 +568,4 @@
     requestAdminReviewForTemplate: requestAdminReviewForTemplate,
     openManualMappingModal: openManualMappingModal,
   };
-})();
+})()
