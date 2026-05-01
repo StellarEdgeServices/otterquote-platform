@@ -202,6 +202,23 @@
       font-size: 0.8rem; font-weight: 600; color: var(--amber); margin-bottom: var(--sp-5);
     }
 
+    /* ─── Intro Video ─── */
+    .intro-video-card {
+      background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg); padding: var(--sp-6);
+      margin-bottom: var(--sp-8);
+    }
+    .intro-video-label {
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--slate); margin-bottom: var(--sp-3);
+      display: flex; align-items: center; gap: var(--sp-2);
+    }
+    .intro-video-player {
+      width: 100%; max-width: 720px; aspect-ratio: 16/9; display: block;
+      margin: 0 auto; border-radius: var(--radius-md);
+      background: #000;
+    }
+
     /* ─── Confirmation Modal ─── */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: var(--sp-6); opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
     .modal-overlay.active { opacity: 1; pointer-events: auto; }
@@ -259,6 +276,15 @@
 
           <!-- Back Button -->
           <a id="backLink" href="bids.html" class="back-btn">← Back to All Bids</a>
+
+          <!-- ── Intro Video (optional, hidden until loaded) ── -->
+          <div class="intro-video-card" id="introVideoCard" style="display:none;">
+            <div class="intro-video-label">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              Meet the contractor
+            </div>
+            <video id="introVideoPlayer" class="intro-video-player" controls preload="metadata" playsinline></video>
+          </div>
 
           <!-- ── Hero ── -->
           <div class="hero-card">
@@ -429,6 +455,7 @@
           loadContractor(),
           loadLicenses(),
           loadCertifications(),
+          loadAndRenderIntroVideo(),
           claimId ? loadBid() : Promise.resolve(),
         ]);
 
@@ -477,6 +504,42 @@
         .eq('contractor_id', contractorId)
         .order('created_at', { ascending: true });
       if (data) licenses = data;
+    }
+
+    // Optional fetch — fails silently if intro_video_path column doesn't exist
+    // (pre-v67 migration). Once column exists, surfaces video naturally.
+    async function loadAndRenderIntroVideo() {
+      if (!sb || !contractorId) return;
+      let videoPath = null;
+      try {
+        const { data, error } = await sb
+          .from('contractors')
+          .select('intro_video_path')
+          .eq('id', contractorId)
+          .maybeSingle();
+        if (error) return; // column may not exist yet — silently skip
+        videoPath = data && data.intro_video_path;
+      } catch (_) {
+        return;
+      }
+      if (!videoPath) return;
+
+      try {
+        const pathMatch = videoPath.match(/contractor-documents\/(.+?)(\?|$)/);
+        const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : videoPath;
+        const { data: signedData, error: signErr } = await sb.storage
+          .from('contractor-documents')
+          .createSignedUrl(storagePath, 3600);
+        if (signErr || !signedData || !signedData.signedUrl) return;
+
+        const playerEl = document.getElementById('introVideoPlayer');
+        const cardEl = document.getElementById('introVideoCard');
+        if (!playerEl || !cardEl) return;
+        playerEl.src = signedData.signedUrl;
+        cardEl.style.display = '';
+      } catch (_) {
+        // Storage failure — leave card hidden
+      }
     }
 
     async function loadCertifications() {

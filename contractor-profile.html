@@ -814,6 +814,47 @@
                 </div>
             </div>
 
+            <!-- Intro Video Card (gated by INTRO_VIDEO_ENABLED until v67 migration adds intro_video_path; companion ticket 86e169f1y) -->
+            <div class="profile-card" id="introVideoCard" style="display: none;">
+                <h2><span class="card-icon">&#127909;</span>Intro Video</h2>
+                <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-4);">
+                    Optional 60&ndash;90 second video introducing yourself. Tell homeowners who you are, how long you&apos;ve been in business, and why they should choose you.
+                </p>
+
+                <div class="edit-toggle">
+                    <button class="btn btn-primary" onclick="toggleEdit('introVideo')">Edit Intro Video</button>
+                </div>
+
+                <!-- View Mode -->
+                <div id="introVideoView">
+                    <div class="form-group">
+                        <label class="form-label">Current Video</label>
+                        <div id="introVideoPreviewView" style="padding: var(--sp-6); text-align: center; color: var(--slate); background-color: var(--light); border-radius: var(--radius-md);">
+                            No intro video uploaded yet
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Edit Mode -->
+                <div id="introVideoEdit" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">Upload Intro Video (MP4 or MOV, max 200&nbsp;MB)</label>
+                        <div class="image-upload">
+                            <input type="file" id="introVideoInput" accept="video/mp4,video/quicktime">
+                            <label for="introVideoInput" class="upload-label">
+                                &#127909; Click to upload your intro video
+                            </label>
+                        </div>
+                        <div id="introVideoUploadStatus" style="margin-top: var(--sp-3); font-size: 0.85rem;"></div>
+                    </div>
+
+                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-8);">
+                        <button class="btn btn-primary" onclick="saveProfile('introVideo')">Save Video</button>
+                        <button class="btn btn-secondary" onclick="toggleEdit('introVideo')">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Credentials Card -->
             <div class="profile-card">
                 <h2><span class="card-icon">â</span>Credentials & Verification</h2>
@@ -1206,6 +1247,10 @@
 
     <script>
         // CPA version â must match contractor-dashboard.html. Bump both when the CPA changes.
+        // Intro Video feature flag — flip to true after v67 migration adds intro_video_path column.
+        // Companion ticket: 86e169f1y
+        const INTRO_VIDEO_ENABLED = false;
+
         const CURRENT_CPA_VERSION = 'v1-2026-04';
 
         // State
@@ -1374,6 +1419,7 @@
             }
 
             renderCertifications();
+            await renderIntroVideoCard();
         }
 
         // ââ Populate view fields from contractor data ââ
@@ -1461,6 +1507,34 @@
         }
 
         // ââ Render credentials from licenses data ââ
+        // ── Intro Video card load + render (flag-gated) ──
+        async function renderIntroVideoCard() {
+            if (!INTRO_VIDEO_ENABLED) return;
+            const card = document.getElementById('introVideoCard');
+            if (!card) return;
+            card.style.display = '';
+
+            if (!contractorRecord || !sb) return;
+            const videoPath = contractorRecord.intro_video_path;
+            if (!videoPath) return;
+
+            try {
+                const pathMatch = videoPath.match(/contractor-documents\/(.+?)(\?|$)/);
+                const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : videoPath;
+                const { data: signedData, error: signErr } = await sb.storage
+                    .from('contractor-documents')
+                    .createSignedUrl(storagePath, 3600);
+                if (signErr || !signedData || !signedData.signedUrl) return;
+                const previewEl = document.getElementById('introVideoPreviewView');
+                if (!previewEl) return;
+                previewEl.style.padding = '0';
+                previewEl.style.background = '#000';
+                previewEl.innerHTML = '<video src="' + signedData.signedUrl + '" controls preload="metadata" playsinline style="width:100%;max-width:480px;aspect-ratio:16/9;border-radius:var(--radius-md);display:block;margin:0 auto;"></video>';
+            } catch (e) {
+                console.warn('renderIntroVideoCard signed URL failed:', e);
+            }
+        }
+
         function renderCredentials(licenses) {
             const container = document.getElementById('credentialsView');
             let html = '';
@@ -1709,6 +1783,50 @@
                     }
                 }
                 toggleEdit('photos');
+            } else if (section === 'introVideo') {
+                if (!INTRO_VIDEO_ENABLED) {
+                    alert('Intro video uploads aren\'t enabled yet. Check back soon.');
+                    return;
+                }
+                const introVideoInput = document.getElementById('introVideoInput');
+                const statusEl = document.getElementById('introVideoUploadStatus');
+                if (!introVideoInput || !introVideoInput.files.length) {
+                    if (statusEl) { statusEl.style.color = 'var(--slate)'; statusEl.textContent = 'Please choose a video file.'; }
+                    return;
+                }
+                const file = introVideoInput.files[0];
+                const allowedTypes = ['video/mp4', 'video/quicktime'];
+                if (!allowedTypes.includes(file.type)) {
+                    if (statusEl) { statusEl.style.color = '#DC2626'; statusEl.textContent = 'Please upload an MP4 or MOV file.'; }
+                    return;
+                }
+                const maxBytes = 200 * 1024 * 1024;
+                if (file.size > maxBytes) {
+                    if (statusEl) { statusEl.style.color = '#DC2626'; statusEl.textContent = 'File too large. Maximum 200 MB.'; }
+                    return;
+                }
+                if (statusEl) { statusEl.style.color = 'var(--slate)'; statusEl.textContent = 'Uploading\u2026'; }
+                try {
+                    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
+                    const filePath = `${currentUser.id}/intro-video/intro-${Date.now()}.${ext}`;
+                    const { error: uploadError } = await sb.storage
+                        .from('contractor-documents')
+                        .upload(filePath, file, { contentType: file.type, upsert: true });
+                    if (uploadError) throw uploadError;
+
+                    const { error: dbError } = await sb.from('contractors')
+                        .update({ intro_video_path: filePath, updated_at: new Date().toISOString() })
+                        .eq('id', contractorRecord.id);
+                    if (dbError) throw dbError;
+
+                    contractorRecord.intro_video_path = filePath;
+                    if (statusEl) { statusEl.style.color = '#10B981'; statusEl.textContent = 'Saved.'; }
+                    await renderIntroVideoCard();
+                    toggleEdit('introVideo');
+                } catch (err) {
+                    console.error('Error uploading intro video:', err);
+                    if (statusEl) { statusEl.style.color = '#DC2626'; statusEl.textContent = 'Upload failed. Please try again.'; }
+                }
             }
         }
 
