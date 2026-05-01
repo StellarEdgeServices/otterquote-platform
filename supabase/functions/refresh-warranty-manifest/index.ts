@@ -112,25 +112,25 @@ Deno.serve(async (req: Request) => {
 
       const { data: recentRun } = await sb
         .from("cron_health")
-        .select("ran_at")
+        .select("last_run_at, last_run_status")
         .eq("job_name", "warranty-manifest-refresh")
-        .eq("status", "success")
-        .gte("ran_at", cutoff)
-        .order("ran_at", { ascending: false })
-        .limit(1)
         .maybeSingle();
 
-      if (recentRun) {
+      const withinWindow = recentRun?.last_run_status === "success" &&
+        recentRun?.last_run_at &&
+        new Date(recentRun.last_run_at) >= new Date(cutoff);
+
+      if (withinWindow) {
         console.log(
-          `[refresh-warranty-manifest] Dedup: last successful run at ${recentRun.ran_at}. ` +
+          `[refresh-warranty-manifest] Dedup: last successful run at ${recentRun.last_run_at}. ` +
             `Use {"force": true} to override.`
         );
-        await logCronHealth(sb, runId, "skipped_dedup", 0, startedAt);
+        await logCronHealth(sb, "skipped_dedup", null);
         return new Response(
           JSON.stringify({
             status: "skipped",
             reason: "dedup_window",
-            last_run: recentRun.ran_at,
+            last_run: recentRun.last_run_at,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
@@ -230,7 +230,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Log to cron_health ───────────────────────────────────────────────────
-    await logCronHealth(sb, runId, "success", insertedCount, startedAt);
+    await logCronHealth(sb, "success", null);
 
     // ── Send Mailgun notification ────────────────────────────────────────────
     if (insertedCount > 0) {
@@ -254,7 +254,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[refresh-warranty-manifest] Error: ${message}`);
-    await logCronHealth(sb, runId, "error", 0, startedAt, message);
+    await logCronHealth(sb, "error", message);
     return new Response(
       JSON.stringify({ error: message, run_id: runId }),
       { status: 500, headers: { "Content-Type": "application/json" } }
@@ -339,22 +339,14 @@ async function tryGafProgrammatic(
 // ── Cron Health Logger ───────────────────────────────────────────────────────
 async function logCronHealth(
   sb: ReturnType<typeof createClient>,
-  runId: string,
   status: string,
-  itemsDetected: number,
-  startedAt: string,
-  errorMessage?: string
+  errorMessage: string | null
 ) {
   try {
-    await sb.from("cron_health").insert({
-      job_name: "warranty-manifest-refresh",
-      ran_at: startedAt,
-      status,
-      metadata: {
-        run_id: runId,
-        items_detected: itemsDetected,
-        ...(errorMessage ? { error: errorMessage } : {}),
-      },
+    await sb.rpc("record_cron_health", {
+      p_job_name: "warranty-manifest-refresh",
+      p_status: status,
+      p_error: errorMessage ?? null,
     });
   } catch (e) {
     console.error("[refresh-warranty-manifest] Failed to log cron_health:", e);
