@@ -833,6 +833,7 @@
                     <th>Est. Value</th>
                     <th>Status</th>
                     <th>Progress</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="leadsTableBody">
@@ -867,6 +868,45 @@
             </a>
         </div>
     </main>
+
+    <!-- Mark Job Complete — Confirmation Modal -->
+    <div id="markCompleteModalOverlay"
+         style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000;
+                align-items:center; justify-content:center;"
+         role="dialog" aria-modal="true" aria-labelledby="markCompleteModalTitle">
+      <div style="background:#fff; border-radius:0.75rem; padding:2rem; max-width:480px; width:90%;
+                  box-shadow:0 20px 60px rgba(0,0,0,0.3); margin:auto;">
+        <h3 id="markCompleteModalTitle"
+            style="margin:0 0 0.5rem; font-size:1.25rem; color:#0F172A;">
+          Mark Job Complete?
+        </h3>
+        <p id="markCompleteAddress"
+           style="font-weight:600; color:#0F172A; margin-bottom:1rem; font-size:0.95rem;"></p>
+        <p style="color:#374151; margin-bottom:1.5rem; font-size:0.9rem; line-height:1.5;">
+          This unlocks downstream warranty and rebate steps and
+          <strong>cannot be reversed by you</strong> — only an admin can undo a job completion.
+        </p>
+        <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
+          <button id="markCompleteCancelBtn"
+                  class="btn btn-secondary"
+                  style="font-size:0.9rem;">
+            Cancel
+          </button>
+          <button id="markCompleteConfirmBtn"
+                  class="btn"
+                  style="background:#15803D; color:#fff; border:none; font-size:0.9rem;">
+            Confirm Completion
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast notification for mark-complete errors -->
+    <div id="markCompleteToast"
+         style="display:none; position:fixed; bottom:1.5rem; right:1.5rem; z-index:1100;
+                background:#991B1B; color:#fff; padding:0.75rem 1.25rem; border-radius:0.5rem;
+                font-size:0.875rem; box-shadow:0 4px 12px rgba(0,0,0,0.25); max-width:360px;"
+         role="alert" aria-live="assertive"></div>
 
     <footer id="site-footer"></footer>
 
@@ -1210,7 +1250,7 @@
                 // D-074: Full address hidden for submitted-only bids; revealed once bid is awarded.
                 const { data: allQuotes } = await sb
                   .from('quotes')
-                  .select('id, claim_id, total_price, status, bid_status, expires_at, created_at, claims(id, property_address, damage_type, material_category, shingle_type, rcv_amount)')
+                  .select('id, claim_id, total_price, status, bid_status, expires_at, created_at, claims(id, property_address, damage_type, material_category, shingle_type, rcv_amount, completion_date)')
                   .eq('contractor_id', contractor.id)
                   .in('status', ['submitted', 'selected', 'awarded', 'completed'])
                   .order('created_at', { ascending: false })
@@ -1262,11 +1302,13 @@
                       activeProjects.push({
                         id: claim.id ? String(claim.id).slice(0, 8) : q.claim_id?.slice(0, 8) || '—',
                         fullId: q.claim_id,
+                        quoteId: q.id,
                         location: buildLocation(claim, q.status),
                         damageType: claim.damage_type ? (claim.damage_type.charAt(0).toUpperCase() + claim.damage_type.slice(1)) : 'Unknown',
                         material: buildMaterial(claim),
                         estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
                         status: statusMap[q.status] || q.status,
+                        completionDate: claim.completion_date || null,
                       });
                     }
                   });
@@ -1419,7 +1461,7 @@
             if (allLeads.length === 0) {
                 leadsBody.innerHTML = `
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: var(--sp-8);">
+                        <td colspan="8" style="text-align: center; padding: var(--sp-8);">
                             <div class="empty-state">
                                 <div class="empty-state-icon">📭</div>
                                 <div class="empty-state-title">No Projects Yet</div>
@@ -1429,7 +1471,25 @@
                     </tr>
                 `;
             } else {
-                leadsBody.innerHTML = allLeads.map(lead => `
+                leadsBody.innerHTML = allLeads.map(lead => {
+                    // Actions column: "Mark Job Complete" button for active won jobs,
+                    // "Completed [date]" badge once done, "—" for anything else.
+                    let actionsCell = '<span style="color: var(--slate);">—</span>';
+                    if (lead.completionDate) {
+                        const dateStr = new Date(lead.completionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        actionsCell = `<span class="status-badge" style="background:#DCFCE7; color:#15803D; border:1px solid #BBF7D0; white-space:nowrap;">✅ Completed ${dateStr}</span>`;
+                    } else if (lead.status === 'Won') {
+                        actionsCell = `<button
+                            class="btn btn-sm mark-complete-btn"
+                            style="background:#15803D; color:#fff; border:none; border-radius:0.375rem; padding:4px 12px; font-size:0.8rem; cursor:pointer; white-space:nowrap;"
+                            data-claim-id="${lead.fullId}"
+                            data-quote-id="${lead.quoteId}"
+                            data-address="${lead.location.replace(/"/g, '&quot;')}">
+                            Mark Job Complete
+                        </button>`;
+                    }
+
+                    return `
                     <tr>
                         <td class="lead-id" title="${lead.fullId || ''}">${lead.id}</td>
                         <td>${lead.location}</td>
@@ -1437,94 +1497,14 @@
                         <td>${lead.material}</td>
                         <td>${lead.estimatedValue}</td>
                         <td><span class="status-badge status-${lead.status.toLowerCase()}">${lead.status}</span></td>
-                        <td>${lead.status === 'Completed' ? '<span style="color: var(--slate);">—</span>' : '<span class="status-badge status-won">Active</span>'}</td>
-                    </tr>
-                `).join('');
+                        <td>${lead.completionDate ? '<span style="color: var(--slate);">—</span>' : (lead.status === 'Won' ? '<span class="status-badge status-won">Active</span>' : '<span style="color: var(--slate);">—</span>')}</td>
+                        <td>${actionsCell}</td>
+                    </tr>`;
+                }).join('');
             }
 
             // Populate activity feed
             const activityFeed = document.getElementById('activityFeed');
             if (allActivity.length === 0) {
                 activityFeed.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🔔</div>
-                        <div class="empty-state-title">No Activity Yet</div>
-                        <div class="empty-state-text">Your activity will appear here as you interact with opportunities.</div>
-                    </div>
-                `;
-            } else {
-                activityFeed.innerHTML = allActivity.map(activity => `
-                    <div class="activity-item">
-                        <div class="activity-dot" style="${activityDotClass(activity.type)}"></div>
-                        <div class="activity-content">
-                            <div class="activity-text">${activity.text}</div>
-                            <div class="activity-time">${activity.time}</div>
-                        </div>
-                    </div>
-                `).join('');
-            }
-        }
-
-        // ── Dunning Alert: Check for active payment failures ──
-        let activeDunningRecord = null;
-
-        async function checkDunningStatus() {
-            if (!currentContractor || !sb) return;
-
-            try {
-                const { data: failures, error } = await sb
-                    .from('payment_failures')
-                    .select('*, claims:claim_id (property_address)')
-                    .eq('contractor_id', currentContractor.id)
-                    .eq('dunning_status', 'active')
-                    .order('created_at', { ascending: false })
-                    .limit(1);
-
-                if (error) {
-                    console.warn('Could not check dunning status:', error);
-                    return;
-                }
-
-                if (failures && failures.length > 0) {
-                    activeDunningRecord = failures[0];
-                    const banner = document.getElementById('dunningAlertBanner');
-                    const msgEl = document.getElementById('dunningAlertMessage');
-                    const feeStr = '$' + (activeDunningRecord.amount_cents / 100).toFixed(2);
-                    if (msgEl) {
-                        msgEl.textContent = `You have an overdue payment of ${feeStr}. Please update your payment method to continue bidding on new projects.`;
-                    }
-                    if (banner) {
-                        banner.style.display = 'flex';
-                    }
-                }
-            } catch (err) {
-                console.warn('[Dashboard] checkDunningStatus error:', err);
-            }
-        }
-
-        async function retryDunningPayment() {
-            if (!activeDunningRecord || !sb) return;
-            const btn = document.getElementById('dunningRetryBtn');
-            if (btn) { btn.disabled = true; btn.textContent = 'Retrying…'; }
-            try {
-                const { error } = await sb
-                    .from('payment_failures')
-                    .update({ dunning_status: 'retried' })
-                    .eq('id', activeDunningRecord.id);
-                if (error) throw error;
-                const banner = document.getElementById('dunningAlertBanner');
-                if (banner) banner.style.display = 'none';
-                activeDunningRecord = null;
-            } catch (err) {
-                console.warn('[Dashboard] retryDunningPayment error:', err);
-                if (btn) { btn.disabled = false; btn.textContent = 'Retry Payment Now'; }
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            await init();
-            await checkDunningStatus();
-        });
-    </script>
-</body>
-</html>
+                   
