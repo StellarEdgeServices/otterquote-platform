@@ -100,7 +100,7 @@
         <div id="error-state" class="hidden error-message">
             <h2>Referral link not found</h2>
             <p>This referral code doesn't exist or has expired.</p>
-            <p><a href="/">â Return to OtterQuote</a></p>
+            <p><a href="/">← Return to Otter Quotes</a></p>
         </div>
     </div>
 
@@ -110,7 +110,7 @@
 
     <script>
         /**
-         * ref.html â Referral Router & Click Tracker
+         * ref.html &mdash; Referral Router & Click Tracker
          *
          * Flow:
          *  1. Read ?code= from URL
@@ -127,7 +127,7 @@
                 const code = params.get('code');
 
                 if (!code) {
-                    // No code â send to homepage
+                    // No code &mdash; send to homepage
                     window.location.href = '/index.html';
                     return;
                 }
@@ -220,7 +220,7 @@
             document.getElementById('error-state').classList.remove('hidden');
         }
 
-        // Run on load â sb is initialized by config.js above
+        // Run on load &mdash; sb is initialized by config.js above
         document.addEventListener('DOMContentLoaded', handleReferral);
     </script>
 </body>

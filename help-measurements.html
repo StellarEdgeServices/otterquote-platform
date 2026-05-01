@@ -9,10 +9,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-    <title>Measurements Help â Otter Quotes</title>
+    <title>Measurements Help &mdash; Otter Quotes</title>
     <meta name="description" content="Get property measurements for your roofing project. Purchase a Hover 3D report or request measurements from your adjuster.">
     <link rel="canonical" href="https://otterquote.com/help-measurements.html">
-    <meta property="og:title" content="Measurements Help â Otter Quotes">
+    <meta property="og:title" content="Measurements Help &mdash; Otter Quotes">
     <meta property="og:description" content="Get property measurements for your roofing project. Purchase a Hover 3D report or request measurements from your adjuster.">
     <meta property="og:url" content="https://otterquote.com/help-measurements.html">
     <meta property="og:type" content="website">
@@ -26,7 +26,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
-    <!-- Stripe.js â required for card payment on Hover purchase -->
+    <!-- Stripe.js &mdash; required for card payment on Hover purchase -->
     <script src="https://js.stripe.com/v3/"></script>
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
     <script>
@@ -190,7 +190,7 @@
         }
 
         .path-card-features li::before {
-            content: "â";
+            content: "✓";
             position: absolute;
             left: 0;
             color: #10B981;
@@ -538,7 +538,7 @@
                 <h1 class="page-title">Measurements</h1>
                 <p class="page-subtitle">Help Me: Get property measurements for your project</p>
             </div>
-            <a href="dashboard.html" class="back-link">â Back to Dashboard</a>
+            <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
         </div>
 
         <!-- Status Messages -->
@@ -552,26 +552,26 @@
             </div>
 
             <div class="path-cards">
-                <!-- Path A: Hover (PAID) â Primary for cash/retail customers -->
+                <!-- Path A: Hover (PAID) — Primary for cash/retail customers -->
                 <div class="path-card" onclick="selectPath('hover')">
                     <div class="path-card-badge">Recommended for Most</div>
-                    <div class="path-card-icon">ð</div>
+                    <div class="path-card-icon">📐</div>
                     <h3>Hover 3D Measurement</h3>
-                    <div class="path-card-price">$79 (rebated if you use an OtterQuote contractor)</div>
+                    <div class="path-card-price">$79 (rebated if you use an Otter Quotes contractor)</div>
                     <p>Get a professional 3D measurement report by taking photos of your home with your phone. Hover's technology creates accurate measurements from your photos. This is your best option if you're paying out of pocket.</p>
                     <ul class="path-card-features">
                         <li>Precise, professional-grade measurements</li>
                         <li>3D model of your property</li>
                         <li>Ready in 24-48 hours</li>
-                        <li>Cost rebated when using an OtterQuote contractor</li>
+                        <li>Cost rebated when using an Otter Quotes contractor</li>
                     </ul>
                     <button class="select-btn">Choose This Option</button>
                 </div>
 
-                <!-- Path B: Ask Adjuster (FREE) â For insurance customers -->
+                <!-- Path B: Ask Adjuster (FREE) — For insurance customers -->
                 <div class="path-card" onclick="selectPath('adjuster')">
                     <div class="path-card-badge">Recommended for Insurance</div>
-                    <div class="path-card-icon">ð¬</div>
+                    <div class="path-card-icon">📬</div>
                     <h3>Ask Your Adjuster</h3>
                     <div class="path-card-price">Free</div>
                     <p>Request measurements from your insurance adjuster. Many adjusters take measurements during their inspection and can share them at no cost.</p>
@@ -593,7 +593,7 @@
                 <p>Hover uses advanced technology to create a 3D model of your property from photos you take with your phone. The result is a professional measurement report accurate enough for contractors to provide detailed, precise bids.</p>
 
                 <div class="rebate-callout">
-                    <strong>How the $79 works:</strong> You pay $79 now to order your Hover measurement report. <strong>When your project closes with an OtterQuote contractor, the full $79 is rebated to your original payment method.</strong> If you don't complete your project with an OtterQuote contractor, you keep the Hover report â it's yours forever, reusable for future exterior projects.
+                    <strong>How the $79 works:</strong> You pay $79 now to order your Hover measurement report. <strong>When your project closes with an Otter Quotes contractor, the full $79 is rebated to your original payment method.</strong> If you don't complete your project with an Otter Quotes contractor, you keep the Hover report — it's yours forever, reusable for future exterior projects.
                 </div>
 
                 <div class="hover-steps">
@@ -608,14 +608,14 @@
                         <div class="hover-step-number">2</div>
                         <div class="hover-step-content">
                             <h4>Take Photos of Your Home</h4>
-                            <p>We'll send you a link to Hover's guided photo capture. Their app walks you through taking 8-10 photos from around your home â it checks photo quality as you go.</p>
+                            <p>We'll send you a link to Hover's guided photo capture. Their app walks you through taking 8-10 photos from around your home — it checks photo quality as you go.</p>
                         </div>
                     </div>
                     <div class="hover-step">
                         <div class="hover-step-number">3</div>
                         <div class="hover-step-content">
                             <h4>Receive Your Report</h4>
-                            <p>Hover processes your photos (usually 24-48 hours) and creates a detailed measurement report. We'll save it in your account â you'll get a notification when it's ready.</p>
+                            <p>Hover processes your photos (usually 24-48 hours) and creates a detailed measurement report. We'll save it in your account — you'll get a notification when it's ready.</p>
                         </div>
                     </div>
                 </div>
@@ -626,21 +626,21 @@
 
                 <div class="button-row">
                     <button class="action-btn btn-green" id="purchaseHoverBtn" onclick="purchaseHover()">
-                        Purchase Hover Report â $79
+                        Purchase Hover Report — $79
                     </button>
-                    <button class="action-btn btn-outline" onclick="goBack()">â Choose Different Option</button>
+                    <button class="action-btn btn-outline" onclick="goBack()">← Choose Different Option</button>
                 </div>
 
-                <!-- Stripe card form â shown after clicking Purchase, hidden by default -->
+                <!-- Stripe card form — shown after clicking Purchase, hidden by default -->
                 <div id="hoverPaymentForm" style="display:none; margin-top:1.5rem; padding:1.5rem; background:#F8F9FC; border:1.5px solid #D0D9E3; border-radius:8px;">
-                    <p style="font-size:0.875rem; color:#3D4F60; margin:0 0 1rem; font-weight:500;">ð³ Enter your card details to complete the $79 purchase:</p>
+                    <p style="font-size:0.875rem; color:#3D4F60; margin:0 0 1rem; font-weight:500;">💳 Enter your card details to complete the $79 purchase:</p>
                     <div id="hoverCardElement" style="padding:0.75rem; border:1.5px solid #CBD5E1; border-radius:6px; background:white;"></div>
                     <div id="hoverCardErrors" style="color:#DC2626; font-size:0.8rem; margin-top:0.4rem; min-height:1.1rem;"></div>
                     <div class="button-row" style="margin-top:1.25rem;">
                         <button class="action-btn btn-green" id="payHoverBtn" onclick="confirmHoverPayment()">Pay $79 Securely</button>
                         <button class="action-btn btn-outline" onclick="cancelHoverPayment()">Cancel</button>
                     </div>
-                    <p style="font-size:0.75rem; color:#64748B; margin:0.75rem 0 0; text-align:center;">ð Payment secured by Stripe. Your card info is never stored on our servers.</p>
+                    <p style="font-size:0.75rem; color:#64748B; margin:0.75rem 0 0; text-align:center;">🔒 Payment secured by Stripe. Your card info is never stored on our servers.</p>
                 </div>
             </div>
 
@@ -648,7 +648,7 @@
             <div id="hoverSuccessSection" class="flow-section">
                 <div class="section-card">
                     <div class="success-state">
-                        <div class="success-icon">ð</div>
+                        <div class="success-icon">📐</div>
                         <h2>Hover Report Ordered</h2>
                         <p>Your Hover 3D measurement report has been ordered. Check your email and text messages for a link to take photos of your property.</p>
 
@@ -706,7 +706,7 @@
 
                 <div class="button-row">
                     <button class="action-btn btn-amber" id="sendMeasurementEmailBtn" onclick="sendMeasurementEmail()" disabled>Send Request to Adjuster</button>
-                    <button class="action-btn btn-outline" onclick="goBack()">â Choose Different Option</button>
+                    <button class="action-btn btn-outline" onclick="goBack()">← Choose Different Option</button>
                 </div>
             </div>
         </div>
@@ -715,7 +715,7 @@
         <div id="emailSuccessSection" class="flow-section">
             <div class="section-card">
                 <div class="success-state">
-                    <div class="success-icon">â</div>
+                    <div class="success-icon">✓</div>
                     <h2>Measurement Request Sent</h2>
                     <p>We've emailed your adjuster requesting property measurements. When they reply, we'll automatically capture the documents and attach them to your claim.</p>
 
@@ -737,12 +737,12 @@
     <script src="js/services.js"></script>
 
     <script>
-        // ââ State ââ
+        // ── State ──
         let currentUser = null;
         let currentProfile = null;
         let currentClaim = null;
 
-        // ââ Init ââ
+        // ── Init ──
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 currentUser = await Auth.requireAuth();
@@ -823,7 +823,7 @@
             }
         }
 
-        // ââ Path Selection ââ
+        // ── Path Selection ──
         function selectPath(path) {
             document.querySelectorAll('.path-card').forEach(c => c.classList.remove('selected'));
             event.currentTarget.closest('.path-card').classList.add('selected');
@@ -851,7 +851,7 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // ââ Hover Purchase â Stripe state ââ
+        // ── Hover Purchase — Stripe state ──
         let hoverStripe = null;
         let hoverCardElement = null;
         let hoverClientSecret = null;
@@ -865,13 +865,8 @@
             hoverStripe = Stripe(CONFIG.STRIPE_PK);
         }
 
-        // Step 1 â Create PaymentIntent and show card form (no charge yet)
+        // Step 1 — Create PaymentIntent and show card form (no charge yet)
         async function purchaseHover() {
-            // BUG-7 fix: require a claim before creating a Stripe PaymentIntent
-            if (!currentClaim?.id) {
-                showMessage('Please complete your project details on the dashboard before purchasing measurements.', 'error');
-                return;
-            }
             const btn = document.getElementById('purchaseHoverBtn');
             const originalText = btn.innerHTML;
             btn.disabled = true;
@@ -880,7 +875,7 @@
             try {
                 initHoverStripe();
 
-                // Create the PaymentIntent server-side â returns client_secret
+                // Create the PaymentIntent server-side — returns client_secret
                 const paymentResult = await Services.createHoverPaymentIntent({
                     claim_id: currentClaim?.id,
                     amount: 7900, // $79 in cents
@@ -924,7 +919,7 @@
             }
         }
 
-        // Step 2 â Confirm card payment, then (and only then) create Hover order
+        // Step 2 — Confirm card payment, then (and only then) create Hover order
         async function confirmHoverPayment() {
             const payBtn = document.getElementById('payHoverBtn');
             const originalText = payBtn.innerHTML;
@@ -937,14 +932,14 @@
                     throw new Error('Payment not initialized. Please refresh and try again.');
                 }
 
-                // Charge the card â this is the real money movement
+                // Charge the card — this is the real money movement
                 const { paymentIntent, error: stripeError } = await hoverStripe.confirmCardPayment(
                     hoverClientSecret,
                     { payment_method: { card: hoverCardElement } }
                 );
 
                 if (stripeError) {
-                    // Stripe declined or card error â surface to user, don't create order
+                    // Stripe declined or card error — surface to user, don't create order
                     document.getElementById('hoverCardErrors').textContent = stripeError.message;
                     payBtn.disabled = false;
                     payBtn.innerHTML = originalText;
@@ -955,7 +950,7 @@
                     throw new Error(`Unexpected payment status: ${paymentIntent.status}. Please contact support.`);
                 }
 
-                // Payment confirmed â safe to create the Hover order
+                // Payment confirmed — safe to create the Hover order
                 payBtn.innerHTML = '<span class="spinner"></span> Ordering your report...';
 
                 const homeownerName = currentProfile?.full_name
@@ -990,7 +985,7 @@
             }
         }
 
-        // ââ Show message âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+        // ── Show message ─────────────────────────────────────────────────────────
         function showMessage(text, type) {
             const el = document.getElementById('statusMessage');
             if (!el) return;
@@ -1002,32 +997,7 @@
             }
         }
 
-        // ââ Setup listeners ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-        // ââ validateForm (module-scope) â called by prefillAdjusterInfo() ââ BUG-6 fix
-        function validateForm() {
-            const emailField = document.getElementById('adjusterEmail');
-            const btn        = document.getElementById('sendMeasurementEmailBtn');
-            if (!emailField || !btn) return;
-            const email = emailField.value.trim();
-            btn.disabled = !email || !email.includes('@');
-        }
-
-        // ââ updateEmailPreview (module-scope) â BUG-6 fix
-        function updateEmailPreview() {
-            const previewEl = document.getElementById('emailPreview');
-            if (!previewEl) return;
-            const adjName   = (document.getElementById('adjusterName')?.value  || '').trim() || 'Adjuster';
-            const ownerName = (currentProfile?.full_name ||
-                              ((currentProfile?.first_name || '') + ' ' + (currentProfile?.last_name || '')).trim() ||
-                              'Homeowner');
-            const ownerPhone = currentProfile?.phone || '';
-            previewEl.textContent =
-                'Hi ' + adjName + ',\n\n' +
-                'I would appreciate any property measurements you have on file from the inspection, if available.\n\n' +
-                'You can reply directly to this email with the documents attached.\n\n' +
-                'Thank you,\n' + ownerName + (ownerPhone ? '\n' + ownerPhone : '');
-        }
-
+        // ── Setup listeners ──────────────────────────────────────────────────────
         function setupListeners() {
             const emailField = document.getElementById('adjusterEmail');
             const btn        = document.getElementById('sendMeasurementEmailBtn');
@@ -1042,7 +1012,7 @@
             checkReady();
         }
 
-        // ââ Cancel Hover payment form âââââââââââââââââââââââââââââââââââââââââââââ
+        // ── Cancel Hover payment form ─────────────────────────────────────────────
         function cancelHoverPayment() {
             document.getElementById('hoverPaymentForm').style.display = 'none';
             const purchaseBtn = document.getElementById('purchaseHoverBtn');
@@ -1053,7 +1023,7 @@
             hoverPaymentIntentId  = null;
         }
 
-        // ââ Send measurement email to adjuster ââââââââââââââââââââââââââââââââââââ
+        // ── Send measurement email to adjuster ────────────────────────────────────
         async function sendMeasurementEmail() {
             const btn           = document.getElementById('sendMeasurementEmailBtn');
             const adjusterName  = (document.getElementById('adjusterName')?.value  || '').trim();
@@ -1067,7 +1037,7 @@
 
             btn.disabled = true;
             const originalText = btn.textContent;
-            btn.textContent = 'Sendingâ¦';
+            btn.textContent = 'Sending…';
 
             try {
                 if (!CONFIG.DEMO_MODE && sb && currentClaim) {
@@ -1091,7 +1061,7 @@
                     }
                 }
 
-                btn.textContent = 'â Email Sent!';
+                btn.textContent = '✓ Email Sent!';
                 showMessage('Email sent to your adjuster. We\'ll follow up if they don\'t respond within 48 hours.', 'success');
                 if (typeof gtag !== 'undefined') gtag('event', 'measurement_email_sent');
 

@@ -12,7 +12,7 @@
 <title>Get Free Contractor Quotes | Otter Quotes</title>
 <meta name="description" content="Create your free Otter Quotes account and start getting competitive quotes from qualified contractors for your roofing and exterior projects.">
 <link rel="canonical" href="https://otterquote.com/get-started.html">
-<meta property="og:title" content="Get Started Ã¢ÂÂ Free Roofing & Exterior Contractor Matching ÃÂ· Otter Quotes">
+<meta property="og:title" content="Get Started &mdash; Free Roofing & Exterior Contractor Matching · Otter Quotes">
 <meta property="og:description" content="Create your free Otter Quotes account and start getting competitive quotes from qualified contractors for your roofing and exterior projects.">
 <meta property="og:url" content="https://otterquote.com/get-started.html">
 <meta property="og:type" content="website">
@@ -164,7 +164,7 @@
 }
 .benefit-text p { font-size: 0.85rem; }
 
-/* Ã¢ÂÂÃ¢ÂÂ Magic link sent state Ã¢ÂÂÃ¢ÂÂ */
+/* ── Magic link sent state ── */
 .magic-link-sent {
   display: none;
   text-align: center;
@@ -198,7 +198,7 @@
   font-size: 0.9rem;
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ Loading Ã¢ÂÂÃ¢ÂÂ */
+/* ── Loading ── */
 .btn-loading {
   position: relative;
   color: transparent !important;
@@ -215,7 +215,7 @@
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Ã¢ÂÂÃ¢ÂÂ SMS Consent Checkbox Ã¢ÂÂÃ¢ÂÂ */
+/* ── SMS Consent Checkbox ── */
 .form-checkbox {
   appearance: none;
   width: 20px;
@@ -238,7 +238,7 @@
 }
 
 .form-checkbox:checked::after {
-  content: 'Ã¢ÂÂ';
+  content: '✓';
   color: var(--navy);
   font-size: 0.75rem;
   font-weight: 700;
@@ -249,7 +249,7 @@
   height: 100%;
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ Responsive Ã¢ÂÂÃ¢ÂÂ */
+/* ── Responsive ── */
 @media (max-width: 768px) {
   .gs-layout { grid-template-columns: 1fr; }
   .gs-right {
@@ -294,7 +294,7 @@
         <div class="form-group">
           <label class="form-label" for="email">Email</label>
           <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com">
-          <span class="form-hint">We'll send you a secure login link Ã¢ÂÂ no password needed.</span>
+          <span class="form-hint">We'll send you a secure login link &mdash; no password needed.</span>
         </div>
 
         <div class="form-group">
@@ -303,11 +303,11 @@
           <span class="form-hint">For bid notifications and updates via text.</span>
         </div>
 
-        <!-- TWILIO MESSAGE_FLOW: "I agree to receive transactional SMS from OtterQuote. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe." -->
+        <!-- TWILIO MESSAGE_FLOW: "I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe." -->
         <div class="form-group">
           <label style="display: flex; align-items: flex-start; gap: var(--sp-2); cursor: pointer; font-weight: 400;">
             <input type="checkbox" id="sms-consent" class="form-checkbox" style="margin-top: 2px; flex-shrink: 0;">
-            <span style="font-size: 0.9rem; line-height: 1.5;">I agree to receive transactional SMS from OtterQuote. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</span>
+            <span style="font-size: 0.9rem; line-height: 1.5;">I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</span>
           </label>
         </div>
 
@@ -382,7 +382,7 @@
         <div class="benefit-icon">&#x2709;&#xFE0F;</div>
         <div class="benefit-text">
           <h4>Check your email</h4>
-          <p>We'll send a secure magic link. Click it to log in Ã¢ÂÂ no password to remember.</p>
+          <p>We'll send a secure magic link. Click it to log in &mdash; no password to remember.</p>
         </div>
       </div>
 
@@ -406,7 +406,7 @@
         <div class="benefit-icon">&#x1F4B0;</div>
         <div class="benefit-text">
           <h4>Always free for you</h4>
-          <p>OtterQuote is 100% free for homeowners. Contractors pay to earn your business, not you.</p>
+          <p>Otter Quotes is 100% free for homeowners. Contractors pay to earn your business, not you.</p>
         </div>
       </div>
     </div>
@@ -441,7 +441,7 @@
     });
   });
 
-  // Phone formatting Ã¢ÂÂ handles manual typing, paste, and browser autofill
+  // Phone formatting — handles manual typing, paste, and browser autofill
   const phoneInput = document.getElementById('phone');
   function formatPhone() {
     let v = phoneInput.value.replace(/\D/g, '');
@@ -458,7 +458,7 @@
   phoneInput.addEventListener('input', formatPhone);
   phoneInput.addEventListener('change', formatPhone); // fires once after autofill completes
 
-  // D-189: Fire HubSpot contact creation Ã¢ÂÂ non-blocking, best-effort.
+  // D-189: Fire HubSpot contact creation — non-blocking, best-effort.
   // Called immediately after validation passes. Errors must never surface to the user.
   function fireHubSpotContact(data) {
     fetch(CONFIG.SUPABASE_URL + '/functions/v1/create-hubspot-contact', {
@@ -468,7 +468,7 @@
         'apikey': CONFIG.SUPABASE_ANON_KEY,
       },
       body: JSON.stringify(data),
-    }).catch(function() {}); // Intentionally fire-and-forget Ã¢ÂÂ do not await
+    }).catch(function() {}); // Intentionally fire-and-forget — do not await
   }
 
   // Form submission
@@ -492,6 +492,8 @@
       errorEl.style.display = 'block';
       return;
     }
+
+    // SMS consent is optional per TCR/CTIA rules — do not block submission if unchecked
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       errorEl.textContent = 'Please enter a valid email address.';
@@ -571,7 +573,7 @@
         referral_source: referralSource || 'web',
       });
 
-      // GA4 conversion event Ã¢ÂÂ homeowner funnel
+      // GA4 conversion event — homeowner funnel
       gtag('event', 'homeowner_signup', {
         job_type: new URLSearchParams(location.search).get('job_type') || null,
         source: new URLSearchParams(location.search).get('utm_source') || referralSource || 'direct',
@@ -601,7 +603,7 @@
     }
   });
 
-  // Check if user is already logged in Ã¢ÂÂ route to appropriate dashboard
+  // Check if user is already logged in — route to appropriate dashboard
   Auth.getUser().then(async user => {
     if (user) {
       await Auth.redirectToDashboard();

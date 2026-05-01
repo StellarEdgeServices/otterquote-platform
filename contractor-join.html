@@ -10,10 +10,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
     <title>Join Otter Quotes | Apply as a Contractor</title>
-    <meta name="description" content="Apply to join Otter Quotes' contractor network. Receive fully executed contracts with measurements, project details confirmed, and homeowner signatures â ready to install. No chasing prospects.">
+    <meta name="description" content="Apply to join Otter Quotes's contractor network. Receive fully executed contracts with measurements, project details confirmed, and homeowner signatures &mdash; ready to install. No chasing prospects.">
     <link rel="canonical" href="https://otterquote.com/contractor-join.html">
-    <meta property="og:title" content="Join Otter Quotes â Homeowners Sign Your Contract Right Here">
-    <meta property="og:description" content="Apply to join Otter Quotes' contractor network. Receive fully executed contracts with measurements, project details confirmed, and homeowner signatures â ready to install.">
+    <meta property="og:title" content="Join Otter Quotes &mdash; Homeowners Sign Your Contract Right Here">
+    <meta property="og:description" content="Apply to join Otter Quotes's contractor network. Receive fully executed contracts with measurements, project details confirmed, and homeowner signatures &mdash; ready to install.">
     <meta property="og:url" content="https://otterquote.com/contractor-join.html">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Otter Quotes">
@@ -128,18 +128,18 @@
 
                 <!-- Success state -->
                 <div id="successMessage" class="success-message">
-                    <div style="font-size: 2rem; margin-bottom: var(--sp-3);">âï¸</div>
+                    <div style="font-size: 2rem; margin-bottom: var(--sp-3);">✉️</div>
                     <strong style="font-size: 1.1rem; display: block; margin-bottom: var(--sp-2);">Check your email!</strong>
-                    <p style="margin-bottom: var(--sp-4); color: #065F46;">We've sent you a secure link. Click it to continue your application â you'll complete your license info, agreements, and contract template before we review your account.</p>
+                    <p style="margin-bottom: var(--sp-4); color: #065F46;">We've sent you a secure link. Click it to continue your application &mdash; you'll complete your license info, agreements, and contract template before we review your account.</p>
                     <div style="background: rgba(6,95,70,0.08); border: 1px solid rgba(6,95,70,0.2); border-radius: 0.5rem; padding: 1rem 1.25rem; margin-top: 1rem; text-align: left;">
-                        <strong style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: #065F46;">ð What Happens Next (4 Steps Total)</strong>
+                        <strong style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: #065F46;">📋 What Happens Next (4 Steps Total)</strong>
                         <ol style="font-size: 0.9rem; color: #065F46; margin: 0 0 0 1.25rem; padding: 0;">
                             <li style="margin-bottom: 0.3rem;"><strong>Done:</strong> Contact info</li>
                             <li style="margin-bottom: 0.3rem;">License &amp; insurance info</li>
                             <li style="margin-bottom: 0.3rem;">Review and sign platform agreements</li>
                             <li>Upload your contract template</li>
                         </ol>
-                        <p style="font-size: 0.9rem; color: #065F46; margin-top: 0.75rem;">After step 4, your application goes to our team for review. Most applications are approved within <strong>2â5 business days</strong>.</p>
+                        <p style="font-size: 0.9rem; color: #065F46; margin-top: 0.75rem;">After step 4, your application goes to our team for review. Most applications are approved within <strong>2&ndash;5 business days</strong>.</p>
                     </div>
                 </div>
 
@@ -180,7 +180,7 @@
                         <p style="font-size:0.85rem; color:var(--slate); margin-top: var(--sp-2);">You must be authorized to bind the business. This name and title will appear on your DocuSign Partner Agreement.</p>
                     </div>
 
-                    <button type="submit" id="submitBtn" class="submit-btn">Continue â Send My Login Link</button>
+                    <button type="submit" id="submitBtn" class="submit-btn">Continue &mdash; Send My Login Link</button>
                 </form>
             </div>
         </section>
@@ -192,7 +192,7 @@
     <script src="js/nav.js"></script>
 
     <script>
-        // D-190: Page 1 of 4 â contact info only.
+        // D-190: Page 1 of 4 — contact info only.
         // Sends magic link with redirectTo=contractor-pre-approval.html.
         // All agreements and upload collected post-auth (pages 2-4).
 
@@ -213,7 +213,7 @@
 
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
-            btn.textContent = 'Sendingâ¦';
+            btn.textContent = 'Sending…';
 
             try {
                 if (window.CONFIG && window.CONFIG.DEMO_MODE) {
@@ -236,7 +236,7 @@
                 }));
                 localStorage.setItem('cs_auth_role', 'contractor');
 
-                // Send magic link â call Supabase directly so we control redirectTo
+                // Send magic link — call Supabase directly so we control redirectTo
                 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
                 const redirectTo = `${window.location.origin}/contractor-pre-approval.html`;
 
@@ -262,7 +262,7 @@
             } catch (err) {
                 console.error('Contractor signup error:', err);
                 btn.disabled = false;
-                btn.textContent = 'Continue â Send My Login Link';
+                btn.textContent = 'Continue — Send My Login Link';
                 alert(err.message || 'Something went wrong. Please try again or contact support@otterquote.com.');
             }
         });

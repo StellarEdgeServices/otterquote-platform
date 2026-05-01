@@ -9,7 +9,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-    <title>Otter Quotes â Recruit Router</title>
+    <title>Otter Quotes &mdash; Recruit Router</title>
     <meta name="robots" content="noindex,nofollow">
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
@@ -76,10 +76,10 @@
 
 <main>
     <div class="recruit-container">
-        <div class="logo"><img src="/img/brand-assets/logo-navy-amber.svg" alt="OtterQuote"></div>
+        <div class="logo"><img src="/img/brand-assets/logo-navy-amber.svg" alt="Otter Quotes"></div>
         <div class="spinner"></div>
         <p class="message" id="message">Redirecting you to sign up...</p>
-        <!-- 1099-MISC Tax Reporting Notice (86e0zj7je â disclosure version 1099-misc-v1-2026-04)
+        <!-- 1099-MISC Tax Reporting Notice (86e0zj7je &mdash; disclosure version 1099-misc-v1-2026-04)
              NOTE: This page redirects immediately. Primary disclosure is on refer-a-friend.html
              and each partner signup page. This notice is a belt-and-suspenders inclusion only. -->
         <p style="font-size: 13px; color: rgba(148, 163, 184, 0.55); margin-top: 1.5rem; line-height: 1.6; max-width: 360px; margin-left: auto; margin-right: auto;">
@@ -101,7 +101,7 @@
 
 <script>
 /**
- * recruit.html â Recruit Link Router
+ * recruit.html &mdash; Recruit Link Router
  *
  * Flow:
  *  1. Read ?code= from URL (format: r-XXXXXX)
@@ -109,9 +109,9 @@
  *     partner signup page can pick it up after redirect.
  *  3. Look up the recruiter in referral_agents by recruit_code to determine
  *     which signup page is the best fit for this recruit (recruiter's type
- *     is a reasonable proxy â a real-estate agent tends to recruit other
+ *     is a reasonable proxy &mdash; a real-estate agent tends to recruit other
  *     RE agents, etc.). If lookup fails, fall back to the inspector signup
- *     page â that's our primary channel.
+ *     page &mdash; that's our primary channel.
  *  4. Redirect.
  *
  * Note: agent_type on the recruiter drives the redirect; the recruit itself
@@ -136,7 +136,7 @@ async function handleRecruit() {
     const params = new URLSearchParams(window.location.search);
     const code = (params.get('code') || '').trim();
 
-    // No code â nothing to route on. Fall through to the default signup page.
+    // No code &mdash; nothing to route on. Fall through to the default signup page.
     if (!code) {
         window.location.replace('/' + DEFAULT_DESTINATION);
         return;
@@ -146,7 +146,7 @@ async function handleRecruit() {
     try {
         localStorage.setItem('cs_recruit_code', code);
     } catch (_) {
-        // localStorage disabled (private browsing / storage quota) â non-fatal.
+        // localStorage disabled (private browsing / storage quota) &mdash; non-fatal.
         // The signup page will still fall back to the ?recruit= URL param.
     }
 
@@ -166,7 +166,7 @@ async function handleRecruit() {
                 agentType = recruiter.agent_type;
             }
         } else {
-            console.warn('Supabase client not initialized â skipping recruit lookup');
+            console.warn('Supabase client not initialized &mdash; skipping recruit lookup');
         }
     } catch (err) {
         console.warn('Recruit lookup threw:', err);

@@ -331,28 +331,28 @@
             <div class="summary-cards">
                 <div class="summary-card">
                     <div class="summary-card-label">Total Partners</div>
-                    <div class="summary-card-value" id="totalCount">â</div>
+                    <div class="summary-card-value" id="totalCount">&mdash;</div>
                 </div>
                 <div class="summary-card" style="border-left:4px solid #fcd34d;">
-                    <div class="summary-card-label" style="color:#92400e;">â ï¸ Payments Blocked</div>
-                    <div class="summary-card-value" id="blockedCount" style="color:#d97706;">â</div>
+                    <div class="summary-card-label" style="color:#92400e;">⚠️ Payments Blocked</div>
+                    <div class="summary-card-value" id="blockedCount" style="color:#d97706;">&mdash;</div>
                 </div>
                 <div class="summary-card" style="border-left:4px solid #93c5fd;">
-                    <div class="summary-card-label" style="color:#1d4ed8;">ð Pending Review</div>
-                    <div class="summary-card-value" id="pendingReviewCount" style="color:#2563eb;">â</div>
+                    <div class="summary-card-label" style="color:#1d4ed8;">📋 Pending Review</div>
+                    <div class="summary-card-value" id="pendingReviewCount" style="color:#2563eb;">&mdash;</div>
                 </div>
                 <div class="summary-card" style="border-left:4px solid #86efac;">
-                    <div class="summary-card-label" style="color:#166534;">â W-9 Verified</div>
-                    <div class="summary-card-value" id="verifiedCount" style="color:#15803d;">â</div>
+                    <div class="summary-card-label" style="color:#166534;">✅ W-9 Verified</div>
+                    <div class="summary-card-value" id="verifiedCount" style="color:#15803d;">&mdash;</div>
                 </div>
             </div>
 
             <!-- Filter Tabs -->
             <div class="filter-tabs">
                 <button class="filter-tab active" onclick="setFilter('all')">All Partners</button>
-                <button class="filter-tab" onclick="setFilter('blocked')" style="color:#92400e;">â ï¸ Blocked</button>
-                <button class="filter-tab" onclick="setFilter('pending_review')" style="color:#1d4ed8;">ð Pending Review</button>
-                <button class="filter-tab" onclick="setFilter('verified')" style="color:#15803d;">â Verified</button>
+                <button class="filter-tab" onclick="setFilter('blocked')" style="color:#92400e;">⚠️ Blocked</button>
+                <button class="filter-tab" onclick="setFilter('pending_review')" style="color:#1d4ed8;">📋 Pending Review</button>
+                <button class="filter-tab" onclick="setFilter('verified')" style="color:#15803d;">✅ Verified</button>
             </div>
 
             <!-- Partners Table -->
@@ -371,7 +371,7 @@
                         </tr>
                     </thead>
                     <tbody id="partnersTableBody">
-                        <tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--slate);">Loadingâ¦</td></tr>
+                        <tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--slate);">Loading&hellip;</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -475,9 +475,9 @@
         }
 
         function w9StatusBadge(p) {
-            if (p.w9_verified_at)   return `<span class="badge badge-verified">â Verified</span>`;
-            if (p.w9_submitted_at)  return `<span class="badge badge-pending">ð Pending Review</span>`;
-            if (p.w9_notification_sent_at) return `<span class="badge badge-blocked">â ï¸ Notified â Not Filed</span>`;
+            if (p.w9_verified_at)   return `<span class="badge badge-verified">✅ Verified</span>`;
+            if (p.w9_submitted_at)  return `<span class="badge badge-pending">📋 Pending Review</span>`;
+            if (p.w9_notification_sent_at) return `<span class="badge badge-blocked">⚠️ Notified — Not Filed</span>`;
             return `<span class="badge badge-not-filed">Not Required Yet</span>`;
         }
 
@@ -488,12 +488,12 @@
                 'home_inspector':  ['badge-type-insp', 'Inspector'],
                 'customer':        ['badge-type-cust', 'Customer'],
             };
-            const [cls, label] = map[type] || ['badge-not-filed', type || 'â'];
+            const [cls, label] = map[type] || ['badge-not-filed', type || '—'];
             return `<span class="badge ${cls}">${label}</span>`;
         }
 
         function fmtDate(iso) {
-            if (!iso) return 'â';
+            if (!iso) return '—';
             return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         }
 
@@ -510,8 +510,8 @@
                 const actions = buildActions(p);
                 return `
                 <tr>
-                    <td><strong>${escHtml(([p.first_name, p.last_name].filter(Boolean).join(' ')) || 'â')}</strong></td>
-                    <td>${escHtml(p.email || 'â')}</td>
+                    <td><strong>${escHtml(([p.first_name, p.last_name].filter(Boolean).join(' ')) || '—')}</strong></td>
+                    <td>${escHtml(p.email || '—')}</td>
                     <td>${typeBadge(p.agent_type)}</td>
                     <td>${fmtDate(p.created_at)}</td>
                     <td>${w9StatusBadge(p)}</td>
@@ -537,12 +537,12 @@
                 btns += `<button class="btn-sm btn-sm-verify" onclick="verifyW9('${p.id}')">Verify W-9</button>`;
             }
 
-            // Manual unblock (if blocked but no submission â edge case)
+            // Manual unblock (if blocked but no submission — edge case)
             if (p.payments_blocked && !p.w9_submitted_at) {
                 btns += `<button class="btn-sm btn-sm-unblock" onclick="manualUnblock('${p.id}')">Unblock</button>`;
             }
 
-            return btns || '<span style="color:var(--slate);font-size:0.8rem;">â</span>';
+            return btns || '<span style="color:var(--slate);font-size:0.8rem;">—</span>';
         }
 
         async function viewW9(storagePath) {
@@ -569,7 +569,7 @@
                 return;
             }
 
-            showToast('W-9 verified â');
+            showToast('W-9 verified ✅');
             await loadPartners();
         }
 
@@ -586,7 +586,7 @@
                 return;
             }
 
-            showToast('Partner manually unblocked â');
+            showToast('Partner manually unblocked ✅');
             await loadPartners();
         }
 

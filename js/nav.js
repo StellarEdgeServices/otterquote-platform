@@ -1,9 +1,9 @@
 /**
- * OtterQuote â Navigation Component
+ * OtterQuote — Navigation Component
  * Renders consistent header/footer across all pages.
  * Primary detection: URL-based (contractor in pathname).
  * Secondary correction: role-based (Auth.getRole) for pages where URL and role
- * may disagree â most notably contractor-about.html, which is a homeowner page
+ * may disagree — most notably contractor-about.html, which is a homeowner page
  * whose URL contains "contractor".
  */
 
@@ -42,7 +42,7 @@ const Nav = {
     nav.innerHTML = `
       <div class="nav-inner container">
         <a href="${isContractor ? '/contractor-dashboard.html' : '/index.html'}" class="nav-logo">
-          <img src="/img/brand-assets/logo-navy-amber.svg" alt="OtterQuote" class="nav-logo-icon" style="height:40px;width:auto;object-fit:contain;">
+          <img src="/img/brand-assets/logo-navy-amber.svg" alt="Otter Quotes" class="nav-logo-icon" style="height:40px;width:auto;object-fit:contain;">
           <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
         </a>
         <div class="nav-links" id="nav-links">
@@ -108,8 +108,8 @@ const Nav = {
       { href: '/faq.html',          label: 'FAQ' },
     ];
 
-    // Rebuild nav links in-place to handle both role expansions (3â6) and
-    // contractions (6â3). Simply patching existing anchors leaves orphaned
+    // Rebuild nav links in-place to handle both role expansions (3→6) and
+    // contractions (6→3). Simply patching existing anchors leaves orphaned
     // links when switching from contractor (6 links) to homeowner (3 links).
     const container = document.getElementById('nav-links');
     if (container) {
@@ -258,7 +258,7 @@ const Nav = {
           </form>
         </div>
         <div id="support-success" style="display:none;text-align:center;padding:1rem 0;">
-          <div style="font-size:2rem;margin-bottom:.5rem;">â</div>
+          <div style="font-size:2rem;margin-bottom:.5rem;">✅</div>
           <p style="color:#fff;font-weight:600;margin:0 0 .25rem;">Message sent!</p>
           <p style="color:#94a3b8;font-size:.85rem;margin:0;">We'll get back to you within 24 hours.</p>
         </div>
@@ -278,7 +278,7 @@ const Nav = {
       cursor:pointer;box-shadow:0 4px 16px rgba(224,123,0,.4);
       display:flex;align-items:center;gap:.4rem;
     `;
-    fab.innerHTML = `<span style="font-size:1rem;">ð¬</span> Contact Support`;
+    fab.innerHTML = `<span style="font-size:1rem;">💬</span> Contact Support`;
     document.body.appendChild(fab);
 
     // Wire up open/close
@@ -305,7 +305,7 @@ const Nav = {
         const pageName = window.location.pathname.split('/').pop() || window.location.pathname;
         const pageUrl  = window.location.href;
         if (!subjectInput.value.trim()) {
-          subjectInput.value = `Bug Report â ${pageName}`;
+          subjectInput.value = `Bug Report — ${pageName}`;
         }
         if (!msgInput.value.trim()) {
           msgInput.value = `I found a bug on this page: ${pageUrl}\n\nDescription:\n`;
@@ -338,7 +338,7 @@ const Nav = {
       const pageUrl      = window.location.href;
       const pageName     = window.location.pathname.split('/').pop() || window.location.pathname;
       const finalSubject = isBugRpt
-        ? (subject || `Bug Report â ${pageName}`)
+        ? (subject || `Bug Report — ${pageName}`)
         : subject;
       const urlLine      = `\n\n---\nPage: ${pageUrl}`;
       const finalMessage = isBugRpt
@@ -346,7 +346,7 @@ const Nav = {
         : message;
 
       btn.disabled = true;
-      btn.textContent = 'Sendingâ¦';
+      btn.textContent = 'Sending…';
 
       try {
         const SUPABASE_URL  = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)  || '';
@@ -387,11 +387,11 @@ const Nav = {
         <div class="footer-grid">
           <div class="footer-col">
             <div class="footer-logo">
-              <img src="/img/brand-assets/logo-navy-amber.svg" alt="OtterQuote" class="nav-logo-icon" style="height:40px;width:auto;object-fit:contain;">
+              <img src="/img/brand-assets/logo-navy-amber.svg" alt="Otter Quotes" class="nav-logo-icon" style="height:40px;width:auto;object-fit:contain;">
               <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
             </div>
             <p class="footer-tagline">${isContractor
-              ? 'Your sales team â without the truck, the manager, or the advance.'
+              ? 'Your sales team — without the truck, the manager, or the advance.'
               : 'Helping homeowners get the best deal on roofing and exterior projects.'
             }</p>
           </div>
@@ -413,7 +413,7 @@ const Nav = {
               <a href="/contractor-dashboard.html">Dashboard</a>
               <a href="/contractor-profile.html">Company Profile</a>
               <a href="/contractor-agreement.html">Partner Agreement</a>
-              <a href="#" id="footer-support-link" style="color:#E07B00;font-weight:600;">ð¬ Contact Support</a>
+              <a href="#" id="footer-support-link" style="color:#E07B00;font-weight:600;">💬 Contact Support</a>
             ` : `
               <a href="/contractor-login.html">Contractor Login</a>
               <a href="/contractor-join.html">Join Our Network</a>

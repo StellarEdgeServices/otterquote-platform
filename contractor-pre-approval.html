@@ -686,13 +686,7 @@ Review at: https://otterquote.com/admin-contractors.html`,
         }
     }
 
-    let _initFired = false;
-        sb.auth.onAuthStateChange(async (event, session) => {
-            if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-                _initFired = true;
-                await init();
-            }
-        });
+    document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>

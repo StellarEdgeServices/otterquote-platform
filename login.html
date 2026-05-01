@@ -9,10 +9,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<title>Sign In â Otter Quotes</title>
+<title>Sign In &mdash; Otter Quotes</title>
 <meta name="description" content="Sign in to your Otter Quotes account to view your project status and contractor bids.">
 <link rel="canonical" href="https://otterquote.com/login.html">
-<meta property="og:title" content="Sign In â Otter Quotes">
+<meta property="og:title" content="Sign In &mdash; Otter Quotes">
 <meta property="og:description" content="Sign in to your Otter Quotes account to view your project status and contractor bids.">
 <meta property="og:url" content="https://otterquote.com/login.html">
 <meta property="og:type" content="website">
@@ -241,7 +241,7 @@
         <div class="info-icon">&#x1F4DD;</div>
         <div class="info-text">
           <h4>Sign your contract</h4>
-          <p>E-sign your contractor agreement securely â no printing, scanning, or faxing required.</p>
+          <p>E-sign your contractor agreement securely &mdash; no printing, scanning, or faxing required.</p>
         </div>
       </div>
 
@@ -286,7 +286,7 @@
 
     try {
       // Send magic link that redirects to dashboard directly (not trade-selector)
-      // cs_auth_role is NOT set here â returning users already have profiles
+      // cs_auth_role is NOT set here — returning users already have profiles
       localStorage.setItem('cs_auth_role', 'homeowner');
       await Auth.sendMagicLink(email, 'homeowner', '/dashboard.html');
 

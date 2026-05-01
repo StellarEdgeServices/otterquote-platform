@@ -1127,15 +1127,7 @@
     };
 
     // ── Initialization ──
-    let _initFired = false;
-      sb.auth.onAuthStateChange(async (event, session) => {
-          if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-              _initFired = true;
-              await init();
-          }
-      });
-      
-      async function init() {
+    document.addEventListener('DOMContentLoaded', async () => {
       // Skip init if we're inside the DocuSign iframe
       if (_isInIframe) return;
 
@@ -1309,8 +1301,7 @@
         document.getElementById('pageErrorDetail').textContent = err.message;
         document.getElementById('pageError').style.display = 'block';
       }
-    
-      });
+    });
 
     // ── Render Contractor Card ──
     async function renderContractorCard() {

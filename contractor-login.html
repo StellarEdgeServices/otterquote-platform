@@ -9,10 +9,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<title>Contractor Login â Otter Quotes</title>
+<title>Contractor Login &mdash; Otter Quotes</title>
 <meta name="description" content="Log in to your Otter Quotes contractor portal to view opportunities, manage bids, and grow your business.">
 <link rel="canonical" href="https://otterquote.com/contractor-login.html">
-<meta property="og:title" content="Contractor Login â Otter Quotes">
+<meta property="og:title" content="Contractor Login &mdash; Otter Quotes">
 <meta property="og:description" content="Log in to your Otter Quotes contractor portal to view opportunities, manage bids, and grow your business.">
 <meta property="og:url" content="https://otterquote.com/contractor-login.html">
 <meta property="og:type" content="website">
@@ -140,7 +140,7 @@
 }
 .benefit-text p { font-size: 0.85rem; }
 
-/* ââ Magic link sent state ââ */
+/* ── Magic link sent state ── */
 .magic-link-sent {
   display: none;
   text-align: center;
@@ -176,7 +176,7 @@
   font-size: 0.9rem;
 }
 
-/* ââ Loading ââ */
+/* ── Loading ── */
 .btn-loading {
   position: relative;
   color: transparent !important;
@@ -193,7 +193,7 @@
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ââ Responsive ââ */
+/* ── Responsive ── */
 @media (max-width: 768px) {
   .cl-layout { grid-template-columns: 1fr; }
   .cl-right { display: none; }
@@ -210,14 +210,14 @@
   <div class="cl-left">
     <div class="cl-form-wrap">
       <h1>Contractor Login</h1>
-      <p class="subtitle">Sign in to your OtterQuote contractor portal to view opportunities, manage bids, and track your projects.</p>
+      <p class="subtitle">Sign in to your Otter Quotes contractor portal to view opportunities, manage bids, and track your projects.</p>
 
       <!-- Login Form -->
       <form class="cl-form" id="cl-form" novalidate>
         <div class="form-group">
           <label class="form-label" for="email">Business Email</label>
           <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="you@yourcompany.com">
-          <span class="form-hint">We'll send you a secure login link â no password needed.</span>
+          <span class="form-hint">We'll send you a secure login link &mdash; no password needed.</span>
         </div>
 
         <div id="form-error" class="form-error" style="display:none;"></div>
@@ -240,7 +240,7 @@
       <!-- Join CTA -->
       <div class="cl-divider" id="cl-divider">or</div>
       <div class="cl-join-cta" id="cl-join-cta">
-        <p>New to OtterQuote? Apply to join our contractor network.</p>
+        <p>New to Otter Quotes? Apply to join our contractor network.</p>
         <a href="contractor-join.html" class="btn btn-secondary btn-lg btn-full">Apply to Join</a>
       </div>
     </div>
@@ -255,7 +255,7 @@
         <div class="benefit-icon">&#x1F4DC;</div>
         <div class="benefit-text">
           <h4>Only pay for signed contracts.</h4>
-          <p>Customers sign YOUR contract on our platform. You get a fully scoped project â measurements, materials, and a signed contract â ready to install. Just call the customer and schedule the work.</p>
+          <p>Customers sign YOUR contract on our platform. You get a fully scoped project &mdash; measurements, materials, and a signed contract &mdash; ready to install. Just call the customer and schedule the work.</p>
         </div>
       </div>
 
@@ -263,7 +263,7 @@
         <div class="benefit-icon">&#x1F3A8;</div>
         <div class="benefit-text">
           <h4>Project details settled before you show up.</h4>
-          <p>You set your preferred materials. Homeowners pick their colors from your options. The scope is locked before anyone signs â no back-and-forth after the contract is executed.</p>
+          <p>You set your preferred materials. Homeowners pick their colors from your options. The scope is locked before anyone signs &mdash; no back-and-forth after the contract is executed.</p>
         </div>
       </div>
 
@@ -366,14 +366,14 @@
     }
   });
 
-  // Check if user is already logged in â redirect based on role
+  // Check if user is already logged in &mdash; redirect based on role
   Auth.getUser().then(async user => {
     if (user) {
       const role = await Auth.getRole();
       if (role === 'contractor') {
         window.location.href = '/contractor-dashboard.html';
       } else if (role === 'homeowner') {
-        // Homeowner accidentally landed on contractor login â send them home
+        // Homeowner accidentally landed on contractor login &mdash; send them home
         window.location.href = '/dashboard.html';
       }
       // If role is null/unknown, stay on page to let them log in

@@ -87,7 +87,7 @@
     .settings-card-title { font-family: var(--font-heading); font-size: 1.125rem; font-weight: 600; color: var(--navy); margin-bottom: var(--sp-2); }
     .settings-card-subtitle { font-size: 0.875rem; color: var(--slate); margin-bottom: var(--sp-6); line-height: 1.5; }
 
-    /* ââ Toggle switch ââ */
+    /* ── Toggle switch ── */
     .switch { position: relative; width: 48px; height: 28px; flex-shrink: 0; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #CBD5E1; transition: 0.3s; border-radius: 34px; }
@@ -95,7 +95,7 @@
     input:checked + .slider { background-color: var(--amber); }
     input:checked + .slider:before { transform: translateX(20px); }
 
-    /* ââ Auto-Bid ââ */
+    /* ── Auto-Bid ── */
     .autobid-toggle-row { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4) 0; }
     .autobid-toggle-label { font-weight: 600; color: var(--navy); font-size: 1rem; }
     .autobid-status { font-size: 0.8rem; font-weight: 600; padding: var(--sp-1) var(--sp-3); border-radius: var(--radius-sm); }
@@ -143,17 +143,17 @@
   <main>
     <div class="page-header">
       <h1>Auto-Bid Settings</h1>
-      <p class="page-subtitle">Configure your auto-bid preferences for insurance roofing opportunities. When enabled, OtterQuote places bids on your behalf for matching jobs in your service area.</p>
+      <p class="page-subtitle">Configure your auto-bid preferences for insurance roofing opportunities. When enabled, Otter Quotes places bids on your behalf for matching jobs in your service area.</p>
     </div>
 
-    <!-- âââââââââââââââââââââââââââââââââââââââ -->
-    <!-- Auto-Bid Settings (LIVE â Insurance)   -->
+    <!-- ═══════════════════════════════════════ -->
+    <!-- Auto-Bid Settings (LIVE &mdash; Insurance)   -->
     <!-- D-193: Moved from contractor-settings  -->
-    <!-- âââââââââââââââââââââââââââââââââââââââ -->
+    <!-- ═══════════════════════════════════════ -->
     <div class="settings-card">
       <div class="settings-card-title">Auto-Bid Settings</div>
       <div class="settings-card-subtitle">
-        When auto-bid is enabled, OtterQuote will automatically place bids on your behalf for matching insurance full roof replacement opportunities in your service area.
+        When auto-bid is enabled, Otter Quotes will automatically place bids on your behalf for matching insurance full roof replacement opportunities in your service area.
       </div>
 
       <!-- Master toggle -->
@@ -170,7 +170,7 @@
       <div class="autobid-details hidden" id="autoBidDetails">
 
         <div class="info-box" style="margin-top: 0;">
-          <strong>How it works:</strong> When a homeowner in your service area submits an insurance claim for a full roof replacement, OtterQuote will automatically place a bid on your behalf at the insurance company's approved RCV (Replacement Cost Value) amount plus any approved supplements. The homeowner sees your bid instantly and can sign a contract right away. You can manually generate a more tailored bid after reviewing the customer's request.
+          <strong>How it works:</strong> When a homeowner in your service area submits an insurance claim for a full roof replacement, Otter Quotes will automatically place a bid on your behalf at the insurance company's approved RCV (Replacement Cost Value) amount plus any approved supplements. The homeowner sees your bid instantly and can sign a contract right away. You can manually generate a more tailored bid after reviewing the customer's request.
         </div>
 
         <!-- Summary of what auto-bid matches on -->
@@ -194,7 +194,7 @@
           </div>
           <div class="autobid-summary-item">
             <span class="check">&#10003;</span>
-            <span><strong>Location:</strong> Within your configured service area &nbsp;<a href="/contractor-profile.html" style="color:var(--amber);font-size:0.85rem;font-weight:600;text-decoration:none;">Manage service area â</a></span>
+            <span><strong>Location:</strong> Within your configured service area &nbsp;<a href="/contractor-profile.html" style="color:var(--amber);font-size:0.85rem;font-weight:600;text-decoration:none;">Manage service area →</a></span>
           </div>
         </div>
 
@@ -205,15 +205,15 @@
         <!-- See what my auto bid looks like -->
         <div style="margin-top: var(--sp-4);">
           <button type="button" onclick="toggleBidPreview()" id="bidPreviewToggleBtn" style="background: var(--navy-3); color: var(--amber); border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer; width: 100%;">
-            ð See What My Auto Bid Looks Like
+            👁 See What My Auto Bid Looks Like
           </button>
           <div id="bidPreviewPanel" style="display:none; margin-top: var(--sp-4); border: 2px solid var(--amber); border-radius: var(--radius-lg); overflow: hidden;">
-            <div style="background: var(--navy); color: var(--white); padding: var(--sp-4) var(--sp-6); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--amber);">Sample Auto-Bid Preview â What the Homeowner Sees</div>
+            <div style="background: var(--navy); color: var(--white); padding: var(--sp-4) var(--sp-6); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--amber);">Sample Auto-Bid Preview &mdash; What the Homeowner Sees</div>
             <div style="background: var(--white); padding: var(--sp-6);" id="bidPreviewContent">
               <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: var(--sp-4);">
                 <div>
                   <div style="font-weight:700; font-size:1.1rem; color:var(--navy);" id="previewCompanyName">Your Company Name</div>
-                  <div style="font-size:0.85rem; color:var(--slate);">Full Roof Replacement â RCV Insurance Bid</div>
+                  <div style="font-size:0.85rem; color:var(--slate);">Full Roof Replacement &mdash; RCV Insurance Bid</div>
                 </div>
                 <div style="text-align:right;">
                   <div style="font-size:0.8rem; color:var(--slate);">Bid Amount</div>
@@ -240,7 +240,7 @@
                 <div id="previewReviewsList" style="display:flex; flex-wrap:wrap; gap:var(--sp-3); font-size:0.85rem;"></div>
               </div>
               <div style="margin-top:var(--sp-4); padding:var(--sp-3); background:#FFFBEB; border-radius:var(--radius-sm); font-size:0.8rem; color:#92400E;">
-                â¡ This bid is auto-generated at the RCV + supplements amount. Your contractor may adjust the bid after reviewing your specific claim details.
+                ⚡ This bid is auto-generated at the RCV + supplements amount. Your contractor may adjust the bid after reviewing your specific claim details.
               </div>
             </div>
           </div>
@@ -278,7 +278,7 @@
             <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-3); color: var(--navy);">Gutter Guards</h4>
             <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
               <label style="display: flex; align-items: center; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterGuards" value="insurance_covered" checked> As covered by insurance or paid for by homeowner.</label>
-              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer; flex-wrap: wrap;"><input type="radio" name="abGutterGuards" value="included" style="margin-top:3px;"> Included â Type:
+              <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer; flex-wrap: wrap;"><input type="radio" name="abGutterGuards" value="included" style="margin-top:3px;"> Included &mdash; Type:
                 <select name="abGutterGuardType" style="margin-left:4px; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"><option value="mesh">Mesh</option><option value="screw_in">Screw-In</option><option value="other">Other</option></select>
               </label>
               <label style="display: flex; align-items: flex-start; gap: var(--sp-2); font-size: 0.875rem; cursor: pointer;"><input type="radio" name="abGutterGuards" value="other" style="margin-top:3px;"> Other: <input type="text" name="abGutterGuardsOther" placeholder="Describe your gutter guard offering..." style="margin-left:4px; flex:1; padding:2px 8px; border:1px solid var(--light); border-radius:4px; font-size:0.875rem;"></label>
@@ -476,7 +476,7 @@
             <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: var(--sp-1); color: var(--navy);">Warranty</h4>
             <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: var(--sp-3);">Select the warranty types you offer and describe each one. Check a box to enable it and appear on your bid.</p>
             <div style="padding: var(--sp-3); background:#FFFBEB; border-left:3px solid var(--amber); border-radius:var(--radius-sm); margin-bottom:var(--sp-4); font-size:0.8rem; color:#92400E; line-height:1.5;">
-              â ï¸ <strong>Disclaimer (shown to homeowners):</strong> Warranty terms listed below apply only to your Preferred Shingle. Different warranty terms may apply if the homeowner selects a different shingle.
+              ⚠️ <strong>Disclaimer (shown to homeowners):</strong> Warranty terms listed below apply only to your Preferred Shingle. Different warranty terms may apply if the homeowner selects a different shingle.
             </div>
             <!-- Material Defects -->
             <div style="border:1px solid var(--light); border-radius:var(--radius-md); padding:var(--sp-3); margin-bottom:var(--sp-3); background:white;">
@@ -573,12 +573,12 @@
   <script src="js/nav.js"></script>
 
   <script>
-    // ââ Globals ââ
+    // ── Globals ──
     let sb = null;
     let currentUser = null;
     let contractorRecord = null;
 
-    // ââ Supabase init ââ
+    // ── Supabase init ──
     document.addEventListener('DOMContentLoaded', async () => {
       if (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY) {
         sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
@@ -586,7 +586,7 @@
       await initAutoBids();
     });
 
-    // ââ Auto-Bid Toggle Logic ââ
+    // ── Auto-Bid Toggle Logic ──
     const autoBidToggle = document.getElementById('autoBidToggle');
     const autoBidDetails = document.getElementById('autoBidDetails');
     const autoBidStatusBadge = document.getElementById('autoBidStatusBadge');
@@ -605,7 +605,7 @@
 
     autoBidToggle.addEventListener('change', updateAutoBidUI);
 
-    // ââ Initialize: load auto-bid data from Supabase ââ
+    // ── Initialize: load auto-bid data from Supabase ──
     async function initAutoBids() {
       currentUser = await Auth.requireAuth('contractor');
       if (!currentUser && !CONFIG.DEMO_MODE) return;
@@ -708,7 +708,7 @@
       }
     }
 
-    // ââ Save auto-bid settings to Supabase ââ
+    // ── Save auto-bid settings to Supabase ──
     async function saveAutoBidSettings() {
       const button = document.querySelector('.save-button');
       const originalText = button.textContent;
@@ -783,7 +783,7 @@
       button.disabled = true;
 
       if (!contractorRecord || !sb) {
-        button.textContent = 'Error â Not Connected';
+        button.textContent = 'Error — Not Connected';
         button.style.backgroundColor = '#EF4444';
         button.style.color = '#FFFFFF';
         setTimeout(() => { button.textContent = originalText; button.style.backgroundColor = ''; button.style.color = ''; button.disabled = false; }, 2000);
@@ -807,24 +807,24 @@
         gtag('event', 'auto_bid_settings_saved', { contractor_id: contractorRecord.id, auto_bid_enabled: payload.auto_bid_enabled });
       } catch (err) {
         console.error('Error saving auto-bid settings:', err);
-        button.textContent = 'Error â Try Again';
+        button.textContent = 'Error — Try Again';
         button.style.backgroundColor = '#EF4444';
         button.style.color = '#FFFFFF';
         setTimeout(() => { button.textContent = originalText; button.style.backgroundColor = ''; button.style.color = ''; button.disabled = false; }, 2000);
       }
     }
 
-    // ââ Bid Preview Toggle ââ
+    // ── Bid Preview Toggle ──
     window.toggleBidPreview = function() {
       const panel = document.getElementById('bidPreviewPanel');
       const btn = document.getElementById('bidPreviewToggleBtn');
       if (panel.style.display === 'none') {
         updateBidPreview();
         panel.style.display = 'block';
-        btn.textContent = 'â² Hide Bid Preview';
+        btn.textContent = '▲ Hide Bid Preview';
       } else {
         panel.style.display = 'none';
-        btn.textContent = 'ð See What My Auto Bid Looks Like';
+        btn.textContent = '👁 See What My Auto Bid Looks Like';
       }
     };
 
@@ -837,54 +837,54 @@
       const items = [];
       const brand = document.getElementById('abPreferredShingleBrand')?.value?.trim();
       const line = document.getElementById('abPreferredShingleLine')?.value?.trim();
-      if (brand || line) items.push('ð Preferred Shingle: ' + [brand, line].filter(Boolean).join(' â '));
+      if (brand || line) items.push('🏗 Preferred Shingle: ' + [brand, line].filter(Boolean).join(' — '));
 
       const gutterOpt = document.querySelector('input[name="abGutterOption"]:checked')?.value;
-      if (gutterOpt === '5inch_included') items.push('â 5" Gutters Included');
-      else if (gutterOpt === '6inch_included') items.push('â 6" Gutters Included');
+      if (gutterOpt === '5inch_included') items.push('✅ 5" Gutters Included');
+      else if (gutterOpt === '6inch_included') items.push('✅ 6" Gutters Included');
 
       const ggOpt = document.querySelector('input[name="abGutterGuards"]:checked')?.value;
-      if (ggOpt === 'included') { const ggType = document.querySelector('select[name="abGutterGuardType"]')?.value || ''; items.push('â Gutter Guards Included' + (ggType ? ' (' + ggType + ')' : '')); }
-      else if (ggOpt === 'insurance_covered') items.push('ð¡ Gutter Guards: As covered by insurance or paid for by homeowner');
-      else if (ggOpt === 'other') { const ggOther = document.querySelector('input[name="abGutterGuardsOther"]')?.value?.trim(); if (ggOther) items.push('â¹ï¸ Gutter Guards: ' + ggOther); }
+      if (ggOpt === 'included') { const ggType = document.querySelector('select[name="abGutterGuardType"]')?.value || ''; items.push('✅ Gutter Guards Included' + (ggType ? ' (' + ggType + ')' : '')); }
+      else if (ggOpt === 'insurance_covered') items.push('🛡 Gutter Guards: As covered by insurance or paid for by homeowner');
+      else if (ggOpt === 'other') { const ggOther = document.querySelector('input[name="abGutterGuardsOther"]')?.value?.trim(); if (ggOther) items.push('ℹ️ Gutter Guards: ' + ggOther); }
 
-      if (document.getElementById('abVentRidgeUpgrade')?.checked) items.push('â Free Ridge Vent Upgrade');
+      if (document.getElementById('abVentRidgeUpgrade')?.checked) items.push('✅ Free Ridge Vent Upgrade');
       const ventOther = document.getElementById('abVentOtherText')?.value?.trim();
-      if (document.getElementById('abVentOtherCheck')?.checked && ventOther) items.push('â ' + ventOther);
+      if (document.getElementById('abVentOtherCheck')?.checked && ventOther) items.push('✅ ' + ventOther);
 
-      if (document.getElementById('abFreeAtticInspection')?.checked) items.push('â Free Attic Inspection');
+      if (document.getElementById('abFreeAtticInspection')?.checked) items.push('✅ Free Attic Inspection');
       const otherSvcs = document.getElementById('abOtherServices')?.value?.trim();
-      if (otherSvcs) items.push('â ' + otherSvcs);
+      if (otherSvcs) items.push('✅ ' + otherSvcs);
 
       const cleanup = document.getElementById('abCleanupGuarantee')?.value?.trim();
-      if (cleanup) items.push('ð§¹ Cleanup: ' + cleanup);
+      if (cleanup) items.push('🧹 Cleanup: ' + cleanup);
 
       const ppItems = [];
       if (document.getElementById('abPropEquipter')?.checked) ppItems.push('Equipter');
       if (document.getElementById('abPropCatchAll')?.checked) ppItems.push('Catch-All');
       const ppOther = document.getElementById('abPropOtherText')?.value?.trim();
       if (document.getElementById('abPropOtherCheck')?.checked && ppOther) ppItems.push(ppOther);
-      if (ppItems.length) items.push('ð¡ Property Protection: ' + ppItems.join(', '));
+      if (ppItems.length) items.push('🛡 Property Protection: ' + ppItems.join(', '));
 
       const otherOffers = document.getElementById('abOtherOffers')?.value?.trim();
-      if (otherOffers) items.push('ð ' + otherOffers);
+      if (otherOffers) items.push('🎁 ' + otherOffers);
 
       const tradeLabels = { siding_full: 'Siding (full replace)', siding_repair: 'Siding (repair)', gutters_full: 'Gutters (full replace)', gutters_repair: 'Gutters (repair)', interior_repairs: 'Interior repairs', paint: 'Paint' };
       const selectedTrades = Array.from(document.querySelectorAll('input[name="abOtherTrades"]:checked')).map(el => tradeLabels[el.value] || el.value);
-      if (selectedTrades.length) items.push('ð  Other Trades (if covered by insurance): ' + selectedTrades.join(', '));
+      if (selectedTrades.length) items.push('🏠 Other Trades (if covered by insurance): ' + selectedTrades.join(', '));
 
       document.getElementById('previewIncludesList').innerHTML = items.length
         ? items.map(i => '<div>' + i + '</div>').join('')
-        : '<div style="color:var(--slate);">No items configured yet â fill out the sections above.</div>';
+        : '<div style="color:var(--slate);">No items configured yet — fill out the sections above.</div>';
 
       // Warranty preview
       const warrantyItems = [];
       const shingleName = [brand, line].filter(Boolean).join(' ') || 'your preferred shingle';
-      if (document.getElementById('abWarrMaterialDefects')?.checked) { const d = document.getElementById('abWarrMaterialDefectsDesc')?.value?.trim(); warrantyItems.push('ð Material Defects' + (d ? ': ' + d : '')); }
-      if (document.getElementById('abWarrLabor')?.checked) { const d = document.getElementById('abWarrLaborDesc')?.value?.trim(); warrantyItems.push('ð¨ Labor' + (d ? ': ' + d : '')); }
-      if (document.getElementById('abWarrAlgae')?.checked) { const d = document.getElementById('abWarrAlgaeDesc')?.value?.trim(); warrantyItems.push('ð¿ Algae Resistance' + (d ? ': ' + d : '')); }
-      if (document.getElementById('abWarrHail')?.checked) { const d = document.getElementById('abWarrHailDesc')?.value?.trim(); warrantyItems.push('ð¨ Hail' + (d ? ': ' + d : '')); }
-      if (document.getElementById('abWarrWind')?.checked) { const d = document.getElementById('abWarrWindDesc')?.value?.trim(); warrantyItems.push('ð¨ Wind' + (d ? ': ' + d : '')); }
+      if (document.getElementById('abWarrMaterialDefects')?.checked) { const d = document.getElementById('abWarrMaterialDefectsDesc')?.value?.trim(); warrantyItems.push('📋 Material Defects' + (d ? ': ' + d : '')); }
+      if (document.getElementById('abWarrLabor')?.checked) { const d = document.getElementById('abWarrLaborDesc')?.value?.trim(); warrantyItems.push('🔨 Labor' + (d ? ': ' + d : '')); }
+      if (document.getElementById('abWarrAlgae')?.checked) { const d = document.getElementById('abWarrAlgaeDesc')?.value?.trim(); warrantyItems.push('🌿 Algae Resistance' + (d ? ': ' + d : '')); }
+      if (document.getElementById('abWarrHail')?.checked) { const d = document.getElementById('abWarrHailDesc')?.value?.trim(); warrantyItems.push('🌨 Hail' + (d ? ': ' + d : '')); }
+      if (document.getElementById('abWarrWind')?.checked) { const d = document.getElementById('abWarrWindDesc')?.value?.trim(); warrantyItems.push('💨 Wind' + (d ? ': ' + d : '')); }
       const wSection = document.getElementById('previewWarrantySection');
       if (warrantyItems.length) {
         wSection.style.display = 'block';

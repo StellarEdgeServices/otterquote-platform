@@ -9,7 +9,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-  <title>Submit for Bid Ã¢ÂÂ Otter Quotes</title>
+  <title>Submit for Bid &mdash; Otter Quotes</title>
   <meta name="description" content="Review and submit your project details for competitive bids from qualified contractors.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -61,7 +61,7 @@
       max-width: 400px;
     }
 
-    /* Explicit progress bar override Ã¢ÂÂ prevents design-system gradient from showing at 0% */
+    /* Explicit progress bar override &mdash; prevents design-system gradient from showing at 0% */
     .welcome-progress .progress-bar {
       height: 8px;
       background: rgba(255,255,255,0.12);
@@ -244,7 +244,7 @@
       background: rgba(255,255,255,0.06);
     }
 
-    /* Hover link sent Ã¢ÂÂ amber/waiting state */
+    /* Hover link sent &mdash; amber/waiting state */
     .checklist-icon.hover-pending {
       background: rgba(245,158,11,0.15);
       color: var(--amber);
@@ -780,7 +780,7 @@
       }
     }
 
-    /* Ã¢ÂÂÃ¢ÂÂ D-178: State Gate Card Ã¢ÂÂÃ¢ÂÂ */
+    /* ── D-178: State Gate Card ── */
     .state-gate-overlay {
       min-height: 100vh;
       display: flex;
@@ -888,17 +888,17 @@
   <!-- D-178: State gate overlay (hidden by default; shown for non-IN homeowners) -->
   <div id="state-gate-overlay" class="state-gate-overlay" style="display:none;">
     <div class="state-gate-card">
-      <img src="/img/brand-assets/logo-navy-amber.svg" alt="OtterQuote" class="gate-logo">
-      <h2 id="gate-heading">Otter Quotes isn't available in your state yet Ã¢ÂÂ but it will be.</h2>
+      <img src="/img/brand-assets/logo-navy-amber.svg" alt="Otter Quotes" class="gate-logo">
+      <h2 id="gate-heading">Otter Quotes isn't available in your state yet &mdash; but it will be.</h2>
       <p class="gate-body" id="gate-body">We're growing fast and your state is on the roadmap. In the meantime, your project information is saved.</p>
       <div class="state-gate-optin">
         <input type="checkbox" id="gate-optin-checkbox" checked>
         <div>
-          <label for="gate-optin-checkbox">Notify me when OtterQuote arrives in my state</label>
+          <label for="gate-optin-checkbox">Notify me when Otter Quotes arrives in my state</label>
           <div class="gate-email-note" id="gate-email-note"></div>
         </div>
       </div>
-      <div class="state-gate-confirm" id="gate-confirm">Ã¢ÂÂ You're on the list. We'll reach out when we arrive in your area.</div>
+      <div class="state-gate-confirm" id="gate-confirm">✓ You're on the list. We'll reach out when we arrive in your area.</div>
       <div class="state-gate-error" id="gate-error">Something went wrong saving your spot. Please try again or email support@otterquote.com.</div>
       <button class="state-gate-btn" id="gate-save-btn" onclick="saveWaitlistSpot()">Save My Spot</button>
       <p class="state-gate-fine">Your information is kept private and used only to notify you of availability in your area. You may request account deletion at any time by emailing <a href="mailto:support@otterquote.com" style="color:rgba(255,255,255,0.55);">support@otterquote.com</a>.</p>
@@ -910,13 +910,13 @@
       <div class="container">
         <!-- Error message -->
         <div id="error-message" class="error-message">
-          <span>Ã¢ÂÂ Ã¯Â¸Â</span>
+          <span>⚠️</span>
           <span id="error-text"></span>
         </div>
 
         <!-- Success message -->
         <div id="success-message" class="success-message">
-          <span>Ã¢ÂÂ</span>
+          <span>✓</span>
           <span id="success-text"></span>
         </div>
 
@@ -942,7 +942,7 @@
         <!-- Status banner (shown when project is submitted) -->
         <div id="status-banner" class="status-banner">
           <div class="status-banner-text">
-            <div class="status-banner-icon" id="status-banner-icon">Ã¢ÂÂ</div>
+            <div class="status-banner-icon" id="status-banner-icon">✓</div>
             <div>
               <strong id="status-banner-title">Your project is live!</strong>
               <p style="margin: 0; font-size: 0.95rem;" id="status-banner-text">Contractors are reviewing your details. You'll be notified of incoming bids.</p>
@@ -1067,7 +1067,7 @@
             <div id="retailFields" class="conditional-section" style="display:none;">
               <div class="form-group">
                 <label class="form-label">Roof Size (squares)</label>
-                <input type="number" step="0.1" name="roofSquares" class="form-input" placeholder="If known Ã¢ÂÂ Hover measurement will provide this">
+                <input type="number" step="0.1" name="roofSquares" class="form-input" placeholder="If known &mdash; Hover measurement will provide this">
               </div>
             </div>
 
@@ -1075,10 +1075,10 @@
             <div class="form-group">
               <label class="form-label">When do you need this completed?</label>
               <select name="urgency" class="form-input">
-                <option value="flexible">No rush Ã¢ÂÂ flexible timeline</option>
+                <option value="flexible">No rush &mdash; flexible timeline</option>
                 <option value="30_days">Within 30 days</option>
                 <option value="2_weeks">Within 2 weeks</option>
-                <option value="asap">ASAP Ã¢ÂÂ urgent</option>
+                <option value="asap">ASAP &mdash; urgent</option>
               </select>
             </div>
             <div id="urgencyDetails" class="conditional-section" style="display:none;">
@@ -1097,7 +1097,7 @@
             <!-- Homeowner notes -->
             <div class="form-group">
               <label class="form-label">Notes for Contractors (optional)</label>
-              <textarea name="homeownerNotes" class="form-input" rows="3" maxlength="500" placeholder="Anything contractors should know Ã¢ÂÂ tree fell on north side, specific concerns, access instructions, etc."></textarea>
+              <textarea name="homeownerNotes" class="form-input" rows="3" maxlength="500" placeholder="Anything contractors should know &mdash; tree fell on north side, specific concerns, access instructions, etc."></textarea>
               <span class="char-count">0 / 500</span>
             </div>
           </div>
@@ -1132,7 +1132,7 @@
 
         <!-- Submit success state -->
         <div id="submit-success" class="submit-success">
-          <div class="submit-success-icon">Ã¢ÂÂ</div>
+          <div class="submit-success-icon">✓</div>
           <h2>Project Submitted Successfully!</h2>
           <p>Your project details are now live. Contractors are reviewing your information and will send you bids.</p>
           <a href="bids.html" class="btn btn-primary btn-lg" id="viewBidsLinkSubmit">View Bids</a>
@@ -1149,7 +1149,7 @@
     <div class="modal">
       <div class="modal-header">
         <h2 id="help-modal-title">Help</h2>
-        <button class="modal-close" onclick="document.getElementById('help-modal').classList.remove('active')">Ã¢ÂÂ</button>
+        <button class="modal-close" onclick="document.getElementById('help-modal').classList.remove('active')">✕</button>
       </div>
       <div class="modal-content" id="help-modal-content">
         <!-- Populated by JS -->
@@ -1161,8 +1161,8 @@
   <div id="switch-contractor-modal" class="switch-modal-overlay">
     <div class="switch-modal">
       <div class="switch-modal-header">
-        <h2>Ã°ÂÂÂ What happened? Can we fix it?</h2>
-        <button class="modal-close" onclick="closeSwitchModal()" aria-label="Close">Ã¢ÂÂ</button>
+        <h2>🔄 What happened? Can we fix it?</h2>
+        <button class="modal-close" onclick="closeSwitchModal()" aria-label="Close">✕</button>
       </div>
 
       <!-- Step 1: Survey -->
@@ -1192,13 +1192,13 @@
             </label>
           </div>
           <p style="margin-bottom: var(--sp-2); font-size: 0.88rem;">Tell us more (optional):</p>
-          <textarea id="switch-notes" class="switch-notes-field" placeholder="Any additional context helps us find you a better matchÃ¢ÂÂ¦" maxlength="1000"></textarea>
+          <textarea id="switch-notes" class="switch-notes-field" placeholder="Any additional context helps us find you a better match&hellip;" maxlength="1000"></textarea>
           <div class="switch-consequence-note" style="margin-top: var(--sp-4);">
-            <strong>What happens when you submit:</strong> Your current contract is voided, your project returns to open bidding, and your contractor's platform fee is refunded. An OtterQuote team member will contact you directly to confirm your next contractor placement.
+            <strong>What happens when you submit:</strong> Your current contract is voided, your project returns to open bidding, and your contractor's platform fee is refunded. An Otter Quotes team member will contact you directly to confirm your next contractor placement.
           </div>
         </div>
         <div class="switch-modal-actions">
-          <button class="btn btn-ghost" onclick="closeSwitchModal()">Cancel Ã¢ÂÂ Keep My Contractor</button>
+          <button class="btn btn-ghost" onclick="closeSwitchModal()">Cancel &mdash; Keep My Contractor</button>
           <button class="btn btn-danger" id="submit-switch-btn" onclick="submitSwitchSurvey()">
             Submit Switch Request
           </button>
@@ -1208,9 +1208,9 @@
       <!-- Step 2: Success -->
       <div id="switch-success-step" class="switch-success-step">
         <div class="switch-success-panel">
-          <div class="switch-success-icon">Ã¢ÂÂ</div>
+          <div class="switch-success-icon">✅</div>
           <h3>We've got you.</h3>
-          <p>An OtterQuote team member will reach out shortly to get you matched with a new contractor from our network.</p>
+          <p>An Otter Quotes team member will reach out shortly to get you matched with a new contractor from our network.</p>
           <p style="font-size: 0.85rem; color: var(--slate); opacity: 0.8;">Your current contractor has been notified and their platform fee has been refunded. You do not need to contact them directly.</p>
         </div>
         <div class="switch-modal-actions" style="justify-content: center;">
@@ -1230,7 +1230,7 @@
     (function() {
       'use strict';
 
-      // Ã¢ÂÂÃ¢ÂÂ State Ã¢ÂÂÃ¢ÂÂ
+      // ── State ──
       let currentUser = null;
       let currentProfile = null;
       let currentClaim = null;
@@ -1240,7 +1240,7 @@
       let hoverOrder = null; // Most recent ACTIVE hover_orders row for this claim (or null)
       let hoverRebateOrder = null; // D-181: Most recent hover_orders row (any status) for rebate state
 
-      // Ã¢ÂÂÃ¢ÂÂ Demo Mode Ã¢ÂÂÃ¢ÂÂ
+      // ── Demo Mode ──
       let isDemo = false;
 
       function loadDemoData() {
@@ -1269,7 +1269,7 @@
           carrier_id: '1',
           claim_number: 'SF-2026-4821-7R',
           date_of_loss: '2026-03-02',
-          damage_type: 'Roof Ã¢ÂÂ Hail & Wind',
+          damage_type: 'Roof — Hail & Wind',
           deductible_amount: 2500.00,
           adjuster_name: 'Mike Reynolds',
           adjuster_email: 'mreynolds@statefarm.com',
@@ -1283,17 +1283,17 @@
         };
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ Main Initialization Ã¢ÂÂÃ¢ÂÂ
+      // ── Main Initialization ──
       async function init() {
         try {
-          // 1. Check auth Ã¢ÂÂ will skip redirect in DEMO_MODE
+          // 1. Check auth — will skip redirect in DEMO_MODE
           currentUser = await Auth.requireAuth('homeowner');
 
           if (!currentUser && CONFIG.DEMO_MODE) {
             // Demo mode: show realistic sample data for review
             loadDemoData();
           } else if (!currentUser) {
-            // Live mode with no auth Ã¢ÂÂ already redirected by requireAuth()
+            // Live mode with no auth — already redirected by requireAuth()
             return;
           } else {
             // Live mode: load real data
@@ -1302,7 +1302,7 @@
             await loadClaimData();
           }
 
-          // D-178: State gate Ã¢ÂÂ block non-IN homeowners before any UI renders
+          // D-178: State gate — block non-IN homeowners before any UI renders
           if (currentClaim?.property_state && currentClaim.property_state !== 'IN') {
             showStateGateCard(currentClaim.property_state);
             return;
@@ -1330,7 +1330,7 @@
         }
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ Data Loading Ã¢ÂÂÃ¢ÂÂ
+      // ── Data Loading ──
       async function loadProfileData() {
         if (CONFIG.DEMO_MODE) {
           return; // Already loaded by loadDemoData()
@@ -1338,8 +1338,10 @@
 
         currentProfile = await Auth.getProfile();
         if (!currentProfile) {
-          // Create default profile if doesn't exist Ã¢ÂÂ use actual DB column names
-          const signupData = JSON.parse(localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup') || '{}'); // D-178 fix: localStorage persists after magic link redirect
+          // Create default profile if doesn't exist — use actual DB column names
+          // D-178 fix: read from localStorage first (persists after magic link redirect),
+          // fall back to sessionStorage (same-tab flows), then empty object.
+          const signupData = JSON.parse(localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup') || '{}');
           const firstName = signupData.first_name || currentUser.user_metadata?.full_name?.split(' ')[0] || '';
           const lastName = signupData.last_name || currentUser.user_metadata?.full_name?.split(' ')[1] || '';
           currentProfile = {
@@ -1359,8 +1361,8 @@
             // Continue with local profile so UI still renders
           }
         } else if (!currentProfile.full_name) {
-          // Profile row exists but name was never saved Ã¢ÂÂ derive from auth metadata and persist
-          const signupData = JSON.parse(localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup') || '{}'); // D-178 fix: localStorage persists after magic link redirect
+          // Profile row exists but name was never saved — derive from auth metadata and persist
+          const signupData = JSON.parse(localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup') || '{}');
           const firstName = signupData.first_name || currentUser.user_metadata?.full_name?.split(' ')[0] || '';
           const lastName  = signupData.last_name  || currentUser.user_metadata?.full_name?.split(' ')[1] || '';
           const derivedName = (firstName + ' ' + lastName).trim() || currentUser.email?.split('@')[0] || '';
@@ -1408,9 +1410,9 @@
           console.log('[Dashboard] Claim query result:', { data: !!data, error: error?.message || null, errorCode: error?.code || null });
 
           if (error && error.code !== 'PGRST116') {
-            // PGRST116 = no rows found Ã¢ÂÂ that's OK, we'll create one
+            // PGRST116 = no rows found — that's OK, we'll create one
             console.error('[Dashboard] Error loading claim:', error);
-            // Don't return Ã¢ÂÂ fall through to create a new claim
+            // Don't return — fall through to create a new claim
           }
 
           if (data) {
@@ -1485,7 +1487,7 @@
 
           // If we STILL don't have a claim, create a local default so the UI renders
           if (!currentClaim) {
-            console.warn('[Dashboard] Using local default claim Ã¢ÂÂ Supabase query/insert both failed');
+            console.warn('[Dashboard] Using local default claim — Supabase query/insert both failed');
             currentClaim = {
               id: null,
               status: 'draft',
@@ -1516,10 +1518,10 @@
         }
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ D-178: State Gating Helpers Ã¢ÂÂÃ¢ÂÂ
+      // ── D-178: State Gating Helpers ──
 
       /** Parse 2-letter state abbreviation from a US address string.
-       *  Handles: "123 Main St, Indianapolis, IN 46077" Ã¢ÂÂ "IN"
+       *  Handles: "123 Main St, Indianapolis, IN 46077" → "IN"
        */
       function parseStateFromAddress(address) {
         if (!address) return null;
@@ -1539,7 +1541,7 @@
         const heading   = document.getElementById('gate-heading');
         const body      = document.getElementById('gate-body');
         const emailNote = document.getElementById('gate-email-note');
-        if (heading) heading.textContent = `OtterQuote isn't available in ${stateName} yet Ã¢ÂÂ but it will be.`;
+        if (heading) heading.textContent = `Otter Quotes isn't available in ${stateName} yet — but it will be.`;
         if (body)    body.textContent    = `We're growing fast and ${stateName} is on the roadmap. In the meantime, your project information is saved.`;
 
         // Pre-fill email from auth session
@@ -1551,7 +1553,7 @@
         const overlay = document.getElementById('state-gate-overlay');
         if (overlay) overlay.style.display = 'flex';
 
-        // Mark claim as waitlisted (best-effort Ã¢ÂÂ non-blocking)
+        // Mark claim as waitlisted (best-effort — non-blocking)
         if (sb && currentClaim?.id) {
           sb.from('claims')
             .update({ status: 'waitlisted' })
@@ -1570,7 +1572,7 @@
         const errorEl  = document.getElementById('gate-error');
         const state    = currentClaim?.property_state;
 
-        if (btn) { btn.disabled = true; btn.textContent = 'SavingÃ¢ÂÂ¦'; }
+        if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
         if (confirm) confirm.style.display = 'none';
         if (errorEl) errorEl.style.display = 'none';
 
@@ -1593,7 +1595,7 @@
           if (error) throw error;
 
           if (confirm) confirm.style.display = 'block';
-          if (btn) { btn.textContent = 'Saved Ã¢ÂÂ'; }
+          if (btn) { btn.textContent = 'Saved ✓'; }
         } catch (err) {
           console.warn('[StateGate] saveWaitlistSpot error:', err?.message || err);
           if (errorEl) errorEl.style.display = 'block';
@@ -1619,7 +1621,7 @@
         return map[code?.toUpperCase()] || null;
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ UI Rendering Ã¢ÂÂÃ¢ÂÂ
+      // ── UI Rendering ──
       function renderWelcome() {
         // Profile uses full_name (not first_name/last_name) and address_street/city/state/zip (not address)
         const firstName = currentProfile?.full_name?.split(' ')[0]
@@ -1639,7 +1641,7 @@
         const display = document.getElementById('claim-display');
         const form = document.getElementById('claim-edit-form');
 
-        // Ã¢ÂÂÃ¢ÂÂ Project summary rows (read-only, always shown at top) Ã¢ÂÂÃ¢ÂÂ
+        // ── Project summary rows (read-only, always shown at top) ──
         const trades = Array.isArray(currentClaim.trades) && currentClaim.trades.length
           ? currentClaim.trades.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ')
           : null;
@@ -1697,7 +1699,7 @@
             }
           }
 
-          // Capitalize damage type (e.g. "roof" Ã¢ÂÂ "Roof")
+          // Capitalize damage type (e.g. "roof" → "Roof")
           if (field.key === 'damage_type' && value !== 'Not provided') {
             value = value.charAt(0).toUpperCase() + value.slice(1);
           }
@@ -1756,8 +1758,9 @@
         if (!currentClaim) return;
 
         // Retail / cash / repair claims require measurements; insurance claims do not.
+        // BUG-3 fix: null funding_type (job type not yet selected) must not require measurements.
         const isInsurance      = currentClaim.funding_type === 'insurance';
-        const isExplicitlyCash = currentClaim.funding_type === 'cash'; // BUG-3 fix
+        const isExplicitlyCash = currentClaim.funding_type === 'cash';
 
         // Hover order state helpers
         const hasHoverOrder = hoverOrder && (hoverOrder.status === 'link_sent' || hoverOrder.status === 'pending');
@@ -1772,12 +1775,12 @@
         // Build measurements description + buttons depending on context
         let measurementsDesc, measurementsNote, measurementsBtns;
         if (currentClaim.has_measurements) {
-          // Already done Ã¢ÂÂ handled by status logic below
+          // Already done — handled by status logic below
           measurementsDesc  = null;
           measurementsNote  = null;
           measurementsBtns  = [];
         } else if (hasHoverOrder) {
-          measurementsDesc  = 'Your Hover measurement link was sent. Awaiting your photos Ã¢ÂÂ check your email inbox.';
+          measurementsDesc  = 'Your Hover measurement link was sent. Awaiting your photos — check your email inbox.';
           measurementsNote  = resendAvailable
             ? `Link sent to ${hoverOrder.capturing_user_email || 'your email'}. Didn't receive it? Resend below.`
             : 'Resend limit reached for today (3/3). Try again tomorrow or upload measurements manually.';
@@ -1796,16 +1799,16 @@
             { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' },
           ];
         } else if (isExplicitlyCash) {
-          // Retail / cash Ã¢ÂÂ required, no hover order yet
+          // Retail / cash — required, no hover order yet
           measurementsDesc  = 'Required for retail projects. Upload measurement reports or use a Hover aerial measurement.';
-          measurementsNote  = 'Required Ã¢ÂÂ contractors need measurements to price your project accurately.';
+          measurementsNote  = 'Required — contractors need measurements to price your project accurately.';
           measurementsBtns  = [
             { label: 'Upload', action: 'upload',   data: 'measurements' },
             { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' },
           ];
         } else {
-          // Job type not yet selected â treat measurements as optional
-          measurementsDesc  = 'Optional â upload measurements or use Hover aerial measurement for more accurate bids.';
+          // Job type not yet selected (funding_type = null) — treat as optional
+          measurementsDesc  = 'Optional — upload measurement reports or use a Hover aerial measurement for more accurate bids.';
           measurementsNote  = 'Optional but recommended. Contractors use measurements to price your project accurately.';
           measurementsBtns  = [
             { label: 'Upload', action: 'upload',   data: 'measurements' },
@@ -1826,18 +1829,18 @@
               { label: 'Upload', action: 'upload', data: 'estimate' },
               { label: 'Help Me', action: 'help', data: 'estimate' }
             ],
-            icon: 'Ã°ÂÂÂ'
+            icon: '📄'
           },
           {
             id: 'measurements',
             title: 'Measurements',
-            required: isExplicitlyCash, // Hard required only for retail/cash
+            required: isExplicitlyCash, // Hard required only for retail/cash; optional for insurance and unknown
             status: currentClaim.has_measurements ? 'uploaded' : (hasHoverOrder ? 'hover_pending' : 'pending'),
             filename: currentClaim.measurements_filename,
             description: measurementsDesc,
             note: measurementsNote,
             buttons: measurementsBtns,
-            icon: hasHoverOrder && !currentClaim.has_measurements ? 'Ã°ÂÂÂ' : 'Ã°ÂÂÂ'
+            icon: hasHoverOrder && !currentClaim.has_measurements ? '🔗' : '📐'
           },
           {
             id: 'material',
@@ -1859,7 +1862,7 @@
                 ? { label: 'Change Material', action: 'navigate', data: 'help-materials.html' }
                 : { label: 'Choose Material', action: 'navigate', data: 'help-materials.html' }
             ],
-            icon: 'Ã°ÂÂÂ¨'
+            icon: '🎨'
           },
           {
             id: 'project_confirmation',
@@ -1878,7 +1881,7 @@
               : (currentClaim.status === 'contract_signed'
                 ? [{ label: 'Start Confirmation', action: 'navigate', data: `project-confirmation.html?claim_id=${currentClaim.id}` }]
                 : []),
-            icon: currentClaim.project_confirmation ? 'Ã¢ÂÂ' : 'Ã°ÂÂÂ',
+            icon: currentClaim.project_confirmation ? '✅' : '📋',
             disabled: !currentClaim.project_confirmation && currentClaim.status !== 'contract_signed'
           }
         ];
@@ -1891,13 +1894,13 @@
             <div class="checklist-item ${isDone ? 'complete' : ''} ${item.required ? 'required' : ''} ${item.disabled ? 'disabled' : ''}">
               <div class="checklist-left">
                 <div class="checklist-icon ${isDone ? 'done' : isHover ? 'hover-pending' : 'pending'}">
-                  ${isDone ? 'Ã¢ÂÂ' : item.icon}
+                  ${isDone ? '✓' : item.icon}
                 </div>
                 <div class="checklist-info">
                   <div class="checklist-title">${item.title}${item.required ? ' <span class="required-badge">Required</span>' : ''}</div>
                   ${isDone ? `
                     <div class="checklist-status uploaded">
-                      Ã¢ÂÂ ${item.status === 'uploaded' ? 'Uploaded' : 'Selected'}
+                      ✓ ${item.status === 'uploaded' ? 'Uploaded' : 'Selected'}
                       ${item.filename ? `<span class="checklist-filename">${item.filename}</span>` : ''}
                     </div>
                   ` : item.disabled ? `
@@ -1933,11 +1936,11 @@
         `; // end template literal
         }).join(''); // end items.map
 
-        // Ã¢ÂÂÃ¢ÂÂ D-181: Hover Measurement Payment + Rebate Status Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+        // ── D-181: Hover Measurement Payment + Rebate Status ─────────────────
         // Shown whenever the homeowner has paid the $79 Hover fee. States:
-        //   1. Paid Ã¢ÂÂ rebate owed on project completion (rebate_due=true, no rebate_paid_at)
+        //   1. Paid — rebate owed on project completion (rebate_due=true, no rebate_paid_at)
         //   2. Rebated on [date] (rebate_paid_at populated)
-        //   3. Charge recorded but rebate flag cleared without timestamp Ã¢ÂÂ defensive display.
+        //   3. Charge recorded but rebate flag cleared without timestamp — defensive display.
         if (hoverRebateOrder && hoverRebateOrder.homeowner_stripe_payment_intent_id) {
           const amt = Number(hoverRebateOrder.homeowner_charge_amount || 0) / 100;
           const amtLabel = `$${amt.toFixed(0)}`;
@@ -1951,14 +1954,14 @@
             const d = new Date(hoverRebateOrder.rebate_paid_at);
             const dateStr = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
             headerLine = 'Hover measurement fee rebated';
-            bodyLine = `Your ${amtLabel} Hover measurement fee was rebated to your original payment method on ${dateStr}. Refunds typically show on your statement within 5Ã¢ÂÂ10 business days.`;
+            bodyLine = `Your ${amtLabel} Hover measurement fee was rebated to your original payment method on ${dateStr}. Refunds typically show on your statement within 5–10 business days.`;
             badgeColor = '#10B981'; // green
           } else if (hoverRebateOrder.rebate_due) {
-            headerLine = `Hover fee paid Ã¢ÂÂ ${amtLabel} rebate pending`;
-            bodyLine = `You've paid ${amtLabel} for your Hover measurement report. When your project closes with an OtterQuote contractor, the full ${amtLabel} is rebated to your original payment method automatically.`;
+            headerLine = `Hover fee paid — ${amtLabel} rebate pending`;
+            bodyLine = `You've paid ${amtLabel} for your Hover measurement report. When your project closes with an Otter Quotes contractor, the full ${amtLabel} is rebated to your original payment method automatically.`;
             badgeColor = 'var(--amber,#E07B00)';
           } else {
-            headerLine = `Hover fee paid Ã¢ÂÂ ${amtLabel}`;
+            headerLine = `Hover fee paid — ${amtLabel}`;
             bodyLine = `Your ${amtLabel} Hover measurement payment is on file.`;
             badgeColor = '#64748B';
           }
@@ -1968,7 +1971,7 @@
           wrap.style.cssText = 'display:flex;align-items:flex-start;gap:1rem;';
 
           const icon = document.createElement('div');
-          icon.textContent = 'Ã°ÂÂÂ³';
+          icon.textContent = '💳';
           icon.style.cssText = 'font-size:1.75rem;flex-shrink:0;line-height:1;';
 
           const content = document.createElement('div');
@@ -1991,7 +1994,7 @@
           container.appendChild(rebateCard);
         }
 
-        // Ã¢ÂÂÃ¢ÂÂ D-164: Siding Design Gate CTA Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+        // ── D-164: Siding Design Gate CTA ────────────────────────────────────
         // Retail siding bids are held until the homeowner completes their full
         // Hover design (manufacturer + profile + color + trim).
         const claimTrades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
@@ -2000,7 +2003,7 @@
         const sidingReleased    = !!currentClaim.siding_bid_released_at;
 
         if (claimHasSiding && isRetailFunding) {
-          // Resolve Hover job link (hover.to/jobs/{id} Ã¢ÂÂ NOT app.hover.to per Session 238 fix)
+          // Resolve Hover job link (hover.to/jobs/{id} — NOT app.hover.to per Session 238 fix)
           let hoverJobId = null;
           if (hoverOrder?.hover_job_id) {
             hoverJobId = hoverOrder.hover_job_id;
@@ -2014,11 +2017,11 @@
           const ctaDiv = document.createElement('div');
 
           if (!sidingReleased) {
-            // Ã¢ÂÂÃ¢ÂÂ Gate NOT clear: prominent CTA card Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+            // ── Gate NOT clear: prominent CTA card ───────────────────────
             ctaDiv.style.cssText = 'margin-top:1.25rem;background:linear-gradient(135deg,#0f2942 0%,#0d3151 100%);border:2px solid var(--amber,#E07B00);border-radius:0.875rem;padding:1.25rem 1.5rem;';
             ctaDiv.innerHTML = `
               <div style="display:flex;align-items:flex-start;gap:1rem;">
-                <div style="font-size:2rem;flex-shrink:0;line-height:1;">Ã°ÂÂÂ </div>
+                <div style="font-size:2rem;flex-shrink:0;line-height:1;">🏠</div>
                 <div style="flex:1;">
                   <div style="font-weight:700;color:var(--amber,#E07B00);font-size:1rem;margin-bottom:0.5rem;">
                     Design your siding on Hover
@@ -2033,21 +2036,21 @@
                   <a href="${hoverLink}" target="_blank" rel="noopener"
                      style="display:inline-block;background:var(--amber,#E07B00);color:#0D1B2E;font-size:0.875rem;font-weight:700;text-decoration:none;padding:8px 20px;border-radius:0.5rem;transition:opacity 0.2s;"
                      onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-                    Design Your Siding in Hover Ã¢ÂÂ
+                    Design Your Siding in Hover →
                   </a>
                 </div>
               </div>
             `;
           } else {
-            // Ã¢ÂÂÃ¢ÂÂ Gate cleared: brief confirmation Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+            // ── Gate cleared: brief confirmation ─────────────────────────
             ctaDiv.style.cssText = 'margin-top:1rem;background:rgba(224,123,0,0.08);border:1px solid rgba(224,123,0,0.35);border-radius:0.75rem;padding:0.875rem 1.25rem;display:flex;align-items:center;gap:0.75rem;';
             ctaDiv.innerHTML = `
-              <div style="font-size:1.25rem;flex-shrink:0;">Ã¢ÂÂ</div>
+              <div style="font-size:1.25rem;flex-shrink:0;">✅</div>
               <div style="font-size:0.875rem;color:rgba(255,255,255,0.9);">
                 <strong style="color:#FAC775;">Siding design locked in.</strong>
                 Contractors are now bidding on your siding project.
                 <a href="bids.html?claim_id=${encodeURIComponent(currentClaim.id)}"
-                   style="color:var(--amber,#E07B00);margin-left:0.25rem;text-decoration:none;">View bids Ã¢ÂÂ</a>
+                   style="color:var(--amber,#E07B00);margin-left:0.25rem;text-decoration:none;">View bids →</a>
               </div>
             `;
           }
@@ -2091,14 +2094,14 @@
 
         const status = currentClaim?.status;
 
-        // Contract already signed Ã¢ÂÂ highest priority message (always show banner regardless of ready_for_bids)
+        // Contract already signed — highest priority message (always show banner regardless of ready_for_bids)
         if (status === 'contract_signed') {
           if (banner) banner.classList.add('active');
-          if (iconEl) iconEl.textContent = 'Ã°ÂÂÂ';
+          if (iconEl) iconEl.textContent = '🎉';
           if (titleEl) titleEl.textContent = 'Contract signed!';
           if (textEl) textEl.textContent = 'Your contract is signed. Your contractor will be in touch to schedule your project.';
 
-          // Ã¢ÂÂÃ¢ÂÂ Switch Contractor button Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+          // ── Switch Contractor button ───────────────────────────────────
           // Check 3-day cutoff on the frontend (Edge Function also enforces this server-side)
           const installDate = currentClaim?.estimated_start_date
             ? new Date(currentClaim.estimated_start_date)
@@ -2117,7 +2120,7 @@
                   <button class="btn btn-sm btn-ghost" disabled style="opacity:0.5; cursor:not-allowed;">
                     Switch Contractor
                   </button>
-                  <div class="switch-tooltip">Switching is no longer available Ã¢ÂÂ installation is within 3 days.</div>
+                  <div class="switch-tooltip">Switching is no longer available — installation is within 3 days.</div>
                 </div>`;
             } else {
               switchBtnHtml = `
@@ -2137,7 +2140,7 @@
           return;
         }
 
-        // Try to get bid count Ã¢ÂÂ non-blocking, graceful fallback
+        // Try to get bid count — non-blocking, graceful fallback
         let bidCount = 0;
         try {
           if (sb && currentClaim?.id && !CONFIG.DEMO_MODE) {
@@ -2149,26 +2152,26 @@
             bidCount = count || 0;
           }
         } catch (e) {
-          // Non-fatal Ã¢ÂÂ fall back to generic message
+          // Non-fatal — fall back to generic message
         }
 
         if (bidCount > 0) {
-          if (iconEl) iconEl.textContent = 'Ã°ÂÂÂ';
+          if (iconEl) iconEl.textContent = '🏆';
           if (titleEl) titleEl.textContent = bidCount === 1
             ? 'You have 1 bid!'
             : `You have ${bidCount} bids!`;
           if (textEl) textEl.textContent = 'Review the bids from qualified contractors and select the best offer for your project.';
         } else {
           // Default: submitted, waiting for bids
-          if (iconEl) iconEl.textContent = 'Ã¢ÂÂ';
+          if (iconEl) iconEl.textContent = '✓';
           if (titleEl) titleEl.textContent = 'Your project is live!';
           if (textEl) textEl.textContent = 'Contractors are reviewing your details. You\'ll be notified of incoming bids.';
         }
 
-        // Ã¢ÂÂÃ¢ÂÂ D-165: Per-trade status pills Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+        // ── D-165: Per-trade status pills ─────────────────────────────────
         // Show a trade-by-trade breakdown for:
-        //   Ã¢ÂÂ¢ any multi-trade claim (Ã¢ÂÂ¥2 trades), OR
-        //   Ã¢ÂÂ¢ any retail single-trade claim where the release is pending.
+        //   • any multi-trade claim (≥2 trades), OR
+        //   • any retail single-trade claim where the release is pending.
         // Each pill is driven by the corresponding *_bid_released_at column
         // added by D-165 (v45 migration).
         const bannerTrades = Array.isArray(currentClaim?.trades) ? currentClaim.trades : [];
@@ -2202,9 +2205,9 @@
               : (Object.prototype.hasOwnProperty.call(releaseMap, key) ? releaseMap[key] : true);
 
             if (!released) {
-              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.5);color:#E07B00;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">Ã°ÂÂÂ ${label}: Waiting on design</span>`;
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.5);color:#E07B00;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">🔒 ${label}: Waiting on design</span>`;
             } else {
-              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(224,123,0,0.12);border:1px solid rgba(224,123,0,0.4);color:#FAC775;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">Ã¢ÂÂ ${label}: Collecting bids</span>`;
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(224,123,0,0.12);border:1px solid rgba(224,123,0,0.4);color:#FAC775;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">✓ ${label}: Collecting bids</span>`;
             }
           }).join('');
 
@@ -2231,9 +2234,8 @@
         const hasMaterial     = currentClaim?.has_material_selection;
         const hasMeasurements = currentClaim?.has_measurements;
 
-        // Insurance claims (RCV and ACV) may proceed without measurements.
-        // Retail, cash, and repair claims CANNOT Ã¢ÂÂ measurements are a hard gate.
-        // BUG-3 fix: only cash/retail claims require measurements
+        // BUG-3 fix: measurements are a hard gate ONLY for retail/cash claims.
+        // Insurance (RCV/ACV) and unknown/null funding_type do NOT require measurements.
         const needsMeasurements = currentClaim?.funding_type === 'cash';
         const measurementsOk    = !needsMeasurements || hasMeasurements;
 
@@ -2252,7 +2254,7 @@
         }
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ Event Handlers Ã¢ÂÂÃ¢ÂÂ
+      // ── Event Handlers ──
       function setupEventListeners() {
         // Claim edit toggle
         document.getElementById('toggle-claim-edit').addEventListener('click', () => {
@@ -2354,7 +2356,7 @@
         }
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ Claim Editing Ã¢ÂÂÃ¢ÂÂ
+      // ── Claim Editing ──
       async function saveClaimInfo() {
         if (!currentClaim) return;
 
@@ -2369,7 +2371,7 @@
             }
           }
 
-          // Ã¢ÂÂÃ¢ÂÂ Collect fields from job-type-section (outside the <form> element) Ã¢ÂÂÃ¢ÂÂ
+          // ── Collect fields from job-type-section (outside the <form> element) ──
           // Job type buttons
           const selectedType = window.selectedJobType
             || document.querySelector('.job-type-btn.selected')?.dataset?.type;
@@ -2421,7 +2423,7 @@
               if (reason)   updates.urgency_reason   = reason;
             }
           }
-          // Homeowner notes (allow clearing Ã¢ÂÂ include even if empty)
+          // Homeowner notes (allow clearing — include even if empty)
           const notesField = document.querySelector('[name="homeownerNotes"]');
           if (notesField) updates.homeowner_notes = notesField.value || null;
 
@@ -2440,8 +2442,8 @@
             if (error) throw error;
             currentClaim = data;
 
-            // Ã¢ÂÂÃ¢ÂÂ Adjuster Knowledge Base: upsert adjuster record (D-046) Ã¢ÂÂÃ¢ÂÂ
-            // Non-critical: fire and forget Ã¢ÂÂ a failure here must not block the save
+            // ── Adjuster Knowledge Base: upsert adjuster record (D-046) ──
+            // Non-critical: fire and forget — a failure here must not block the save
             const adjName  = updates.adjuster_name  || currentClaim.adjuster_name;
             const adjEmail = updates.adjuster_email || currentClaim.adjuster_email;
             const adjPhone = updates.adjuster_phone || currentClaim.adjuster_phone;
@@ -2484,20 +2486,20 @@
         }
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ File Upload Ã¢ÂÂÃ¢ÂÂ
+      // ── File Upload ──
       window.handleUpload = function(type) {
         const input = document.getElementById('file-input');
         input.dataset.uploadType = type;
         input.click();
       };
 
-      // Ã¢ÂÂÃ¢ÂÂ Resend Hover Capture Link Ã¢ÂÂÃ¢ÂÂ
+      // ── Resend Hover Capture Link ──
       window.resendHoverLink = async function(btn) {
         if (!currentClaim?.id || CONFIG.DEMO_MODE) return;
 
         btn.disabled = true;
         const originalText = btn.textContent;
-        btn.textContent = 'SendingÃ¢ÂÂ¦';
+        btn.textContent = 'Sending…';
 
         try {
           const response = await fetch(
@@ -2649,7 +2651,7 @@
                   }
                 });
               } catch (parseErr) {
-                // Non-fatal Ã¢ÂÂ parsing failure doesn't block the upload
+                // Non-fatal — parsing failure doesn't block the upload
                 console.warn('[uploadFile] parse-loss-sheet failed (non-fatal):', parseErr);
               }
             }
@@ -2682,12 +2684,12 @@
         }
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ Submit for Bids Ã¢ÂÂÃ¢ÂÂ
+      // ── Submit for Bids ──
       async function submitForBids() {
         const btn = document.getElementById('submit-btn');
         if (!currentClaim) return;
         btn.disabled = true;
-        btn.textContent = 'SubmittingÃ¢ÂÂ¦';
+        btn.textContent = 'Submitting…';
 
         try {
           if (!CONFIG.DEMO_MODE && sb && currentClaim.id) {
@@ -2728,7 +2730,7 @@
         }
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ Notifications Ã¢ÂÂÃ¢ÂÂ
+      // ── Notifications ──
       function showError(message) {
         const el = document.getElementById('error-message');
         const textEl = document.getElementById('error-text');
@@ -2748,7 +2750,7 @@
       }
 
 
-      // Ã¢ÂÂÃ¢ÂÂ Job Type Selection Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+      // ── Job Type Selection ────────────────────────────────────────────────────
       function selectJobType(type) {
         window.selectedJobType = type;
         document.querySelectorAll('.job-type-btn').forEach(btn => {
@@ -2765,12 +2767,12 @@
         document.getElementById('help-modal-content').innerHTML = [
           '<p style="margin-bottom:1rem;">Not sure which option to pick? Here\'s a quick guide:</p>',
           '<ul style="padding-left:1.25rem; line-height:1.9; margin-bottom:1rem;">',
-          '<li><strong>Insurance (RCV)</strong> Ã¢ÂÂ Your policy covers full replacement cost. Most common for storm-damage claims.</li>',
-          '<li><strong>Insurance (ACV)</strong> Ã¢ÂÂ Your policy pays actual cash value (depreciated). There may be a gap you cover out of pocket.</li>',
-          '<li><strong>Retail / Cash</strong> Ã¢ÂÂ No insurance; you\'re paying for the project yourself.</li>',
-          '<li><strong>Repair Only</strong> Ã¢ÂÂ Partial repair from a specific estimate, not a full replacement.</li>',
+          '<li><strong>Insurance (RCV)</strong> — Your policy covers full replacement cost. Most common for storm-damage claims.</li>',
+          '<li><strong>Insurance (ACV)</strong> — Your policy pays actual cash value (depreciated). There may be a gap you cover out of pocket.</li>',
+          '<li><strong>Retail / Cash</strong> — No insurance; you\'re paying for the project yourself.</li>',
+          '<li><strong>Repair Only</strong> — Partial repair from a specific estimate, not a full replacement.</li>',
           '</ul>',
-          '<p style="color:var(--slate);font-size:0.9rem;">If you\'re still unsure, choose <strong>Insurance (RCV)</strong> Ã¢ÂÂ it\'s the most common and can be updated later.</p>'
+          '<p style="color:var(--slate);font-size:0.9rem;">If you\'re still unsure, choose <strong>Insurance (RCV)</strong> — it\'s the most common and can be updated later.</p>'
         ].join('');
         document.getElementById('help-modal').classList.add('active');
       }
@@ -2785,7 +2787,7 @@
               '<ul style="padding-left:1.25rem;line-height:1.8;margin-top:0.5rem;">',
               '<li>Log in to your insurance carrier\'s portal and download it from your claim documents.</li>',
               '<li>Call your adjuster and ask them to email it to you.</li>',
-              '<li>Upload a photo of the printed document Ã¢ÂÂ we accept PDF, Word, JPG, and PNG.</li>',
+              '<li>Upload a photo of the printed document — we accept PDF, Word, JPG, and PNG.</li>',
               '</ul>',
               '<p style="margin-top:0.75rem;color:var(--slate);font-size:0.9rem;">If you need help getting this document, use the "Help Me" option on the upload button.</p>'
             ].join('')
@@ -2797,7 +2799,7 @@
         document.getElementById('help-modal').classList.add('active');
       }
 
-      // Ã¢ÂÂÃ¢ÂÂ Switch Contractor Modal (D-171) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+      // ── Switch Contractor Modal (D-171) ───────────────────────────────────────
       function openSwitchContractorModal() {
         document.getElementById('switch-survey-step').classList.remove('hidden');
         document.getElementById('switch-success-step').classList.remove('visible');
@@ -2817,7 +2819,7 @@
         const notes   = document.getElementById('switch-notes').value.trim();
 
         btn.disabled    = true;
-        btn.textContent = 'SubmittingÃ¢ÂÂ¦';
+        btn.textContent = 'Submitting…';
 
         try {
           if (sb && currentClaim?.id) {

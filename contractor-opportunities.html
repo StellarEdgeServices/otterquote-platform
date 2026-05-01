@@ -9,7 +9,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-    <title>Available Opportunities â Otter Quotes Contractor</title>
+    <title>Available Opportunities &mdash; Otter Quotes Contractor</title>
 
     <!-- GA4 -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -113,7 +113,7 @@
         .empty-state-text { font-family: var(--font-body); font-size: 1rem; color: var(--slate); margin-bottom: var(--sp-6); }
         .results-count { font-family: var(--font-body); font-size: 0.95rem; color: var(--slate); margin-bottom: var(--sp-6); }
 
-        /* ââ Early-adopter empty state (86e112r60) ââ */
+        /* ── Early-adopter empty state (86e112r60) ── */
         .empty-state-early {
             max-width: 620px;
             margin: var(--sp-6) auto var(--sp-12);
@@ -144,7 +144,7 @@
             .esa-headline { font-size: 1.4rem; }
         }
 
-        /* ââ Scope Toggle ââ */
+        /* ── Scope Toggle ── */
         .scope-toggle-row { margin-bottom: var(--sp-4); }
         .btn-scope { background: none; border: 1px solid #D1D5DB; border-radius: var(--radius-md); padding: var(--sp-2) var(--sp-4); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; color: var(--navy); cursor: pointer; display: inline-flex; align-items: center; gap: var(--sp-2); transition: all 0.2s; }
         .btn-scope:hover { border-color: var(--amber); background: #FFFBEB; }
@@ -152,14 +152,14 @@
         .scope-label { font-size: 0.75rem; font-weight: 700; color: #15803D; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: var(--sp-2); }
         .scope-text { font-family: var(--font-body); font-size: 0.875rem; color: #065F46; white-space: pre-wrap; margin: 0; line-height: 1.65; }
 
-        /* ââ Document Links (86e10t26y) ââ */
+        /* ── Document Links (86e10t26y) ── */
         .docs-section { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-4); flex-wrap: wrap; }
         .docs-label { font-family: var(--font-body); font-size: 0.75rem; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: 0.05em; margin-right: var(--sp-1); }
         .doc-link-btn { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: #F8FAFC; border: 1px solid #D1D5DB; border-radius: var(--radius-md); font-family: var(--font-body); font-size: 0.82rem; font-weight: 600; color: var(--navy); cursor: pointer; transition: all 0.15s ease; }
         .doc-link-btn:hover { border-color: var(--amber); background: #FFFBEB; }
         .doc-link-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* ââ Bid Expiry Countdown (86e10t2bh / D-150) ââ */
+        /* ── Bid Expiry Countdown (86e10t2bh / D-150) ── */
         .expiry-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px; font-family: var(--font-body); font-size: 0.78rem; font-weight: 700; border: 1px solid transparent; }
         .expiry-neutral { background: #F3F4F6; color: #374151; border-color: #E5E7EB; }
         .expiry-amber  { background: #FEF3C7; color: #92400E; border-color: #FDE68A; }
@@ -248,10 +248,10 @@
         <div id="opportunitiesContainer"></div>
     </main>
 
-    <!-- Project Detail Modal (Bug 3 fix â D-074 compliant: no street address) -->
+    <!-- Project Detail Modal (Bug 3 fix &mdash; D-074 compliant: no street address) -->
     <div id="detailModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(11,25,41,0.75);backdrop-filter:blur(4px);overflow-y:auto;" onclick="if(event.target===this)closeDetailModal()">
       <div style="background:#fff;border-radius:12px;max-width:520px;width:90%;margin:5vh auto;padding:2rem;position:relative;">
-        <button onclick="closeDetailModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.5rem;cursor:pointer;color:#94A3B8;line-height:1;">Ã</button>
+        <button onclick="closeDetailModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.5rem;cursor:pointer;color:#94A3B8;line-height:1;">×</button>
         <h2 id="detailModalTitle" style="font-family:'Rubik',serif;font-size:1.5rem;font-weight:700;color:#0D1B2E;margin-bottom:0.25rem;"></h2>
         <p id="detailModalLocation" style="font-size:0.95rem;color:#94A3B8;margin-bottom:1.5rem;"></p>
         <div id="detailModalBody" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;"></div>
@@ -266,25 +266,25 @@
     <script src="js/nav.js"></script>
 
     <script>
-        // CPA version â must match contractor-dashboard.html. Bump both when the CPA changes.
+        // CPA version — must match contractor-dashboard.html. Bump both when the CPA changes.
         const CURRENT_CPA_VERSION = 'v1-2026-04';
 
         // State
         let currentUser = null;
         let allOpportunities = [];
         let currentContractor = null;
-        const oppDocMap = {}; // claimId â { estimateFilename, measurementsAvailable } â populated by getDocLinksHtml()
+        const oppDocMap = {}; // claimId → { estimateFilename, measurementsAvailable } — populated by getDocLinksHtml()
 
         // =============================================================
-        // ZIP CODE DISTANCE CALCULATION (Option C â zip centroids)
+        // ZIP CODE DISTANCE CALCULATION (Option C — zip centroids)
         // Sources: US Census ZCTA5 centroids (approximate, sufficient
         // for opportunity display). Default: send if zip not found.
         // =============================================================
 
         // Indiana zip centroids [lat, lng]. Covers all major metros
-        // and suburbs. Add entries as OtterQuote expands to new markets.
+        // and suburbs. Add entries as Otter Quotes expands to new markets.
         const ZIP_CENTROIDS = {
-          // ââ Indianapolis / Marion County ââââââââââââââââââââââââââ
+          // ── Indianapolis / Marion County ──────────────────────────
           '46201':[39.7728,-86.1035],'46202':[39.7856,-86.1609],
           '46203':[39.7528,-86.1035],'46204':[39.7756,-86.1559],
           '46205':[39.8228,-86.1135],'46208':[39.8128,-86.1609],
@@ -303,7 +303,7 @@
           '46256':[39.9034,-86.0481],'46259':[39.6428,-86.0481],
           '46260':[39.9034,-86.1509],'46268':[39.9034,-86.2131],
           '46278':[39.8934,-86.3081],'46280':[39.9534,-86.1135],
-          // ââ Hamilton County (Carmel / Fishers / Noblesville / Westfield) ââ
+          // ── Hamilton County (Carmel / Fishers / Noblesville / Westfield) ──
           '46030':[40.0467,-86.1331],'46031':[40.0867,-86.1431],
           '46032':[39.9784,-86.1180],'46033':[39.9184,-86.0519],
           '46034':[40.1127,-86.0219],'46036':[40.0867,-85.9113],
@@ -311,57 +311,57 @@
           '46040':[39.9567,-85.8680],'46060':[40.0456,-85.9913],
           '46062':[40.1127,-85.9913],'46074':[40.0434,-86.1430],
           '46082':[40.0867,-86.0719],
-          // ââ Zionsville / Boone County âââââââââââââââââââââââââââââ
+          // ── Zionsville / Boone County ─────────────────────────────
           '46052':[40.0497,-86.4548],'46075':[40.0347,-86.3984],
           '46077':[39.9578,-86.2619],
-          // ââ Hendricks County (Avon, Brownsburg, Plainfield) âââââââ
+          // ── Hendricks County (Avon, Brownsburg, Plainfield) ───────
           '46112':[39.8440,-86.3984],'46118':[39.7540,-86.4884],
           '46122':[39.6951,-86.5048],'46123':[39.7626,-86.3984],
           '46149':[39.8345,-86.4548],'46158':[39.5761,-86.4048],
           '46168':[39.7026,-86.4048],
-          // ââ Johnson County (Greenwood, Bargersville, Franklin) ââââ
+          // ── Johnson County (Greenwood, Bargersville, Franklin) ────
           '46107':[39.7066,-86.0463],'46130':[39.6276,-85.8680],
           '46131':[39.5361,-86.1086],'46142':[39.6151,-86.1086],
           '46143':[39.5761,-86.1086],'46163':[39.7466,-85.9108],
           '46181':[39.5141,-85.9681],'46184':[39.5541,-86.0463],
-          // ââ Morgan County (Martinsville, Mooresville) âââââââââââââ
+          // ── Morgan County (Martinsville, Mooresville) ─────────────
           '46151':[39.4282,-86.4281],'46158':[39.5761,-86.4048],
           '46160':[39.3582,-86.3681],'46166':[39.4882,-86.5181],
-          // ââ Shelby County âââââââââââââââââââââââââââââââââââââââââ
+          // ── Shelby County ─────────────────────────────────────────
           '46176':[39.5241,-85.7780],
-          // ââ Hancock County (Greenfield) âââââââââââââââââââââââââââ
+          // ── Hancock County (Greenfield) ───────────────────────────
           '46140':[39.7866,-85.7680],'46148':[39.7066,-85.6580],
-          // ââ Madison County (Anderson) âââââââââââââââââââââââââââââ
+          // ── Madison County (Anderson) ─────────────────────────────
           '46011':[40.1034,-85.6830],'46012':[40.1234,-85.6530],
           '46013':[40.0634,-85.6830],'46016':[40.1034,-85.6530],
           '46017':[40.0834,-85.6330],
-          // ââ Delaware County (Muncie) ââââââââââââââââââââââââââââââ
+          // ── Delaware County (Muncie) ──────────────────────────────
           '47302':[40.1934,-85.3863],'47303':[40.2134,-85.3463],
           '47304':[40.2234,-85.3863],'47305':[40.1734,-85.3863],
           '47306':[40.1934,-85.3863],
-          // ââ Howard County (Kokomo) ââââââââââââââââââââââââââââââââ
+          // ── Howard County (Kokomo) ────────────────────────────────
           '46901':[40.4864,-86.1330],'46902':[40.4664,-86.1530],
           '46903':[40.4864,-86.1330],'46904':[40.4864,-86.1330],
-          // ââ Grant County (Marion, IN) âââââââââââââââââââââââââââââ
+          // ── Grant County (Marion, IN) ─────────────────────────────
           '46952':[40.5584,-85.6597],'46953':[40.5384,-85.6397],
-          // ââ Tippecanoe County (Lafayette / West Lafayette) ââââââââ
+          // ── Tippecanoe County (Lafayette / West Lafayette) ────────
           '47901':[40.4167,-86.8753],'47902':[40.4167,-86.8753],
           '47903':[40.4367,-86.8353],'47904':[40.4367,-86.8553],
           '47905':[40.4167,-86.8153],'47906':[40.4567,-86.9053],
           '47907':[40.4267,-86.9153],'47909':[40.3867,-86.8753],
-          // ââ Monroe County (Bloomington) âââââââââââââââââââââââââââ
+          // ── Monroe County (Bloomington) ───────────────────────────
           '47401':[39.1653,-86.5264],'47402':[39.1653,-86.5264],
           '47403':[39.1353,-86.5264],'47404':[39.1953,-86.5464],
           '47405':[39.1653,-86.5264],'47406':[39.1653,-86.5264],
           '47408':[39.1953,-86.5064],
-          // ââ Bartholomew County (Columbus) âââââââââââââââââââââââââ
+          // ── Bartholomew County (Columbus) ─────────────────────────
           '47201':[39.2014,-85.9214],'47202':[39.2014,-85.9214],
           '47203':[39.2114,-85.8814],
-          // ââ Vigo County (Terre Haute) âââââââââââââââââââââââââââââ
+          // ── Vigo County (Terre Haute) ─────────────────────────────
           '47801':[39.4664,-87.4136],'47802':[39.4664,-87.4136],
           '47803':[39.4664,-87.3736],'47804':[39.4864,-87.4136],
           '47805':[39.5064,-87.3936],
-          // ââ Allen County (Fort Wayne) âââââââââââââââââââââââââââââ
+          // ── Allen County (Fort Wayne) ─────────────────────────────
           '46801':[41.0784,-85.1440],'46802':[41.0984,-85.1440],
           '46803':[41.0684,-85.0873],'46804':[41.0684,-85.2440],
           '46805':[41.1284,-85.0873],'46806':[41.0384,-85.0873],
@@ -370,19 +370,19 @@
           '46815':[41.1334,-85.0440],'46816':[41.0484,-85.0440],
           '46818':[41.1334,-85.1940],'46819':[40.9934,-85.0873],
           '46825':[41.1634,-85.1440],'46835':[41.1634,-85.0440],
-          // ââ St. Joseph County (South Bend / Mishawaka) âââââââââââ
+          // ── St. Joseph County (South Bend / Mishawaka) ───────────
           '46601':[41.6764,-86.2519],'46613':[41.6564,-86.2519],
           '46614':[41.6264,-86.2519],'46615':[41.6764,-86.2019],
           '46616':[41.7064,-86.2519],'46617':[41.6764,-86.2019],
           '46619':[41.6764,-86.3019],'46628':[41.7464,-86.3019],
           '46635':[41.7564,-86.2019],'46637':[41.7064,-86.2019],
-          // ââ Vanderburgh County (Evansville) âââââââââââââââââââââââ
+          // ── Vanderburgh County (Evansville) ───────────────────────
           '47708':[37.9748,-87.5558],'47710':[37.9948,-87.5958],
           '47711':[37.9948,-87.5458],'47712':[37.9548,-87.5958],
           '47713':[37.9548,-87.5458],'47714':[37.9648,-87.5058],
           '47715':[37.9748,-87.4658],'47720':[38.0148,-87.5558],
           '47725':[38.0248,-87.5558],
-          // ââ Lake County (Gary / Hammond / Merrillville) âââââââââââ
+          // ── Lake County (Gary / Hammond / Merrillville) ───────────
           '46320':[41.5634,-87.3619],'46321':[41.5534,-87.4219],
           '46322':[41.5534,-87.5019],'46323':[41.5334,-87.4819],
           '46324':[41.5734,-87.4819],'46373':[41.4334,-87.2219],
@@ -392,9 +392,9 @@
           '46405':[41.5434,-87.3219],'46406':[41.5634,-87.4019],
           '46407':[41.5734,-87.3519],'46408':[41.5434,-87.3819],
           '46409':[41.5234,-87.3419],
-          // ââ Marion County (Indianapolis far outskirts) ââââââââââââ
+          // ── Marion County (Indianapolis far outskirts) ────────────
           '46113':[39.6851,-86.3281],'46221':[39.7128,-86.1809],
-          // ââ Surrounding states (common cross-border claims) âââââââ
+          // ── Surrounding states (common cross-border claims) ───────
           // Ohio border:
           '45215':[39.2247,-84.4453],'45242':[39.2547,-84.3553],
           '45011':[39.3547,-84.5153],'45402':[39.7547,-84.1953],
@@ -412,7 +412,7 @@
           return ZIP_CENTROIDS[String(zip).trim().slice(0, 5)] || null;
         }
 
-        /** Haversine formula â returns distance in miles between two lat/lng points. */
+        /** Haversine formula — returns distance in miles between two lat/lng points. */
         function haversineMiles(lat1, lng1, lat2, lng2) {
           const R = 3958.8; // Earth radius in miles
           const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -455,13 +455,13 @@
 
               if (data) currentContractor = data;
 
-              // Check approval status â pending contractors cannot view opportunities
+              // Check approval status — pending contractors cannot view opportunities
               if (currentContractor && currentContractor.status !== 'active') {
                 window.location.href = '/contractor-dashboard.html?msg=pending_approval';
                 return;
               }
 
-              // CPA version guard â redirect to dashboard to show re-acceptance modal
+              // CPA version guard — redirect to dashboard to show re-acceptance modal
               if (currentContractor && currentContractor.cpa_version !== CURRENT_CPA_VERSION) {
                 if (!localStorage.getItem('oq_cpa_redirect_guard')) {
                   localStorage.setItem('oq_cpa_redirect_guard', '1');
@@ -499,7 +499,7 @@
                   // Parse trades from claim
                   const trades = claim.selected_trades || claim.trades || ['roofing'];
 
-                  // D-165: per-trade release timestamps â drives filter + card labels
+                  // D-165: per-trade release timestamps — drives filter + card labels
                   const releasedTrades = {
                     roofing: !!claim.roofing_bid_released_at,
                     gutters: !!claim.gutters_bid_released_at,
@@ -582,7 +582,7 @@
                 }
 
                 // Also exclude opportunities this contractor has already bid on
-                // D-150: keep opportunities where prior bid is expired â show rebid indicator instead
+                // D-150: keep opportunities where prior bid is expired — show rebid indicator instead
                 if (currentContractor) {
                   const { data: myBids } = await sb
                     .from('quotes')
@@ -590,16 +590,16 @@
                     .eq('contractor_id', currentContractor.id);
 
                   if (myBids && myBids.length > 0) {
-                    // Build map: claim_id â {quoteId, bidStatus}
+                    // Build map: claim_id → {quoteId, bidStatus}
                     const myBidMap = {};
                     myBids.forEach(b => { myBidMap[b.claim_id] = { quoteId: b.id, bidStatus: b.bid_status }; });
 
                     // Only fully exclude non-expired active bids
                     allOpportunities = allOpportunities.filter(o => {
                       const bid = myBidMap[o.id];
-                      if (!bid) return true; // no bid â show normally
-                      if (bid.bidStatus === 'expired') return true; // expired â keep, flag below
-                      return false; // active bid â exclude
+                      if (!bid) return true; // no bid — show normally
+                      if (bid.bidStatus === 'expired') return true; // expired — keep, flag below
+                      return false; // active bid — exclude
                     });
 
                     // Attach expired bid metadata to opportunities for rebid indicator (D-150)
@@ -615,7 +615,7 @@
               }
             } catch (err) {
               console.error('Error loading opportunities:', err);
-              // Don't fall back to demo data in production â show empty state
+              // Don't fall back to demo data in production — show empty state
               allOpportunities = [];
             }
           }
@@ -627,7 +627,7 @@
             {
                 id: 'OQ-2026-0048', location: 'Indianapolis', zip: '46220', jobType: 'insurance_rcv',
                 trades: ['roofing'], damageType: 'Roof', damageDetail: 'Hail & Wind', insuranceCarrier: 'State Farm',
-                material: 'GAF Architectural â Class 4 Impact Resistant', estimatedValue: 22000,
+                material: 'GAF Architectural — Class 4 Impact Resistant', estimatedValue: 22000,
                 roofSquares: null, repairSquares: null, totalSquares: null, existingShingle: null,
                 estimateAvailable: true, measurementsAvailable: true, claimFiledDate: '2026-03-15',
                 distance: 5, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
@@ -659,12 +659,12 @@
             },
             {
                 id: 'OQ-2026-0045', location: 'Noblesville', zip: '46060', jobType: 'repair',
-                trades: ['roofing'], damageType: 'Roof', damageDetail: 'Wind â Partial', insuranceCarrier: 'Erie Insurance',
-                material: null, existingShingle: 'GAF Timberline HD â Charcoal',
+                trades: ['roofing'], damageType: 'Roof', damageDetail: 'Wind — Partial', insuranceCarrier: 'Erie Insurance',
+                material: null, existingShingle: 'GAF Timberline HD — Charcoal',
                 estimatedValue: null, roofSquares: null, repairSquares: 1.5, totalSquares: 25,
                 estimateAvailable: true, measurementsAvailable: false, claimFiledDate: '2026-03-12',
                 distance: 25, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
-                homeownerNotes: 'Damage on north-facing slope near chimney. Have leftover shingles in garage â confirmed GAF Timberline HD Charcoal.',
+                homeownerNotes: 'Damage on north-facing slope near chimney. Have leftover shingles in garage — confirmed GAF Timberline HD Charcoal.',
                 fundingType: 'insurance', repairType: 'blown_off',
                 releasedTrades: { roofing: true, gutters: false, siding: false, windows: false },
                 bidWindowExpiresAt: null, estimateFilename: null
@@ -683,10 +683,10 @@
                 bidWindowExpiresAt: '2026-04-22T23:59:59Z', estimateFilename: null
             },
             {
-                // Demo: retail roofing + siding â siding held pending Hover design
+                // Demo: retail roofing + siding — siding held pending Hover design
                 id: 'OQ-2026-0043', location: 'Zionsville', zip: '46077', jobType: 'retail',
                 trades: ['roofing', 'siding'], damageType: 'Roof + Siding', damageDetail: 'Age / Wear', insuranceCarrier: null,
-                material: 'OC Duration STORM â Class 4', estimatedValue: null,
+                material: 'OC Duration STORM — Class 4', estimatedValue: null,
                 roofSquares: 28, repairSquares: null, totalSquares: null, existingShingle: null,
                 estimateAvailable: false, measurementsAvailable: true, claimFiledDate: '2026-03-08',
                 distance: 8, urgency: 'flexible', urgencyDeadline: null, urgencyReason: null,
@@ -709,7 +709,7 @@
 
         function getTradeBadges(trades) {
             if (!trades || !trades.length) return '';
-            const icons = { roofing: 'ð ', siding: 'ð§±', gutters: 'ð§ï¸', windows: 'ðª' };
+            const icons = { roofing: '🏠', siding: '🧱', gutters: '🌧️', windows: '🪟' };
             const labels = { roofing: 'Roofing', siding: 'Siding', gutters: 'Gutters', windows: 'Windows' };
             return trades.map(t => '<span class="badge" style="background:#E0F2FE;color:#0369A1;">' + (icons[t]||'') + ' ' + (labels[t]||t) + '</span>').join('');
         }
@@ -752,13 +752,13 @@
 
         function getMultiTradeBadge(trades) {
             if (!trades || trades.length <= 1) return '';
-            return '<span class="badge" style="background:#FEF3C7;color:#92400E;font-weight:700;">ð¦ MULTI-TRADE (' + trades.length + ')</span>';
+            return '<span class="badge" style="background:#FEF3C7;color:#92400E;font-weight:700;">📦 MULTI-TRADE (' + trades.length + ')</span>';
         }
 
         function getUrgentBadge(opp) {
             if (opp.urgency !== 'asap') return '';
             const dl = opp.urgencyDeadline ? new Date(opp.urgencyDeadline).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
-            return '<span class="badge badge-urgent">URGENT' + (dl ? ' â ' + dl : '') + '</span>';
+            return '<span class="badge badge-urgent">URGENT' + (dl ? ' — ' + dl : '') + '</span>';
         }
 
         function getValueDisplay(opp) {
@@ -775,7 +775,7 @@
 
         function fmt(v) { return v.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:0}); }
 
-        // ââ Bid Expiry Countdown (86e10t2bh / D-150) ââââââââââââââââââââââââââ
+        // ── Bid Expiry Countdown (86e10t2bh / D-150) ──────────────────────────
         function getExpiryCountdownHtml(opp) {
             if (!opp.bidWindowExpiresAt) return '';
             const now    = new Date();
@@ -788,7 +788,7 @@
             return '<span class="expiry-badge expiry-neutral">&#x23F0; Closes in ' + diffDays + ' days</span>';
         }
 
-        // ââ Document Links (86e10t26y) âââââââââââââââââââââââââââââââââââââââââ
+        // ── Document Links (86e10t26y) ─────────────────────────────────────────
         function getDocLinksHtml(opp) {
             // Populate oppDocMap so async click handlers can access filenames without inline escaping
             oppDocMap[opp.id] = { estimateFilename: opp.estimateFilename || null, measurementsAvailable: !!opp.measurementsAvailable };
@@ -954,17 +954,17 @@
                     + '<span style="font-family:var(--font-body);font-size:0.72rem;color:#CBD5E1;font-weight:500;letter-spacing:0.02em;">ID: ' + escHtml(String(o.id)) + '</span>'
                     + '</div>'
                     + feeHtml
-                    + (o.hasExpiredBid ? '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:0.5rem;padding:0.5rem 0.875rem;margin-bottom:var(--sp-4);font-size:0.82rem;color:#92400E;display:flex;align-items:center;gap:0.5rem;"><span>â°</span><span>Your previous bid on this project expired. <strong>Renew it</strong> to stay in contention.</span></div>' : '')
+                    + (o.hasExpiredBid ? '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:0.5rem;padding:0.5rem 0.875rem;margin-bottom:var(--sp-4);font-size:0.82rem;color:#92400E;display:flex;align-items:center;gap:0.5rem;"><span>⏰</span><span>Your previous bid on this project expired. <strong>Renew it</strong> to stay in contention.</span></div>' : '')
                     + '<div class="actions-row"><button class="btn btn-secondary" onclick="showDetails(\'' + o.id + '\')">Details</button>'
                     + (o.hasExpiredBid
-                        ? '<a href="contractor-bid-form.html?renew=true&quote_id=' + o.expiredQuoteId + '&claim_id=' + o.id + '" class="btn btn-primary" style="background:#15803D;">ð Renew Bid</a>'
+                        ? '<a href="contractor-bid-form.html?renew=true&quote_id=' + o.expiredQuoteId + '&claim_id=' + o.id + '" class="btn btn-primary" style="background:#15803D;">🔄 Renew Bid</a>'
                         : '<a href="contractor-bid-form.html?project=' + o.id + '" class="btn btn-primary">Submit Bid</a>')
                     + '</div>'
                     + '</div>';
             }).join('');
         }
 
-        // ââ Scope Toggle ââ
+        // ── Scope Toggle ──
         function toggleScope(safeId) {
             const content = document.getElementById('scope-' + safeId);
             const arrow = document.getElementById('scope-arrow-' + safeId);
@@ -982,8 +982,8 @@
                 .replace(/"/g, '&quot;');
         }
 
-        // ââ Details Modal (Bug 3 fix) ââ
-        // D-074: shows city/zip, trade type, job type, urgency â never full street address
+        // ── Details Modal (Bug 3 fix) ──
+        // D-074: shows city/zip, trade type, job type, urgency — never full street address
         function showDetails(id) {
             const o = allOpportunities.find(op => op.id === id);
             if (!o) return;
@@ -1001,7 +1001,7 @@
                     'asap': 'As Soon As Possible'
             };
 
-            const jobLabel = jobTypeLabels[o.jobType] || o.jobType || 'â';
+            const jobLabel = jobTypeLabels[o.jobType] || o.jobType || '—';
             const urgencyLabel = urgencyLabels[o.urgency] || o.urgency || 'Flexible';
             const locationDisplay = o.location + (o.zip ? ', IN ' + o.zip : '');
             const tradeDisplay = (Array.isArray(o.trades) ? o.trades : [o.trades])
@@ -1014,7 +1014,7 @@
                 <div><strong style="display:block;font-size:0.75rem;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Trade(s)</strong><span>${escHtml(tradeDisplay)}</span></div>
                 <div><strong style="display:block;font-size:0.75rem;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Job Type</strong><span>${escHtml(jobLabel)}</span></div>
                 <div><strong style="display:block;font-size:0.75rem;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Urgency</strong><span>${escHtml(urgencyLabel)}</span></div>
-                <div><strong style="display:block;font-size:0.75rem;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Est. Value</strong><span>${o.estimatedValue ? '$' + Number(o.estimatedValue).toLocaleString() : 'â'}</span></div>
+                <div><strong style="display:block;font-size:0.75rem;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Est. Value</strong><span>${o.estimatedValue ? '$' + Number(o.estimatedValue).toLocaleString() : '—'}</span></div>
             `;
 
             document.getElementById('detailModalFooter').innerHTML = `

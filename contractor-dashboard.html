@@ -9,7 +9,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-    <title>Contractor Dashboard â Otter Quotes</title>
+    <title>Contractor Dashboard &mdash; Otter Quotes</title>
 
     <!-- GA4 -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -414,7 +414,7 @@
             background: #D97706;
         }
 
-        /* âââ Pending Approval Banner âââ */
+        /* ─── Pending Approval Banner ─── */
         .pending-approval-banner {
             background: #FEF3C7;
             border-left: 4px solid #E07B00;
@@ -435,7 +435,7 @@
             margin: 0;
         }
 
-        /* âââ Agreement Modal âââ */
+        /* ─── Agreement Modal ─── */
         .agreement-modal-overlay {
             display: none;
             position: fixed;
@@ -546,7 +546,7 @@
             background: #D97706;
         }
 
-        /* âââ Getting Started Checklist âââ */
+        /* ─── Getting Started Checklist ─── */
         .getting-started-section {
             display: none;
             background: #F0FDF4;
@@ -692,9 +692,9 @@
         <!-- Payment Failed / Dunning Alert Banner (hidden by default) -->
         <div id="dunningAlertBanner" style="display: none; background: #FEF2F2; border: 2px solid #EF4444; border-radius: 0.75rem; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
             <div style="display: flex; align-items: flex-start; gap: 1rem;">
-                <span style="font-size: 1.5rem; flex-shrink: 0;">ð¨</span>
+                <span style="font-size: 1.5rem; flex-shrink: 0;">🚨</span>
                 <div style="flex: 1;">
-                    <div style="font-weight: 700; color: #991B1B; font-size: 1rem; margin-bottom: 0.5rem;">Payment Failed â Action Required</div>
+                    <div style="font-weight: 700; color: #991B1B; font-size: 1rem; margin-bottom: 0.5rem;">Payment Failed &mdash; Action Required</div>
                     <p id="dunningAlertMessage" style="color: #7F1D1D; font-size: 0.875rem; line-height: 1.6; margin-bottom: 0.75rem;">
                         Your payment method was declined. Please update your card to avoid losing this project.
                     </p>
@@ -706,7 +706,7 @@
             </div>
         </div>
 
-        <!-- Unsigned auto-bid section removed â contract signing now happens after homeowner selection -->
+        <!-- Unsigned auto-bid section removed &mdash; contract signing now happens after homeowner selection -->
         <div id="unsignedAutoBidsSection" style="display:none;">
             <div id="unsignedAutoBidsList"></div>
         </div>
@@ -714,11 +714,11 @@
         <!-- Pending Approval Banner -->
         <div class="pending-approval-banner" id="pendingApprovalBanner">
             <p class="pending-approval-banner-text">
-                ð Your account is under review. While you wait (usually 1â2 business days), here's what you can do to get ready:
+                🔄 Your account is under review. While you wait (usually 1&ndash;2 business days), here's what you can do to get ready:
             </p>
             <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
-                <a href="/contractor-profile.html" class="btn btn-secondary" style="display: inline-block; text-decoration: none; padding: 0.6rem 1.2rem; font-size: 0.875rem;">Complete Your Profile â</a>
-                <a href="/contractor-settings.html" class="btn btn-secondary" style="display: inline-block; text-decoration: none; padding: 0.6rem 1.2rem; font-size: 0.875rem;">Add Payment Method â</a>
+                <a href="/contractor-profile.html" class="btn btn-secondary" style="display: inline-block; text-decoration: none; padding: 0.6rem 1.2rem; font-size: 0.875rem;">Complete Your Profile →</a>
+                <a href="/contractor-settings.html" class="btn btn-secondary" style="display: inline-block; text-decoration: none; padding: 0.6rem 1.2rem; font-size: 0.875rem;">Add Payment Method →</a>
             </div>
         </div>
 
@@ -727,12 +727,12 @@
             <div class="agreement-modal">
                 <div class="agreement-modal-header">
                     <h2>Contractor Partner Agreement</h2>
-                    <p>Before using OtterQuote, please review and accept our Contractor Partner Agreement.</p>
+                    <p>Before using Otter Quotes, please review and accept our Contractor Partner Agreement.</p>
                 </div>
-                <a href="/contractor-agreement.html" target="_blank" class="agreement-modal-link">ð Read Full Agreement</a>
+                <a href="/contractor-agreement.html" target="_blank" class="agreement-modal-link">📄 Read Full Agreement</a>
                 <div class="agreement-modal-checkbox">
                     <input type="checkbox" id="agreementCheckbox" name="agreementCheckbox">
-                    <label for="agreementCheckbox">I have read and agree to the OtterQuote Contractor Partner Agreement</label>
+                    <label for="agreementCheckbox">I have read and agree to the Otter Quotes Contractor Partner Agreement</label>
                 </div>
                 <button id="acceptAgreementBtn" class="agreement-modal-button" disabled>Accept and Continue</button>
             </div>
@@ -743,9 +743,9 @@
             <div class="agreement-modal">
                 <div class="agreement-modal-header">
                     <h2>Updated Contractor Agreement</h2>
-                    <p>We've updated our Contractor Partner Agreement. Please review the changes and re-accept to continue using OtterQuote.</p>
+                    <p>We've updated our Contractor Partner Agreement. Please review the changes and re-accept to continue using Otter Quotes.</p>
                 </div>
-                <a href="/contractor-agreement.html" target="_blank" class="agreement-modal-link">View the updated agreement â</a>
+                <a href="/contractor-agreement.html" target="_blank" class="agreement-modal-link">View the updated agreement →</a>
                 <div class="agreement-modal-checkbox">
                     <input type="checkbox" id="cpaReacceptCheckbox" name="cpaReacceptCheckbox">
                     <label for="cpaReacceptCheckbox">I have read and accept the updated Contractor Partner Agreement (version v1-2026-04)</label>
@@ -762,7 +762,7 @@
 
         <!-- Getting Started Success Banner -->
         <div class="getting-started-success" id="gettingStartedSuccess">
-            <p>â Your profile is complete! Once approved, you'll start receiving opportunities.</p>
+            <p>✅ Your profile is complete! Once approved, you'll start receiving opportunities.</p>
         </div>
 
         <!-- Profile Completeness Banner -->
@@ -775,7 +775,7 @@
                     </div>
                     <p class="completeness-banner-percent"><span id="completenessCount">0</span> of 7 steps done</p>
                 </div>
-                <a href="contractor-onboarding.html" class="completeness-banner-link">Complete Profile â</a>
+                <a href="contractor-onboarding.html" class="completeness-banner-link">Complete Profile →</a>
             </div>
         </div>
 
@@ -783,23 +783,23 @@
         <div class="stats-grid">
             <div class="stat-card">
                 <span class="stat-card-label">Available Opportunities</span>
-                <span class="stat-card-value" id="availableLeadsCount">â</span>
-                <a href="contractor-opportunities.html" class="stat-card-link">View All â</a>
+                <span class="stat-card-value" id="availableLeadsCount">&mdash;</span>
+                <a href="contractor-opportunities.html" class="stat-card-link">View All →</a>
             </div>
             <div class="stat-card">
                 <span class="stat-card-label">Active Bids</span>
-                <span class="stat-card-value" id="activeBidsCount">â</span>
-                <a href="#pendingBidsSection" class="stat-card-link">Manage â</a>
+                <span class="stat-card-value" id="activeBidsCount">&mdash;</span>
+                <a href="#pendingBidsSection" class="stat-card-link">Manage →</a>
             </div>
             <div class="stat-card">
                 <span class="stat-card-label">Won Jobs</span>
-                <span class="stat-card-value" id="wonJobsCount">â</span>
-                <span class="stat-card-link" style="color: var(--slate);">â</span>
+                <span class="stat-card-value" id="wonJobsCount">&mdash;</span>
+                <span class="stat-card-link" style="color: var(--slate);">&mdash;</span>
             </div>
             <div class="stat-card">
                 <span class="stat-card-label">Month Earnings</span>
-                <span class="stat-card-value" id="earningsAmount">â</span>
-                <span class="stat-card-link" style="color: var(--slate);">â</span>
+                <span class="stat-card-value" id="earningsAmount">&mdash;</span>
+                <span class="stat-card-link" style="color: var(--slate);">&mdash;</span>
             </div>
         </div>
 
@@ -850,19 +850,19 @@
         <h2 class="section-header">Quick Links</h2>
         <div class="nav-grid">
             <a href="contractor-opportunities.html" class="nav-card">
-                <span class="nav-card-icon">ð</span>
+                <span class="nav-card-icon">📋</span>
                 <h3 class="nav-card-title">Available Opportunities</h3>
             </a>
             <a href="contractor-profile.html" class="nav-card">
-                <span class="nav-card-icon">ð¤</span>
+                <span class="nav-card-icon">👤</span>
                 <h3 class="nav-card-title">My Profile</h3>
             </a>
             <a href="contractor-settings.html" class="nav-card">
-                <span class="nav-card-icon">âï¸</span>
+                <span class="nav-card-icon">⚙️</span>
                 <h3 class="nav-card-title">Settings</h3>
             </a>
             <a href="contractor-agreement.html" class="nav-card">
-                <span class="nav-card-icon">ð</span>
+                <span class="nav-card-icon">📄</span>
                 <h3 class="nav-card-title">Partner Agreement</h3>
             </a>
         </div>
@@ -876,7 +876,7 @@
     <script src="js/nav.js"></script>
 
     <script>
-        // CPA version â bump this string when the Contractor Partner Agreement changes.
+        // CPA version — bump this string when the Contractor Partner Agreement changes.
         // Any contractor whose contractors.cpa_version !== CURRENT_CPA_VERSION will be
         // shown the re-acceptance modal on dashboard load and blocked from other pages.
         const CURRENT_CPA_VERSION = 'v1-2026-04';
@@ -931,10 +931,10 @@
 
             container.innerHTML = checklist.map(item => `
                 <div class="checklist-item">
-                    <div class="checklist-icon">${item.check ? 'â' : 'â¬'}</div>
+                    <div class="checklist-icon">${item.check ? '✅' : '⬜'}</div>
                     <div class="checklist-content">
                         <div class="checklist-label">${item.label}</div>
-                        ${!item.check ? `<a href="${item.link}" class="checklist-link">â Complete this step</a>` : ''}
+                        ${!item.check ? `<a href="${item.link}" class="checklist-link">→ Complete this step</a>` : ''}
                     </div>
                 </div>
             `).join('');
@@ -992,7 +992,7 @@
             }
         }
 
-        // CPA Re-acceptance modal â wires checkbox/button and handles the accept flow.
+        // CPA Re-acceptance modal — wires checkbox/button and handles the accept flow.
         // Called from init() when contractor.cpa_version !== CURRENT_CPA_VERSION.
         function initCpaReacceptModal() {
             const checkbox = document.getElementById('cpaReacceptCheckbox');
@@ -1009,7 +1009,7 @@
                     if (!currentContractor || !checkbox || !checkbox.checked || !sb) return;
 
                     button.disabled = true;
-                    button.textContent = 'Savingâ¦';
+                    button.textContent = 'Saving…';
 
                     try {
                         const now = new Date().toISOString();
@@ -1076,7 +1076,7 @@
             return;
           }
 
-          // Handle fresh contractor signup â process stored signup data from localStorage.
+          // Handle fresh contractor signup — process stored signup data from localStorage.
           // contractor-join.html saves form data under 'cs_contractor_signup' before the
           // magic link is sent. When the contractor clicks the link and lands here, we need
           // to run handleAuthCallback to create the profile + contractor record in the DB,
@@ -1106,10 +1106,10 @@
                   const displayNames = counties.map(c => c.includes(':') ? c.split(':')[1] : c);
                   document.getElementById('serviceAreaText').textContent = 'Service area: ' + displayNames.join(', ');
                 } else {
-                  document.getElementById('serviceAreaText').textContent = 'Service area: Not configured â update your profile';
+                  document.getElementById('serviceAreaText').textContent = 'Service area: Not configured — update your profile';
                 }
 
-                // Load opportunities count â must match contractor-opportunities.html logic exactly
+                // Load opportunities count — must match contractor-opportunities.html logic exactly
                 let availableCount = 0;
                 try {
                   const { data: oppClaims } = await sb
@@ -1169,7 +1169,7 @@
                 document.getElementById('availableLeadsCount').textContent = availableCount;
 
                 // Active bids = quotes with status 'pending' or 'submitted'
-                // (use contractor.id, NOT currentUser.id â contractor_id on quotes is contractors table PK)
+                // (use contractor.id, NOT currentUser.id — contractor_id on quotes is contractors table PK)
                 const { count: bidCount } = await sb
                   .from('quotes')
                   .select('id', { count: 'exact', head: true })
@@ -1200,13 +1200,13 @@
                   .gte('updated_at', monthStart);
                 const totalEarnings = (earnData || []).reduce((sum, q) => sum + (parseFloat(q.fee_amount) || 0), 0);
                 // Bug 7 fix (86e110pbh): toLocaleString() without options doesn't guarantee 2 decimal places
-                // (e.g. 637.5 â "$637.5"). Use explicit minimumFractionDigits/maximumFractionDigits.
+                // (e.g. 637.5 → "$637.5"). Use explicit minimumFractionDigits/maximumFractionDigits.
                 document.getElementById('earningsAmount').textContent = '$' + totalEarnings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-                // D-134 unsigned auto-bid section removed â contract signing now happens after
+                // D-134 unsigned auto-bid section removed — contract signing now happens after
                 // homeowner selection, not at bid submission time.
 
-                // Load all quotes â pending bids and won/active/completed projects
+                // Load all quotes — pending bids and won/active/completed projects
                 // D-074: Full address hidden for submitted-only bids; revealed once bid is awarded.
                 const { data: allQuotes } = await sb
                   .from('quotes')
@@ -1251,7 +1251,7 @@
                         claimId: q.claim_id,
                         location: buildLocation(claim, q.status),
                         damageType: claim.damage_type ? (claim.damage_type.charAt(0).toUpperCase() + claim.damage_type.slice(1)) : 'Roofing',
-                        bidAmount: q.total_price ? '$' + Number(q.total_price).toLocaleString() : 'â',
+                        bidAmount: q.total_price ? '$' + Number(q.total_price).toLocaleString() : '—',
                         submittedDate: new Date(q.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
                         status: 'Pending Decision',
                         bidStatus: q.bid_status || null, // D-150
@@ -1260,12 +1260,12 @@
                     } else {
                       const statusMap = { selected: 'Won', awarded: 'Won', completed: 'Completed' };
                       activeProjects.push({
-                        id: claim.id ? String(claim.id).slice(0, 8) : q.claim_id?.slice(0, 8) || 'â',
+                        id: claim.id ? String(claim.id).slice(0, 8) : q.claim_id?.slice(0, 8) || '—',
                         fullId: q.claim_id,
                         location: buildLocation(claim, q.status),
                         damageType: claim.damage_type ? (claim.damage_type.charAt(0).toUpperCase() + claim.damage_type.slice(1)) : 'Unknown',
                         material: buildMaterial(claim),
-                        estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : 'â'),
+                        estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
                         status: statusMap[q.status] || q.status,
                       });
                     }
@@ -1311,7 +1311,7 @@
             initAgreementModal();
           }
 
-          // CPA version check â show re-acceptance modal if the contractor's recorded
+          // CPA version check — show re-acceptance modal if the contractor's recorded
           // version is behind CURRENT_CPA_VERSION.  Only runs after the initial
           // agreement_accepted_at check so the two modals never stack.
           if (currentContractor && currentContractor.agreement_accepted_at &&
@@ -1319,7 +1319,7 @@
             document.getElementById('cpaReacceptModalOverlay').classList.add('show');
             initCpaReacceptModal();
           } else {
-            // CPA is current â clear any stale redirect guard from guard pages
+            // CPA is current — clear any stale redirect guard from guard pages
             localStorage.removeItem('oq_cpa_redirect_guard');
           }
 
@@ -1386,7 +1386,7 @@
                   <tr>
                     <td colspan="6" style="text-align: center; padding: var(--sp-8);">
                       <div class="empty-state">
-                        <div class="empty-state-icon">ð¬</div>
+                        <div class="empty-state-icon">📬</div>
                         <div class="empty-state-title">No Pending Bids</div>
                         <div class="empty-state-text">Bids you've submitted that are awaiting homeowner decisions will appear here.</div>
                       </div>
@@ -1396,11 +1396,11 @@
                 pendingBody.innerHTML = pendingBids.map(bid => {
                   const isExpired = bid.bidStatus === 'expired';
                   const statusBadge = isExpired
-                    ? `<span class="status-badge" style="background:#FEF2F2; color:#991B1B; border:1px solid #FECACA;">â° Expired</span>`
+                    ? `<span class="status-badge" style="background:#FEF2F2; color:#991B1B; border:1px solid #FECACA;">⏰ Expired</span>`
                     : `<span class="status-badge" style="background: var(--amber-light, #FFF3CD); color: var(--amber-dark, #856404);">${bid.status}</span>`;
                   const actionCell = isExpired
-                    ? `<a href="contractor-bid-form.html?renew=true&quote_id=${bid.quoteId}&claim_id=${bid.claimId}" class="btn btn-sm" style="font-size:0.8rem; padding: 4px 10px; background:#15803D; color:#fff; border-radius:0.375rem; text-decoration:none;">ð Renew Bid</a>`
-                    : `<a href="contractor-bid-form.html?claim_id=${bid.claimId}" class="btn btn-sm btn-secondary" style="font-size:0.8rem; padding: 4px 10px;">âï¸ Change Bid</a>`;
+                    ? `<a href="contractor-bid-form.html?renew=true&quote_id=${bid.quoteId}&claim_id=${bid.claimId}" class="btn btn-sm" style="font-size:0.8rem; padding: 4px 10px; background:#15803D; color:#fff; border-radius:0.375rem; text-decoration:none;">🔄 Renew Bid</a>`
+                    : `<a href="contractor-bid-form.html?claim_id=${bid.claimId}" class="btn btn-sm btn-secondary" style="font-size:0.8rem; padding: 4px 10px;">✏️ Change Bid</a>`;
                   return `
                   <tr style="${isExpired ? 'opacity:0.85; background:#FFFBFB;' : ''}">
                     <td>${bid.location}</td>
@@ -1421,7 +1421,7 @@
                     <tr>
                         <td colspan="7" style="text-align: center; padding: var(--sp-8);">
                             <div class="empty-state">
-                                <div class="empty-state-icon">ð­</div>
+                                <div class="empty-state-icon">📭</div>
                                 <div class="empty-state-title">No Projects Yet</div>
                                 <div class="empty-state-text">Check back soon for new opportunities matching your service area.</div>
                             </div>
@@ -1437,7 +1437,7 @@
                         <td>${lead.material}</td>
                         <td>${lead.estimatedValue}</td>
                         <td><span class="status-badge status-${lead.status.toLowerCase()}">${lead.status}</span></td>
-                        <td>${lead.status === 'Completed' ? '<span style="color: var(--slate);">â</span>' : '<span class="status-badge status-won">Active</span>'}</td>
+                        <td>${lead.status === 'Completed' ? '<span style="color: var(--slate);">—</span>' : '<span class="status-badge status-won">Active</span>'}</td>
                     </tr>
                 `).join('');
             }
@@ -1447,7 +1447,7 @@
             if (allActivity.length === 0) {
                 activityFeed.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">ð</div>
+                        <div class="empty-state-icon">🔔</div>
                         <div class="empty-state-title">No Activity Yet</div>
                         <div class="empty-state-text">Your activity will appear here as you interact with opportunities.</div>
                     </div>
@@ -1465,7 +1465,7 @@
             }
         }
 
-        // ââ Dunning Alert: Check for active payment failures ââ
+        // ── Dunning Alert: Check for active payment failures ──
         let activeDunningRecord = null;
 
         async function checkDunningStatus() {
@@ -1505,7 +1505,7 @@
         async function retryDunningPayment() {
             if (!activeDunningRecord || !sb) return;
             const btn = document.getElementById('dunningRetryBtn');
-            if (btn) { btn.disabled = true; btn.textContent = 'Retryingâ¦'; }
+            if (btn) { btn.disabled = true; btn.textContent = 'Retrying…'; }
             try {
                 const { error } = await sb
                     .from('payment_failures')

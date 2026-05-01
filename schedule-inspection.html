@@ -8,7 +8,7 @@
 ></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Schedule an Inspection â Otter Quotes</title>
+  <title>Schedule an Inspection &mdash; Otter Quotes</title>
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -680,11 +680,11 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="modal-contractor-name">Select Time</h2>
-        <button class="modal-close" id="modal-close" aria-label="Close">â</button>
+        <button class="modal-close" id="modal-close" aria-label="Close">✕</button>
       </div>
 
       <div class="confirmation-message" id="confirmation-message">
-        <h4>ð Inspection Scheduled!</h4>
+        <h4>🎉 Inspection Scheduled!</h4>
         <div class="confirmation-details" id="confirmation-details"></div>
       </div>
 
@@ -696,8 +696,8 @@
             <div class="calendar-header">
               <h4 id="calendar-month"></h4>
               <div class="calendar-nav">
-                <button id="prev-month">â</button>
-                <button id="next-month">â</button>
+                <button id="prev-month">←</button>
+                <button id="next-month">→</button>
               </div>
             </div>
             <div class="weekdays">
@@ -748,7 +748,7 @@
         reviewCount: 156,
         inspectionType: 'free',
         inspectionFee: 0,
-        inspectionNote: 'Free inspection â no obligation',
+        inspectionNote: 'Free inspection — no obligation',
         whyChoose: 'Family-owned for over a decade. We specialize in storm damage repairs and insurance claims. Our inspectors are certified and will provide a detailed written report within 24 hours.',
         badges: ['Licensed', 'Insured', 'Years in Business: 10+'],
         serviceArea: 'Indianapolis, Carmel, Fishers, Noblesville, Westfield',
@@ -763,7 +763,7 @@
         reviewCount: 89,
         inspectionType: 'credited',
         inspectionFee: 75,
-        inspectionNote: '$75 inspection fee â fully credited if you hire us',
+        inspectionNote: '$75 inspection fee — fully credited if you hire us',
         whyChoose: 'We take the time to get it right. Every inspection includes drone footage of your roof, a detailed damage map, and a clear explanation of your options. The inspection fee is credited 100% toward any work you choose to have done.',
         badges: ['Licensed', 'Insured', 'Drone Certified'],
         serviceArea: 'Zionsville, Whitestown, Lebanon, Brownsburg, Avon',
@@ -779,7 +779,7 @@
         inspectionType: 'flat',
         inspectionFee: 50,
         inspectionNote: '$50 flat fee inspection',
-        whyChoose: 'Small team, big experience. With over two decades in the business, we\'ve seen it all. Our inspections focus on honest assessment â we\'ll tell you if it actually needs repair or if it can wait.',
+        whyChoose: 'Small team, big experience. With over two decades in the business, we\'ve seen it all. Our inspections focus on honest assessment — we\'ll tell you if it actually needs repair or if it can wait.',
         badges: ['Licensed', 'Insured', 'BBB A+ Rated'],
         serviceArea: 'Greenwood, Franklin, Shelbyville, Whiteland, Bargersville',
         availableDays: [1, 2, 3, 4, 5] // Mon-Fri
@@ -801,7 +801,7 @@
       const grid = document.getElementById('contractors-grid');
       grid.innerHTML = demoContractors.map(contractor => {
         const badgeClass = contractor.inspectionType;
-        const stars = 'â­'.repeat(Math.floor(contractor.rating)) + (contractor.rating % 1 >= 0.5 ? 'â¨' : '');
+        const stars = '⭐'.repeat(Math.floor(contractor.rating)) + (contractor.rating % 1 >= 0.5 ? '✨' : '');
 
         return `
           <div class="contractor-card" data-id="${contractor.id}">
@@ -810,8 +810,8 @@
             </div>
 
             <div class="contractor-meta">
-              <span>ð ${contractor.yearsInBusiness} yrs</span>
-              <span>ð¥ ${contractor.employees} staff</span>
+              <span>📅 ${contractor.yearsInBusiness} yrs</span>
+              <span>👥 ${contractor.employees} staff</span>
               <span class="rating-badge">${contractor.rating} ${stars}</span>
             </div>
 
@@ -822,7 +822,7 @@
             <p class="why-choose">${contractor.whyChoose}</p>
 
             <div class="badges">
-              ${contractor.badges.map(b => `<span class="badge">â ${b}</span>`).join('')}
+              ${contractor.badges.map(b => `<span class="badge">✓ ${b}</span>`).join('')}
             </div>
 
             <div class="service-area">
@@ -910,10 +910,10 @@
     // Render time slots
     function renderTimeSlots() {
       const slotsHTML = [
-        { label: '8:00 AM â 10:00 AM', value: '8am' },
-        { label: '10:00 AM â 12:00 PM', value: '10am' },
-        { label: '12:00 PM â 2:00 PM', value: '12pm' },
-        { label: '2:00 PM â 4:00 PM', value: '2pm' }
+        { label: '8:00 AM – 10:00 AM', value: '8am' },
+        { label: '10:00 AM – 12:00 PM', value: '10am' },
+        { label: '12:00 PM – 2:00 PM', value: '12pm' },
+        { label: '2:00 PM – 4:00 PM', value: '2pm' }
       ].map(slot => `
         <button class="time-slot ${selectedTime === slot.value ? 'selected' : ''}"
                 onclick="selectTime('${slot.value}')"
@@ -1023,10 +1023,10 @@
       const detailsDiv = document.getElementById('confirmation-details');
 
       const dateFormatted = selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-      const timeFormatted = selectedTime === '8am' ? '8:00 AM â 10:00 AM' :
-                           selectedTime === '10am' ? '10:00 AM â 12:00 PM' :
-                           selectedTime === '12pm' ? '12:00 PM â 2:00 PM' :
-                           '2:00 PM â 4:00 PM';
+      const timeFormatted = selectedTime === '8am' ? '8:00 AM – 10:00 AM' :
+                           selectedTime === '10am' ? '10:00 AM – 12:00 PM' :
+                           selectedTime === '12pm' ? '12:00 PM – 2:00 PM' :
+                           '2:00 PM – 4:00 PM';
 
       detailsDiv.innerHTML = `
         <p><strong>Contractor:</strong> ${selectedContractor.name}</p>

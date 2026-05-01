@@ -9,7 +9,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-  <title>Choose Your Color â Otter Quotes</title>
+  <title>Choose Your Color &mdash; Otter Quotes</title>
   <meta name="description" content="Select the perfect roof color for your home.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -437,9 +437,9 @@
 
         <!-- No rush callout -->
         <div class="no-rush-banner">
-          <div class="no-rush-icon">â³</div>
+          <div class="no-rush-icon">⏳</div>
           <div class="no-rush-text">
-            <p><strong>Take your time</strong> â your contract is already signed and your contractor has been notified. There's no rush to pick a color.</p>
+            <p><strong>Take your time</strong> &mdash; your contract is already signed and your contractor has been notified. There's no rush to pick a color.</p>
           </div>
         </div>
 
@@ -458,7 +458,7 @@
 
         <!-- Always-visible: Request In-Person Color Samples (D-085) -->
         <div class="in-person-section" id="inperson-section">
-          <div class="in-person-icon">ð </div>
+          <div class="in-person-icon">🏠</div>
           <div class="in-person-content">
             <h3 class="in-person-title">Prefer to See Colors In Person?</h3>
             <p class="in-person-description">Request physical color boards. Your contractor will bring shingle samples to your home so you can see the real colors in your own lighting and against your exterior.</p>
@@ -481,7 +481,7 @@
               <div class="form-group">
                 <label class="form-label" for="brand-display">Brand</label>
                 <div class="color-info-display">
-                  <div class="color-info-value" id="brand-display-value">â</div>
+                  <div class="color-info-value" id="brand-display-value">&mdash;</div>
                 </div>
               </div>
 
@@ -507,7 +507,7 @@
             </div>
 
             <div class="success-state" id="color-success">
-              <strong>â Color confirmed!</strong> We've saved your selection. You'll see the addendum on your next contract review.
+              <strong>✓ Color confirmed!</strong> We've saved your selection. You'll see the addendum on your next contract review.
             </div>
           </form>
         </div>
@@ -650,7 +650,7 @@
           this.contractorId = data.selected_contractor_id;
           this.contractorName = data.contractor?.name || 'Your Contractor';
 
-          // Normalize brand â treat 'OC' as 'Owens Corning'; leave unknown brands as null
+          // Normalize brand — treat 'OC' as 'Owens Corning'; leave unknown brands as null
           let rawBrand = data.contractor?.preferred_brand || null;
           if (rawBrand) {
             const t = rawBrand.trim();
@@ -707,7 +707,7 @@
           {
             id: 'visualize',
             title: 'See It On Your House',
-            icon: 'ð¡',
+            icon: '🏡',
             description: this.getVisualizerDescription(),
             primary: true,
             hasVisualizer: ['Owens Corning', 'GAF', 'CertainTeed', 'TAMKO', 'Atlas', 'IKO'].includes(this.brand),
@@ -715,14 +715,14 @@
           {
             id: 'browse',
             title: 'Browse Colors',
-            icon: 'ð¨',
+            icon: '🎨',
             description: 'See our color catalog and make your selection.',
             primary: false,
           },
           {
             id: 'inperson',
             title: "I'd Rather See Colors In Person",
-            icon: 'ðï¸',
+            icon: '👁️',
             description: 'Request physical color boards for a closer look at your options.',
             primary: false,
           }
@@ -736,7 +736,7 @@
             ${this.brand === 'GAF' || this.brand === 'CertainTeed' || this.brand === 'TAMKO' || this.brand === 'Atlas' || this.brand === 'IKO' ?
               `<div class="color-option-note">
                 <span class="external-link-indicator">
-                  <span class="external-icon">â</span> Opens in new tab
+                  <span class="external-icon">↗</span> Opens in new tab
                 </span>
               </div>` : ''}
             <button class="btn btn-primary btn-full color-option-button" onclick="ColorSelection.handleOptionClick('${opt.id}')">
@@ -794,7 +794,7 @@
           // Unknown or not-yet-confirmed brand
           container.innerHTML = `
             <div class="brand-unknown-state">
-              <div class="brand-unknown-icon">ð</div>
+              <div class="brand-unknown-icon">🔍</div>
               <div class="brand-unknown-title">Brand Not Yet Confirmed</div>
               <p class="brand-unknown-text">Your contractor hasn't specified a shingle brand yet. Once confirmed, the right color visualization tool will appear here. In the meantime, you can request in-person color samples below.</p>
             </div>
@@ -839,7 +839,7 @@
               <p style="color: var(--slate); margin-bottom: var(--sp-4);">Upload a photo of your home and try on different Owens Corning shingle colors in real time.</p>
               <a href="https://designeyeq.owenscorning.com/" target="_blank" rel="noopener" class="btn btn-primary">
                 Open OC Design EyeQ
-                <span style="margin-left: 4px;">â</span>
+                <span style="margin-left: 4px;">↗</span>
               </a>
               <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
                 <strong>After visualizing:</strong> Come back here and enter the color you selected in the form below.
@@ -853,9 +853,9 @@
             <p style="color: var(--slate); margin-bottom: var(--sp-4);">Upload a photo of your home and try on different Owens Corning shingle colors in real time.</p>
             <div id="oc-widget-launcher" style="text-align: center; padding: var(--sp-6) 0;">
               <button class="btn btn-primary" onclick="ColorSelection.launchOCWidget('${zip}')" style="font-size: 1.05rem; padding: var(--sp-3) var(--sp-8);">
-                ð¨ Click to Preview Colors
+                🎨 Click to Preview Colors
               </button>
-              <p style="color: var(--slate); font-size: 0.875rem; margin-top: var(--sp-3); margin-bottom: 0;">Opens an interactive visualizer â upload a photo of your home to see real shingle colors.</p>
+              <p style="color: var(--slate); font-size: 0.875rem; margin-top: var(--sp-3); margin-bottom: 0;">Opens an interactive visualizer — upload a photo of your home to see real shingle colors.</p>
             </div>
             <div id="oc-widget-container" style="display: none;">
               <div id="visualizer" data-zip="${zip}"></div>
@@ -864,12 +864,12 @@
               <strong>After visualizing:</strong> Once you've found a color you like, enter it in the form below to lock it in.
             </div>
           `;
-          // Script is intentionally NOT injected here â loaded on demand via launchOCWidget()
+          // Script is intentionally NOT injected here — loaded on demand via launchOCWidget()
         }
       },
 
       /**
-       * Lazy-load the OC Design EyeQ widget on user click (B3 fix â avoids main-thread freeze)
+       * Lazy-load the OC Design EyeQ widget on user click (B3 fix — avoids main-thread freeze)
        */
       launchOCWidget(zip) {
         const launcher = document.getElementById('oc-widget-launcher');
@@ -894,7 +894,7 @@
             <p style="color: var(--slate); margin-bottom: var(--sp-4);">Use GAF's comprehensive design tool to visualize your roof with different color and style options.</p>
             <a href="https://www.gaf.com/en-us/plan-design/design-your-roof" target="_blank" rel="noopener" class="btn btn-primary">
               Open GAF Design Tool
-              <span class="external-icon" style="margin-left: 4px;">â</span>
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
             </a>
             <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
               <strong>After designing:</strong> Come back here and enter the color you selected.
@@ -912,7 +912,7 @@
             <p style="color: var(--slate); margin-bottom: var(--sp-4);">Explore CertainTeed color options with their interactive ColorView visualizer.</p>
             <a href="https://www.certainteed.com/colorview" target="_blank" rel="noopener" class="btn btn-primary">
               Open CertainTeed ColorView
-              <span class="external-icon" style="margin-left: 4px;">â</span>
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
             </a>
             <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
               <strong>After selecting:</strong> Come back here and enter the color you chose.
@@ -930,7 +930,7 @@
             <p style="color: var(--slate); margin-bottom: var(--sp-4);">Try TAMKO shingle colors on your home with their RenoWorks visualizer.</p>
             <a href="https://tamko.renoworks.com/" target="_blank" rel="noopener" class="btn btn-primary">
               Open TAMKO Visualizer
-              <span class="external-icon" style="margin-left: 4px;">â</span>
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
             </a>
             <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
               <strong>After visualizing:</strong> Come back here and enter your color selection.
@@ -948,7 +948,7 @@
             <p style="color: var(--slate); margin-bottom: var(--sp-4);">Visualize Atlas shingle colors and see how they look on your roof.</p>
             <a href="https://www.atlasroofing.com/visualizer" target="_blank" rel="noopener" class="btn btn-primary">
               Open Atlas Visualizer
-              <span class="external-icon" style="margin-left: 4px;">â</span>
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
             </a>
             <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
               <strong>After selecting:</strong> Come back here and enter the color you selected.
@@ -966,7 +966,7 @@
             <p style="color: var(--slate); margin-bottom: var(--sp-4);">Use IKO's RoofViewer to preview different colors and styles on your home.</p>
             <a href="https://www.iko.com/na/roofviewer/" target="_blank" rel="noopener" class="btn btn-primary">
               Open IKO RoofViewer
-              <span class="external-icon" style="margin-left: 4px;">â</span>
+              <span class="external-icon" style="margin-left: 4px;">↗</span>
             </a>
             <div class="color-option-note" style="margin-top: var(--sp-4); margin-bottom: 0;">
               <strong>After visualizing:</strong> Come back here and enter your color selection.
@@ -995,7 +995,7 @@
 
           if (existing) {
             if (confirmEl) {
-              confirmEl.innerHTML = '<strong>â Already requested.</strong> Your contractor will reach out soon with physical color samples.';
+              confirmEl.innerHTML = '<strong>✓ Already requested.</strong> Your contractor will reach out soon with physical color samples.';
               confirmEl.classList.add('active');
             } else {
               alert('You\'ve already requested a color board visit. Your contractor will reach out soon.');
@@ -1020,7 +1020,7 @@
             ? ` To reach them directly: <strong><a href="tel:${this.contractorPhone}" style="color:inherit;">${this.contractorPhone}</a></strong>`
             : '';
 
-          const confirmMsg = `<strong>â Visit requested!</strong> We've notified ${this.contractorName} to schedule a color board visit. They'll reach out within 48 hours.${phoneHtml}`;
+          const confirmMsg = `<strong>✓ Visit requested!</strong> We've notified ${this.contractorName} to schedule a color board visit. They'll reach out within 48 hours.${phoneHtml}`;
 
           // Show confirmation in persistent in-person section
           if (confirmEl) {
@@ -1033,7 +1033,7 @@
 
         } catch (err) {
           console.error('Error requesting color board visit:', err);
-          // Fallback: open mailto to OtterQuote support
+          // Fallback: open mailto to Otter Quotes support
           const subject = encodeURIComponent('Color Board Visit Request');
           const body = encodeURIComponent(`I would like to request an in-person color board visit.\n\nClaim ID: ${this.claimId || 'unknown'}\nContractor: ${this.contractorName || 'unknown'}`);
           window.location.href = `mailto:info@otterquote.com?subject=${subject}&body=${body}`;
@@ -1104,7 +1104,7 @@
        */
       async createColorAddendum(colorName) {
         if (!this.claimId || !this.contractorId || !this.signerEmail) {
-          console.warn('[ColorAddendum] Missing claimId, contractorId, or signerEmail â skipping');
+          console.warn('[ColorAddendum] Missing claimId, contractorId, or signerEmail — skipping');
           return;
         }
 
@@ -1125,13 +1125,13 @@
           const fnError = response.error;
 
           if (fnError || !data?.signing_url) {
-            // Graceful fallback â template may not exist yet
+            // Graceful fallback — template may not exist yet
             console.warn('[ColorAddendum] DocuSign addendum unavailable:', fnError || 'No signing_url returned');
             this.showAddendumFallback();
             return;
           }
 
-          // Success â show embedded signing iframe
+          // Success — show embedded signing iframe
           gtag('event', 'color_addendum_created', { claim_id: this.claimId });
           this.showAddendumSigningIframe(data.signing_url);
         } catch (err) {
@@ -1163,7 +1163,7 @@
           <iframe
             src="${signingUrl}"
             style="width:100%; height:500px; border-radius:0.5rem; border:1px solid rgba(255,255,255,0.1);"
-            title="Color Addendum â DocuSign"
+            title="Color Addendum — DocuSign"
           ></iframe>
         `;
         form.parentNode.insertBefore(section, form.nextSibling);
@@ -1206,7 +1206,7 @@
           const button = form.querySelector('button[type="submit"]');
           if (button) {
             button.disabled = true;
-            button.textContent = 'Color Confirmed â';
+            button.textContent = 'Color Confirmed ✓';
           }
         }
       }

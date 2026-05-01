@@ -9,8 +9,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-  <title>Contractor Profile â Otter Quotes</title>
-  <meta name="description" content="Learn more about this contractor â their experience, certifications, license, and bid for your project.">
+  <title>Contractor Profile &mdash; Otter Quotes</title>
+  <meta name="description" content="Learn more about this contractor &mdash; their experience, certifications, license, and bid for your project.">
 
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
@@ -27,11 +27,11 @@
   <link rel="stylesheet" href="css/nav.css">
 
   <style>
-    /* âââ Layout âââ */
+    /* ─── Layout ─── */
     .about-layout { min-height: calc(100vh - 64px); display: flex; flex-direction: column; }
     .about-main { flex: 1; padding: var(--sp-10) 0 var(--sp-16); }
 
-    /* âââ Back Button âââ */
+    /* ─── Back Button ─── */
     .back-btn {
       display: inline-flex; align-items: center; gap: var(--sp-2);
       color: var(--amber); font-weight: 600; font-size: 0.95rem;
@@ -41,14 +41,14 @@
     }
     .back-btn:hover { color: var(--white); }
 
-    /* âââ Loading / Error âââ */
+    /* ─── Loading / Error ─── */
     .loading-state { text-align: center; padding: var(--sp-20) var(--sp-8); }
     .loading-spinner { width: 48px; height: 48px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto var(--sp-6); }
     @keyframes spin { to { transform: rotate(360deg); } }
     .error-state { text-align: center; padding: var(--sp-16) var(--sp-8); }
     .error-icon { font-size: 3rem; margin-bottom: var(--sp-4); opacity: 0.5; }
 
-    /* âââ Hero Card âââ */
+    /* ─── Hero Card ─── */
     .hero-card {
       background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06);
       border-radius: var(--radius-lg); padding: var(--sp-10);
@@ -66,7 +66,7 @@
     .hero-info .hero-subtitle { color: var(--slate); margin-bottom: var(--sp-5); line-height: 1.7; font-size: 0.95rem; }
     .hero-badges { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 
-    /* âââ Insurance / Insurance Verification Badges âââ */
+    /* ─── Insurance / Insurance Verification Badges ─── */
     .insurance-badges { display: flex; gap: var(--sp-3); flex-wrap: wrap; margin-top: var(--sp-4); }
     .ins-badge {
       display: flex; align-items: center; gap: var(--sp-2);
@@ -77,7 +77,7 @@
     .ins-badge.unverified { background: rgba(148,163,184,0.08); border-color: rgba(148,163,184,0.2); color: var(--slate); }
     .ins-badge .ins-icon { font-size: 1rem; }
 
-    /* âââ Bid Summary (highlighted) âââ */
+    /* ─── Bid Summary (highlighted) ─── */
     .bid-summary-card {
       background: var(--amber-glow); border: 1px solid var(--amber);
       border-radius: var(--radius-lg); padding: var(--sp-8); margin-bottom: var(--sp-8);
@@ -98,12 +98,12 @@
       font-style: italic; border-left: 3px solid var(--amber);
     }
 
-    /* âââ Two-Column Grid âââ */
+    /* ─── Two-Column Grid ─── */
     .about-grid { display: grid; grid-template-columns: 2fr 1fr; gap: var(--sp-8); margin-bottom: var(--sp-8); }
     .about-main-col { display: flex; flex-direction: column; gap: var(--sp-6); }
     .about-sidebar { display: flex; flex-direction: column; gap: var(--sp-6); }
 
-    /* âââ Section Cards âââ */
+    /* ─── Section Cards ─── */
     .section-card {
       background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06);
       border-radius: var(--radius-lg); padding: var(--sp-8);
@@ -113,22 +113,22 @@
       padding-bottom: var(--sp-3); border-bottom: 1px solid rgba(255,255,255,0.06);
     }
 
-    /* âââ Info Grid âââ */
+    /* ─── Info Grid ─── */
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); margin-bottom: var(--sp-6); }
     .info-item { display: flex; flex-direction: column; gap: 2px; }
     .info-item-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate); }
     .info-item-value { font-size: 0.95rem; font-weight: 600; color: var(--white); }
 
-    /* âââ About / Why Choose âââ */
+    /* ─── About / Why Choose ─── */
     .bio-text { color: var(--slate); line-height: 1.8; font-size: 0.95rem; margin-bottom: var(--sp-5); }
     .why-choose-text { color: var(--slate); line-height: 1.8; font-size: 0.95rem; }
     .subsection-title { font-size: 0.9rem; font-weight: 700; color: var(--white); margin-bottom: var(--sp-3); }
 
-    /* âââ Service Area Tags âââ */
+    /* ─── Service Area Tags ─── */
     .county-tags { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-2); }
     .county-tag { font-size: 0.78rem; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-full); background: rgba(255,255,255,0.06); color: var(--slate); }
 
-    /* âââ License Table âââ */
+    /* ─── License Table ─── */
     .license-table { display: flex; flex-direction: column; gap: var(--sp-3); }
     .license-row {
       display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3);
@@ -140,25 +140,25 @@
     .license-row .license-field .lf-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate); margin-bottom: 2px; }
     .license-row .license-field .lf-value { color: var(--white); font-weight: 600; }
 
-    /* âââ Team Section âââ */
+    /* ─── Team Section ─── */
     .team-items { display: flex; flex-direction: column; gap: var(--sp-3); }
     .team-item { display: flex; align-items: center; gap: var(--sp-3); font-size: 0.95rem; color: var(--slate); }
     .team-item strong { color: var(--white); }
     .team-icon { font-size: 1.2rem; width: 32px; text-align: center; }
 
-    /* âââ Stats âââ */
+    /* ─── Stats ─── */
     .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); }
     .stat-item { text-align: center; }
     .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--amber); display: block; margin-bottom: 2px; }
     .stat-label { font-size: 0.7rem; color: var(--slate); text-transform: uppercase; letter-spacing: 0.05em; }
 
-    /* âââ Certifications âââ */
+    /* ─── Certifications ─── */
     .cert-list { display: flex; flex-direction: column; gap: var(--sp-3); }
     .cert-item { display: flex; align-items: center; gap: var(--sp-3); }
     .cert-badge { width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--amber-glow); display: flex; align-items: center; justify-content: center; font-size: 0.9rem; flex-shrink: 0; }
     .cert-name { font-size: 0.88rem; color: var(--white); font-weight: 500; }
 
-    /* âââ Review Sites âââ */
+    /* ─── Review Sites ─── */
     .review-links { display: flex; flex-direction: column; gap: var(--sp-3); }
     .review-link {
       display: flex; align-items: center; justify-content: space-between;
@@ -169,13 +169,13 @@
     .review-link:hover { background: rgba(255,255,255,0.06); color: var(--amber); }
     .review-link .rl-rating { color: var(--amber); font-size: 0.85rem; }
 
-    /* âââ Gallery âââ */
+    /* ─── Gallery ─── */
     .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--sp-3); }
     .gallery-item { aspect-ratio: 4/3; border-radius: var(--radius-sm); overflow: hidden; background: var(--mid); }
     .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
     .gallery-placeholder-msg { color: var(--slate); font-size: 0.9rem; line-height: 1.6; }
 
-    /* âââ Reviews âââ */
+    /* ─── Reviews ─── */
     .review-cards { display: flex; flex-direction: column; gap: var(--sp-4); }
     .review-card { background: rgba(255,255,255,0.03); border-radius: var(--radius-md); padding: var(--sp-5); border-left: 3px solid var(--amber); }
     .review-text { color: var(--slate); font-style: italic; line-height: 1.7; margin-bottom: var(--sp-3); font-size: 0.92rem; }
@@ -184,7 +184,7 @@
     .review-stars { color: var(--amber); font-size: 0.85rem; }
     .review-placeholder-msg { color: var(--slate); font-size: 0.9rem; line-height: 1.6; }
 
-    /* âââ Select CTA âââ */
+    /* ─── Select CTA ─── */
     .select-cta-card {
       background: var(--navy-2); border: 2px solid var(--amber);
       border-radius: var(--radius-lg); padding: var(--sp-10);
@@ -194,7 +194,7 @@
     .select-cta-card p { color: var(--slate); max-width: 520px; margin: 0 auto var(--sp-6); line-height: 1.7; font-size: 0.95rem; }
     .select-cta-actions { display: flex; gap: var(--sp-4); justify-content: center; flex-wrap: wrap; }
 
-    /* âââ Guarantee Pill âââ */
+    /* ─── Guarantee Pill ─── */
     .guarantee-pill {
       display: inline-flex; align-items: center; gap: var(--sp-2);
       background: var(--amber-glow); border: 1px solid rgba(245,158,11,0.3);
@@ -202,7 +202,7 @@
       font-size: 0.8rem; font-weight: 600; color: var(--amber); margin-bottom: var(--sp-5);
     }
 
-    /* âââ Confirmation Modal âââ */
+    /* ─── Confirmation Modal ─── */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: var(--sp-6); opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
     .modal-overlay.active { opacity: 1; pointer-events: auto; }
     .modal-card { background: var(--navy-2); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-lg); padding: var(--sp-10); max-width: 480px; width: 100%; text-align: center; transform: translateY(12px); transition: transform 0.25s ease; }
@@ -215,7 +215,7 @@
     .modal-actions .btn { min-width: 140px; }
     .modal-spinner { display: none; width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; margin: 0 auto; }
 
-    /* âââ Responsive âââ */
+    /* ─── Responsive ─── */
     @media (max-width: 900px) {
       .about-grid { grid-template-columns: 1fr; }
       .hero-card { flex-direction: column; align-items: center; text-align: center; padding: var(--sp-6); }
@@ -243,24 +243,24 @@
         <!-- Loading -->
         <div id="loadingState" class="loading-state">
           <div class="loading-spinner"></div>
-          <p style="color:var(--slate);">Loading contractor profileâ¦</p>
+          <p style="color:var(--slate);">Loading contractor profile&hellip;</p>
         </div>
 
         <!-- Error -->
         <div id="errorState" class="error-state" style="display:none;">
-          <div class="error-icon">â ï¸</div>
+          <div class="error-icon">⚠️</div>
           <h2 id="errorTitle">Something went wrong</h2>
           <p id="errorMsg" style="color:var(--slate);margin:var(--sp-4) auto var(--sp-6);max-width:400px;"></p>
-          <a id="errorBackLink" href="bids.html" class="btn btn-secondary">â Back to Bids</a>
+          <a id="errorBackLink" href="bids.html" class="btn btn-secondary">← Back to Bids</a>
         </div>
 
         <!-- Page Content -->
         <div id="pageContent" style="display:none;">
 
           <!-- Back Button -->
-          <a id="backLink" href="bids.html" class="back-btn">â Back to All Bids</a>
+          <a id="backLink" href="bids.html" class="back-btn">← Back to All Bids</a>
 
-          <!-- ââ Hero ââ -->
+          <!-- ── Hero ── -->
           <div class="hero-card">
             <div class="hero-avatar" id="heroAvatar"></div>
             <div class="hero-info">
@@ -271,14 +271,14 @@
             </div>
           </div>
 
-          <!-- ââ Bid Summary (only shown if claim_id + bid exist) ââ -->
+          <!-- ── Bid Summary (only shown if claim_id + bid exist) ── -->
           <div class="bid-summary-card" id="bidSummaryCard" style="display:none;">
-            <h2>ð Their Bid for Your Project</h2>
+            <h2>📋 Their Bid for Your Project</h2>
             <div class="bid-metrics" id="bidMetrics"></div>
             <div id="bidMessage"></div>
           </div>
 
-          <!-- ââ Main Grid ââ -->
+          <!-- ── Main Grid ── -->
           <div class="about-grid">
 
             <!-- Left Column -->
@@ -353,13 +353,13 @@
             </div>
           </div>
 
-          <!-- ââ Select CTA ââ -->
+          <!-- ── Select CTA ── -->
           <div class="select-cta-card" id="selectCTA">
-            <div class="guarantee-pill">ð¡ OtterQuote Guarantee</div>
+            <div class="guarantee-pill">🛡 Otter Quotes Guarantee</div>
             <h2 id="ctaTitle">Ready to Move Forward?</h2>
-            <p id="ctaBody">Selecting this contractor starts the contract signing process. You can switch to another OtterQuote contractor at no cost up to 3 days before installation.</p>
+            <p id="ctaBody">Selecting this contractor starts the contract signing process. You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.</p>
             <div class="select-cta-actions">
-              <a id="ctaBackBtn" href="bids.html" class="btn btn-secondary">â Compare All Bids</a>
+              <a id="ctaBackBtn" href="bids.html" class="btn btn-secondary">← Compare All Bids</a>
               <button id="ctaSelectBtn" class="btn btn-primary btn-lg" onclick="openSelectModal()" style="display:none;">Select This Contractor</button>
             </div>
           </div>
@@ -374,7 +374,7 @@
   <!-- Confirmation Modal -->
   <div id="confirmModal" class="modal-overlay" onclick="if(event.target===this)closeModal()">
     <div class="modal-card">
-      <div class="modal-icon">ð¦¦</div>
+      <div class="modal-icon">🦦</div>
       <h3 id="modalTitle">Confirm Your Selection</h3>
       <p id="modalBody"></p>
       <div class="modal-actions" id="modalActions">
@@ -393,7 +393,7 @@
   (function() {
     'use strict';
 
-    // ââ State ââ
+    // ── State ──
     let currentUser = null;
     let contractorId = null;
     let claimId = null;
@@ -403,7 +403,7 @@
     let bid = null;
     let claim = null;
 
-    // ââ Init ââ
+    // ── Init ──
     async function init() {
       try {
         const params = new URLSearchParams(window.location.search);
@@ -433,7 +433,7 @@
         ]);
 
         if (!contractor) {
-          showError('Contractor Not Found', 'We couldn\'t find this contractor. They may no longer be active on OtterQuote.');
+          showError('Contractor Not Found', 'We couldn\'t find this contractor. They may no longer be active on Otter Quotes.');
           return;
         }
 
@@ -451,7 +451,7 @@
       }
     }
 
-    // ââ Data Loaders ââ
+    // ── Data Loaders ──
     async function loadContractor() {
       if (!sb) return;
       const { data, error } = await sb
@@ -508,15 +508,15 @@
       if (!claimResult.error && claimResult.data) claim = claimResult.data;
     }
 
-    // ââ Render ââ
+    // ── Render ──
     async function render() {
       const c = contractor;
       const initials = (c.company_name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
 
       // Document title
-      document.title = `${esc(c.company_name)} â OtterQuote`;
+      document.title = `${esc(c.company_name)} — Otter Quotes`;
 
-      // ââ Hero ââ
+      // ── Hero ──
       // owner_photo_url is a bare storage path in the private contractor-documents bucket.
       // Generate a signed URL; legacy records with full public URLs use regex path extraction.
       let heroAvatarHtml = initials;
@@ -543,7 +543,7 @@
       // Hero badges
       const badgesHtml = [
         c.years_in_business ? `<span class="badge badge-amber">${c.years_in_business} Years in Business</span>` : '',
-        c.verified ? '<span class="badge badge-green">â Verified Contractor</span>' : '',
+        c.verified ? '<span class="badge badge-green">✓ Verified Contractor</span>' : '',
         (c.trades && parseCerts(c.trades).length > 0)
           ? parseCerts(c.trades).map(t => `<span class="badge badge-navy">${esc(t)}</span>`).join('')
           : '',
@@ -555,16 +555,16 @@
       const glVerified = c.has_general_liability === true;
       document.getElementById('heroInsurance').innerHTML = `
         <div class="ins-badge ${wcVerified ? 'verified' : 'unverified'}">
-          <span class="ins-icon">${wcVerified ? 'â' : 'â'}</span>
-          Workers' Compensation${wcVerified ? ' â Verified' : ' â Not on file'}
+          <span class="ins-icon">${wcVerified ? '✓' : '○'}</span>
+          Workers' Compensation${wcVerified ? ' — Verified' : ' — Not on file'}
         </div>
         <div class="ins-badge ${glVerified ? 'verified' : 'unverified'}">
-          <span class="ins-icon">${glVerified ? 'â' : 'â'}</span>
-          General Liability${glVerified ? ' â Verified' : ' â Not on file'}
+          <span class="ins-icon">${glVerified ? '✓' : '○'}</span>
+          General Liability${glVerified ? ' — Verified' : ' — Not on file'}
         </div>
       `;
 
-      // ââ Bid Summary ââ
+      // ── Bid Summary ──
       if (bid) {
         document.getElementById('bidSummaryCard').style.display = 'block';
 
@@ -612,7 +612,7 @@
           const ctaBtn = document.getElementById('ctaSelectBtn');
           ctaBtn.style.display = 'inline-flex';
           if (bid && bid.bid_status === 'expired') {
-            // Expired bid â disable the button and show a notice
+            // Expired bid — disable the button and show a notice
             ctaBtn.disabled = true;
             ctaBtn.textContent = 'Bid Expired';
             ctaBtn.style.opacity = '0.5';
@@ -620,7 +620,7 @@
             // Insert expired notice below the button
             const noticeEl = document.createElement('div');
             noticeEl.style.cssText = 'margin-top:0.75rem;padding:0.6rem 1rem;background:#FFF7ED;border:1px solid #FED7AA;border-radius:0.5rem;font-size:0.85rem;color:#92400E;';
-            noticeEl.innerHTML = `â° This contractor's bid expired before a decision was made. They can <a href="contractor-bid-form.html?renew=true&quote_id=${encodeURIComponent(bid.id)}&claim_id=${encodeURIComponent(claimId)}" style="color:#92400E;font-weight:600;">renew their bid</a> from the contractor portal to become selectable again.`;
+            noticeEl.innerHTML = `⏰ This contractor's bid expired before a decision was made. They can <a href="contractor-bid-form.html?renew=true&quote_id=${encodeURIComponent(bid.id)}&claim_id=${encodeURIComponent(claimId)}" style="color:#92400E;font-weight:600;">renew their bid</a> from the contractor portal to become selectable again.`;
             ctaBtn.parentNode.insertBefore(noticeEl, ctaBtn.nextSibling);
           } else {
             ctaBtn.textContent = `Select ${esc(c.company_name)}`;
@@ -629,10 +629,10 @@
 
         document.getElementById('ctaTitle').textContent = `Ready to Choose ${c.company_name}?`;
         document.getElementById('ctaBody').textContent =
-          `Selecting ${c.company_name} will begin the contract signing process. You can switch to another OtterQuote contractor at no cost up to 3 days before installation.`;
+          `Selecting ${c.company_name} will begin the contract signing process. You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.`;
       }
 
-      // ââ About Section ââ
+      // ── About Section ──
       document.getElementById('aboutInfoGrid').innerHTML = `
         <div class="info-item">
           <span class="info-item-label">Contact</span>
@@ -650,46 +650,46 @@
         ` : ''}
         <div class="info-item">
           <span class="info-item-label">Verification Status</span>
-          <span class="info-item-value" style="color:${c.verified ? '#6EE7B7' : 'var(--slate)'};">${c.verified ? 'â Verified' : 'Pending'}</span>
+          <span class="info-item-value" style="color:${c.verified ? '#6EE7B7' : 'var(--slate)'};">${c.verified ? '✓ Verified' : 'Pending'}</span>
         </div>
       `;
 
-      // ââ Why Choose Section ââ
+      // ── Why Choose Section ──
       if (c.why_choose_us) {
         document.getElementById('sectionWhy').style.display = 'block';
         document.getElementById('whyChooseText').textContent = c.why_choose_us;
       }
 
-      // ââ Team Section ââ
+      // ── Team Section ──
       document.getElementById('teamItems').innerHTML = `
         <div class="team-item">
-          <span class="team-icon">ð·</span>
+          <span class="team-icon">👷</span>
           <span><strong>Team Size:</strong> ${c.num_employees ? c.num_employees + ' employees' : 'Not provided'}</span>
         </div>
         ${c.trades && parseCerts(c.trades).length > 0 ? `
         <div class="team-item">
-          <span class="team-icon">ð§</span>
+          <span class="team-icon">🔧</span>
           <span><strong>Trades:</strong> ${parseCerts(c.trades).map(t => esc(t)).join(', ')}</span>
         </div>
         ` : ''}
       `;
 
-      // ââ Gallery ââ
+      // ── Gallery ──
       document.getElementById('galleryContent').innerHTML =
         `<p class="gallery-placeholder-msg">No photos uploaded yet. Photos will appear here as the contractor adds them to their profile.</p>`;
 
-      // ââ Reviews (from `reviews` table â placeholder until built) ââ
+      // ── Reviews (from `reviews` table — placeholder until built) ──
       document.getElementById('reviewsContent').innerHTML =
-        `<p class="review-placeholder-msg">No OtterQuote reviews yet. Reviews from homeowners who complete projects with this contractor will appear here.</p>`;
+        `<p class="review-placeholder-msg">No Otter Quotes reviews yet. Reviews from homeowners who complete projects with this contractor will appear here.</p>`;
 
-      // ââ Quick Stats ââ
+      // ── Quick Stats ──
       document.getElementById('quickStats').innerHTML = `
         <div class="stat-item">
           <span class="stat-value">${c.years_in_business || '--'}</span>
           <span class="stat-label">Years in Business</span>
         </div>
         <div class="stat-item">
-          <span class="stat-value">${c.rating ? 'â ' + c.rating : '--'}</span>
+          <span class="stat-value">${c.rating ? '★ ' + c.rating : '--'}</span>
           <span class="stat-label">Rating</span>
         </div>
         <div class="stat-item">
@@ -698,26 +698,26 @@
         </div>
       `;
 
-      // ââ Review Sites ââ
+      // ── Review Sites ──
       const reviewLinksHtml = [
         c.google_reviews_url
-          ? `<a href="${esc(c.google_reviews_url)}" target="_blank" rel="noopener" class="review-link"><span>Google Reviews</span><span class="rl-rating">${c.rating ? 'â ' + c.rating : 'View â'}</span></a>`
+          ? `<a href="${esc(c.google_reviews_url)}" target="_blank" rel="noopener" class="review-link"><span>Google Reviews</span><span class="rl-rating">${c.rating ? '★ ' + c.rating : 'View →'}</span></a>`
           : '',
         c.bbb_url
-          ? `<a href="${esc(c.bbb_url)}" target="_blank" rel="noopener" class="review-link"><span>BBB Profile</span><span class="rl-rating">View â</span></a>`
+          ? `<a href="${esc(c.bbb_url)}" target="_blank" rel="noopener" class="review-link"><span>BBB Profile</span><span class="rl-rating">View →</span></a>`
           : '',
         c.angi_url
-          ? `<a href="${esc(c.angi_url)}" target="_blank" rel="noopener" class="review-link"><span>Angi</span><span class="rl-rating">View â</span></a>`
+          ? `<a href="${esc(c.angi_url)}" target="_blank" rel="noopener" class="review-link"><span>Angi</span><span class="rl-rating">View →</span></a>`
           : '',
         c.yelp_url
-          ? `<a href="${esc(c.yelp_url)}" target="_blank" rel="noopener" class="review-link"><span>Yelp</span><span class="rl-rating">View â</span></a>`
+          ? `<a href="${esc(c.yelp_url)}" target="_blank" rel="noopener" class="review-link"><span>Yelp</span><span class="rl-rating">View →</span></a>`
           : '',
       ].filter(Boolean).join('');
 
       document.getElementById('reviewLinks').innerHTML = reviewLinksHtml ||
         '<p style="color:var(--slate);font-size:0.9rem;">No review profiles linked yet.</p>';
 
-      // ââ Certifications (from contractor_certifications table + specialties fallback) ââ
+      // ── Certifications (from contractor_certifications table + specialties fallback) ──
       let allCerts = [];
       if (certifications.length > 0) {
         allCerts = certifications.map(cert => ({
@@ -735,10 +735,10 @@
           <div class="cert-list">
             ${allCerts.map(cert => `
               <div class="cert-item">
-                <div class="cert-badge">ð</div>
+                <div class="cert-badge">🏆</div>
                 <div>
                   <div class="cert-name">${esc(cert.name)}</div>
-                  ${cert.issued_by ? `<div style="font-size:0.75rem;color:var(--slate);">${esc(cert.issued_by)}${cert.year ? ' Â· ' + cert.year : ''}</div>` : ''}
+                  ${cert.issued_by ? `<div style="font-size:0.75rem;color:var(--slate);">${esc(cert.issued_by)}${cert.year ? ' · ' + cert.year : ''}</div>` : ''}
                 </div>
               </div>
             `).join('')}
@@ -749,7 +749,7 @@
           '<p style="color:var(--slate);font-size:0.9rem;">No certifications listed yet.</p>';
       }
 
-      // ââ License & Insurance ââ
+      // ── License & Insurance ──
       let licenseHtml = '';
       if (licenses.length > 0) {
         licenseHtml = `
@@ -780,7 +780,7 @@
           <div style="display:flex;flex-direction:column;gap:var(--sp-3);">
             <div class="team-item">
               <span class="bid-badge ${c.verified ? 'verified' : 'warning'}" style="font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:9999px;display:inline-flex;align-items:center;gap:4px;">
-                ${c.verified ? 'â Verified Contractor' : 'â  Pending Verification'}
+                ${c.verified ? '✓ Verified Contractor' : '⚠ Pending Verification'}
               </span>
             </div>
             <div class="team-item" style="font-size:0.88rem;color:var(--slate);">
@@ -789,7 +789,7 @@
           </div>
         `;
       } else {
-        licenseHtml = `<p style="color:var(--slate);font-size:0.9rem;">License information on file and verified by OtterQuote.</p>`;
+        licenseHtml = `<p style="color:var(--slate);font-size:0.9rem;">License information on file and verified by Otter Quotes.</p>`;
       }
 
       // Append insurance summary to license section
@@ -797,17 +797,17 @@
         <div style="margin-top:var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-2);">
           <div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--slate);margin-bottom:var(--sp-1);">Insurance</div>
           <div style="font-size:0.85rem;color:${c.has_workers_comp ? '#6EE7B7' : 'var(--slate)'};">
-            ${c.has_workers_comp ? 'â' : 'â'} Workers' Compensation
+            ${c.has_workers_comp ? '✓' : '○'} Workers' Compensation
           </div>
           <div style="font-size:0.85rem;color:${c.has_general_liability ? '#6EE7B7' : 'var(--slate)'};">
-            ${c.has_general_liability ? 'â' : 'â'} General Liability
+            ${c.has_general_liability ? '✓' : '○'} General Liability
           </div>
         </div>
       `;
 
       document.getElementById('licenseContent').innerHTML = licenseHtml;
 
-      // ââ Service Area ââ
+      // ── Service Area ──
       let areaHtml = '';
       if (c.service_area_description) {
         areaHtml += `<p style="color:var(--white);font-size:0.9rem;margin-bottom:var(--sp-3);">${esc(c.service_area_description)}</p>`;
@@ -831,7 +831,7 @@
       document.getElementById('pageContent').style.display = 'block';
     }
 
-    // ââ Select Contractor Flow ââ
+    // ── Select Contractor Flow ──
     window.openSelectModal = function() {
       if (!bid) return;
       const c = contractor;
@@ -863,8 +863,8 @@
       document.getElementById('modalConfirmBtn').disabled = true;
       document.getElementById('modalActions').style.display = 'none';
       document.getElementById('modalSpinner').style.display = 'block';
-      document.getElementById('modalTitle').textContent = 'Processingâ¦';
-      document.getElementById('modalBody').textContent = 'Awarding the project and notifying the contractorâ¦';
+      document.getElementById('modalTitle').textContent = 'Processing…';
+      document.getElementById('modalBody').textContent = 'Awarding the project and notifying the contractor…';
 
       try {
         // 1. Award claim
@@ -915,7 +915,7 @@
       }
     };
 
-    // ââ Helpers ââ
+    // ── Helpers ──
     function showError(title, msg) {
       document.getElementById('loadingState').style.display = 'none';
       document.getElementById('errorState').style.display = 'block';
@@ -956,7 +956,7 @@
       try { return JSON.parse(val); } catch { return String(val).split(',').map(s => s.trim()).filter(Boolean); }
     }
 
-    // ââ Boot ââ
+    // ── Boot ──
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
     } else {
