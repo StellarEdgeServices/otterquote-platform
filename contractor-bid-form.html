@@ -1622,7 +1622,7 @@
           <!-- ── Warranty Builder (D-202 Phase 2) ── -->
           <div class="va-box" id="warrantyBuilderBox">
             <h4>Manufacturer's Warranty</h4>
-            <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Select the manufacturer warranty program you are offering with this bid. The selected tier auto-populates the structured fields shown to the homeowner and printed on the contract per D-202. OtterQuote is not the warrantor — manufacturers administer all programs.</p>
+            <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Select the manufacturer warranty program you are offering with this bid. The selected tier auto-populates the structured fields shown to the homeowner and printed on the contract per D-202. Otter Quotes is not the warrantor — manufacturers administer all programs.</p>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);margin-bottom:var(--sp-3);">
               <div class="form-group" style="margin:0;">
@@ -1661,7 +1661,7 @@
             </div>
 
             <div id="warrantyCustomBlock" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-3);">
-              <p style="font-size:0.8rem;color:#92400E;margin:0 0 var(--sp-3);">⚠️ Custom warranties bypass OtterQuote's manufacturer verification per D-204. The homeowner will see a "Custom warranty — not OtterQuote-verified" badge on this bid.</p>
+              <p style="font-size:0.8rem;color:#92400E;margin:0 0 var(--sp-3);">⚠️ Custom warranties bypass Otter Quotes' manufacturer verification per D-204. The homeowner will see a "Custom warranty — not Otter Quotes-verified" badge on this bid.</p>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);margin-bottom:var(--sp-3);">
                 <div>
                   <label class="form-label" style="font-size:0.8rem;">Manufacturer name</label>
@@ -3640,7 +3640,7 @@
         bodyHtml = `
           <p class="contract-template-no-upload">
             &#x26A0;&#xFE0F; You haven't uploaded a template for <strong>${escHtmlBid(slotLabel)}</strong>.
-            OtterQuote's standard Contractor Partner Agreement will be used.
+            Otter Quotes' standard Contractor Partner Agreement will be used.
           </p>
           <p class="contract-template-note">
             You can upload a custom template in <a href="contractor-profile.html" style="color:var(--amber);">Profile &rarr; Project Confirmation Templates</a>.
@@ -4259,7 +4259,7 @@
         const hail_str = hail || 'Standard';
         const snapshot = (mfr || 'Custom') + ' ' + (tier || '') + ' — Material: ' + matY_str
           + '; Labor: ' + labY_str + '; Wind: ' + wind_str + '; Hail: ' + hail_str
-          + '. Administered by manufacturer; not verified by OtterQuote per D-204. OtterQuote is not the warrantor.';
+          + '. Administered by manufacturer; not verified by Otter Quotes per D-204. Otter Quotes is not the warrantor.';
 
         return {
           warranty_option_id: null,

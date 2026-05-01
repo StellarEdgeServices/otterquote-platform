@@ -1375,7 +1375,7 @@
       if (bid.warranty_snapshot) {
         const isCustom = !bid.warranty_option_id;
         const customBadge = isCustom
-          ? `<div style="margin-bottom:var(--sp-2);padding:6px 10px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:4px;font-size:0.72rem;color:#FCD34D;font-weight:600;">⚠️ Custom warranty — not OtterQuote-verified</div>`
+          ? `<div style="margin-bottom:var(--sp-2);padding:6px 10px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:4px;font-size:0.72rem;color:#FCD34D;font-weight:600;">⚠️ Custom warranty — not Otter Quotes-verified</div>`
           : '';
         const workmanshipRow = bid.workmanship_warranty_years
           ? `<div style="font-size:0.8rem;color:var(--slate);margin-top:var(--sp-2);">Workmanship warranty: <span style="color:var(--white);font-weight:600;">${bid.workmanship_warranty_years} ${bid.workmanship_warranty_years === 1 ? 'year' : 'years'}</span></div>`
