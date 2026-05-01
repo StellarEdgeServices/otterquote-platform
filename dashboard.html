@@ -1234,6 +1234,7 @@
       let currentUser = null;
       let currentProfile = null;
       let currentClaim = null;
+      let currentWarrantyUrl = null;  // W3-P4
       let carriers = [];
       let isEditingClaim = false;
       let uploadsInProgress = {};
@@ -1454,6 +1455,23 @@
             } catch (rbErr) {
               console.warn('[Dashboard] Could not load rebate state (non-fatal):', rbErr);
               hoverRebateOrder = null;
+            }
+
+            // W3-P4: Fetch selected quote's warranty_document_url (non-blocking)
+            try {
+              const { data: wqData } = await sb
+                .from('quotes')
+                .select('warranty_document_url')
+                .eq('claim_id', data.id)
+                .in('status', ['selected', 'awarded'])
+                .not('warranty_document_url', 'is', null)
+                .order('warranty_uploaded_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              currentWarrantyUrl = wqData?.warranty_document_url || null;
+            } catch (wqErr) {
+              console.warn('[Dashboard] Could not load warranty URL (non-fatal):', wqErr);
+              currentWarrantyUrl = null;
             }
           }
 
@@ -2140,6 +2158,18 @@
               actionsEl.appendChild(wrapper);
             }
           }
+          // W3-P4: Show warranty document button when job complete + warranty uploaded
+          if (currentClaim.completion_date && currentWarrantyUrl) {
+            const actionsEl2 = document.getElementById('status-banner-actions');
+            if (actionsEl2 && !actionsEl2.querySelector('#warranty-doc-btn')) {
+              const warrantyWrapper = document.createElement('div');
+              warrantyWrapper.id = 'warranty-doc-btn';
+              warrantyWrapper.style.cssText = 'margin-top:0.5rem;';
+              warrantyWrapper.innerHTML = `<button class="btn btn-sm" style="background:#0284C7; color:#fff; border:none; font-size:0.875rem; cursor:pointer;" onclick="openWarrantyDocUrl()">📄 Your warranty document</button>`;
+              actionsEl2.appendChild(warrantyWrapper);
+            }
+          }
+
           return;
         }
 
@@ -2865,6 +2895,22 @@
       });
 
     })();
+
+        // W3-P4: Opens a 7-day signed URL to the homeowner's warranty document
+        async function openWarrantyDocUrl() {
+            if (!currentWarrantyUrl || !sb) return;
+            try {
+                const bucketPath = currentWarrantyUrl.replace(/^contractor-documents\//, '');
+                const { data: urlData, error: urlError } = await sb.storage
+                    .from('contractor-documents')
+                    .createSignedUrl(bucketPath, 60 * 60 * 24 * 7);
+                if (urlError || !urlData?.signedUrl) throw new Error(urlError?.message || 'Could not generate link');
+                window.open(urlData.signedUrl, '_blank', 'noopener,noreferrer');
+            } catch (err) {
+                console.error('[Dashboard] Warranty signed URL error:', err);
+                alert('Unable to open the warranty document. Please try again or contact support.');
+            }
+        }
     </script>
   </body>
 </html>

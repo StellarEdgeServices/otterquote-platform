@@ -901,6 +901,42 @@
       </div>
     </div>
 
+
+    <!-- Warranty Upload Modal — chained from Mark Job Complete success (W3-P4) -->
+    <div id="warrantyUploadModalOverlay"
+         style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1050;
+                align-items:center; justify-content:center;"
+         role="dialog" aria-modal="true" aria-labelledby="warrantyUploadModalTitle">
+      <div style="background:#fff; border-radius:0.75rem; padding:2rem; max-width:500px; width:90%;
+                  box-shadow:0 20px 60px rgba(0,0,0,0.3); margin:auto;">
+        <h3 id="warrantyUploadModalTitle"
+            style="margin:0 0 0.5rem; font-size:1.2rem; color:#0F172A;">
+          Upload Your Warranty Document
+        </h3>
+        <p style="color:#374151; font-size:0.9rem; line-height:1.5; margin-bottom:0.5rem;">
+          This goes to the homeowner's permanent record so they can find it years from now.
+          You can skip this now and upload later from your completed jobs list.
+        </p>
+        <p style="color:#6B7280; font-size:0.8rem; margin-bottom:1.25rem;">PDF only · 25 MB max</p>
+        <input type="file" id="warrantyFileInput" accept="application/pdf"
+               style="display:block; width:100%; margin-bottom:0.75rem; font-size:0.875rem;
+                      border:1px solid #D1D5DB; border-radius:0.375rem; padding:0.5rem;" />
+        <div id="warrantyUploadError"
+             style="display:none; color:#991B1B; font-size:0.85rem; margin-bottom:0.75rem;
+                    background:#FEF2F2; border:1px solid #FECACA; border-radius:0.375rem; padding:0.5rem;">
+        </div>
+        <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
+          <button id="warrantySkipBtn" class="btn btn-secondary" style="font-size:0.9rem;">
+            Skip for now
+          </button>
+          <button id="warrantyUploadBtn" class="btn"
+                  style="background:#0284C7; color:#fff; border:none; font-size:0.9rem;">
+            Upload Warranty
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast notification for mark-complete errors -->
     <div id="markCompleteToast"
          style="display:none; position:fixed; bottom:1.5rem; right:1.5rem; z-index:1100;
@@ -1250,7 +1286,7 @@
                 // D-074: Full address hidden for submitted-only bids; revealed once bid is awarded.
                 const { data: allQuotes } = await sb
                   .from('quotes')
-                  .select('id, claim_id, total_price, status, bid_status, expires_at, created_at, claims(id, property_address, damage_type, material_category, shingle_type, rcv_amount, completion_date)')
+                  .select('id, claim_id, total_price, status, bid_status, expires_at, created_at, warranty_document_url, claims(id, property_address, damage_type, material_category, shingle_type, rcv_amount, completion_date)')
                   .eq('contractor_id', contractor.id)
                   .in('status', ['submitted', 'selected', 'awarded', 'completed'])
                   .order('created_at', { ascending: false })
@@ -1309,6 +1345,7 @@
                         estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
                         status: statusMap[q.status] || q.status,
                         completionDate: claim.completion_date || null,
+                        warrantyUrl: q.warranty_document_url || null,
                       });
                     }
                   });
@@ -1477,7 +1514,13 @@
                     let actionsCell = '<span style="color: var(--slate);">—</span>';
                     if (lead.completionDate) {
                         const dateStr = new Date(lead.completionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                        actionsCell = `<span class="status-badge" style="background:#DCFCE7; color:#15803D; border:1px solid #BBF7D0; white-space:nowrap;">✅ Completed ${dateStr}</span>`;
+                        if (lead.warrantyUrl) {
+                            actionsCell = `<span class="status-badge" style="background:#DCFCE7; color:#15803D; border:1px solid #BBF7D0; white-space:nowrap;">✅ Completed ${dateStr}</span>` +
+                                `<br><span style="font-size:0.75rem; color:#15803D; font-weight:600; display:block; margin-top:4px;">📄 Warranty: ✓</span>`;
+                        } else {
+                            actionsCell = `<span class="status-badge" style="background:#DCFCE7; color:#15803D; border:1px solid #BBF7D0; white-space:nowrap;">✅ Completed ${dateStr}</span>` +
+                                `<br><button class="btn btn-sm upload-warranty-btn" data-claim-id="${lead.fullId}" data-quote-id="${lead.quoteId}" style="margin-top:4px; font-size:0.75rem; padding:2px 8px; background:transparent; color:#0284C7; border:1px solid #0284C7; border-radius:0.25rem; cursor:pointer; white-space:nowrap;">📄 Upload Warranty</button>`;
+                        }
                     } else if (lead.status === 'Won') {
                         actionsCell = `<button
                             class="btn btn-sm mark-complete-btn"
@@ -1603,6 +1646,7 @@
 
             let pendingClaimId  = null;
             let pendingAddress  = null;
+            let pendingQuoteId  = null;   // W3-P4: needed to record warranty upload
 
             function showToast(msg) {
                 if (!toast) return;
@@ -1611,9 +1655,10 @@
                 setTimeout(() => { toast.style.display = 'none'; }, 5000);
             }
 
-            function openModal(claimId, address) {
+            function openModal(claimId, address, quoteId) {
                 pendingClaimId = claimId;
                 pendingAddress = address;
+                pendingQuoteId = quoteId || null;
                 if (addressEl) addressEl.textContent = address;
                 overlay.style.display = 'flex';
                 confirmBtn.disabled = false;
@@ -1624,15 +1669,23 @@
                 overlay.style.display = 'none';
                 pendingClaimId = null;
                 pendingAddress = null;
+                pendingQuoteId = null;
             }
 
-            // Open modal on button click (event delegation)
+            // Open modal on button click (event delegation) — mark-complete AND upload-warranty
             leadsBody.addEventListener('click', (e) => {
-                const btn = e.target.closest('.mark-complete-btn');
-                if (!btn) return;
-                const claimId = btn.dataset.claimId;
-                const address = btn.dataset.address || 'this project';
-                openModal(claimId, address);
+                const completeBtn = e.target.closest('.mark-complete-btn');
+                if (completeBtn) {
+                    const claimId = completeBtn.dataset.claimId;
+                    const quoteId = completeBtn.dataset.quoteId;
+                    const address = completeBtn.dataset.address || 'this project';
+                    openModal(claimId, address, quoteId);
+                    return;
+                }
+                const warrantyBtn = e.target.closest('.upload-warranty-btn');
+                if (warrantyBtn) {
+                    openWarrantyModal(warrantyBtn.dataset.claimId, warrantyBtn.dataset.quoteId, warrantyBtn);
+                }
             });
 
             cancelBtn.addEventListener('click', closeModal);
@@ -1672,30 +1725,33 @@
                         throw new Error(data.error || `Server error ${res.status}`);
                     }
 
-                    // Success: replace button with Completed badge in the DOM
+                    // Success: replace button with Completed badge + Upload Warranty prompt
                     const completedClaimId = pendingClaimId;
+                    const completedQuoteId = pendingQuoteId;
                     closeModal();
 
-                    const btn = leadsBody.querySelector(`.mark-complete-btn[data-claim-id="${completedClaimId}"]`);
-                    if (btn) {
+                    const completeBtn = leadsBody.querySelector(`.mark-complete-btn[data-claim-id="${completedClaimId}"]`);
+                    let completeBtnRow = null;
+                    if (completeBtn) {
                         const dateStr = new Date(data.completion_date).toLocaleDateString('en-US', {
                             month: 'short', day: 'numeric', year: 'numeric'
                         });
-                        const badge = document.createElement('span');
-                        badge.className = 'status-badge';
-                        badge.style.cssText = 'background:#DCFCE7; color:#15803D; border:1px solid #BBF7D0; white-space:nowrap;';
-                        badge.textContent = `✅ Completed ${dateStr}`;
-                        btn.replaceWith(badge);
+                        completeBtnRow = completeBtn.closest('tr');
+                        const wrapper = document.createElement('div');
+                        wrapper.innerHTML =
+                            `<span class="status-badge" style="background:#DCFCE7; color:#15803D; border:1px solid #BBF7D0; white-space:nowrap;">✅ Completed ${dateStr}</span>` +
+                            `<br><button class="btn btn-sm upload-warranty-btn" data-claim-id="${completedClaimId}" data-quote-id="${completedQuoteId || ''}" style="margin-top:4px; font-size:0.75rem; padding:2px 8px; background:transparent; color:#0284C7; border:1px solid #0284C7; border-radius:0.25rem; cursor:pointer; white-space:nowrap;">📄 Upload Warranty</button>`;
+                        completeBtn.replaceWith(wrapper);
                     }
 
-                    // Also update the Progress cell (6th cell, 0-indexed col 6)
-                    if (btn) {
-                        const row = btn.closest('tr');
-                        if (row) {
-                            const progressCell = row.cells[6];
-                            if (progressCell) progressCell.innerHTML = '<span style="color: var(--slate);">—</span>';
-                        }
+                    // Update the Progress cell (col 6)
+                    if (completeBtnRow) {
+                        const progressCell = completeBtnRow.cells ? completeBtnRow.cells[6] : null;
+                        if (progressCell) progressCell.innerHTML = '<span style="color: var(--slate);">—</span>';
                     }
+
+                    // W3-P4: Chain warranty upload modal immediately after success
+                    openWarrantyModal(completedClaimId, completedQuoteId, null);
 
                 } catch (err) {
                     console.error('[Dashboard] mark-job-complete error:', err);
@@ -1704,6 +1760,101 @@
                     closeModal();
                 }
             });
+        }
+
+        // ── Warranty Upload Flow (W3-P4) ─────────────────────────────────────────────
+        function openWarrantyModal(claimId, quoteId, triggerEl) {
+            const wOverlay  = document.getElementById('warrantyUploadModalOverlay');
+            const fileInput = document.getElementById('warrantyFileInput');
+            const errorDiv  = document.getElementById('warrantyUploadError');
+            const skipBtn   = document.getElementById('warrantySkipBtn');
+            const uploadBtn = document.getElementById('warrantyUploadBtn');
+            if (!wOverlay || !fileInput || !skipBtn || !uploadBtn) return;
+
+            fileInput.value = '';
+            if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = ''; }
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Upload Warranty';
+            wOverlay.style.display = 'flex';
+
+            function showError(msg) {
+                if (!errorDiv) return;
+                errorDiv.textContent = msg;
+                errorDiv.style.display = 'block';
+            }
+
+            function closeWarrantyModal() {
+                wOverlay.style.display = 'none';
+                skipBtn.removeEventListener('click', onSkip);
+                uploadBtn.removeEventListener('click', onUpload);
+                wOverlay.removeEventListener('click', onBackdrop);
+            }
+
+            function onSkip() { closeWarrantyModal(); }
+            function onBackdrop(e) { if (e.target === wOverlay) closeWarrantyModal(); }
+
+            async function onUpload() {
+                if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = ''; }
+                const file = fileInput.files && fileInput.files[0];
+                if (!file) { showError('Please select a PDF file to upload.'); return; }
+                if (file.type !== 'application/pdf') { showError('Only PDF files are accepted.'); return; }
+                if (file.size > 25 * 1024 * 1024) { showError('File must be under 25 MB.'); return; }
+                if (!quoteId) { showError('Quote ID missing — please refresh and try again.'); return; }
+                if (!sb || !currentUser) { showError('Session expired — please refresh the page.'); return; }
+
+                uploadBtn.disabled = true;
+                uploadBtn.textContent = 'Uploading…';
+
+                try {
+                    const { data: sessionData } = await sb.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) throw new Error('No auth session');
+
+                    const timestamp   = Date.now();
+                    const safeName    = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+                    const bucketPath  = `warranties/${quoteId}/${timestamp}-${safeName}`;
+                    const storagePath = `contractor-documents/${bucketPath}`;
+
+                    const { error: uploadError } = await sb.storage
+                        .from('contractor-documents')
+                        .upload(bucketPath, file, { contentType: 'application/pdf', upsert: false });
+                    if (uploadError) throw new Error(uploadError.message || 'Storage upload failed');
+
+                    const efUrl = `${CONFIG.SUPABASE_URL}/functions/v1/record-warranty-upload`;
+                    const res = await fetch(efUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ quote_id: quoteId, storage_path: storagePath }),
+                    });
+                    const result = await res.json();
+                    if (!res.ok || !result.ok) throw new Error(result.error || `Server error ${res.status}`);
+
+                    closeWarrantyModal();
+
+                    // Replace "Upload Warranty" button with "Warranty: ✓"
+                    let targetBtn = triggerEl;
+                    if (!targetBtn || !targetBtn.isConnected) {
+                        targetBtn = document.querySelector(`.upload-warranty-btn[data-quote-id="${quoteId}"]`);
+                    }
+                    if (targetBtn) {
+                        const indicator = document.createElement('span');
+                        indicator.style.cssText = 'font-size:0.75rem; color:#15803D; font-weight:600; display:block; margin-top:4px;';
+                        indicator.textContent = '📄 Warranty: ✓';
+                        targetBtn.replaceWith(indicator);
+                    }
+
+                } catch (err) {
+                    console.error('[Dashboard] Warranty upload error:', err);
+                    if (typeof Sentry !== 'undefined') Sentry.captureException(err);
+                    showError('Upload failed. Please try again or contact support.');
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = 'Upload Warranty';
+                }
+            }
+
+            skipBtn.addEventListener('click', onSkip);
+            uploadBtn.addEventListener('click', onUpload);
+            wOverlay.addEventListener('click', onBackdrop);
         }
     </script>
 </body>
