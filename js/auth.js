@@ -669,12 +669,43 @@ https://otterquote.com`;
   },
 
   /**
+   * Sync the sq_at cookie with the current Supabase session.
+   * Used by the Netlify admin-auth-gate edge function (W4-P1) to verify
+   * admin identity server-side before the HTML page is served.
+   * Cookie is non-HttpOnly so the token-refresh listener can update it;
+   * it carries no extra privilege — Supabase RLS remains the data gate.
+   */
+  _syncAdminCookie(session) {
+    if (session?.access_token) {
+      try {
+        const parts = session.access_token.split('.');
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        const maxAge = Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
+        document.cookie = `sq_at=${session.access_token}; path=/; SameSite=Lax; max-age=${maxAge}`;
+      } catch (e) {
+        // Malformed token — clear rather than leave stale
+        document.cookie = 'sq_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      }
+    } else {
+      document.cookie = 'sq_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    }
+  },
+
+  /**
    * Set up listener for auth state changes.
    * Handles post-auth profile creation when user logs in.
+   * Also keeps the sq_at cookie in sync for the Netlify edge gate (W4-P1).
    */
   onAuthStateChangeListener() {
     if (!sb) return;
     sb.auth.onAuthStateChange(async (event, session) => {
+      // Keep sq_at cookie in sync across all auth lifecycle events
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        this._syncAdminCookie(session);
+      } else if (event === 'SIGNED_OUT') {
+        this._syncAdminCookie(null);
+      }
+
       if (event === 'SIGNED_IN' && session?.user) {
         // User just signed in, create profile if needed
         await this.handleAuthCallback();

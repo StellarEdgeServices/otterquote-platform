@@ -29,3 +29,11 @@
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Admin auth gate — W4-P1 (May 1, 2026)
+# Intercepts /admin-*.html before static HTML is served.
+# Unauthenticated or non-admin sessions redirect to /login.html?reason=admin_required.
+# Source: netlify/edge-functions/admin-auth-gate.ts
+[[edge_functions]]
+  path = "/admin-*.html"
+  function = "admin-auth-gate"

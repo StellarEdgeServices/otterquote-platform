@@ -15,6 +15,9 @@ The Cowork Edit tool **silently truncates files** when writing through the Windo
 | `contractor-profile.html` | Large page — confirmed truncation risk |
 | `contractor-bid-form.html` | Large page — confirmed truncation risk |
 | `supabase/functions/create-docusign-envelope/index.ts` | Large Edge Function — confirmed truncation risk |
+| `supabase/functions/create-hover-order/index.ts` | Large Edge Function — confirmed truncation risk |
+| `supabase/functions/get-hover-pdf/index.ts` | Large Edge Function — confirmed truncation risk |
+| `supabase/functions/process-coi-reminders/index.ts` | Large Edge Function — confirmed truncation risk |
 | `js/auth.js` | Large auth module — confirmed truncation risk |
 | **Any file over ~1,500 lines** | General rule — check line count before editing |
 
@@ -37,6 +40,11 @@ This restores the complete production source. Use for:
 - `create-hover-order`
 - `get-hover-pdf`
 - `process-coi-reminders`
+
+For **committed non-Edge-Function source** (HTML, JS) truncated through the mount, restore via git:
+```bash
+git checkout HEAD -- <file-path>
+```
 
 ---
 
@@ -78,14 +86,4 @@ sb.auth.onAuthStateChange((event, session) => {
 });
 ```
 
-Apply to every new authenticated page. Pages already using this pattern: dashboard.html, admin-payouts.html, bids.html, contract-signing.html, contractor-bid-form.html, contractor-pre-approval.html.
-
----
-
-## Config Scope Rule
-
-`config.js` declares `var CONFIG` (not `const` or `let`) so that `window.CONFIG` works across classic `<script>` tags. `let sb` is declared at top level — accessible as bare `sb` across script blocks on the same page, but NOT as `window.sb`. Always use bare `sb`, never `window.sb`.
-
----
-
-*Last updated: May 1, 2026 — Created as part of D-196 project-rules enforcement (86e164xye).*
+Apply to every new authenticated page. Pages already using this pattern: dashboard.html, admin-payouts.html, bids.html, contract-signing.html, contractor-b
