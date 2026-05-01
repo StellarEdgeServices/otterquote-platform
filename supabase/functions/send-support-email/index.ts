@@ -1,5 +1,7 @@
 /**
  * Otter Quotes Edge Function: send-support-email
+ * v2 — D-195: inserts support_tickets record on inbound support form submissions.
+ *
  * Receives contractor support form submissions and forwards them to the
  * Otter Quotes support inbox via Mailgun.
  *
@@ -9,11 +11,15 @@
  * Environment variables required (already set in Supabase secrets):
  *   MAILGUN_API_KEY
  *   MAILGUN_DOMAIN
+ *   SUPABASE_URL             (auto-injected by Supabase runtime)
+ *   SUPABASE_SERVICE_ROLE_KEY (auto-injected by Supabase runtime)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPPORT_DESTINATION = "dustinstohler1@gmail.com";
+const MAILGUN_TIMEOUT_MS  = 10_000; // 10s — defensive; Mailgun can be slow on cold calls
 
 // CORS tightened (Session 254): origin-allowlisted instead of wildcard.
 const ALLOWED_ORIGINS = [
@@ -38,7 +44,7 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // Health check ping -- returns immediately without doing real work.
+  // Health check ping — returns immediately without doing real work.
   // Called by platform-health-check every 15 minutes.
   try {
     const bodyPeek = await req.clone().json().catch(() => ({}));
@@ -50,7 +56,15 @@ serve(async (req) => {
   } catch { /* no-op */ }
 
   try {
-    const { from_name, from_email, subject, message, to_email, html } = await req.json();
+    const {
+      from_name,
+      from_email,
+      subject,
+      message,
+      to_email,
+      html,
+      user_id, // optional — passed when a logged-in user submits the support form
+    } = await req.json();
 
     // Validate required fields
     if (!from_name || !from_email || !message) {
@@ -67,19 +81,20 @@ serve(async (req) => {
       throw new Error("Mailgun credentials not configured.");
     }
 
-    // Determine recipient: use to_email if provided, otherwise use SUPPORT_DESTINATION
-    const recipient = to_email || SUPPORT_DESTINATION;
+    // Support form submissions (no to_email) → route to admin inbox + insert ticket
+    // Direct emails (to_email provided, e.g. welcome emails) → bypass ticket insert
+    const isSupportForm = !to_email;
+    const recipient     = to_email || SUPPORT_DESTINATION;
 
-    // Determine email subject and body based on recipient
     let emailSubject: string;
     let emailBody: string;
     let from: string;
 
-    if (to_email) {
+    if (!isSupportForm) {
       // Direct email to a specific recipient (e.g., contractor welcome email)
       emailSubject = subject || "Welcome to Otter Quotes";
-      emailBody = message;
-      from = `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`;
+      emailBody    = message;
+      from         = `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`;
     } else {
       // Support form email to admin
       emailSubject = subject
@@ -103,39 +118,84 @@ Reply directly to this email to respond.`;
     }
 
     const formData = new URLSearchParams();
-    formData.append("from",      from);
-    formData.append("to",        recipient);
-    formData.append("subject",   emailSubject);
-    formData.append("text",      emailBody);
-    // When html is provided (e.g., branded welcome emails), include it for clients that render HTML.
-    // The text field above serves as the plain-text fallback.
-    if (to_email && html) formData.append("html", html);
-    if (!to_email) {
+    formData.append("from",    from);
+    formData.append("to",      recipient);
+    formData.append("subject", emailSubject);
+    formData.append("text",    emailBody);
+    // HTML only applies to direct emails (e.g., branded welcome emails).
+    // Plain-text above is the fallback for all clients.
+    if (!isSupportForm && html) formData.append("html", html);
+    if (isSupportForm) {
       formData.append("h:Reply-To", `${from_name} <${from_email}>`);
     }
 
-    const mailgunResponse = await fetch(
-      `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${btoa(`api:${MAILGUN_API_KEY}`)}`,
-        },
-        body: formData,
-      }
-    );
+    // ── Mailgun call with 10-second AbortController timeout ──────────────────
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), MAILGUN_TIMEOUT_MS);
 
-    if (!mailgunResponse.ok) {
-      const errorData = await mailgunResponse.text();
-      console.error("Mailgun error:", mailgunResponse.status, errorData);
-      throw new Error(`Mailgun API error (HTTP ${mailgunResponse.status}): ${errorData}`);
+    let mailgunResult: { id: string };
+    try {
+      const mailgunResponse = await fetch(
+        `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${btoa(`api:${MAILGUN_API_KEY}`)}`,
+          },
+          body: formData,
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeoutId);
+
+      if (!mailgunResponse.ok) {
+        const errorData = await mailgunResponse.text();
+        console.error("Mailgun error:", mailgunResponse.status, errorData);
+        throw new Error(`Mailgun API error (HTTP ${mailgunResponse.status}): ${errorData}`);
+      }
+      mailgunResult = await mailgunResponse.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        throw new Error("Mailgun request timed out after 10 seconds.");
+      }
+      throw err;
     }
 
-    const result = await mailgunResponse.json();
-    console.log("Email sent. Mailgun ID:", result.id, "To:", recipient);
+    console.log("Email sent. Mailgun ID:", mailgunResult.id, "To:", recipient);
+
+    // ── D-195: Insert support_ticket record for inbound support form submissions ──
+    // Non-blocking: email was already sent; a DB failure here must not fail the response.
+    if (isSupportForm) {
+      try {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        const { error: insertError } = await supabase
+          .from("support_tickets")
+          .insert({
+            source:     "form",
+            from_name,
+            from_email,
+            subject:    subject || null,
+            body:       message,
+            user_id:    user_id || null,
+            status:     "open",
+            priority:   "normal",
+          });
+        if (insertError) {
+          console.error("D-195: Failed to insert support_ticket:", insertError.message);
+        } else {
+          console.log("D-195: support_ticket inserted for", from_email);
+        }
+      } catch (dbErr) {
+        console.error("D-195: support_ticket insert exception:", dbErr);
+      }
+    }
 
     return new Response(
-      JSON.stringify({ status: "sent", id: result.id }),
+      JSON.stringify({ status: "sent", id: mailgunResult.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

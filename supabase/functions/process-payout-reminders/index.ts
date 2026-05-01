@@ -457,6 +457,18 @@ ${ctaButton("View Full History →", ADMIN_PAYOUTS_URL)}
     results.elapsedMs = Date.now() - startTime;
     console.log(`[${FUNCTION_NAME}] Run complete:`, JSON.stringify(results));
 
+    // Record cron health — success path
+    const { error: healthError } = await supabase.rpc("record_cron_health", {
+      p_job_name: FUNCTION_NAME,
+      p_status: "success",
+      p_error: null,
+    });
+    if (healthError) {
+      console.error(`[${FUNCTION_NAME}] Failed to record cron health:`, healthError.message);
+    } else {
+      console.log(`[${FUNCTION_NAME}] Cron health recorded — success`);
+    }
+
     return new Response(JSON.stringify({ ok: true, ...results }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -468,6 +480,20 @@ ${ctaButton("View Full History →", ADMIN_PAYOUTS_URL)}
     return new Response(JSON.stringify({ ok: false, ...results }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+    // Record cron health — unhandled error
+    const supabaseUrlErr = Deno.env.get("SUPABASE_URL");
+    const serviceKeyErr = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrlErr && serviceKeyErr) {
+      const supabaseErr = createClient(supabaseUrlErr, serviceKeyErr);
+      const errorMsg = err?.message || String(err);
+      await supabaseErr.rpc("record_cron_health", {
+        p_job_name: FUNCTION_NAME,
+        p_status: "error",
+        p_error: errorMsg.length > 500 ? errorMsg.substring(0, 500) : errorMsg,
+      }).catch((e) => {
+        console.error(`[${FUNCTION_NAME}] Failed to record unhandled error in cron_health:`, e);
+      });
+    }
   }
 });
   
