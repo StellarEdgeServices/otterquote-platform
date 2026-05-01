@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin - Warranty Manifest Drift | Otter Quotes</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+<style>
+:root {
+  --navy: #0D1B2E; --amber: #E07B00; --white: #FFFFFF;
+  --slate: #94A3B8; --light: #E2E8F0;
+  --red: #EF4444; --green: #10B981; --teal: #14B8A6;
+}
+body { background-color: var(--navy); color: #1F2937; font-family: 'Rubik', sans-serif; }
+main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+.admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+.admin-title  { display: flex; align-items: center; gap: 1rem; }
+.admin-badge  { background: var(--amber); color: var(--navy); padding: 0.4rem 0.8rem; border-radius: 0.5rem; font-weight: 700; font-size: 0.875rem; }
+.admin-header h1 { font-size: 2.5rem; color: var(--white); margin: 0; }
+.logout-btn  { background: var(--white); color: var(--navy); border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; }
+
+.admin-nav { display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap; }
+.admin-nav a { color: var(--slate); text-decoration: none; font-weight: 500; font-size: 0.9rem; padding: 0.5rem 1rem; border-radius: 0.5rem; }
+.admin-nav a:hover  { background: rgba(255,255,255,0.08); color: var(--white); }
+.admin-nav a.active { background: rgba(255,255,255,0.12); color: var(--white); }
+
+.summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+.summary-card { background: var(--white); border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.summary-card-label { font-size: 0.8rem; color: var(--slate); margin-bottom: 0.4rem; font-weight: 500; }
+.summary-card-value { font-size: 2rem; font-weight: 700; color: var(--navy); }
+
+.info-banner { background: rgba(20,184,166,0.08); border: 1px solid rgba(20,184,166,0.25); color: var(--teal); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.9rem; }
+.warn-banner { background: rgba(224,123,0,0.1); border: 1px solid rgba(224,123,0,0.3); color: var(--amber); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+.filter-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.filter-tab  { background: rgba(255,255,255,0.05); color: var(--slate); border: 1px solid rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; font-size: 0.9rem; }
+.filter-tab:hover  { background: rgba(255,255,255,0.1); color: var(--white); }
+.filter-tab.active { background: var(--amber); color: var(--navy); border-color: var(--amber); font-weight: 600; }
+
+.section-title { color: var(--white); font-size: 1.25rem; font-weight: 600; margin: 0 0 1rem 0; }
+
+.table-wrapper { background: var(--white); border-radius: 0.75rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+.drift-table { width: 100%; border-collapse: collapse; }
+.drift-table th { background: var(--light); padding: 0.875rem 1rem; text-align: left; font-weight: 600; color: var(--navy); font-size: 0.85rem; }
+.drift-table td { padding: 1rem; border-top: 1px solid var(--light); font-size: 0.9rem; vertical-align: top; }
+.drift-table tr:hover { background: rgba(0,0,0,0.02); }
+
+.badge { display: inline-block; padding: 0.25rem 0.65rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; }
+.badge-no-source  { background: #DBEAFE; color: #1E40AF; }
+.badge-modified   { background: #FEF3C7; color: #92400E; }
+.badge-deprecated { background: #FEE2E2; color: #991B1B; }
+.badge-added      { background: #D1FAE5; color: #065F46; }
+.badge-applied    { background: #D1FAE5; color: #065F46; }
+.badge-rejected   { background: #FCE7F3; color: #9F1239; }
+.badge-skipped    { background: #F1F5F9; color: #475569; }
+.badge-pending    { background: #FEF3C7; color: #92400E; }
+
+.source-link { color: var(--amber); font-size: 0.85rem; text-decoration: none; }
+.source-link:hover { text-decoration: underline; }
+
+.diff-box { background: #F8FAFC; border: 1px solid var(--light); border-radius: 0.5rem; padding: 0.75rem; margin-top: 0.5rem; font-size: 0.85rem; }
+.diff-current  { color: var(--red); text-decoration: line-through; margin-bottom: 0.25rem; }
+.diff-proposed { color: var(--green); }
+.diff-json { font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto; }
+.tier-list { font-size: 0.8rem; color: #475569; margin-top: 0.4rem; }
+.tier-list li { margin-bottom: 0.15rem; }
+
+.action-btns { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.btn { padding: 0.5rem 1rem; border-radius: 0.4rem; font-size: 0.85rem; font-weight: 600; border: none; cursor: pointer; }
+.btn-approve { background: #10B981; color: #fff; }
+.btn-approve:hover { background: #059669; }
+.btn-reject  { background: #EF4444; color: #fff; }
+.btn-reject:hover  { background: #DC2626; }
+.btn-skip    { background: var(--light); color: var(--navy); }
+.btn-skip:hover    { background: #CBD5E1; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.empty-state { text-align: center; padding: 3rem 1rem; color: var(--slate); }
+.empty-state-icon { font-size: 3rem; margin-bottom: 1rem; }
+.empty-state h3 { color: var(--white); margin-bottom: 0.5rem; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.modal-overlay.hidden { display: none; }
+.modal-box { background: var(--white); border-radius: 0.75rem; padding: 2rem; max-width: 520px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.modal-box h3 { margin: 0 0 1rem 0; color: var(--navy); font-size: 1.25rem; }
+.modal-box label { font-size: 0.9rem; font-weight: 500; color: #374151; display: block; margin-bottom: 0.4rem; }
+.modal-box textarea { width: 100%; padding: 0.75rem; border: 1px solid var(--light); border-radius: 0.5rem; font-size: 0.9rem; font-family: inherit; resize: vertical; min-height: 90px; box-sizing: border-box; }
+.modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1rem; }
+.modal-cancel { background: var(--light); color: var(--navy); padding: 0.6rem 1.2rem; border: none; border-radius: 0.4rem; cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+.modal-confirm { background: var(--red); color: #fff; padding: 0.6rem 1.2rem; border: none; border-radius: 0.4rem; cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+
+/* Approve-edit modal */
+.modal-box input[type="text"] { width: 100%; padding: 0.65rem 0.75rem; border: 1px solid var(--light); border-radius: 0.5rem; font-size: 0.9rem; font-family: inherit; box-sizing: border-box; margin-bottom: 1rem; }
+
+.run-history { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 0.75rem; padding: 1rem 1.5rem; margin-bottom: 1.5rem; }
+.run-history summary { color: var(--slate); font-size: 0.9rem; cursor: pointer; }
+.run-row { display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.85rem; color: var(--slate); flex-wrap: wrap; }
+.run-id { font-family: monospace; font-size: 0.75rem; }
+.loading { color: var(--slate); padding: 2rem; text-align: center; }
+</style>
+</head>
+<body>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+
+<div id="nav-placeholder"></div>
+
+<main id="main-content" style="display:none">
+
+  <div class="admin-header">
+    <div class="admin-title">
+      <span class="admin-badge">ADMIN</span>
+      <h1>Warranty Manifest Drift</h1>
+    </div>
+    <button class="logout-btn" onclick="Auth.signOut()">Sign Out</button>
+  </div>
+
+  <nav class="admin-nav">
+    <a href="admin-contractors.html">Contractors</a>
+    <a href="admin-incomplete-profiles.html">Incomplete Profiles</a>
+    <a href="admin-template-review.html">Template Review</a>
+    <a href="admin-cert-verifications.html">Cert Verifications</a>
+    <a href="admin-payouts.html">Payouts</a>
+    <a href="admin-warranty-drift.html" class="active">Warranty Drift</a>
+  </nav>
+
+  <div class="info-banner">
+    📋 <strong>Admin-gated change control.</strong> No changes are applied to the warranty manifest until you approve them here. Quarterly refresh runs Jan 1 / Apr 1 / Jul 1 / Oct 1.
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="summary-card-label">Pending Review</div>
+      <div class="summary-card-value" id="count-pending">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Applied (All Time)</div>
+      <div class="summary-card-value" id="count-applied">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Rejected</div>
+      <div class="summary-card-value" id="count-rejected">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Skipped</div>
+      <div class="summary-card-value" id="count-skipped">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Last Run</div>
+      <div style="font-size:1rem;font-weight:600;color:var(--navy);margin-top:0.25rem" id="last-run-date">—</div>
+    </div>
+  </div>
+
+  <!-- Run History -->
+  <details class="run-history" id="run-history-section">
+    <summary>Run history (last 4 cycles)</summary>
+    <div id="run-history-body" style="margin-top:0.75rem">
+      <div class="loading">Loading…</div>
+    </div>
+  </details>
+
+  <!-- Filter Tabs -->
+  <div class="filter-tabs">
+    <button class="filter-tab active" data-filter="pending_review" onclick="setFilter('pending_review', this)">Pending Review</button>
+    <button class="filter-tab" data-filter="applied" onclick="setFilter('applied', this)">Applied</button>
+    <button class="filter-tab" data-filter="rejected" onclick="setFilter('rejected', this)">Rejected</button>
+    <button class="filter-tab" data-filter="skipped" onclick="setFilter('skipped', this)">Skipped</button>
+    <button class="filter-tab" data-filter="all" onclick="setFilter('all', this)">All</button>
+  </div>
+
+  <!-- Drift Table -->
+  <div class="table-wrapper">
+    <table class="drift-table">
+      <thead>
+        <tr>
+          <th>Manufacturer / Tier</th>
+          <th>Change Type</th>
+          <th>Detected</th>
+          <th>Current → Proposed</th>
+          <th>Source</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="drift-tbody">
+        <tr><td colspan="7" class="loading">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<!-- Reject Modal -->
+<div class="modal-overlay hidden" id="reject-modal">
+  <div class="modal-box">
+    <h3>Reject Drift Item</h3>
+    <label for="reject-reason">Reason (required)</label>
+    <textarea id="reject-reason" placeholder="e.g. Manufacturer confirmed no program changes this quarter"></textarea>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeRejectModal()">Cancel</button>
+      <button class="modal-confirm" onclick="confirmReject()">Reject</button>
+    </div>
+  </div>
+</div>
+
+<!-- Approve Edit Modal (for no_source rows with manual changes) -->
+<div class="modal-overlay hidden" id="approve-edit-modal">
+  <div class="modal-box">
+    <h3>Approve with Changes</h3>
+    <p style="font-size:0.9rem;color:#6B7280;margin-bottom:1rem">
+      Enter the updated display_string and program_name for this warranty tier. Leave blank to skip (no changes needed).
+    </p>
+    <label>Manufacturer / Tier</label>
+    <input type="text" id="ae-mfr-tier" readonly style="background:#F8FAFC">
+    <label>New Display String</label>
+    <input type="text" id="ae-display-string" placeholder="e.g. GAF Golden Pledge® Lifetime (2025)">
+    <label>New Program Name</label>
+    <input type="text" id="ae-program-name" placeholder="e.g. Golden Pledge® Lifetime">
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeApproveEditModal()">Cancel</button>
+      <button class="modal-confirm" style="background:var(--green)" onclick="confirmApproveEdit()">Apply Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var sb;
+var _initFired = false;
+var currentFilter = 'pending_review';
+var pendingRejectDriftId = null;
+var pendingApproveEditDriftId = null;
+var pendingApproveEditOptionId = null;
+var currentUserToken = null;
+
+// ── Auth Guard ────────────────────────────────────────────────────────────────
+sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+sb.auth.onAuthStateChange(async function(event, session) {
+  if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
+    _initFired = true;
+    if (!session) { window.location.href = '/'; return; }
+    currentUserToken = session.access_token;
+    await checkAdminAndInit(session.user);
+  }
+});
+
+async function checkAdminAndInit(user) {
+  // Check admin role: dustinstohler1@gmail.com OR template_review_role='admin'
+  var isAdmin = user.email === 'dustinstohler1@gmail.com';
+  if (!isAdmin) {
+    var res = await sb.from('contractors').select('template_review_role').eq('user_id', user.id).maybeSingle();
+    isAdmin = res.data && res.data.template_review_role === 'admin';
+  }
+  if (!isAdmin) { window.location.href = '/'; return; }
+  document.getElementById('main-content').style.display = 'block';
+  await loadSummary();
+  await loadRunHistory();
+  await loadDrift();
+}
+
+// ── Load Summary Counts ───────────────────────────────────────────────────────
+async function loadSummary() {
+  var statuses = ['pending_review', 'applied', 'rejected', 'skipped'];
+  for (var st of statuses) {
+    var res = await sb.from('warranty_manifest_drift').select('id', { count: 'exact', head: true }).eq('status', st);
+    var key = st === 'pending_review' ? 'pending' : st;
+    var el = document.getElementById('count-' + key);
+    if (el) el.textContent = res.count ?? 0;
+  }
+  // Last run date from cron_health
+  var cronRes = await sb.from('cron_health').select('ran_at').eq('job_name', 'warranty-manifest-refresh').eq('status', 'success').order('ran_at', { ascending: false }).limit(1).maybeSingle();
+  var lastEl = document.getElementById('last-run-date');
+  if (lastEl) lastEl.textContent = cronRes.data ? formatDate(cronRes.data.ran_at) : 'Never';
+}
+
+// ── Run History ───────────────────────────────────────────────────────────────
+async function loadRunHistory() {
+  var res = await sb.from('cron_health').select('ran_at, status, metadata').eq('job_name', 'warranty-manifest-refresh').order('ran_at', { ascending: false }).limit(4);
+  var el = document.getElementById('run-history-body');
+  if (!res.data || res.data.length === 0) {
+    el.innerHTML = '<p style="color:var(--slate);font-size:0.85rem;margin:0.5rem 0">No runs recorded yet.</p>';
+    return;
+  }
+  el.innerHTML = res.data.map(function(r) {
+    var meta = r.metadata || {};
+    var statusColor = r.status === 'success' ? '#10B981' : r.status === 'skipped_dedup' ? '#94A3B8' : '#EF4444';
+    return '<div class="run-row">' +
+      '<span style="color:' + statusColor + ';font-weight:600">' + r.status + '</span>' +
+      '<span>' + formatDate(r.ran_at) + '</span>' +
+      '<span class="run-id">' + (meta.run_id ? meta.run_id.slice(0, 8) + '…' : '') + '</span>' +
+      '<span>' + (meta.items_detected !== undefined ? meta.items_detected + ' item(s)' : '') + '</span>' +
+      (meta.error ? '<span style="color:#EF4444">' + meta.error + '</span>' : '') +
+      '</div>';
+  }).join('');
+}
+
+// ── Load Drift Rows ───────────────────────────────────────────────────────────
+async function loadDrift() {
+  var tbody = document.getElementById('drift-tbody');
+  tbody.innerHTML = '<tr><td colspan="7" class="loading">Loading…</td></tr>';
+
+  var query = sb.from('warranty_manifest_drift').select('*').order('detected_at', { ascending: false });
+  if (currentFilter !== 'all') query = query.eq('status', currentFilter);
+
+  var res = await query;
+  if (res.error) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:#EF4444;padding:1rem">Error loading data: ' + res.error.message + '</td></tr>';
+    return;
+  }
+  if (!res.data || res.data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">✅</div><h3>No items in this view</h3><p>Warranty manifest is current, or no refresh has run yet.</p></div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = res.data.map(function(row) {
+    return buildDriftRow(row);
+  }).join('');
+}
+
+function buildDriftRow(row) {
+  var badgeClass = 'badge-' + row.change_type.replace('_', '-');
+  var statusBadgeClass = 'badge-' + row.status.replace('_review', '').replace('_', '-');
+  if (row.status === 'pending_review') statusBadgeClass = 'badge-pending';
+
+  // Change type badge label
+  var changeLabels = { no_source: 'Manual Review', modified: 'Modified', deprecated: 'Deprecated', added: 'Added' };
+  var changeLabel = changeLabels[row.change_type] || row.change_type;
+
+  // Diff display
+  var diffHtml = buildDiffHtml(row);
+
+  // Source link
+  var sourceHtml = row.source_url
+    ? '<a href="' + row.source_url + '" target="_blank" class="source-link">Open Warranty Page ↗</a>'
+    : '<span style="color:var(--slate);font-size:0.85rem">No URL</span>';
+
+  // Action buttons (only for pending_review)
+  var actionsHtml = '';
+  if (row.status === 'pending_review') {
+    if (row.change_type === 'no_source') {
+      actionsHtml =
+        '<div class="action-btns">' +
+        '<button class="btn btn-approve" onclick="openApproveEditModal(\'' + row.id + '\', \'' + escHtml(row.warranty_option_id || '') + '\', \'' + escHtml(row.manufacturer) + '\', \'' + escHtml(row.tier) + '\')">Approve w/ Changes</button>' +
+        '<button class="btn btn-skip" onclick="skipDrift(\'' + row.id + '\')">Skip — No Changes</button>' +
+        '<button class="btn btn-reject" onclick="openRejectModal(\'' + row.id + '\')">Reject</button>' +
+        '</div>';
+    } else {
+      actionsHtml =
+        '<div class="action-btns">' +
+        '<button class="btn btn-approve" onclick="approveDrift(\'' + row.id + '\')">Approve</button>' +
+        '<button class="btn btn-reject" onclick="openRejectModal(\'' + row.id + '\')">Reject</button>' +
+        '</div>';
+    }
+  } else {
+    // Show who reviewed and when
+    actionsHtml = '<span style="font-size:0.8rem;color:var(--slate)">' +
+      (row.reviewed_by ? escHtml(row.reviewed_by.split('@')[0]) : '') +
+      (row.reviewed_at ? '<br>' + formatDate(row.reviewed_at) : '') +
+      '</span>';
+  }
+
+  return '<tr id="row-' + row.id + '">' +
+    '<td><strong>' + escHtml(row.manufacturer) + '</strong><br><span style="color:var(--slate);font-size:0.85rem">' + escHtml(row.tier) + '</span></td>' +
+    '<td><span class="badge ' + badgeClass + '">' + changeLabel + '</span></td>' +
+    '<td style="font-size:0.85rem;color:#4B5563">' + formatDate(row.detected_at) + '</td>' +
+    '<td>' + diffHtml + '</td>' +
+    '<td>' + sourceHtml + '</td>' +
+    '<td><span class="badge ' + statusBadgeClass + '">' + row.status.replace('_', ' ') + '</span>' +
+      (row.rejection_reason ? '<br><span style="font-size:0.8rem;color:#6B7280;font-style:italic">' + escHtml(row.rejection_reason) + '</span>' : '') +
+    '</td>' +
+    '<td>' + actionsHtml + '</td>' +
+    '</tr>';
+}
+
+function buildDiffHtml(row) {
+  if (row.change_type === 'no_source') {
+    // Show the list of tiers the admin needs to check
+    var cv = row.current_value || {};
+    var tiers = cv.tiers || [];
+    var html = '<span style="font-size:0.85rem;color:#4B5563">Manual check required.<br>Current tiers in manifest:</span>';
+    if (tiers.length > 0) {
+      html += '<ul class="tier-list">' + tiers.map(function(t) {
+        return '<li>' + escHtml(t.tier || t.display_string || '') + '</li>';
+      }).join('') + '</ul>';
+    }
+    return html;
+  }
+  if (row.change_type === 'deprecated') {
+    var cur = row.current_value || {};
+    return '<div class="diff-box">' +
+      '<div class="diff-current">' + escHtml(cur.display_string || cur.program_name || 'Program') + '</div>' +
+      '<span style="font-size:0.8rem;color:#EF4444;font-weight:600">Deprecated (not found on source page)</span>' +
+      '</div>';
+  }
+  if (row.change_type === 'modified' && row.proposed_value) {
+    var cur2 = row.current_value || {};
+    var prop = row.proposed_value || {};
+    return '<div class="diff-box">' +
+      '<div class="diff-current">' + escHtml(cur2.display_string || JSON.stringify(cur2)) + '</div>' +
+      '<div class="diff-proposed">→ ' + escHtml(prop.display_string || JSON.stringify(prop)) + '</div>' +
+      '</div>';
+  }
+  if (row.change_type === 'added') {
+    var prop2 = row.proposed_value || {};
+    return '<div class="diff-box"><div class="diff-proposed">New: ' + escHtml(prop2.display_string || JSON.stringify(prop2)) + '</div></div>';
+  }
+  return '<span style="color:var(--slate);font-size:0.85rem">—</span>';
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function setFilter(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-tab').forEach(function(t) { t.classList.remove('active'); });
+  btn.classList.add('active');
+  loadDrift();
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+async function approveDrift(driftId) {
+  var btn = document.querySelector('#row-' + driftId + ' .btn-approve');
+  if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
+
+  var res = await callEF('approve-warranty-drift', { drift_id: driftId });
+  if (res.error) {
+    alert('Error: ' + res.error);
+    if (btn) { btn.disabled = false; btn.textContent = 'Approve'; }
+    return;
+  }
+  await reload();
+}
+
+function openRejectModal(driftId) {
+  pendingRejectDriftId = driftId;
+  document.getElementById('reject-reason').value = '';
+  document.getElementById('reject-modal').classList.remove('hidden');
+}
+function closeRejectModal() {
+  pendingRejectDriftId = null;
+  document.getElementById('reject-modal').classList.add('hidden');
+}
+async function confirmReject() {
+  var reason = document.getElementById('reject-reason').value.trim();
+  if (!reason) { alert('Please enter a rejection reason.'); return; }
+  var res = await callEF('reject-warranty-drift', { drift_id: pendingRejectDriftId, action: 'reject', rejection_reason: reason });
+  if (res.error) { alert('Error: ' + res.error); return; }
+  closeRejectModal();
+  await reload();
+}
+
+async function skipDrift(driftId) {
+  if (!confirm('Confirm: you have manually checked this manufacturer\'s warranty page and no changes are needed?')) return;
+  var res = await callEF('reject-warranty-drift', { drift_id: driftId, action: 'skip' });
+  if (res.error) { alert('Error: ' + res.error); return; }
+  await reload();
+}
+
+function openApproveEditModal(driftId, optionId, manufacturer, tier) {
+  pendingApproveEditDriftId = driftId;
+  pendingApproveEditOptionId = optionId;
+  document.getElementById('ae-mfr-tier').value = manufacturer + ' — ' + tier;
+  document.getElementById('ae-display-string').value = '';
+  document.getElementById('ae-program-name').value = '';
+  document.getElementById('approve-edit-modal').classList.remove('hidden');
+}
+function closeApproveEditModal() {
+  pendingApproveEditDriftId = null;
+  pendingApproveEditOptionId = null;
+  document.getElementById('approve-edit-modal').classList.add('hidden');
+}
+async function confirmApproveEdit() {
+  var displayString = document.getElementById('ae-display-string').value.trim();
+  var programName = document.getElementById('ae-program-name').value.trim();
+
+  // If both blank → skip (no changes)
+  if (!displayString && !programName) {
+    var res = await callEF('reject-warranty-drift', { drift_id: pendingApproveEditDriftId, action: 'skip' });
+    if (res.error) { alert('Error: ' + res.error); return; }
+    closeApproveEditModal();
+    await reload();
+    return;
+  }
+
+  // Build proposed_value
+  var proposedValue = {};
+  if (displayString) proposedValue.display_string = displayString;
+  if (programName) proposedValue.program_name = programName;
+
+  var res = await callEF('approve-warranty-drift', {
+    drift_id: pendingApproveEditDriftId,
+    proposed_value: proposedValue
+  });
+  if (res.error) { alert('Error: ' + res.error); return; }
+  closeApproveEditModal();
+  await reload();
+}
+
+async function reload() {
+  await loadSummary();
+  await loadDrift();
+}
+
+// ── EF Caller ─────────────────────────────────────────────────────────────────
+async function callEF(fnName, body) {
+  try {
+    var resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/' + fnName, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + currentUserToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    return await resp.json();
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function formatDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Close modals on overlay click
+document.getElementById('reject-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeRejectModal();
+});
+document.getElementById('approve-edit-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeApproveEditModal();
+});
+</script>
+</body>
+</html>
