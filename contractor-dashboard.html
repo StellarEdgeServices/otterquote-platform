@@ -1507,4 +1507,204 @@
             const activityFeed = document.getElementById('activityFeed');
             if (allActivity.length === 0) {
                 activityFeed.innerHTML = `
-                   
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔔</div>
+                        <div class="empty-state-title">No Activity Yet</div>
+                        <div class="empty-state-text">Your activity will appear here as you interact with opportunities.</div>
+                    </div>
+                `;
+            } else {
+                activityFeed.innerHTML = allActivity.map(activity => `
+                    <div class="activity-item">
+                        <div class="activity-dot" style="${activityDotClass(activity.type)}"></div>
+                        <div class="activity-content">
+                            <div class="activity-text">${activity.text}</div>
+                            <div class="activity-time">${activity.time}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // ── Dunning Alert: Check for active payment failures ──
+        let activeDunningRecord = null;
+
+        async function checkDunningStatus() {
+            if (!currentContractor || !sb) return;
+
+            try {
+                const { data: failures, error } = await sb
+                    .from('payment_failures')
+                    .select('*, claims:claim_id (property_address)')
+                    .eq('contractor_id', currentContractor.id)
+                    .eq('dunning_status', 'active')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                if (error) {
+                    console.warn('Could not check dunning status:', error);
+                    return;
+                }
+
+                if (failures && failures.length > 0) {
+                    activeDunningRecord = failures[0];
+                    const banner = document.getElementById('dunningAlertBanner');
+                    const msgEl = document.getElementById('dunningAlertMessage');
+                    const feeStr = '$' + (activeDunningRecord.amount_cents / 100).toFixed(2);
+                    if (msgEl) {
+                        msgEl.textContent = `You have an overdue payment of ${feeStr}. Please update your payment method to continue bidding on new projects.`;
+                    }
+                    if (banner) {
+                        banner.style.display = 'flex';
+                    }
+                }
+            } catch (err) {
+                console.warn('[Dashboard] checkDunningStatus error:', err);
+            }
+        }
+
+        async function retryDunningPayment() {
+            if (!activeDunningRecord || !sb) return;
+            const btn = document.getElementById('dunningRetryBtn');
+            if (btn) { btn.disabled = true; btn.textContent = 'Retrying…'; }
+            try {
+                const { error } = await sb
+                    .from('payment_failures')
+                    .update({ dunning_status: 'retried' })
+                    .eq('id', activeDunningRecord.id);
+                if (error) throw error;
+                const banner = document.getElementById('dunningAlertBanner');
+                if (banner) banner.style.display = 'none';
+                activeDunningRecord = null;
+            } catch (err) {
+                console.warn('[Dashboard] retryDunningPayment error:', err);
+                if (btn) { btn.disabled = false; btn.textContent = 'Retry Payment Now'; }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await init();
+            await checkDunningStatus();
+            initMarkCompleteFlow();
+        });
+
+        // ── Mark Job Complete Flow ────────────────────────────────────────────────────────────────────
+        // Event delegation on the leads table body: catches clicks on
+        // .mark-complete-btn buttons rendered in the Actions column.
+        function initMarkCompleteFlow() {
+            const overlay      = document.getElementById('markCompleteModalOverlay');
+            const addressEl    = document.getElementById('markCompleteAddress');
+            const cancelBtn    = document.getElementById('markCompleteCancelBtn');
+            const confirmBtn   = document.getElementById('markCompleteConfirmBtn');
+            const toast        = document.getElementById('markCompleteToast');
+            const leadsBody    = document.getElementById('leadsTableBody');
+
+            if (!overlay || !cancelBtn || !confirmBtn || !leadsBody) return;
+
+            let pendingClaimId  = null;
+            let pendingAddress  = null;
+
+            function showToast(msg) {
+                if (!toast) return;
+                toast.textContent = msg;
+                toast.style.display = 'block';
+                setTimeout(() => { toast.style.display = 'none'; }, 5000);
+            }
+
+            function openModal(claimId, address) {
+                pendingClaimId = claimId;
+                pendingAddress = address;
+                if (addressEl) addressEl.textContent = address;
+                overlay.style.display = 'flex';
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Confirm Completion';
+            }
+
+            function closeModal() {
+                overlay.style.display = 'none';
+                pendingClaimId = null;
+                pendingAddress = null;
+            }
+
+            // Open modal on button click (event delegation)
+            leadsBody.addEventListener('click', (e) => {
+                const btn = e.target.closest('.mark-complete-btn');
+                if (!btn) return;
+                const claimId = btn.dataset.claimId;
+                const address = btn.dataset.address || 'this project';
+                openModal(claimId, address);
+            });
+
+            cancelBtn.addEventListener('click', closeModal);
+
+            // Close on overlay backdrop click
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) closeModal();
+            });
+
+            // Confirm: POST to mark-job-complete Edge Function
+            confirmBtn.addEventListener('click', async () => {
+                if (!pendingClaimId || !sb || !currentUser) return;
+
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = 'Marking complete…';
+
+                try {
+                    // Get fresh session token
+                    const { data: sessionData } = await sb.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) throw new Error('No auth session');
+
+                    const efUrl = `${CONFIG.SUPABASE_URL}/functions/v1/mark-job-complete`;
+
+                    const res = await fetch(efUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({ claim_id: pendingClaimId }),
+                    });
+
+                    const data = await res.json();
+
+                    if (!res.ok || !data.ok) {
+                        throw new Error(data.error || `Server error ${res.status}`);
+                    }
+
+                    // Success: replace button with Completed badge in the DOM
+                    const completedClaimId = pendingClaimId;
+                    closeModal();
+
+                    const btn = leadsBody.querySelector(`.mark-complete-btn[data-claim-id="${completedClaimId}"]`);
+                    if (btn) {
+                        const dateStr = new Date(data.completion_date).toLocaleDateString('en-US', {
+                            month: 'short', day: 'numeric', year: 'numeric'
+                        });
+                        const badge = document.createElement('span');
+                        badge.className = 'status-badge';
+                        badge.style.cssText = 'background:#DCFCE7; color:#15803D; border:1px solid #BBF7D0; white-space:nowrap;';
+                        badge.textContent = `✅ Completed ${dateStr}`;
+                        btn.replaceWith(badge);
+                    }
+
+                    // Also update the Progress cell (6th cell, 0-indexed col 6)
+                    if (btn) {
+                        const row = btn.closest('tr');
+                        if (row) {
+                            const progressCell = row.cells[6];
+                            if (progressCell) progressCell.innerHTML = '<span style="color: var(--slate);">—</span>';
+                        }
+                    }
+
+                } catch (err) {
+                    console.error('[Dashboard] mark-job-complete error:', err);
+                    if (typeof Sentry !== 'undefined') Sentry.captureException(err);
+                    showToast('Could not mark job complete. Please try again or contact support.');
+                    closeModal();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
