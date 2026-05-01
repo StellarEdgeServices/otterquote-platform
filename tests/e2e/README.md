@@ -212,3 +212,68 @@ stop and escalate per D-196 stop conditions.
   makes occasional timeouts expected.
 - **State file:** `.test-state.json` written by seed, read by specs. Contains UUIDs
   needed to reference the test claim and accounts. Gitignored.
+
+---
+
+## Running in the Cowork Bash Sandbox (Claude)
+
+Playwright hangs with no output when run directly from the Windows mount path
+(`Claude Downloads/...`). This is a bindfs path-with-spaces issue. Use this
+procedure instead.
+
+> **⚠️ Disk note (May 2026):** `/tmp` lives on `/dev/sda1`, which is the shared
+> sandbox base image and frequently runs at 90–95% full. Heavy operations there
+> can fail or crash bash. Prefer `/sessions/$(ls /sessions | head -1)/tmp/...`
+> — that's session-private storage on `/dev/sdc` with ~8 GB free and full
+> git/filesystem support. The commands below assume `$SBX_TMP` is set to that
+> path; export it once at the top of your run.
+
+```bash
+# 0. Use session-private tmp (NOT /tmp — shared base image is usually full)
+export SBX_TMP="/sessions/$(ls /sessions | head -1)/tmp"
+
+# 1. Copy to $SBX_TMP (fast session-local filesystem, no spaces, full git support)
+rsync -a \
+  --exclude='node_modules' \
+  --exclude='playwright-report' \
+  --exclude='test-results' \
+  tests/e2e/ $SBX_TMP/e2e/
+
+# 2. Install deps in /tmp
+cd $SBX_TMP/e2e && npm ci
+
+# 3. Copy credentials (gitignored, not in repo)
+cp tests/e2e/.env.test $SBX_TMP/e2e/.env.test
+cp tests/e2e/.test-state.json $SBX_TMP/e2e/.test-state.json  # if exists
+
+# 4. Install Chromium (first time per sandbox session)
+npx playwright install chromium
+
+# 5. Seed, test, teardown
+node seed/seed.mjs
+npx playwright test --config=pw-sandbox.config.ts
+node seed/teardown.mjs
+```
+
+### Why pw-sandbox.config.ts?
+
+`pw-sandbox.config.ts` differs from the main `playwright.config.ts` in three ways:
+
+| Setting | Main config | Sandbox config |
+|---|---|---|
+| `timeout` | 60s | 35s (sandbox bash cap is 45s) |
+| `retries` | 2 | 0 |
+| `reporter` | list + html | dot only (html reporter hangs on bindfs) |
+| `launchOptions` | (none) | `--no-sandbox --disable-dev-shm-usage` |
+
+The `--no-sandbox` flag is required — Chromium will hang silently without it in
+sandboxed Linux environments.
+
+### Known Sandbox Constraint: A8
+
+Test A8 (bid submission + DB verification) uses a 20s `waitForSelector` timeout
+internally. With a 35s test timeout and ~5s for auth+navigation, this is tight.
+If A8 times out in sandbox: the bid IS submitted (the success div resolves in the
+DOM), but the visibility wait exceeds the sandbox time budget. A8 passes cleanly
+against the main config with 60s timeout.
+

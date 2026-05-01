@@ -17,7 +17,7 @@ export default defineConfig({
   // Re-run each test up to 2 times on failure before marking it flaky
   retries: 2,
 
-  // Run tests serially — test accounts share DB state
+  // Run tests serially -- test accounts share DB state
   workers: 1,
   fullyParallel: false,
 
@@ -38,7 +38,13 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          // Required for sandboxed Linux environments (Cowork bash sandbox, CI containers)
+          args: ['--no-sandbox', '--disable-dev-shm-usage'],
+        },
+      },
     },
   ],
 });
