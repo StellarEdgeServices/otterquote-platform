@@ -4002,9 +4002,56 @@
       }
     }
 
+    // ── D-204 cert verification state (loaded once per page) ──
+    let __d204HardFilter = false;
+    let __d204VerifiedCerts = null;
+    let __d204StateLoadedAt = 0;
+
+    async function loadD204State() {
+      if (__d204VerifiedCerts && (Date.now() - __d204StateLoadedAt < 5 * 60 * 1000)) return;
+      if (typeof sb === 'undefined' || !sb) {
+        __d204VerifiedCerts = new Set();
+        return;
+      }
+      try {
+        const { data: flagRow } = await sb
+          .from('platform_settings')
+          .select('value')
+          .eq('key', 'D204_HARD_FILTER')
+          .maybeSingle();
+        __d204HardFilter = flagRow && flagRow.value === true;
+      } catch (e) {
+        console.warn('[D-204] flag fetch failed; defaulting SOFT:', e);
+        __d204HardFilter = false;
+      }
+      try {
+        const cid = (typeof currentContractor !== 'undefined' && currentContractor && currentContractor.id) ? currentContractor.id : null;
+        if (!cid) { __d204VerifiedCerts = new Set(); __d204StateLoadedAt = Date.now(); return; }
+        const { data, error } = await sb
+          .from('contractor_cert_verifications')
+          .select('manufacturer, cert_name, status')
+          .eq('contractor_id', cid)
+          .eq('status', 'verified');
+        if (error) {
+          console.warn('[D-204] verified cert fetch error:', error);
+          __d204VerifiedCerts = new Set();
+        } else {
+          __d204VerifiedCerts = new Set((data || []).map(r => `${r.manufacturer}::${r.cert_name}`));
+        }
+      } catch (e) {
+        console.warn('[D-204] verified cert fetch threw; SOFT fallback:', e);
+        __d204VerifiedCerts = new Set();
+      }
+      __d204StateLoadedAt = Date.now();
+      console.log('[D-204] state loaded — hardFilter=' + __d204HardFilter + ', verifiedCerts=' + __d204VerifiedCerts.size);
+    }
+
     async function initWarrantyDropdowns(prefill) {
       const mfrSel = document.getElementById('warrantyManufacturer');
       if (!mfrSel) return;  // form may not be rendered yet (non-roofing flows)
+
+      // D-204: load filter state first so onWarrantyManufacturerChange has it.
+      try { await loadD204State(); } catch (e) { console.warn('[D-204] loadD204State failed:', e); }
 
       // Avoid double-wiring on re-entry
       if (mfrSel.dataset.d202Wired === '1') {
@@ -4090,9 +4137,44 @@
       const tiers = options.filter(o => o.manufacturer === mfr);
       if (tiers.length === 0) return;
 
-      tierSel.innerHTML = '<option value="">— Select tier —</option>'
-        + tiers.map(t => `<option value="${escHtmlBid(t.id)}">${escHtmlBid(t.tier)}</option>`).join('');
+      // ── D-204 SOFT/HARD cert filter ──
+      try { await loadD204State(); } catch (e) { /* SOFT fallback */ }
+      const verifiedCerts = __d204VerifiedCerts || new Set();
+      const hardFilter = !!__d204HardFilter;
+
+      let banneredAny = false;
+      const tierOptionHtml = tiers.map(t => {
+        const certReq = t.cert_required;
+        const lacksCert = !!certReq && !verifiedCerts.has(`${mfr}::${certReq}`);
+        if (!lacksCert) {
+          return `<option value="${escHtmlBid(t.id)}">${escHtmlBid(t.tier)}</option>`;
+        }
+        if (hardFilter) {
+          return '';
+        }
+        banneredAny = true;
+        console.log('[D-204 SOFT] would-block tier:', mfr, t.tier, '— cert_required:', certReq);
+        return `<option value="${escHtmlBid(t.id)}" data-d204-soft-block="true" title="Cert verification required for ${escHtmlBid(certReq)} — see your profile.">${escHtmlBid(t.tier)} ⓘ</option>`;
+      }).join('');
+
+      tierSel.innerHTML = '<option value="">— Select tier —</option>' + tierOptionHtml;
       tierSel.disabled = false;
+
+      const noticeEl = document.getElementById('warrantyD204Notice');
+      if (noticeEl) {
+        noticeEl.style.display = (!hardFilter && banneredAny) ? '' : 'none';
+      } else if (!hardFilter && banneredAny) {
+        const wb = document.getElementById('warrantyBuilderBox');
+        if (wb) {
+          const div = document.createElement('div');
+          div.id = 'warrantyD204Notice';
+          div.style.cssText = 'margin-top:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:#FEF3C7;border:1px solid #FCD34D;border-radius:var(--radius-md);font-size:0.78rem;color:#92400E;';
+          div.textContent = 'ⓘ Some tiers above require manufacturer certifications you have not verified yet. Add them on your profile to lock in those warranties.';
+          const target = document.getElementById('warrantyDisplayBlock');
+          if (target && target.parentNode) target.parentNode.insertBefore(div, target);
+          else wb.appendChild(div);
+        }
+      }
     }
 
     async function onWarrantyTierChange() {

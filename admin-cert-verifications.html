@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin - Cert Verifications | Otter Quotes</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+<style>
+:root {
+  --navy: #0D1B2E; --amber: #E07B00; --white: #FFFFFF;
+  --slate: #94A3B8; --light: #E2E8F0;
+  --red: #EF4444; --green: #10B981; --teal: #14B8A6;
+}
+body { background-color: var(--navy); color: #1F2937; font-family: 'Rubik', sans-serif; }
+main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+.admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+.admin-title  { display: flex; align-items: center; gap: 1rem; }
+.admin-badge  { background: var(--amber); color: var(--navy); padding: 0.4rem 0.8rem; border-radius: 0.5rem; font-weight: 700; font-size: 0.875rem; }
+.admin-header h1 { font-size: 2.5rem; color: var(--white); margin: 0; }
+.logout-btn  { background: var(--white); color: var(--navy); border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; }
+
+.admin-nav { display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap; }
+.admin-nav a { color: var(--slate); text-decoration: none; font-weight: 500; font-size: 0.9rem; padding: 0.5rem 1rem; border-radius: 0.5rem; }
+.admin-nav a:hover  { background: rgba(255,255,255,0.08); color: var(--white); }
+.admin-nav a.active { background: rgba(255,255,255,0.12); color: var(--white); }
+
+.summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+.summary-card { background: var(--white); border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.summary-card-label { font-size: 0.8rem; color: var(--slate); margin-bottom: 0.4rem; font-weight: 500; }
+.summary-card-value { font-size: 2rem; font-weight: 700; color: var(--navy); }
+
+.mode-banner { background: rgba(224,123,0,0.1); border: 1px solid rgba(224,123,0,0.3); color: var(--amber); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+.filter-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.filter-tab  { background: rgba(255,255,255,0.05); color: var(--slate); border: 1px solid rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; font-size: 0.9rem; }
+.filter-tab:hover  { background: rgba(255,255,255,0.1); color: var(--white); }
+.filter-tab.active { background: var(--amber); color: var(--navy); border-color: var(--amber); font-weight: 600; }
+
+.table-wrapper { background: var(--white); border-radius: 0.75rem; padding: 0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.cert-table { width: 100%; border-collapse: collapse; }
+.cert-table th { background: var(--light); padding: 1rem; text-align: left; font-weight: 600; color: var(--navy); font-size: 0.85rem; }
+.cert-table td { padding: 1rem; border-top: 1px solid var(--light); font-size: 0.9rem; vertical-align: top; }
+.cert-table tr:hover { background: rgba(0,0,0,0.02); }
+
+.status-badge { display: inline-block; padding: 0.25rem 0.65rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; }
+.status-pending           { background: #FEF3C7; color: #92400E; }
+.status-scrape_failed     { background: #FEE2E2; color: #991B1B; }
+.status-blocked_by_robots { background: #DBEAFE; color: #1E40AF; }
+.status-verified          { background: #D1FAE5; color: #065F46; }
+.status-rejected          { background: #FCE7F3; color: #9F1239; }
+
+.actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.btn-action { padding: 0.4rem 0.85rem; border-radius: 0.4rem; border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.btn-approve { background: var(--green); color: white; }
+.btn-approve:hover { background: #059669; }
+.btn-reject { background: var(--red); color: white; }
+.btn-reject:hover { background: #DC2626; }
+.btn-view { background: var(--light); color: var(--navy); text-decoration: none; display: inline-block; }
+.btn-view:hover { background: #CBD5E1; }
+
+.loading-spinner { padding: 3rem; text-align: center; color: var(--slate); }
+.empty-state { padding: 3rem; text-align: center; color: var(--slate); }
+#authError { padding: 2rem; text-align: center; color: var(--white); display: none; background: rgba(239,68,68,0.1); border: 1px solid var(--red); border-radius: 0.5rem; margin: 2rem 0; }
+
+.notes-cell { max-width: 320px; color: #475569; font-size: 0.85rem; line-height: 1.4; }
+
+@media (max-width: 768px) {
+  .cert-table { font-size: 0.8rem; }
+  .cert-table th, .cert-table td { padding: 0.6rem; }
+}
+</style>
+</head>
+<body>
+
+<main>
+  <div class="admin-header">
+    <div class="admin-title">
+      <span class="admin-badge">ADMIN</span>
+      <h1>Cert Verifications</h1>
+    </div>
+    <button class="logout-btn" onclick="handleLogout()">Log Out</button>
+  </div>
+
+  <div class="admin-nav">
+    <a href="admin-contractors.html">Contractors</a>
+    <a href="admin-referrals.html">Referrals</a>
+    <a href="admin-payouts.html">Payouts</a>
+    <a href="admin-template-review.html">Template Review</a>
+    <a href="admin-cert-verifications.html" class="active">Cert Verifications</a>
+  </div>
+
+  <div id="authError">You must be signed in as an admin to view this page.</div>
+
+  <div id="modeBanner" class="mode-banner" style="display:none;"></div>
+
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="summary-card-label">Pending Review (Upload)</div>
+      <div class="summary-card-value" id="cardPendingCount">&mdash;</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Scrape Failed</div>
+      <div class="summary-card-value" id="cardFailedCount">&mdash;</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Blocked by robots.txt</div>
+      <div class="summary-card-value" id="cardBlockedCount">&mdash;</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Verified Active</div>
+      <div class="summary-card-value" id="cardVerifiedCount">&mdash;</div>
+    </div>
+  </div>
+
+  <div class="filter-tabs">
+    <button class="filter-tab active" data-filter="needs_review" onclick="setFilter('needs_review')">Needs Review</button>
+    <button class="filter-tab" data-filter="pending" onclick="setFilter('pending')">Pending Upload</button>
+    <button class="filter-tab" data-filter="scrape_failed" onclick="setFilter('scrape_failed')">Scrape Failed</button>
+    <button class="filter-tab" data-filter="blocked_by_robots" onclick="setFilter('blocked_by_robots')">Blocked</button>
+    <button class="filter-tab" data-filter="verified" onclick="setFilter('verified')">Verified</button>
+    <button class="filter-tab" data-filter="rejected" onclick="setFilter('rejected')">Rejected</button>
+    <button class="filter-tab" data-filter="all" onclick="setFilter('all')">All</button>
+  </div>
+
+  <div class="table-wrapper">
+    <div id="loadingSpinner" class="loading-spinner">Loading verifications&hellip;</div>
+    <table class="cert-table" id="certTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>Contractor</th>
+          <th>Manufacturer × Cert</th>
+          <th>Source</th>
+          <th>Status</th>
+          <th>Notes</th>
+          <th>Evidence</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="certTableBody"></tbody>
+    </table>
+    <div id="emptyState" class="empty-state" style="display:none;">No verifications match this filter.</div>
+  </div>
+</main>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+  let allRows = [];
+  let currentFilter = 'needs_review';
+  let currentUser = null;
+  let sb = null;
+
+  function escHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  async function init() {
+    if (typeof CONFIG === 'undefined' || !CONFIG.SUPABASE_URL) {
+      document.getElementById('authError').style.display = 'block';
+      document.getElementById('authError').textContent = 'Configuration error — CONFIG not loaded.';
+      return;
+    }
+
+    const { createClient } = window.supabase;
+    sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token')) {
+      const { data, error } = await sb.auth.getSession();
+      if (!error && data.session) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) {
+      document.getElementById('authError').style.display = 'block';
+      document.getElementById('loadingSpinner').style.display = 'none';
+      return;
+    }
+
+    const { data: contractor } = await sb
+      .from('contractors')
+      .select('id, email, template_review_role')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    const isHardcodedAdmin = session.user.email === 'dustinstohler1@gmail.com';
+    const isFlaggedAdmin = contractor && contractor.template_review_role === 'admin';
+    if (!isHardcodedAdmin && !isFlaggedAdmin) {
+      document.getElementById('authError').style.display = 'block';
+      document.getElementById('loadingSpinner').style.display = 'none';
+      return;
+    }
+
+    currentUser = { id: session.user.id, email: session.user.email };
+
+    await renderModeBanner();
+    await loadAll();
+  }
+
+  async function renderModeBanner() {
+    const banner = document.getElementById('modeBanner');
+    try {
+      const { data } = await sb.from('platform_settings').select('value').eq('key', 'D204_HARD_FILTER').maybeSingle();
+      const hard = data && data.value === true;
+      banner.style.display = '';
+      banner.textContent = hard
+        ? 'D-204 HARD MODE — Tier dropdowns hide unverified options. Review preconditions before any flag changes.'
+        : 'D-204 SOFT MODE — Tier dropdowns log filter intent but do not hide options yet. Forcing review by July 30, 2026.';
+    } catch (e) {
+      banner.style.display = 'none';
+    }
+  }
+
+  async function loadAll() {
+    document.getElementById('loadingSpinner').style.display = '';
+    document.getElementById('certTable').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'none';
+
+    const { data, error } = await sb
+      .from('contractor_cert_verifications')
+      .select('id, contractor_id, manufacturer, cert_name, status, source, source_url, evidence_storage_path, verified_at, expires_at, notes, reviewed_by_admin, created_at, updated_at, contractors!inner(id, company_name)')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (error) {
+      document.getElementById('authError').style.display = 'block';
+      document.getElementById('authError').textContent = 'Load error: ' + error.message;
+      document.getElementById('loadingSpinner').style.display = 'none';
+      return;
+    }
+    allRows = data || [];
+
+    document.getElementById('cardPendingCount').textContent  = allRows.filter(r => r.status === 'pending').length;
+    document.getElementById('cardFailedCount').textContent   = allRows.filter(r => r.status === 'scrape_failed').length;
+    document.getElementById('cardBlockedCount').textContent  = allRows.filter(r => r.status === 'blocked_by_robots').length;
+    document.getElementById('cardVerifiedCount').textContent = allRows.filter(r => r.status === 'verified').length;
+
+    render();
+  }
+
+  function setFilter(name) {
+    currentFilter = name;
+    document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.filter-tab[data-filter="${name}"]`).classList.add('active');
+    render();
+  }
+
+  function rowsForFilter() {
+    if (currentFilter === 'all') return allRows;
+    if (currentFilter === 'needs_review') {
+      return allRows.filter(r => ['pending','scrape_failed','blocked_by_robots'].includes(r.status));
+    }
+    return allRows.filter(r => r.status === currentFilter);
+  }
+
+  async function signedEvidence(path) {
+    if (!path) return null;
+    try {
+      const { data } = await sb.storage.from('cert-letters').createSignedUrl(path, 60 * 10);
+      return data && data.signedUrl ? data.signedUrl : null;
+    } catch (_e) { return null; }
+  }
+
+  async function render() {
+    const rows = rowsForFilter();
+    const tbody = document.getElementById('certTableBody');
+    tbody.innerHTML = '';
+    document.getElementById('loadingSpinner').style.display = 'none';
+
+    if (rows.length === 0) {
+      document.getElementById('certTable').style.display = 'none';
+      document.getElementById('emptyState').style.display = '';
+      return;
+    }
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('certTable').style.display = '';
+
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      const evidenceUrl = await signedEvidence(r.evidence_storage_path);
+      const created = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
+      const co = r.contractors ? r.contractors.company_name : '(unknown)';
+      tr.innerHTML = `
+        <td><strong>${escHtml(co)}</strong><br><span style="color:#94A3B8;font-size:0.78rem;">${escHtml(r.contractor_id.slice(0,8))}…</span></td>
+        <td><strong>${escHtml(r.manufacturer)}</strong><br><span style="color:#475569;">${escHtml(r.cert_name)}</span></td>
+        <td>${escHtml(r.source)}${r.source_url ? `<br><a href="${escHtml(r.source_url)}" target="_blank" rel="noopener" style="color:#0F766E;font-size:0.78rem;">source page ↗</a>` : ''}</td>
+        <td><span class="status-badge status-${escHtml(r.status)}">${escHtml(r.status.replace(/_/g,' '))}</span></td>
+        <td class="notes-cell">${escHtml(r.notes || '')}</td>
+        <td>${evidenceUrl ? `<a class="btn-action btn-view" target="_blank" rel="noopener" href="${escHtml(evidenceUrl)}">View letter</a>` : '<span style="color:#94A3B8;font-size:0.8rem;">—</span>'}</td>
+        <td>${escHtml(created)}</td>
+        <td>
+          <div class="actions">
+            ${r.status !== 'verified' ? `<button class="btn-action btn-approve" onclick="approveRow('${escHtml(r.id)}','${escHtml(r.contractor_id)}','${escHtml(r.manufacturer)}','${escHtml(r.cert_name)}','${escHtml(r.source_url||'')}','${escHtml(r.evidence_storage_path||'')}')">Approve</button>` : ''}
+            ${r.status !== 'rejected' ? `<button class="btn-action btn-reject" onclick="rejectRow('${escHtml(r.id)}','${escHtml(r.contractor_id)}','${escHtml(r.manufacturer)}','${escHtml(r.cert_name)}')">Reject</button>` : ''}
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function approveRow(rowId, contractorId, manufacturer, certName, sourceUrl, evidencePath) {
+    if (!confirm(`Approve ${manufacturer} ${certName} for this contractor?`)) return;
+    const nowIso = new Date().toISOString();
+    const expIso = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await sb.from('contractor_cert_verifications').insert({
+      contractor_id: contractorId,
+      manufacturer,
+      cert_name: certName,
+      status: 'verified',
+      source: 'admin_review',
+      source_url: sourceUrl || null,
+      evidence_storage_path: evidencePath || null,
+      verified_at: nowIso,
+      expires_at: expIso,
+      reviewed_by_admin: currentUser ? currentUser.email : 'admin',
+      notes: 'Admin approved from review queue.'
+    });
+    if (error) { alert('Approve error: ' + error.message); return; }
+    await loadAll();
+  }
+
+  async function rejectRow(rowId, contractorId, manufacturer, certName) {
+    const reason = prompt(`Reject ${manufacturer} ${certName}? Optional note for the contractor:`, '');
+    if (reason === null) return;
+    const { error } = await sb.from('contractor_cert_verifications').insert({
+      contractor_id: contractorId,
+      manufacturer,
+      cert_name: certName,
+      status: 'rejected',
+      source: 'admin_review',
+      reviewed_by_admin: currentUser ? currentUser.email : 'admin',
+      notes: reason || 'Rejected by admin.'
+    });
+    if (error) { alert('Reject error: ' + error.message); return; }
+    await loadAll();
+  }
+
+  async function handleLogout() {
+    if (sb) await sb.auth.signOut();
+    window.location.href = '/contractor-login';
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
