@@ -628,16 +628,16 @@
             .from('claims')
             .select(`
               id,
-              homeowner_id,
+              user_id,
               selected_contractor_id,
               property_address,
-              contractor:contractors(id, name, preferred_brand, phone, notification_phones, email),
+              contractor:contractors(id, user_id, name, preferred_brand, phone, notification_phones, email),
               color_brand,
               color_name,
               color_selected_at
             `)
             .eq('id', this.claimId)
-            .eq('homeowner_id', this.userId)
+            .eq('user_id', this.userId)
             .single();
 
           if (error) throw error;
@@ -648,6 +648,7 @@
           }
 
           this.contractorId = data.selected_contractor_id;
+          this.contractorUserId = data.contractor?.user_id || null;
           this.contractorName = data.contractor?.name || 'Your Contractor';
 
           // Normalize brand — treat 'OC' as 'Owens Corning'; leave unknown brands as null
@@ -990,7 +991,7 @@
             .from('notifications')
             .select('id')
             .eq('claim_id', this.claimId)
-            .eq('type', 'color_board_request')
+            .eq('notification_type', 'color_board_request')
             .maybeSingle();
 
           if (existing) {
@@ -1007,11 +1008,11 @@
           const { error } = await sb
             .from('notifications')
             .insert({
+              user_id: this.contractorUserId,
               claim_id: this.claimId,
-              contractor_id: this.contractorId,
-              type: 'color_board_request',
-              status: 'pending',
-              created_at: new Date().toISOString()
+              notification_type: 'color_board_request',
+              channel: 'dashboard',
+              message_preview: 'Homeowner requested an in-person color board visit.'
             });
 
           if (error) throw error;
@@ -1068,7 +1069,7 @@
               color_selected_at: new Date().toISOString()
             })
             .eq('id', this.claimId)
-            .eq('homeowner_id', this.userId);
+            .eq('user_id', this.userId);
 
           if (error) throw error;
 

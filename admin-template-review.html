@@ -210,7 +210,8 @@
             }
         }
 
-        const { data: { session } } = await sb.auth.getSession();
+        // F-007: Auth.getSession() races onAuthStateChange + getSession with 3s timeout
+        const session = await Auth.getSession();
         if (!session) {
             document.getElementById('authError').style.display = 'block';
             document.getElementById('loadingSpinner').style.display = 'none';

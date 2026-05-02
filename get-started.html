@@ -456,6 +456,16 @@
     phoneInput.value = v;
   }
   phoneInput.addEventListener('input', formatPhone);
+
+  // GA4 form_start event — fires once on first interaction with any form field
+  let _formStartFired = false;
+  document.getElementById('gs-form')?.addEventListener('input', () => {
+    if (_formStartFired) return;
+    _formStartFired = true;
+    if (typeof gtag === 'function') {
+      gtag('event', 'form_start', { form_name: 'homeowner_intake' });
+    }
+  }, { once: false });
   phoneInput.addEventListener('change', formatPhone); // fires once after autofill completes
 
   // D-189: Fire HubSpot contact creation — non-blocking, best-effort.
