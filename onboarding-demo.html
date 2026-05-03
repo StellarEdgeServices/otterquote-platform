@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>See How Contractor Onboarding Works &mdash; Otter Quotes</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="description" content="A 2-minute walkthrough of the Otter Quotes contractor application — see exactly what the process looks like before you apply.">
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Design System & Navigation -->
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+    :root {
+        --navy: #0D1B2E; --navy-2: #0F2440; --navy-3: #132D50;
+        --amber: #E07B00; --white: #FFFFFF; --slate: #94A3B8; --light: #E2E8F0;
+        --sp-1:0.25rem; --sp-2:0.5rem; --sp-3:0.75rem; --sp-4:1rem;
+        --sp-6:1.5rem; --sp-8:2rem; --sp-12:3rem; --sp-16:4rem; --sp-24:6rem;
+        --radius-sm:0.375rem; --radius-md:0.5rem; --radius-lg:0.75rem; --radius-xl:1rem;
+        --font-body:'Rubik',sans-serif; --font-heading:'Rubik',serif;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:var(--font-body); color:var(--white); background-color:var(--navy); line-height:1.6; }
+    main { min-height:calc(100vh - 120px); padding: var(--sp-12) var(--sp-6) var(--sp-16); }
+    .wizard-outer { max-width:680px; margin:0 auto; }
+
+    /* ── Demo Banner ── */
+    .demo-banner {
+        background: rgba(224,123,0,0.12);
+        border: 2px solid rgba(224,123,0,0.4);
+        border-radius: var(--radius-lg);
+        padding: var(--sp-4) var(--sp-6);
+        margin-bottom: var(--sp-8);
+        display: flex;
+        align-items: center;
+        gap: var(--sp-4);
+    }
+    .demo-banner-icon { font-size: 1.5rem; flex-shrink: 0; }
+    .demo-banner-text { flex: 1; }
+    .demo-banner-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--amber);
+        margin-bottom: 2px;
+    }
+    .demo-banner-body { font-size: 0.9rem; color: rgba(255,255,255,0.75); }
+
+    /* ── Progress Header ── */
+    .progress-header { text-align:center; margin-bottom: var(--sp-10); }
+    .progress-header h1 { font-family:var(--font-heading); font-size:1.75rem; color:var(--white); margin-bottom: var(--sp-4); }
+    .progress-steps { display:flex; align-items:center; justify-content:center; gap:0; margin-bottom: var(--sp-2); }
+    .step-dot { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.85rem; font-weight:700; border:2px solid rgba(255,255,255,0.2); color:var(--slate); background:transparent; transition:all 0.3s; flex-shrink:0; }
+    .step-dot.active { border-color:var(--amber); color:var(--amber); background:rgba(224,123,0,0.12); }
+    .step-dot.done { border-color:var(--amber); background:var(--amber); color:var(--navy); }
+    .step-line { height:2px; width:48px; background:rgba(255,255,255,0.12); flex-shrink:0; transition: background 0.3s; }
+    .step-line.done { background:var(--amber); }
+    .step-labels { display:flex; align-items:flex-start; justify-content:center; gap:0; margin-top: var(--sp-2); }
+    .step-label { font-size:0.7rem; color:var(--slate); text-align:center; width:80px; line-height:1.3; }
+    .step-label.active { color:var(--amber); }
+    .step-label.done { color:rgba(255,255,255,0.6); }
+
+    /* ── Wizard Card ── */
+    .wizard-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:var(--radius-lg); padding: var(--sp-12); box-shadow:0 8px 40px rgba(0,0,0,0.3); margin-bottom: var(--sp-6); }
+    .wizard-card h2 { font-family:var(--font-heading); font-size:1.5rem; color:var(--white); margin-bottom: var(--sp-2); }
+    .wizard-card .subtitle { color:var(--slate); font-size:0.9rem; margin-bottom: var(--sp-8); }
+
+    /* ── Form Elements (read-only aesthetic) ── */
+    .form-group { margin-bottom: var(--sp-6); }
+    .form-label { display:block; font-weight:600; color:var(--white); margin-bottom: var(--sp-2); font-size:0.95rem; }
+    .form-input, .form-select {
+        width:100%; padding: var(--sp-3) var(--sp-4); border:1px solid rgba(255,255,255,0.12);
+        border-radius:var(--radius-md); font-family:var(--font-body); font-size:1rem;
+        background:rgba(255,255,255,0.06); color:var(--white);
+    }
+    .form-input:disabled, .form-select:disabled {
+        opacity: 0.85;
+        cursor: default;
+        border-color: rgba(224,123,0,0.25);
+        background: rgba(224,123,0,0.05);
+    }
+    .form-select option { background:var(--navy-2); color:var(--white); }
+    .form-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap: var(--sp-6); }
+    .form-input.half { width: 100%; }
+
+    /* ── Name row ── */
+    .name-row { display: flex; gap: var(--sp-3); }
+    .name-row .form-input { flex: 1; }
+
+    /* ── Trade Cards ── */
+    .trade-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap: var(--sp-3); }
+    .trade-card { border:1px solid rgba(255,255,255,0.12); border-radius:var(--radius-md); padding: var(--sp-3) var(--sp-4); display:flex; align-items:center; gap: var(--sp-2); background:rgba(255,255,255,0.03); }
+    .trade-card.selected { border-color:var(--amber); background:rgba(224,123,0,0.1); }
+    .trade-card input { accent-color:var(--amber); cursor: default; }
+    .trade-card span { font-size:0.9rem; font-weight:600; color:var(--white); }
+
+    /* ── Check Groups ── */
+    .check-group { display:flex; align-items:flex-start; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+    .check-group input[type=checkbox] { width:18px; height:18px; min-width:18px; accent-color:var(--amber); margin-top:2px; cursor: default; }
+    .check-group label { font-size:0.9rem; color:var(--slate); line-height:1.5; }
+
+    /* ── Info Box ── */
+    .info-box { background:rgba(224,123,0,0.07); border-left:4px solid var(--amber); padding: var(--sp-6); border-radius:var(--radius-md); margin-bottom: var(--sp-6); font-size:0.9rem; color:var(--slate); line-height:1.7; }
+    .info-box p { margin-bottom: var(--sp-3); }
+    .info-box p:last-child { margin-bottom:0; }
+    .info-box ul { margin:0 0 var(--sp-3) var(--sp-5); padding:0; }
+    .info-box ul li { margin-bottom: var(--sp-2); }
+    .info-box strong { color:var(--white); }
+
+    /* ── Fee Box ── */
+    .fee-box { background: rgba(224,123,0,0.07); border-left: 4px solid var(--amber); border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+
+    /* ── Buttons ── */
+    .btn-primary { background:var(--amber); color:var(--navy); padding: var(--sp-4) var(--sp-8); border:none; border-radius:var(--radius-md); font-size:1rem; font-weight:700; cursor:pointer; font-family:var(--font-body); transition:all 0.3s; width:100%; margin-top: var(--sp-6); display: block; text-align: center; }
+    .btn-primary:hover { background:#C06900; color:var(--white); transform:translateY(-1px); }
+    .btn-secondary { background:transparent; color:var(--slate); padding: var(--sp-3) var(--sp-6); border:1px solid rgba(255,255,255,0.15); border-radius:var(--radius-md); font-size:0.9rem; cursor:pointer; font-family:var(--font-body); transition:all 0.3s; margin-top: var(--sp-3); width:100%; display: block; text-align: center; text-decoration: none; }
+    .btn-secondary:hover { border-color:rgba(255,255,255,0.35); color:var(--white); }
+
+    /* ── Upload Area (demo) ── */
+    .upload-area-demo { border:2px dashed rgba(224,123,0,0.4); border-radius:var(--radius-lg); padding: var(--sp-10); text-align:center; background: rgba(224,123,0,0.04); }
+    .upload-icon { font-size:2.5rem; margin-bottom: var(--sp-3); }
+    .upload-area-demo h4 { color:var(--white); font-size:1rem; margin-bottom: var(--sp-2); }
+    .upload-area-demo p { color:var(--slate); font-size:0.85rem; }
+    .upload-demo-file { margin-top: var(--sp-4); color: var(--amber); font-weight: 600; font-size: 0.95rem; }
+
+    /* ── Success Panel ── */
+    .success-panel { text-align: center; padding: var(--sp-12) var(--sp-6); }
+    .success-icon { font-size: 4rem; margin-bottom: var(--sp-6); }
+    .success-panel h2 { font-family: var(--font-heading); font-size: 2rem; color: var(--white); margin-bottom: var(--sp-4); }
+    .success-panel p { color: var(--slate); font-size: 1rem; max-width: 480px; margin: 0 auto var(--sp-6); line-height: 1.7; }
+    .success-box { background: rgba(224,123,0,0.07); border-left: 4px solid var(--amber); border-radius: var(--radius-md); padding: var(--sp-6); max-width: 480px; margin: 0 auto var(--sp-8); text-align: left; }
+    .success-box strong { color: var(--amber); display: block; margin-bottom: var(--sp-3); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .success-box ul { color: var(--slate); margin-left: var(--sp-5); line-height: 2; font-size: 0.9rem; }
+    .cta-block { max-width: 400px; margin: 0 auto; }
+
+    /* ── Step badge on step 1 ── */
+    .step-badge { display: inline-block; background: rgba(224,123,0,0.15); border: 1px solid rgba(224,123,0,0.35); color: var(--amber); font-size: 0.8rem; font-weight: 600; padding: 0.25rem 0.75rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--sp-8); }
+
+    /* ── Page intro ── */
+    .page-intro { text-align: center; margin-bottom: var(--sp-10); }
+    .page-intro h1 { font-family: var(--font-heading); font-size: 2rem; color: var(--white); margin-bottom: var(--sp-3); }
+    .page-intro p { color: var(--slate); font-size: 1rem; max-width: 520px; margin: 0 auto; }
+
+    /* ── Hidden ── */
+    .hidden { display: none !important; }
+
+    @media (max-width:600px) {
+        .wizard-card { padding: var(--sp-6); }
+        main { padding: var(--sp-8) var(--sp-4) var(--sp-12); }
+        .name-row { flex-direction: column; }
+    }
+</style>
+</head>
+<body>
+    <header id="site-header" data-auth="false"></header>
+
+    <main>
+        <div class="wizard-outer">
+
+            <!-- Page Intro (shown always) -->
+            <div class="page-intro" id="pageIntro">
+                <h1>See How Contractor Onboarding Works</h1>
+                <p>Walk through the real application screens — pre-filled with sample data — so you know exactly what to expect before you apply.</p>
+            </div>
+
+            <!-- ═══════════════════════ -->
+            <!-- STEP 1: Contact Info    -->
+            <!-- ═══════════════════════ -->
+            <div id="screen1">
+                <div class="demo-banner">
+                    <div class="demo-banner-icon">👀</div>
+                    <div class="demo-banner-text">
+                        <div class="demo-banner-title">Demo Mode — Step 1 of 4</div>
+                        <div class="demo-banner-body">This is a read-only preview. No account is created and nothing is saved.</div>
+                    </div>
+                </div>
+
+                <div class="wizard-card">
+                    <div style="text-align:center; margin-bottom: var(--sp-8);">
+                        <span class="step-badge">Step 1 of 4</span>
+                        <h2 style="font-size:1.75rem; margin-bottom: var(--sp-2);">Get Started</h2>
+                        <p style="color: var(--slate); font-size: 0.95rem;">Already have an account? <a href="contractor-login.html" style="color: var(--amber); font-weight: 600;">Sign in here</a></p>
+                    </div>
+
+                    <!-- Fee Box -->
+                    <div class="fee-box">
+                        <strong style="display: block; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--amber); margin-bottom: 0.4rem;">Platform Fee</strong>
+                        <p style="font-size: 0.95rem; color: var(--slate); margin: 0 0 0.5rem 0;">Only 5% of the value of contracts you win.</p>
+                        <ul style="margin: 0.5rem 0 0 1.25rem; padding: 0; color: var(--slate); font-size: 0.9rem; line-height: 1.8;">
+                            <li>No monthly fees</li>
+                            <li>No upfront costs</li>
+                            <li style="font-weight: 700; color: var(--amber);">NO SALES REP NEEDED!</li>
+                        </ul>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Business Email</label>
+                        <input type="email" class="form-input" value="marcus@premierroofing-in.com" disabled>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Business Name</label>
+                            <input type="text" class="form-input" value="Premier Roofing &amp; Exteriors LLC" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Signer Name</label>
+                            <div class="name-row">
+                                <input type="text" class="form-input" value="Marcus" disabled>
+                                <input type="text" class="form-input" value="Reynolds" disabled>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Signer Title</label>
+                        <input type="text" class="form-input" value="Owner" disabled>
+                        <p style="font-size:0.85rem; color:var(--slate); margin-top: var(--sp-2);">You must be authorized to bind the business. This name and title will appear on your DocuSign Partner Agreement.</p>
+                    </div>
+
+                    <button class="btn-primary" onclick="goToScreen(2)">Continue — Send My Login Link →</button>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════ -->
+            <!-- STEP 2: License & Insurance -->
+            <!-- ═══════════════════════════ -->
+            <div id="screen2" class="hidden">
+
+                <div class="demo-banner">
+                    <div class="demo-banner-icon">👀</div>
+                    <div class="demo-banner-text">
+                        <div class="demo-banner-title">Demo Mode — Step 2 of 4</div>
+                        <div class="demo-banner-body">In the real flow this screen appears after you click the magic link in your email.</div>
+                    </div>
+                </div>
+
+                <div class="progress-header">
+                    <h1>Complete Your Application</h1>
+                    <div class="progress-steps">
+                        <div class="step-dot done" id="d2dot1">✓</div>
+                        <div class="step-line done" id="d2line12"></div>
+                        <div class="step-dot active" id="d2dot2">2</div>
+                        <div class="step-line" id="d2line23"></div>
+                        <div class="step-dot" id="d2dot3">3</div>
+                        <div class="step-line" id="d2line34"></div>
+                        <div class="step-dot" id="d2dot4">4</div>
+                    </div>
+                    <div class="step-labels">
+                        <span class="step-label done" style="width:80px;">Contact Info</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label active" style="width:80px;">License &amp; Insurance</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label" style="width:80px;">Agreements</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label" style="width:80px;">Contract Template</span>
+                    </div>
+                </div>
+
+                <div class="wizard-card">
+                    <h2>License &amp; Insurance</h2>
+                    <p class="subtitle">Tell us about your trades and license status. You'll upload your Certificate of Insurance in your contractor profile after approval.</p>
+
+                    <div class="form-group">
+                        <label class="form-label">Trades You Perform</label>
+                        <p style="font-size:0.85rem; color:var(--slate); margin-bottom: var(--sp-3);">Select all that apply — you can update this anytime in your profile.</p>
+                        <div class="trade-grid">
+                            <label class="trade-card selected">
+                                <input type="checkbox" checked disabled>
+                                <span>🏠 Roofing</span>
+                            </label>
+                            <label class="trade-card">
+                                <input type="checkbox" disabled>
+                                <span>🏗 Siding</span>
+                            </label>
+                            <label class="trade-card">
+                                <input type="checkbox" disabled>
+                                <span>💧 Gutters</span>
+                            </label>
+                            <label class="trade-card">
+                                <input type="checkbox" disabled>
+                                <span>🪟 Windows</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Contractor License Number</label>
+                        <input type="text" class="form-input" value="IN-HC-125438" disabled>
+                        <p style="font-size:0.85rem; color:var(--slate); margin-top: var(--sp-2);">Leave blank if no municipal license is required in your service area — check the box below instead.</p>
+                    </div>
+
+                    <div class="check-group" style="margin-bottom: var(--sp-6);">
+                        <input type="checkbox" disabled>
+                        <label>No contractor license is required in my primary service area</label>
+                    </div>
+
+                    <div class="info-box">
+                        <strong>Certificate of Insurance (COI)</strong>
+                        <p style="margin-top: var(--sp-2);">You'll upload your COI in your contractor profile after approval. Your COI must name <strong>Stellar Edge Services, LLC</strong> as additional insured with minimum $1M per occurrence / $2M aggregate General Liability coverage.</p>
+                    </div>
+
+                    <div class="check-group">
+                        <input type="checkbox" checked disabled>
+                        <label>I carry (or will obtain) Commercial General Liability insurance meeting the platform requirements and will upload my COI before bidding on any projects.</label>
+                    </div>
+
+                    <button class="btn-primary" onclick="goToScreen(3)">Continue to Agreements →</button>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════ -->
+            <!-- STEP 3: Platform Agreements  -->
+            <!-- ════════════════════════════ -->
+            <div id="screen3" class="hidden">
+
+                <div class="demo-banner">
+                    <div class="demo-banner-icon">👀</div>
+                    <div class="demo-banner-text">
+                        <div class="demo-banner-title">Demo Mode — Step 3 of 4</div>
+                        <div class="demo-banner-body">Review the agreements in full at <a href="/contractor-agreement.html" style="color:var(--amber);">contractor-agreement.html</a> before you apply.</div>
+                    </div>
+                </div>
+
+                <div class="progress-header">
+                    <h1>Complete Your Application</h1>
+                    <div class="progress-steps">
+                        <div class="step-dot done">✓</div>
+                        <div class="step-line done"></div>
+                        <div class="step-dot done">✓</div>
+                        <div class="step-line done"></div>
+                        <div class="step-dot active">3</div>
+                        <div class="step-line"></div>
+                        <div class="step-dot">4</div>
+                    </div>
+                    <div class="step-labels">
+                        <span class="step-label done" style="width:80px;">Contact Info</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label done" style="width:80px;">License &amp; Insurance</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label active" style="width:80px;">Agreements</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label" style="width:80px;">Contract Template</span>
+                    </div>
+                </div>
+
+                <div class="wizard-card">
+                    <h2>Platform Agreements</h2>
+                    <p class="subtitle">Please review each section and check the box to confirm your acceptance.</p>
+
+                    <!-- Partner Agreement -->
+                    <div class="info-box">
+                        <strong>Contractor Partner Agreement</strong>
+                        <p style="margin-top: var(--sp-2);">By joining Otter Quotes, you agree to the terms of the <a href="/contractor-agreement.html" target="_blank" style="color:var(--amber); font-weight:600;">Otter Quotes Contractor Partner Agreement</a>. You will also be asked to sign it via DocuSign when your first project is matched. The platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs.</p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-8);">
+                        <input type="checkbox" checked disabled>
+                        <label>I have reviewed the Contractor Partner Agreement and agree to its terms, including the platform fee structure.</label>
+                    </div>
+
+                    <!-- Cancellation Policy -->
+                    <div class="info-box">
+                        <strong>Homeowner Cancellation Policy</strong>
+                        <p style="margin-top: var(--sp-2);">Homeowners may switch to a different contractor in our network up to 3 days before their scheduled installation date, no questions asked. If this occurs: Otter Quotes handles the switch entirely, your platform fee is refunded in full, and the homeowner selects another contractor.</p>
+                        <p><strong style="color:var(--white);">A platform fee refund is your sole remedy if a homeowner exercises this right.</strong></p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-8);">
+                        <input type="checkbox" checked disabled>
+                        <label>I understand homeowners may switch contractors up to 3 days before installation. I will receive a full platform fee refund. I agree to this as a condition of the platform.</label>
+                    </div>
+
+                    <!-- IC 24-5-11 Attestation -->
+                    <div class="info-box">
+                        <strong>Contractor Attestation &amp; Indemnity</strong>
+                        <p style="margin-top: var(--sp-2);">Otter Quotes is a contractor matching and payments platform. By accepting below, you personally and on behalf of the business attest that:</p>
+                        <ul style="margin-top: var(--sp-2);">
+                            <li>You hold all licenses required in every jurisdiction where you work.</li>
+                            <li>You carry CGL insurance of at least $1M/$2M with Stellar Edge Services, LLC as additional insured.</li>
+                            <li>You will comply with Indiana Code 24-5-11 on every Indiana project and all equivalent laws in other states.</li>
+                            <li>You will indemnify and hold harmless Stellar Edge Services, LLC from claims arising from your work, licensing failures, or law violations. This indemnity is <strong>joint and several</strong> and survives termination.</li>
+                        </ul>
+                        <p style="margin-top: var(--sp-3);"><strong style="color:var(--white);">Electronic acceptance constitutes your signature under the E-SIGN Act and UETA.</strong></p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-8);">
+                        <input type="checkbox" checked disabled>
+                        <label>I am authorized to bind the business. I attest to the licensing, insurance, IC 24-5-11 compliance, and joint-and-several indemnity obligations above. I intend this electronic acceptance to be my signature.</label>
+                    </div>
+
+                    <!-- SMS -->
+                    <div class="info-box">
+                        <strong>SMS Notifications</strong>
+                        <p style="margin-top: var(--sp-2);">Otter Quotes uses SMS to notify you of new project opportunities, bid updates, and important platform communications.</p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-8);">
+                        <input type="checkbox" checked disabled>
+                        <label>I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe.</label>
+                    </div>
+
+                    <!-- 1099-NEC -->
+                    <div class="info-box">
+                        <strong>Tax Reporting Notice</strong>
+                        <p style="margin-top: var(--sp-2);">Otter Quotes does not withhold taxes from your payments. If you receive $600 or more in a calendar year, we file a Form 1099-NEC with the IRS. You are responsible for all federal, state, and local tax obligations on income earned through the platform.</p>
+                        <p><strong style="color:var(--white);">We recommend consulting a qualified tax professional regarding your obligations as an independent contractor.</strong></p>
+                    </div>
+                    <div class="check-group" style="margin-bottom: var(--sp-4);">
+                        <input type="checkbox" checked disabled>
+                        <label>I understand Otter Quotes will issue Form 1099-NEC if I receive $600 or more through the platform in a calendar year. No taxes are withheld. I am solely responsible for all tax obligations on income earned through the platform.</label>
+                    </div>
+
+                    <button class="btn-primary" onclick="goToScreen(4)">Continue to Contract Template →</button>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════ -->
+            <!-- STEP 4: Contract Template   -->
+            <!-- ═══════════════════════════ -->
+            <div id="screen4" class="hidden">
+
+                <div class="demo-banner">
+                    <div class="demo-banner-icon">👀</div>
+                    <div class="demo-banner-text">
+                        <div class="demo-banner-title">Demo Mode — Step 4 of 4</div>
+                        <div class="demo-banner-body">In the real flow, you upload your actual contract PDF here. You can also skip and upload it after approval.</div>
+                    </div>
+                </div>
+
+                <div class="progress-header">
+                    <h1>Complete Your Application</h1>
+                    <div class="progress-steps">
+                        <div class="step-dot done">✓</div>
+                        <div class="step-line done"></div>
+                        <div class="step-dot done">✓</div>
+                        <div class="step-line done"></div>
+                        <div class="step-dot done">✓</div>
+                        <div class="step-line done"></div>
+                        <div class="step-dot active">4</div>
+                    </div>
+                    <div class="step-labels">
+                        <span class="step-label done" style="width:80px;">Contact Info</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label done" style="width:80px;">License &amp; Insurance</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label done" style="width:80px;">Agreements</span>
+                        <span style="width:48px;"></span>
+                        <span class="step-label active" style="width:80px;">Contract Template</span>
+                    </div>
+                </div>
+
+                <div class="wizard-card">
+                    <h2>Upload Your Contract Template</h2>
+                    <p class="subtitle">Upload the contract you use with homeowners. This is what they'll sign on Otter Quotes. If you don't upload one now, Otter Quotes' standard agreement governs — you can always add yours later.</p>
+
+                    <div class="info-box">
+                        <strong>What to Upload</strong>
+                        <p style="margin-top: var(--sp-2);">Your standard contract PDF for your primary trade. Otter Quotes will auto-fill the homeowner's name, address, and project details via DocuSign. You can upload templates for all 8 trade × funding-type combinations in your profile after approval.</p>
+                    </div>
+
+                    <!-- Trade + funding type -->
+                    <div class="form-row" style="margin-bottom: var(--sp-6);">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Trade</label>
+                            <select class="form-select" disabled>
+                                <option selected>Roofing</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Funding Type</label>
+                            <select class="form-select" disabled>
+                                <option selected>Insurance (full replacement)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Upload area — demo state (file already "selected") -->
+                    <div class="upload-area-demo">
+                        <div class="upload-icon">📄</div>
+                        <h4>Premier_Roofing_Insurance_Contract_v3.pdf</h4>
+                        <p>12 pages · 1.4 MB</p>
+                        <div class="upload-demo-file">✓ Ready to upload</div>
+                    </div>
+
+                    <button class="btn-primary" onclick="goToScreen(5)" style="margin-top: var(--sp-6);">Upload &amp; Submit Application →</button>
+                    <button class="btn-secondary" onclick="goToScreen(5)">Skip — Use Otter Quotes Standard Agreement for Now</button>
+                </div>
+            </div>
+
+            <!-- ═════════════════════════════════ -->
+            <!-- FINAL: Demo Complete / Real CTA   -->
+            <!-- ═════════════════════════════════ -->
+            <div id="screen5" class="hidden">
+
+                <div class="demo-banner" style="border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.08);">
+                    <div class="demo-banner-icon">✅</div>
+                    <div class="demo-banner-text">
+                        <div class="demo-banner-title" style="color: #10b981;">Demo Complete</div>
+                        <div class="demo-banner-body">That's the full application — 4 steps, about 5 minutes. Ready to apply for real?</div>
+                    </div>
+                </div>
+
+                <div class="wizard-card success-panel">
+                    <div class="success-icon">🎉</div>
+                    <h2>That's the Whole Process</h2>
+                    <p>You just walked through every screen of the Otter Quotes contractor application. The real thing looks exactly like this — and takes about 5 minutes to complete.</p>
+
+                    <div class="success-box">
+                        <strong>What Happens After You Apply</strong>
+                        <ul>
+                            <li>Our team reviews your application</li>
+                            <li>Most approvals happen within 2–5 business days</li>
+                            <li>You'll get an email with next steps</li>
+                            <li>Once approved, you can start bidding on projects</li>
+                        </ul>
+                    </div>
+
+                    <div class="cta-block">
+                        <a href="contractor-join.html" class="btn-primary" style="text-decoration: none; display: block;">Start the Real Application →</a>
+                        <a href="contractor-how-it-works.html" class="btn-secondary">Learn More About How It Works</a>
+                    </div>
+
+                    <p style="margin-top: var(--sp-6); color: var(--slate); font-size: 0.85rem;">
+                        Questions? Email <a href="mailto:support@otterquote.com" style="color: var(--amber);">support@otterquote.com</a>
+                    </p>
+                </div>
+            </div>
+
+        </div><!-- /.wizard-outer -->
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <script src="js/config.js"></script>
+    <script src="js/nav.js"></script>
+
+    <script>
+    function goToScreen(n) {
+        // Hide all screens
+        for (var i = 1; i <= 5; i++) {
+            var el = document.getElementById('screen' + i);
+            if (el) {
+                if (i === n) {
+                    el.classList.remove('hidden');
+                } else {
+                    el.classList.add('hidden');
+                }
+            }
+        }
+        // Hide page intro after step 1
+        var intro = document.getElementById('pageIntro');
+        if (intro) {
+            intro.style.display = n === 1 ? '' : 'none';
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Initialize: show screen 1
+    document.addEventListener('DOMContentLoaded', function() {
+        goToScreen(1);
+    });
+    </script>
+</body>
+</html>
