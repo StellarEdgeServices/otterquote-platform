@@ -226,6 +226,15 @@ async function seed() {
   console.log(`  ✅ Test claim created (${testClaimId})`);
 
   // ── 7. Write .test-state.json ────────────────────────────────────────────
+  // runId: deterministic per seed run — YYYYMMDD-HHmmss + first 8 chars of
+  // testClaimId (without dashes). Unique enough for artifact storage paths.
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const runId =
+    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+    `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}` +
+    `-${testClaimId.replace(/-/g, '').slice(0, 8)}`;
+
   const state = {
     homeownerUserId,
     homeownerEmail: HOMEOWNER_EMAIL,
@@ -234,7 +243,8 @@ async function seed() {
     contractorEmail: CONTRACTOR_EMAIL,
     testClaimId,
     baseUrl: BASE_URL,
-    seededAt: new Date().toISOString(),
+    runId,
+    seededAt: now.toISOString(),
   };
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
 

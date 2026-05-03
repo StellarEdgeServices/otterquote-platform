@@ -26,6 +26,7 @@
 import { test, expect } from '@playwright/test';
 import { generateMagicLink, getTestState, type TestState } from '../helpers/auth.js';
 import { verifyBidPersisted } from '../helpers/db.js';
+import { runArtifactCapture, isDocuSignE2EEnabled } from '../helpers/docusign-artifacts.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,25 @@ test.describe('Flow A — Contractor Journey', () => {
 
   test.beforeAll(() => {
     state = getTestState();
+  });
+
+
+  // ── Phase 1 artifact capture ────────────────────────────────────────────
+  // Runs after all Flow A tests. If DOCUSIGN_E2E_ENABLED=true AND a DocuSign
+  // envelope was created on the test claim (e.g., homeowner selected the test
+  // contractor during this run), downloads the pre-signing PDF and persists it
+  // to Supabase Storage e2e-artifacts/phase-1/{runId}/{envelopeId}.pdf.
+  //
+  // Today: always finds no envelope (DocuSign not triggered in Flow A). Will
+  // activate automatically once B8 (homeowner selects contractor) is wired in
+  // and DOCUSIGN_E2E_ENABLED=true.
+  //
+  // QUOTA: Each activation burns one production DocuSign envelope (40/month).
+  // Ram decides when to enable; Dustin approves before each run.
+  test.afterAll(async () => {
+    if (!isDocuSignE2EEnabled() || !state) return;
+    const envelopeId = await getClaimEnvelopeId(state.testClaimId);
+    await runArtifactCapture('1', state.runId, envelopeId ? [envelopeId] : []);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
