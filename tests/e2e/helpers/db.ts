@@ -75,16 +75,21 @@ export async function cleanTestClaims(homeownerUserId: string): Promise<void> {
 }
 
 /**
- * Verifies the test homeowner's claim exists in the database and is in
- * the expected status. Used by homeowner journey spec.
+ * Returns the DocuSign envelope ID from the most recent quote on the test
+ * claim that has an envelope. Returns null if no envelope has been created
+ * (i.e., homeowner hasn't selected a contractor yet, or DocuSign was skipped).
+ * Used by afterAll artifact capture hooks.
  */
-export async function getTestClaim(claimId: string) {
+export async function getClaimEnvelopeId(claimId: string): Promise<string | null> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
-    .from('claims')
-    .select('id, status, property_state, job_type, ready_for_bids')
-    .eq('id', claimId)
-    .single();
-  if (error) return null;
-  return data;
+    .from('quotes')
+    .select('docusign_envelope_id')
+    .eq('claim_id', claimId)
+    .not('docusign_envelope_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data.docusign_envelope_id;
 }
