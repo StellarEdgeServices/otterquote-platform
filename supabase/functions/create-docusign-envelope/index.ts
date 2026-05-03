@@ -1511,12 +1511,15 @@ function buildAddendumTabs(documentId: string) {
 }
 
 // ========== DOCUMENT LABEL HELPERS ==========
-function getDocumentLabel(documentType: string): string {
+function getDocumentLabel(documentType: string, scope?: string): string {
   switch (documentType) {
     case "contract":
     case "contractor_sign":
-    case "homeowner_sign":
-      return "Repair Contract";
+    case "homeowner_sign": {
+      if (scope === "repair") return "Repair Contract";
+      if (scope === "replacement") return "Replacement Contract";
+      return "Roofing Contract";
+    }
     case "color_confirmation": return "Color Confirmation";
     case "project_confirmation": return "Project Confirmation";
     default: return "Document";
@@ -1782,9 +1785,16 @@ async function handleContractorSign(
       });
       console.log(`Retail Scope of Work PDF generated for claim ${claim_id}`);
     } catch (sowErr) {
-      // Non-fatal: proceed without SOW if generation fails for any reason
-      console.error("Retail SOW PDF generation failed (non-fatal, continuing without SOW):", sowErr);
-      scopeOfWorkBase64 = null;
+      // D-185 / D-200: Fail loud — envelope must NOT be created without Exhibit A.
+      // Approved by Dustin Stohler (GC, JD) 2026-05-01: re-throw on retail SOW failure.
+      // A homeowner who gets no signing link is recoverable. A homeowner who signs a
+      // retail contract missing its Exhibit A may have a valid IC 24-5-11-10(a)(4)+(5)
+      // argument that the contract lacked a required scope description at signing.
+      console.error("Retail SOW PDF generation failed — aborting envelope per D-185:", sowErr);
+      throw new Error(
+        `Retail Exhibit A generation failed for claim ${claim_id} — envelope creation aborted per D-185/D-200. ` +
+        `Original error: ${sowErr}`
+      );
     }
   }
 
@@ -1820,7 +1830,12 @@ async function handleContractorSign(
     }
   }
 
-  const docLabel = getDocumentLabel("contractor_sign");
+  const contractScope = claimData?.repair_squares && Number(claimData.repair_squares) > 0
+    ? "repair"
+    : claimData?.roof_squares && Number(claimData.roof_squares) > 0
+      ? "replacement"
+      : undefined;
+  const docLabel = getDocumentLabel("contractor_sign", contractScope);
 
   const envelopeDefinition: any = {
     emailSubject: `${docLabel} — OtterQuote (Claim ${claim_id.slice(0, 8)})`,
@@ -1834,7 +1849,7 @@ async function handleContractorSign(
       // Scope of Work — retail jobs only (doc 2). Shifts addendum to doc 3.
       ...(scopeOfWorkBase64 ? [{
         documentBase64: scopeOfWorkBase64,
-        name: "Scope of Work",
+        name: "Exhibit A — Scope of Work", // D-200: envelope document name (D-P7-002 fix 2026-05-01)
         fileExtension: "pdf",
         documentId: sowDocId,
       }] : []),
@@ -2189,7 +2204,12 @@ async function handleLegacyFlow(
   let contractorEmail = autoFields.contractor_email || "contractor@example.com";
   let contractorName = autoFields.contractor_name || "Contractor";
 
-  const docLabel = getDocumentLabel(document_type);
+  const contractScope2 = claimData?.repair_squares && Number(claimData.repair_squares) > 0
+    ? "repair"
+    : claimData?.roof_squares && Number(claimData.roof_squares) > 0
+      ? "replacement"
+      : undefined;
+  const docLabel = getDocumentLabel(document_type, contractScope2);
 
   // For contract type, also generate the compliance addendum
   const documents: any[] = [
