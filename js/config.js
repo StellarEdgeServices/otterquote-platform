@@ -57,3 +57,4 @@ var CONFIG = {
 let sb;
 if (typeof supabase !== 'undefined') {
   sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+}
