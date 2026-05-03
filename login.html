@@ -313,4 +313,33 @@
     } finally {
       submitBtn.classList.remove('btn-loading');
       submitBtn.disabled = false;
-   
+    }
+  });
+
+  // Resend
+  document.getElementById('resend-link').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = sentEmail.textContent;
+    if (email) {
+      try {
+        await Auth.sendMagicLink(email, 'homeowner', '/dashboard.html');
+        alert('Login link resent! Check your email.');
+      } catch (err) {
+        alert('Could not resend. Please try again in a moment.');
+      }
+    }
+  });
+
+  // If already logged in, go to dashboard
+  Auth.getUser().then(async user => {
+    if (user) {
+      await Auth.redirectToDashboard();
+    }
+  });
+})();
+</script>
+
+<footer id="site-footer"></footer>
+
+</body>
+</html>

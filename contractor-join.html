@@ -264,4 +264,11 @@
 
             } catch (err) {
                 console.error('Contractor signup error:', err);
-    
+                btn.disabled = false;
+                btn.textContent = 'Continue — Send My Login Link';
+                alert(err.message || 'Something went wrong. Please try again or contact support@otterquote.com.');
+            }
+        });
+    </script>
+</body>
+</html>
