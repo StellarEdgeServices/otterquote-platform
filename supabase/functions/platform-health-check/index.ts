@@ -59,6 +59,8 @@ const CRON_STALENESS_THRESHOLDS: Record<string, number> = {
   "check-siding-design-completion": 45 * 60 * 1000,       // 45 minutes
   "process-coi-reminders":         25 * 60 * 60 * 1000,  // 25 hours
   "process-payout-reminders":      25 * 60 * 60 * 1000,  // 25 hours
+  "public-path-home":              30 * 60 * 1000,        // 30 minutes
+  "public-path-get-started":       30 * 60 * 1000,        // 30 minutes
 };
 
 // Dedup window: don't re-alert for the same function within 15 minutes
@@ -454,6 +456,122 @@ async function runStalenessCheck(
   return { checked: Object.keys(CRON_STALENESS_THRESHOLDS).length, alertsFired, results };
 }
 
+
+// =============================================================================
+// PHASE 3 — Public path availability probe
+// =============================================================================
+
+const PUBLIC_PATHS: Array<{ url: string; jobName: string; expectedBody: string }> = [
+  {
+    url:          "https://otterquote.com/",
+    jobName:      "public-path-home",
+    expectedBody: "Stop chasing contractors",
+  },
+  {
+    url:          "https://otterquote.com/get-started.html",
+    jobName:      "public-path-get-started",
+    expectedBody: "Get Started",
+  },
+];
+
+const PUBLIC_PATH_TIMEOUT_MS = 10000; // 10s — external fetch, more generous than internal EF ping
+
+interface PublicPathResult {
+  path:    string;
+  jobName: string;
+  status:  "ok" | "error" | "timeout";
+  error?:  string;
+}
+
+async function probePublicPath(
+  url: string,
+  jobName: string,
+  expectedBody: string,
+): Promise<PublicPathResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUBLIC_PATH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+
+    if (res.status !== 200) {
+      return { path: url, jobName, status: "error", error: `HTTP ${res.status}` };
+    }
+
+    const body = await res.text();
+    if (!body.includes(expectedBody)) {
+      return {
+        path:    url,
+        jobName,
+        status:  "error",
+        error:   `Body missing expected string: "${expectedBody}"`,
+      };
+    }
+
+    return { path: url, jobName, status: "ok" };
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof DOMException && err.name === "AbortError";
+    return {
+      path:    url,
+      jobName,
+      status:  isTimeout ? "timeout" : "error",
+      error:   isTimeout ? "Timeout after 10s" : String(err),
+    };
+  }
+}
+
+async function runPublicPathProbes(
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+): Promise<{ probed: number; alertsFired: number; results: PublicPathResult[] }> {
+  const results = await Promise.all(
+    PUBLIC_PATHS.map(({ url, jobName, expectedBody }) =>
+      probePublicPath(url, jobName, expectedBody),
+    ),
+  );
+
+  let alertsFired = 0;
+
+  for (const result of results) {
+    // Write to cron_health — Phase 2 staleness check will also cover these going forward
+    try {
+      await supabase.rpc("record_cron_health", {
+        p_job_name: result.jobName,
+        p_status:   result.status === "ok" ? "success" : "error",
+        p_error:    result.error ?? null,
+      });
+    } catch (err) {
+      console.warn(`[platform-health-check] cron_health write failed for ${result.jobName}:`, err);
+    }
+
+    if (result.status !== "ok") {
+      const subject = `OtterQuote Health Alert — public path unavailable: ${result.path}`;
+      const message = [
+        `Public Path: ${result.path}`,
+        `Job: ${result.jobName}`,
+        `Status: ${result.status}`,
+        result.error ? `Error: ${result.error}` : null,
+        `Checked at: ${new Date().toISOString()}`,
+        "",
+        "The OtterQuote public site may be unreachable or serving incorrect content.",
+        "This is an automated alert from OtterQuote platform monitoring.",
+        "Resolve this alert at: https://otterquote.com/admin-contractors.html",
+      ].filter(Boolean).join("\n");
+
+      const { alerted } = await fireAlert(
+        supabase, mailgunApiKey, mailgunDomain,
+        "public_path_failure", result.jobName, subject, message,
+      );
+      if (alerted) alertsFired++;
+    }
+  }
+
+  return { probed: PUBLIC_PATHS.length, alertsFired, results };
+}
+
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
@@ -489,6 +607,9 @@ serve(async (req) => {
   // ── Phase 2: Cron job staleness ────────────────────────────────────────────
   const phase2 = await runStalenessCheck(supabase, mailgunApiKey, mailgunDomain);
 
+  // ── Phase 3: Public path probes ─────────────────────────────────────────────
+  const phase3 = await runPublicPathProbes(supabase, mailgunApiKey, mailgunDomain);
+
   const elapsed = Date.now() - startedAt;
 
   const result = {
@@ -498,7 +619,10 @@ serve(async (req) => {
     checkedCronJobs:    phase2.checked,
     cronAlertsCount:    phase2.alertsFired,
     cronResults:        phase2.results,
-    totalAlerts:        phase1.alertsFired + phase2.alertsFired,
+    probedPaths:        phase3.probed,
+    pathAlertsCount:    phase3.alertsFired,
+    pathResults:        phase3.results,
+    totalAlerts:        phase1.alertsFired + phase2.alertsFired + phase3.alertsFired,
     elapsedMs:          elapsed,
     ranAt:              new Date().toISOString(),
   };
