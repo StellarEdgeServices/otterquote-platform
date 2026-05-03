@@ -226,10 +226,35 @@ test.describe('Flow A — Contractor Journey', () => {
   test('A8: contractor submits a bid and it persists in the database', async ({ page }) => {
     await loginAsContractor(page, state);
 
+    // Capture any alert/confirm dialogs to surface error messages in test output
+    const dialogs: string[] = [];
+    page.on('dialog', async dialog => {
+      dialogs.push(`[${dialog.type()}] ${dialog.message()}`);
+      console.log(`  📢 Dialog captured: [${dialog.type()}] ${dialog.message()}`);
+      await dialog.accept();
+    });
+
+    // Capture ALL page console output to diagnose bid submission
+    page.on('console', msg => {
+      console.log(`  🖥️ Page console [${msg.type()}]: ${msg.text()}`);
+    });
+
     await page.goto(`/contractor-bid-form.html?claim_id=${state.testClaimId}`);
     await page.waitForLoadState('load');
 
     await expect(page).not.toHaveURL(/login|get-started/);
+
+    // Wait for bid form init() to complete: #valueAddsSection becomes visible
+    // only after Auth.requireAuth + claim fetch both resolve (insurance_rcv job).
+    // Without this wait, currentUser / currentClaim are null when submit fires
+    // and the else-if block silently skips the DB insert.
+    await page.waitForSelector('#valueAddsSection', { state: 'visible', timeout: 15_000 });
+
+    // Also wait for #totalPrice to be populated from claimRcv (rcv_amount=15000)
+    await page.waitForFunction(
+      () => (parseFloat((document.getElementById('totalPrice') as HTMLInputElement)?.value) || 0) > 0,
+      { timeout: 10_000 }
+    );
 
     // ── Fill required bid fields ─────────────────────────────────────────
 
@@ -267,9 +292,10 @@ test.describe('Flow A — Contractor Journey', () => {
       await numStoriesSelect.selectOption({ index: 1 });
     }
 
-    // Workmanship warranty years (fill if visible)
+    // Workmanship warranty years (fill if visible — exclude checkboxes/radios)
     const warrantyInput = page.locator(
-      'input[id*="warranty"], input[name*="warranty"]'
+      'input[id*="warranty"][type="number"], input[id*="warranty"][type="text"], ' +
+      'input[name*="warranty"][type="number"], input[name*="warranty"][type="text"]'
     ).first();
     if (await warrantyInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await warrantyInput.fill('5');
@@ -308,11 +334,18 @@ test.describe('Flow A — Contractor Journey', () => {
     await submitBtn.click();
 
     // Wait for success indicator (toast, banner, or redirect)
-    await page.waitForSelector(
-      '.success, .alert-success, [class*="success"], #success-message, ' +
-      '.toast-success, [role="alert"]',
-      { timeout: 20_000 }
-    );
+    try {
+      await page.waitForSelector(
+        '.success, .alert-success, [class*="success"], #success-message, ' +
+        '.toast-success, [role="alert"]',
+        { timeout: 20_000 }
+      );
+    } catch (e) {
+      if (dialogs.length > 0) {
+        throw new Error(`Bid submission failed with dialog: ${dialogs.join('; ')}`);
+      }
+      throw e;
+    }
 
     // ── Verify bid persisted in DB ───────────────────────────────────────
 
