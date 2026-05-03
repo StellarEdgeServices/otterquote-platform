@@ -4,11 +4,18 @@
  * Uses OAuth tokens stored in hover_tokens table (auto-refreshes if expired).
  * Rate-limited via Supabase check_rate_limit() RPC.
  *
- * D-181 (Apr 23, 2026, ClickUp 86e117ty3): Before ordering Hover, verifies
- * that the homeowner's Stripe PaymentIntent for the $79 measurement fee is
- * in status='succeeded'. If payment has not succeeded, returns 402 without
- * contacting Hover. On success, persists payment_intent_id + charged amount
- * + rebate_due=true on the hover_orders row.
+ * D-181 (Apr 23, 2026, ClickUp 86e117ty3) amended by D-205 (May 2, 2026):
+ * Before ordering Hover, verifies that the homeowner's Stripe PaymentIntent
+ * for the Hover measurement fee is in status='succeeded'. If payment has
+ * not succeeded, returns 402 without contacting Hover. On success, persists
+ * payment_intent_id + charged amount + rebate_due=true on the hover_orders
+ * row.
+ *
+ * D-205 (May 2, 2026): deliverable_type_id is now REQUIRED on the request
+ * body — no silent default. Allowed values: 2 (Roof Only) or 3 (Complete).
+ * Frontend always sends 3 for full-replacement jobs per the universal
+ * Hover Complete + $150 model. Fails loud with HTTP 400 if missing or
+ * invalid.
  *
  * THIS IS THE MOST EXPENSIVE METERED CALL (~$25-40 per order).
  * Hard-capped at 2/day, 10/month via rate_limit_config.
@@ -98,7 +105,7 @@ async function verifyHoverPayment(
     return { ok: false, status: 500, error: "Stripe secret key not configured." };
   }
 
-  // Look up expected price (defensive default 7900).
+  // Look up expected price (defensive default 15000 — D-205, $150).
   const { data: priceRow } = await supabase
     .from("platform_settings")
     .select("value")
@@ -106,7 +113,7 @@ async function verifyHoverPayment(
     .maybeSingle();
   const expectedAmount = typeof priceRow?.value === "number"
     ? priceRow.value
-    : Number(priceRow?.value ?? 7900);
+    : Number(priceRow?.value ?? 15000);
 
   const basicAuth = btoa(`${stripeSecretKey}:`);
   const piRes = await fetch(`${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}`, {
@@ -115,7 +122,7 @@ async function verifyHoverPayment(
   if (!piRes.ok) {
     const errText = await piRes.text();
     console.error("Stripe PI retrieve failed:", piRes.status, errText);
-    return { ok: false, status: 402, error: "Payment record not found. We could not verify your $79 Hover measurement payment. Please try again or contact support." };
+    return { ok: false, status: 402, error: "Payment record not found. We could not verify your Hover measurement payment. Please try again or contact support." };
   }
   const pi = await piRes.json();
 
@@ -198,8 +205,8 @@ serve(async (req) => {
       homeowner_name,
       homeowner_email,
       homeowner_phone,
-      deliverable_type_id = 2, // Default: Roof Only
-      payment_intent_id,       // D-181: required
+      deliverable_type_id, // D-205: REQUIRED — no silent default
+      payment_intent_id,   // D-181: required
     } = await req.json();
 
     // Validate required fields
@@ -210,7 +217,15 @@ serve(async (req) => {
     }
     if (!payment_intent_id || typeof payment_intent_id !== "string") {
       return new Response(JSON.stringify({
-        error: "Missing payment_intent_id. A completed $79 Stripe payment is required before ordering Hover measurements (D-181).",
+        error: "Missing payment_intent_id. A completed Stripe payment is required before ordering Hover measurements (D-181).",
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    // D-205: deliverable_type_id is required and must be in the allowed set.
+    // 2 = Roof Only (legacy / repair scenarios). 3 = Complete (D-205 universal default for full-replacement jobs).
+    // Never silently default — every caller must pass an explicit value.
+    if (deliverable_type_id !== 2 && deliverable_type_id !== 3) {
+      return new Response(JSON.stringify({
+        error: "Missing or invalid deliverable_type_id. Per D-205, this must be explicitly passed by the caller and must be 2 (Roof Only) or 3 (Complete). Frontend should send 3 for all full-replacement jobs.",
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
