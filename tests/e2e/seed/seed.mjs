@@ -225,6 +225,122 @@ async function seed() {
   const testClaimId = claim.id;
   console.log(`  ✅ Test claim created (${testClaimId})`);
 
+
+  // ── 6b. Fresh retail siding test claim (D-164 design gate) ─────────────
+  console.log('6b. Retail siding test claim (design gate verification)...');
+  // Delete previous retail siding test claims
+  await supabase.from('claims').delete().eq('user_id', homeownerUserId).eq('job_type', 'retail_siding');
+
+  const { data: retailClaim, error: retailClaimErr } = await supabase
+    .from('claims')
+    .insert({
+      user_id: homeownerUserId,
+      status: 'bidding',
+      property_address: '100 E Test St, Zionsville, IN 46077',
+      property_state: 'IN',
+      homeowner_name: 'Test Homeowner',
+      job_type: 'retail_siding',
+      funding_type: 'homeowner',
+      trades: ['siding'],
+      damage_type: null,
+      material_category: null,
+      siding_bid_released_at: null, // Gate is LOCKED until design completes
+      has_estimate: true,
+      has_measurements: true,
+      has_material_selection: true,
+      ready_for_bids: false, // Bid release is gated on design completion
+      homeowner_notes: '[E2E TEST CLAIM — retail siding design gate verification, please do not bid]',
+      urgency: 'flexible',
+    })
+    .select('id')
+    .single();
+
+  if (retailClaimErr) {
+    throw new Error(`Retail siding claim creation failed: ${retailClaimErr.message}`);
+  }
+  const testRetailClaimId = retailClaim.id;
+  console.log(`  ✅ Retail siding test claim created (${testRetailClaimId})`);
+
+  // ── 6c. Create completed hover_orders row with mock material_list ────────
+  // This simulates homeowner completing Hover 3D design + material selection.
+  // D-164: material_list must have all four fields (manufacturer, profile, color, trim)
+  // so the design gate logic can verify completeness.
+  console.log('6c. Completed hover_orders with material_list (design gate)...');
+
+  const mockMaterialList = [
+    {
+      name: 'James Hardie Artisan Dutch Lap',
+      listItemGroupName: 'James Hardie Siding',
+      color: 'Boothbay Blue',
+      quantity: 12.5,
+      calculatedQuantity: 12.5,
+      quantityUnits: 'squares',
+      unitCost: 425.00,
+      totalCost: 5312.50,
+      type: 'MATERIAL',
+      tradeType: 'SIDING',
+    },
+    {
+      name: 'Aluminum Corner Trim',
+      listItemGroupName: 'Trim & Fascia',
+      color: null,
+      quantity: 200,
+      calculatedQuantity: 200,
+      quantityUnits: 'linear feet',
+      unitCost: 12.50,
+      totalCost: 2500.00,
+      type: 'MATERIAL',
+      tradeType: 'SIDING',
+    },
+    {
+      name: 'Siding Installation Labor',
+      listItemGroupName: 'Labor',
+      quantity: 12.5,
+      calculatedQuantity: 12.5,
+      quantityUnits: 'squares',
+      unitCost: 325.00,
+      totalCost: 4062.50,
+      type: 'LABOR',
+      tradeType: 'SIDING',
+    },
+  ];
+
+  const { data: hoverOrder, error: hoverOrderErr } = await supabase
+    .from('hover_orders')
+    .insert({
+      claim_id: testRetailClaimId,
+      user_id: homeownerUserId,
+      address: '100 E Test St',
+      city: 'Zionsville',
+      state: 'IN',
+      zip: '46077',
+      status: 'complete',
+      stripe_payment_id: 'e2e-injected-retail-siding',
+      homeowner_stripe_payment_intent_id: null,
+      amount_charged: 15000, // Hover measurement + design fee (E2E injected)
+      rebate_due: false,
+      hover_job_id: 999999, // Fake job ID for E2E — not queried in test
+      material_list: mockMaterialList,
+      measurements_json: {
+        structures: [
+          {
+            areas: {
+              wall: 1250, // 12.5 squares = 1250 sq ft
+            },
+          },
+        ],
+      },
+      created_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+
+  if (hoverOrderErr) {
+    throw new Error(`Hover order creation failed: ${hoverOrderErr.message}`);
+  }
+  console.log(`  ✅ Completed hover_orders row created with material_list`);
+
   // ── 7. Write .test-state.json ────────────────────────────────────────────
   // runId: deterministic per seed run — YYYYMMDD-HHmmss + first 8 chars of
   // testClaimId (without dashes). Unique enough for artifact storage paths.
@@ -242,6 +358,7 @@ async function seed() {
     contractorId,
     contractorEmail: CONTRACTOR_EMAIL,
     testClaimId,
+    testRetailClaimId,
     baseUrl: BASE_URL,
     runId,
     seededAt: now.toISOString(),
@@ -253,7 +370,8 @@ async function seed() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`  Homeowner:  ${HOMEOWNER_EMAIL}`);
   console.log(`  Contractor: ${CONTRACTOR_EMAIL} → contractors.id ${contractorId}`);
-  console.log(`  Test claim: ${testClaimId}`);
+  console.log(`  Test claim (insurance): ${testClaimId}`);
+  console.log(`  Test claim (retail siding): ${testRetailClaimId}`);
   console.log(`  State file: .test-state.json\n`);
 }
 
