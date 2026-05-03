@@ -1,10 +1,12 @@
 /**
  * OtterQuote Edge Function: process-hover-rebate
  *
- * D-181 (Apr 23, 2026, ClickUp 86e11mcf4): Issues a Stripe refund for the
- * homeowner's $79 Hover measurement fee when a quote on the same claim
- * flips to payment_status='succeeded' (job completed with an OtterQuote
- * contractor). Idempotent.
+ * D-181 (Apr 23, 2026, ClickUp 86e11mcf4) amended by D-205 (May 2, 2026):
+ * Issues a Stripe refund for the homeowner's Hover measurement fee when a
+ * quote on the same claim flips to payment_status='succeeded' (job
+ * completed with an OtterQuote contractor). Idempotent. Rebate amount is
+ * read per-order from hover_orders.homeowner_charge_amount — no code
+ * change needed when the charge amount changes.
  *
  * Two invocation modes:
  *   POST { claim_id }   — process rebate for a specific claim on demand.

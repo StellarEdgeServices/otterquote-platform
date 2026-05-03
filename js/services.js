@@ -231,7 +231,7 @@ const Services = {
         body: {
           amount,
           currency: 'usd',
-          description: description || 'Hover 3D Measurement Report',
+          description: description || 'Hover Complete Property Data File',
           metadata: {
             claim_id,
             type: 'hover_measurement',
@@ -334,7 +334,7 @@ const Services = {
    * @param {string} params.homeowner_email — Email for capture invite
    * @param {string} params.homeowner_phone — Phone for SMS (optional)
    * @param {number} params.amount_charged — In dollars
-   * @param {number} params.deliverable_type_id — 2=Roof Only, 3=Complete (default: 2)
+   * @param {number} params.deliverable_type_id — REQUIRED per D-205. Must be 2 (Roof Only) or 3 (Complete). No default — caller must pass explicitly. Frontend sends 3 for all full-replacement jobs.
    * @returns {Object} { capture_link, order_id, capture_request_id }
    */
   async createHoverOrder(params) {
@@ -342,12 +342,16 @@ const Services = {
       claim_id, user_id,
       address_line_1, address_city, address_state, address_zip,
       homeowner_name, homeowner_email, homeowner_phone,
-      amount_charged, deliverable_type_id = 2,
-      payment_intent_id,  // D-181: required — Stripe PaymentIntent for the $79 Hover fee
+      amount_charged, deliverable_type_id,
+      payment_intent_id,  // D-181: required — Stripe PaymentIntent for the Hover fee
     } = params;
 
     if (!payment_intent_id) {
-      throw new Error('Missing payment_intent_id — $79 Hover payment must complete before ordering (D-181).');
+      throw new Error('Missing payment_intent_id — Hover payment must complete before ordering (D-181).');
+    }
+    // D-205: deliverable_type_id is required and must be 2 or 3. Fail loud at the client too.
+    if (deliverable_type_id !== 2 && deliverable_type_id !== 3) {
+      throw new Error('Missing or invalid deliverable_type_id — must be 2 (Roof Only) or 3 (Complete) per D-205.');
     }
 
     // Save order to database first

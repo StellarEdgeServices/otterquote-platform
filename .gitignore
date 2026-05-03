@@ -31,3 +31,6 @@ us-counties.json.bak
 tests/e2e/.test-state.json
 tests/e2e/test-results/
 tests/e2e/playwright-report/
+
+# Attorney/draft documents — never commit
+_drafts/
