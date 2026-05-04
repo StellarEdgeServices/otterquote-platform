@@ -124,27 +124,53 @@
       return;
     }
 
-    try {
-      var role = await Auth.getRole();
-    } catch (e) {
-      // getRole failed — fall back to localStorage hint
-      var role = null;
-    }
+    var storedRole = localStorage.getItem('cs_auth_role');
 
+    var role = null;
+    try { role = await Auth.getRole(); } catch (e) { role = null; }
+
+    // Hard signal: a contractor record exists. That's the source of truth —
+    // even if the user clicked the wrong login button, route them home.
     if (role === 'contractor') {
       window.location.href = '/contractor-dashboard.html';
-    } else if (role === 'homeowner') {
-      window.location.href = '/dashboard.html';
-    } else {
-      // Role unknown — use the hint we stored before leaving the login page
-      var storedRole = localStorage.getItem('cs_auth_role');
-      if (storedRole === 'contractor') {
-        window.location.href = '/contractor-dashboard.html';
-      } else {
-        // New user with no stored role — send to trade-selector for intake
-        window.location.href = '/trade-selector.html';
-      }
+      return;
     }
+
+    // User clicked Sign In on the contractor page (intent = contractor)
+    // but no contractor record exists. Don't drop them into the homeowner
+    // dashboard — that's how the contractor->homeowner-dashboard loop
+    // started. Route them to the join page so they can apply.
+    if (storedRole === 'contractor') {
+      localStorage.removeItem('cs_auth_role');
+      window.location.href = '/contractor-join.html?from=oauth_no_account';
+      return;
+    }
+
+    // Homeowner path — preferred when role or intent says homeowner.
+    if (role === 'homeowner' || storedRole === 'homeowner') {
+      // Returning homeowner with a claim -> dashboard. New homeowner -> intake.
+      try {
+        var u = session.user;
+        if (u && typeof sb !== 'undefined') {
+          var claimRes = await sb
+            .from('claims')
+            .select('id')
+            .eq('user_id', u.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (claimRes && claimRes.data) {
+            window.location.href = '/dashboard.html';
+            return;
+          }
+        }
+      } catch (e) { /* fall through to intake */ }
+      window.location.href = '/trade-selector.html';
+      return;
+    }
+
+    // Brand new user, no signal at all — start the homeowner intake.
+    window.location.href = '/trade-selector.html';
   }
 
   // D-208 F-007d pattern: wait for PKCE exchange if code is in URL

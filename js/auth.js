@@ -10,88 +10,97 @@ function escapeHtml(str) {
 }
 
 window.Auth = {
-  /** Get current session — waits for Supabase auth initialization to complete.
+  /** Get current session - robust race-free implementation.
    *
-   * Supabase JS v2 initializes its auth client asynchronously from localStorage
-   * behind an internal mutex lock. If getSession() is called at DOMContentLoaded,
-   * that lock may not have resolved yet, causing getSession() to return null even
-   * when a valid session is stored. Subscribing to onAuthStateChange first ensures
-   * we capture the INITIAL_SESSION event that fires once initialization completes.
+   * Prior implementation (F-007c) had a race: when localStorage already
+   * contained a valid session but Supabase JS hadn't finished its async
+   * init, INITIAL_SESSION fired with null, the fallback called
+   * sb.auth.getUser() server-side, which itself needs the session to be
+   * loaded - leading to a null result. The page then bounced to a login
+   * URL even though the user was actually authenticated. (Symptom: the
+   * dashboard -> get-started -> dashboard 3-hop loop.)
    *
-   * F-007 fix — replaces the bare sb.auth.getSession() call with a race between:
-   *   (a) onAuthStateChange INITIAL_SESSION event (fires when lock resolves)
-   *   (b) sb.auth.getSession() immediate return (succeeds if lock already resolved)
-   *   (c) 3-second safety timeout (resolves null to prevent indefinite hang)
+   * New approach (May 4, 2026):
+   *   (a) Synchronously inspect localStorage for the Supabase auth token.
+   *       If absent AND no auth indicator in the URL, the user is not
+   *       authenticated - resolve null immediately, no race possible.
+   *   (b) Otherwise an auth flow is in progress (token in URL or session
+   *       in storage). Subscribe to onAuthStateChange and wait for any
+   *       event that surfaces a session.
+   *   (c) After 6 s, if no session has surfaced, attempt a one-shot
+   *       refreshSession() before giving up at 8 s.
    */
   async getSession() {
     if (!sb) return null;
-    return new Promise((resolve) => {
-      let resolved = false;
-      let unsubscribe = null;
 
-      const finish = (session) => {
+    var hasStoredSession = false;
+    try {
+      var refMatch = (CONFIG && CONFIG.SUPABASE_URL ? CONFIG.SUPABASE_URL : '').match(/https:\/\/([^.]+)/);
+      var ref = refMatch ? refMatch[1] : null;
+      if (ref) {
+        var raw = localStorage.getItem('sb-' + ref + '-auth-token');
+        if (raw) {
+          try {
+            var parsed = JSON.parse(raw);
+            if (parsed && (parsed.access_token || parsed.refresh_token)) {
+              hasStoredSession = true;
+            }
+          } catch (e) { /* malformed - ignore */ }
+        }
+      }
+    } catch (e) { /* localStorage blocked - fall through */ }
+
+    var hasAuthInUrl = (typeof window !== 'undefined') && (
+      window.location.hash.includes('access_token') ||
+      window.location.search.includes('code=')
+    );
+
+    if (!hasStoredSession && !hasAuthInUrl) {
+      return null;
+    }
+
+    return new Promise(function (resolve) {
+      var resolved = false;
+      var unsubscribe = null;
+      function finish(session) {
         if (resolved) return;
         resolved = true;
         try { if (unsubscribe) unsubscribe(); } catch (e) { /* ignore */ }
-        resolve(session);
-      };
-
-      // (a) Subscribe to auth state change — fires INITIAL_SESSION once the
-      //     Supabase client finishes reading from localStorage.
-      //     F-007a: If a magic link / OAuth token is present in the URL hash,
-      //     do NOT resolve on a null INITIAL_SESSION — Supabase fires that event
-      //     before it has exchanged the token. Wait for SIGNED_IN which carries
-      //     the real session. Without this guard, requireAuth() sees null and
-      //     redirects to get-started before the session is established.
-      const hasTokenInHash = typeof window !== 'undefined' &&
-        window.location.hash.includes('access_token');
-      try {
-        const { data } = sb.auth.onAuthStateChange(async (_event, session) => {
-          if (session) {
-            finish(session);
-          } else if (!hasTokenInHash) {
-            // F-007c: Null INITIAL_SESSION with no token in URL.
-            // May be genuinely unauthenticated, OR Supabase's internal client
-            // state is stale — firing null before fully reading a valid session
-            // from localStorage (observed on redirect chains after magic link auth).
-            // Verify server-side before resolving null. Typical round-trip ~200ms.
-            if (resolved) return;
-            const authCheck = setTimeout(() => { if (!resolved) finish(null); }, 2000);
-            try {
-              const { data: ud, error: ue } = await sb.auth.getUser();
-              clearTimeout(authCheck);
-              if (ud?.user && !ue && !resolved) {
-                // Server confirms user is authenticated — recover the session.
-                const { data: sd } = await sb.auth.getSession()
-                  .catch(() => ({ data: {} }));
-                if (sd?.session && !resolved) { finish(sd.session); return; }
-                // Session not yet in internal cache — force a refresh to rebuild it.
-                const { data: rd } = await sb.auth.refreshSession()
-                  .catch(() => ({ data: {} }));
-                if (rd?.session && !resolved) { finish(rd.session); return; }
-              }
-            } catch (e) { clearTimeout(authCheck); }
-            if (!resolved) finish(null);
-          }
-          // If hasTokenInHash and null: pre-exchange INITIAL_SESSION.
-          // Timeout (leg c) is the safety net if SIGNED_IN never fires.
-        });
-        if (data?.subscription?.unsubscribe) {
-          unsubscribe = () => data.subscription.unsubscribe();
-        }
-      } catch (e) {
-        // onAuthStateChange not available — fall through to getSession()
+        resolve(session || null);
       }
 
-      // (b) Also attempt immediate getSession() — succeeds if lock already resolved.
-      sb.auth.getSession()
-        .then(({ data: { session } }) => { if (session) finish(session); })
-        .catch(() => { /* ignore, handled by timeout */ });
+      try {
+        var sub = sb.auth.onAuthStateChange(function (event, session) {
+          if (session) {
+            finish(session);
+          } else if (event === 'INITIAL_SESSION' && !hasAuthInUrl && !hasStoredSession) {
+            finish(null);
+          }
+        });
+        if (sub && sub.data && sub.data.subscription && sub.data.subscription.unsubscribe) {
+          unsubscribe = function () { sub.data.subscription.unsubscribe(); };
+        }
+      } catch (e) { /* subscription failed */ }
 
-      // (c) Safety timeout: 3 seconds. Prevents indefinite hang on unexpected failures.
-      setTimeout(() => finish(null), 3000);
+      try {
+        sb.auth.getSession()
+          .then(function (r) { if (r && r.data && r.data.session) finish(r.data.session); })
+          .catch(function () {});
+      } catch (e) {}
+
+      setTimeout(function () {
+        if (resolved) return;
+        sb.auth.refreshSession()
+          .then(function (r) {
+            if (r && r.data && r.data.session) finish(r.data.session);
+          })
+          .catch(function () {});
+      }, 6000);
+
+      setTimeout(function () { if (!resolved) finish(null); }, 8000);
     });
   },
+
 
   /** Get current user */
   async getUser() {
