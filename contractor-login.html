@@ -360,7 +360,7 @@
     btn.innerHTML = 'Redirecting to Google…';
     localStorage.setItem('cs_auth_role', 'contractor');
     try {
-      await Auth.signInWithGoogle('/auth-callback.html');
+      await Auth.signInWithGoogle('/auth-callback.html?intent=contractor');
     } catch (err) {
       console.error('Google sign-in error:', err);
       btn.disabled = false;

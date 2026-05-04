@@ -115,23 +115,54 @@
     document.getElementById('error-state').style.display = 'block';
   }
 
+  function _oqLog() {
+    // Diagnostic logging for the auth flow — visible in DevTools console
+    // and in Sentry breadcrumbs. Safe to keep in production: zero-cost
+    // when nobody is debugging.
+    try {
+      var args = Array.prototype.slice.call(arguments);
+      args.unshift('[auth-callback]');
+      console.log.apply(console, args);
+    } catch (e) {}
+  }
+
+  function _oqGetIntent() {
+    // URL query param wins (survives OAuth round-trip without storage).
+    // localStorage is a backup for older callers that haven't been updated.
+    try {
+      var urlIntent = new URLSearchParams(window.location.search).get('intent');
+      if (urlIntent === 'contractor' || urlIntent === 'homeowner') {
+        _oqLog('intent from URL:', urlIntent);
+        return urlIntent;
+      }
+    } catch (e) {}
+    var ls = localStorage.getItem('cs_auth_role');
+    _oqLog('intent from localStorage:', ls);
+    return ls;
+  }
+
   async function handle(session) {
     if (handled) return;
     handled = true;
 
+    _oqLog('handle() called, session?', !!session, 'url:', window.location.href);
+
     if (!session) {
+      _oqLog('no session — showing error');
       showError();
       return;
     }
 
-    var storedRole = localStorage.getItem('cs_auth_role');
+    var intent = _oqGetIntent();
 
     var role = null;
     try { role = await Auth.getRole(); } catch (e) { role = null; }
+    _oqLog('role from DB:', role, 'intent:', intent, 'user.id:', session.user && session.user.id);
 
     // Hard signal: a contractor record exists. That's the source of truth —
     // even if the user clicked the wrong login button, route them home.
     if (role === 'contractor') {
+      _oqLog('routing -> /contractor-dashboard.html (DB says contractor)');
       window.location.href = '/contractor-dashboard.html';
       return;
     }
@@ -140,14 +171,15 @@
     // but no contractor record exists. Don't drop them into the homeowner
     // dashboard — that's how the contractor->homeowner-dashboard loop
     // started. Route them to the join page so they can apply.
-    if (storedRole === 'contractor') {
+    if (intent === 'contractor') {
+      _oqLog('routing -> /contractor-join.html?from=oauth_no_account (intent=contractor, no contractor record)');
       localStorage.removeItem('cs_auth_role');
       window.location.href = '/contractor-join.html?from=oauth_no_account';
       return;
     }
 
     // Homeowner path — preferred when role or intent says homeowner.
-    if (role === 'homeowner' || storedRole === 'homeowner') {
+    if (role === 'homeowner' || intent === 'homeowner') {
       // Returning homeowner with a claim -> dashboard. New homeowner -> intake.
       try {
         var u = session.user;
@@ -159,17 +191,24 @@
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
+          _oqLog('claim lookup:', claimRes && claimRes.data ? 'has claim' : 'no claim',
+                 'error:', claimRes && claimRes.error && claimRes.error.message);
           if (claimRes && claimRes.data) {
+            _oqLog('routing -> /dashboard.html');
             window.location.href = '/dashboard.html';
             return;
           }
         }
-      } catch (e) { /* fall through to intake */ }
+      } catch (e) {
+        _oqLog('claim check threw:', e && e.message);
+      }
+      _oqLog('routing -> /trade-selector.html (homeowner, no claim)');
       window.location.href = '/trade-selector.html';
       return;
     }
 
     // Brand new user, no signal at all — start the homeowner intake.
+    _oqLog('routing -> /trade-selector.html (no signal at all, default)');
     window.location.href = '/trade-selector.html';
   }
 
