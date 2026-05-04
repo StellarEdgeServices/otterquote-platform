@@ -42,7 +42,7 @@ const Nav = {
     nav.innerHTML = `
       <div class="nav-inner container">
         <a href="${isContractor ? '/contractor-dashboard.html' : '/index.html'}" class="nav-logo">
-          <img src="/img/brand-assets/logo-navy-amber.svg" alt="Otter Quotes" class="nav-logo-icon" style="height:40px;width:auto;object-fit:contain;">
+          <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;mix-blend-mode:multiply;">
           <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
         </a>
         <div class="nav-links" id="nav-links">
@@ -387,7 +387,7 @@ const Nav = {
         <div class="footer-grid">
           <div class="footer-col">
             <div class="footer-logo">
-              <img src="/img/brand-assets/logo-navy-amber.svg" alt="Otter Quotes" class="nav-logo-icon" style="height:40px;width:auto;object-fit:contain;">
+              <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;mix-blend-mode:multiply;">
               <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
             </div>
             <p class="footer-tagline">${isContractor
@@ -471,7 +471,4 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const footer = document.getElementById('site-footer');
-  if (footer) {
-    Nav.renderFooter();
-  }
-});
+  if (foot

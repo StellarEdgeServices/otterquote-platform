@@ -91,12 +91,13 @@
 }
 
 .hero-logo {
-  height: 110px;
+  height: 160px;
   width: auto;
-  margin: 0 auto var(--sp-5);
+  margin: 0 auto var(--sp-6);
   display: block;
   animation: fadeUp 0.5s var(--ease) both;
-  filter: drop-shadow(0 6px 28px rgba(224,123,0,0.22));
+  mix-blend-mode: multiply;
+  filter: contrast(1.15) drop-shadow(0 6px 28px rgba(224,123,0,0.22));
 }
 
 .hero-brand-name {
@@ -584,7 +585,7 @@
 
 @media (max-width: 768px) {
   .hero { padding: var(--sp-16) 0 var(--sp-12); }
-  .hero-logo { height: 80px; width: auto; }
+  .hero-logo { height: 110px; width: auto; }
   .hero-trust { gap: var(--sp-4); }
   .hero-callout-inner { flex-direction: column; }
   .hero-callout-item + .hero-callout-item { border-left: none; border-top: 1px solid rgba(224,123,0,0.25); }
@@ -606,9 +607,7 @@
 <!-- ═══════════════════════════════════════ -->
 <section class="hero">
   <div class="container">
-    <img src="/img/brand-assets/logo-navy-amber.svg" alt="Otter Quotes" class="hero-logo">
-    <div class="hero-brand-name">Otter Quotes</div>
-    <div class="hero-badge">&#x1F4DD; Insurance Claims &amp; Retail Quotes &mdash; All in One Place</div>
+    <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="hero-logo">
     <h1>Stop chasing contractors. <em>Let them compete for you.</em></h1>
 
     <!-- You compare / You choose / You pay nothing &mdash; visually prominent -->
@@ -633,7 +632,7 @@
     </div>
 
     <p class="hero-subtitle">
-      Whether you have an insurance claim or are paying out of pocket, Otter Quotes brings qualified, licensed contractors to you &mdash; competing for your business with their best quote. We handle everything up to a signed agreement.
+      Otter Quotes brings contractors to you. They compete, you win!
     </p>
     <div class="hero-cta">
       <a href="get-started.html" class="btn btn-primary btn-lg">Get My Free Quotes</a>
