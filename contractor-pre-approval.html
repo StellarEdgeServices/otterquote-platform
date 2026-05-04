@@ -270,8 +270,8 @@
                         <p style="margin-top: var(--sp-2);">Otter Quotes uses SMS to notify you of new project opportunities, bid updates, and important platform communications.</p>
                     </div>
                     <div class="check-group" style="margin-bottom: var(--sp-8);">
-                        <input type="checkbox" id="agreeTcpaSms" required>
-                        <label for="agreeTcpaSms">I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe.</label>
+                        <input type="checkbox" id="agreeTcpaSms">
+                        <label for="agreeTcpaSms">I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. (Optional — you can still use the platform without SMS notifications.)</label>
                     </div>
 
                     <!-- 1099-NEC -->
@@ -478,7 +478,7 @@ Review at: https://otterquote.com/admin-contractors.html`,
 
     // ── Step 3 submit ──────────────────────────────────────────────────────────
     async function submitStep3() {
-        const checks = ['agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation','agreeTcpaSms','agree1099Nec'];
+        const checks = ['agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation','agree1099Nec']; // agreeTcpaSms is optional (CTIA — must not be condition of service)
         for (const id of checks) {
             if (!document.getElementById(id).checked) {
                 alert('Please review and accept all agreements before continuing.');
@@ -509,7 +509,7 @@ Review at: https://otterquote.com/admin-contractors.html`,
                     attestation_text_version: 'ic-24511-v1-2026-04',
                     attestation_accepted_at:  now,
                     ic_24511_attestation:     attestation,
-                    sms_consent_ts:           now,
+                    sms_consent_ts:           document.getElementById('agreeTcpaSms').checked ? now : null,
                     agreement_accepted_at:    now,
                     agreement_version:        'v1-2026-04',
                     onboarding_step:          3,

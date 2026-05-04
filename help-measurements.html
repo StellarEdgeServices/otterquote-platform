@@ -538,7 +538,7 @@
                 <h1 class="page-title">Measurements</h1>
                 <p class="page-subtitle">Help Me: Get property measurements for your project</p>
             </div>
-            <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
+            <a class='back-link' href='/dashboard'>← Back to Dashboard</a>
         </div>
 
         <!-- Status Messages -->
@@ -657,7 +657,7 @@
                         </div>
 
                         <div class="button-row" style="justify-content: center;">
-                            <a href="dashboard.html" class="action-btn btn-amber">Return to Dashboard</a>
+                            <a class='action-btn btn-amber' href='/dashboard'>Return to Dashboard</a>
                         </div>
                     </div>
                 </div>
@@ -724,7 +724,7 @@
                     </div>
 
                     <div class="button-row" style="justify-content: center;">
-                        <a href="dashboard.html" class="action-btn btn-amber">Return to Dashboard</a>
+                        <a class='action-btn btn-amber' href='/dashboard'>Return to Dashboard</a>
                     </div>
                 </div>
             </div>
@@ -968,7 +968,7 @@
                     homeowner_name: homeownerName,
                     homeowner_email: currentUser?.email || '',
                     homeowner_phone: currentProfile?.phone || '',
-                    amount_charged: 79.00,
+                    amount_charged: 150.00, // D-205: $150 (raised from $79)
                     deliverable_type_id: 3, // D-205: Complete (universal for all full-replacement jobs)
                     payment_intent_id: paymentIntent.id, // D-181: verification guard in EF
                 });
