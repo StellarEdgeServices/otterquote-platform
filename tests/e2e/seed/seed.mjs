@@ -141,7 +141,7 @@ async function seed() {
     contact_name: 'Test Contractor',
     email: CONTRACTOR_EMAIL,
     phone: '317-555-0200',
-    trades: ['roofing', 'siding'],
+    trades: ['roofing'],
     service_counties: ['IN:*'], // serves all of Indiana (D-192 format)
     address_state: 'IN',
     years_in_business: 5,
@@ -184,40 +184,6 @@ async function seed() {
   }
 
   // ── 6. Fresh test claim ──────────────────────────────────────────────────
-
-  // ── 5b. E2E contract template bypass (D-199 bid gate) ────────────────
-  // The D-199 bid gate checks contractor_templates for a validated template
-  // before allowing bid submission. Inject an auto_validated row so the
-  // test contractor can bid without a real PDF upload.
-  console.log('5b. E2E contract template (D-199 bypass)...');
-  const { error: templateErr } = await supabase
-    .from('contractor_templates')
-    .upsert({
-      contractor_id: contractorId,
-      trade: 'roofing',
-      funding_type: 'insurance',
-      status: 'auto_validated',
-      pdf_storage_path: 'contractor-templates/e2e-test/roofing-insurance-template.pdf',
-      validation_result: { passed: true, anchors_found: ['/ContractorSignHere/', '/ContractorDateHere/', '/ContractorInitial/'], source: 'e2e_seed_injection' },
-    }, { onConflict: 'contractor_id,trade,funding_type' });
-  if (templateErr) throw new Error(`Template seed failed: ${templateErr.message}`);
-  console.log('  ✅ E2E roofing/insurance template seeded (auto_validated)');
-  // ── 5c. Siding/retail template (D-199 gate for retail siding bids) ────
-  console.log('5c. E2E siding/retail contract template (D-199 bypass)...');
-  const { error: sidingTplErr } = await supabase
-    .from('contractor_templates')
-    .upsert({
-      contractor_id: contractorId,
-      trade: 'siding',
-      funding_type: 'retail',
-      status: 'auto_validated',
-      pdf_storage_path: 'contractor-templates/e2e-test/siding-retail-template.pdf',
-      validation_result: { passed: true, anchors_found: ['/ContractorSignHere/'], source: 'e2e_seed_injection' },
-    }, { onConflict: 'contractor_id,trade,funding_type' });
-  if (sidingTplErr) throw new Error(`Siding template seed failed: ${sidingTplErr.message}`);
-  console.log('  ✅ E2E siding/retail template seeded (auto_validated)');
-
-
   console.log('6. Test claim (delete old, create fresh)...');
   // Delete previous test claims to ensure a clean state each run
   await supabase.from('claims').delete().eq('user_id', homeownerUserId);
@@ -263,7 +229,7 @@ async function seed() {
   // ── 6b. Fresh retail siding test claim (D-164 design gate) ─────────────
   console.log('6b. Retail siding test claim (design gate verification)...');
   // Delete previous retail siding test claims
-  await supabase.from('claims').delete().eq('user_id', homeownerUserId).eq('job_type', 'retail');
+  await supabase.from('claims').delete().eq('user_id', homeownerUserId).eq('job_type', 'retail_siding');
 
   const { data: retailClaim, error: retailClaimErr } = await supabase
     .from('claims')
@@ -273,8 +239,8 @@ async function seed() {
       property_address: '100 E Test St, Zionsville, IN 46077',
       property_state: 'IN',
       homeowner_name: 'Test Homeowner',
-      job_type: 'retail',
-      funding_type: 'cash',
+      job_type: 'retail_siding',
+      funding_type: 'homeowner',
       trades: ['siding'],
       damage_type: null,
       material_category: null,
@@ -344,12 +310,16 @@ async function seed() {
     .insert({
       claim_id: testRetailClaimId,
       user_id: homeownerUserId,
+      address: '100 E Test St',
+      city: 'Zionsville',
+      state: 'IN',
+      zip: '46077',
       status: 'complete',
       stripe_payment_id: 'e2e-injected-retail-siding',
       homeowner_stripe_payment_intent_id: null,
       amount_charged: 15000, // Hover measurement + design fee (E2E injected)
       rebate_due: false,
-      hover_job_id: '999999', // Fake job ID for E2E — not queried in test
+      hover_job_id: 999999, // Fake job ID for E2E — not queried in test
       material_list: mockMaterialList,
       measurements_json: {
         structures: [
@@ -361,6 +331,7 @@ async function seed() {
         ],
       },
       created_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
     })
     .select('id')
     .single();

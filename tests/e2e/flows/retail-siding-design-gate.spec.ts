@@ -59,7 +59,7 @@ async function unlockDesignGate(claimId: string): Promise<void> {
   const supabase = createAdminClient();
   const { error } = await supabase
     .from('claims')
-    .update({ siding_bid_released_at: new Date().toISOString(), ready_for_bids: true })
+    .update({ siding_bid_released_at: new Date().toISOString() })
     .eq('id', claimId);
   if (error) {
     throw new Error(`Failed to unlock design gate: ${error.message}`);
@@ -86,27 +86,17 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
 
-    // Wait for opportunities page to finish loading (handles empty state too)
-    // The page either renders claim cards ([data-claim-id]) or an empty-state element
+    // Wait for opportunities to load
     await page.waitForFunction(
-      () => {
-        const hasClaims = document.querySelectorAll('.opportunity-card').length > 0;
-        const hasEmptyState = document.querySelector(
-          '.empty-state, .no-opportunities, [class*="empty"], #noOpportunities, #emptyState, #noClaims'
-        ) !== null;
-        const pageContentLoaded = document.readyState === 'complete';
-        return hasClaims || hasEmptyState || pageContentLoaded;
-      },
+      () => document.querySelectorAll('[data-claim-id]').length > 0,
       { timeout: 15_000 }
     );
-    // Extra wait for async JS render to settle
-    await page.waitForTimeout(2_000);
 
     // Retail siding claim should NOT appear in the opportunities list
     // (siding_bid_released_at is still null from seed)
     const retailClaimElements = await page.locator(
-      '.opportunity-card'
-    ).filter({ hasText: state.testRetailClaimId }).all();
+      `[data-claim-id="${state.testRetailClaimId}"]`
+    ).all();
 
     expect(retailClaimElements.length).toBe(
       0,
@@ -128,13 +118,12 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.waitForLoadState('load');
 
     // Retail siding claim should NOW appear
-    const claimElement = page.locator('.opportunity-card').filter({ hasText: state.testRetailClaimId }).first();
+    const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
 
-    // Verify it shows as retail job type and siding trade badge
-    const hasRetailBadge = await claimElement.locator('.badge-retail').isVisible({ timeout: 3_000 }).catch(() => false);
-    const hasSidingBadge = await claimElement.locator('.badge', { hasText: /siding/i }).isVisible({ timeout: 3_000 }).catch(() => false);
-    expect(hasRetailBadge || hasSidingBadge).toBe(true);
+    // Verify it shows as a siding job type
+    const jobTypeText = await claimElement.locator('[data-job-type], .job-type').textContent();
+    expect(jobTypeText?.toLowerCase() || '').toContain('siding');
 
     console.log('  ✅ Retail siding opportunity now visible (gate unlocked)');
   });
@@ -150,11 +139,11 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
 
-    const claimElement = page.locator('.opportunity-card').filter({ hasText: state.testRetailClaimId }).first();
+    const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
 
     // Click to open bid form
-    const bidButton = claimElement.locator('button').filter({ hasText: /bid|quote|submit|estimate/i }).first();
+    const bidButton = claimElement.locator('button:has-text(/bid|quote|submit|estimate/i)').first();
     if (await bidButton.isVisible()) {
       await bidButton.click();
     } else {
@@ -218,10 +207,10 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
 
-    const claimElement = page.locator('.opportunity-card').filter({ hasText: state.testRetailClaimId }).first();
+    const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
 
-    const bidButton = claimElement.locator('button').filter({ hasText: /bid|quote|submit|estimate/i }).first();
+    const bidButton = claimElement.locator('button:has-text(/bid|quote|submit|estimate/i)').first();
     if (await bidButton.isVisible()) {
       await bidButton.click();
     } else {
@@ -242,7 +231,9 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
       await totalPriceInput.fill('12500');
     }
 
-    const submitButton = page.locator('button').filter({ hasText: /submit|send|create bid|quote/i }).first();
+    const submitButton = page.locator(
+      'button:has-text(/submit|send|create bid|quote/i)'
+    ).first();
     if (await submitButton.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await submitButton.click();
 

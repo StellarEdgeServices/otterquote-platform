@@ -742,18 +742,10 @@
         let currentProfile = null;
         let currentClaim = null;
 
-        // ── Init (F-007 Auth Pattern) ──
-        let _initFired = false;
-        sb.auth.onAuthStateChange((event, session) => {
-            if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-                _initFired = true;
-                initPage(session);
-            }
-        });
-
-        async function initPage(session) {
+        // ── Init ──
+        document.addEventListener('DOMContentLoaded', async () => {
             try {
-                currentUser = session?.user || null;
+                currentUser = await Auth.requireAuth();
 
                 // Demo mode: if no user and DEMO_MODE is true, set up minimal demo state
                 if (!currentUser && CONFIG.DEMO_MODE) {
@@ -776,10 +768,7 @@
                     return;
                 }
 
-                if (!currentUser) {
-                    window.location.href = '/get-started.html';
-                    return;
-                }
+                if (!currentUser) return;
 
                 currentProfile = await Auth.getProfile();
                 await loadClaimData();
@@ -795,7 +784,7 @@
                 console.error('Init error:', err);
                 showMessage('Failed to load page. Please refresh.', 'error');
             }
-        }
+        });
 
         async function loadClaimData() {
             if (!sb || !currentUser) return;
