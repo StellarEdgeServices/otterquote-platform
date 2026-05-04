@@ -2914,21 +2914,20 @@
           let _initFired = false;
           sb.auth.onAuthStateChange(async (event, session) => {
               if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-                  // F-007b: Skip null INITIAL_SESSION — the Supabase client may fire
-                  // this before the session is ready (race on fresh client init, or
-                  // mid-magic-link exchange on a redirect chain). Wait for SIGNED_IN
-                  // which carries the real session. The 3-second timeout below handles
-                  // the genuinely-unauthenticated case.
-                  if (!session && event === 'INITIAL_SESSION') return;
+                  // F-007b+c: Fire init() on any INITIAL_SESSION or SIGNED_IN event.
+                  // Null INITIAL_SESSION no longer short-circuits here — F-007c in
+                  // auth.js getSession() will verify via sb.auth.getUser() (server-side)
+                  // before resolving null, so requireAuth() inside init() correctly
+                  // recovers the session even when INITIAL_SESSION fires null due to
+                  // Supabase internal-state race on redirect chains after magic link auth.
                   _initFired = true;
                   await init();
               }
           });
-          // Safety net: if no session arrives within 3 seconds, run init anyway.
-          // requireAuth() inside init() will redirect to /get-started.html.
+          // Safety net: if no auth event fires within 5s, run init anyway.
           setTimeout(async () => {
               if (!_initFired) { _initFired = true; await init(); }
-          }, 3000);
+          }, 5000);
       });
 
     })();

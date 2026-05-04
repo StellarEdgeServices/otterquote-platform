@@ -46,12 +46,32 @@ window.Auth = {
       const hasTokenInHash = typeof window !== 'undefined' &&
         window.location.hash.includes('access_token');
       try {
-        const { data } = sb.auth.onAuthStateChange((_event, session) => {
+        const { data } = sb.auth.onAuthStateChange(async (_event, session) => {
           if (session) {
             finish(session);
           } else if (!hasTokenInHash) {
-            // No token in URL — null INITIAL_SESSION is authoritative.
-            finish(null);
+            // F-007c: Null INITIAL_SESSION with no token in URL.
+            // May be genuinely unauthenticated, OR Supabase's internal client
+            // state is stale — firing null before fully reading a valid session
+            // from localStorage (observed on redirect chains after magic link auth).
+            // Verify server-side before resolving null. Typical round-trip ~200ms.
+            if (resolved) return;
+            const authCheck = setTimeout(() => { if (!resolved) finish(null); }, 2000);
+            try {
+              const { data: ud, error: ue } = await sb.auth.getUser();
+              clearTimeout(authCheck);
+              if (ud?.user && !ue && !resolved) {
+                // Server confirms user is authenticated — recover the session.
+                const { data: sd } = await sb.auth.getSession()
+                  .catch(() => ({ data: {} }));
+                if (sd?.session && !resolved) { finish(sd.session); return; }
+                // Session not yet in internal cache — force a refresh to rebuild it.
+                const { data: rd } = await sb.auth.refreshSession()
+                  .catch(() => ({ data: {} }));
+                if (rd?.session && !resolved) { finish(rd.session); return; }
+              }
+            } catch (e) { clearTimeout(authCheck); }
+            if (!resolved) finish(null);
           }
           // If hasTokenInHash and null: pre-exchange INITIAL_SESSION.
           // Timeout (leg c) is the safety net if SIGNED_IN never fires.
