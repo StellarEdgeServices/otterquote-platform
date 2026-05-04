@@ -6,7 +6,7 @@ This file governs how Claude (and any AI assistant) interacts with the files in 
 
 ## ⚠️ Large File Edit Rules — MANDATORY
 
-The Cowork Edit tool **silently truncates files** when writing through the Windows bindfs mount. Files over ~1,500 lines will be corrupted without any error message.
+The Cowork Edit tool **silently truncates files** when writing through the Windows bindfs mount. The truncation can hit files of *any size* — confirmed May 4, 2026 on a 161-line file (`auth-callback.html`) and a 587-line file (`get-started.html`) — so the prior "~1,500 lines" threshold is obsolete. **Treat the Cowork Edit and Write tools as unsafe for any file inside `otterquote-deploy/`.** Use Python with `shutil.copy2` for all writes to this directory.
 
 ### Files that MUST NOT be edited via the Cowork Edit tool directly:
 
@@ -19,7 +19,7 @@ The Cowork Edit tool **silently truncates files** when writing through the Windo
 | `supabase/functions/get-hover-pdf/index.ts` | Large Edge Function — confirmed truncation risk |
 | `supabase/functions/process-coi-reminders/index.ts` | Large Edge Function — confirmed truncation risk |
 | `js/auth.js` | Large auth module — confirmed truncation risk |
-| **Any file over ~1,500 lines** | General rule — check line count before editing |
+| **Any file in `otterquote-deploy/`** | Cowork Edit/Write through bindfs truncates silently at any size — confirmed May 4, 2026 on a 161-line file. Use Python `shutil.copy2` for all writes. |
 
 ### Required approach for these files:
 
@@ -29,7 +29,7 @@ Use Python or bash to apply patches. Read the file in memory, modify, write to `
 - `sed -i` — uses a temp file + rename under the hood; truncates through bindfs (confirmed May 1, 2026 on a 112-line file)
 - Any tool that writes by creating a temp file and renaming (patch, perl -i, etc.)
 
-**Safe operations on the mount:** direct writes (`echo > file`, `cat > file`, `cp /tmp/file mount/file`), the Cowork Write/Edit tools for files under ~1,500 lines.
+**Safe operations on the mount:** direct writes via Python `shutil.copy2` (preferred), or `cp /tmp/file mount/file` from a sandbox temp file. Avoid the Cowork Write/Edit tools entirely on this directory.
 
 **Recovery command for Edge Functions if truncated:**
 ```bash
