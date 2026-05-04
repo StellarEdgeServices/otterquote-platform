@@ -38,9 +38,23 @@ window.Auth = {
 
       // (a) Subscribe to auth state change — fires INITIAL_SESSION once the
       //     Supabase client finishes reading from localStorage.
+      //     F-007a: If a magic link / OAuth token is present in the URL hash,
+      //     do NOT resolve on a null INITIAL_SESSION — Supabase fires that event
+      //     before it has exchanged the token. Wait for SIGNED_IN which carries
+      //     the real session. Without this guard, requireAuth() sees null and
+      //     redirects to get-started before the session is established.
+      const hasTokenInHash = typeof window !== 'undefined' &&
+        window.location.hash.includes('access_token');
       try {
         const { data } = sb.auth.onAuthStateChange((_event, session) => {
-          finish(session);
+          if (session) {
+            finish(session);
+          } else if (!hasTokenInHash) {
+            // No token in URL — null INITIAL_SESSION is authoritative.
+            finish(null);
+          }
+          // If hasTokenInHash and null: pre-exchange INITIAL_SESSION.
+          // Timeout (leg c) is the safety net if SIGNED_IN never fires.
         });
         if (data?.subscription?.unsubscribe) {
           unsubscribe = () => data.subscription.unsubscribe();
