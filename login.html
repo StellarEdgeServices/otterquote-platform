@@ -369,12 +369,21 @@
     }
   });
 
-  // If already logged in, go to dashboard
-  Auth.getUser().then(async user => {
-    if (user) {
-      await Auth.redirectToDashboard();
-    }
-  });
+  // If already logged in, go to dashboard — UNLESS we landed here from
+  // the admin-auth-gate denying access. In that case, leave the user on
+  // this page so the "admin required" banner is visible and they can sign
+  // in as admin (or just understand why they bounced). Without this guard,
+  // a non-admin (or admin with a stale sq_at cookie) gets bounced
+  // /admin-*.html → login.html?reason=admin_required → role-based
+  // dashboard, and the banner never shows.
+  var fromAdminGate = new URLSearchParams(window.location.search).get('reason') === 'admin_required';
+  if (!fromAdminGate) {
+    Auth.getUser().then(async user => {
+      if (user) {
+        await Auth.redirectToDashboard();
+      }
+    });
+  }
 })();
 </script>
 

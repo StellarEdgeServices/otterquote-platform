@@ -756,7 +756,10 @@ https://otterquote.com`;
    * Also keeps the sq_at cookie in sync for the Netlify edge gate (W4-P1).
    */
   onAuthStateChangeListener() {
+    // Idempotent: safe to call from multiple pages or auto-init.
+    if (this._listenerWired) return;
     if (!sb) return;
+    this._listenerWired = true;
     sb.auth.onAuthStateChange(async (event, session) => {
       // Keep sq_at cookie in sync across all auth lifecycle events
       if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -772,3 +775,16 @@ https://otterquote.com`;
     });
   }
 };
+
+// Auto-wire the auth state listener on every page that loads auth.js.
+// Fixes the sq_at cookie going stale on every page other than get-started.html
+// and partner-dashboard.html (the only two pages that previously called this
+// explicitly). Without this, TOKEN_REFRESHED events on most pages never reached
+// _syncAdminCookie, and admins were eventually bounced from /admin-*.html with
+// reason=admin_required despite holding a valid session.
+// onAuthStateChangeListener is idempotent (guarded by _listenerWired), so
+// existing explicit calls in get-started.html and partner-dashboard.html remain
+// safe no-ops.
+if (typeof window !== 'undefined' && window.Auth && typeof window.Auth.onAuthStateChangeListener === 'function') {
+  try { window.Auth.onAuthStateChangeListener(); } catch (e) { /* non-fatal */ }
+}
