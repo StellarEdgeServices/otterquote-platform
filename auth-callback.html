@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<!-- D-208: Capture auth tokens before Supabase createClient() clears the URL -->
+<script>window._oq_has_auth_in_url = window.location.hash.includes('access_token') || window.location.search.includes('code=');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Signing In &mdash; Otter Quotes</title>
+<meta name="robots" content="noindex, nofollow">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Rubik', sans-serif;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    color: #1a1a2e;
+  }
+  .callback-card {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    padding: 48px 40px;
+    text-align: center;
+    max-width: 420px;
+    width: 90%;
+  }
+  .otter-logo {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 24px;
+    display: block;
+  }
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #e2e8f0;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 24px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  h1 {
+    font-size: 1.375rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #1a1a2e;
+  }
+  .subtitle {
+    font-size: 0.9375rem;
+    color: #64748b;
+    line-height: 1.5;
+  }
+  .error-state { display: none; }
+  .error-state .error-icon {
+    font-size: 2.5rem;
+    margin-bottom: 16px;
+  }
+  .error-state h1 { color: #dc2626; }
+  .error-state .subtitle { margin-bottom: 24px; }
+  .btn-retry {
+    display: inline-block;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: inherit;
+  }
+  .btn-retry:hover { background: #1d4ed8; }
+</style>
+</head>
+<body>
+
+<div class="callback-card" id="loading-state">
+  <img src="/img/otter-logo.svg" alt="Otter Quotes" class="otter-logo" onerror="this.style.display='none'">
+  <div class="spinner"></div>
+  <h1>Signing you in&hellip;</h1>
+  <p class="subtitle">Just a moment while we verify your session.</p>
+</div>
+
+<div class="callback-card error-state" id="error-state">
+  <div class="error-icon">🔒</div>
+  <h1>Sign-in failed</h1>
+  <p class="subtitle">Your sign-in link may have expired or already been used. Please request a new one.</p>
+  <a href="/get-started.html" class="btn-retry">Try again</a>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var handled = false;
+
+  function showError() {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('error-state').style.display = 'block';
+  }
+
+  async function handle(session) {
+    if (handled) return;
+    handled = true;
+
+    if (!session) {
+      showError();
+      return;
+    }
+
+    try {
+      var role = await Auth.getRole();
+    } catch (e) {
+      // getRole failed — fall back to localStorage hint
+      var role = null;
+    }
+
+    if (role === 'contractor') {
+      window.location.href = '/contractor-dashboard.html';
+    } else if (role === 'homeowner') {
+      window.location.href = '/dashboard.html';
+    } else {
+      // Role unknown — use the hint we stored before leaving the login page
+      var storedRole = localStorage.getItem('cs_auth_role');
+      if (storedRole === 'contractor') {
+        window.location.href = '/contractor-dashboard.html';
+      } else {
+        // New user with no stored role — send to trade-selector for intake
+        window.location.href = '/trade-selector.html';
+      }
+    }
+  }
+
+  // D-208 F-007d pattern: wait for PKCE exchange if code is in URL
+  sb.auth.onAuthStateChange(async function(event, session) {
+    if (event === 'SIGNED_IN' && session) {
+      await handle(session);
+    } else if (event === 'INITIAL_SESSION') {
+      if (session) {
+        await handle(session);
+      } else if (!window._oq_has_auth_in_url) {
+        // No auth tokens in URL and no existing session — something went wrong
+        await handle(null);
+      }
+      // else: _oq_has_auth_in_url is true, PKCE exchange in progress — wait for SIGNED_IN
+    }
+  });
+
+  // Safety timeout: 30 seconds
+  setTimeout(function() {
+    if (!handled) {
+      handle(null);
+    }
+  }, 30000);
+
+})();
+</script>
+
+</body>
+</html>
