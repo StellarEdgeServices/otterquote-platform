@@ -274,17 +274,6 @@
                         <label for="agreeTcpaSms">I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. (Optional — you can still use the platform without SMS notifications.)</label>
                     </div>
 
-                    <!-- 1099-NEC -->
-                    <div class="info-box">
-                        <strong>Tax Reporting Notice</strong>
-                        <p style="margin-top: var(--sp-2);">Otter Quotes does not withhold taxes from your payments. If you receive $600 or more in a calendar year, we file a Form 1099-NEC with the IRS. You are responsible for all federal, state, and local tax obligations on income earned through the platform.</p>
-                        <p><strong style="color:var(--white);">We recommend consulting a qualified tax professional regarding your obligations as an independent contractor.</strong></p>
-                    </div>
-                    <div class="check-group" style="margin-bottom: var(--sp-4);">
-                        <input type="checkbox" id="agree1099Nec" required>
-                        <label for="agree1099Nec">I understand Otter Quotes will issue Form 1099-NEC if I receive $600 or more through the platform in a calendar year. No taxes are withheld. I am solely responsible for all tax obligations on income earned through the platform.</label>
-                    </div>
-
                     <button class="btn-primary" onclick="submitStep3()">Continue to Contract Template →</button>
                 </div>
 
@@ -482,7 +471,7 @@ Review at: https://otterquote.com/admin-contractors.html`,
 
     // ── Step 3 submit ──────────────────────────────────────────────────────────
     async function submitStep3() {
-        const checks = ['agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation','agree1099Nec']; // agreeTcpaSms is optional (CTIA — must not be condition of service)
+        const checks = ['agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation']; // agreeTcpaSms is optional (CTIA — must not be condition of service); 1099-NEC ack removed May 4, 2026 — contractors pay OtterQuote, they do not receive 1099-NEC.
         for (const id of checks) {
             if (!document.getElementById(id).checked) {
                 alert('Please review and accept all agreements before continuing.');
@@ -499,8 +488,6 @@ Review at: https://otterquote.com/admin-contractors.html`,
             user_agent:             navigator.userAgent,
             platform_agreement_ack: true,
             cancellation_policy_ack: true,
-            tax_1099_nec_ack:       true,
-            tax_1099_nec_version:   '1099-nec-v1-2026-04',
         };
 
         try {
