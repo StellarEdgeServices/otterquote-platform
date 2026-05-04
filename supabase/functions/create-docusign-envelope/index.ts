@@ -427,7 +427,7 @@ function base64EncodeBinary(bytes: Uint8Array): string {
  * Uses a minimal PDF generator (no external libraries) to produce a valid PDF
  * with the required legal text.
  */
-function generateComplianceAddendumPdf(contractorName: string, homeownerName: string, contractDate: string): string {
+function generateComplianceAddendumPdf(contractorName: string, homeownerName: string, contractDate: string, isRetail: boolean = false): string {
   // Minimal PDF generator — builds a valid PDF 1.4 document with text content
   const lines: string[] = [];
   const objects: { offset: number }[] = [];
@@ -567,6 +567,15 @@ function generateComplianceAddendumPdf(contractorName: string, homeownerName: st
     `OtterQuote is a technology platform that facilitates connections between homeowners and contractors. OtterQuote is NOT a party to this contract and assumes no liability for work performed under this agreement. This contract is between the homeowner and the contractor named above.`,
     512);
   y -= 10;
+
+  // D-P7-001: Incorporation-by-reference language (retail jobs only)
+  if (isRetail) {
+    y -= 10;
+    y = addWrappedText(50, y, 10, "F1",
+      `The Scope of Work attached as Exhibit A to this Agreement is incorporated herein by reference.`,
+      512);
+    y -= 20;
+  }
 
   addText(50, y, 10, "F1", `Down payment may not exceed $1,000 or 10% of contract price, whichever is less (IC 24-5-11-12).`);
   y -= 30;
@@ -1516,9 +1525,8 @@ function getDocumentLabel(documentType: string, scope?: string): string {
     case "contract":
     case "contractor_sign":
     case "homeowner_sign": {
-      if (scope === "repair") return "Repair Contract";
-      if (scope === "replacement") return "Replacement Contract";
-      return "Roofing Contract";
+      // D-P7-004: Changed from trade-specific labels (Roofing, Repair, Replacement) to unified "Home Improvement Contract" per GC requirement
+      return "Home Improvement Contract";
     }
     case "color_confirmation": return "Color Confirmation";
     case "project_confirmation": return "Project Confirmation";
@@ -1738,12 +1746,12 @@ async function handleContractorSign(
   const contractDate = new Date().toLocaleDateString("en-US");
   const contractorName = contractorData?.company_name || signer.name || "Contractor";
   const homeownerName = autoFields.customer_name || "Homeowner";
-  const addendumBase64 = generateComplianceAddendumPdf(contractorName, homeownerName, contractDate);
-
   // For retail (non-insurance) jobs: generate a Scope of Work PDF and attach it as
   // document 2. The IC 24-5-11 compliance addendum shifts to document 3.
   // For insurance jobs the loss sheet serves as the scope reference — no SOW generated.
   const isRetail = fundingType !== "insurance";
+
+  const addendumBase64 = generateComplianceAddendumPdf(contractorName, homeownerName, contractDate, isRetail);
   let scopeOfWorkBase64: string | null = null;
   if (isRetail) {
     try {
