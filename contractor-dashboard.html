@@ -969,6 +969,7 @@
     <footer id="site-footer"></footer>
 
     <!-- Scripts -->
+    <script>window._oq_has_auth_in_url = window.location.hash.includes('access_token') || window.location.search.includes('code=');</script>
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
@@ -1647,10 +1648,26 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            await init();
-            await checkDunningStatus();
-            initMarkCompleteFlow();
+        // F-007d: Use onAuthStateChange + _oq_has_auth_in_url (D-208) to prevent
+        // the INITIAL_SESSION null race condition from triggering requireAuth()
+        // before the PKCE exchange completes on Google OAuth / magic link callbacks.
+        document.addEventListener('DOMContentLoaded', () => {
+            let _initFired = false;
+            sb.auth.onAuthStateChange(async (event, session) => {
+                if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
+                    // Auth callback landing: skip null INITIAL_SESSION, wait for SIGNED_IN.
+                    if (event === 'INITIAL_SESSION' && session === null && window._oq_has_auth_in_url) {
+                        return;
+                    }
+                    _initFired = true;
+                    await init();
+                    await checkDunningStatus();
+                    initMarkCompleteFlow();
+                }
+            });
+            setTimeout(async () => {
+                if (!_initFired) { _initFired = true; await init(); await checkDunningStatus(); initMarkCompleteFlow(); }
+            }, 8000);
         });
 
         // ── Mark Job Complete Flow ────────────────────────────────────────────────────────────────────

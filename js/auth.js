@@ -130,6 +130,22 @@ window.Auth = {
     return true;
   },
 
+  /**
+   * Sign in with Google OAuth.
+   * D-207: Google OAuth as primary sign-in method.
+   * @param {string} redirectPage - Path to redirect after auth (e.g. '/dashboard.html')
+   */
+  async signInWithGoogle(redirectPage = '/dashboard.html') {
+    if (!sb) throw new Error('Supabase not initialized');
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${CONFIG.SITE_URL}${redirectPage}`,
+      }
+    });
+    if (error) throw error;
+  },
+
   /** Sign out */
   async signOut() {
     if (!sb) return;

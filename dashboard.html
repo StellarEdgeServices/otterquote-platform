@@ -1248,6 +1248,7 @@
 
   <footer id="site-footer"></footer>
 
+  <script>window._oq_has_auth_in_url = window.location.hash.includes('access_token') || window.location.search.includes('code=');</script>
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
@@ -2918,12 +2919,12 @@
           // (which also fails -- no token in storage yet) -> redirect to get-started.
           // Fix: skip null INITIAL_SESSION when a code/hash is in the URL and wait for
           // SIGNED_IN, which fires after the exchange succeeds with a valid session.
-          const hasAuthInUrl = window.location.hash.includes('access_token') ||
-                               window.location.search.includes('code=');
           sb.auth.onAuthStateChange(async (event, session) => {
               if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
                   // Magic link landing: INITIAL_SESSION is pre-exchange; wait for SIGNED_IN.
-                  if (event === 'INITIAL_SESSION' && session === null && hasAuthInUrl) {
+                  // window._oq_has_auth_in_url is captured BEFORE config.js loads (D-208) so
+                  // Supabase's synchronous hash-clearing doesn't hide the auth-in-url signal.
+                  if (event === 'INITIAL_SESSION' && session === null && window._oq_has_auth_in_url) {
                       return;
                   }
                   _initFired = true;
