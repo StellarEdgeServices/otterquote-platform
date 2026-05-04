@@ -2912,22 +2912,28 @@
 
       document.addEventListener('DOMContentLoaded', () => {
           let _initFired = false;
+          // F-007d: Detect magic link landing. When dashboard.html is the emailRedirectTo
+          // target, Supabase fires INITIAL_SESSION null BEFORE the PKCE code exchange
+          // completes. Calling init() on that null event triggers requireAuth() -> getUser()
+          // (which also fails -- no token in storage yet) -> redirect to get-started.
+          // Fix: skip null INITIAL_SESSION when a code/hash is in the URL and wait for
+          // SIGNED_IN, which fires after the exchange succeeds with a valid session.
+          const hasAuthInUrl = window.location.hash.includes('access_token') ||
+                               window.location.search.includes('code=');
           sb.auth.onAuthStateChange(async (event, session) => {
               if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-                  // F-007b+c: Fire init() on any INITIAL_SESSION or SIGNED_IN event.
-                  // Null INITIAL_SESSION no longer short-circuits here — F-007c in
-                  // auth.js getSession() will verify via sb.auth.getUser() (server-side)
-                  // before resolving null, so requireAuth() inside init() correctly
-                  // recovers the session even when INITIAL_SESSION fires null due to
-                  // Supabase internal-state race on redirect chains after magic link auth.
+                  // Magic link landing: INITIAL_SESSION is pre-exchange; wait for SIGNED_IN.
+                  if (event === 'INITIAL_SESSION' && session === null && hasAuthInUrl) {
+                      return;
+                  }
                   _initFired = true;
                   await init();
               }
           });
-          // Safety net: if no auth event fires within 5s, run init anyway.
+          // Safety net: if no auth event fires within 8s, run init anyway.
           setTimeout(async () => {
               if (!_initFired) { _initFired = true; await init(); }
-          }, 5000);
+          }, 8000);
       });
 
     })();
