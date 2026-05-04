@@ -88,6 +88,11 @@
     <header id="site-header" data-auth="true"></header>
 
     <main>
+        <!-- D-207 oauth_no_account banner — shown when redirected from auth-callback.html -->
+        <div id="oauth-no-account-banner" style="display:none;background:#FEF3C7;border-bottom:1px solid #F59E0B;padding:14px 20px;text-align:center;color:#92400E;font-family:'Rubik',sans-serif;font-size:0.95rem;line-height:1.5;">
+          <strong>No contractor account found for that Google sign-in.</strong>
+          Apply below — once your application is approved, you'll be able to sign in with Google.
+        </div>
         <section class="hero">
             <div class="container">
                 <h1>Join the Otter Quotes Contractor Network</h1>
@@ -269,6 +274,17 @@
                 alert(err.message || 'Something went wrong. Please try again or contact support@otterquote.com.');
             }
         });
+    </script>
+    <script>
+      // D-207: surface a friendly explanation when auth-callback redirected here
+      (function () {
+        try {
+          if (new URLSearchParams(location.search).get('from') === 'oauth_no_account') {
+            var b = document.getElementById('oauth-no-account-banner');
+            if (b) b.style.display = 'block';
+          }
+        } catch (e) { /* ignore */ }
+      })();
     </script>
 </body>
 </html>
