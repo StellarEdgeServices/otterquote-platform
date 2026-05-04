@@ -173,7 +173,37 @@ window.Auth = {
       const user = await this.getUser();
       return user || null; // Return null without redirecting
     }
-    const user = await this.getUser();
+    let user = await this.getUser();
+
+    // Race guard (added May 4, 2026): if localStorage shows a stored session
+    // but getUser() returned null, Supabase JS has not yet surfaced the
+    // session — most commonly during the brief post-auth-callback window
+    // where the session was just written to storage but the new page has
+    // not finished initialization. Without this guard the page bounces to
+    // login.html, which then bounces back if its own getUser succeeds —
+    // producing the dashboard ↔ login flip Dustin reported May 4, 2026.
+    // Poll up to 4 times at 500ms intervals (max 2s) before giving up.
+    if (!user) {
+      try {
+        var refMatch = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL ? CONFIG.SUPABASE_URL : '').match(/https:\/\/([^.]+)/);
+        var ref = refMatch ? refMatch[1] : null;
+        var raw = ref ? localStorage.getItem('sb-' + ref + '-auth-token') : null;
+        var hasStored = false;
+        if (raw) {
+          try {
+            var parsed = JSON.parse(raw);
+            hasStored = !!(parsed && (parsed.access_token || parsed.refresh_token));
+          } catch (e) {}
+        }
+        if (hasStored) {
+          for (var i = 0; i < 4 && !user; i++) {
+            await new Promise(function (r) { setTimeout(r, 500); });
+            user = await this.getUser();
+          }
+        }
+      } catch (e) { /* fall through to bounce */ }
+    }
+
     if (!user) {
       sessionStorage.setItem('cs_redirect', window.location.pathname);
       // Send to the correct login page based on the page they tried to visit

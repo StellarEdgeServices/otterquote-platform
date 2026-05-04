@@ -434,8 +434,17 @@
   // Check if user is already logged in as a contractor — redirect to their dashboard.
   // If a homeowner navigates here (e.g. clicked "I'm a Contractor" from the home page),
   // we intentionally stay on this page so they can sign in with a contractor account.
+  // Loop guard (May 4, 2026): if the user just bounced FROM contractor-dashboard.html,
+  // do NOT redirect back — that's the dashboard ↔ login flip pattern. Instead, leave
+  // them on this page so they can investigate. Pairs with the requireAuth race-guard
+  // retry in js/auth.js.
   Auth.getUser().then(async user => {
     if (user) {
+      const cameFromDashboard = (document.referrer || '').includes('/contractor-dashboard.html');
+      if (cameFromDashboard) {
+        console.warn('[contractor-login] Detected return-bounce from contractor-dashboard; staying on login to break the loop.');
+        return;
+      }
       const role = await Auth.getRole();
       if (role === 'contractor') {
         window.location.href = '/contractor-dashboard.html';
