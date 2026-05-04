@@ -360,7 +360,7 @@
     btn.innerHTML = 'Redirecting to Google…';
     localStorage.setItem('cs_auth_role', 'contractor');
     try {
-      await Auth.signInWithGoogle('/contractor-dashboard.html');
+      await Auth.signInWithGoogle('/auth-callback.html');
     } catch (err) {
       console.error('Google sign-in error:', err);
       btn.disabled = false;
@@ -392,7 +392,7 @@
       localStorage.setItem('cs_auth_role', 'contractor');
 
       // Send magic link with contractor redirect
-      await Auth.sendMagicLink(email, 'contractor');
+      await Auth.sendMagicLink(email, 'contractor', '/auth-callback.html');
 
       // Show success state
       form.classList.add('hidden');
@@ -423,7 +423,7 @@
     const email = sentEmail.textContent;
     if (email) {
       try {
-        await Auth.sendMagicLink(email, 'contractor');
+        await Auth.sendMagicLink(email, 'contractor', '/auth-callback.html');
         alert('Login link resent! Check your email.');
       } catch (err) {
         alert('Could not resend. Please try again in a moment.');
