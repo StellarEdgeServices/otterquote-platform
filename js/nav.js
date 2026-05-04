@@ -471,4 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const footer = document.getElementById('site-footer');
-  if (foot
+  if (footer) {
+    Nav.renderFooter();
+  }
+});

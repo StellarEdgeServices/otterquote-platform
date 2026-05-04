@@ -83,6 +83,7 @@
             font-family: var(--font-heading);
             font-size: 2.5rem;
             font-weight: 700;
+            color: var(--white);
             margin-bottom: var(--sp-4);
         }
 
@@ -628,8 +629,8 @@
     <main>
         <!-- Incomplete-profile banner: shown when redirected from bid form -->
         <div id="incompleteBanner" style="display:none; background:#FEF3C7; border-bottom:3px solid #E07B00; padding:1rem 1.5rem; text-align:center;">
-            <strong style="color:#92400E;">â ï¸ Complete your profile before bidding.</strong>
-            <span style="color:#78350F; margin-left:0.5rem;">Please fill in your company name, phone number, trades, and service counties â then you'll be ready to submit bids.</span>
+            <strong style="color:#92400E;">⚠️ Complete your profile before bidding.</strong>
+            <span style="color:#78350F; margin-left:0.5rem;">Please fill in your company name, phone number, trades, and service counties — then you'll be ready to submit bids.</span>
         </div>
 
         <!-- Header -->
@@ -644,7 +645,7 @@
         <div class="container">
             <!-- Company Info Card -->
             <div class="profile-card">
-                <h2><span class="card-icon">ð¢</span>Company Information</h2>
+                <h2><span class="card-icon">🏢</span>Company Information</h2>
 
                 <div class="edit-toggle" id="companyEditToggle">
                     <button class="btn btn-primary" onclick="toggleEdit('company')">Edit Company Info</button>
@@ -760,7 +761,7 @@
 
             <!-- Photos Card -->
             <div class="profile-card">
-                <h2><span class="card-icon">ð¸</span>Photos</h2>
+                <h2><span class="card-icon">📸</span>Photos</h2>
 
                 <div class="edit-toggle">
                     <button class="btn btn-primary" onclick="toggleEdit('photos')">Edit Photos</button>
@@ -771,7 +772,7 @@
                     <div class="form-group">
                         <label class="form-label">Owner Photo</label>
                         <div style="width: 200px; height: 200px; background-color: var(--light); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; color: var(--slate); margin-bottom: var(--sp-6);">
-                            ð· No photo
+                            📷 No photo
                         </div>
                     </div>
 
@@ -790,7 +791,7 @@
                         <div class="image-upload">
                             <input type="file" id="ownerPhotoInput" accept="image/*">
                             <label for="ownerPhotoInput" class="upload-label">
-                                ð¸ Click to upload owner photo or drag and drop
+                                📸 Click to upload owner photo or drag and drop
                             </label>
                         </div>
                         <div id="ownerPhotoPreview"></div>
@@ -801,7 +802,7 @@
                         <div class="image-upload">
                             <input type="file" id="galleryInput" accept="image/*" multiple>
                             <label for="galleryInput" class="upload-label">
-                                ð¸ Click to upload project photos or drag and drop
+                                📸 Click to upload project photos or drag and drop
                             </label>
                         </div>
                         <div class="gallery-grid" id="galleryPreview"></div>
@@ -857,7 +858,7 @@
 
             <!-- Credentials Card -->
             <div class="profile-card">
-                <h2><span class="card-icon">â</span>Credentials & Verification</h2>
+                <h2><span class="card-icon">✓</span>Credentials & Verification</h2>
 
                 <!-- View Mode -->
                 <div id="credentialsView">
@@ -935,7 +936,7 @@
 
             <!-- Your Documents Card (IMP-007) -->
             <div class="profile-card">
-                <h2><span class="card-icon">ð</span>Your Documents</h2>
+                <h2><span class="card-icon">📋</span>Your Documents</h2>
 
                 <p style="color: var(--slate); margin-bottom: var(--sp-6); font-size: 0.95rem;">
                     Documents you uploaded during the contractor onboarding process. You can view or replace them here.
@@ -972,7 +973,7 @@
 
             <!-- Reviews & Ratings Card -->
             <div class="profile-card">
-                <h2><span class="card-icon">â­</span>Reviews & Ratings</h2>
+                <h2><span class="card-icon">⭐</span>Reviews & Ratings</h2>
 
                 <div class="edit-toggle">
                     <button class="btn btn-primary" onclick="toggleEdit('reviews')">Edit Review Links</button>
@@ -1040,7 +1041,7 @@
 
             <!-- Service Area Card -->
             <div class="profile-card">
-                <h2><span class="card-icon">ð</span>Service Area & Trades</h2>
+                <h2><span class="card-icon">📍</span>Service Area & Trades</h2>
 
                 <!-- View Mode -->
                 <div id="serviceAreaView">
@@ -1064,7 +1065,7 @@
                     </div>
                 </div>
 
-                <!-- Edit Mode â D-192: checkbox style (state â Entire State / Specific Counties â county checkboxes) -->
+                <!-- Edit Mode — D-192: checkbox style (state → Entire State / Specific Counties → county checkboxes) -->
                 <div id="serviceAreaEdit" style="display: none;">
                     <p style="font-size:0.85rem; color:var(--slate); margin-bottom:var(--sp-4);">Select the states you serve. For each state, choose full state coverage or specific counties.</p>
                     <!-- State selection grid (populated by SVC.buildGrid) -->
@@ -1123,7 +1124,7 @@
 
             <!-- Contract Templates Card (IMP-009) -->
             <div class="profile-card" id="contract-templates">
-                <h2><span class="card-icon">ð</span>Contract Templates</h2>
+                <h2><span class="card-icon">📑</span>Contract Templates</h2>
 
                 <div class="info-box" style="margin-bottom: var(--sp-6);">
                     Upload your contract template for each type of work. Otter Quotes will auto-populate your company details and get it signed by the homeowner. The contract is sent for e-signature via DocuSign.
@@ -1135,17 +1136,17 @@
                         Otter Quotes scans your contract for these labels and auto-fills the corresponding data:
                     </p>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); font-size: 0.85rem;">
-                        <div><strong>Name</strong> â Homeowner name</div>
-                        <div><strong>Address:</strong> â Property address</div>
-                        <div><strong>Phone</strong> â Homeowner phone</div>
-                        <div><strong>Email:</strong> â Homeowner email</div>
-                        <div><strong>Insurance Co</strong> â Insurance carrier</div>
-                        <div><strong>Claim #</strong> â Claim number</div>
-                        <div><strong>Deductible:</strong> â Deductible amount</div>
-                        <div><strong>Contract Price:</strong> â Bid amount</div>
-                        <div><strong>Material:</strong> â Shingle brand/type</div>
-                        <div><strong>Warranty:</strong> â Warranty years</div>
-                        <div><strong>Statement of Work:</strong> â Scope of work / SOW</div>
+                        <div><strong>Name</strong> → Homeowner name</div>
+                        <div><strong>Address:</strong> → Property address</div>
+                        <div><strong>Phone</strong> → Homeowner phone</div>
+                        <div><strong>Email:</strong> → Homeowner email</div>
+                        <div><strong>Insurance Co</strong> → Insurance carrier</div>
+                        <div><strong>Claim #</strong> → Claim number</div>
+                        <div><strong>Deductible:</strong> → Deductible amount</div>
+                        <div><strong>Contract Price:</strong> → Bid amount</div>
+                        <div><strong>Material:</strong> → Shingle brand/type</div>
+                        <div><strong>Warranty:</strong> → Warranty years</div>
+                        <div><strong>Statement of Work:</strong> → Scope of work / SOW</div>
                         <div></div>
                     </div>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--sp-3);">
@@ -1169,7 +1170,7 @@
                             <h2 style="font-size: 1.25rem; margin: 0;">Review Field Mapping</h2>
                             <p id="fieldMappingSubtitle" style="font-size: 0.85rem; color: var(--text-muted); margin: var(--sp-1) 0 0;"></p>
                         </div>
-                        <button onclick="closeFieldMappingModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); line-height: 1;">â</button>
+                        <button onclick="closeFieldMappingModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); line-height: 1;">✕</button>
                     </div>
                     <p style="font-size: 0.9rem; color: var(--slate); margin-bottom: var(--sp-5);">
                         Otter Quotes searches your PDF for the label text in the left column and replaces it with the Otter Quotes data shown on the right. If your contract uses different label text, update the left column to match exactly.
@@ -1190,26 +1191,26 @@
                 </div>
             </div>
 
-            <!-- Project Confirmation Templates Card (D-161) â 8-slot grid, one per trade Ã funding type -->
+            <!-- Project Confirmation Templates Card (D-161) — 8-slot grid, one per trade × funding type -->
             <div class="profile-card" id="pc-templates">
-                <h2><span class="card-icon">ð</span>Project Confirmation Templates</h2>
+                <h2><span class="card-icon">📋</span>Project Confirmation Templates</h2>
 
                 <div class="info-box" style="margin-bottom: var(--sp-6);">
-                    Upload a project confirmation PDF template for each trade and funding type. After a homeowner signs the main contract, Otter Quotes selects the matching template and sends it to capture full scope details â structures, colors, materials, skylights, and work authorizations. Otter Quotes auto-fills homeowner name and property address before sending for e-signature via DocuSign.
+                    Upload a project confirmation PDF template for each trade and funding type. After a homeowner signs the main contract, Otter Quotes selects the matching template and sends it to capture full scope details — structures, colors, materials, skylights, and work authorizations. Otter Quotes auto-fills homeowner name and property address before sending for e-signature via DocuSign.
                 </div>
 
                 <div class="info-box" style="margin-bottom: var(--sp-6); background: rgba(245,158,11,0.08); border-left: 3px solid var(--amber);">
-                    <strong>â ï¸ Templates are per-trade and per-funding type</strong> â your confirmation docs differ by trade and by insurance vs. retail, just like your contracts. Upload the right template into each slot you use.
+                    <strong>⚠️ Templates are per-trade and per-funding type</strong> — your confirmation docs differ by trade and by insurance vs. retail, just like your contracts. Upload the right template into each slot you use.
                 </div>
 
                 <div id="pcTemplatesGrid" style="display: grid; gap: var(--sp-6); margin-top: var(--sp-8);">
-                    <div style="color: var(--slate); font-size: 0.875rem;">Loading templatesâ¦</div>
+                    <div style="color: var(--slate); font-size: 0.875rem;">Loading templates…</div>
                 </div>
             </div>
 
             <!-- Platform Stats Card -->
             <div class="profile-card">
-                <h2><span class="card-icon">ð</span>Platform Statistics</h2>
+                <h2><span class="card-icon">📊</span>Platform Statistics</h2>
 
                 <div class="stats-grid">
                     <div class="stat-item">
@@ -1218,15 +1219,15 @@
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">Platform Rating</div>
-                        <div class="stat-value" id="statRating">â</div>
+                        <div class="stat-value" id="statRating">—</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">Avg. First Contact</div>
-                        <div class="stat-value" id="statFirstContact">â</div>
+                        <div class="stat-value" id="statFirstContact">—</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">Avg. Bid Response</div>
-                        <div class="stat-value" id="statBidResponse">â</div>
+                        <div class="stat-value" id="statBidResponse">—</div>
                     </div>
                 </div>
 
@@ -1246,7 +1247,7 @@
     <script src="js/contract-template-validation.js"></script>
 
     <script>
-        // CPA version â must match contractor-dashboard.html. Bump both when the CPA changes.
+        // CPA version — must match contractor-dashboard.html. Bump both when the CPA changes.
         // Intro Video feature flag — v72 migration applied (W4-P4, 2026-05-01). Column live.
         // Companion ticket: 86e169f1y (complete)
         const INTRO_VIDEO_ENABLED = true;
@@ -1258,7 +1259,7 @@
         let contractorRecord = null;
         let contractorCertifications = [];
 
-        // ââ Service Area Checkbox UI â D-192 ââ
+        // ── Service Area Checkbox UI — D-192 ──
         const SVC = {
           FIPS: {AL:'01',AK:'02',AZ:'04',AR:'05',CA:'06',CO:'08',CT:'09',DE:'10',FL:'12',GA:'13',HI:'15',ID:'16',IL:'17',IN:'18',IA:'19',KS:'20',KY:'21',LA:'22',ME:'23',MD:'24',MA:'25',MI:'26',MN:'27',MS:'28',MO:'29',MT:'30',NE:'31',NV:'32',NH:'33',NJ:'34',NM:'35',NY:'36',NC:'37',ND:'38',OH:'39',OK:'40',OR:'41',PA:'42',RI:'44',SC:'45',SD:'46',TN:'47',TX:'48',UT:'49',VT:'50',VA:'51',WA:'53',WV:'54',WI:'55',WY:'56'},
           NAMES: {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'},
@@ -1279,7 +1280,7 @@
           buildGrid(selectedStates) {
             const grid = document.getElementById('svc-state-grid');
             if (!grid) return;
-            grid.innerHTML = Object.keys(this.FIPS).sort().map(abbr => `<label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${this.NAMES[abbr]}"><input type="checkbox" class="svc-state-cb" data-abbr="${abbr}" style="accent-color:var(--amber);width:14px;height:14px;flex-shrink:0;" ${selectedStates.includes(abbr)?'checked':''} onchange="SVC.onStateToggle('${abbr}')"><span>${abbr} â ${this.NAMES[abbr]}</span></label>`).join('');
+            grid.innerHTML = Object.keys(this.FIPS).sort().map(abbr => `<label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${this.NAMES[abbr]}"><input type="checkbox" class="svc-state-cb" data-abbr="${abbr}" style="accent-color:var(--amber);width:14px;height:14px;flex-shrink:0;" ${selectedStates.includes(abbr)?'checked':''} onchange="SVC.onStateToggle('${abbr}')"><span>${abbr} — ${this.NAMES[abbr]}</span></label>`).join('');
           },
 
           async onStateToggle(abbr) {
@@ -1295,7 +1296,7 @@
             const div = document.createElement('div');
             div.id = `svc-config-${abbr}`;
             div.style.cssText = 'border:1px solid var(--light);border-radius:var(--radius-md);padding:var(--sp-4);background:#F8FAFC;';
-            div.innerHTML = `<div style="font-weight:600;margin-bottom:var(--sp-3);color:var(--navy);">${this.NAMES[abbr]}</div><div style="display:flex;gap:var(--sp-6);margin-bottom:var(--sp-3);"><label style="display:flex;align-items:center;gap:6px;font-size:0.875rem;cursor:pointer;"><input type="radio" name="svc-mode-${abbr}" value="entire" ${mode!=='specific'?'checked':''} style="accent-color:var(--amber);" onchange="SVC.onModeChange('${abbr}','entire')"> Entire State</label><label style="display:flex;align-items:center;gap:6px;font-size:0.875rem;cursor:pointer;"><input type="radio" name="svc-mode-${abbr}" value="specific" ${mode==='specific'?'checked':''} style="accent-color:var(--amber);" onchange="SVC.onModeChange('${abbr}','specific')"> Specific Counties</label></div><div id="svc-counties-${abbr}" style="${mode==='specific'?'':'display:none;'}"><div style="font-size:0.8rem;color:var(--slate);">Loading countiesâ¦</div></div>`;
+            div.innerHTML = `<div style="font-weight:600;margin-bottom:var(--sp-3);color:var(--navy);">${this.NAMES[abbr]}</div><div style="display:flex;gap:var(--sp-6);margin-bottom:var(--sp-3);"><label style="display:flex;align-items:center;gap:6px;font-size:0.875rem;cursor:pointer;"><input type="radio" name="svc-mode-${abbr}" value="entire" ${mode!=='specific'?'checked':''} style="accent-color:var(--amber);" onchange="SVC.onModeChange('${abbr}','entire')"> Entire State</label><label style="display:flex;align-items:center;gap:6px;font-size:0.875rem;cursor:pointer;"><input type="radio" name="svc-mode-${abbr}" value="specific" ${mode==='specific'?'checked':''} style="accent-color:var(--amber);" onchange="SVC.onModeChange('${abbr}','specific')"> Specific Counties</label></div><div id="svc-counties-${abbr}" style="${mode==='specific'?'':'display:none;'}"><div style="font-size:0.8rem;color:var(--slate);">Loading counties…</div></div>`;
             const existing = Array.from(configs.children);
             const after = existing.find(el => el.id.replace('svc-config-','') > abbr);
             if (after) configs.insertBefore(div, after); else configs.appendChild(div);
@@ -1314,7 +1315,7 @@
           async loadCountyCheckboxes(abbr, selected) {
             const box = document.getElementById(`svc-counties-${abbr}`);
             if (!box) return;
-            box.innerHTML = '<div style="font-size:0.8rem;color:var(--slate);padding:var(--sp-2);">Loading countiesâ¦</div>';
+            box.innerHTML = '<div style="font-size:0.8rem;color:var(--slate);padding:var(--sp-2);">Loading counties…</div>';
             const counties = await this.fetchCounties(abbr);
             if (!counties.length) { box.innerHTML = '<div style="font-size:0.8rem;color:#991B1B;">Could not load counties. Check your connection and try again.</div>'; return; }
             box.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:3px;max-height:190px;overflow-y:auto;border:1px solid var(--light);border-radius:var(--radius-sm);padding:var(--sp-2);background:#fff;">${counties.map(c=>`<label style="display:flex;align-items:center;gap:5px;font-size:0.78rem;cursor:pointer;"><input type="checkbox" class="svc-county-cb" data-state="${abbr}" value="${c}" style="accent-color:var(--amber);width:12px;height:12px;" ${selected.includes(c)?'checked':''}>${c}</label>`).join('')}</div><div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-3);"><button type="button" style="font-size:0.75rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;" onclick="SVC.selectAll('${abbr}',true)">Select All</button><button type="button" style="font-size:0.75rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;" onclick="SVC.selectAll('${abbr}',false)">Clear All</button></div>`;
@@ -1343,7 +1344,7 @@
           }
         };
 
-        // ââ Initialize: Load contractor data from Supabase ââ
+        // ── Initialize: Load contractor data from Supabase ──
         async function initProfile() {
             currentUser = await Auth.requireAuth('contractor');
             if (!currentUser && !CONFIG.DEMO_MODE) return;
@@ -1364,7 +1365,7 @@
 
                     contractorRecord = data;
 
-                    // CPA version guard â redirect to dashboard to show re-acceptance modal
+                    // CPA version guard — redirect to dashboard to show re-acceptance modal
                     if (contractorRecord.cpa_version !== CURRENT_CPA_VERSION) {
                         if (!localStorage.getItem('oq_cpa_redirect_guard')) {
                             localStorage.setItem('oq_cpa_redirect_guard', '1');
@@ -1422,23 +1423,23 @@
             await renderIntroVideoCard();
         }
 
-        // ââ Populate view fields from contractor data ââ
+        // ── Populate view fields from contractor data ──
         function populateViewFromData(c) {
-            document.getElementById('viewBusinessName').textContent = c.company_name || 'â';
-            document.getElementById('viewOwnerName').textContent = c.contact_name || 'â';
+            document.getElementById('viewBusinessName').textContent = c.company_name || '—';
+            document.getElementById('viewOwnerName').textContent = c.contact_name || '—';
             const _rawPhone = (c.phone || '').replace(/\D/g, '');
             document.getElementById('viewPhone').textContent = _rawPhone.length === 10
                 ? `(${_rawPhone.slice(0,3)}) ${_rawPhone.slice(3,6)}-${_rawPhone.slice(6)}`
                 : (_rawPhone.length === 11 && _rawPhone[0] === '1'
                     ? `(${_rawPhone.slice(1,4)}) ${_rawPhone.slice(4,7)}-${_rawPhone.slice(7)}`
-                    : c.phone || 'â');
-            document.getElementById('viewEmail').textContent = c.email || 'â';
+                    : c.phone || '—');
+            document.getElementById('viewEmail').textContent = c.email || '—';
             const website = c.website_url || '';
             document.getElementById('viewWebsite').innerHTML = website
                 ? `<a href="${website.startsWith('http') ? website : 'https://' + website}" target="_blank" style="color: var(--amber);">${website}</a>`
-                : 'â';
-            document.getElementById('viewYearsInBusiness').textContent = c.years_in_business || 'â';
-            document.getElementById('viewTeamSize').textContent = c.num_employees || 'â';
+                : '—';
+            document.getElementById('viewYearsInBusiness').textContent = c.years_in_business || '—';
+            document.getElementById('viewTeamSize').textContent = c.num_employees || '—';
             document.getElementById('viewAboutUs').textContent = c.about_us || 'Not yet provided.';
             document.getElementById('viewWhyChoose').textContent = c.why_choose_us || 'Not yet provided.';
 
@@ -1446,13 +1447,13 @@
             const trades = c.trades || [];
             document.getElementById('viewTrades').textContent = trades.length
                 ? trades.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ')
-                : 'â';
-            document.getElementById('viewBrands').textContent = c.preferred_brands ? c.preferred_brands.join(', ') : 'â';
+                : '—';
+            document.getElementById('viewBrands').textContent = c.preferred_brands ? c.preferred_brands.join(', ') : '—';
             // D-192: display service area as state coverage summary
             const svStates = c.service_states || [];
             const svCounties = c.service_counties || [];
             if (!svStates.length) {
-                document.getElementById('viewServiceArea').textContent = c.service_area_description || 'â';
+                document.getElementById('viewServiceArea').textContent = c.service_area_description || '—';
             } else if (!svCounties.length) {
                 document.getElementById('viewServiceArea').textContent = svStates.map(s => (SVC.NAMES[s] || s) + ' (full state)').join(', ');
             } else {
@@ -1462,11 +1463,11 @@
             // Contract template
             updateContractTemplateView();
             // Note: PC template grid (D-161) is rendered by loadPcTemplates()
-            // called from DOMContentLoaded â updateConfirmationTemplateView() was
+            // called from DOMContentLoaded — updateConfirmationTemplateView() was
             // retired (86e110nay/86e110ngd fix).
         }
 
-        // ââ Populate edit fields from contractor data ââ
+        // ── Populate edit fields from contractor data ──
         function populateEditFromData(c) {
             document.getElementById('editBusinessName').value = c.company_name || '';
             document.getElementById('editOwnerName').value = c.contact_name || '';
@@ -1478,10 +1479,10 @@
             document.getElementById('editAboutUs').value = c.about_us || '';
             document.getElementById('editWhyChoose').value = c.why_choose_us || '';
 
-            // Service area â D-192: build checkbox UI from saved data
+            // Service area — D-192: build checkbox UI from saved data
             // (SVC.populate is async; grid builds on toggleEdit('serviceArea') to avoid loading all counties on page load)
 
-            // Review links â populate edit inputs and rebuild view mode
+            // Review links — populate edit inputs and rebuild view mode
             document.getElementById('googleReviewsUrl').value = c.google_reviews_url || '';
             document.getElementById('bbbUrl').value = c.bbb_url || '';
             document.getElementById('angiUrl').value = c.angi_url || '';
@@ -1506,7 +1507,7 @@
             document.getElementById('editHasGeneralLiability').checked = !!c.has_general_liability;
         }
 
-        // ââ Render credentials from licenses data ââ
+        // ── Render credentials from licenses data ──
         // ── Intro Video card load + render (flag-gated) ──
         async function renderIntroVideoCard() {
             if (!INTRO_VIDEO_ENABLED) return;
@@ -1542,7 +1543,7 @@
             if (licenses.length > 0) {
                 html += licenses.map(lic => `
                     <div class="form-group">
-                        <label class="form-label">Contractor License â ${lic.municipality || 'General'}</label>
+                        <label class="form-label">Contractor License — ${lic.municipality || 'General'}</label>
                         <div>
                             <span style="font-weight: 600; color: var(--navy);">${lic.license_number || 'On file'}</span>
                             <span class="badge ${lic.verified ? 'badge-verified' : 'badge-pending'}">${lic.verified ? 'Verified' : 'Pending Verification'}</span>
@@ -1564,7 +1565,7 @@
                     <label class="form-label">Workers' Compensation Insurance</label>
                     <div>
                         ${hasWC
-                            ? `<span class="badge badge-verified">â On File</span>`
+                            ? `<span class="badge badge-verified">✓ On File</span>`
                             : `<span class="badge badge-pending">Not on File</span>`
                         }
                     </div>
@@ -1573,7 +1574,7 @@
                     <label class="form-label">General Liability Insurance</label>
                     <div>
                         ${hasGL
-                            ? `<span class="badge badge-verified">â On File</span>`
+                            ? `<span class="badge badge-verified">✓ On File</span>`
                             : `<span class="badge badge-pending">Not on File</span>`
                         }
                     </div>
@@ -1612,10 +1613,10 @@
             }
         }
 
-        // ââ Save profile changes to Supabase ââ
+        // ── Save profile changes to Supabase ──
         async function saveProfile(section) {
             if (!contractorRecord || !sb) {
-                alert('Unable to save â not connected to database.');
+                alert('Unable to save — not connected to database.');
                 return;
             }
 
@@ -1755,8 +1756,8 @@
                     alert('Failed to save changes. Please try again.');
                 }
             } else if (section === 'confirmation-template') {
-                // D-161: single-upload path retired â use uploadPcTemplateFile() per-slot instead
-                console.warn('saveProfile(confirmation-template) called â this path is deprecated (D-161). Use the PC template grid.');
+                // D-161: single-upload path retired — use uploadPcTemplateFile() per-slot instead
+                console.warn('saveProfile(confirmation-template) called — this path is deprecated (D-161). Use the PC template grid.');
             } else if (section === 'photos') {
                 // Handle photo uploads
                 const ownerPhotoInput = document.getElementById('ownerPhotoInput');
@@ -1770,8 +1771,8 @@
 
                         if (uploadError) throw uploadError;
 
-                        // Store bare filePath â bucket is private; public URLs return 404.
-                        // Signed URLs are generated on read (same pattern as contract templates â Session 266).
+                        // Store bare filePath — bucket is private; public URLs return 404.
+                        // Signed URLs are generated on read (same pattern as contract templates — Session 266).
                         await sb.from('contractors')
                             .update({ owner_photo_url: filePath, updated_at: new Date().toISOString() })
                             .eq('id', contractorRecord.id);
@@ -1830,7 +1831,7 @@
             }
         }
 
-        // ââ Contract Template Upload ââ
+        // ── Contract Template Upload ──
         async function uploadContractTemplate() {
             const input = document.getElementById('contractPdfInput');
             const status = document.getElementById('contractUploadStatus');
@@ -1863,7 +1864,7 @@
 
                 if (uploadError) throw uploadError;
 
-                // Store only the path â bucket is private; public URLs would return "Bucket not found" 404.
+                // Store only the path — bucket is private; public URLs would return "Bucket not found" 404.
                 // viewContractTemplate() mints a short-lived signed URL at click time.
                 await sb.from('contractors')
                     .update({ contract_pdf_url: filePath, updated_at: new Date().toISOString() })
@@ -1897,13 +1898,13 @@
             const el = document.getElementById('viewContractTemplate');
             if (!el) return; // element removed in new grid UI (IMP-009)
             if (contractorRecord && contractorRecord.contract_pdf_url) {
-                // Session 254: XSS hardening â build DOM instead of templated innerHTML
+                // Session 254: XSS hardening — build DOM instead of templated innerHTML
                 // so that contract_pdf_url can never inject markup or handlers.
                 el.innerHTML = '';
                 const pdfUrl = contractorRecord.contract_pdf_url;
                 const link = document.createElement('a');
                 link.href = '#';
-                link.textContent = 'ð View uploaded contract';
+                link.textContent = '📄 View uploaded contract';
                 link.style.color = 'var(--amber)';
                 link.style.textDecoration = 'none';
                 link.addEventListener('click', (e) => {
@@ -1925,7 +1926,7 @@
             }
         }
 
-        // updateConfirmationTemplateView() retired â loadPcTemplates() now renders the 8-slot grid (D-161)
+        // updateConfirmationTemplateView() retired — loadPcTemplates() now renders the 8-slot grid (D-161)
 
         // Add certification to database
         async function addCertification() {
@@ -1933,7 +1934,7 @@
             if (!certName) return;
 
             if (!contractorRecord || !sb) {
-                alert('Unable to save â not connected to database.');
+                alert('Unable to save — not connected to database.');
                 return;
             }
 
@@ -1970,7 +1971,7 @@
                 if (list) list.innerHTML = '';
             } else {
                 view.innerHTML = contractorCertifications
-                    .map(cert => `<div style="margin-bottom: var(--sp-2);">â¢ ${cert.certification_name}</div>`)
+                    .map(cert => `<div style="margin-bottom: var(--sp-2);">• ${cert.certification_name}</div>`)
                     .join('');
 
                 if (list) {
@@ -2006,7 +2007,7 @@
             }
         }
 
-        // ââ Load and Display Documents (IMP-007) ââ
+        // ── Load and Display Documents (IMP-007) ──
         async function loadDocuments() {
             if (!contractorRecord || !sb || !currentUser) {
                 // Show placeholder in demo mode
@@ -2061,7 +2062,7 @@
                             const displayName = doc.friendlyName || docFile.name;
                             let html = `
                                 <div class="document-info">
-                                    <div class="document-icon">ð</div>
+                                    <div class="document-icon">📄</div>
                                     <div class="document-details">
                                         <div class="document-name">${displayName}</div>
                                         <div class="document-date">Uploaded: ${uploadDate}</div>
@@ -2076,7 +2077,7 @@
                             if (realFiles.length > 1) {
                                 html = `
                                     <div class="document-info">
-                                        <div class="document-icon">ð</div>
+                                        <div class="document-icon">📄</div>
                                         <div class="document-details">
                                             <div class="document-name">${realFiles.length} file(s) uploaded</div>
                                             <div class="document-date">Latest: ${displayName} (${uploadDate})</div>
@@ -2093,7 +2094,7 @@
                             // Bug 6 fix: insurance subfolder may be empty because the contractor
                             // confirmed coverage via checkbox rather than uploading a PDF.
                             // If the DB flags are set, show "Confirmed on file" to match the
-                            // Credentials section â both reflect the same underlying data.
+                            // Credentials section — both reflect the same underlying data.
                             let noFileHtml;
                             if (doc.subfolder === 'insurance' &&
                                 (contractorRecord?.has_workers_comp || contractorRecord?.has_general_liability)) {
@@ -2105,7 +2106,7 @@
                         }
                     } catch (err) {
                         console.error(`Error loading ${doc.subfolder} documents:`, err);
-                        // Show placeholder on error â not "Loading..." forever
+                        // Show placeholder on error — not "Loading..." forever
                         document.getElementById(doc.elementId).innerHTML = `
                             <span style="color: var(--slate);">Not uploaded</span>
                         `;
@@ -2116,17 +2117,17 @@
             }
         }
 
-        // ââ Project Confirmation Templates (D-161) â 8-slot grid ââ
+        // ── Project Confirmation Templates (D-161) — 8-slot grid ──
 
         const PC_TEMPLATE_SLOTS = [
-            { trade: 'roofing',  fundingType: 'insurance', label: 'Roofing â Insurance' },
-            { trade: 'roofing',  fundingType: 'retail',    label: 'Roofing â Retail' },
-            { trade: 'siding',   fundingType: 'insurance', label: 'Siding â Insurance' },
-            { trade: 'siding',   fundingType: 'retail',    label: 'Siding â Retail' },
-            { trade: 'gutters',  fundingType: 'insurance', label: 'Gutters â Insurance' },
-            { trade: 'gutters',  fundingType: 'retail',    label: 'Gutters â Retail' },
-            { trade: 'windows',  fundingType: 'insurance', label: 'Windows â Insurance' },
-            { trade: 'windows',  fundingType: 'retail',    label: 'Windows â Retail' },
+            { trade: 'roofing',  fundingType: 'insurance', label: 'Roofing — Insurance' },
+            { trade: 'roofing',  fundingType: 'retail',    label: 'Roofing — Retail' },
+            { trade: 'siding',   fundingType: 'insurance', label: 'Siding — Insurance' },
+            { trade: 'siding',   fundingType: 'retail',    label: 'Siding — Retail' },
+            { trade: 'gutters',  fundingType: 'insurance', label: 'Gutters — Insurance' },
+            { trade: 'gutters',  fundingType: 'retail',    label: 'Gutters — Retail' },
+            { trade: 'windows',  fundingType: 'insurance', label: 'Windows — Insurance' },
+            { trade: 'windows',  fundingType: 'retail',    label: 'Windows — Retail' },
         ];
 
         async function loadPcTemplates() {
@@ -2149,7 +2150,7 @@
                 }
             }
 
-            // Session 254: XSS hardening â build DOM instead of templated innerHTML
+            // Session 254: XSS hardening — build DOM instead of templated innerHTML
             // so that DB-sourced file_url / filename values can never inject markup.
             gridContainer.innerHTML = '';
             const grid = document.createElement('div');
@@ -2234,7 +2235,7 @@
 
                     const iconEl = document.createElement('div');
                     iconEl.className = 'template-upload-icon';
-                    iconEl.textContent = 'ð';
+                    iconEl.textContent = '📋';
 
                     const textEl = document.createElement('div');
                     textEl.className = 'template-upload-text';
@@ -2265,11 +2266,11 @@
             gridContainer.appendChild(grid);
         }
 
-        // View a PC template â bucket is private so mint a signed URL
+        // View a PC template — bucket is private so mint a signed URL
         async function viewPcTemplate(fileUrl) {
             if (!fileUrl) { alert('No file available for this slot.'); return; }
             try {
-                // Extract storage path â handles both full public URL and bare path
+                // Extract storage path — handles both full public URL and bare path
                 const pathMatch = fileUrl.match(/contractor-templates\/(.+?)(\?|$)/);
                 const storagePath = pathMatch
                     ? decodeURIComponent(pathMatch[1])
@@ -2289,7 +2290,7 @@
             }
         }
 
-        // Trigger replace â creates a hidden file input if needed
+        // Trigger replace — creates a hidden file input if needed
         function replacePcTemplate(slotKey, inputId) {
             let input = document.getElementById(inputId);
             if (!input) {
@@ -2313,7 +2314,7 @@
             if (!contractorRecord || !sb) { alert('Not connected to database.'); return; }
 
             try {
-                // Store ONLY the path â bucket is private; public URLs would 404
+                // Store ONLY the path — bucket is private; public URLs would 404
                 const [trade, funding] = slotKey.split('/');
                 const timestamp = Date.now();
                 const filePath = `${contractorRecord.id}/pc_${trade}_${funding}_${timestamp}.pdf`;
@@ -2340,7 +2341,7 @@
                 const { data, error: updateError } = await sb.from('contractors')
                     .update({
                         color_confirmation_template:  updated,
-                        pc_template_migration_pending: false,  // contractor has actively managed slots â no longer pending
+                        pc_template_migration_pending: false,  // contractor has actively managed slots — no longer pending
                         updated_at: new Date().toISOString(),
                     })
                     .eq('id', contractorRecord.id)
@@ -2356,9 +2357,9 @@
             }
         }
 
-        // ââ Load and Display Contract Templates (IMP-009) ââ
+        // ── Load and Display Contract Templates (IMP-009) ──
         async function loadContractTemplates() {
-            // Session 262: XSS hardening â build DOM instead of templated innerHTML
+            // Session 262: XSS hardening — build DOM instead of templated innerHTML
             // so that DB-sourced file_url / filename values can never inject markup.
             // Also refactored to single DB fetch (was one query per slot = 8 round trips).
             const templateSlots = [
@@ -2401,7 +2402,7 @@
 
                 const header = document.createElement('div');
                 header.className = 'template-slot-header';
-                header.textContent = `${slot.trade} â ${slot.fundingType}`;
+                header.textContent = `${slot.trade} — ${slot.fundingType}`;
                 cell.appendChild(header);
 
                 if (matchingTemplate) {
@@ -2429,7 +2430,7 @@
                     const btnRow = document.createElement('div');
                     btnRow.style.cssText = 'display: flex; gap: var(--sp-3); flex-wrap: wrap;';
 
-                    // View â mints signed URL; never navigates to stored URL directly
+                    // View — mints signed URL; never navigates to stored URL directly
                     const viewBtn = document.createElement('button');
                     viewBtn.className = 'btn-small btn-small-primary';
                     viewBtn.textContent = 'View';
@@ -2470,7 +2471,7 @@
 
                     const icon = document.createElement('div');
                     icon.className = 'template-upload-icon';
-                    icon.textContent = 'ð';
+                    icon.textContent = '📄';
 
                     const uploadText = document.createElement('div');
                     uploadText.className = 'template-upload-text';
@@ -2503,7 +2504,7 @@
             gridContainer.appendChild(grid);
         }
 
-        // View contract template â bucket is private, so mint a signed URL at click time
+        // View contract template — bucket is private, so mint a signed URL at click time
         async function viewContractTemplate(fileUrl) {
             if (!fileUrl) {
                 alert('No file URL available for this template.');
@@ -2579,7 +2580,7 @@
 
                 if (uploadError) throw uploadError;
 
-                // Store only the path â bucket is private; public URLs would return "Bucket not found" 404.
+                // Store only the path — bucket is private; public URLs would return "Bucket not found" 404.
                 // viewContractTemplate() mints a short-lived signed URL at click time.
                 const currentTemplates = contractorRecord.contract_templates || [];
                 const updatedTemplates = currentTemplates.filter(t => !(t.trade === trade && t.funding_type === fundingType));
@@ -2609,7 +2610,7 @@
             }
         }
 
-        // ââ Field Mapping Modal ââ
+        // ── Field Mapping Modal ──
 
         const DEFAULT_FIELD_MAPPINGS = {
             homeowner_name:    { label: 'Name',                description: 'Homeowner name' },
@@ -2632,7 +2633,7 @@
             fieldMappingCurrentTrade = trade;
             fieldMappingCurrentFundingType = fundingType;
 
-            document.getElementById('fieldMappingSubtitle').textContent = `${trade} â ${fundingType}`;
+            document.getElementById('fieldMappingSubtitle').textContent = `${trade} — ${fundingType}`;
 
             // Get current mappings for this template (fall back to defaults)
             const currentTemplates = contractorRecord?.contract_templates || [];
@@ -2648,7 +2649,7 @@
                     <input type="text" id="fm_${key}"
                         value="${currentLabel.replace(/"/g, '&quot;')}"
                         style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.875rem; font-family: inherit; width: 100%;">
-                    <span style="color: var(--text-muted); font-size: 0.85rem; text-align: center;">â</span>
+                    <span style="color: var(--text-muted); font-size: 0.85rem; text-align: center;">→</span>
                     <span style="font-size: 0.875rem; color: var(--text-secondary);">${defaults.description}</span>
                 `;
             }
