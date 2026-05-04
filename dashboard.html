@@ -1220,6 +1220,32 @@
     </div>
   </div>
 
+
+<div class="card messages-section" style="margin-top: 32px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--navy);">Messages</h3>
+  </div>
+  <div style="margin-bottom: 20px;">
+    <label style="display: block; font-size: 14px; font-weight: 500; color: var(--navy); margin-bottom: 8px;">Select a project:</label>
+    <select id="messagingClaimSelect" style="width: 100%; padding: 8px 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit;">
+      <option value="">-- No projects with messages yet --</option>
+    </select>
+  </div>
+  <div id="messagingThreadContainer" style="display: none;">
+    <div id="contractorInfo" style="background: #F0F9FF; border-left: 4px solid var(--navy); padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+      <div style="font-weight: 600; font-size: 14px; color: var(--navy);">Talking with <span id="contractorName">--</span></div>
+    </div>
+    <div id="messagesList" style="border: 1px solid #E2E8F0; border-radius: 6px; padding: 16px; height: 300px; overflow-y: auto; margin-bottom: 16px; background: #FAFBFC;">
+      <p style="color: #94A3B8; text-align: center; margin: 0;">No messages yet.</p>
+    </div>
+    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+      <textarea id="messageBody" placeholder="Type your message..." style="flex: 1; padding: 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 60px;"></textarea>
+      <button id="messageSendBtn" style="align-self: flex-end; padding: 12px 24px; background: var(--navy); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">Send</button>
+    </div>
+    <div id="messageStatus" style="font-size: 12px; color: #64748B; text-align: center;"></div>
+  </div>
+</div>
+
   <footer id="site-footer"></footer>
 
   <script src="js/config.js"></script>
@@ -2912,5 +2938,407 @@
             }
         }
     </script>
+
+<!-- Messaging Thread UI Section for dashboard.html -->
+<!-- Insert this after the "Claims" or "Bids" card section, before closing main -->
+
+<div class="card messages-section" style="margin-top: 32px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--navy);">Messages</h3>
+  </div>
+
+  <!-- Claim Selector -->
+  <div style="margin-bottom: 20px;">
+    <label style="display: block; font-size: 14px; font-weight: 500; color: var(--navy); margin-bottom: 8px;">Select a project:</label>
+    <select id="messagingClaimSelect" style="width: 100%; padding: 8px 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit;">
+      <option value="">-- No projects with messages yet --</option>
+    </select>
+  </div>
+
+  <!-- Message Thread Container -->
+  <div id="messagingThreadContainer" style="display: none;">
+    <!-- Contractor Info -->
+    <div id="contractorInfo" style="background: #F0F9FF; border-left: 4px solid var(--navy); padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+      <div style="font-weight: 600; font-size: 14px; color: var(--navy);">Talking with <span id="contractorName">--</span></div>
+    </div>
+
+    <!-- Messages List -->
+    <div id="messagesList" style="border: 1px solid #E2E8F0; border-radius: 6px; padding: 16px; height: 300px; overflow-y: auto; margin-bottom: 16px; background: #FAFBFC;">
+      <p style="color: #94A3B8; text-align: center; margin: 0;">No messages yet.</p>
+    </div>
+
+    <!-- Message Input -->
+    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+      <textarea
+        id="messageBody"
+        placeholder="Type your message..."
+        style="flex: 1; padding: 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 60px;"
+      ></textarea>
+      <button
+        id="messageSendBtn"
+        style="align-self: flex-end; padding: 12px 24px; background: var(--navy); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;"
+      >
+        Send
+      </button>
+    </div>
+
+    <!-- Status Message -->
+    <div id="messageStatus" style="font-size: 12px; color: #64748B; text-align: center;"></div>
+  </div>
+</div>
+
+<script>
+// Messaging functionality for dashboard.html
+(function() {
+  const POLLING_INTERVAL = 30000; // 30 seconds
+  const SEND_FUNCTION_URL = "https://otterquote.com/.netlify/functions/send-message-notification";
+
+  let currentClaimId = null;
+  let pollingInterval = null;
+  const homeownerId = sb.auth.user()?.id;
+
+  // Initialize messaging section
+  async function initMessaging() {
+    if (!homeownerId) return;
+
+    const claimSelect = document.getElementById("messagingClaimSelect");
+    const threadContainer = document.getElementById("messagingThreadContainer");
+
+    // Load homeowner's claims
+    const { data: claims } = await sb
+      .from("claims")
+      .select("id, property_address, selected_contractor_id, quotes(contractor_id, contractors(id, profiles:profiles(full_name, email)))")
+      .eq("homeowner_id", homeownerId);
+
+    if (!claims || claims.length === 0) {
+      claimSelect.innerHTML = '<option value="">-- No projects available --</option>';
+      threadContainer.style.display = "none";
+      return;
+    }
+
+    // Populate claim selector with only claims that have a selected contractor
+    claimSelect.innerHTML = '<option value="">-- Select a project --</option>';
+    claims
+      .filter((c) => c.selected_contractor_id) // Only show claims with selected contractor
+      .forEach((c) => {
+        const option = document.createElement("option");
+        option.value = c.id;
+        option.textContent = c.property_address || `Claim ${c.id.substring(0, 8)}`;
+        claimSelect.appendChild(option);
+      });
+
+    if (claimSelect.options.length === 1) {
+      claimSelect.innerHTML = '<option value="">-- No projects with selected contractors --</option>';
+      threadContainer.style.display = "none";
+      return;
+    }
+
+    // Claim selection handler
+    claimSelect.addEventListener("change", (e) => {
+      currentClaimId = e.target.value;
+      if (currentClaimId) {
+        threadContainer.style.display = "block";
+        loadMessages();
+        // Clear old polling
+        if (pollingInterval) clearInterval(pollingInterval);
+        // Start polling
+        pollingInterval = setInterval(loadMessages, POLLING_INTERVAL);
+      } else {
+        threadContainer.style.display = "none";
+        if (pollingInterval) clearInterval(pollingInterval);
+      }
+    });
+
+    // Send button handler
+    document.getElementById("messageSendBtn").addEventListener("click", sendMessage);
+  }
+
+  async function loadMessages() {
+    if (!currentClaimId) return;
+
+    // Get claim to find contractor name
+    const { data: claim } = await sb
+      .from("claims")
+      .select("selected_contractor_id, quotes(contractor_id, contractors(profiles(full_name)))")
+      .eq("id", currentClaimId)
+      .single();
+
+    if (claim?.quotes && claim.quotes.length > 0) {
+      const contractorName = claim.quotes[0].contractors.profiles.full_name;
+      document.getElementById("contractorName").textContent = contractorName;
+    }
+
+    const { data: messages, error } = await sb
+      .from("messages")
+      .select("id, sender_id, sender_role, body, created_at, profiles:sender_id(full_name)")
+      .eq("claim_id", currentClaimId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error loading messages:", error);
+      return;
+    }
+
+    const messagesList = document.getElementById("messagesList");
+    if (!messages || messages.length === 0) {
+      messagesList.innerHTML = '<p style="color: #94A3B8; text-align: center; margin: 0;">No messages yet. Start the conversation!</p>';
+      return;
+    }
+
+    // Render messages
+    messagesList.innerHTML = messages.map((msg) => {
+      const isOwn = msg.sender_id === homeownerId;
+      const timestamp = new Date(msg.created_at).toLocaleString();
+      return `
+        <div style="margin-bottom: 12px; padding: 12px; background: ${isOwn ? "#EFF6FF" : "#F1F5F9"}; border-radius: 6px; border-left: 3px solid ${isOwn ? "var(--navy)" : "var(--amber)"};">
+          <div style="font-weight: 600; font-size: 13px; color: var(--navy); margin-bottom: 4px;">
+            ${msg.profiles.full_name} ${isOwn ? "(You)" : ""}
+          </div>
+          <div style="font-size: 13px; color: #333; margin-bottom: 8px; word-wrap: break-word;">
+            ${escapeHtml(msg.body)}
+          </div>
+          <div style="font-size: 11px; color: #94A3B8;">
+            ${timestamp}
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // Scroll to bottom
+    messagesList.scrollTop = messagesList.scrollHeight;
+  }
+
+  async function sendMessage() {
+    if (!currentClaimId) return;
+
+    const bodyEl = document.getElementById("messageBody");
+    const statusEl = document.getElementById("messageStatus");
+    const sendBtn = document.getElementById("messageSendBtn");
+    const body = bodyEl.value.trim();
+
+    if (!body) return;
+
+    sendBtn.disabled = true;
+    statusEl.textContent = "Sending...";
+
+    try {
+      // Insert message
+      const { data: newMessage, error: insertError } = await sb
+        .from("messages")
+        .insert([
+          {
+            claim_id: currentClaimId,
+            sender_id: homeownerId,
+            sender_role: "homeowner",
+            body: body,
+          },
+        ])
+        .select("id")
+        .single();
+
+      if (insertError) throw insertError;
+
+      bodyEl.value = "";
+      statusEl.textContent = "";
+
+      // Send notification
+      try {
+        await fetch(SEND_FUNCTION_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message_id: newMessage.id }),
+        });
+      } catch (notifError) {
+        console.error("Notification error:", notifError);
+        // Don't fail the message send if notification fails
+      }
+
+      // Reload messages
+      await loadMessages();
+    } catch (error) {
+      statusEl.textContent = "Error sending message. Please try again.";
+      console.error("Send error:", error);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  function escapeHtml(text) {
+    const map = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return text.replace(/[&<>"']/g, (char) => map[char]);
+  }
+
+  // Start on auth state change
+  let initFired = false;
+  sb.auth.onAuthStateChange((event, session) => {
+    if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && !initFired) {
+      initFired = true;
+      if (session?.user?.id) {
+        initMessaging();
+      }
+    }
+  });
+})();
+</script>
+
+
+<script>
+// Messaging — dashboard.html (v74, F-007 compliant)
+(function() {
+  const POLLING_INTERVAL = 30000;
+  const SEND_FUNCTION_URL = "https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/send-message-notification";
+
+  let currentClaimId = null;
+  let pollingInterval = null;
+  let userId = null; // set from onAuthStateChange session
+
+  async function initMessaging() {
+    if (!userId) return;
+
+    const claimSelect = document.getElementById("messagingClaimSelect");
+    const threadContainer = document.getElementById("messagingThreadContainer");
+
+    const { data: claims } = await sb
+      .from("claims")
+      .select("id, property_address, selected_contractor_id, quotes(contractor_id, contractors(id, profiles:profiles(full_name, email)))")
+      .eq("user_id", userId);
+
+    if (!claims || claims.length === 0) {
+      claimSelect.innerHTML = '<option value="">-- No projects available --</option>';
+      threadContainer.style.display = "none";
+      return;
+    }
+
+    claimSelect.innerHTML = '<option value="">-- Select a project --</option>';
+    const eligible = claims.filter((c) => c.selected_contractor_id);
+    eligible.forEach((c) => {
+      const option = document.createElement("option");
+      option.value = c.id;
+      option.textContent = c.property_address || "Claim " + c.id.substring(0, 8);
+      claimSelect.appendChild(option);
+    });
+
+    if (claimSelect.options.length === 1) {
+      claimSelect.innerHTML = '<option value="">-- No projects with selected contractors --</option>';
+      threadContainer.style.display = "none";
+      return;
+    }
+
+    claimSelect.addEventListener("change", (e) => {
+      currentClaimId = e.target.value;
+      if (currentClaimId) {
+        threadContainer.style.display = "block";
+        loadMessages();
+        if (pollingInterval) clearInterval(pollingInterval);
+        pollingInterval = setInterval(loadMessages, POLLING_INTERVAL);
+      } else {
+        threadContainer.style.display = "none";
+        if (pollingInterval) clearInterval(pollingInterval);
+      }
+    });
+
+    document.getElementById("messageSendBtn").addEventListener("click", sendMessage);
+  }
+
+  async function loadMessages() {
+    if (!currentClaimId) return;
+
+    const { data: claim } = await sb
+      .from("claims")
+      .select("selected_contractor_id, quotes(contractor_id, contractors(profiles(full_name)))")
+      .eq("id", currentClaimId)
+      .single();
+
+    if (claim?.quotes && claim.quotes.length > 0) {
+      const name = claim.quotes[0]?.contractors?.profiles?.full_name;
+      if (name) document.getElementById("contractorName").textContent = name;
+    }
+
+    const { data: messages, error } = await sb
+      .from("messages")
+      .select("id, sender_id, sender_role, body, created_at, profiles:sender_id(full_name)")
+      .eq("claim_id", currentClaimId)
+      .order("created_at", { ascending: true });
+
+    if (error) { console.error("Error loading messages:", error); return; }
+
+    const messagesList = document.getElementById("messagesList");
+    if (!messages || messages.length === 0) {
+      messagesList.innerHTML = '<p style="color: #94A3B8; text-align: center; margin: 0;">No messages yet. Start the conversation!</p>';
+      return;
+    }
+
+    messagesList.innerHTML = messages.map((msg) => {
+      const isOwn = msg.sender_id === userId;
+      const timestamp = new Date(msg.created_at).toLocaleString();
+      return '<div style="margin-bottom:12px;padding:12px;background:' + (isOwn ? "#EFF6FF" : "#F1F5F9") + ';border-radius:6px;border-left:3px solid ' + (isOwn ? "var(--navy)" : "var(--amber)") + ';">' +
+        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + msg.profiles.full_name + (isOwn ? " (You)" : "") + '</div>' +
+        '<div style="font-size:13px;color:#333;margin-bottom:8px;word-wrap:break-word;">' + escapeHtml(msg.body) + '</div>' +
+        '<div style="font-size:11px;color:#94A3B8;">' + timestamp + '</div></div>';
+    }).join("");
+
+    messagesList.scrollTop = messagesList.scrollHeight;
+  }
+
+  async function sendMessage() {
+    if (!currentClaimId) return;
+    const bodyEl = document.getElementById("messageBody");
+    const statusEl = document.getElementById("messageStatus");
+    const sendBtn = document.getElementById("messageSendBtn");
+    const body = bodyEl.value.trim();
+    if (!body) return;
+
+    sendBtn.disabled = true;
+    statusEl.textContent = "Sending...";
+
+    try {
+      const { data: newMessage, error: insertError } = await sb
+        .from("messages")
+        .insert([{ claim_id: currentClaimId, sender_id: userId, sender_role: "homeowner", body: body }])
+        .select("id").single();
+
+      if (insertError) throw insertError;
+      bodyEl.value = "";
+      statusEl.textContent = "";
+
+      try {
+        await fetch(SEND_FUNCTION_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message_id: newMessage.id }),
+        });
+      } catch (notifError) { console.error("Notification error:", notifError); }
+
+      await loadMessages();
+    } catch (error) {
+      statusEl.textContent = "Error sending message. Please try again.";
+      console.error("Send error:", error);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]);
+  }
+
+  let _initFired = false;
+  sb.auth.onAuthStateChange((event, session) => {
+    if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && !_initFired) {
+      _initFired = true;
+      if (session?.user?.id) {
+        userId = session.user.id;
+        initMessaging();
+      }
+    }
+  });
+})();
+</script>
   </body>
 </html>
