@@ -340,13 +340,17 @@
     <footer id="site-footer"></footer>
 
     <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
 
     <script>
     // D-190: Contractor pre-approval wizard — Steps 2, 3, 4
     // Runs entirely off direct Supabase calls (no auth.js dependency for core logic).
 
-    let sb = null;
+    // sb comes from js/config.js (the global Supabase client).
+    // Do NOT create a second client here — that previously raced the global
+    // for the URL-hash exchange and caused getSession() to hang on
+    // contractor-pre-approval.html (D-208 sister fix).
     let currentUser = null;
     let contractor = null;
     let currentStep = 2;
@@ -621,19 +625,25 @@ Review at: https://otterquote.com/admin-contractors.html`,
 
         try {
             if (!window.CONFIG) throw new Error('Config not loaded');
-            sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+            if (!sb) throw new Error('Supabase client not initialised — js/config.js must load first');
+            if (!window.Auth || typeof window.Auth.getSession !== 'function') {
+                throw new Error('Auth helper not loaded — js/auth.js must load before this script');
+            }
 
-            // Give Supabase a moment to process the URL hash (magic link token)
-            await new Promise(r => setTimeout(r, 400));
-
-            const { data: sessionData, error: sessionErr } = await sb.auth.getSession();
-
-            if (sessionErr || !sessionData?.session) {
+            // Race-free session retrieval (May 4, 2026 fix). Auth.getSession()
+            // synchronously detects whether a session is in storage or an auth
+            // handshake is in flight (#access_token / ?code= in URL); waits up
+            // to 8s for INITIAL_SESSION/SIGNED_IN before falling back. This
+            // replaces the prior setTimeout(400)+getSession() pattern that
+            // sometimes hung indefinitely on slower OAuth exchanges.
+            const session = await window.Auth.getSession();
+            if (!session) {
+                console.error('[pre-approval] no session after Auth.getSession()');
                 showPanel('error');
                 return;
             }
 
-            currentUser = sessionData.session.user;
+            currentUser = session.user;
 
             // Load contractor record
             let { data: ct, error: ctErr } = await sb.from('contractors')
