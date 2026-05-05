@@ -72,6 +72,18 @@ Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable 
 
 ---
 
+
+### Seed File Drift Check (CHECK constraint migrations)
+
+*(Check only if any SQL migration alters a CHECK constraint or enum column.)*
+- [ ] **Seed values verified after constraint migration.** After any migration that alters a CHECK constraint or enum column:
+  1. Identified the affected column name(s) from the migration file
+  2. Searched the seed file: `grep -n "affected_column" tests/e2e/seed/seed.mjs`
+  3. Verified all seed values for that column are still valid per the new constraint
+  4. If stale values found: updated `seed.mjs` in the same PR/commit as the migration
+  - *Why: Stale seed values cause CI failures silently — the migration succeeds but E2E tests break on the next run. Discovered 2026-05-05 (funding_type='homeowner' + job_type='retail_siding' were stale from prior migrations; neither migration had updated the seed file).*
+
+
 ## Standard — Document Failures, Don't Block
 
 ### Smoke Tests (run against staging after push, before merging to main)
