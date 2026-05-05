@@ -2,7 +2,7 @@
  * admin-auth-gate.ts — Netlify Edge Function (W4-P1)
  *
  * Intercepts all /admin-*.html requests before the static file is served.
- * Reads the sq_at cookie (set by Auth._syncAdminCookie in js/auth.js),
+ * Reads the sb_at cookie (set by Auth._syncAdminCookie in js/auth.js),
  * decodes the Supabase JWT payload, and verifies:
  *   1. Token present and structurally valid
  *   2. Token not expired (exp claim)
@@ -21,9 +21,9 @@
 export default async (req: Request, context: any) => {
   const url = new URL(req.url);
 
-  // Parse sq_at from Cookie header
+  // Parse sb_at from Cookie header
   const cookieHeader = req.headers.get('cookie') || '';
-  const match = cookieHeader.match(/(?:^|;\s*)sq_at=([^;]+)/);
+  const match = cookieHeader.match(/(?:^|;\s*)sb_at=([^;]+)/);
   const token = match?.[1];
 
   const redirectToLogin = () =>

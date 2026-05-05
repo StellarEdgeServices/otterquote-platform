@@ -757,26 +757,6 @@ https://otterquote.com`;
     await this.redirectToDashboard();
   },
 
-  /**
-   * Sync the sq_at cookie with the current Supabase session.
-   * Used by the Netlify admin-auth-gate edge function (W4-P1) to verify
-   * admin identity server-side before the HTML page is served.
-   * Cookie is non-HttpOnly so the token-refresh listener can update it;
-   * it carries no extra privilege — Supabase RLS remains the data gate.
-   */
-  _syncAdminCookie(session) {
-    if (session?.access_token) {
-      try {
-        const parts = session.access_token.split('.');
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        const maxAge = Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
-        document.cookie = `sq_at=${session.access_token}; path=/; SameSite=Lax; max-age=${maxAge}`;
-      } catch (e) {
-        // Malformed token — clear rather than leave stale
-        document.cookie = 'sq_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      }
-    } else {
-      document.cookie = 'sq_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     }
   },
 
@@ -789,13 +769,6 @@ https://otterquote.com`;
     // Idempotent: safe to call from multiple pages or auto-init.
     if (this._listenerWired) return;
     if (!sb) return;
-    this._listenerWired = true;
-    sb.auth.onAuthStateChange(async (event, session) => {
-      // Keep sq_at cookie in sync across all auth lifecycle events
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        this._syncAdminCookie(session);
-      } else if (event === 'SIGNED_OUT') {
-        this._syncAdminCookie(null);
       }
 
       if (event === 'SIGNED_IN' && session?.user) {
@@ -830,6 +803,29 @@ https://otterquote.com`;
     }
   },
 
+  /**
+   * Set sb_at cookie with current Supabase access token.
+   * Used by the Netlify admin-auth-gate edge function to verify admin
+   * identity server-side before the HTML page is served.
+   * Token is extracted from the access_token JWT; max-age is calculated
+   * from the token's exp claim.
+   */
+  _setSingleAuthCookie(session) {
+    if (session?.access_token) {
+      try {
+        const parts = session.access_token.split('.');
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        const maxAge = Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
+        document.cookie = `sb_at=${session.access_token}; path=/; SameSite=Lax; max-age=${maxAge}`;
+      } catch (e) {
+        // Malformed token — clear rather than leave stale
+        document.cookie = 'sb_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      }
+    } else {
+      document.cookie = 'sb_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    }
+  },
+
   ready() {
     if (this._readyPromise) return this._readyPromise;
     let _readyResolved = false;
@@ -858,6 +854,7 @@ https://otterquote.com`;
             const user = session.user;
             const role = await Auth.getRole();
             const isAdmin = await Auth._getIsAdmin(user);
+            this._setSingleAuthCookie(session);
             resolve({ user, role, isAdmin });
           } catch (err) {
             reject(err);
@@ -874,20 +871,6 @@ https://otterquote.com`;
     return this._readyPromise;
   },
 
-  _initCookieSync() {
-    if (this._cookieSyncWired) return;
-    if (!sb) return;
-    this._cookieSyncWired = true;
-    sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        this._syncAdminCookie(session);
-      } else if (event === 'SIGNED_OUT') {
-        this._syncAdminCookie(null);
-      }
-    });
-  }
-};
-
 // Auto-wire ONLY the cookie sync on every page that loads auth.js. Fixes the
 // sq_at cookie going stale on every page other than get-started.html and
 // partner-dashboard.html. Without this, TOKEN_REFRESHED events on most pages
@@ -900,6 +883,19 @@ https://otterquote.com`;
 // and producing the contractor-dashboard / sign-in bounce loop. Pages that
 // need full post-auth handling (get-started.html, partner-dashboard.html)
 // continue to call onAuthStateChangeListener() explicitly.
-if (typeof window !== 'undefined' && window.Auth && typeof window.Auth._initCookieSync === 'function') {
-  try { window.Auth._initCookieSync(); } catch (e) { /* non-fatal */ }
+}
+
+// D-211: Auto-wire sb_at cookie refresh on TOKEN_REFRESHED.
+// Auth.ready() sets it on initial session. This keeps it fresh across token rotations.
+// Replaces the _initCookieSync listener removed in D-211 Phase 0.
+if (typeof window !== 'undefined' && window.Auth && typeof sb !== 'undefined') {
+  try {
+    sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED' && session?.access_token) {
+        window.Auth._setSingleAuthCookie(session);
+      } else if (event === 'SIGNED_OUT') {
+        document.cookie = 'sb_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      }
+    });
+  } catch (e) { /* non-fatal */ }
 }
