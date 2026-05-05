@@ -758,32 +758,8 @@ https://otterquote.com`;
   },
 
   /**
-   * Sync the sq_at cookie with the current Supabase session.
-   * Used by the Netlify admin-auth-gate edge function (W4-P1) to verify
-   * admin identity server-side before the HTML page is served.
-   * Cookie is non-HttpOnly so the token-refresh listener can update it;
-   * it carries no extra privilege — Supabase RLS remains the data gate.
-   */
-  _syncAdminCookie(session) {
-    if (session?.access_token) {
-      try {
-        const parts = session.access_token.split('.');
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        const maxAge = Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
-        document.cookie = `sq_at=${session.access_token}; path=/; SameSite=Lax; max-age=${maxAge}`;
-      } catch (e) {
-        // Malformed token — clear rather than leave stale
-        document.cookie = 'sq_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      }
-    } else {
-      document.cookie = 'sq_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    }
-  },
-
-  /**
    * Set up listener for auth state changes.
    * Handles post-auth profile creation when user logs in.
-   * Also keeps the sq_at cookie in sync for the Netlify edge gate (W4-P1).
    */
   onAuthStateChangeListener() {
     // Idempotent: safe to call from multiple pages or auto-init.
@@ -791,13 +767,6 @@ https://otterquote.com`;
     if (!sb) return;
     this._listenerWired = true;
     sb.auth.onAuthStateChange(async (event, session) => {
-      // Keep sq_at cookie in sync across all auth lifecycle events
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        this._syncAdminCookie(session);
-      } else if (event === 'SIGNED_OUT') {
-        this._syncAdminCookie(null);
-      }
-
       if (event === 'SIGNED_IN' && session?.user) {
         // User just signed in, create profile if needed
         await this.handleAuthCallback();
@@ -805,40 +774,4 @@ https://otterquote.com`;
     });
   },
 
-  /**
-   * Narrow, side-effect-free listener that ONLY keeps the sq_at cookie in sync
-   * with the current Supabase session. Safe to auto-wire on every page that
-   * loads auth.js. Distinct from onAuthStateChangeListener(): does NOT call
-   * handleAuthCallback, does NOT redirect, does NOT touch profile/signup data.
-   * Only writes a cookie. This is the piece the Netlify admin-auth-gate needs
-   * to find a fresh access token regardless of which page the user has open.
-   */
-  _initCookieSync() {
-    if (this._cookieSyncWired) return;
-    if (!sb) return;
-    this._cookieSyncWired = true;
-    sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        this._syncAdminCookie(session);
-      } else if (event === 'SIGNED_OUT') {
-        this._syncAdminCookie(null);
-      }
-    });
-  }
 };
-
-// Auto-wire ONLY the cookie sync on every page that loads auth.js. Fixes the
-// sq_at cookie going stale on every page other than get-started.html and
-// partner-dashboard.html. Without this, TOKEN_REFRESHED events on most pages
-// never reached _syncAdminCookie and admins were eventually bounced from
-// /admin-*.html with reason=admin_required despite holding a valid session.
-//
-// IMPORTANT: We deliberately do NOT auto-wire onAuthStateChangeListener here.
-// That listener also fires handleAuthCallback() on SIGNED_IN, which redirects
-// the user — racing with the per-page post-auth routing in auth-callback.html
-// and producing the contractor-dashboard / sign-in bounce loop. Pages that
-// need full post-auth handling (get-started.html, partner-dashboard.html)
-// continue to call onAuthStateChangeListener() explicitly.
-if (typeof window !== 'undefined' && window.Auth && typeof window.Auth._initCookieSync === 'function') {
-  try { window.Auth._initCookieSync(); } catch (e) { /* non-fatal */ }
-}
