@@ -229,7 +229,7 @@ async function seed() {
   // ── 6b. Fresh retail siding test claim (D-164 design gate) ─────────────
   console.log('6b. Retail siding test claim (design gate verification)...');
   // Delete previous retail siding test claims
-  await supabase.from('claims').delete().eq('user_id', homeownerUserId).eq('job_type', 'retail_siding');
+  await supabase.from('claims').delete().eq('user_id', homeownerUserId).eq('job_type', 'retail');
 
   const { data: retailClaim, error: retailClaimErr } = await supabase
     .from('claims')
@@ -239,7 +239,7 @@ async function seed() {
       property_address: '100 E Test St, Zionsville, IN 46077',
       property_state: 'IN',
       homeowner_name: 'Test Homeowner',
-      job_type: 'retail_siding',
+      job_type: 'retail',
       funding_type: 'cash',
       trades: ['siding'],
       damage_type: null,
