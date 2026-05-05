@@ -34,13 +34,13 @@ jobs:
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
           restore-keys: |
-            playwright-${{ runner.os }}-
+            playwright-chromium-${{ runner.os }}-
 
       - name: Install Playwright browsers
         working-directory: tests/e2e
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
 
       - name: Seed test database
         working-directory: tests/e2e
