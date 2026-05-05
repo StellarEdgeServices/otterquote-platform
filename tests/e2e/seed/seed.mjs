@@ -310,10 +310,6 @@ async function seed() {
     .insert({
       claim_id: testRetailClaimId,
       user_id: homeownerUserId,
-      address: '100 E Test St',
-      city: 'Zionsville',
-      state: 'IN',
-      zip: '46077',
       status: 'complete',
       stripe_payment_id: 'e2e-injected-retail-siding',
       homeowner_stripe_payment_intent_id: null,
@@ -331,7 +327,6 @@ async function seed() {
         ],
       },
       created_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
     })
     .select('id')
     .single();
