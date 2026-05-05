@@ -1168,7 +1168,19 @@
 
         // Initialize
         async function init() {
-          currentUser = await Auth.requireAuth('contractor');
+          // 1. Check auth via unified Auth.ready() bootstrap
+          let authData;
+          try {
+            authData = await Auth.ready();
+            currentUser = authData.user;
+          } catch (authErr) {
+            // No valid session
+            if (!CONFIG.DEMO_MODE) {
+              window.location.href = '/contractor-login.html';
+              return;
+            }
+            currentUser = null;
+          }
 
           if (!currentUser && !CONFIG.DEMO_MODE) {
             // Already redirected

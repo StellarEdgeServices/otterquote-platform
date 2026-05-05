@@ -109,6 +109,51 @@ window.Auth = {
   },
 
   /**
+   * Unified bootstrap promise for all authenticated pages.
+   * Returns a cached promise that resolves to { user, role, isAdmin } 
+   * once auth state is confirmed, or rejects if no session after timeout.
+   * 
+   * Idempotent: multiple calls on same page return same cached promise.
+   * Handles OAuth callbacks (code=) and magic links (access_token in hash).
+   * D-211: Single-bootstrap solution to replace per-page requireAuth pattern.
+   */
+  ready: (function() {
+    let _promise = null;
+    return function() {
+      if (_promise) return _promise;  // Idempotent: return cached promise on subsequent calls
+      
+      _promise = new Promise(async (resolve, reject) => {
+        try {
+          // Use getSession() which handles the full async dance:
+          // - localStorage check
+          // - onAuthStateChange listener
+          // - URL param detection
+          // - refreshSession retry after 6s
+          // - 8s timeout
+          const session = await this.getSession();
+          
+          if (!session || !session.user) {
+            reject(new Error('No authenticated session'));
+            return;
+          }
+          
+          const user = session.user;
+          const role = await this.getRole();
+          
+          // Determine if admin: check for is_admin claim in JWT or role === 'admin'
+          const isAdmin = role === 'admin' || user?.user_metadata?.is_admin === true;
+          
+          resolve({ user, role: role || 'homeowner', isAdmin });
+        } catch (err) {
+          reject(err || new Error('Auth initialization failed'));
+        }
+      });
+      
+      return _promise;
+    };
+  }).call(window.Auth),
+
+  /**
    * Send magic link email with role-aware redirect.
    * @param {string} email
    * @param {string} role - 'homeowner' (default), 'contractor', 're_agent',

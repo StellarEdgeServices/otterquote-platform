@@ -1315,7 +1315,19 @@
       async function init() {
         try {
           // 1. Check auth — will skip redirect in DEMO_MODE
-          currentUser = await Auth.requireAuth('homeowner');
+          // 1. Check auth via unified Auth.ready() bootstrap
+          let authData;
+          try {
+            authData = await Auth.ready();
+            currentUser = authData.user;
+          } catch (authErr) {
+            // No valid session
+            if (!CONFIG.DEMO_MODE) {
+              window.location.href = '/get-started.html';
+              return;
+            }
+            currentUser = null;
+          }
 
           if (!currentUser && CONFIG.DEMO_MODE) {
             // Demo mode: show realistic sample data for review
