@@ -252,11 +252,20 @@ test.describe('Flow A — Contractor Journey', () => {
       await dialog.dismiss();
     });
 
-    // Wait for network idle — ensures both the Supabase claim fetch AND
-    // contractor profile fetch have completed before we fill the form.
-    // The submit button is enabled by default in HTML so a disabled-state
-    // check fires immediately before currentContractor is populated.
+    // Step 1: networkidle — Supabase claim + contractor fetches have responded.
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
+    // Step 2: Wait for page initialisation to finish.
+    // startUp() runs after sb.auth.getSession() resolves; it sets #totalPrice
+    // from claimRcv and populates the form. Waiting for a non-zero #totalPrice
+    // confirms both the auth chain and the claim fetch have completed.
+    await page.waitForFunction(
+      () => {
+        const tp = document.getElementById('totalPrice') as HTMLInputElement | null;
+        return tp !== null && parseFloat(tp.value) > 0;
+      },
+      { timeout: 15_000 }
+    );
 
     // ── Fill required bid fields ─────────────────────────────────────────
 
@@ -332,6 +341,16 @@ test.describe('Flow A — Contractor Journey', () => {
       'button:has-text("Place Bid"), button:has-text("Submit")'
     ).first();
     await expect(submitBtn).toBeVisible();
+
+    // Bypass HTML5 native form validation — the form has no novalidate attribute,
+    // so the browser's built-in validation runs silently before the submit event
+    // fires, blocking submission without any JS dialog or console error.
+    // Once bypassed, our JS handler runs and will alert() on any remaining issues.
+    await page.evaluate(() => {
+      const form = document.getElementById('bidForm') as HTMLFormElement | null;
+      if (form) form.noValidate = true;
+    });
+
     await submitBtn.click();
 
     // Wait for the bid form's success state to become visible.
