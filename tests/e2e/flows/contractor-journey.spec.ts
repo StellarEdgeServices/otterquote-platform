@@ -232,10 +232,9 @@ test.describe('Flow A — Contractor Journey', () => {
   test('A8: contractor submits a bid and it persists in the database', async ({ page }) => {
     await loginAsContractor(page, state);
 
-    await page.goto(`/contractor-bid-form.html?claim_id=${state.testClaimId}`);
-    await page.waitForLoadState('load');
-
-    await expect(page).not.toHaveURL(/login|get-started/);
+    // Register all intercepts BEFORE goto — auth calls fire at script-parse time
+    // (config.js creates the Supabase client before DOMContentLoaded) and would
+    // be missed if registered after page.waitForLoadState('load').
 
     // Capture browser-side console messages — surfaces form errors (e.g. RLS failures,
     // bid validation errors) that would otherwise be invisible in CI output.
@@ -275,6 +274,11 @@ test.describe('Flow A — Contractor Journey', () => {
       console.error('[A8 dialog captured]', msg);
       await dialog.dismiss();
     });
+
+    await page.goto(`/contractor-bid-form.html?claim_id=${state.testClaimId}`);
+    await page.waitForLoadState('load');
+
+    await expect(page).not.toHaveURL(/login|get-started/);
 
     // Step 1: networkidle — wait for Supabase API calls to settle.
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
