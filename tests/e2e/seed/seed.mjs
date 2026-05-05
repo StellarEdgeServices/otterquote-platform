@@ -191,10 +191,10 @@ async function seed() {
   await supabase.from('contractor_templates').delete().eq('contractor_id', contractorId);
 
   const templatesPayload = [
-    { contractor_id: contractorId, trade: 'roofing', funding_type: 'insurance', status: 'auto_validated' },
-    { contractor_id: contractorId, trade: 'roofing', funding_type: 'retail',    status: 'auto_validated' },
-    { contractor_id: contractorId, trade: 'siding',  funding_type: 'retail',    status: 'auto_validated' },
-    { contractor_id: contractorId, trade: 'siding',  funding_type: 'insurance', status: 'auto_validated' },
+    { contractor_id: contractorId, trade: 'roofing', funding_type: 'insurance', status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
+    { contractor_id: contractorId, trade: 'roofing', funding_type: 'retail',    status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
+    { contractor_id: contractorId, trade: 'siding',  funding_type: 'retail',    status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
+    { contractor_id: contractorId, trade: 'siding',  funding_type: 'insurance', status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
   ];
   const { error: tmplErr } = await supabase.from('contractor_templates').insert(templatesPayload);
   if (tmplErr) throw new Error(`Contractor templates insert failed: ${tmplErr.message}`);
