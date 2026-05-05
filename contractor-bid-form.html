@@ -5331,12 +5331,22 @@
         }
       }
 
-      // Wait for Supabase auth to be fully initialized before running startup.
-      // getSession() resolves once the session is ready, which is more reliable
-      // than INITIAL_SESSION when config.js already created the client before
-      // this listener could be registered (fix: 86e110mxp).
+      // Startup gate — fires exactly once, whichever path resolves first:
+      //   1. onAuthStateChange (F-007): fires immediately when Supabase JS v2
+      //      emits INITIAL_SESSION to the new subscriber (latest SDK always
+      //      does this, even if INITIAL_SESSION already fired globally).
+      //   2. getSession() fallback (86e110mxp): catches older SDK versions
+      //      where INITIAL_SESSION was NOT re-emitted retroactively.
+      // Either path sets _startUpFired to prevent double-invocation.
+      let _startUpFired = false;
+      function _maybeStartUp() {
+        if (!_startUpFired) { _startUpFired = true; startUp(); }
+      }
       if (sb) {
-        sb.auth.getSession().then(() => startUp());
+        sb.auth.onAuthStateChange((event) => {
+          if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') _maybeStartUp();
+        });
+        sb.auth.getSession().then(_maybeStartUp).catch(_maybeStartUp);
       } else {
         startUp();
       }
