@@ -59,7 +59,10 @@ async function unlockDesignGate(claimId: string): Promise<void> {
   const supabase = createAdminClient();
   const { error } = await supabase
     .from('claims')
-    .update({ siding_bid_released_at: new Date().toISOString() })
+    .update({
+      siding_bid_released_at: new Date().toISOString(),
+      ready_for_bids: true,   // D-165: opportunities query filters on ready_for_bids = true
+    })
     .eq('id', claimId);
   if (error) {
     throw new Error(`Failed to unlock design gate: ${error.message}`);

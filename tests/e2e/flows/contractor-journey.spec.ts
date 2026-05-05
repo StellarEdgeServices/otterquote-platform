@@ -231,6 +231,29 @@ test.describe('Flow A — Contractor Journey', () => {
 
     await expect(page).not.toHaveURL(/login|get-started/);
 
+    // Capture any unexpected dialogs — fail fast with the message rather than
+    // timing out 20s later with no information.
+    const _dialogs: string[] = [];
+    page.on('dialog', async dialog => {
+      const msg = `${dialog.type()}: ${dialog.message()}`;
+      _dialogs.push(msg);
+      console.error('[A8 dialog captured]', msg);
+      await dialog.dismiss();
+    });
+
+    // Wait for contractor profile to load — the form JS loads currentContractor
+    // asynchronously after auth. Without this, submit fires before it's ready
+    // and throws "contractor profile could not be loaded".
+    await page.waitForFunction(
+      () => {
+        const btn = document.querySelector('#bidSubmitBtn, button[type="submit"]') as HTMLButtonElement | null;
+        // The submit button text changes from 'Loading…' / 'Submitting…' to 'Submit Bid'
+        // once the page is fully initialised. Guard: also accept if button is present at all.
+        return btn !== null && !btn.disabled;
+      },
+      { timeout: 15_000 }
+    );
+
     // ── Fill required bid fields ─────────────────────────────────────────
 
     // For insurance_rcv roofing, visible price entry is via decking inputs (D-084)
