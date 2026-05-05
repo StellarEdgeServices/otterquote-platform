@@ -93,3 +93,24 @@ export async function getClaimEnvelopeId(claimId: string): Promise<string | null
   if (error || !data) return null;
   return data.docusign_envelope_id;
 }
+
+/**
+ * Fetches a single claim by ID using the admin client (bypasses RLS).
+ * Returns the claim row or null if not found. Used by tests to verify
+ * claim state after UI actions complete.
+ */
+export async function getTestClaim(
+  claimId: string
+): Promise<Record<string, unknown> | null> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('claims')
+    .select('*')
+    .eq('id', claimId)
+    .maybeSingle();
+  if (error) {
+    console.error('getTestClaim DB error:', error.message);
+    return null;
+  }
+  return data;
+}
