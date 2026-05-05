@@ -3012,10 +3012,15 @@
 
   let currentClaimId = null;
   let pollingInterval = null;
-  const homeownerId = sb.auth.user()?.id;
+  let homeownerId = null;
 
   // Initialize messaging section
   async function initMessaging() {
+    // Fetch user ID from v2 API (was sb.auth.user() in v1, removed in v2)
+    if (!homeownerId) {
+      const { data: { user } } = await sb.auth.getUser();
+      homeownerId = user?.id;
+    }
     if (!homeownerId) return;
 
     const claimSelect = document.getElementById("messagingClaimSelect");

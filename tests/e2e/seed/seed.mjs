@@ -141,7 +141,7 @@ async function seed() {
     contact_name: 'Test Contractor',
     email: CONTRACTOR_EMAIL,
     phone: '317-555-0200',
-    trades: ['roofing'],
+    trades: ['roofing', 'siding'],
     service_counties: ['IN:*'], // serves all of Indiana (D-192 format)
     address_state: 'IN',
     years_in_business: 5,
@@ -182,6 +182,23 @@ async function seed() {
     contractorId = newC.id;
     console.log(`  ✅ Created contractor record (${contractorId})`);
   }
+
+  // ── 5b. Contractor templates (D-199 bid-can-submit gate) ──────────────────
+  console.log('5b. Contractor templates (bid-can-submit gate)...');
+  // Delete any existing test contractor templates and re-insert validated ones.
+  // Without these, the bid_can_submit RPC returns can_submit=false and the
+  // bid form blocks submission with a window.confirm() before the form submits.
+  await supabase.from('contractor_templates').delete().eq('contractor_id', contractorId);
+
+  const templatesPayload = [
+    { contractor_id: contractorId, trade: 'roofing', funding_type: 'insurance', status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
+    { contractor_id: contractorId, trade: 'roofing', funding_type: 'retail',    status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
+    { contractor_id: contractorId, trade: 'siding',  funding_type: 'retail',    status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
+    { contractor_id: contractorId, trade: 'siding',  funding_type: 'insurance', status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
+  ];
+  const { error: tmplErr } = await supabase.from('contractor_templates').insert(templatesPayload);
+  if (tmplErr) throw new Error(`Contractor templates insert failed: ${tmplErr.message}`);
+  console.log(`  ✅ Contractor templates seeded (roofing/insurance, roofing/retail, siding/retail, siding/insurance)`);
 
   // ── 6. Fresh test claim ──────────────────────────────────────────────────
   console.log('6. Test claim (delete old, create fresh)...');
@@ -229,7 +246,7 @@ async function seed() {
   // ── 6b. Fresh retail siding test claim (D-164 design gate) ─────────────
   console.log('6b. Retail siding test claim (design gate verification)...');
   // Delete previous retail siding test claims
-  await supabase.from('claims').delete().eq('user_id', homeownerUserId).eq('job_type', 'retail_siding');
+  await supabase.from('claims').delete().eq('user_id', homeownerUserId).eq('job_type', 'retail');
 
   const { data: retailClaim, error: retailClaimErr } = await supabase
     .from('claims')
@@ -239,8 +256,8 @@ async function seed() {
       property_address: '100 E Test St, Zionsville, IN 46077',
       property_state: 'IN',
       homeowner_name: 'Test Homeowner',
-      job_type: 'retail_siding',
-      funding_type: 'homeowner',
+      job_type: 'retail',
+      funding_type: 'cash',
       trades: ['siding'],
       damage_type: null,
       material_category: null,
@@ -310,10 +327,6 @@ async function seed() {
     .insert({
       claim_id: testRetailClaimId,
       user_id: homeownerUserId,
-      address: '100 E Test St',
-      city: 'Zionsville',
-      state: 'IN',
-      zip: '46077',
       status: 'complete',
       stripe_payment_id: 'e2e-injected-retail-siding',
       homeowner_stripe_payment_intent_id: null,
@@ -331,7 +344,6 @@ async function seed() {
         ],
       },
       created_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
     })
     .select('id')
     .single();

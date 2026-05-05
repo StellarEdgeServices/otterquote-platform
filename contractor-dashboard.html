@@ -1948,10 +1948,15 @@
 
   let currentClaimId = null;
   let pollingInterval = null;
-  const contractorId = sb.auth.user()?.id;
+  let contractorId = null;
 
   // Initialize messaging section
   async function initMessaging() {
+    // Fetch user ID from v2 API (was sb.auth.user() in v1, removed in v2)
+    if (!contractorId) {
+      const { data: { user } } = await sb.auth.getUser();
+      contractorId = user?.id;
+    }
     if (!contractorId) return;
 
     // Fetch contractor object to get their contractor ID

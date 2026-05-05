@@ -2343,7 +2343,26 @@
       return html;
     }
 
-    document.addEventListener('DOMContentLoaded', init);
+    // Startup gate — fires exactly once, whichever path resolves first:
+    //   1. onAuthStateChange (F-007): fires immediately when Supabase JS v2
+    //      emits INITIAL_SESSION to the new subscriber (latest SDK always
+    //      does this, even if INITIAL_SESSION already fired globally).
+    //   2. getSession() fallback (86e110mxp): catches older SDK versions
+    //      where INITIAL_SESSION was NOT re-emitted retroactively.
+    // Either path sets _initFired to prevent double-invocation.
+    // Scripts are at bottom of body so DOM is ready when this IIFE runs.
+    let _initFired = false;
+    function _maybeInit() {
+      if (!_initFired) { _initFired = true; init(); }
+    }
+    if (typeof sb !== 'undefined' && sb) {
+      sb.auth.onAuthStateChange((event) => {
+        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') _maybeInit();
+      });
+      sb.auth.getSession().then(_maybeInit).catch(_maybeInit);
+    } else {
+      document.addEventListener('DOMContentLoaded', init);
+    }
   })();
   </script>
 </body>

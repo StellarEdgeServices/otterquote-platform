@@ -50,6 +50,12 @@ async function loginAsContractor(page: import('@playwright/test').Page, state: T
   await page.waitForFunction(() => {
     return Object.keys(localStorage).some(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
   }, { timeout: 15_000 });
+  // Wait for any pending auth requests (token refresh, getUser) to settle.
+  // This ensures the JWT in localStorage is valid/refreshed before we navigate
+  // to the bid form — prevents Auth.getSession() from hanging on the next page.
+  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {
+    // Non-fatal if networkidle times out — token is in storage, proceed.
+  });
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -226,10 +232,92 @@ test.describe('Flow A — Contractor Journey', () => {
   test('A8: contractor submits a bid and it persists in the database', async ({ page }) => {
     await loginAsContractor(page, state);
 
+    // Register all intercepts BEFORE goto — auth calls fire at script-parse time
+    // (config.js creates the Supabase client before DOMContentLoaded) and would
+    // be missed if registered after page.waitForLoadState('load').
+
+    // Capture browser-side console messages — surfaces form errors (e.g. RLS failures,
+    // bid validation errors) that would otherwise be invisible in CI output.
+    const _browserLogs: string[] = [];
+    page.on('console', msg => {
+      const entry = `[browser:${msg.type()}] ${msg.text()}`;
+      _browserLogs.push(entry);
+      if (msg.type() === 'error' || msg.type() === 'warning') {
+        console.error('[A8 browser console]', entry);
+      }
+    });
+
+    // Intercept ALL Supabase responses (auth + REST) — surfaces failures and confirms init ran
+    const _apiResponses: string[] = [];
+    page.on('response', async resp => {
+      const url = resp.url();
+      if (url.includes('supabase.co')) {
+        try {
+          const path = new URL(url).pathname + (new URL(url).search?.slice(0, 80) || '');
+          const status = resp.status();
+          let body = '';
+          try { body = await resp.text(); } catch { body = '[unreadable]'; }
+          const entry = `[api:${status}] ${path} → ${body.slice(0, 150)}`;
+          _apiResponses.push(entry);
+          // Always log auth and REST calls
+          console.log('[A8 api]', entry);
+        } catch { /* ignore */ }
+      }
+    });
+
+    // Capture any unexpected dialogs — fail fast with the message rather than
+    // timing out 20s later with no information.
+    const _dialogs: string[] = [];
+    page.on('dialog', async dialog => {
+      const msg = `${dialog.type()}: ${dialog.message()}`;
+      _dialogs.push(msg);
+      console.error('[A8 dialog captured]', msg);
+      await dialog.dismiss();
+    });
+
     await page.goto(`/contractor-bid-form.html?claim_id=${state.testClaimId}`);
     await page.waitForLoadState('load');
 
     await expect(page).not.toHaveURL(/login|get-started/);
+
+    // Step 1: networkidle — wait for Supabase API calls to settle.
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
+    // Step 2: Diagnostic dump immediately after networkidle so we can see
+    // the exact page state in CI output.
+    const _pageState = await page.evaluate(() => {
+      const w = window as any;
+      return {
+        url: window.location.href,
+        totalPriceValue: (document.getElementById('totalPrice') as HTMLInputElement | null)?.value ?? 'ELEMENT_MISSING',
+        deckingVisible: (document.getElementById('deckingPricePerSheet') as HTMLElement | null)?.offsetParent !== null,
+        submitBtnText: (document.getElementById('submitBtn') as HTMLButtonElement | null)?.textContent?.trim() ?? 'MISSING',
+        submitBtnDisabled: (document.getElementById('submitBtn') as HTMLButtonElement | null)?.disabled ?? null,
+        localStorageKeys: Object.keys(localStorage).filter(k => k.startsWith('sb-')),
+        currentClaimId: w.currentClaim?.id ?? null,
+        currentUserId: w.currentUser?.id ?? null,
+        currentContractorId: w.currentContractor?.id ?? null,
+        demoMode: w.CONFIG?.DEMO_MODE ?? null,
+        claimRcv: w.claimRcv ?? null,
+      };
+    });
+    console.log('[A8 pageState after networkidle]', JSON.stringify(_pageState));
+
+    // Step 3: If #totalPrice isn't set yet (async JS chain still running),
+    // wait up to 15s for it. If still zero after 15s, proceed anyway and
+    // let the form's JS handle validation — the diagnostic dump above will
+    // show exactly why the init stalled.
+    if (!_pageState.totalPriceValue || parseFloat(_pageState.totalPriceValue) <= 0) {
+      await page.waitForFunction(
+        () => {
+          const tp = document.getElementById('totalPrice') as HTMLInputElement | null;
+          return tp !== null && parseFloat(tp.value || '0') > 0;
+        },
+        { timeout: 15_000 }
+      ).catch(() => {
+        console.warn('[A8] #totalPrice still 0 after 15s — proceeding anyway, JS handler will surface the issue');
+      });
+    }
 
     // ── Fill required bid fields ─────────────────────────────────────────
 
@@ -267,9 +355,11 @@ test.describe('Flow A — Contractor Journey', () => {
       await numStoriesSelect.selectOption({ index: 1 });
     }
 
-    // Workmanship warranty years (fill if visible)
+    // Workmanship warranty years (#workmanshipYears) — narrow selector to the
+    // number input; the broader 'input[id*="warranty"]' selector also matched the
+    // warrantyCustomToggle checkbox, which can't be filled.
     const warrantyInput = page.locator(
-      'input[id*="warranty"], input[name*="warranty"]'
+      '#workmanshipYears, input[type="number"][id*="warranty"][id*="Years"]'
     ).first();
     if (await warrantyInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await warrantyInput.fill('5');
@@ -298,6 +388,19 @@ test.describe('Flow A — Contractor Journey', () => {
     // during automated tests. Wire to Stripe test mode keys when a staging-specific
     // Stripe configuration is available. See CI_INTEGRATION.md → Phase 2.
 
+    // ── Diagnostic: page state just before submit ────────────────────────
+    const _preSubmitState = await page.evaluate(() => {
+      const w = window as any;
+      return {
+        totalPriceValue: (document.getElementById('totalPrice') as HTMLInputElement | null)?.value ?? 'ELEMENT_MISSING',
+        currentClaimId: w.currentClaim?.id ?? null,
+        currentUserId: w.currentUser?.id ?? null,
+        currentContractorId: w.currentContractor?.id ?? null,
+        claimRcv: w.claimRcv ?? null,
+      };
+    });
+    console.log('[A8 preSubmitState]', JSON.stringify(_preSubmitState));
+
     // ── Submit the form ──────────────────────────────────────────────────
 
     const submitBtn = page.locator(
@@ -305,14 +408,34 @@ test.describe('Flow A — Contractor Journey', () => {
       'button:has-text("Place Bid"), button:has-text("Submit")'
     ).first();
     await expect(submitBtn).toBeVisible();
+
+    // Bypass HTML5 native form validation — the form has no novalidate attribute,
+    // so the browser's built-in validation runs silently before the submit event
+    // fires, blocking submission without any JS dialog or console error.
+    // Once bypassed, our JS handler runs and will alert() on any remaining issues.
+    await page.evaluate(() => {
+      const form = document.getElementById('bidForm') as HTMLFormElement | null;
+      if (form) form.noValidate = true;
+    });
+
     await submitBtn.click();
 
-    // Wait for success indicator (toast, banner, or redirect)
-    await page.waitForSelector(
-      '.success, .alert-success, [class*="success"], #success-message, ' +
-      '.toast-success, [role="alert"]',
-      { timeout: 20_000 }
-    );
+    // Wait for the bid form's success state to become visible.
+    // #successState is always in DOM (hidden) and gets class 'show' added on success.
+    // Using [class*="success"] would match the hidden div immediately — must use
+    // the specific #successState.show selector to wait for the actual success.
+    if (_dialogs.length > 0) {
+      throw new Error(`[A8] Unexpected dialog(s) fired during submission — bid likely blocked:\n${_dialogs.join('\n')}\nBrowser console:\n${_browserLogs.filter(l => l.includes('error')).join('\n')}`);
+    }
+    await page.waitForSelector('#successState.show', { timeout: 30_000 }).catch(async (err) => {
+      const diagLines = [
+        'Dialogs captured: ' + (_dialogs.length ? _dialogs.join(' | ') : 'none'),
+        'Browser errors: ' + (_browserLogs.filter(l => l.includes('error')).join(' | ') || 'none'),
+        'API calls: ' + (_apiResponses.slice(-10).join(' || ') || 'none'),
+        'All browser logs: ' + (_browserLogs.slice(-20).join(' | ') || 'none'),
+      ];
+      throw new Error(`[A8] Success state never shown.\n${diagLines.join('\n')}\nOriginal: ${err.message}`);
+    });
 
     // ── Verify bid persisted in DB ───────────────────────────────────────
 

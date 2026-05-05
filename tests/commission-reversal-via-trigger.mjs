@@ -41,7 +41,7 @@ const MGMT_ENDPOINT = `https://api.supabase.com/v1/projects/${PROJECT_REF}/datab
 // Known existing auth user — the test homeowner (see otterquote-memory.md,
 // Test Accounts). claims.user_id FK to auth.users is enforced even inside a
 // rolled-back transaction, so we cannot invent a random UUID here.
-const TEST_HOMEOWNER_USER_ID = "20da8a5a-42cb-4f30-b09e-e1bc96d97d64";
+const TEST_HOMEOWNER_USER_ID = "f6c14b57-59dc-43ce-b510-04277a71f5af"; // Fixed May 5, 2026: valid test user
 const TEST_CONTRACTOR_ID = "53cd882c-b7fd-4046-ad37-bf69a56e8f8f";
 
 function getToken() {

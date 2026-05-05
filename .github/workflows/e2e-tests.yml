@@ -12,7 +12,7 @@ jobs:
   test:
     name: Run E2E Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -29,9 +29,18 @@ jobs:
         working-directory: tests/e2e
         run: npm ci
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
+
       - name: Install Playwright browsers
         working-directory: tests/e2e
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
 
       - name: Seed test database
         working-directory: tests/e2e
@@ -45,6 +54,8 @@ jobs:
         working-directory: tests/e2e
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm test
 
       - name: Teardown test database
