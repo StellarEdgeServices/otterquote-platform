@@ -50,6 +50,12 @@ async function loginAsContractor(page: import('@playwright/test').Page, state: T
   await page.waitForFunction(() => {
     return Object.keys(localStorage).some(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
   }, { timeout: 15_000 });
+  // Wait for any pending auth requests (token refresh, getUser) to settle.
+  // This ensures the JWT in localStorage is valid/refreshed before we navigate
+  // to the bid form — prevents Auth.getSession() from hanging on the next page.
+  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {
+    // Non-fatal if networkidle times out — token is in storage, proceed.
+  });
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -242,21 +248,20 @@ test.describe('Flow A — Contractor Journey', () => {
       }
     });
 
-    // Intercept Supabase REST API responses — surfaces RLS blocks and submission errors
+    // Intercept ALL Supabase responses (auth + REST) — surfaces failures and confirms init ran
     const _apiResponses: string[] = [];
     page.on('response', async resp => {
       const url = resp.url();
-      if (url.includes('supabase.co/rest/v1/') || url.includes('supabase.co/rest/v1')) {
+      if (url.includes('supabase.co')) {
         try {
-          const path = new URL(url).pathname + (new URL(url).search || '');
+          const path = new URL(url).pathname + (new URL(url).search?.slice(0, 80) || '');
           const status = resp.status();
           let body = '';
           try { body = await resp.text(); } catch { body = '[unreadable]'; }
-          const entry = `[api:${status}] ${path} → ${body.slice(0, 200)}`;
+          const entry = `[api:${status}] ${path} → ${body.slice(0, 150)}`;
           _apiResponses.push(entry);
-          if (status >= 400 || body.includes('"error"') || body.includes('"message"')) {
-            console.error('[A8 api response]', entry);
-          }
+          // Always log auth and REST calls
+          console.log('[A8 api]', entry);
         } catch { /* ignore */ }
       }
     });
