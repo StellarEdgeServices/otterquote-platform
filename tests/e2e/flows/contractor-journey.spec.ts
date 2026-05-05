@@ -231,6 +231,17 @@ test.describe('Flow A — Contractor Journey', () => {
 
     await expect(page).not.toHaveURL(/login|get-started/);
 
+    // Capture browser-side console messages — surfaces form errors (e.g. RLS failures,
+    // bid validation errors) that would otherwise be invisible in CI output.
+    const _browserLogs: string[] = [];
+    page.on('console', msg => {
+      const entry = `[browser:${msg.type()}] ${msg.text()}`;
+      _browserLogs.push(entry);
+      if (msg.type() === 'error' || msg.type() === 'warning') {
+        console.error('[A8 browser console]', entry);
+      }
+    });
+
     // Capture any unexpected dialogs — fail fast with the message rather than
     // timing out 20s later with no information.
     const _dialogs: string[] = [];
@@ -241,18 +252,11 @@ test.describe('Flow A — Contractor Journey', () => {
       await dialog.dismiss();
     });
 
-    // Wait for contractor profile to load — the form JS loads currentContractor
-    // asynchronously after auth. Without this, submit fires before it's ready
-    // and throws "contractor profile could not be loaded".
-    await page.waitForFunction(
-      () => {
-        const btn = document.querySelector('#bidSubmitBtn, button[type="submit"]') as HTMLButtonElement | null;
-        // The submit button text changes from 'Loading…' / 'Submitting…' to 'Submit Bid'
-        // once the page is fully initialised. Guard: also accept if button is present at all.
-        return btn !== null && !btn.disabled;
-      },
-      { timeout: 15_000 }
-    );
+    // Wait for network idle — ensures both the Supabase claim fetch AND
+    // contractor profile fetch have completed before we fill the form.
+    // The submit button is enabled by default in HTML so a disabled-state
+    // check fires immediately before currentContractor is populated.
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
 
     // ── Fill required bid fields ─────────────────────────────────────────
 
@@ -330,12 +334,20 @@ test.describe('Flow A — Contractor Journey', () => {
     await expect(submitBtn).toBeVisible();
     await submitBtn.click();
 
-    // Wait for success indicator (toast, banner, or redirect)
-    await page.waitForSelector(
-      '.success, .alert-success, [class*="success"], #success-message, ' +
-      '.toast-success, [role="alert"]',
-      { timeout: 20_000 }
-    );
+    // Wait for the bid form's success state to become visible.
+    // #successState is always in DOM (hidden) and gets class 'show' added on success.
+    // Using [class*="success"] would match the hidden div immediately — must use
+    // the specific #successState.show selector to wait for the actual success.
+    if (_dialogs.length > 0) {
+      throw new Error(`[A8] Unexpected dialog(s) fired during submission — bid likely blocked:\n${_dialogs.join('\n')}\nBrowser console:\n${_browserLogs.filter(l => l.includes('error')).join('\n')}`);
+    }
+    await page.waitForSelector('#successState.show', { timeout: 30_000 }).catch(async (err) => {
+      const diagLines = [
+        'Dialogs captured: ' + (_dialogs.length ? _dialogs.join(' | ') : 'none'),
+        'Browser errors: ' + (_browserLogs.filter(l => l.includes('error')).join(' | ') || 'none'),
+      ];
+      throw new Error(`[A8] Success state never shown.\n${diagLines.join('\n')}\nOriginal: ${err.message}`);
+    });
 
     // ── Verify bid persisted in DB ───────────────────────────────────────
 

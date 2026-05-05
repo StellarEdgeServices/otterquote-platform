@@ -147,7 +147,7 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
 
     // Click to open bid form
-    const bidButton = claimElement.locator('button:has-text(/bid|quote|submit|estimate/i)').first();
+    const bidButton = claimElement.locator('button').filter({ hasText: /bid|quote|submit|estimate/i }).first();
     if (await bidButton.isVisible()) {
       await bidButton.click();
     } else {
@@ -214,7 +214,7 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
 
-    const bidButton = claimElement.locator('button:has-text(/bid|quote|submit|estimate/i)').first();
+    const bidButton = claimElement.locator('button').filter({ hasText: /bid|quote|submit|estimate/i }).first();
     if (await bidButton.isVisible()) {
       await bidButton.click();
     } else {
@@ -235,9 +235,7 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
       await totalPriceInput.fill('12500');
     }
 
-    const submitButton = page.locator(
-      'button:has-text(/submit|send|create bid|quote/i)'
-    ).first();
+    const submitButton = page.locator('button').filter({ hasText: /submit|send|create bid|quote/i }).first();
     if (await submitButton.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await submitButton.click();
 
