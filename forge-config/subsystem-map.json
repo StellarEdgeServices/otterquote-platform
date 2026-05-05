@@ -1,0 +1,61 @@
+{
+  "_comment": "Patch-fatigue detector subsystem groupings. Each subsystem groups related files. The detector accumulates symptom-keyword commits across all files in a subsystem.",
+  "subsystems": [
+    {
+      "name": "auth",
+      "description": "Authentication and session management",
+      "files": [
+        "js/auth.js",
+        "login.html",
+        "auth-callback.html",
+        "contractor-login.html",
+        "contractor-dashboard.html",
+        "admin-contractors.html",
+        "supabase/functions/platform-health-check/**"
+      ],
+      "keywords": ["auth", "login", "session", "race", "redirect", "token", "JWT", "sq_at"]
+    },
+    {
+      "name": "bid-flow",
+      "description": "Contractor bidding and job selection",
+      "files": ["bids.html", "contractor-bid-form.html", "supabase/functions/approve-payout/**", "supabase/functions/process-bid-expirations/**"],
+      "keywords": ["bid", "fee", "payout", "selection", "expir"]
+    },
+    {
+      "name": "docusign",
+      "description": "DocuSign envelope and signing flow",
+      "files": ["supabase/functions/create-docusign-envelope/**", "supabase/functions/docusign-webhook/**", "supabase/functions/get-signing-url/**", "contract-signing.html"],
+      "keywords": ["docusign", "envelope", "signing", "anchor", "template"]
+    },
+    {
+      "name": "homeowner-intake",
+      "description": "Homeowner claim and job intake",
+      "files": ["get-started.html", "repair-intake.html", "project-confirmation.html", "supabase/functions/parse-loss-sheet/**"],
+      "keywords": ["intake", "claim", "homeowner", "loss-sheet"]
+    },
+    {
+      "name": "contractor-onboarding",
+      "description": "Contractor join and pre-approval",
+      "files": ["contractor-join.html", "supabase/functions/admin-contractor-action/**", "supabase/functions/process-coi-reminders/**", "supabase/functions/record-attestation/**"],
+      "keywords": ["onboard", "join", "approval", "COI", "attestation", "WCE"]
+    },
+    {
+      "name": "messaging",
+      "description": "In-app messaging system",
+      "files": ["messaging-ui-homeowner.html", "messaging-ui-contractor.html", "supabase/functions/notify-contractors/**"],
+      "keywords": ["message", "notification", "notify", "chat"]
+    },
+    {
+      "name": "deploy-pipeline",
+      "description": "Deploy and CI infrastructure",
+      "files": ["Deploy_Review_Checklist.md", "scripts/**", "tests/**", ".github/**", "netlify.toml"],
+      "keywords": ["deploy", "CI", "smoke", "test", "seed", "checklist"]
+    },
+    {
+      "name": "hover-integration",
+      "description": "Hover 3D visualization and rebate integration",
+      "files": ["supabase/functions/create-hover-order/**", "supabase/functions/hover-webhook/**", "supabase/functions/get-hover-pdf/**"],
+      "keywords": ["hover", "rebate", "3D", "visualization"]
+    }
+  ]
+}
