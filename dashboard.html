@@ -2912,29 +2912,15 @@
       }
 
       document.addEventListener('DOMContentLoaded', () => {
-          let _initFired = false;
-          // F-007d: Detect magic link landing. When dashboard.html is the emailRedirectTo
-          // target, Supabase fires INITIAL_SESSION null BEFORE the PKCE code exchange
-          // completes. Calling init() on that null event triggers requireAuth() -> getUser()
-          // (which also fails -- no token in storage yet) -> redirect to get-started.
-          // Fix: skip null INITIAL_SESSION when a code/hash is in the URL and wait for
-          // SIGNED_IN, which fires after the exchange succeeds with a valid session.
-          sb.auth.onAuthStateChange(async (event, session) => {
-              if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-                  // Magic link landing: INITIAL_SESSION is pre-exchange; wait for SIGNED_IN.
-                  // window._oq_has_auth_in_url is captured BEFORE config.js loads (D-208) so
-                  // Supabase's synchronous hash-clearing doesn't hide the auth-in-url signal.
-                  if (event === 'INITIAL_SESSION' && session === null && window._oq_has_auth_in_url) {
-                      return;
-                  }
-                  _initFired = true;
-                  await init();
-              }
+          // D-211 Phase 0: Use Auth.ready() which handles magic link timing internally
+          // via onAuthStateChange subscription. Auth.ready() resolves with session when
+          // INITIAL_SESSION or SIGNED_IN fires (after magic link PKCE exchange if needed).
+          Auth.ready().then(async (authData) => {
+              await init();
+          }).catch(err => {
+              console.error('Auth.ready() failed:', err);
+              window.location.href = '/sign-in.html';
           });
-          // Safety net: if no auth event fires within 8s, run init anyway.
-          setTimeout(async () => {
-              if (!_initFired) { _initFired = true; await init(); }
-          }, 8000);
       });
 
     })();

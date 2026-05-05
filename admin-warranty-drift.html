@@ -238,7 +238,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 
 <script>
 var sb;
-var _initFired = false;
 var currentFilter = 'pending_review';
 var pendingRejectDriftId = null;
 var pendingApproveEditDriftId = null;
@@ -248,23 +247,17 @@ var currentUserToken = null;
 // ── Auth Guard ────────────────────────────────────────────────────────────────
 sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
-sb.auth.onAuthStateChange(async function(event, session) {
-  if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-    _initFired = true;
-    if (!session) { window.location.href = '/'; return; }
-    currentUserToken = session.access_token;
-    await checkAdminAndInit(session.user);
-  }
+Auth.ready().then(async (authData) => {
+  if (!authData || !authData.isAdmin) { window.location.href = '/'; return; }
+  currentUserToken = (await sb.auth.getSession())?.data?.session?.access_token;
+  await checkAdminAndInit(authData.user);
+}).catch(err => {
+  console.error('Auth.ready() failed:', err);
+  window.location.href = '/';
 });
 
 async function checkAdminAndInit(user) {
-  // Check admin role: dustinstohler1@gmail.com OR template_review_role='admin'
-  var isAdmin = user.email === 'dustinstohler1@gmail.com';
-  if (!isAdmin) {
-    var res = await sb.from('contractors').select('template_review_role').eq('user_id', user.id).maybeSingle();
-    isAdmin = res.data && res.data.template_review_role === 'admin';
-  }
-  if (!isAdmin) { window.location.href = '/'; return; }
+  // Auth.ready() already verified admin status, so just load the page
   document.getElementById('main-content').style.display = 'block';
   await loadSummary();
   await loadRunHistory();

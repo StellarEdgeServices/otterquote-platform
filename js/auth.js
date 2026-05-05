@@ -813,6 +813,67 @@ https://otterquote.com`;
    * Only writes a cookie. This is the piece the Netlify admin-auth-gate needs
    * to find a fresh access token regardless of which page the user has open.
    */
+  async _getIsAdmin(user) {
+    if (!user) return false;
+    // Hardcode primary admin
+    if (user.email === 'dustinstohler1@gmail.com') return true;
+    // Check contractors.template_review_role
+    try {
+      const { data } = await sb
+        .from('contractors')
+        .select('template_review_role')
+        .eq('user_id', user.id)
+        .single();
+      return data?.template_review_role === 'admin';
+    } catch (_) {
+      return false;
+    }
+  },
+
+  ready() {
+    if (this._readyPromise) return this._readyPromise;
+    let _readyResolved = false;
+    this._readyPromise = new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        if (!_readyResolved) {
+          _readyResolved = true;
+          reject(new Error('Auth.ready() timeout after 5s'));
+        }
+      }, 5000);
+
+      const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
+        if (_readyResolved) return;
+        if (event === 'SIGNED_OUT') {
+          _readyResolved = true;
+          clearTimeout(timeoutId);
+          subscription.unsubscribe();
+          reject(new Error('Auth.ready(): user signed out before session established'));
+          return;
+        }
+        if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user) {
+          _readyResolved = true;
+          clearTimeout(timeoutId);
+          subscription.unsubscribe();
+          try {
+            const user = session.user;
+            const role = await Auth.getRole();
+            const isAdmin = await Auth._getIsAdmin(user);
+            resolve({ user, role, isAdmin });
+          } catch (err) {
+            reject(err);
+          }
+        } else if (event === 'INITIAL_SESSION' && !session?.user) {
+          // No session — resolve with null so pages can redirect gracefully
+          _readyResolved = true;
+          clearTimeout(timeoutId);
+          subscription.unsubscribe();
+          resolve(null);
+        }
+      });
+    });
+    return this._readyPromise;
+  },
+
   _initCookieSync() {
     if (this._cookieSyncWired) return;
     if (!sb) return;

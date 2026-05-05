@@ -2351,15 +2351,13 @@
     //      where INITIAL_SESSION was NOT re-emitted retroactively.
     // Either path sets _initFired to prevent double-invocation.
     // Scripts are at bottom of body so DOM is ready when this IIFE runs.
-    let _initFired = false;
-    function _maybeInit() {
-      if (!_initFired) { _initFired = true; init(); }
-    }
-    if (typeof sb !== 'undefined' && sb) {
-      sb.auth.onAuthStateChange((event) => {
-        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') _maybeInit();
+    if (typeof Auth !== 'undefined' && Auth && typeof Auth.ready === 'function') {
+      Auth.ready().then(() => {
+        init();
+      }).catch(err => {
+        console.error('Auth.ready() failed:', err);
+        window.location.href = '/sign-in.html';
       });
-      sb.auth.getSession().then(_maybeInit).catch(_maybeInit);
     } else {
       document.addEventListener('DOMContentLoaded', init);
     }
