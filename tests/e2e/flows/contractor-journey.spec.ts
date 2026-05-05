@@ -242,6 +242,25 @@ test.describe('Flow A — Contractor Journey', () => {
       }
     });
 
+    // Intercept Supabase REST API responses — surfaces RLS blocks and submission errors
+    const _apiResponses: string[] = [];
+    page.on('response', async resp => {
+      const url = resp.url();
+      if (url.includes('supabase.co/rest/v1/') || url.includes('supabase.co/rest/v1')) {
+        try {
+          const path = new URL(url).pathname + (new URL(url).search || '');
+          const status = resp.status();
+          let body = '';
+          try { body = await resp.text(); } catch { body = '[unreadable]'; }
+          const entry = `[api:${status}] ${path} → ${body.slice(0, 200)}`;
+          _apiResponses.push(entry);
+          if (status >= 400 || body.includes('"error"') || body.includes('"message"')) {
+            console.error('[A8 api response]', entry);
+          }
+        } catch { /* ignore */ }
+      }
+    });
+
     // Capture any unexpected dialogs — fail fast with the message rather than
     // timing out 20s later with no information.
     const _dialogs: string[] = [];
@@ -258,6 +277,7 @@ test.describe('Flow A — Contractor Journey', () => {
     // Step 2: Diagnostic dump immediately after networkidle so we can see
     // the exact page state in CI output.
     const _pageState = await page.evaluate(() => {
+      const w = window as any;
       return {
         url: window.location.href,
         totalPriceValue: (document.getElementById('totalPrice') as HTMLInputElement | null)?.value ?? 'ELEMENT_MISSING',
@@ -265,6 +285,11 @@ test.describe('Flow A — Contractor Journey', () => {
         submitBtnText: (document.getElementById('submitBtn') as HTMLButtonElement | null)?.textContent?.trim() ?? 'MISSING',
         submitBtnDisabled: (document.getElementById('submitBtn') as HTMLButtonElement | null)?.disabled ?? null,
         localStorageKeys: Object.keys(localStorage).filter(k => k.startsWith('sb-')),
+        currentClaimId: w.currentClaim?.id ?? null,
+        currentUserId: w.currentUser?.id ?? null,
+        currentContractorId: w.currentContractor?.id ?? null,
+        demoMode: w.CONFIG?.DEMO_MODE ?? null,
+        claimRcv: w.claimRcv ?? null,
       };
     });
     console.log('[A8 pageState after networkidle]', JSON.stringify(_pageState));
@@ -352,6 +377,19 @@ test.describe('Flow A — Contractor Journey', () => {
     // during automated tests. Wire to Stripe test mode keys when a staging-specific
     // Stripe configuration is available. See CI_INTEGRATION.md → Phase 2.
 
+    // ── Diagnostic: page state just before submit ────────────────────────
+    const _preSubmitState = await page.evaluate(() => {
+      const w = window as any;
+      return {
+        totalPriceValue: (document.getElementById('totalPrice') as HTMLInputElement | null)?.value ?? 'ELEMENT_MISSING',
+        currentClaimId: w.currentClaim?.id ?? null,
+        currentUserId: w.currentUser?.id ?? null,
+        currentContractorId: w.currentContractor?.id ?? null,
+        claimRcv: w.claimRcv ?? null,
+      };
+    });
+    console.log('[A8 preSubmitState]', JSON.stringify(_preSubmitState));
+
     // ── Submit the form ──────────────────────────────────────────────────
 
     const submitBtn = page.locator(
@@ -382,6 +420,8 @@ test.describe('Flow A — Contractor Journey', () => {
       const diagLines = [
         'Dialogs captured: ' + (_dialogs.length ? _dialogs.join(' | ') : 'none'),
         'Browser errors: ' + (_browserLogs.filter(l => l.includes('error')).join(' | ') || 'none'),
+        'API calls: ' + (_apiResponses.slice(-10).join(' || ') || 'none'),
+        'All browser logs: ' + (_browserLogs.slice(-20).join(' | ') || 'none'),
       ];
       throw new Error(`[A8] Success state never shown.\n${diagLines.join('\n')}\nOriginal: ${err.message}`);
     });
