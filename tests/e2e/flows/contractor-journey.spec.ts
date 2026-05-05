@@ -355,9 +355,11 @@ test.describe('Flow A — Contractor Journey', () => {
       await numStoriesSelect.selectOption({ index: 1 });
     }
 
-    // Workmanship warranty years (fill if visible)
+    // Workmanship warranty years (#workmanshipYears) — narrow selector to the
+    // number input; the broader 'input[id*="warranty"]' selector also matched the
+    // warrantyCustomToggle checkbox, which can't be filled.
     const warrantyInput = page.locator(
-      'input[id*="warranty"], input[name*="warranty"]'
+      '#workmanshipYears, input[type="number"][id*="warranty"][id*="Years"]'
     ).first();
     if (await warrantyInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await warrantyInput.fill('5');
