@@ -54,6 +54,8 @@ jobs:
         working-directory: tests/e2e
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm test
 
       - name: Teardown test database
