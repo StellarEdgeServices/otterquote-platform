@@ -240,7 +240,7 @@ async function seed() {
       property_state: 'IN',
       homeowner_name: 'Test Homeowner',
       job_type: 'retail_siding',
-      funding_type: 'homeowner',
+      funding_type: 'cash',
       trades: ['siding'],
       damage_type: null,
       material_category: null,
