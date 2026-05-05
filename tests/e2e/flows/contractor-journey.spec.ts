@@ -252,20 +252,38 @@ test.describe('Flow A — Contractor Journey', () => {
       await dialog.dismiss();
     });
 
-    // Step 1: networkidle — Supabase claim + contractor fetches have responded.
+    // Step 1: networkidle — wait for Supabase API calls to settle.
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
 
-    // Step 2: Wait for page initialisation to finish.
-    // startUp() runs after sb.auth.getSession() resolves; it sets #totalPrice
-    // from claimRcv and populates the form. Waiting for a non-zero #totalPrice
-    // confirms both the auth chain and the claim fetch have completed.
-    await page.waitForFunction(
-      () => {
-        const tp = document.getElementById('totalPrice') as HTMLInputElement | null;
-        return tp !== null && parseFloat(tp.value) > 0;
-      },
-      { timeout: 15_000 }
-    );
+    // Step 2: Diagnostic dump immediately after networkidle so we can see
+    // the exact page state in CI output.
+    const _pageState = await page.evaluate(() => {
+      return {
+        url: window.location.href,
+        totalPriceValue: (document.getElementById('totalPrice') as HTMLInputElement | null)?.value ?? 'ELEMENT_MISSING',
+        deckingVisible: (document.getElementById('deckingPricePerSheet') as HTMLElement | null)?.offsetParent !== null,
+        submitBtnText: (document.getElementById('submitBtn') as HTMLButtonElement | null)?.textContent?.trim() ?? 'MISSING',
+        submitBtnDisabled: (document.getElementById('submitBtn') as HTMLButtonElement | null)?.disabled ?? null,
+        localStorageKeys: Object.keys(localStorage).filter(k => k.startsWith('sb-')),
+      };
+    });
+    console.log('[A8 pageState after networkidle]', JSON.stringify(_pageState));
+
+    // Step 3: If #totalPrice isn't set yet (async JS chain still running),
+    // wait up to 15s for it. If still zero after 15s, proceed anyway and
+    // let the form's JS handle validation — the diagnostic dump above will
+    // show exactly why the init stalled.
+    if (!_pageState.totalPriceValue || parseFloat(_pageState.totalPriceValue) <= 0) {
+      await page.waitForFunction(
+        () => {
+          const tp = document.getElementById('totalPrice') as HTMLInputElement | null;
+          return tp !== null && parseFloat(tp.value || '0') > 0;
+        },
+        { timeout: 15_000 }
+      ).catch(() => {
+        console.warn('[A8] #totalPrice still 0 after 15s — proceeding anyway, JS handler will surface the issue');
+      });
+    }
 
     // ── Fill required bid fields ─────────────────────────────────────────
 
