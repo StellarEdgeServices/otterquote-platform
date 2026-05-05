@@ -1,5 +1,19 @@
 # OtterQuote Deploy Review Checklist
 
+## PRE-CHECKLIST: Static Analysis Gate
+
+**Run BEFORE this checklist on every push:**
+```bash
+bash scripts/pre-push-check.sh
+```
+
+Failures (FAIL count > 0) block the push unless a `[LINT-WAIVER: <reason>]` is present in the commit message. Warnings (WARN) are non-blocking.
+
+*Added: 2026-05-05 per task 86e17x80r*
+
+---
+
+
 Run this checklist before every push to staging or main. **CRITICAL items block always. HIGH items block absent an explicit written waiver from Dustin in the session.**
 
 Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable — explain why).
@@ -46,6 +60,24 @@ Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable 
 *(Skip if no schema changes in this deploy.)*
 - [ ] **Companion rollback script committed.** Every SQL migration file (`sql/vN-*.sql`) has a corresponding `sql/vN-rollback-*.sql` committed alongside it.
 - [ ] **Migration classified Tier 3.** Any deploy touching the database is Tier 3 — confirmed 2-hour window or explicit Dustin approval exists.
+
+## D-211 Dual-Surface Gate
+
+### CRITICAL — Dual-Surface Safety
+- [ ] **Which surface does this change affect: static HTML, React app, or both?** Explicitly identify the target surface(s) before proceeding.
+  - *Why: D-211 parallel-track architecture (static HTML + React app at app.otterquote.com) means deploys must hit the right surface. Missing this can ship incomplete changes or break production.*
+- [ ] **If both surfaces: are paired PRs prepared and is the same change ready to ship to both surfaces simultaneously?** Verify both PRs are in identical states and merge sequentially without intervening commits.
+  - *Why: Shipping to one surface before the other creates transient inconsistencies and risks data loss or UX breakage.*
+
+### HIGH — Dual-Surface Verification
+- [ ] **Smoke tests run on both surfaces (when applicable)?** After staging deploy, test the changed pages on both `staging.otterquote.com` (static HTML surface) and `app-staging.otterquote.com` (React app surface) if this change touches both.
+  - *Why: A change may pass on one surface and break on the other due to platform differences (DOM APIs, CSS scope, routing patterns).*
+- [ ] **Forge Layer 8 parity audit passing for any React page being changed that has a static HTML counterpart?** Run Forge parity audit to confirm the React port matches the static HTML behavior and visuals.
+  - *Why: React port correctness is enforced by parity checks. Shipping mismatched surfaces breaks the user's path.*
+
+### NORMAL — Tracking
+- [ ] **ClickUp `react-port` tag applied if this change touches an authenticated page that hasn't yet been converted to React?** If modifying static HTML for an auth-required page, tag it `react-port` to signal the page still needs React migration.
+  - *Why: Tracks which authenticated pages are outstanding for React conversion, unblocks D-211 Phase 2 planning.*
 
 ---
 
