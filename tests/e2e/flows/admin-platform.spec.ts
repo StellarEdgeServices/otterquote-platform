@@ -70,21 +70,17 @@ test.describe('Flow C — Admin & Platform Features (Phase 5)', () => {
   // ──────────────────────────────────────────────────────────────────────────
   test('C1: unauthenticated request to admin-contractors.html redirects to login', async ({ page }) => {
     // Navigate to the admin page without any auth token.
-    // Netlify Edge Function auth gate on the admin page should redirect to login.
-    // Per F-007 pattern: admin pages use onAuthStateChange + INITIAL_SESSION guard.
+    // The Netlify Edge Function admin-auth-gate intercepts /admin-*.html requests
+    // BEFORE the static HTML is served and redirects unauthenticated sessions to
+    // /login.html?reason=admin_required (302). The browser never loads the page HTML.
     
     await page.goto('/admin-contractors.html');
-    await page.waitForLoadState('load');
 
-    // The page should detect no auth and show the unauthorized container.
-    // (The admin-contractors.html init() function calls showUnauthorized() at line 862.)
-    const unauthorizedContainer = page.locator('#unauthorizedContainer');
-    
-    // Wait for the unauthorized state to become visible (or DOM-ready if instant)
-    await expect(unauthorizedContainer).toBeVisible({ timeout: 15_000 });
-    
-    // The adminContainer should be hidden
-    await expect(page.locator('#adminContainer')).not.toBeVisible();
+    // Wait for the edge function redirect to complete
+    await page.waitForURL(/login\.html/, { timeout: 15_000 });
+
+    // Verify the redirect included the admin_required reason parameter
+    expect(page.url()).toContain('reason=admin_required');
   });
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -100,7 +96,7 @@ test.describe('Flow C — Admin & Platform Features (Phase 5)', () => {
     // Get recent cron entries
     const { data, error } = await supabase
       .from('cron_health')
-      .select('id, job_name, status, created_at')
+      .select('job_name, last_run_status, created_at')
       .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
       .order('created_at', { ascending: false })
       .limit(10);
@@ -108,7 +104,7 @@ test.describe('Flow C — Admin & Platform Features (Phase 5)', () => {
     // Log the actual state for diagnostics
     console.log('cron_health recent entries (last 24h):', data?.length ?? 0);
     if (data && data.length > 0) {
-      console.log('  Latest job:', data[0].job_name, data[0].status, data[0].created_at);
+      console.log('  Latest job:', data[0].job_name, data[0].last_run_status, data[0].created_at);
     } else {
       console.warn('  ⚠️ Tier C: No cron jobs recorded in last 24h. Check background monitors.');
     }
@@ -135,7 +131,7 @@ test.describe('Flow C — Admin & Platform Features (Phase 5)', () => {
     
     const { data, error } = await supabase
       .from('rate_limit_config')
-      .select('id, key, requests, window_seconds')
+      .select('function_name, max_per_hour, enabled')
       .limit(10);
 
     // Assert: table exists and is queryable
@@ -145,7 +141,7 @@ test.describe('Flow C — Admin & Platform Features (Phase 5)', () => {
     expect(data).toBeDefined();
     expect((data?.length ?? 0) > 0).toBeTruthy();
     
-    console.log(`✅ rate_limit_config has ${data?.length ?? 0} configured limits`);
+    console.log(`✅ rate_limit_config has ${data?.length ?? 0} configured limits (first: ${data?.[0]?.function_name ?? 'n/a'})`);
   });
 
   // ──────────────────────────────────────────────────────────────────────────

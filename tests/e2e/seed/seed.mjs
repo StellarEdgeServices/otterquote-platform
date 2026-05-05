@@ -141,7 +141,7 @@ async function seed() {
     contact_name: 'Test Contractor',
     email: CONTRACTOR_EMAIL,
     phone: '317-555-0200',
-    trades: ['roofing'],
+    trades: ['roofing', 'siding'],
     service_counties: ['IN:*'], // serves all of Indiana (D-192 format)
     address_state: 'IN',
     years_in_business: 5,
@@ -182,6 +182,23 @@ async function seed() {
     contractorId = newC.id;
     console.log(`  ✅ Created contractor record (${contractorId})`);
   }
+
+  // ── 5b. Contractor templates (D-199 bid-can-submit gate) ──────────────────
+  console.log('5b. Contractor templates (bid-can-submit gate)...');
+  // Delete any existing test contractor templates and re-insert validated ones.
+  // Without these, the bid_can_submit RPC returns can_submit=false and the
+  // bid form blocks submission with a window.confirm() before the form submits.
+  await supabase.from('contractor_templates').delete().eq('contractor_id', contractorId);
+
+  const templatesPayload = [
+    { contractor_id: contractorId, trade: 'roofing', funding_type: 'insurance', status: 'auto_validated' },
+    { contractor_id: contractorId, trade: 'roofing', funding_type: 'retail',    status: 'auto_validated' },
+    { contractor_id: contractorId, trade: 'siding',  funding_type: 'retail',    status: 'auto_validated' },
+    { contractor_id: contractorId, trade: 'siding',  funding_type: 'insurance', status: 'auto_validated' },
+  ];
+  const { error: tmplErr } = await supabase.from('contractor_templates').insert(templatesPayload);
+  if (tmplErr) throw new Error(`Contractor templates insert failed: ${tmplErr.message}`);
+  console.log(`  ✅ Contractor templates seeded (roofing/insurance, roofing/retail, siding/retail, siding/insurance)`);
 
   // ── 6. Fresh test claim ──────────────────────────────────────────────────
   console.log('6. Test claim (delete old, create fresh)...');

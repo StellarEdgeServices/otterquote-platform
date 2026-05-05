@@ -929,7 +929,7 @@
                         + '<div class="fee-item fee-total"><span>Total Platform Fee</span><span>' + fees.total + '</span></div></div>';
                 }
 
-                return '<div class="opportunity-card' + (isUrgent?' urgent-card':'') + '">'
+                return '<div class="opportunity-card' + (isUrgent?' urgent-card':'') + '" data-claim-id="' + escHtml(String(o.id)) + '">'
                     + '<div class="opportunity-header"><div>'
                     + '<h2 class="opportunity-id">Project in ' + o.location + (o.zip ? ', IN ' + o.zip : '') + '</h2>'
                     + '<p class="opportunity-location">' + o.location + ', ' + o.zip + (o.distance !== null ? ' &mdash; ~' + o.distance + ' mi away' : '') + '</p>'
