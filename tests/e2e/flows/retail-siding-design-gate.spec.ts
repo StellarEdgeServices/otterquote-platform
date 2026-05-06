@@ -131,6 +131,22 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.waitForLoadState('networkidle');
 
     // Retail siding claim should NOW appear
+    // Diagnostic: dump page state before assertion to diagnose CI failures
+    const _c2Debug = await page.evaluate((targetId: string) => {
+      const allCards = Array.from(document.querySelectorAll('[data-claim-id]'));
+      return {
+        url: window.location.href,
+        allClaimIds: allCards.map(el => el.getAttribute('data-claim-id')),
+        targetFound: !!document.querySelector(`[data-claim-id="${targetId}"]`),
+        containerHTML: (document.getElementById('opportunitiesContainer')?.innerHTML || '').slice(0, 800),
+        hasAuthToken: Object.keys(localStorage).some(k => k.startsWith('sb-') && k.endsWith('-auth-token')),
+      };
+    }, state.testRetailClaimId);
+    console.log('[C2 debug]', JSON.stringify(_c2Debug));
+    if (!_c2Debug.targetFound) {
+      console.warn(`[C2] Target claim ${state.testRetailClaimId} not found. Page: ${_c2Debug.url}. All IDs: ${JSON.stringify(_c2Debug.allClaimIds)}`);
+    }
+
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
 
