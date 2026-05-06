@@ -2198,6 +2198,20 @@
 
     <!-- Submit Section -->
     <div class="submit-section" id="submitSection">
+      <!-- D-214/D-215: Fee Disclosure & Acknowledgment -->
+      <div id="feeDisclosureSection" style="background:#FEF3C7;border:2px solid #D97706;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-6);">
+        <div style="font-weight:700;color:#92400E;margin-bottom:var(--sp-3);font-size:1rem;">Platform Fee Disclosure</div>
+        <p id="feeDisclosureText" style="color:#78350F;font-size:0.95rem;line-height:1.6;margin:0 0 var(--sp-4);">
+          By submitting this bid, you agree to pay OtterQuote a platform fee of <span id="feePercentDisplay">5</span>% 
+          (<span id="feeDollarDisplay">$0.00</span>) upon contract execution. This fee is deducted from your bid amount 
+          before disbursement. You will receive <span id="netAmountDisplay">$0.00</span> upon completion.
+        </p>
+        <label style="display:flex;align-items:flex-start;gap:var(--sp-3);cursor:pointer;user-select:none;">
+          <input type="checkbox" id="feeAcceptanceCheckbox" style="width:20px;height:20px;margin-top:2px;accent-color:#D97706;cursor:pointer;">
+          <span style="color:#92400E;font-weight:600;font-size:0.95rem;">I understand and agree to the platform fee of <span id="feePercentCheckbox">5</span>% (<span id="feeDollarCheckbox">$0.00</span>)</span>
+        </label>
+      </div>
+
       <button type="submit" form="bidForm" class="submit-button" id="submitBtn">Submit Bid</button>
       <div class="submit-disclaimer">
         By submitting, you agree to the platform fees shown above.<br>
@@ -2263,8 +2277,7 @@
   <footer id="site-footer"></footer>
 
   <!-- Scripts -->
-  <script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -4780,6 +4793,124 @@
     });
 
     // ── Form Submission ──
+    // ── D-214/D-215: Fee Disclosure & Acceptance Logic ──
+    let _platformFeePct = 5.0;  // Default; will be fetched from platform_fee_config
+    let _feeAcceptanceCheckbox = document.getElementById('feeAcceptanceCheckbox');
+    let _submitBtn = document.getElementById('submitBtn');
+
+    async function fetchPlatformFeePercentage() {
+      // Fetch fee percentage from platform_fee_config based on contractor state + trade
+      try {
+        if (!sb || !currentContractor || !currentClaim) return _platformFeePct;
+
+        const contractorState = (currentContractor.state || '').toUpperCase();
+        const tradeType = (currentClaim.trades?.[0] || 'roofing').toLowerCase();
+
+        // Query: SELECT fee_pct FROM platform_fee_config 
+        //        WHERE (state IS NULL OR state = ?) AND (trade IS NULL OR trade = ?) 
+        //        ORDER BY state NULLS LAST, trade NULLS LAST LIMIT 1
+        const { data, error } = await sb
+          .from('platform_fee_config')
+          .select('fee_pct')
+          .or(`state.is.null,state.eq.${contractorState}`)
+          .or(`trade.is.null,trade.eq.${tradeType}`)
+          .order('state', { ascending: false, nullsFirst: false })
+          .order('trade', { ascending: false, nullsFirst: false })
+          .limit(1);
+
+        if (error) {
+          console.warn('[D-215] Fee lookup error:', error);
+          return _platformFeePct;
+        }
+
+        if (data && data.length > 0) {
+          const feePct = parseFloat(data[0].fee_pct) || _platformFeePct;
+          _platformFeePct = feePct;
+          return feePct;
+        }
+      } catch (e) {
+        console.error('[D-215] Exception during fee lookup:', e);
+      }
+      return _platformFeePct;
+    }
+
+    async function updateFeeDisclosure() {
+      // Recalculate and display fee based on bid amount + percentage
+      const bidAmountEl = document.getElementById('totalPrice');
+      if (!bidAmountEl) return;
+
+      const bidAmount = parseFloat(bidAmountEl.value) || 0;
+      
+      // Fetch fee percentage
+      const feePct = await fetchPlatformFeePercentage();
+      const feeAmount = (bidAmount * feePct) / 100;
+      const netAmount = bidAmount - feeAmount;
+
+      // Update display fields
+      document.getElementById('feePercentDisplay').textContent = feePct.toFixed(2);
+      document.getElementById('feePercentCheckbox').textContent = feePct.toFixed(2);
+      document.getElementById('feeDollarDisplay').textContent = feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+      document.getElementById('feeDollarCheckbox').textContent = feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+      document.getElementById('netAmountDisplay').textContent = netAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+      // Store for submission
+      window._feeAmount = feeAmount;
+      window._feePct = feePct;
+
+      // Update checkbox state
+      updateFeeCheckboxState();
+    }
+
+    function updateFeeCheckboxState() {
+      // Disable submit button if checkbox is not checked
+      if (_feeAcceptanceCheckbox) {
+        const isChecked = _feeAcceptanceCheckbox.checked;
+        _submitBtn.disabled = !isChecked;
+        if (!isChecked) {
+          _submitBtn.style.opacity = '0.5';
+          _submitBtn.style.cursor = 'not-allowed';
+        } else {
+          _submitBtn.style.opacity = '1';
+          _submitBtn.style.cursor = 'pointer';
+        }
+      }
+    }
+
+    // Wire up bid amount change to recalculate fee
+    const totalPriceEl = document.getElementById('totalPrice');
+    if (totalPriceEl) {
+      totalPriceEl.addEventListener('input', updateFeeDisclosure);
+      totalPriceEl.addEventListener('change', updateFeeDisclosure);
+    }
+
+    // Wire up checkbox state changes
+    if (_feeAcceptanceCheckbox) {
+      _feeAcceptanceCheckbox.addEventListener('change', updateFeeCheckboxState);
+    }
+
+    // Function to capture contractor IP (best-effort, client-side)
+    async function getContractorIP() {
+      try {
+        const response = await fetch('https://api.ipify.org?format=json', { timeout: 3000 });
+        if (!response.ok) return 'unknown';
+        const data = await response.json();
+        return data.ip || 'unknown';
+      } catch (e) {
+        console.warn('[D-215] IP fetch failed:', e);
+        return 'unknown';
+      }
+    }
+
+    // Function to generate exact fee disclosure text for UETA compliance
+    function generateExactFeeText() {
+      const feePct = window._feePct || _platformFeePct;
+      const feeAmount = window._feeAmount || 0;
+      const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+      const netAmount = bidAmount - feeAmount;
+
+      return `By submitting this bid, you agree to pay OtterQuote a platform fee of ${feePct.toFixed(2)}% (${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}) upon contract execution. This fee is deducted from your bid amount before disbursement. You will receive ${netAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} upon completion. I understand and agree to the platform fee of ${feePct.toFixed(2)}% (${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })})`;
+    }
+
     bidForm.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -4834,6 +4965,16 @@
 
       try {
         const formData = new FormData(bidForm);
+
+          // ── D-214/D-215: Fee Acceptance Capture ──
+          const _bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+          const _feePct = window._feePct || _platformFeePct;
+          const _feeAmount = window._feeAmount || (_bidAmount * _feePct / 100);
+          const _exactFeeText = generateExactFeeText();
+          const _contractorIP = await getContractorIP();
+          const _userAgent = navigator.userAgent;
+          const _acceptedAt = new Date().toISOString();
+
 
         if (CONFIG.DEMO_MODE) {
           await new Promise(resolve => setTimeout(resolve, 800));
@@ -5013,6 +5154,9 @@
             valueAdds.wizard_trade_queue = wizardTradeQueue.length > 0 ? wizardTradeQueue : null;
           }
 
+          // ── D-214/D-215: Initialize fee disclosure on form load ──
+          await updateFeeDisclosure();
+
           // D-202 Phase 2 — capture warranty selection BEFORE quoteData is built (Session 463)
           const __d202Selection = getD202WarrantySelection();
 
@@ -5037,6 +5181,9 @@
             warranty_option_id: __d202Selection.warranty_option_id,
             warranty_snapshot: __d202Selection.warranty_snapshot,
             workmanship_warranty_years: __d202Selection.workmanship_warranty_years,
+            platform_fee_pct: _feePct,
+            platform_fee_basis: 'bid_amount',
+            fee_accepted_at: _acceptedAt,
           };
 
           // Flag custom warranties for admin review (D-202 v2 fallback path)
@@ -5056,6 +5203,9 @@
                 total_price: quoteData.total_price,
                 fee_percentage: quoteData.fee_percentage,
                 fee_amount: quoteData.fee_amount,
+                platform_fee_pct: _feePct,
+                platform_fee_basis: 'bid_amount',
+                fee_accepted_at: _acceptedAt,
                 scope_summary: quoteData.scope_summary,
                 notes: quoteData.notes,
                 decking_price_per_sheet: quoteData.decking_price_per_sheet,
@@ -5127,6 +5277,25 @@
             }
 
           } else {
+
+            // ── D-215 Layer 1: Insert fee_acceptances record (UETA evidence) ──
+            if (!changeBidMode) {
+              const { error: feeAccError } = await sb.from('fee_acceptances').insert({
+                quote_id: null,  // Will be linked after quote insert
+                contractor_id: currentContractor.id,
+                fee_amount: _feeAmount,
+                fee_text_displayed: _exactFeeText,
+                accepted_at: _acceptedAt,
+                ip_address: _contractorIP,
+                user_agent: _userAgent,
+              }).select('id').single();
+
+              if (feeAccError) {
+                throw new Error('Fee acceptance could not be recorded: ' + feeAccError.message);
+              }
+            }
+
+
             const { data: insertedQuote, error } = await sb
               .from('quotes')
               .insert(quoteData)
