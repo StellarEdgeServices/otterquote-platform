@@ -278,6 +278,9 @@ test.describe('Flow A — Contractor Journey', () => {
     await page.goto(`/contractor-bid-form.html?claim_id=${state.testClaimId}`);
     await page.waitForLoadState('load');
 
+    // Double-check: some browsers may need explicit networkidle to settle async RCV fetch
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
     await expect(page).not.toHaveURL(/login|get-started/);
 
     // Step 1: networkidle — wait for Supabase API calls to settle.

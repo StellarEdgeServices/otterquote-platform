@@ -123,6 +123,9 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
 
+    // Wait for opportunities API to complete
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
     // Retail siding claim should NOW appear
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
@@ -145,6 +148,10 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     // Navigate to opportunities and click into the retail siding bid form
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
+
+    // Wait for opportunities API to complete
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
 
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
@@ -213,6 +220,10 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     // Navigate to bid form
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
+
+    // Wait for opportunities API to complete
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
 
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
