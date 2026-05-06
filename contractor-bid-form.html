@@ -5288,24 +5288,7 @@
 
           } else {
 
-            // ── D-215 Layer 1: Insert fee_acceptances record (UETA evidence) ──
-            if (!changeBidMode) {
-              const { error: feeAccError } = await sb.from('fee_acceptances').insert({
-                quote_id: null,  // Will be linked after quote insert
-                contractor_id: currentContractor.id,
-                fee_amount: _feeAmount,
-                fee_text_displayed: _exactFeeText,
-                accepted_at: _acceptedAt,
-                ip_address: _contractorIP,
-                user_agent: _userAgent,
-              }).select('id').single();
-
-              if (feeAccError) {
-                throw new Error('Fee acceptance could not be recorded: ' + feeAccError.message);
-              }
-            }
-
-
+            // Insert quote first — provides bid_id for the fee_acceptances FK
             const { data: insertedQuote, error } = await sb
               .from('quotes')
               .insert(quoteData)
@@ -5316,6 +5299,34 @@
 
             // Store the new quote ID for contract signing
             window._newQuoteId = insertedQuote?.id || null;
+
+            // ── D-215 Layer 1: Insert fee_acceptances record (UETA evidence) ──
+            // UETA evidence integrity is preserved via the accepted_at value
+            // (captured at click-time before any DB call). The DB insert
+            // happens post-quote because bid_id is a FK to quotes(id);
+            // insert ordering is functional, not legally significant.
+            // Fixed May 6, 2026: prior version inserted pre-quote with
+            // quote_id:null (column did not exist) and omitted four NOT NULL
+            // columns (claim_id, bid_id, fee_pct, fee_basis). Failed every
+            // bid submission once auth.js parse failure was resolved.
+            if (!changeBidMode) {
+              const { error: feeAccError } = await sb.from('fee_acceptances').insert({
+                claim_id: currentClaim.id,
+                contractor_id: currentContractor.id,
+                bid_id: insertedQuote.id,
+                fee_pct: _feePct,
+                fee_basis: 'bid_amount',
+                fee_amount: _feeAmount,
+                fee_text_displayed: _exactFeeText,
+                accepted_at: _acceptedAt,
+                ip_address: _contractorIP,
+                user_agent: _userAgent,
+              });
+
+              if (feeAccError) {
+                throw new Error('Fee acceptance could not be recorded: ' + feeAccError.message);
+              }
+            }
 
             // GA4 conversion event — bid funnel
             gtag('event', 'bid_submit', {

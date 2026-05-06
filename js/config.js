@@ -56,5 +56,24 @@ var CONFIG = {
 // ── Initialize Supabase Client ──
 let sb;
 if (typeof supabase !== 'undefined') {
-  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage } });
+  // ── DISABLED: D-212 cookie storage adapter (May 6, 2026) ──
+  // The OtterQuoteCookieStorage adapter (js/cookie-storage.js) was wired into
+  // the Supabase client by commit 1ff4b4d to enable cross-subdomain auth for
+  // app.otterquote.com. It silently broke authenticated queries on every page
+  // that loads it — A8 (bid form init) and C2/C3/C4 (opportunities render)
+  // were the surfaced symptoms; underlying cause is a Supabase JS v2 storage
+  // contract violation that does not reproduce locally. CI failed for 8
+  // consecutive runs while six fix attempts addressed symptoms (timing,
+  // retries, networkidle waits) without ever reverting this storage line.
+  //
+  // Re-enable conditions (all required):
+  //   1. app.otterquote.com is live (D-211 Phase 0 complete)
+  //   2. An E2E test exercises the storage adapter contract directly
+  //      (set/get/remove + cross-subdomain cookie visibility)
+  //   3. The adapter has been validated against the actual cross-subdomain
+  //      auth flow it was designed for, not just same-origin staging
+  //
+  // Until then: default Supabase localStorage is correct. cookie-storage.js
+  // remains in the repo so reactivation is a one-line revert of this comment.
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
 }
