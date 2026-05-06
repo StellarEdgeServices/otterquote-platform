@@ -2277,6 +2277,7 @@
   <footer id="site-footer"></footer>
 
   <!-- Scripts -->
+  <script src="js/cookie-storage.js"></script>
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
@@ -3523,6 +3524,15 @@
         } catch (err) {
           console.error('Error loading contractor:', err);
         }
+      }
+
+      // Signal that bid form init has fully completed (used by E2E tests to avoid auth race)
+      if (currentClaim && currentContractor && currentUser) {
+        window._oq_bidFormReady = {
+          claimId: currentClaim.id,
+          contractorId: currentContractor.id,
+          userId: currentUser.id,
+        };
       }
     }
 
@@ -5314,6 +5324,12 @@
               bid_amount: quoteData.total_price,
             });
           }
+        } else if (!CONFIG.DEMO_MODE) {
+          // Auth guard was false — bid was NOT submitted. Throw so the catch block surfaces the error.
+          throw new Error(
+            'Your session is not ready. Please refresh the page and try again. ' +
+            `(sb=${!!window.sb}, user=${!!currentUser}, claim=${!!currentClaim})`
+          );
         }
 
         // Show success

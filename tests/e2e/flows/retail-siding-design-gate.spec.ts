@@ -126,6 +126,10 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     // Wait for opportunities API to complete
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
 
+    // Reload page to ensure DB changes are reflected in DOM
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
     // Retail siding claim should NOW appear
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
@@ -151,6 +155,9 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
 
     // Wait for opportunities API to complete
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
+    // Reload to ensure design gate unlock is reflected
+    await page.reload();
+    await page.waitForLoadState('networkidle');
 
 
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
@@ -223,6 +230,9 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
 
     // Wait for opportunities API to complete
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
+    // Reload to ensure design gate unlock is reflected
+    await page.reload();
+    await page.waitForLoadState('networkidle');
 
 
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();

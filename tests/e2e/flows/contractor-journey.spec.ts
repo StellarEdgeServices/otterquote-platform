@@ -286,6 +286,25 @@ test.describe('Flow A — Contractor Journey', () => {
     // Step 1: networkidle — wait for Supabase API calls to settle.
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
 
+    // Step 1.5: Wait for bid form init() to complete (_oq_bidFormReady flag set after
+    // auth + claim + contractor all loaded). Prevents form interaction before auth is ready.
+    try {
+      await page.waitForFunction(
+        () => !!(window as any)._oq_bidFormReady,
+        { timeout: 20_000 }
+      );
+    } catch {
+      // _oq_bidFormReady not set: auth may have needed a second navigation to fire
+      // INITIAL_SESSION. Reload once and retry.
+      console.warn('[A8] _oq_bidFormReady not set after 20s — reloading once');
+      await page.reload();
+      await page.waitForLoadState('networkidle', { timeout: 15_000 });
+      await page.waitForFunction(
+        () => !!(window as any)._oq_bidFormReady,
+        { timeout: 20_000 }
+      );
+    }
+
     // Step 2: Diagnostic dump immediately after networkidle so we can see
     // the exact page state in CI output.
     const _pageState = await page.evaluate(() => {
