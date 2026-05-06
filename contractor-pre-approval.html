@@ -224,7 +224,7 @@
                             <h3 style="margin: 0; font-size: 1.125rem; color: var(--navy);">Contractor License</h3>
                             <span class="card-status" id="status-license" style="font-weight: 600; color: var(--slate);">Required</span>
                         </div>
-                        <p style="font-size: 0.9rem; color: var(--slate); margin: 0 0 1rem 0;">Indiana contractor license or attestation that no license is required. Max 10MB.</p>
+                        <p style="font-size: 0.9rem; color: var(--slate); margin: 0 0 1rem 0;">Indiana contractor license or indicate you don't have one. Max 10MB.</p>
                         
                         <div style="margin-bottom: 1rem;">
                             <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0.75rem;">
@@ -238,10 +238,10 @@
                             </div>
                         </div>
 
-                        <div style="border-top: 1px solid var(--light); padding-top: 1rem;">
+                        <div style="padding-top: 1rem;">
                             <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;">
-                                <input type="radio" name="license-choice" value="attestation" onchange="updateLicenseCardState()">
-                                <span style="font-size: 0.95rem;">No contractor license required in my service area</span>
+                                <input type="checkbox" id="license-no-license" onchange="updateLicenseCardState()">
+                                <span style="font-size: 0.95rem;">I don't have a license for this work</span>
                             </label>
                         </div>
                     </div>
@@ -475,19 +475,30 @@
     }
 
     function updateLicenseCardState() {
-        const choice = document.querySelector('input[name="license-choice"]:checked')?.value;
-        docState.license.choice = choice;
+        const radioChoice = document.querySelector('input[name="license-choice"]:checked')?.value;
+        const noLicenseCheckbox = document.getElementById('license-no-license').checked;
         const fileSection = document.getElementById('license-file-section');
+        const licenseUpload = document.getElementById('license-upload');
         
-        if (choice === 'file') {
+        docState.license.choice = radioChoice;
+        
+        if (noLicenseCheckbox) {
+            // Checkbox is checked: disable file upload, mark as satisfied
             fileSection.style.display = 'block';
-            docState.license.satisfied = docState.license.file !== null;
-        } else if (choice === 'attestation') {
-            fileSection.style.display = 'none';
+            licenseUpload.disabled = true;
+            document.querySelector('input[name="license-choice"][value="file"]').checked = true;
+            docState.license.choice = 'not_provided';
             docState.license.satisfied = true;
             docState.license.file = null;
         } else {
-            docState.license.satisfied = false;
+            // Checkbox is unchecked: enable file upload, require file
+            licenseUpload.disabled = false;
+            if (radioChoice === 'file') {
+                fileSection.style.display = 'block';
+                docState.license.satisfied = docState.license.file !== null;
+            } else {
+                docState.license.satisfied = false;
+            }
         }
         updateStep2Button();
     }
@@ -579,8 +590,8 @@
 
             if (docState.license.choice === 'file') {
                 updateObj.license_document_url = license_document_url;
-            } else if (docState.license.choice === 'attestation') {
-                updateObj.license_attestation_signed_at = new Date().toISOString();
+            } else if (docState.license.choice === 'not_provided') {
+                updateObj.license_path = 'not_provided';
             }
 
             // Update contractors table
@@ -591,10 +602,15 @@
             if (updateError) throw updateError;
             contractor.onboarding_step = 2;
 
-            // Sync contractor pre-approval data to HubSpot (D-210)
+            // Sync contractor pre-approval data to HubSpot (D-210, D-217)
             // Map wc_path and license_path to HubSpot enumeration properties
             const wc_path = docState.wc.choice === 'exemption' ? 'sole_prop_exemption' : 'has_wc';
-            const license_path = docState.license.choice === 'attestation' ? 'attestation' : 'has_license';
+            let license_path = 'has_license';
+            if (docState.license.choice === 'not_provided') {
+                license_path = 'not_provided';
+            } else if (docState.license.choice === 'file' && !license_document_url) {
+                license_path = 'not_provided';
+            }
             
             try {
                 await fetch('/functions/v1/create-hubspot-contact', {
