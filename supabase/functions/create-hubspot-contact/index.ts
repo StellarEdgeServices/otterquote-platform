@@ -1,14 +1,16 @@
 /**
  * OtterQuote Edge Function: create-hubspot-contact
  *
- * Creates or updates a HubSpot contact when a homeowner completes
- * page 1 of the intake form (get-started.html). Implements D-189.
+ * Creates or updates a HubSpot contact for homeowners (D-189) or contractors (D-210).
  *
- * Called fire-and-forget from get-started.html — errors are non-fatal
- * and must never surface to the user or block the magic link flow.
+ * Homeowner mode (default):
+ *   Called fire-and-forget from get-started.html page 1.
+ *   Auth: no JWT required — called pre-auth
  *
- * Auth: no JWT required — called pre-auth (user has not yet clicked magic link)
- * Rate limiting: covered by global check_rate_limit infrastructure
+ * Contractor mode (new, D-210):
+ *   Called from contractor-pre-approval.html after page 2 submission.
+ *   Updates existing contractor contact with wc_path and license_path properties.
+ *   Auth: requires JWT (contractor is signed in)
  *
  * Environment variables:
  *   HUBSPOT_PRIVATE_APP_TOKEN  — pat-na2-... private app token (scopes: contacts r/w)
@@ -75,16 +77,9 @@ serve(async (req: Request) => {
     return jsonResponse({ status: "ok" }, 200, cors);
   }
 
-  const { email, firstname, lastname, phone, address } = body as Record<string, string>;
-
-  if (!email) {
-    return jsonResponse({ error: "email required" }, 400, cors);
-  }
-
   const token = Deno.env.get("HUBSPOT_PRIVATE_APP_TOKEN");
   if (!token) {
     console.error("create-hubspot-contact: HUBSPOT_PRIVATE_APP_TOKEN not set");
-    // Non-fatal — return 200 so caller doesn't surface an error
     return jsonResponse({ success: false, reason: "token_not_configured" }, 200, cors);
   }
 
@@ -92,6 +87,84 @@ serve(async (req: Request) => {
     "Authorization": `Bearer ${token}`,
     "Content-Type": "application/json",
   };
+
+  // Contractor mode (D-210): update existing contact with wc_path and license_path
+  if (body.mode === "contractor") {
+    const { email, wc_path, license_path } = body as Record<string, string>;
+
+    if (!email) {
+      return jsonResponse({ error: "email required for contractor mode" }, 400, cors);
+    }
+
+    if (!wc_path || !license_path) {
+      return jsonResponse({ error: "wc_path and license_path required for contractor mode" }, 400, cors);
+    }
+
+    try {
+      // Search for existing contact by email
+      const searchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/search`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          filterGroups: [{
+            filters: [{ propertyName: "email", operator: "EQ", value: email }],
+          }],
+          properties: ["email"],
+          limit: 1,
+        }),
+      });
+
+      if (!searchRes.ok) {
+        const errText = await searchRes.text().catch(() => "(unreadable)");
+        console.error(`create-hubspot-contact (contractor): search failed ${searchRes.status}:`, errText);
+        // Non-fatal
+        return jsonResponse({ success: false, status: searchRes.status, mode: "contractor" }, 200, cors);
+      }
+
+      const searchData = await searchRes.json();
+      if (!searchData.results || searchData.results.length === 0) {
+        console.warn(`create-hubspot-contact (contractor): contact not found for ${email}`);
+        // Non-fatal — contact may not exist yet
+        return jsonResponse({ success: false, reason: "contact_not_found", mode: "contractor" }, 200, cors);
+      }
+
+      const contactId = searchData.results[0].id;
+
+      // Update contact with wc_path and license_path
+      const updateRes = await fetch(
+        `${HUBSPOT_API}/crm/v3/objects/contacts/${contactId}`,
+        {
+          method: "PATCH",
+          headers: authHeaders,
+          body: JSON.stringify({
+            properties: {
+              wc_path,
+              license_path,
+            },
+          }),
+        }
+      );
+
+      if (updateRes.ok) {
+        console.log(`create-hubspot-contact (contractor): updated contact ${contactId} for ${email} with wc_path=${wc_path}, license_path=${license_path}`);
+        return jsonResponse({ success: true, id: contactId, action: "updated", mode: "contractor" }, 200, cors);
+      } else {
+        const errText = await updateRes.text().catch(() => "(unreadable)");
+        console.error(`create-hubspot-contact (contractor): update failed ${updateRes.status}:`, errText);
+        return jsonResponse({ success: false, status: updateRes.status, mode: "contractor" }, 200, cors);
+      }
+    } catch (err) {
+      console.error("create-hubspot-contact (contractor): exception", err);
+      return jsonResponse({ success: false, error: String(err), mode: "contractor" }, 200, cors);
+    }
+  }
+
+  // Homeowner mode (D-189): original logic
+  const { email, firstname, lastname, phone, address } = body as Record<string, string>;
+
+  if (!email) {
+    return jsonResponse({ error: "email required" }, 400, cors);
+  }
 
   const properties: Record<string, string> = { email };
   if (firstname) properties.firstname = firstname;

@@ -591,6 +591,30 @@
             if (updateError) throw updateError;
             contractor.onboarding_step = 2;
 
+            // Sync contractor pre-approval data to HubSpot (D-210)
+            // Map wc_path and license_path to HubSpot enumeration properties
+            const wc_path = docState.wc.choice === 'exemption' ? 'sole_prop_exemption' : 'has_wc';
+            const license_path = docState.license.choice === 'attestation' ? 'attestation' : 'has_license';
+            
+            try {
+                await fetch('/functions/v1/create-hubspot-contact', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${(await sb.auth.getSession()).data.session?.access_token || ''}`
+                    },
+                    body: JSON.stringify({
+                        mode: 'contractor',
+                        email: currentUser.email,
+                        wc_path: wc_path,
+                        license_path: license_path
+                    })
+                });
+                console.log('HubSpot contact updated with wc_path and license_path');
+            } catch (e) {
+                console.warn('HubSpot sync failed (non-fatal):', e);
+            }
+
             // Send notification (non-fatal)
             try {
                 await sb.functions.invoke('send-support-email', {
