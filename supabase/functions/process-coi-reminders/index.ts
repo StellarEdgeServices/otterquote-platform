@@ -2,6 +2,7 @@
  * OtterQuote Edge Function: process-coi-reminders
  *
  * D-170 — Nightly COI Expiry Reminder System
+ * D-210 — Extended with Workers' Comp Certificate Expiry Reminders
  *
  * Invoked daily at 8:00 AM via pg_cron (schedule: "0 8 * * *").
  * May also be manually POST-ed with an optional { "contractor_id": "..." }
@@ -9,41 +10,45 @@
  *
  * ── What it does ─────────────────────────────────────────────────────────────
  *
+ * Part 1: COI Expiry Reminders (D-170, existing)
  * Queries all active contractors where coi_expires_at IS NOT NULL.
  * For each, calculates days until expiry and sends Mailgun reminder emails
  * at the 30, 14, and 7-day marks — exactly once per window, enforced by
- * the idempotency timestamp columns added in SQL v46:
+ * the idempotency timestamp columns:
  *   - coi_reminder_30_sent_at   (set when 30-day reminder fires)
  *   - coi_reminder_14_sent_at   (set when 14-day reminder fires)
  *   - coi_reminder_7_sent_at    (set when 7-day reminder fires)
  *
- * On expiry (coi_expires_at <= CURRENT_DATE):
+ * On COI expiry (coi_expires_at <= CURRENT_DATE):
  *   - Sends "COI has expired — bidding suspended" notice.
  *   - Sets coi_expired_notified_at = NOW() (send-once guard).
  *   - Sets contractors.status = 'suspended'.
- *     NOTE: 'coi_expired' is not in the contractors_status_check constraint
- *     (added v10, corrected v34: pending_approval | active | suspended | inactive).
- *     'suspended' is the correct status — contractor_can_bid() also independently
- *     gates bidding by checking coi_expires_at > CURRENT_DATE, so both layers fire.
  *
- * ── COI requirements included in all email copy ──────────────────────────────
+ * Part 2: Workers' Comp Certificate Expiry Reminders (D-210, new)
+ * Queries all contractors where:
+ *   - wc_cert_expiry IS NOT NULL
+ *   - wc_cert_file_ref != 'WCE-1-EXEMPT' (not exempted via WCE-1)
+ * Sends 30-day reminder using same cadence and idempotency pattern:
+ *   - wc_cert_reminder_30_sent_at (set when 30-day reminder fires)
+ *
+ * ── COI requirements included in all COI email copy ───────────────────────────
  *   - $1,000,000 per occurrence / $2,000,000 aggregate (CGL)
  *   - Products-Completed Operations and Contractual Liability coverage
  *   - Stellar Edge Services LLC named as Additional Insured,
  *     primary and non-contributory
  *
+ * ── WC Certificate requirements included in WC email copy ────────────────────
+ *   - Active, continuous coverage
+ *   - Covers all employees on roofing projects
+ *   - Stellar Edge Services LLC named as Certificate Holder
+ *
  * ── Idempotency ──────────────────────────────────────────────────────────────
  *   Each reminder column is a one-way latch: once set, it is never cleared.
- *   A contractor who renews their COI will have a new coi_expires_at date,
- *   but the reminder columns remain set from the prior cycle — that is correct
- *   because the reminders for that expiry cycle were already sent. Fresh
- *   reminder columns are not needed until the next renewal triggers a new expiry.
  *   Exception: if admin needs to re-send manually, they can null out the columns.
  *
  * ── Rate limiting ────────────────────────────────────────────────────────────
  *   Uses check_rate_limit() RPC against rate_limit_config.
  *   Caller ID: 'cron' (function-level guard — not per-contractor).
- *   Configured in v50 SQL migration.
  *
  * ── Auth ─────────────────────────────────────────────────────────────────────
  *   No JWT required — invoked by pg_cron using service role bearer token.
@@ -55,12 +60,19 @@
  *
  * ── Returns ──────────────────────────────────────────────────────────────────
  *   {
- *     reminded30: N,   // 30-day reminders sent this run
- *     reminded14: N,   // 14-day reminders sent this run
- *     reminded7: N,    // 7-day reminders sent this run
- *     expired: N,      // expired notices sent + status set to suspended
- *     skipped: N,      // contractors with no email / invalid data
- *     errors: [...],   // non-fatal per-contractor errors
+ *     coi: {
+ *       reminded30: N,   // 30-day reminders sent this run
+ *       reminded14: N,   // 14-day reminders sent this run
+ *       reminded7: N,    // 7-day reminders sent this run
+ *       expired: N,      // expired notices sent + status set to suspended
+ *       skipped: N,      // contractors with no email / invalid data
+ *       errors: [...]    // non-fatal per-contractor errors
+ *     },
+ *     wc: {
+ *       reminded30: N,   // 30-day WC cert reminders sent
+ *       skipped: N,      // contractors with no email / invalid data
+ *       errors: [...]    // non-fatal per-contractor errors
+ *     },
  *     elapsedMs: N,
  *     ranAt: "..."
  *   }
@@ -85,16 +97,26 @@ const ALLOWED_ORIGINS = [
   "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];
 
-// Upload CTA destination for all reminder emails.
+// Upload CTA destination for COI emails.
 const COI_UPLOAD_URL =
   "https://otterquote.com/contractor-settings.html?reason=coi_required#coiCard";
 
-// CGL requirement copy — used in every email so contractors always know
-// exactly what coverage they need to upload.
+// Upload CTA destination for WC certificate emails.
+const WC_UPLOAD_URL =
+  "https://otterquote.com/contractor-settings.html?reason=wc_required#wcCard";
+
+// CGL requirement copy — used in every COI email.
 const COI_REQUIREMENTS = `
   • $1,000,000 per occurrence / $2,000,000 aggregate (Commercial General Liability)
   • Products-Completed Operations and Contractual Liability coverage included
   • Stellar Edge Services LLC named as Additional Insured, primary and non-contributory
+`.trim();
+
+// WC certificate requirement copy.
+const WC_REQUIREMENTS = `
+  • Active, continuous Workers' Compensation coverage
+  • Covers all employees performing roofing-related work
+  • Stellar Edge Services LLC named as Certificate Holder
 `.trim();
 
 // =============================================================================
@@ -178,15 +200,15 @@ async function sendMailgunEmail(
  * Returns the number of calendar days between today (UTC) and a DATE string
  * (YYYY-MM-DD). Positive = future, 0 = today, negative = past.
  */
-function daysUntilExpiry(coiExpiresAt: string): number {
+function daysUntilExpiry(expiryDate: string): number {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
-  const expiry = new Date(coiExpiresAt + "T00:00:00Z");
+  const expiry = new Date(expiryDate + "T00:00:00Z");
   return Math.round((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 // =============================================================================
-// EMAIL BUILDERS
+// EMAIL BUILDERS — SHARED WRAPPER
 // =============================================================================
 
 /**
@@ -274,7 +296,7 @@ function wrapEmail(params: {
 </html>`;
 }
 
-// ── 30-day reminder ──────────────────────────────────────────────────────────
+// ── COI EMAIL BUILDERS ───────────────────────────────────────────────────────
 
 function build30DayEmail(params: {
   contractorName: string;
@@ -337,8 +359,6 @@ If you have questions, reply to this email or call (844) 875-3412.
   return { subject, text, html };
 }
 
-// ── 14-day reminder ──────────────────────────────────────────────────────────
-
 function build14DayEmail(params: {
   contractorName: string;
   expiryDateDisplay: string;
@@ -399,8 +419,6 @@ ${COI_UPLOAD_URL}
 
   return { subject, text, html };
 }
-
-// ── 7-day reminder ───────────────────────────────────────────────────────────
 
 function build7DayEmail(params: {
   contractorName: string;
@@ -470,8 +488,6 @@ If you need help, reply to this email or call (844) 875-3412.
 
   return { subject, text, html };
 }
-
-// ── Expired notice ────────────────────────────────────────────────────────────
 
 function buildExpiredEmail(params: {
   contractorName: string;
@@ -543,17 +559,90 @@ Questions? Reply to this email or call (844) 875-3412.
   return { subject, text, html };
 }
 
+// ── WC CERTIFICATE EMAIL BUILDER ─────────────────────────────────────────────
+
+function buildWC30DayEmail(params: {
+  contractorName: string;
+  expiryDateDisplay: string;
+  mailgunDomain: string;
+}): { subject: string; text: string; html: string } {
+  const { contractorName, expiryDateDisplay, mailgunDomain } = params;
+
+  const subject = "Your Workers' Comp certificate expires in 30 days";
+
+  const text = `Hi ${contractorName},
+
+Your Workers' Compensation insurance certificate on file with Otter Quotes expires on ${expiryDateDisplay} — 30 days from now.
+
+To avoid any interruption to your projects, please upload an updated certificate before that date.
+
+Workers' Comp Requirements:
+${WC_REQUIREMENTS}
+
+Upload your updated certificate here:
+${WC_UPLOAD_URL}
+
+Questions? Reply to this email or call (844) 875-3412.
+
+— The Otter Quotes Team`;
+
+  const bodyHtml = `
+    <p style="margin:0 0 14px;color:#3D4F60;font-size:15px;line-height:1.6;">
+      Hi ${contractorName},
+    </p>
+    <p style="margin:0 0 14px;color:#3D4F60;font-size:15px;line-height:1.6;">
+      Your Workers' Compensation insurance certificate on file with Otter Quotes expires on
+      <strong>${expiryDateDisplay}</strong> — 30 days from now.
+    </p>
+    <p style="margin:0 0 14px;color:#3D4F60;font-size:15px;line-height:1.6;">
+      To avoid any interruption to your projects, please upload an updated certificate
+      before that date.
+    </p>
+    <div style="background:#FFF7ED;border-left:4px solid #E07B00;padding:14px 18px;
+                border-radius:0 6px 6px 0;margin:0 0 18px;">
+      <p style="margin:0 0 8px;color:#0D1B2E;font-size:13px;font-weight:700;">
+        Workers' Compensation Requirements
+      </p>
+      <p style="margin:0;color:#3D4F60;font-size:13px;line-height:1.7;">
+        • Active, continuous Workers' Compensation coverage<br />
+        • Covers all employees performing roofing-related work<br />
+        • <strong>Stellar Edge Services LLC</strong> named as Certificate Holder
+      </p>
+    </div>`;
+
+  const html = wrapEmail({
+    heading: "Your Workers' Comp certificate expires in 30 days",
+    bodyHtml,
+    ctaText: "Upload Updated Certificate",
+    ctaUrl: WC_UPLOAD_URL,
+    mailgunDomain,
+  });
+
+  return { subject, text, html };
+}
+
 // =============================================================================
 // MAIN PROCESSING LOGIC
 // =============================================================================
 
-interface ProcessResult {
+interface COIResult {
   reminded30: number;
   reminded14: number;
   reminded7: number;
   expired: number;
   skipped: number;
   errors: string[];
+}
+
+interface WCResult {
+  reminded30: number;
+  skipped: number;
+  errors: string[];
+}
+
+interface ProcessResult {
+  coi: COIResult;
+  wc: WCResult;
   elapsedMs: number;
   ranAt: string;
 }
@@ -563,25 +652,19 @@ async function processCOIReminders(
   mailgunApiKey: string,
   mailgunDomain: string,
   scopeContractorId?: string
-): Promise<ProcessResult> {
-  const result: ProcessResult = {
+): Promise<COIResult> {
+  const result: COIResult = {
     reminded30: 0,
     reminded14: 0,
     reminded7: 0,
     expired: 0,
     skipped: 0,
     errors: [],
-    elapsedMs: 0,
-    ranAt: new Date().toISOString(),
   };
 
   const now = new Date().toISOString();
   const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
 
-  // ── Fetch candidates ──────────────────────────────────────────────────────
-  // Query active contractors with a COI expiry date on file.
-  // We also pull suspended contractors whose COI may have just been renewed
-  // (they'd need to be re-activated by admin, but we won't re-notify them here).
   let query = supabase
     .from("contractors")
     .select(
@@ -600,8 +683,8 @@ async function processCOIReminders(
   const { data: contractors, error: fetchError } = await query;
 
   if (fetchError) {
-    console.error(`[${FUNCTION_NAME}] Fetch error:`, fetchError.message);
-    result.errors.push(`Fetch failed: ${fetchError.message}`);
+    console.error(`[${FUNCTION_NAME}] COI fetch error:`, fetchError.message);
+    result.errors.push(`COI fetch failed: ${fetchError.message}`);
     return result;
   }
 
@@ -611,7 +694,7 @@ async function processCOIReminders(
   }
 
   console.log(
-    `[${FUNCTION_NAME}] Processing ${contractors.length} contractor(s).`
+    `[${FUNCTION_NAME}] Processing ${contractors.length} contractor(s) for COI reminders.`
   );
 
   for (const contractor of contractors) {
@@ -619,7 +702,6 @@ async function processCOIReminders(
     const name = contractor.contact_name || "Contractor";
     const coiDate = contractor.coi_expires_at as string;
 
-    // Build recipient list (primary + notification emails)
     const recipients: string[] = [];
     if (contractor.email) recipients.push(contractor.email);
     if (Array.isArray(contractor.notification_emails)) {
@@ -630,15 +712,13 @@ async function processCOIReminders(
 
     if (recipients.length === 0) {
       console.warn(
-        `[${FUNCTION_NAME}] Contractor ${contractorId} has no email — skipped.`
+        `[${FUNCTION_NAME}] Contractor ${contractorId} has no email — COI skipped.`
       );
       result.skipped++;
       continue;
     }
 
     const days = daysUntilExpiry(coiDate);
-
-    // Human-readable date for email copy
     const expiryDateDisplay = new Date(coiDate + "T00:00:00Z").toLocaleDateString(
       "en-US",
       { month: "long", day: "numeric", year: "numeric" }
@@ -649,17 +729,15 @@ async function processCOIReminders(
         `COI expires ${coiDate} (${days} days)`
     );
 
-    // ── EXPIRED PATH ────────────────────────────────────────────────────────
-    // days <= 0 means expiry date is today or in the past.
+    // EXPIRED PATH
     if (days <= 0) {
       if (contractor.coi_expired_notified_at) {
         console.log(
-          `[${FUNCTION_NAME}] Contractor ${contractorId}: expired notice already sent — skipping.`
+          `[${FUNCTION_NAME}] Contractor ${contractorId}: COI expired notice already sent.`
         );
         continue;
       }
 
-      // 1. Suspend the contractor
       const { error: suspendError } = await supabase
         .from("contractors")
         .update({
@@ -675,7 +753,6 @@ async function processCOIReminders(
         continue;
       }
 
-      // 2. Send expired notice
       const expiredEmail = buildExpiredEmail({
         contractorName: name,
         expiredDateDisplay: expiryDateDisplay,
@@ -698,7 +775,7 @@ async function processCOIReminders(
 
       if (!emailOk) {
         result.errors.push(
-          `Contractor ${contractorId}: expired email failed to send (account suspended; status updated)`
+          `Contractor ${contractorId}: COI expired email failed to send (account suspended; status updated)`
         );
       }
 
@@ -709,12 +786,7 @@ async function processCOIReminders(
       continue;
     }
 
-    // ── UPCOMING REMINDER PATHS ─────────────────────────────────────────────
-    // Each reminder fires independently — a contractor coming in late
-    // (e.g., already at 6 days) will receive all three unsent reminders.
-    // Each is guarded by its own timestamp column.
-
-    // 7-day reminder (≤7 days until expiry)
+    // UPCOMING REMINDERS
     if (days <= 7 && !contractor.coi_reminder_7_sent_at) {
       const email7 = build7DayEmail({
         contractorName: name,
@@ -748,18 +820,13 @@ async function processCOIReminders(
           );
         } else {
           result.reminded7++;
-          console.log(
-            `[${FUNCTION_NAME}] Contractor ${contractorId}: 7-day reminder sent.`
-          );
+          console.log(`[${FUNCTION_NAME}] Contractor ${contractorId}: 7-day COI reminder sent.`);
         }
       } else {
-        result.errors.push(
-          `Contractor ${contractorId}: 7-day email failed to send.`
-        );
+        result.errors.push(`Contractor ${contractorId}: 7-day COI email failed to send.`);
       }
     }
 
-    // 14-day reminder (≤14 days until expiry)
     if (days <= 14 && !contractor.coi_reminder_14_sent_at) {
       const email14 = build14DayEmail({
         contractorName: name,
@@ -793,18 +860,13 @@ async function processCOIReminders(
           );
         } else {
           result.reminded14++;
-          console.log(
-            `[${FUNCTION_NAME}] Contractor ${contractorId}: 14-day reminder sent.`
-          );
+          console.log(`[${FUNCTION_NAME}] Contractor ${contractorId}: 14-day COI reminder sent.`);
         }
       } else {
-        result.errors.push(
-          `Contractor ${contractorId}: 14-day email failed to send.`
-        );
+        result.errors.push(`Contractor ${contractorId}: 14-day COI email failed to send.`);
       }
     }
 
-    // 30-day reminder (≤30 days until expiry)
     if (days <= 30 && !contractor.coi_reminder_30_sent_at) {
       const email30 = build30DayEmail({
         contractorName: name,
@@ -838,14 +900,155 @@ async function processCOIReminders(
           );
         } else {
           result.reminded30++;
-          console.log(
-            `[${FUNCTION_NAME}] Contractor ${contractorId}: 30-day reminder sent.`
-          );
+          console.log(`[${FUNCTION_NAME}] Contractor ${contractorId}: 30-day COI reminder sent.`);
         }
       } else {
-        result.errors.push(
-          `Contractor ${contractorId}: 30-day email failed to send.`
+        result.errors.push(`Contractor ${contractorId}: 30-day COI email failed to send.`);
+      }
+    }
+  }
+
+  return result;
+}
+
+async function processWCReminders(
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  scopeContractorId?: string
+): Promise<WCResult> {
+  const result: WCResult = {
+    reminded30: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  const now = new Date().toISOString();
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
+
+  let query = supabase
+    .from("contractors")
+    .select(
+      `id, contact_name, email, notification_emails,
+       wc_cert_expiry, wc_cert_file_ref,
+       wc_cert_reminder_30_sent_at`
+    )
+    .not("wc_cert_expiry", "is", null);
+
+  if (scopeContractorId) {
+    query = query.eq("id", scopeContractorId);
+  }
+
+  const { data: contractors, error: fetchError } = await query;
+
+  if (fetchError) {
+    console.error(`[${FUNCTION_NAME}] WC fetch error:`, fetchError.message);
+    result.errors.push(`WC fetch failed: ${fetchError.message}`);
+    return result;
+  }
+
+  if (!contractors || contractors.length === 0) {
+    console.log(`[${FUNCTION_NAME}] No contractors with WC cert dates found.`);
+    return result;
+  }
+
+  console.log(
+    `[${FUNCTION_NAME}] Processing ${contractors.length} contractor(s) for WC reminders.`
+  );
+
+  for (const contractor of contractors) {
+    const contractorId = contractor.id;
+    const name = contractor.contact_name || "Contractor";
+    const wcExpiryDate = contractor.wc_cert_expiry as string;
+    const wcCertFileRef = contractor.wc_cert_file_ref as string | null;
+
+    // Skip if exempted via WCE-1
+    if (wcCertFileRef === "WCE-1-EXEMPT") {
+      console.log(
+        `[${FUNCTION_NAME}] Contractor ${contractorId}: WCE-1 exempt — skipping WC reminder.`
+      );
+      result.skipped++;
+      continue;
+    }
+
+    const recipients: string[] = [];
+    if (contractor.email) recipients.push(contractor.email);
+    if (Array.isArray(contractor.notification_emails)) {
+      for (const e of contractor.notification_emails) {
+        if (e && !recipients.includes(e)) recipients.push(e);
+      }
+    }
+
+    if (recipients.length === 0) {
+      console.warn(
+        `[${FUNCTION_NAME}] Contractor ${contractorId} has no email — WC skipped.`
+      );
+      result.skipped++;
+      continue;
+    }
+
+    const days = daysUntilExpiry(wcExpiryDate);
+    const expiryDateDisplay = new Date(wcExpiryDate + "T00:00:00Z").toLocaleDateString(
+      "en-US",
+      { month: "long", day: "numeric", year: "numeric" }
+    );
+
+    console.log(
+      `[${FUNCTION_NAME}] Contractor ${contractorId} (${name}): ` +
+        `WC cert expires ${wcExpiryDate} (${days} days)`
+    );
+
+    // 30-day WC reminder
+    if (days <= 30 && !contractor.wc_cert_reminder_30_sent_at) {
+      const emailWC = buildWC30DayEmail({
+        contractorName: name,
+        expiryDateDisplay,
+        mailgunDomain,
+      });
+
+      let sentWC = false;
+      for (const recipient of recipients) {
+        const ok = await sendMailgunEmail(
+          mailgunApiKey,
+          mailgunDomain,
+          recipient,
+          fromAddress,
+          emailWC.subject,
+          emailWC.text,
+          emailWC.html
         );
+        if (ok) sentWC = true;
+      }
+
+      if (sentWC) {
+        const { error: stampError } = await supabase
+          .from("contractors")
+          .update({ wc_cert_reminder_30_sent_at: now })
+          .eq("id", contractorId);
+
+        if (stampError) {
+          result.errors.push(
+            `Contractor ${contractorId}: WC 30-day stamp failed — ${stampError.message}`
+          );
+        } else {
+          result.reminded30++;
+          console.log(`[${FUNCTION_NAME}] Contractor ${contractorId}: 30-day WC reminder sent.`);
+          
+          // Log to activity_log
+          const { error: logError } = await supabase.from("activity_log").insert({
+            contractor_id: contractorId,
+            event_type: "wc_cert_expiry_reminder_sent",
+            metadata: { days_until_expiry: days, expiry_date: wcExpiryDate },
+          });
+          
+          if (logError) {
+            console.warn(
+              `[${FUNCTION_NAME}] Failed to log WC reminder for ${contractorId}: ${logError.message}`
+            );
+          }
+        }
+      } else {
+        result.errors.push(`Contractor ${contractorId}: WC 30-day email failed to send.`);
       }
     }
   }
@@ -868,7 +1071,6 @@ serve(async (req) => {
     return jsonResponse({ error: "Method not allowed" }, 405, corsHeaders);
   }
 
-  // ── Environment ──────────────────────────────────────────────────────────
   const supabaseUrl   = Deno.env.get("SUPABASE_URL")!;
   const serviceKey    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY")!;
@@ -881,9 +1083,6 @@ serve(async (req) => {
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  // ── Rate limit guard (function-level; p_caller_id = null = global) ──────
-  // check_rate_limit() signature: p_function_name TEXT, p_user_id UUID DEFAULT NULL
-  // Cron functions have no user UUID — pass null to use the shared anonymous bucket.
   const { data: rateLimitOk, error: rlError } = await supabase.rpc(
     "check_rate_limit",
     { p_function_name: FUNCTION_NAME, p_user_id: null }
@@ -907,7 +1106,6 @@ serve(async (req) => {
     );
   }
 
-  // ── Optional single-contractor scope (for testing) ───────────────────────
   let scopeContractorId: string | undefined;
   try {
     const body = await req.json().catch(() => ({}));
@@ -918,18 +1116,31 @@ serve(async (req) => {
       );
     }
   } catch {
-    // No body — run globally
+    // No body
   }
 
   const startedAt = Date.now();
-  const result = await processCOIReminders(
+  
+  const coiResult = await processCOIReminders(
     supabase,
     mailgunApiKey,
     mailgunDomain,
     scopeContractorId
   );
-  result.elapsedMs = Date.now() - startedAt;
-  result.ranAt = new Date().toISOString();
+
+  const wcResult = await processWCReminders(
+    supabase,
+    mailgunApiKey,
+    mailgunDomain,
+    scopeContractorId
+  );
+
+  const result: ProcessResult = {
+    coi: coiResult,
+    wc: wcResult,
+    elapsedMs: Date.now() - startedAt,
+    ranAt: new Date().toISOString(),
+  };
 
   console.log(`[${FUNCTION_NAME}] Run complete:`, JSON.stringify(result));
 
