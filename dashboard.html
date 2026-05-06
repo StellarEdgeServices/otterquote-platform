@@ -1715,7 +1715,7 @@
         // Fields to display
         const fields = [
           { key: 'carrier_id', label: 'Insurance Carrier', type: 'select' },
-          { key: 'claim_number', label: 'Claim Number', type: 'text' },
+          { key: 'claim_number', label: 'Insurance Claim #', type: 'text', showIf: () => currentClaim.funding_type === 'insurance' },
           { key: 'date_of_loss', label: 'Date of Loss', type: 'date' },
           { key: 'damage_type', label: 'Damage Type', type: 'text' },
           { key: 'deductible_amount', label: 'Deductible Amount', type: 'currency' },
@@ -1763,6 +1763,9 @@
             }
           }
 
+          // Hide field if showIf function returns false
+          if (field.showIf && !field.showIf()) return '';
+
           return `
             <div class="claim-field">
               <div class="claim-field-label">${field.label}</div>
@@ -1793,6 +1796,9 @@
           } else {
             input = `<input type="${field.type}" class="form-input" name="${field.key}" value="${value}" placeholder="">`;
           }
+
+          // Hide field if showIf function returns false
+          if (field.showIf && !field.showIf()) return '';
 
           return `
             <div class="form-group">
@@ -2892,7 +2898,7 @@
                 from_name:  currentProfile?.full_name || 'Homeowner',
                 from_email: currentUser?.email || '',
                 subject:    'Switch Contractor Request',
-                message:    `Claim ID: ${currentClaim.id}\nReasons: ${reasonText}\nNotes: ${notes || '(none)'}`
+                message:    `Job #${currentClaim.id.slice(-8).toUpperCase()}\nReasons: ${reasonText}\nNotes: ${notes || '(none)'}`
               })
             });
           }

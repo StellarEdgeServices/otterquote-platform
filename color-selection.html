@@ -1036,7 +1036,7 @@
           console.error('Error requesting color board visit:', err);
           // Fallback: open mailto to Otter Quotes support
           const subject = encodeURIComponent('Color Board Visit Request');
-          const body = encodeURIComponent(`I would like to request an in-person color board visit.\n\nClaim ID: ${this.claimId || 'unknown'}\nContractor: ${this.contractorName || 'unknown'}`);
+          const body = encodeURIComponent(`I would like to request an in-person color board visit.\n\nJob #${(this.claimId || 'unknown').slice(-8).toUpperCase()}\nContractor: ${this.contractorName || 'unknown'}`);
           window.location.href = `mailto:info@otterquote.com?subject=${subject}&body=${body}`;
         }
       },
