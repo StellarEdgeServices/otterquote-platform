@@ -30,7 +30,10 @@ const CONTRACTOR_DASHBOARD_URL = "https://otterquote.com/contractor-dashboard.ht
 // CORS allowlist
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
   "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];
 
 function buildCorsHeaders(req: Request): Record<string, string> {
@@ -180,7 +183,7 @@ async function handleRequest(req: Request): Promise<Response> {
         created_at,
         claims:claim_id (
           id,
-          homeowner_id,
+          user_id,
           selected_trades
         ),
         profiles:sender_id (
@@ -304,7 +307,7 @@ async function handleRequest(req: Request): Promise<Response> {
       const { data: homeownerProfile, error: homeownerError } = await supabase
         .from("profiles")
         .select("email, full_name")
-        .eq("id", claim.homeowner_id)
+        .eq("id", claim.user_id)
         .single();
 
       if (homeownerError || !homeownerProfile) {

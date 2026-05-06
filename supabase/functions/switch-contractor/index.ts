@@ -13,9 +13,11 @@
  *   6. Reset the claim (status = 'bidding', selected_contractor_id = NULL,
  *      increment contractor_switch_count, set contractor_switched_at)
  *   7. If the quote has a succeeded Stripe PaymentIntent, issue a full refund
+ *   7b. Persist D-171 survey payload to claims.switch_reason_survey
  *   8. Send email to the original contractor notifying them of the switch
  *      and confirming their platform fee refund
  *   9. Re-fire notify-contractors so the network knows the project is open again
+ *   9b. Send support notification to Dustin with survey payload (D-171)
  *  10. Log to activity_log
  *
  * Environment variables:
@@ -35,7 +37,10 @@ const STRIPE_API_BASE = "https://api.stripe.com/v1";
 // function (homeowner JWT, Stripe refunds, contractor emails) — origin allowlisted.
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
   "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];
 
 function buildCorsHeaders(req: Request): Record<string, string> {
@@ -337,21 +342,7 @@ serve(async (req) => {
           ? "No platform fee had been charged on this project, so no refund is necessary."
           : "We will process your platform fee refund separately. Please contact support at support@otterquote.com if you have questions.";
 
-      const emailText = `Hi ${contractorName},
-
-We're writing to let you know that the homeowner on the following project has chosen to switch contractors through OtterQuote.
-
-This is a platform feature available to homeowners up to 3 days before their scheduled installation date.
-
-${refundLine}
-
-The project has been re-opened to the OtterQuote contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.
-
-We appreciate your participation on OtterQuote and look forward to connecting you with future projects.
-
-Best regards,
-The OtterQuote Team
-support@otterquote.com | (844) 875-3412`;
+      const emailText = `Hi ${contractorName},\n\nWe're writing to let you know that the homeowner on the following project has chosen to switch contractors through OtterQuote.\n\nThis is a platform feature available to homeowners up to 3 days before their scheduled installation date.\n\n${refundLine}\n\nThe project has been re-opened to the OtterQuote contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.\n\nWe appreciate your participation on OtterQuote and look forward to connecting you with future projects.\n\nBest regards,\nThe OtterQuote Team\nsupport@otterquote.com | (844) 875-3412`;
 
       emailSent = await sendEmail(
         mailgunKey,
@@ -373,23 +364,7 @@ support@otterquote.com | (844) 875-3412`;
         : "(none selected)";
       const notesLine = surveyNotes || "(none provided)";
       const propertyAddress = claim.property_address || "Unknown address";
-      const supportEmailText = `[Action Required] Homeowner contractor switch — ${propertyAddress}
-
-A homeowner has submitted a contractor switch request. Per D-171, please contact them directly to confirm their next contractor placement.
-
-Claim ID:        ${claim_id}
-Property:        ${propertyAddress}
-Original contractor: ${contractorName}
-Refund issued:   ${refundResult.success ? "Yes" : "Pending"}
-
---- Homeowner Switch Survey ---
-Reasons selected: ${reasonsLine}
-Additional notes: ${notesLine}
-
-Please reach out to the homeowner to confirm their new contractor placement.
-Admin: https://otterquote.com/admin-contractors.html
-
-— OtterQuote automated alert`;
+      const supportEmailText = `[Action Required] Homeowner contractor switch — ${propertyAddress}\n\nA homeowner has submitted a contractor switch request. Per D-171, please contact them directly to confirm their next contractor placement.\n\nClaim ID:        ${claim_id}\nProperty:        ${propertyAddress}\nOriginal contractor: ${contractorName}\nRefund issued:   ${refundResult.success ? "Yes" : "Pending"}\n\n--- Homeowner Switch Survey ---\nReasons selected: ${reasonsLine}\nAdditional notes: ${notesLine}\n\nPlease reach out to the homeowner to confirm their new contractor placement.\nAdmin: https://otterquote.com/admin-contractors.html\n\n— OtterQuote automated alert`;
 
       await sendEmail(
         mailgunKey,
@@ -421,4 +396,55 @@ Admin: https://otterquote.com/admin-contractors.html
       };
 
       const allTrades: string[] = claim.selected_trades || claim.trades || ["roofing"];
-      const KNOWN_TRADES = ["roofing", "g
+      const KNOWN_TRADES = ["roofing", "gutters", "siding", "windows"];
+      const releasedTrades = allTrades.filter((t: string) => {
+        const tl = t.toLowerCase();
+        if (!KNOWN_TRADES.includes(tl)) return true; // unknown = conservative include
+        const col = `${tl}_bid_released_at` as keyof typeof claim;
+        return !!(claim as any)[col];
+      });
+
+      if (releasedTrades.length === 0) {
+        console.log("[switch-contractor] No released trades — skipping re-notification (all held by gates)");
+      } else {
+        for (const trade of releasedTrades) {
+          const notifyPayload = { ...notifyBase, trade_types: [trade] };
+          fetch(`${supabaseUrl}/functions/v1/notify-contractors`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+            body: JSON.stringify(notifyPayload),
+          }).then(r => r.json())
+            .then(result => console.log(`[switch-contractor] notify-contractors [${trade}] result:`, result))
+            .catch(err => console.error(`[switch-contractor] notify-contractors [${trade}] error (non-blocking):`, err));
+        }
+        console.log(`[switch-contractor] Re-notification fired for trades: [${releasedTrades.join(", ")}]`);
+      }
+    } catch (notifyErr) {
+      console.error("[switch-contractor] Error firing notify-contractors:", notifyErr);
+    }
+
+    // ── 11. Activity log ──────────────────────────────────────────────────
+    const surveyDesc = surveyReasons.length > 0
+      ? ` Survey reasons: [${surveyReasons.join(", ")}].${surveyNotes ? ` Notes: "${surveyNotes.slice(0, 200)}"` : ""}`
+      : "";
+    await sb.from("activity_log").insert({
+      claim_id:    claim_id,
+      event_type:  "contractor_switched",
+      description: `Homeowner switched contractors. Original contractor: ${contractorName}. Refund: ${refundResult.success ? "issued" : "pending"}.${surveyDesc}`,
+      created_at:  new Date().toISOString(),
+    }).catch(err => console.warn("[switch-contractor] Activity log insert failed (non-critical):", err));
+
+    // ── Done ──────────────────────────────────────────────────────────────
+    return jsonResponse({
+      success: true,
+      message: "Contractor switch initiated. Your project is back in open bidding.",
+      refund_issued: refundResult.success,
+      refund_id: refundResult.refundId || null,
+      contractor_notified: emailSent,
+    });
+
+  } catch (err) {
+    console.error("[switch-contractor] Unhandled error:", err);
+    return jsonResponse({ error: "An unexpected error occurred. Please try again." }, 500);
+  }
+});

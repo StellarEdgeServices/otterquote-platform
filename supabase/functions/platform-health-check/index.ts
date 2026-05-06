@@ -40,7 +40,10 @@ const PING_TIMEOUT_MS = 5000;
 // CORS: origin-allowlisted per standard OtterQuote pattern
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
   "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];
 
 // Edge Functions to health-ping (order matters for reporting)

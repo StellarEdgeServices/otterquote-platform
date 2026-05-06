@@ -23,7 +23,10 @@ const STRIPE_API_BASE = "https://api.stripe.com/v1";
 // payment function (creates Stripe SetupIntent) — origin allowlisted.
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
   "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];
 
 function buildCorsHeaders(req: Request): Record<string, string> {

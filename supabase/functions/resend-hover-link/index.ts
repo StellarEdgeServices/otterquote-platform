@@ -23,7 +23,10 @@ const MAX_RESENDS_PER_DAY = 3;
 // CORS tightened (Session 254): origin-allowlisted instead of wildcard.
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
   "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];
 
 function buildCorsHeaders(req: Request): Record<string, string> {

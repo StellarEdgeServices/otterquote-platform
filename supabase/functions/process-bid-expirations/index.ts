@@ -83,7 +83,10 @@ const ACTIVE_DUNNING_STATUSES = ["active", "warning_sent", "homeowner_notified"]
 // CORS — defense-in-depth (cron caller doesn't need it, but browsers might hit this).
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
   "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];
 
 // =============================================================================
