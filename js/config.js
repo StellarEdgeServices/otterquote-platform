@@ -56,5 +56,5 @@ var CONFIG = {
 // ── Initialize Supabase Client ──
 let sb;
 if (typeof supabase !== 'undefined') {
-  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage } });
 }

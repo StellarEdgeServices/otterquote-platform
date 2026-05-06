@@ -322,22 +322,22 @@
     <div class="summary-cards">
         <div class="summary-card pending">
             <div class="summary-card-label">Pending Approval</div>
-            <div class="summary-card-value" id="cardPendingCount">&mdash;</div>
-            <div class="summary-card-sub" id="cardPendingAmount">loading&hellip;</div>
+            <div class="summary-card-value" id="cardPendingCount">—</div>
+            <div class="summary-card-sub" id="cardPendingAmount">loading…</div>
         </div>
         <div class="summary-card approved">
             <div class="summary-card-label">Approved This Month</div>
-            <div class="summary-card-value" id="cardApprovedCount">&mdash;</div>
-            <div class="summary-card-sub" id="cardApprovedAmount">loading&hellip;</div>
+            <div class="summary-card-value" id="cardApprovedCount">—</div>
+            <div class="summary-card-sub" id="cardApprovedAmount">loading…</div>
         </div>
         <div class="summary-card approved">
             <div class="summary-card-label">Auto-Approved This Month</div>
-            <div class="summary-card-value" id="cardAutoCount">&mdash;</div>
-            <div class="summary-card-sub" id="cardAutoAmount">loading&hellip;</div>
+            <div class="summary-card-value" id="cardAutoCount">—</div>
+            <div class="summary-card-sub" id="cardAutoAmount">loading…</div>
         </div>
         <div class="summary-card rejected">
             <div class="summary-card-label">Rejected</div>
-            <div class="summary-card-value" id="cardRejectedCount">&mdash;</div>
+            <div class="summary-card-value" id="cardRejectedCount">—</div>
             <div class="summary-card-sub">all time</div>
         </div>
     </div>
@@ -354,7 +354,7 @@
 
     <!-- Table -->
     <div class="table-wrapper">
-        <div id="loadingSpinner" class="loading-spinner">Loading payouts&hellip;</div>
+        <div id="loadingSpinner" class="loading-spinner">Loading payouts…</div>
         <table class="payout-table" id="payoutsTable" style="display:none;">
             <thead>
                 <tr>
@@ -376,6 +376,7 @@
     </div>
 </main>
 
+<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
@@ -405,8 +406,7 @@
             }
         }
 
-        // F-007: Auth.getSession() races onAuthStateChange + getSession with 3s timeout
-        const session = await Auth.getSession();
+        const { data: { session } } = await sb.auth.getSession();
         if (!session || session.user.email !== 'dustinstohler1@gmail.com') {
             document.getElementById('authError').style.display = 'block';
             document.getElementById('loadingSpinner').style.display = 'none';

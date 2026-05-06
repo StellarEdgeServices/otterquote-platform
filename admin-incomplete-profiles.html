@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin &mdash; Incomplete Profiles | Otter Quotes</title>
+    <title>Admin — Incomplete Profiles | Otter Quotes</title>
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
     <style>
@@ -422,26 +422,26 @@
             </div>
 
             <div class="note-banner">
-                Showing contractors who signed up but haven't completed their profile &mdash; either still in <strong>pending_approval</strong> status or missing one or more required fields. Use the mailto links to follow up directly.
+                Showing contractors who signed up but haven't completed their profile — either still in <strong>pending_approval</strong> status or missing one or more required fields. Use the mailto links to follow up directly.
             </div>
 
             <!-- Summary cards -->
             <div class="summary-cards">
                 <div class="summary-card">
                     <div class="summary-card-label">Incomplete Profiles</div>
-                    <div class="summary-card-value warning" id="cardTotal">&mdash;</div>
+                    <div class="summary-card-value warning" id="cardTotal">—</div>
                 </div>
                 <div class="summary-card">
                     <div class="summary-card-label">Still Pending Approval</div>
-                    <div class="summary-card-value" id="cardPending">&mdash;</div>
+                    <div class="summary-card-value" id="cardPending">—</div>
                 </div>
                 <div class="summary-card">
                     <div class="summary-card-label">Active but Incomplete</div>
-                    <div class="summary-card-value" id="cardActiveIncomplete">&mdash;</div>
+                    <div class="summary-card-value" id="cardActiveIncomplete">—</div>
                 </div>
                 <div class="summary-card">
                     <div class="summary-card-label">Missing Company Name</div>
-                    <div class="summary-card-value" id="cardMissingName">&mdash;</div>
+                    <div class="summary-card-value" id="cardMissingName">—</div>
                 </div>
             </div>
 
@@ -480,7 +480,7 @@
             <!-- Loading -->
             <div id="loadingState" class="state-box">
                 <div class="state-box-icon">⏳</div>
-                <div class="state-box-title">Loading contractors&hellip;</div>
+                <div class="state-box-title">Loading contractors…</div>
             </div>
 
             <!-- Empty -->
@@ -500,7 +500,8 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/config.js"></script>
+    <script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
     <script>
