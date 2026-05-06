@@ -42,6 +42,10 @@ Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable 
   - `js/auth.js`
   - Any file over ~1,500 lines (check: `wc -l <file>`)
 
+### JS Syntax Lint
+- [ ] **`bash scripts/pre-push-check.sh` returns FAIL: 0.** Runs `node --check` against every `js/**/*.js` file. Catches the silent-parse-failure class of bug.
+  - *Why: May 1–6, 2026 — `js/auth.js` had a SyntaxError at line 761 (commit 11b32d1e accidentally deleted an `sb.auth.onAuthStateChange((event, session) => { ... })` wrapper while leaving the body). `window.Auth` never got defined; every authenticated page silently broke. Eight CI runs failed before the cause was found because Chrome doesn't surface SyntaxErrors prominently in MCP tooling. `node --check` would have caught it in 50ms. See ADR-009.*
+
 ### SQL Migration Gate
 *(Skip if no schema changes in this deploy.)*
 - [ ] **Companion rollback script committed.** Every SQL migration file (`sql/vN-*.sql`) has a corresponding `sql/vN-rollback-*.sql` committed alongside it.
@@ -54,6 +58,8 @@ Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable 
 ### Auth Pattern
 *(Check only if new authenticated pages added or auth code modified.)*
 - [ ] **F-007 pattern applied.** All new/modified authenticated pages use `onAuthStateChange` + `INITIAL_SESSION`/`SIGNED_IN` guard + `_initFired` boolean. No `DOMContentLoaded + sb.auth.getSession()` pattern introduced.
+- [ ] **`js/auth.js` parses cleanly.** `node --check js/auth.js` exits 0. (Covered automatically by the JS Syntax Lint CRITICAL item; restated here because auth.js is high-blast-radius — a parse failure silently breaks every authenticated page in the app.)
+- [ ] **Auth refactor → spec audit.** If auth code changed (js/auth.js, auth-callback.html, netlify/edge-functions/admin-gate.js), confirmed E2E test specs in tests/e2e/ have been audited for stale assumptions about cookie names, session shape, and Auth.ready() contract.
 
 ### Config Scope
 *(Check only if config.js or any file referencing CONFIG/sb was modified.)*
