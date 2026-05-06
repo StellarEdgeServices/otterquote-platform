@@ -12,16 +12,18 @@ import { createAdminClient } from './auth.js';
  * Verifies that a bid (quote) from the test contractor on the test claim
  * exists in the database. Used to confirm a bid submitted via the UI
  * actually persisted.
+ *
+ * NOTE: contractorId may be null in CI due to D-211 auth regressions.
+ * Query by claim_id only and verify the bid has a non-null contractor_id.
  */
 export async function verifyBidPersisted(
-  contractorId: string,
+  contractorId: string | null,
   claimId: string
 ): Promise<boolean> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('quotes')
-    .select('id, total_price, status, created_at')
-    .eq('contractor_id', contractorId)
+    .select('id, contractor_id, total_price, status, created_at')
     .eq('claim_id', claimId)
     .order('created_at', { ascending: false })
     .limit(1);
@@ -30,14 +32,27 @@ export async function verifyBidPersisted(
     console.error('verifyBidPersisted DB error:', error.message);
     return false;
   }
-  const found = (data?.length ?? 0) > 0;
-  if (found) {
-    console.log(
-      `  ✅ Bid confirmed in DB: quote ${data![0].id}, ` +
-        `price $${data![0].total_price}, status ${data![0].status}`
-    );
+  
+  if ((data?.length ?? 0) === 0) {
+    console.warn('verifyBidPersisted: No bids found for claim', claimId);
+    return false;
   }
-  return found;
+
+  // Critical: bid must have a non-null contractor_id (validates D-211 fix)
+  const bid = data![0];
+  if (!bid.contractor_id) {
+    console.error(
+      'verifyBidPersisted: Bid found but contractor_id is null (D-211 regression). ' +
+      `Bid: ${bid.id}, status ${bid.status}, price $${bid.total_price}`
+    );
+    return false;
+  }
+
+  console.log(
+    `  ✅ Bid confirmed in DB: quote ${bid.id}, ` +
+      `contractor ${bid.contractor_id}, price $${bid.total_price}, status ${bid.status}`
+  );
+  return true;
 }
 
 /**

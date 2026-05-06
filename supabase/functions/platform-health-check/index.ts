@@ -17,6 +17,12 @@
  *    Skips sending a Mailgun alert if an unacknowledged platform_alerts_log
  *    row for the same function_name was inserted in the last 15 minutes.
  *
+ * 4. Auto-acknowledge resolved 1st-strike entries (added May 6, 2026 — ClickUp 86e18dv22):
+ *    When an Edge Function confirms healthy (status = 200 OK), automatically
+ *    acknowledge any open ef_failure_pending entries for that function.
+ *    This prevents transient failures from accumulating noise in the alerts table.
+ *    Important: ef_failure_alert (2nd-strike) entries are NOT auto-acknowledged.
+ *
  * Scheduled: every 15 minutes via pg_cron (schedule: "* /15 * * * *")
  * Auth: no JWT required — invoked by pg_cron service-role bearer.
  *
@@ -234,6 +240,37 @@ async function logPendingFailure(
   }
 }
 
+/**
+ * Auto-acknowledge open ef_failure_pending entries for a function (May 6, 2026 — ClickUp 86e18dv22).
+ * Called when a function confirms healthy (200 OK). This prevents transient 1st-strike
+ * entries from accumulating noise in the alerts table.
+ *
+ * IMPORTANT: Only ef_failure_pending (1st-strike) is auto-acknowledged.
+ * ef_failure_alert (2nd-strike) entries are NOT touched and must remain visible
+ * until manually acknowledged by an operator.
+ */
+async function autoAckPendingFailures(
+  supabase: ReturnType<typeof createClient>,
+  functionName: string,
+): Promise<void> {
+  try {
+    const { error: ackError } = await supabase
+      .from("platform_alerts_log")
+      .update({ acknowledged_at: new Date().toISOString() })
+      .eq("function_name", functionName)
+      .eq("alert_type", "ef_failure_pending")
+      .is("acknowledged_at", null);
+    
+    if (ackError) {
+      console.error(`[auto-ack] error for ${functionName}:`, ackError.message);
+    } else {
+      console.log(`[auto-ack] acknowledged pending 1st-strike entries for ${functionName}`);
+    }
+  } catch (err) {
+    console.error(`[auto-ack] exception for ${functionName}:`, err);
+  }
+}
+
 // =============================================================================
 // PHASE 1 — Edge Function health pings
 // =============================================================================
@@ -311,6 +348,12 @@ async function runEdgeFunctionPings(
       });
     } catch (err) {
       console.warn(`[platform-health-check] cron_health write failed for ${cronKey}:`, err);
+    }
+
+    // If function is healthy, auto-acknowledge any pending 1st-strike entries
+    // (May 6, 2026 — ClickUp 86e18dv22)
+    if (result.status === "ok") {
+      await autoAckPendingFailures(supabase, result.functionName);
     }
 
     // Fire alert if not ok — gated by 2-strikes (Apr 30, 2026, ClickUp 86e15mcmw)

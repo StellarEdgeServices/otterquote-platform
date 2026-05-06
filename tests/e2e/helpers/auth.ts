@@ -75,6 +75,7 @@ export interface TestState {
   contractorId: string;
   contractorEmail: string;
   testClaimId: string;
+  testRetailClaimId: string;
   baseUrl: string;
   runId: string;
   seededAt: string;

@@ -1815,7 +1815,7 @@
               '',
               'Contractor: ' + (c.company_name || 'Unknown'),
               'Property: ' + (currentClaim ? (currentClaim.property_address || 'N/A') : 'N/A'),
-              'Claim ID: ' + (currentClaim ? currentClaim.id : 'N/A'),
+              'Job #' + (currentClaim ? currentClaim.id.slice(-8).toUpperCase() : 'N/A'),
               'Quote ID: ' + bidId,
               '',
               'The contractor has been notified via their dashboard' + (notifOk ? '.' : ' (notification may have failed — check manually).'),

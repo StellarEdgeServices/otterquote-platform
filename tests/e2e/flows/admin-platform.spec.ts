@@ -29,7 +29,7 @@ import { createAdminClient } from '../helpers/auth.js';
 
 /**
  * Logs in a test admin (currently hardcoded to dustinstohler1@gmail.com per admin-contractors.html line 836).
- * Admin pages use a Netlify Edge Function auth gate that checks the `sq_at` cookie.
+ * Admin pages use a Netlify Edge Function auth gate that checks the `sb_at` cookie.
  * Magic link injection bypasses the need for email verification.
  */
 async function loginAsAdmin(page: import('@playwright/test').Page, state: TestState) {
@@ -41,6 +41,14 @@ async function loginAsAdmin(page: import('@playwright/test').Page, state: TestSt
     `${state.baseUrl}/admin-contractors.html`
   );
   await page.goto(magicLink);
+  
+  // Wait for auth token to settle in localStorage before proceeding
+  // This prevents race conditions where the page redirects to login
+  // because Auth.ready() hasn't completed yet (D-211 async auth pattern)
+  await page.waitForFunction(() => {
+    return Object.keys(localStorage).some(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+  }, { timeout: 15_000 });
+  
   await page.waitForURL(/admin-contractors/, { timeout: 30_000 });
   await page.waitForLoadState('load');
 }
@@ -52,6 +60,14 @@ async function loginAsAdmin(page: import('@playwright/test').Page, state: TestSt
 async function loginAsPartner(page: import('@playwright/test').Page, email: string, baseUrl: string) {
   const magicLink = await generateMagicLink(email, `${baseUrl}/partner-dashboard.html`);
   await page.goto(magicLink);
+  
+  // Wait for auth token to settle in localStorage before proceeding
+  // This prevents race conditions where the page redirects to login
+  // because Auth.ready() hasn't completed yet (D-211 async auth pattern)
+  await page.waitForFunction(() => {
+    return Object.keys(localStorage).some(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+  }, { timeout: 15_000 });
+  
   await page.waitForURL(/partner-dashboard/, { timeout: 30_000 });
   await page.waitForLoadState('load');
 }

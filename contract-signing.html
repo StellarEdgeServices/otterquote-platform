@@ -1807,7 +1807,7 @@
               'A homeowner has requested an updated bid (via contract-signing.html expired guard).',
               'Contractor: ' + (state.contractor?.company_name || 'N/A'),
               'Property: ' + (state.claim?.property_address || 'N/A'),
-              'Claim ID: ' + (state.claimId || 'N/A'),
+              'Job #' + (state.claimId.slice(-8).toUpperCase() || 'N/A'),
               'Quote ID: ' + bidId,
               '',
               'The contractor has been notified via their dashboard' +

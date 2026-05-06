@@ -90,10 +90,13 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.waitForLoadState('load');
 
     // Wait for opportunities to load
-    await page.waitForFunction(
-      () => document.querySelectorAll('[data-claim-id]').length > 0,
-      { timeout: 15_000 }
-    );
+    // Wait for opportunities API call to complete — page may be empty if all claims
+
+    // have active bids; retail siding claim is intentionally hidden (D-164 gate locked)
+
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
+    await page.waitForTimeout(1000); // brief render settle
 
     // Retail siding claim should NOT appear in the opportunities list
     // (siding_bid_released_at is still null from seed)
@@ -120,7 +123,30 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
 
+    // Wait for opportunities API to complete
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
+    // Reload page to ensure DB changes are reflected in DOM
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
     // Retail siding claim should NOW appear
+    // Diagnostic: dump page state before assertion to diagnose CI failures
+    const _c2Debug = await page.evaluate((targetId: string) => {
+      const allCards = Array.from(document.querySelectorAll('[data-claim-id]'));
+      return {
+        url: window.location.href,
+        allClaimIds: allCards.map(el => el.getAttribute('data-claim-id')),
+        targetFound: !!document.querySelector(`[data-claim-id="${targetId}"]`),
+        containerHTML: (document.getElementById('opportunitiesContainer')?.innerHTML || '').slice(0, 800),
+        hasAuthToken: Object.keys(localStorage).some(k => k.startsWith('sb-') && k.endsWith('-auth-token')),
+      };
+    }, state.testRetailClaimId);
+    console.log('[C2 debug]', JSON.stringify(_c2Debug));
+    if (!_c2Debug.targetFound) {
+      console.warn(`[C2] Target claim ${state.testRetailClaimId} not found. Page: ${_c2Debug.url}. All IDs: ${JSON.stringify(_c2Debug.allClaimIds)}`);
+    }
+
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
 
@@ -142,6 +168,13 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     // Navigate to opportunities and click into the retail siding bid form
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
+
+    // Wait for opportunities API to complete
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+    // Reload to ensure design gate unlock is reflected
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
 
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });
@@ -210,6 +243,13 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     // Navigate to bid form
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
+
+    // Wait for opportunities API to complete
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+    // Reload to ensure design gate unlock is reflected
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
 
     const claimElement = page.locator(`[data-claim-id="${state.testRetailClaimId}"]`).first();
     await expect(claimElement).toBeVisible({ timeout: 15_000 });

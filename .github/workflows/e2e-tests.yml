@@ -50,6 +50,24 @@ jobs:
           BASE_URL: ${{ secrets.BASE_URL }}
         run: npm run seed
 
+      - name: Wait for Netlify staging deploy
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+        run: |
+          echo "Waiting for Netlify staging to serve latest commit (checking for cookie-storage.js in bid form)..."
+          for i in $(seq 1 30); do
+            CONTENT=$(curl -sf "${BASE_URL}/contractor-bid-form.html" | grep -c "cookie-storage.js" || echo "0")
+            if [ "$CONTENT" -gt "0" ]; then
+              echo "✅ Netlify deploy verified (iteration $i)"
+              exit 0
+            fi
+            echo "  Iteration $i/30: old build still live, waiting 10s..."
+            sleep 10
+          done
+          echo "❌ Netlify deploy not detected after 300s — tests may run against stale build"
+          # Non-fatal: continue anyway so we get test output rather than a CI hang
+          exit 0
+
       - name: Run Playwright tests
         working-directory: tests/e2e
         env:

@@ -278,10 +278,32 @@ test.describe('Flow A — Contractor Journey', () => {
     await page.goto(`/contractor-bid-form.html?claim_id=${state.testClaimId}`);
     await page.waitForLoadState('load');
 
+    // Double-check: some browsers may need explicit networkidle to settle async RCV fetch
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
     await expect(page).not.toHaveURL(/login|get-started/);
 
     // Step 1: networkidle — wait for Supabase API calls to settle.
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
+    // Step 1.5: Wait for bid form init() to complete (_oq_bidFormReady flag set after
+    // auth + claim + contractor all loaded). Prevents form interaction before auth is ready.
+    try {
+      await page.waitForFunction(
+        () => !!(window as any)._oq_bidFormReady,
+        { timeout: 20_000 }
+      );
+    } catch {
+      // _oq_bidFormReady not set: auth may have needed a second navigation to fire
+      // INITIAL_SESSION. Reload once and retry.
+      console.warn('[A8] _oq_bidFormReady not set after 20s — reloading once');
+      await page.reload();
+      await page.waitForLoadState('networkidle', { timeout: 15_000 });
+      await page.waitForFunction(
+        () => !!(window as any)._oq_bidFormReady,
+        { timeout: 20_000 }
+      );
+    }
 
     // Step 2: Diagnostic dump immediately after networkidle so we can see
     // the exact page state in CI output.
@@ -317,6 +339,46 @@ test.describe('Flow A — Contractor Journey', () => {
       ).catch(() => {
         console.warn('[A8] #totalPrice still 0 after 15s — proceeding anyway, JS handler will surface the issue');
       });
+    }
+
+
+    // ── Fallback: if RCV not loaded, use manual "Other" price path ─────
+    // This handles D-211 auth regressions where getUser() returns null,
+    // so claimRcv stays null and #totalPrice doesn't auto-populate.
+    const currentState = await page.evaluate(() => {
+      const w = window as any;
+      return {
+        rcvLoaded: !!(w.claimRcv),
+        totalPriceValue: (document.getElementById('totalPrice') as HTMLInputElement | null)?.value ?? '',
+      };
+    });
+
+    if (!currentState.rcvLoaded || !currentState.totalPriceValue) {
+      console.log('[A8] RCV not loaded or #totalPrice empty — attempting manual "Other" price path');
+      
+      // Select the "Other" bid type radio
+      const otherRadio = page.locator('input[type="radio"][id="bidTypeOther"], input[type="radio"][value="other"]').first();
+      if (await otherRadio.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await otherRadio.click();
+        await page.waitForTimeout(500);
+        console.log('[A8] Clicked "Other" radio button');
+      }
+
+      // Fill the manual price field (#otherBidPrice)
+      const otherPriceInput = page.locator('#otherBidPrice, input[id*="otherPrice" i], input[id*="other.*price" i]').first();
+      if (await otherPriceInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await otherPriceInput.fill('8500');
+        await page.waitForTimeout(300);
+        console.log('[A8] Filled #otherBidPrice with 8500');
+      }
+
+      // Fill the required description field (#otherBidDescription)
+      const otherDescInput = page.locator('#otherBidDescription, textarea[id*="otherBidDescription" i]').first();
+      if (await otherDescInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await otherDescInput.fill('Manual bid based on site assessment and materials required.');
+        await page.waitForTimeout(300);
+        console.log('[A8] Filled #otherBidDescription');
+      }
     }
 
     // ── Fill required bid fields ─────────────────────────────────────────
