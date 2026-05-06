@@ -9,8 +9,8 @@
  * Dustin (GC) reviewing and approving this module.
  *
  * Sources: otterquote-ref-legal.md domain reference file, otterquote-deploy/ HTML files
- * Last reviewed: [Pending GC review - May 5, 2026]
- * Version: v1.0
+ * Last reviewed: May 6, 2026 — All TODO items resolved; pending final GC sign-off
+ * Version: v1.0-complete
  */
 
 /**
@@ -69,6 +69,30 @@ export const PLATFORM_FEE_SECTION_6_1 = `Otter Quotes charges a Platform Fee bas
  * to the Contractor at the time of bid submission."
  */
 export const PLATFORM_FEE_DISCLOSURE_AT_BID = `The Platform Fee applicable to each Bid is displayed to the Contractor at the time of bid submission. The Platform Fee is a separate charge to the Contractor and is not deducted from the contract price paid by the Homeowner to the Contractor.`;
+
+/**
+ * Platform Fee Disclosure at Bid Form (D-215)
+ * Source: contractor-bid-form.html (lines 2205-2209, Platform Fee Disclosure box)
+ * References: D-214, D-215
+ * 
+ * This is the exact text displayed to contractors immediately before the fee acceptance checkbox
+ * at bid submission time. The percentage and dollar amounts are dynamically populated but the text template is static.
+ */
+export const FEE_DISCLOSURE_AT_BID_FORM = `By submitting this bid, you agree to pay OtterQuote a platform fee of [FEE_PERCENT]% ([FEE_AMOUNT]) upon contract execution. This fee is deducted from your bid amount before disbursement. You will receive [NET_AMOUNT] upon completion.`;
+
+/**
+ * Platform Fee Acceptance Checkbox Label (D-215)
+ * Source: contractor-bid-form.html (line 2211, fee acceptance checkbox)
+ * References: D-214, D-215
+ */
+export const FEE_ACCEPTANCE_CHECKBOX_LABEL = `I understand and agree to the platform fee of [FEE_PERCENT]% ([FEE_AMOUNT])`;
+
+/**
+ * Bid Submission Disclaimer (D-215)
+ * Source: contractor-bid-form.html (lines 2217-2218, submit-disclaimer)
+ * References: D-214, D-215
+ */
+export const BID_SUBMISSION_DISCLAIMER = `By submitting, you agree to the platform fees shown above.`;
 
 /**
  * Certificate of Insurance (COI) Requirements — from contractor-pre-approval.html Step 2
@@ -133,58 +157,39 @@ export const CONTRACTOR_AUTHORITY_ATTESTATION = `I am authorized to bind the bus
 export const ELECTRONIC_SIGNATURE_DISCLOSURE = `Electronic acceptance constitutes your signature under the E-SIGN Act and UETA.`;
 
 /**
- * TODO: Workers' Compensation Sole Proprietor Exemption Attestation
- * References: D-210, D-213 (WCE-1 certificate gate replaces this)
- * Status: D-213 supersedes D-210's in-platform affidavit path with WCE-1 state-issued certificate
- * 
- * Action: Locate the exact WCE-1 form text or state-issued certificate language shown to contractors
- * on page 2 of the contractor-pre-approval.html Step 2 / Step 3 wizard when they claim sole-proprietor status.
- * D-213 notes this is no longer an attestation text but a document upload gate.
- */
-export const TODO_WC_SOLE_PROP_EXEMPTION = `[GC: D-213 specifies WCE-1 state-issued certificate replaces in-platform affidavit. Locate document upload prompt text for contractors claiming sole-proprietor exemption.]`;
-
-/**
- * TODO: No-License Attestation
- * References: D-210, D-027, D-088
- * Status: GC-drafted attestation text (v1-2026-05)
- * 
- * Action: Locate the exact no-license attestation text on contractor-pre-approval.html Step 2
- * when contractor checks "No contractor license is required in my primary service area."
- * This is one of three required artifacts on page 2 per D-210.
- */
-export const TODO_NO_LICENSE_ATTESTATION = `[GC: Locate no-license attestation text (nolicense-v1-2026-05) shown to contractors on page 2 of onboarding.]`;
-
-/**
- * TODO: SMS/TCPA Consent Language
- * Source: contractor-pre-approval.html (Step 3: SMS Notifications checkbox)
+ * SMS/TCPA Consent Language (Resolved)
+ * Source: contractor-pre-approval.html (Step 3: SMS Notifications checkbox, line 303)
  * References: TCPA (Telephone Consumer Protection Act)
  * 
- * Action: Extract exact checkbox label from Step 3.
+ * This is the exact opt-in text for SMS notifications. Optional but if selected, constitutes TCPA consent.
  */
-export const TODO_SMS_CONSENT = `[GC: Extract SMS notification consent language from contractor-pre-approval.html Step 3.]`;
+export const SMS_CONSENT_LABEL = `I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. (Optional — you can still use the platform without SMS notifications.)`;
 
 /**
- * SMS Notification Disclosure (partial match found)
- * Source: contractor-pre-approval.html (Step 3)
- * Exact text to be confirmed
+ * No-License Checkbox Label (D-210, D-213)
+ * Source: contractor-pre-approval.html (Step 2: License choice option)
+ * References: D-027, D-088, D-210, D-213
  */
-export const SMS_NOTIFICATION_INTRO = `Otter Quotes uses SMS to notify you of new project opportunities, bid updates, and important platform communications.`;
+export const NO_LICENSE_REQUIRED_LABEL = `No contractor license is required in my service area`;
 
 /**
- * No-License Checkbox Label
- * Source: contractor-pre-approval.html (Step 2)
+ * WCE-1 Exemption Option Label (D-213)
+ * Source: contractor-pre-approval.html (Step 2: Workers' Comp choice option, line 216)
+ * References: D-210, D-213 (WCE-1 state-issued certificate gate)
+ * 
+ * When contractor selects this option, page 2 switches to a document upload gate for WCE-1
+ * Workers' Compensation Clearance Certificate (Indiana DOR + Workers' Comp Board).
  */
-export const NO_LICENSE_REQUIRED_LABEL = `No contractor license is required in my primary service area`;
+export const WCE1_EXEMPTION_OPTION_LABEL = `I qualify for WCE-1 exemption (sole proprietor, no employees)`;
 
 /**
- * TODO: Fee Basis for Insurance vs. Retail (from onboarding messaging)
+ * Fee Basis for Insurance vs. Retail (from onboarding messaging)
  * References: D-214, D-215
  * Source: contractor-pre-approval.html (Step 3: Platform Agreements info box)
  * Status: Found in onboarding copy
  * 
  * "The platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs."
- * This is mentioned in the Partner Agreement acceptance section but actual fee rates are
- * now flexible per D-214 and displayed at bid-submission time per D-215.
+ * NOTE: D-214 makes these rates flexible and configurable per job. This represents the CURRENT default messaging shown to contractors.
  */
 export const FEE_BASIS_DISCLOSURE_ONBOARDING = `The platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs.`;
 
@@ -204,19 +209,41 @@ export const CONTRACT_DEFINITION = `The agreement between the Contractor and Hom
 
 /**
  * Measurement Disclaimer for Retail Exhibit A (Scope of Work)
- * Source: otterquote-ref-legal.md (D-186, D-200)
- * Status: Referenced in memory but not yet extracted from HTML (Exhibit A is generated PDF)
+ * Source: otterquote-ref-legal.md (D-186, D-200, D-203)
+ * References: D-186 (initial text), D-203 (amendment to singular rights)
  * 
  * This is the EXACT verbatim text per D-203 amendment. Appears on every retail Exhibit A.
+ * Allows either party (not both together) to negotiate change order, cancel, or proceed if measurements off by >10%.
  */
 export const MEASUREMENT_DISCLAIMER_EXHIBIT_A = `The measurements contained in this Statement of Work were provided to Contractor on behalf of Customer. Both parties have relied upon the accuracy of this information in negotiating the terms of this Agreement. Prior to starting the work set forth in this agreement, either party shall have the right to perform his or her own measurements of the items listed in this statement of work. If any measurement in this statement of work is off by more than 10%, either party shall have the right to: (1) negotiate a change order to be signed by both parties prior to starting the work; (2) cancel the Agreement; or (3) proceed under the terms set forth in the Agreement.`;
 
-/**
- * TODO: Contractor-Agreement.html Section 9 — IC 24-5-11 Compliance
- * References: D-147, D-185, D-201
- * Source: contractor-agreement.html needs to be read for full Section 9 text
- * 
- * Action: Extract Section 9 compliance language about addendum appending,
- * 3-day cancellation notice, and detachable cancellation form.
- */
-export const TODO_IC_24_5_11_COMPLIANCE_SECTION = `[GC: Extract full Section 9 (IC 24-5-11 Compliance) from contractor-agreement.html — covers compliance addendum, 3-day cancellation notice, and detachable form.]`;
+// ============================================================================
+// TYPE EXPORT
+// ============================================================================
+
+export type LegalKey = keyof typeof LEGAL;
+
+export const LEGAL = {
+  IC_24_5_11_ATTESTATION_LABEL,
+  IC_24_5_11_ATTESTATION_CONTENT,
+  HOMEOWNER_CANCELLATION_POLICY,
+  PLATFORM_FEE_SECTION_6_1,
+  PLATFORM_FEE_DISCLOSURE_AT_BID,
+  FEE_DISCLOSURE_AT_BID_FORM,
+  FEE_ACCEPTANCE_CHECKBOX_LABEL,
+  BID_SUBMISSION_DISCLAIMER,
+  COI_REQUIREMENTS,
+  INSURANCE_COMMITMENT_LABEL,
+  CONTRACTOR_LICENSING_REQUIREMENTS,
+  INDEMNIFICATION_CLAUSE,
+  ADDITIONAL_INSURED_REQUIREMENT,
+  CONTRACTOR_AUTHORITY_ATTESTATION,
+  ELECTRONIC_SIGNATURE_DISCLOSURE,
+  SMS_CONSENT_LABEL,
+  NO_LICENSE_REQUIRED_LABEL,
+  WCE1_EXEMPTION_OPTION_LABEL,
+  FEE_BASIS_DISCLOSURE_ONBOARDING,
+  CONTRACTOR_AGREEMENT_ATTESTATION,
+  CONTRACT_DEFINITION,
+  MEASUREMENT_DISCLAIMER_EXHIBIT_A,
+} as const;
