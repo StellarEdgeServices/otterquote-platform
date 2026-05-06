@@ -796,8 +796,7 @@
         </div>
     </div>
 
-    <script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
+    <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
     <script>
@@ -882,6 +881,66 @@
                 alert('Failed to load contractors');
             }
         }
+
+
+        // ── D-210: Document Status Helpers ────────────────────────────────
+        function renderDocumentSubCards(contractor) {
+            let html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-top:0.75rem;">';
+            
+            // CGL COI status
+            const hasCoi = contractor.coi_document_url != null;
+            const coiBadgeColor = hasCoi ? '#dcfce7' : '#fee2e2';
+            const coiBadgeText = hasCoi ? '#166534' : '#991b1b';
+            const coiIcon = hasCoi ? '✅' : '❌';
+            const coiExpiry = hasCoi && contractor.coi_expiry ? ' • ' + new Date(contractor.coi_expiry).toLocaleDateString() : '';
+            html += `<div style="background:${coiBadgeColor};color:${coiBadgeText};padding:0.5rem;border-radius:0.4rem;font-size:0.8rem;font-weight:600;">
+                ${coiIcon} CGL COI${coiExpiry}
+            </div>`;
+            
+            // Workers' Comp status
+            let wcBadgeColor = '#fee2e2';
+            let wcBadgeText = '#991b1b';
+            let wcDisplay = '❌ Workers\' Comp';
+            if (contractor.wc_cert_file_ref != null) {
+                if (contractor.wc_cert_file_ref === 'WCE-1-EXEMPT') {
+                    wcBadgeColor = '#ddd6fe';
+                    wcBadgeText = '#4f46e5';
+                    wcDisplay = '🔷 WCE-1 Exempt';
+                } else {
+                    wcBadgeColor = '#dcfce7';
+                    wcBadgeText = '#166534';
+                    wcDisplay = '✅ Workers\' Comp';
+                }
+            }
+            html += `<div style="background:${wcBadgeColor};color:${wcBadgeText};padding:0.5rem;border-radius:0.4rem;font-size:0.8rem;font-weight:600;">
+                ${wcDisplay}
+            </div>`;
+            
+            // License status
+            let licBadgeColor = '#fee2e2';
+            let licBadgeText = '#991b1b';
+            let licDisplay = '❌ License';
+            const hasLicenseDoc = contractor.license_document_url != null;
+            const hasLicenseAttest = contractor.license_attestation_signed_at != null;
+            if (hasLicenseDoc || hasLicenseAttest) {
+                if (hasLicenseAttest && !hasLicenseDoc) {
+                    licBadgeColor = '#fef3c7';
+                    licBadgeText = '#92400e';
+                    licDisplay = '📋 No License Req.';
+                } else {
+                    licBadgeColor = '#dcfce7';
+                    licBadgeText = '#166534';
+                    licDisplay = '✅ License';
+                }
+            }
+            html += `<div style="background:${licBadgeColor};color:${licBadgeText};padding:0.5rem;border-radius:0.4rem;font-size:0.8rem;font-weight:600;">
+                ${licDisplay}
+            </div>`;
+            
+            html += '</div>';
+            return html;
+        }
+
 
         function updateSummaryCards() {
             const pending = contractors.filter(c => c.status === 'pending_approval').length;
@@ -984,6 +1043,7 @@
                                 <span style="font-size: 1.2rem;">▼</span>
                             </div>
                         </div>
+                        ${renderDocumentSubCards(c)}
 
                         <div class="contractor-card-body" id="body-${c.id}">
                             <!-- Contact Info -->
@@ -1298,6 +1358,19 @@
             if (!sb) return;
 
             try {
+                // D-210: Gate approval on contractor_has_required_docs()
+                const { data: hasRequiredDocs, error: rpcError } = await sb.rpc('contractor_has_required_docs', { 
+                    contractor_id: contractorId 
+                });
+
+                if (rpcError) throw rpcError;
+
+                if (!hasRequiredDocs) {
+                    document.getElementById('approveError').textContent = 'This contractor is missing required documents. Approval blocked.';
+                    document.getElementById('approveError').style.display = 'block';
+                    return;
+                }
+
                 const response = await sb.functions.invoke('admin-contractor-action', {
                     body: {
                         action: 'approve',
@@ -1320,6 +1393,7 @@
             } catch (err) {
                 console.error('Error approving contractor:', err);
                 document.getElementById('approveError').textContent = 'Failed to approve contractor. Please try again.';
+                document.getElementById('approveError').style.display = 'block';
             }
         }
 
