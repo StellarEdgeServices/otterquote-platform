@@ -338,46 +338,6 @@ test.describe('Flow A — Contractor Journey', () => {
       });
     }
 
-
-    // ── Fallback: if RCV not loaded, use manual "Other" price path ─────
-    // This handles D-211 auth regressions where getUser() returns null,
-    // so claimRcv stays null and #totalPrice doesn't auto-populate.
-    const currentState = await page.evaluate(() => {
-      const w = window as any;
-      return {
-        rcvLoaded: !!(w.claimRcv),
-        totalPriceValue: (document.getElementById('totalPrice') as HTMLInputElement | null)?.value ?? '',
-      };
-    });
-
-    if (!currentState.rcvLoaded || !currentState.totalPriceValue) {
-      console.log('[A8] RCV not loaded or #totalPrice empty — attempting manual "Other" price path');
-      
-      // Select the "Other" bid type radio
-      const otherRadio = page.locator('input[type="radio"][id="bidTypeOther"], input[type="radio"][value="other"]').first();
-      if (await otherRadio.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        await otherRadio.click();
-        await page.waitForTimeout(500);
-        console.log('[A8] Clicked "Other" radio button');
-      }
-
-      // Fill the manual price field (#otherBidPrice)
-      const otherPriceInput = page.locator('#otherBidPrice, input[id*="otherPrice" i], input[id*="other.*price" i]').first();
-      if (await otherPriceInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        await otherPriceInput.fill('8500');
-        await page.waitForTimeout(300);
-        console.log('[A8] Filled #otherBidPrice with 8500');
-      }
-
-      // Fill the required description field (#otherBidDescription)
-      const otherDescInput = page.locator('#otherBidDescription, textarea[id*="otherBidDescription" i]').first();
-      if (await otherDescInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        await otherDescInput.fill('Manual bid based on site assessment and materials required.');
-        await page.waitForTimeout(300);
-        console.log('[A8] Filled #otherBidDescription');
-      }
-    }
-
     // ── Fill required bid fields ─────────────────────────────────────────
 
     // For insurance_rcv roofing, visible price entry is via decking inputs (D-084)
