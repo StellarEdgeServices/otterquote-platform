@@ -15,7 +15,7 @@ interface SendBidConfirmationRequest {
   platform_fee_pct: number;
   platform_fee_amount: number;
   net_amount: number;
-  property_address: string;
+  property_address: string; // retained for backward compat; not used in email copy
   trade: string;
 }
 
@@ -30,16 +30,16 @@ function formatCurrency(amount: number): string {
 
 function buildEmailHtml(
   firstName: string,
-  propertyAddress: string,
+  jobNumber: string,   // D-216: "Job #XXXXXXXX"
+  claimId: string,     // for rescind/review links
   trade: string,
   bidAmount: number,
   feePct: number,
-  feeAmount: number,
-  netAmount: number
+  feeAmount: number
 ): string {
   const bidAmountFormatted = formatCurrency(bidAmount);
   const feeAmountFormatted = formatCurrency(feeAmount);
-  const netAmountFormatted = formatCurrency(netAmount);
+  const bidFormUrl = `https://otterquote.com/contractor-bid-form.html?claim_id=${claimId}`;
 
   return `
 <!DOCTYPE html>
@@ -56,6 +56,9 @@ function buildEmailHtml(
     .summary-row:last-child { border-bottom: none; }
     .label { font-weight: 500; }
     .value { text-align: right; }
+    .btn { display: inline-block; margin: 8px 4px; padding: 12px 24px; color: #fff; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px; }
+    .btn-rescind { background-color: #cc3300; }
+    .btn-review { background-color: #0066cc; }
     .footer { margin-top: 30px; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 20px; }
   </style>
 </head>
@@ -63,7 +66,7 @@ function buildEmailHtml(
   <div class="container">
     <div class="header">
       <p>Hi ${firstName},</p>
-      <p>Your bid for <strong>${propertyAddress}</strong> has been successfully submitted.</p>
+      <p>Your bid for <strong>${jobNumber}</strong> has been successfully submitted.</p>
     </div>
 
     <div class="section">
@@ -80,18 +83,20 @@ function buildEmailHtml(
         <span class="label">Platform Fee (${feePct}%):</span>
         <span class="value">${feeAmountFormatted}</span>
       </div>
-      <div class="summary-row">
-        <span class="label"><strong>You Receive:</strong></span>
-        <span class="value"><strong>${netAmountFormatted}</strong></span>
-      </div>
     </div>
 
     <div class="section">
       <div class="section-title">--- PLATFORM FEE AGREEMENT ---</div>
-      <p>By submitting this bid, you agreed to pay OtterQuote a platform fee of ${feePct}% (${feeAmountFormatted}) upon contract execution. This fee will be deducted from your bid amount before disbursement. This email serves as confirmation of your fee agreement.</p>
-      <p>If a homeowner accepts your bid and the contract is executed, you will receive ${netAmountFormatted} upon project completion.</p>
+      <p>By submitting this bid, you agreed to pay Otter Quotes a platform fee of ${feePct}% (${feeAmountFormatted}) upon contract execution. If the homeowner accepts your bid and executes the contract, this fee will be charged to your card on file. This email serves as confirmation of your fee agreement.</p>
       <p>Questions? Reply to this email or contact support@otterquote.com.</p>
-      <p>— The OtterQuote Team</p>
+      <p>— The Otter Quotes Team</p>
+    </div>
+
+    <div class="section" style="border-left-color: #cc3300; text-align: center;">
+      <div class="section-title">--- YOUR BID IS LIVE ---</div>
+      <p>Not comfortable with these terms? Rescind your bid now. Your offer is currently live and could be accepted by the homeowner at any time.</p>
+      <a href="${bidFormUrl}" class="btn btn-rescind">Rescind My Bid</a>
+      <a href="${bidFormUrl}" class="btn btn-review">Review My Bid</a>
     </div>
 
     <div class="footer">
@@ -105,35 +110,38 @@ function buildEmailHtml(
 
 function buildEmailText(
   firstName: string,
-  propertyAddress: string,
+  jobNumber: string,
+  claimId: string,
   trade: string,
   bidAmount: number,
   feePct: number,
-  feeAmount: number,
-  netAmount: number
+  feeAmount: number
 ): string {
   const bidAmountFormatted = formatCurrency(bidAmount);
   const feeAmountFormatted = formatCurrency(feeAmount);
-  const netAmountFormatted = formatCurrency(netAmount);
+  const bidFormUrl = `https://otterquote.com/contractor-bid-form.html?claim_id=${claimId}`;
 
   return `Hi ${firstName},
 
-Your bid for ${propertyAddress} has been successfully submitted.
+Your bid for ${jobNumber} has been successfully submitted.
 
 --- BID SUMMARY ---
 Trade: ${trade}
 Bid Amount: ${bidAmountFormatted}
 Platform Fee (${feePct}%): ${feeAmountFormatted}
-You Receive: ${netAmountFormatted}
 
 --- PLATFORM FEE AGREEMENT ---
-By submitting this bid, you agreed to pay OtterQuote a platform fee of ${feePct}% (${feeAmountFormatted}) upon contract execution. This fee will be deducted from your bid amount before disbursement. This email serves as confirmation of your fee agreement.
-
-If a homeowner accepts your bid and the contract is executed, you will receive ${netAmountFormatted} upon project completion.
+By submitting this bid, you agreed to pay Otter Quotes a platform fee of ${feePct}% (${feeAmountFormatted}) upon contract execution. If the homeowner accepts your bid and executes the contract, this fee will be charged to your card on file. This email serves as confirmation of your fee agreement.
 
 Questions? Reply to this email or contact support@otterquote.com.
 
-— The OtterQuote Team`;
+— The Otter Quotes Team
+
+--- YOUR BID IS LIVE ---
+Not comfortable with these terms? Rescind your bid now. Your offer is currently live and could be accepted by the homeowner at any time.
+
+Rescind My Bid: ${bidFormUrl}
+Review My Bid: ${bidFormUrl}`;
 }
 
 serve(async (req: Request) => {
@@ -152,8 +160,6 @@ serve(async (req: Request) => {
       "bid_amount",
       "platform_fee_pct",
       "platform_fee_amount",
-      "net_amount",
-      "property_address",
       "trade",
     ];
 
@@ -177,8 +183,6 @@ serve(async (req: Request) => {
       bid_amount,
       platform_fee_pct,
       platform_fee_amount,
-      net_amount,
-      property_address,
       trade,
     } = body;
 
@@ -200,10 +204,10 @@ serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify quote exists and belongs to contractor
+    // Verify quote exists, belongs to contractor, and fetch claim_id for Job # (D-216)
     const { data: quoteData, error: quoteError } = await supabase
       .from("quotes")
-      .select("id, contractor_id")
+      .select("id, contractor_id, claim_id")
       .eq("id", quote_id)
       .single();
 
@@ -231,6 +235,12 @@ serve(async (req: Request) => {
         }
       );
     }
+
+    // D-216: derive job number from claim_id (last 8 chars, uppercase)
+    const claimId: string = quoteData.claim_id || "";
+    const jobNumber = claimId
+      ? `Job #${claimId.slice(-8).toUpperCase()}`
+      : "Job #UNKNOWN";
 
     // Look up contractor email and name
     const { data: contractorData, error: contractorError } = await supabase
@@ -269,30 +279,30 @@ serve(async (req: Request) => {
       );
     }
 
-    // Build email content
-    const subject = "Your OtterQuote bid has been submitted — Fee Confirmation";
+    // Build email content — D-215: fee confirmation; D-216: Job # identifier; D-175: "Otter Quotes" brand name
+    const subject = `Your Otter Quotes bid has been submitted — Fee Confirmation`;
     const htmlBody = buildEmailHtml(
       firstName,
-      property_address,
+      jobNumber,
+      claimId,
       trade,
       bid_amount,
       platform_fee_pct,
-      platform_fee_amount,
-      net_amount
+      platform_fee_amount
     );
     const textBody = buildEmailText(
       firstName,
-      property_address,
+      jobNumber,
+      claimId,
       trade,
       bid_amount,
       platform_fee_pct,
-      platform_fee_amount,
-      net_amount
+      platform_fee_amount
     );
 
     // Send via Mailgun
     const mailgunFormData = new FormData();
-    mailgunFormData.append("from", "OtterQuote <noreply@mail.otterquote.com>");
+    mailgunFormData.append("from", "Otter Quotes <noreply@mail.otterquote.com>");
     mailgunFormData.append("to", contractorEmail);
     mailgunFormData.append("subject", subject);
     mailgunFormData.append("text", textBody);
@@ -334,6 +344,8 @@ serve(async (req: Request) => {
       title: `Bid confirmation email sent for quote ${quote_id}`,
       metadata: {
         quote_id,
+        claim_id: claimId,
+        job_number: jobNumber,
         fee_amount: platform_fee_amount,
         fee_percentage: platform_fee_pct,
         message_id: messageId,

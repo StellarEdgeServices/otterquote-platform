@@ -1712,10 +1712,11 @@
           </div>
         `).join('') : '';
 
-        // Fields to display
+        // Fields to display — D-216: claim_number shown only on insurance jobs, labeled "Insurance Claim #"
+        const _isInsuranceJob = currentClaim.funding_type === 'insurance';
         const fields = [
           { key: 'carrier_id', label: 'Insurance Carrier', type: 'select' },
-          { key: 'claim_number', label: 'Claim Number', type: 'text' },
+          ...(_isInsuranceJob ? [{ key: 'claim_number', label: 'Insurance Claim #', type: 'text' }] : []),
           { key: 'date_of_loss', label: 'Date of Loss', type: 'date' },
           { key: 'damage_type', label: 'Damage Type', type: 'text' },
           { key: 'deductible_amount', label: 'Deductible Amount', type: 'currency' },
