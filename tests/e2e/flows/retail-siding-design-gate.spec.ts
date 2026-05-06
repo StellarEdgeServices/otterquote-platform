@@ -90,10 +90,13 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.waitForLoadState('load');
 
     // Wait for opportunities to load
-    await page.waitForFunction(
-      () => document.querySelectorAll('[data-claim-id]').length > 0,
-      { timeout: 15_000 }
-    );
+    // Wait for opportunities API call to complete — page may be empty if all claims
+
+    // have active bids; retail siding claim is intentionally hidden (D-164 gate locked)
+
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
+    await page.waitForTimeout(1000); // brief render settle
 
     // Retail siding claim should NOT appear in the opportunities list
     // (siding_bid_released_at is still null from seed)
