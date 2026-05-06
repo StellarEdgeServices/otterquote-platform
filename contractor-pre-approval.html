@@ -171,54 +171,82 @@
 
                 <!-- Step 2: License & Insurance -->
                 <div id="step2" style="display:none;" class="wizard-card">
-                    <h2>License &amp; Insurance</h2>
-                    <p class="subtitle">Tell us about your trades and license status. You'll upload your Certificate of Insurance in your contractor profile after approval.</p>
+                    <h2>Insurance & Documentation</h2>
+                    <p class="subtitle">Upload your required documents. All three must be satisfied before you can continue.</p>
 
-                    <div class="form-group">
-                        <label class="form-label required">Trades You Perform</label>
-                        <p style="font-size:0.85rem; color:var(--slate); margin-bottom: var(--sp-3);">Select all that apply &mdash; you can update this anytime in your profile.</p>
-                        <div class="trade-grid">
-                            <label class="trade-card" id="trade-roofing">
-                                <input type="checkbox" name="trades" value="roofing" onchange="toggleTradeCard(this)">
-                                <span>🏠 Roofing</span>
+                    <!-- Card 1: CGL Certificate -->
+                    <div class="doc-card" id="card-coi" style="border: 2px solid var(--slate); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem; background: #f8fafc;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3 style="margin: 0; font-size: 1.125rem; color: var(--navy);">CGL Certificate of Insurance</h3>
+                            <span class="card-status" id="status-coi" style="font-weight: 600; color: var(--slate);">Required</span>
+                        </div>
+                        <p style="font-size: 0.9rem; color: var(--slate); margin: 0 0 1rem 0;">Commercial General Liability certificate (PDF, PNG, JPG). Max 10MB. Must name Stellar Edge Services, LLC as additional insured.</p>
+                        <input type="file" id="coi-upload" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
+                        <button type="button" onclick="document.getElementById('coi-upload').click()" class="btn-secondary" style="width: 100%; margin-bottom: 0.75rem;">Choose File</button>
+                        <div id="coi-filename" style="font-size: 0.85rem; color: var(--slate); display: none;">📎 <span id="coi-name"></span></div>
+                    </div>
+
+                    <!-- Card 2: Workers' Comp -->
+                    <div class="doc-card" id="card-wc" style="border: 2px solid var(--slate); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem; background: #f8fafc;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3 style="margin: 0; font-size: 1.125rem; color: var(--navy);">Workers' Compensation Insurance</h3>
+                            <span class="card-status" id="status-wc" style="font-weight: 600; color: var(--slate);">Required</span>
+                        </div>
+                        <p style="font-size: 0.9rem; color: var(--slate); margin: 0 0 1rem 0;">Workers' Comp certificate or proof of coverage. Max 10MB.</p>
+                        
+                        <div style="margin-bottom: 1rem;">
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0.75rem;">
+                                <input type="radio" name="wc-choice" value="file" onchange="updateWCCardState()">
+                                <span style="font-size: 0.95rem;">Upload certificate</span>
                             </label>
-                            <label class="trade-card" id="trade-siding">
-                                <input type="checkbox" name="trades" value="siding" onchange="toggleTradeCard(this)">
-                                <span>🏗 Siding</span>
-                            </label>
-                            <label class="trade-card" id="trade-gutters">
-                                <input type="checkbox" name="trades" value="gutters" onchange="toggleTradeCard(this)">
-                                <span>💧 Gutters</span>
-                            </label>
-                            <label class="trade-card" id="trade-windows">
-                                <input type="checkbox" name="trades" value="windows" onchange="toggleTradeCard(this)">
-                                <span>🪟 Windows</span>
+                            <div id="wc-file-section" style="display: none; padding-left: 1.5rem; margin-bottom: 0.75rem;">
+                                <input type="file" id="wc-upload" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
+                                <button type="button" onclick="document.getElementById('wc-upload').click()" class="btn-secondary" style="width: 100%; margin-bottom: 0.75rem;">Choose File</button>
+                                <div id="wc-filename" style="font-size: 0.85rem; color: var(--slate); display: none;">📎 <span id="wc-name"></span></div>
+                                <div style="margin-top: 0.75rem;">
+                                    <label for="wc-expiry" style="font-size: 0.9rem; color: var(--navy); display: block; margin-bottom: 0.5rem;">Expiry Date (optional)</label>
+                                    <input type="date" id="wc-expiry" class="form-input" style="width: 100%; max-width: 200px;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="border-top: 1px solid var(--light); padding-top: 1rem;">
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;">
+                                <input type="radio" name="wc-choice" value="exemption" onchange="updateWCCardState()">
+                                <span style="font-size: 0.95rem;">I qualify for WCE-1 exemption (sole proprietor, no employees)</span>
                             </label>
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="licenseNumber" class="form-label">Contractor License Number</label>
-                        <input type="text" id="licenseNumber" class="form-input" placeholder="e.g. IN-123456">
-                        <p style="font-size:0.85rem; color:var(--slate); margin-top: var(--sp-2);">Leave blank if no municipal license is required in your service area &mdash; check the box below instead.</p>
+                    <!-- Card 3: Contractor License -->
+                    <div class="doc-card" id="card-license" style="border: 2px solid var(--slate); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem; background: #f8fafc;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3 style="margin: 0; font-size: 1.125rem; color: var(--navy);">Contractor License</h3>
+                            <span class="card-status" id="status-license" style="font-weight: 600; color: var(--slate);">Required</span>
+                        </div>
+                        <p style="font-size: 0.9rem; color: var(--slate); margin: 0 0 1rem 0;">Indiana contractor license or attestation that no license is required. Max 10MB.</p>
+                        
+                        <div style="margin-bottom: 1rem;">
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0.75rem;">
+                                <input type="radio" name="license-choice" value="file" onchange="updateLicenseCardState()">
+                                <span style="font-size: 0.95rem;">Upload license copy</span>
+                            </label>
+                            <div id="license-file-section" style="display: none; padding-left: 1.5rem;">
+                                <input type="file" id="license-upload" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
+                                <button type="button" onclick="document.getElementById('license-upload').click()" class="btn-secondary" style="width: 100%; margin-bottom: 0.75rem;">Choose File</button>
+                                <div id="license-filename" style="font-size: 0.85rem; color: var(--slate); display: none;">📎 <span id="license-name"></span></div>
+                            </div>
+                        </div>
+
+                        <div style="border-top: 1px solid var(--light); padding-top: 1rem;">
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;">
+                                <input type="radio" name="license-choice" value="attestation" onchange="updateLicenseCardState()">
+                                <span style="font-size: 0.95rem;">No contractor license required in my service area</span>
+                            </label>
+                        </div>
                     </div>
 
-                    <div class="check-group">
-                        <input type="checkbox" id="noLicenseRequired">
-                        <label for="noLicenseRequired">No contractor license is required in my primary service area</label>
-                    </div>
-
-                    <div class="info-box">
-                        <strong>Certificate of Insurance (COI)</strong>
-                        <p style="margin-top: var(--sp-2);">You'll upload your COI in your contractor profile after approval. Your COI must name <strong>Stellar Edge Services, LLC</strong> as additional insured with minimum $1M per occurrence / $2M aggregate General Liability coverage.</p>
-                    </div>
-
-                    <div class="check-group">
-                        <input type="checkbox" id="insuranceCommit" required>
-                        <label for="insuranceCommit">I carry (or will obtain) Commercial General Liability insurance meeting the platform requirements and will upload my COI before bidding on any projects.</label>
-                    </div>
-
-                    <button class="btn-primary" onclick="submitStep2()">Continue to Agreements →</button>
+                    <button class="btn-primary" id="step2-advance-btn" disabled style="opacity: 0.5; cursor: not-allowed;">Continue to Agreements →</button>
                 </div>
 
                 <!-- Step 3: Platform Agreements -->
@@ -327,8 +355,7 @@
 
     <footer id="site-footer"></footer>
 
-    <script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
+    <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
 
@@ -413,63 +440,180 @@
     }
 
     // ── Step 2 submit ──────────────────────────────────────────────────────────
-    async function submitStep2() {
-        const selectedTrades = [...document.querySelectorAll('input[name="trades"]:checked')].map(cb => cb.value);
-        const licenseNumber  = document.getElementById('licenseNumber').value.trim();
-        const noLicense      = document.getElementById('noLicenseRequired').checked;
-        const insuranceOk    = document.getElementById('insuranceCommit').checked;
+    // ── Document upload state ──────────────────────────────────────────────
+    let docState = {
+        coi: { satisfied: false, file: null },
+        wc: { satisfied: false, choice: null, file: null, expiry: null },
+        license: { satisfied: false, choice: null, file: null }
+    };
 
-        if (!selectedTrades.length) { alert('Please select at least one trade.'); return; }
-        if (!licenseNumber && !noLicense) { alert('Please enter your license number or check "No license required."'); return; }
-        if (!insuranceOk) { alert('Please confirm your insurance commitment before continuing.'); return; }
-
-        try {
-            const { error } = await sb.from('contractors')
-                .update({
-                    trades:            selectedTrades,
-                    license_number:    licenseNumber || null,
-                    no_license_required: noLicense,
-                    has_general_liability: true,
-                    onboarding_step:   2,
-                    updated_at:        new Date().toISOString(),
-                })
-                .eq('user_id', currentUser.id);
-
-            if (error) throw error;
-            contractor.onboarding_step = 2;
-
-            // Notify admin — non-fatal
-            try {
-                const tradesDisplay = selectedTrades.join(', ') || 'N/A';
-                const licenseDisplay = noLicense ? 'No license required' : (licenseNumber || 'Not provided');
-                await sb.functions.invoke('send-support-email', {
-                    body: {
-                        from_name:  contractor.company_name || contractor.contact_name || 'New Applicant',
-                        from_email: currentUser.email,
-                        subject:    'New Contractor Application — Review Required',
-                        message:    `New contractor application submitted and ready for review.
-
-Company:  ${contractor.company_name || '(not provided)'}
-Contact:  ${contractor.contact_name || '(not provided)'}
-Email:    ${currentUser.email}
-Trades:   ${tradesDisplay}
-License:  ${licenseDisplay}
-
-Review at: https://otterquote.com/admin-contractors.html`,
-                    }
-                });
-            } catch (notifyErr) {
-                console.warn('Admin notification failed (non-fatal):', notifyErr);
-            }
-
-            showStep(3);
-        } catch (err) {
-            console.error('Step 2 error:', err);
-            alert('Failed to save. Please try again.');
+    function handleDocumentSelect(docType, input) {
+        if (input.files.length) {
+            docState[docType].file = input.files[0];
+            const nameEl = document.getElementById(docType + '-name');
+            nameEl.textContent = input.files[0].name;
+            document.getElementById(docType + '-filename').style.display = 'block';
         }
     }
 
-    // ── Step 3 submit ──────────────────────────────────────────────────────────
+    function updateWCCardState() {
+        const choice = document.querySelector('input[name="wc-choice"]:checked')?.value;
+        docState.wc.choice = choice;
+        const fileSection = document.getElementById('wc-file-section');
+        
+        if (choice === 'file') {
+            fileSection.style.display = 'block';
+            docState.wc.satisfied = docState.wc.file !== null;
+        } else if (choice === 'exemption') {
+            fileSection.style.display = 'none';
+            docState.wc.satisfied = true;
+            docState.wc.file = null;
+        } else {
+            docState.wc.satisfied = false;
+        }
+        updateStep2Button();
+    }
+
+    function updateLicenseCardState() {
+        const choice = document.querySelector('input[name="license-choice"]:checked')?.value;
+        docState.license.choice = choice;
+        const fileSection = document.getElementById('license-file-section');
+        
+        if (choice === 'file') {
+            fileSection.style.display = 'block';
+            docState.license.satisfied = docState.license.file !== null;
+        } else if (choice === 'attestation') {
+            fileSection.style.display = 'none';
+            docState.license.satisfied = true;
+            docState.license.file = null;
+        } else {
+            docState.license.satisfied = false;
+        }
+        updateStep2Button();
+    }
+
+    function updateStep2Button() {
+        // COI is always required with file
+        const coiOk = docState.coi.file !== null;
+        const wcOk = docState.wc.satisfied;
+        const licenseOk = docState.license.satisfied;
+        
+        const btn = document.getElementById('step2-advance-btn');
+        const allSatisfied = coiOk && wcOk && licenseOk;
+        
+        btn.disabled = !allSatisfied;
+        btn.style.opacity = allSatisfied ? '1' : '0.5';
+        btn.style.cursor = allSatisfied ? 'pointer' : 'not-allowed';
+    }
+
+    // ── Step 2 submit ──────────────────────────────────────────────────────────
+    async function submitStep2() {
+        if (!docState.coi.file) { alert('Please upload your CGL certificate.'); return; }
+        if (!docState.wc.satisfied) { alert('Please provide workers' compensation info or exemption.'); return; }
+        if (!docState.license.satisfied) { alert('Please provide contractor license or attestation.'); return; }
+
+        showPanel('loading');
+
+        try {
+            const user_id = currentUser.id;
+            
+            // Upload COI
+            let coi_document_url = null;
+            if (docState.coi.file) {
+                const coiFileName = `${user_id}/${Date.now()}-${docState.coi.file.name}`;
+                const { data: coiData, error: coiError } = await sb.storage
+                    .from('coi-documents')
+                    .upload(coiFileName, docState.coi.file, { upsert: true });
+                
+                if (coiError) throw new Error(`COI upload failed: ${coiError.message}`);
+                coi_document_url = coiFileName;
+            }
+
+            // Upload WC if file selected
+            let wc_cert_file_ref = null;
+            let wc_cert_expiry = null;
+            if (docState.wc.choice === 'file' && docState.wc.file) {
+                const wcFileName = `${user_id}/${Date.now()}-${docState.wc.file.name}`;
+                const { data: wcData, error: wcError } = await sb.storage
+                    .from('wc-documents')
+                    .upload(wcFileName, docState.wc.file, { upsert: true });
+                
+                if (wcError) throw new Error(`WC upload failed: ${wcError.message}`);
+                wc_cert_file_ref = wcFileName;
+                
+                const expiryInput = document.getElementById('wc-expiry');
+                if (expiryInput.value) {
+                    wc_cert_expiry = new Date(expiryInput.value).toISOString();
+                }
+            }
+
+            // Upload License if file selected
+            let license_document_url = null;
+            if (docState.license.choice === 'file' && docState.license.file) {
+                const licenseFileName = `${user_id}/${Date.now()}-${docState.license.file.name}`;
+                const { data: licData, error: licError } = await sb.storage
+                    .from('license-documents')
+                    .upload(licenseFileName, docState.license.file, { upsert: true });
+                
+                if (licError) throw new Error(`License upload failed: ${licError.message}`);
+                license_document_url = licenseFileName;
+            }
+
+            // Build update object with v61 column names
+            const updateObj = {
+                coi_document_url: coi_document_url,
+                coi_uploaded_at: new Date().toISOString(),
+                onboarding_step: 2,
+                updated_at: new Date().toISOString()
+            };
+
+            if (docState.wc.choice === 'file') {
+                updateObj.wc_cert_file_ref = wc_cert_file_ref;
+                updateObj.wc_cert_expiry = wc_cert_expiry;
+                updateObj.wc_cert_uploaded_at = new Date().toISOString();
+            } else if (docState.wc.choice === 'exemption') {
+                updateObj.wc_cert_file_ref = 'WCE-1-EXEMPT';
+                updateObj.wc_cert_expiry = null;
+                updateObj.wc_cert_uploaded_at = null;
+            }
+
+            if (docState.license.choice === 'file') {
+                updateObj.license_document_url = license_document_url;
+            } else if (docState.license.choice === 'attestation') {
+                updateObj.license_attestation_signed_at = new Date().toISOString();
+            }
+
+            // Update contractors table
+            const { error: updateError } = await sb.from('contractors')
+                .update(updateObj)
+                .eq('user_id', user_id);
+
+            if (updateError) throw updateError;
+            contractor.onboarding_step = 2;
+
+            // Send notification (non-fatal)
+            try {
+                await sb.functions.invoke('send-support-email', {
+                    body: {
+                        from_name: contractor.company_name || contractor.contact_name || 'New Applicant',
+                        from_email: currentUser.email,
+                        subject: 'New Contractor Application — Documents Received',
+                        message: 'Contractor has submitted required insurance and documentation. Ready for verification.'
+                    }
+                });
+            } catch (e) {
+                console.warn('Support email failed (non-fatal):', e);
+            }
+
+            showPanel('wizard');
+            showStep(3);
+        } catch (error) {
+            console.error('Step 2 submit error:', error);
+            showPanel('error');
+            document.getElementById('panelError').innerHTML = '<h3>Upload Failed</h3><p>' + error.message + '</p>';
+        }
+    }
+
     async function submitStep3() {
         const checks = ['agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation']; // agreeTcpaSms is optional (CTIA — must not be condition of service); 1099-NEC ack removed May 4, 2026 — contractors pay OtterQuote, they do not receive 1099-NEC.
         for (const id of checks) {
@@ -676,6 +820,35 @@ Review at: https://otterquote.com/admin-contractors.html`,
             console.error('Pre-approval init error:', err);
             showPanel('error');
         }
+
+        // Attach file input change listeners for Step 2 document cards
+        const coiUpload = document.getElementById('coi-upload');
+        const wcUpload = document.getElementById('wc-upload');
+        const licenseUpload = document.getElementById('license-upload');
+        const wcExpiry = document.getElementById('wc-expiry');
+        
+        if (coiUpload) {
+            coiUpload.addEventListener('change', function(e) {
+                handleDocumentSelect('coi', this);
+                updateStep2Button();
+            });
+        }
+        if (wcUpload) {
+            wcUpload.addEventListener('change', function(e) {
+                handleDocumentSelect('wc', this);
+                updateWCCardState();
+            });
+        }
+        if (licenseUpload) {
+            licenseUpload.addEventListener('change', function(e) {
+                handleDocumentSelect('license', this);
+                updateLicenseCardState();
+            });
+        }
+        if (wcExpiry) {
+            wcExpiry.addEventListener('change', updateStep2Button);
+        }
+
     }
 
     document.addEventListener('DOMContentLoaded', init);
