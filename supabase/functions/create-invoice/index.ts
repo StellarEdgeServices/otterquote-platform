@@ -41,9 +41,8 @@ async function sendInvoiceEmail(
   feePct: number,
   contractorNet: number,
   feeAcceptedAt: string,
-  quoteId: string
+  jobNumber: string // D-216: "Job #XXXXXXXX" formatted identifier
 ): Promise<void> {
-  const invoiceNumber = quoteId.slice(-8).toUpperCase();
   const contractSignedDate = formatDate(new Date().toISOString());
   const feeAcceptedDate = formatDate(feeAcceptedAt);
 
@@ -51,7 +50,7 @@ async function sendInvoiceEmail(
 INVOICE
 
 Date: ${contractSignedDate}
-Invoice #: ${invoiceNumber}
+Job: ${jobNumber}
 
 TO: ${contractorName}
 FROM: OtterQuote (Stellar Edge Services, LLC)
@@ -148,7 +147,7 @@ serve(async (req: Request) => {
     const { data: quote, error: quoteError } = await sb
       .from("quotes")
       .select(
-        "id, contractor_id, total_price, fee_percentage, platform_fee_pct, platform_fee_basis, fee_accepted_at"
+        "id, contractor_id, claim_id, total_price, fee_percentage, platform_fee_pct, platform_fee_basis, fee_accepted_at"
       )
       .eq("id", quote_id)
       .single();
@@ -187,6 +186,12 @@ serve(async (req: Request) => {
       );
     }
 
+    // D-216: derive Job # from claim_id (last 8 chars, uppercase)
+    const claimId: string = quote.claim_id || "";
+    const jobNumber = claimId
+      ? `Job #${claimId.slice(-8).toUpperCase()}`
+      : "Job #UNKNOWN";
+
     // Send invoice email
     await sendInvoiceEmail(
       contractor.email,
@@ -198,7 +203,7 @@ serve(async (req: Request) => {
       feePct,
       contractorNet,
       quote.fee_accepted_at,
-      quote_id
+      jobNumber
     );
 
     // Insert activity log entry
