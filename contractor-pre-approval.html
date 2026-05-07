@@ -218,32 +218,71 @@
                         </div>
                     </div>
 
-                    <!-- Card 3: Contractor License -->
+                    <!-- Card 3: Contractor License (D-218 multi-license) -->
                     <div class="doc-card" id="card-license" style="border: 2px solid var(--slate); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem; background: #f8fafc;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                             <h3 style="margin: 0; font-size: 1.125rem; color: var(--navy);">Contractor License</h3>
                             <span class="card-status" id="status-license" style="font-weight: 600; color: var(--slate);">Required</span>
                         </div>
-                        <p style="font-size: 0.9rem; color: var(--slate); margin: 0 0 1rem 0;">Indiana contractor license or indicate you don't have one. Max 10MB.</p>
-                        
-                        <div style="margin-bottom: 1rem;">
-                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0.75rem;">
-                                <input type="radio" name="license-choice" value="file" onchange="updateLicenseCardState()">
-                                <span style="font-size: 0.95rem;">Upload license copy</span>
-                            </label>
-                            <div id="license-file-section" style="display: none; padding-left: 1.5rem;">
-                                <input type="file" id="license-upload" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
-                                <button type="button" onclick="document.getElementById('license-upload').click()" class="btn-secondary" style="width: 100%; margin-bottom: 0.75rem;">Choose File</button>
-                                <div id="license-filename" style="font-size: 0.85rem; color: var(--slate); display: none;">📎 <span id="license-name"></span></div>
+                        <p style="font-size: 0.9rem; color: var(--slate); margin: 0 0 1rem 0;">Add each contractor license you hold. You may add licenses from multiple jurisdictions.</p>
+
+                        <!-- License entries list -->
+                        <div id="license-entries-list" style="margin-bottom: 0.75rem;"></div>
+
+                        <!-- Empty state -->
+                        <div id="license-empty-state" style="font-size: 0.9rem; color: var(--slate); margin-bottom: 0.75rem;">No licenses added yet.</div>
+
+                        <!-- Add / Edit form (inline) -->
+                        <div id="license-form" style="display: none; background: #f1f5f9; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
+                            <div style="display: grid; gap: 0.75rem;">
+                                <div>
+                                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">Jurisdiction Level <span style="color:red">*</span></label>
+                                    <select id="lic-jurisdiction-level" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 0.9rem; background: #fff; color: var(--navy);">
+                                        <option value="">Select level…</option>
+                                        <option value="state">State</option>
+                                        <option value="county">County</option>
+                                        <option value="city">City</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">Jurisdiction <span style="color:red">*</span></label>
+                                    <input type="text" id="lic-jurisdiction" placeholder="e.g. Indiana, Hamilton County" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 0.9rem; color: var(--navy);">
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">License Number <span style="color:red">*</span></label>
+                                    <input type="text" id="lic-number" placeholder="License number" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 0.9rem; color: var(--navy);">
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">Expiration Date <span style="font-weight:400; color:var(--slate)">(optional)</span></label>
+                                    <input type="date" id="lic-expiry" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 0.9rem; color: var(--navy);">
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">License Document <span style="font-weight:400; color:var(--slate)">(optional, max 10MB)</span></label>
+                                    <input type="file" id="lic-file" accept=".pdf,.png,.jpg,.jpeg" style="width: 100%; font-size: 0.9rem;">
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">Verification URL <span style="font-weight:400; color:var(--slate)">(optional)</span></label>
+                                    <input type="url" id="lic-verification-url" placeholder="https://..." style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 0.9rem; color: var(--navy);">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                <button type="button" onclick="saveLicenseEntry()" style="flex: 1; padding: 0.5rem; background: var(--amber); color: #fff; border: none; border-radius: 0.375rem; font-weight: 600; cursor: pointer; font-size: 0.9rem;">Save License</button>
+                                <button type="button" onclick="cancelLicenseForm()" style="flex: 1; padding: 0.5rem; background: #e2e8f0; color: var(--navy); border: none; border-radius: 0.375rem; font-weight: 600; cursor: pointer; font-size: 0.9rem;">Cancel</button>
                             </div>
                         </div>
 
-                        <div style="padding-top: 1rem;">
-                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;">
-                                <input type="checkbox" id="license-no-license" onchange="updateLicenseCardState()">
-                                <span style="font-size: 0.95rem;">I don't have a license for this work</span>
-                            </label>
-                        </div>
+                        <!-- Add button -->
+                        <button type="button" id="license-add-btn" onclick="openLicenseForm(null)" style="width: 100%; padding: 0.6rem; margin-bottom: 1rem; background: var(--amber); color: #fff; border: none; border-radius: 0.375rem; font-weight: 600; cursor: pointer; font-size: 0.9rem;">+ Add a License</button>
+
+                        <!-- Divider -->
+                        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 0.5rem 0 1rem 0;">
+
+                        <!-- No license checkbox -->
+                        <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;" id="license-no-license-label">
+                            <input type="checkbox" id="license-no-license" onchange="updateLicenseNoLicense()">
+                            <span style="font-size: 0.95rem; color: var(--navy);">I don't have a license for this work</span>
+                        </label>
                     </div>
 
                     <button class="btn-primary" id="step2-advance-btn" disabled style="opacity: 0.5; cursor: not-allowed;">Continue to Agreements →</button>
@@ -443,8 +482,14 @@
     // ── Document upload state ──────────────────────────────────────────────
     let docState = {
         coi: { satisfied: false, file: null },
-        wc: { satisfied: false, choice: null, file: null, expiry: null },
-        license: { satisfied: false, choice: null, file: null }
+        wc: { satisfied: false, choice: null, file: null, expiry: null }
+    };
+
+    // Multi-license state (D-218)
+    let licenseState = {
+        entries: [],       // { id, jurisdictionLevel, jurisdiction, licenseNumber, expiryDate, file, verificationUrl }
+        noLicense: false,
+        editingIndex: null // null = adding new, number = editing existing
     };
 
     function handleDocumentSelect(docType, input) {
@@ -474,40 +519,133 @@
         updateStep2Button();
     }
 
-    function updateLicenseCardState() {
-        const radioChoice = document.querySelector('input[name="license-choice"]:checked')?.value;
-        const noLicenseCheckbox = document.getElementById('license-no-license').checked;
-        const fileSection = document.getElementById('license-file-section');
-        const licenseUpload = document.getElementById('license-upload');
-        
-        docState.license.choice = radioChoice;
-        
-        if (noLicenseCheckbox) {
-            // Checkbox is checked: disable file upload, mark as satisfied
-            fileSection.style.display = 'block';
-            licenseUpload.disabled = true;
-            document.querySelector('input[name="license-choice"][value="file"]').checked = true;
-            docState.license.choice = 'not_provided';
-            docState.license.satisfied = true;
-            docState.license.file = null;
+    // ── Multi-license card functions (D-218) ──────────────────────────────────
+    function renderLicenseEntries() {
+        const list = document.getElementById('license-entries-list');
+        const emptyState = document.getElementById('license-empty-state');
+        const addBtn = document.getElementById('license-add-btn');
+        const noLicenseCheckbox = document.getElementById('license-no-license');
+        const noLicenseLabel = document.getElementById('license-no-license-label');
+
+        emptyState.style.display = licenseState.entries.length === 0 ? 'block' : 'none';
+
+        const badgeLabels = { state: 'State', county: 'County', city: 'City', other: 'Other' };
+        list.innerHTML = licenseState.entries.map((entry, idx) => {
+            const badge = badgeLabels[entry.jurisdictionLevel] || entry.jurisdictionLevel;
+            const expiry = entry.expiryDate ? `exp ${entry.expiryDate}` : 'No expiry';
+            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 0.75rem;background:#fff;border:1px solid #e2e8f0;border-radius:0.375rem;margin-bottom:0.5rem;font-size:0.9rem;color:var(--navy);">
+                <span>
+                    <span style="background:#e0f2fe;color:#0369a1;font-size:0.75rem;font-weight:700;padding:0.1rem 0.4rem;border-radius:0.25rem;margin-right:0.5rem;">${badge}</span>
+                    ${entry.jurisdiction} — License #${entry.licenseNumber} (${expiry})
+                </span>
+                <span style="display:flex;gap:0.5rem;flex-shrink:0;">
+                    <button type="button" onclick="openLicenseForm(${idx})" style="border:none;background:none;cursor:pointer;color:var(--amber);font-size:0.85rem;font-weight:600;padding:0.2rem 0.5rem;">Edit</button>
+                    <button type="button" onclick="deleteLicenseEntry(${idx})" style="border:none;background:none;cursor:pointer;color:#ef4444;font-size:0.85rem;font-weight:600;padding:0.2rem 0.5rem;">Delete</button>
+                </span>
+            </div>`;
+        }).join('');
+
+        // Mutual exclusion: entries exist → disable no-license checkbox
+        if (licenseState.entries.length > 0) {
+            noLicenseCheckbox.disabled = true;
+            noLicenseCheckbox.checked = false;
+            licenseState.noLicense = false;
+            noLicenseLabel.style.opacity = '0.45';
+            noLicenseLabel.style.pointerEvents = 'none';
         } else {
-            // Checkbox is unchecked: enable file upload, require file
-            licenseUpload.disabled = false;
-            if (radioChoice === 'file') {
-                fileSection.style.display = 'block';
-                docState.license.satisfied = docState.license.file !== null;
-            } else {
-                docState.license.satisfied = false;
-            }
+            noLicenseCheckbox.disabled = false;
+            noLicenseLabel.style.opacity = '1';
+            noLicenseLabel.style.pointerEvents = '';
         }
+
+        // Mutual exclusion: no-license checked → disable Add button
+        if (licenseState.noLicense) {
+            addBtn.disabled = true;
+            addBtn.style.opacity = '0.45';
+            addBtn.style.cursor = 'not-allowed';
+        } else {
+            addBtn.disabled = false;
+            addBtn.style.opacity = '1';
+            addBtn.style.cursor = 'pointer';
+        }
+
         updateStep2Button();
+    }
+
+    function openLicenseForm(idx) {
+        licenseState.editingIndex = idx;
+        const form = document.getElementById('license-form');
+        form.style.display = 'block';
+        if (idx !== null && licenseState.entries[idx]) {
+            const e = licenseState.entries[idx];
+            document.getElementById('lic-jurisdiction-level').value = e.jurisdictionLevel;
+            document.getElementById('lic-jurisdiction').value = e.jurisdiction;
+            document.getElementById('lic-number').value = e.licenseNumber;
+            document.getElementById('lic-expiry').value = e.expiryDate || '';
+            document.getElementById('lic-verification-url').value = e.verificationUrl || '';
+            // file input cannot be pre-populated for security reasons
+        } else {
+            document.getElementById('lic-jurisdiction-level').value = '';
+            document.getElementById('lic-jurisdiction').value = '';
+            document.getElementById('lic-number').value = '';
+            document.getElementById('lic-expiry').value = '';
+            document.getElementById('lic-file').value = '';
+            document.getElementById('lic-verification-url').value = '';
+        }
+    }
+
+    function cancelLicenseForm() {
+        licenseState.editingIndex = null;
+        document.getElementById('license-form').style.display = 'none';
+    }
+
+    function saveLicenseEntry() {
+        const jurisdictionLevel = document.getElementById('lic-jurisdiction-level').value;
+        const jurisdiction = document.getElementById('lic-jurisdiction').value.trim();
+        const licenseNumber = document.getElementById('lic-number').value.trim();
+        const expiryDate = document.getElementById('lic-expiry').value || null;
+        const fileInput = document.getElementById('lic-file');
+        const file = fileInput.files.length ? fileInput.files[0] : null;
+        const verificationUrl = document.getElementById('lic-verification-url').value.trim() || null;
+
+        if (!jurisdictionLevel) { alert('Please select a jurisdiction level.'); return; }
+        if (!jurisdiction) { alert('Please enter the jurisdiction.'); return; }
+        if (!licenseNumber) { alert('Please enter the license number.'); return; }
+        if (file && file.size > 10 * 1024 * 1024) { alert('License document must be 10MB or less.'); return; }
+
+        const entry = { id: Date.now(), jurisdictionLevel, jurisdiction, licenseNumber, expiryDate, file, verificationUrl };
+
+        if (licenseState.editingIndex !== null) {
+            // Preserve existing file if no new file selected
+            if (!file && licenseState.entries[licenseState.editingIndex]) {
+                entry.file = licenseState.entries[licenseState.editingIndex].file;
+            }
+            entry.id = licenseState.entries[licenseState.editingIndex].id;
+            licenseState.entries[licenseState.editingIndex] = entry;
+        } else {
+            licenseState.entries.push(entry);
+        }
+
+        licenseState.editingIndex = null;
+        document.getElementById('license-form').style.display = 'none';
+        renderLicenseEntries();
+    }
+
+    function deleteLicenseEntry(idx) {
+        licenseState.entries.splice(idx, 1);
+        renderLicenseEntries();
+    }
+
+    function updateLicenseNoLicense() {
+        licenseState.noLicense = document.getElementById('license-no-license').checked;
+        renderLicenseEntries();
     }
 
     function updateStep2Button() {
         // COI is always required with file
         const coiOk = docState.coi.file !== null;
         const wcOk = docState.wc.satisfied;
-        const licenseOk = docState.license.satisfied;
+        const licenseOk = licenseState.entries.length > 0 || licenseState.noLicense;
         
         const btn = document.getElementById('step2-advance-btn');
         const allSatisfied = coiOk && wcOk && licenseOk;
@@ -521,7 +659,7 @@
     async function submitStep2() {
         if (!docState.coi.file) { alert('Please upload your CGL certificate.'); return; }
         if (!docState.wc.satisfied) { alert('Please provide workers' compensation info or exemption.'); return; }
-        if (!docState.license.satisfied) { alert('Please provide contractor license or attestation.'); return; }
+        if (licenseState.entries.length === 0 && !licenseState.noLicense) { alert('Please add a contractor license or check "I don\'t have a license for this work".'); return; }
 
         showPanel('loading');
 
@@ -558,17 +696,7 @@
                 }
             }
 
-            // Upload License if file selected
-            let license_document_url = null;
-            if (docState.license.choice === 'file' && docState.license.file) {
-                const licenseFileName = `${user_id}/${Date.now()}-${docState.license.file.name}`;
-                const { data: licData, error: licError } = await sb.storage
-                    .from('license-documents')
-                    .upload(licenseFileName, docState.license.file, { upsert: true });
-                
-                if (licError) throw new Error(`License upload failed: ${licError.message}`);
-                license_document_url = licenseFileName;
-            }
+            // License files are uploaded per-entry after contractors update (D-218)
 
             // Build update object with v61 column names
             const updateObj = {
@@ -588,9 +716,7 @@
                 updateObj.wc_cert_uploaded_at = null;
             }
 
-            if (docState.license.choice === 'file') {
-                updateObj.license_document_url = license_document_url;
-            } else if (docState.license.choice === 'not_provided') {
+            if (licenseState.noLicense) {
                 updateObj.license_path = 'not_provided';
             }
 
@@ -602,15 +728,35 @@
             if (updateError) throw updateError;
             contractor.onboarding_step = 2;
 
+            // Insert contractor_licenses rows (D-218)
+            if (!licenseState.noLicense) {
+                for (const entry of licenseState.entries) {
+                    let doc_url = null;
+                    if (entry.file) {
+                        const path = `licenses/${user_id}/${Date.now()}-${entry.file.name}`;
+                        const { error: upErr } = await sb.storage
+                            .from('contractor-documents')
+                            .upload(path, entry.file, { upsert: true });
+                        if (!upErr) doc_url = path;
+                        // non-fatal: if upload fails, save row with doc_url = null
+                    }
+                    const { error: insErr } = await sb.from('contractor_licenses').insert({
+                        contractor_id: contractor.id,
+                        municipality: entry.jurisdiction,
+                        license_number: entry.licenseNumber || null,
+                        license_document_url: doc_url,
+                        expiration_date: entry.expiryDate || null,
+                        jurisdiction_level: entry.jurisdictionLevel,
+                        verification_url: entry.verificationUrl || null
+                    });
+                    if (insErr) throw new Error(`License insert failed: ${insErr.message}`);
+                }
+            }
+
             // Sync contractor pre-approval data to HubSpot (D-210, D-217)
             // Map wc_path and license_path to HubSpot enumeration properties
             const wc_path = docState.wc.choice === 'exemption' ? 'sole_prop_exemption' : 'has_wc';
-            let license_path = 'has_license';
-            if (docState.license.choice === 'not_provided') {
-                license_path = 'not_provided';
-            } else if (docState.license.choice === 'file' && !license_document_url) {
-                license_path = 'not_provided';
-            }
+            let license_path = licenseState.noLicense ? 'not_provided' : 'has_license';
             
             try {
                 await fetch('/functions/v1/create-hubspot-contact', {
@@ -864,9 +1010,8 @@
         // Attach file input change listeners for Step 2 document cards
         const coiUpload = document.getElementById('coi-upload');
         const wcUpload = document.getElementById('wc-upload');
-        const licenseUpload = document.getElementById('license-upload');
         const wcExpiry = document.getElementById('wc-expiry');
-        
+
         if (coiUpload) {
             coiUpload.addEventListener('change', function(e) {
                 handleDocumentSelect('coi', this);
@@ -879,15 +1024,12 @@
                 updateWCCardState();
             });
         }
-        if (licenseUpload) {
-            licenseUpload.addEventListener('change', function(e) {
-                handleDocumentSelect('license', this);
-                updateLicenseCardState();
-            });
-        }
         if (wcExpiry) {
             wcExpiry.addEventListener('change', updateStep2Button);
         }
+
+        // Initialize multi-license card (D-218)
+        renderLicenseEntries();
 
     }
 
