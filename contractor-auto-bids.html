@@ -590,7 +590,10 @@
 
   <script>
     // ── Globals ──
-    let sb = null;
+    // sb is declared globally as `var sb` in js/config.js (early-load on gated pages);
+    // assign here rather than redeclare — a `let sb` shadows/collides with the existing
+    // global and throws "Identifier 'sb' has already been declared" (Sentry JAVASCRIPT-W, 86e1m8jcf).
+    sb = null;
     let currentUser = null;
     let contractorRecord = null;
 
