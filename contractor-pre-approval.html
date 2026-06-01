@@ -796,16 +796,34 @@
 
         // Pre-fetch auth token BEFORE showPanel('loading') — 10s timeout, non-fatal
         let accessToken = '';
+        let liveSession = null;
         try {
             const sessionResult = await withTimeout(sb.auth.getSession(), 10000, 'Auth token prefetch');
-            accessToken = sessionResult?.data?.session?.access_token || '';
+            liveSession = sessionResult?.data?.session || null;
+            accessToken = liveSession?.access_token || '';
         } catch (e) { console.warn('Auth token prefetch failed (non-fatal):', e.message); }
 
         if (advBtn) { advBtn.dataset.submitting = 'true'; advBtn.disabled = true; advBtn.style.opacity = '0.5'; advBtn.textContent = 'Saving…'; }
         showPanel('loading');
 
         try {
-            const user_id = currentUser.id;
+            // D-212 / pfw-1780341475 guard: the contractor-documents RLS policy requires
+            // storage path segment[1] === auth.uid(). Derive the path UID from the SAME live
+            // session the upload authenticates with (sb.auth.getSession above) — NOT the
+            // init-time currentUser, which Auth.getSession()'s fast-path can populate from a
+            // stale domain-wide auth cookie belonging to a different account. Sourcing both
+            // from the live session enforces path[1] === auth.uid() by construction.
+            const liveUserId = liveSession?.user?.id || null;
+            if (!liveUserId) {
+                throw new Error('No active Supabase session at upload time — please sign in again and retry.');
+            }
+            if (currentUser?.id && currentUser.id !== liveUserId) {
+                console.warn('[pre-approval] session identity mismatch (D-212 guard): init currentUser.id=' +
+                    currentUser.id + ' vs live session user.id=' + liveUserId +
+                    ' — using live session id for storage path.');
+                currentUser = liveSession.user;
+            }
+            const user_id = liveUserId;
 
             // Upload COI — 30s limit
             let coi_file_url = null;
