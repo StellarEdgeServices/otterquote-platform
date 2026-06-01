@@ -289,13 +289,14 @@
         </button>
       </form>
 
-      <!-- Magic Link Sent -->
+      <!-- Magic Link Sent — D-244: canonical login-path copy, verbatim-locked.
+           Any deviation requires security review + Dustin sign-off. -->
       <div class="magic-link-sent" id="magic-link-sent">
         <div class="magic-link-icon">&#x2709;&#xFE0F;</div>
         <h2>Check Your Email</h2>
-        <p>We sent a secure login link to:</p>
+        <p>If an account exists, we sent a link.</p>
         <div class="magic-link-email" id="sent-email"></div>
-        <p style="margin-top: var(--sp-4);">Click the link in your email to access your contractor dashboard. The link expires in 1 hour.</p>
+        <p style="margin-top: var(--sp-4);">If you receive a link, it will expire in 1 hour.</p>
         <p style="margin-top: var(--sp-6);"><a href="#" id="resend-link">Didn't get it? Send again</a></p>
       </div>
 
@@ -440,7 +441,8 @@
     if (email) {
       try {
         await Auth.sendMagicLink(email, 'contractor', '/auth-callback.html');
-        alert('Login link resent! Check your email.');
+        // D-244: canonical login-path copy, verbatim-locked.
+        alert('If an account exists, we sent a link.');
       } catch (err) {
         alert('Could not resend. Please try again in a moment.');
       }
