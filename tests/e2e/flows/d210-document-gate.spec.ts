@@ -97,7 +97,7 @@ async function loginAsContractor(
   state: TestState
 ) {
   const magicLink = await generateMagicLink(
-    state.contractorEmail,
+    state.d210ContractorEmail,
     `${state.baseUrl}/contractor-dashboard.html`
   );
   await page.goto(magicLink);
@@ -134,31 +134,30 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
 
   test.beforeAll(async () => {
     state = getTestState();
-    const snap = await getContractorSnapshot(state.contractorId);
+    const snap = await getContractorSnapshot(state.d210ContractorId);
     console.log(
-      `  Contractor ${state.contractorId} entering D-210 tests with status=${snap.status} onboarding_step=${snap.onboarding_step}`
+      `  D210 contractor ${state.d210ContractorId} entering tests with status=${snap.status} onboarding_step=${snap.onboarding_step}`
     );
     // onboarding_step is the LAST COMPLETED step: contractor-pre-approval.html
     // resumes at Math.max(2, onboarding_step + 1). A pending contractor still
     // filling out the step-2 doc cards has completed only step 1, so seed it to
     // 1 — seeding 2 resumes the wizard at step 3 and hides every step-2 card.
-    await setContractorState(state.contractorId, {
+    await setContractorState(state.d210ContractorId, {
       status: 'pending_approval',
       onboarding_step: 1,
     });
     console.log(
-      `  Contractor ${state.contractorId} set to pending_approval for D-210 tests`
+      `  D210 contractor ${state.d210ContractorId} confirmed pending_approval/1 for D-210 tests`
     );
   });
 
-  // Always restore to seed state (active/4) — never restore to whatever state
-  // we found on entry, which may itself be contaminated (e.g. pending_approval
-  // left over from a previous failed run). Retail-siding tests that follow
-  // require status=active to pass.
+  // Restore D-210 contractor to its seed state (pending_approval/1) so the next
+  // run starts clean. This contractor is dedicated to D-210 and is never used by
+  // other specs — no cross-spec contamination possible.
   test.afterAll(async () => {
-    await setContractorState(state.contractorId, { status: 'active', onboarding_step: 4 });
+    await setContractorState(state.d210ContractorId, { status: 'pending_approval', onboarding_step: 1 });
     console.log(
-      `  Contractor ${state.contractorId} restored to status=active onboarding_step=4 (seed state)`
+      `  D210 contractor ${state.d210ContractorId} restored to pending_approval/1 (seed state)`
     );
   });
 
@@ -216,7 +215,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
   });
 
   test('E4: setting contractor status=active in DB grants opportunities access', async ({ page }) => {
-    await setContractorState(state.contractorId, { status: 'active' });
+    await setContractorState(state.d210ContractorId, { status: 'active' });
     try {
       await loginAsContractor(page, state);
       await page.goto('/contractor-opportunities.html');
@@ -234,7 +233,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
       expect(wasGated).toBeFalsy();
       console.log('  E4 pass: active contractor can access opportunities');
     } finally {
-      await setContractorState(state.contractorId, {
+      await setContractorState(state.d210ContractorId, {
         status: 'pending_approval',
         onboarding_step: 1,
       });
@@ -252,7 +251,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
   });
 
   test('E6: active contractor visiting pre-approval is redirected to contractor-dashboard.html', async ({ page }) => {
-    await setContractorState(state.contractorId, { status: 'active' });
+    await setContractorState(state.d210ContractorId, { status: 'active' });
     try {
       await loginAsContractor(page, state);
       await page.goto('/contractor-pre-approval.html');
@@ -260,7 +259,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
       await expect(page).toHaveURL(/contractor-dashboard/);
       console.log('  E6 pass: active contractor redirected from pre-approval');
     } finally {
-      await setContractorState(state.contractorId, {
+      await setContractorState(state.d210ContractorId, {
         status: 'pending_approval',
         onboarding_step: 1,
       });
@@ -376,7 +375,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
   });
 
   test('E15: contractor with onboarding_step=4 sees panelSubmitted confirmation', async ({ page }) => {
-    await setContractorState(state.contractorId, {
+    await setContractorState(state.d210ContractorId, {
       status: 'pending_approval',
       onboarding_step: 4,
     });
@@ -389,7 +388,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
       await expect(page.locator('#panelWizard')).toBeHidden();
       console.log('  E15 pass: panelSubmitted shown for onboarding_step=4');
     } finally {
-      await setContractorState(state.contractorId, {
+      await setContractorState(state.d210ContractorId, {
         status: 'pending_approval',
         onboarding_step: 1,
       });
