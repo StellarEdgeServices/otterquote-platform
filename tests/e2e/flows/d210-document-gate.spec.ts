@@ -402,7 +402,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
     await page.waitForLoadState('load');
     await expect(page.locator('#panelWizard')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#card-license')).toBeVisible();
-    expect(await page.locator('#license-no-license').count()).toBe(1);
+    await expect(page.locator('#license-no-license')).toHaveCount(1);
     const noLicenseLabel = page.locator('#license-no-license-label');
     if (await noLicenseLabel.isVisible({ timeout: 3_000 }).catch(() => false)) {
       const labelText = await noLicenseLabel.textContent();
