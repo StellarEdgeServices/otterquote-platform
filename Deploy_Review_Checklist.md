@@ -66,6 +66,8 @@ Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable 
 - [ ] **F-007 pattern applied.** All new/modified authenticated pages use `onAuthStateChange` + `INITIAL_SESSION`/`SIGNED_IN` guard + `_initFired` boolean. No `DOMContentLoaded + sb.auth.getSession()` pattern introduced.
 - [ ] **`js/auth.js` parses cleanly.** `node --check js/auth.js` exits 0. (Covered automatically by the JS Syntax Lint CRITICAL item; restated here because auth.js is high-blast-radius — a parse failure silently breaks every authenticated page in the app.)
 - [ ] **Auth refactor → spec audit.** If auth code changed (js/auth.js, auth-callback.html, netlify/edge-functions/admin-gate.js), confirmed E2E test specs in tests/e2e/ have been audited for stale assumptions about cookie names, session shape, and Auth.ready() contract.
+- [ ] **React AuthProvider resolves independent of event timing.** Any change to `react-app/app/providers/auth-provider.tsx` (or a new React auth context) MUST flip `loading:false` even if `INITIAL_SESSION` never reaches the listener — pair `onAuthStateChange` with a proactive `supabase.auth.getSession()` on mount AND a ≤1.5s fallback timer. Verified by a WARM-reload probe (cold load alone does not catch this).
+  - *Why: 2026-06-01 (bug 86e1mrwrx) — the React provider resolved `loading` only inside the `onAuthStateChange` callback. On a warm reload Supabase emits `INITIAL_SESSION` synchronously from cached storage before React's useEffect attaches the listener, so the event was missed and `/get-started` hung blank for returning homeowners. Cold loads worked, so the original 86e1f6nud probe wrongly called it a false positive. See ADR-011.*
 
 ### Config Scope
 *(Check only if config.js or any file referencing CONFIG/sb was modified.)*

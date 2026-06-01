@@ -122,30 +122,43 @@ async function loginAsContractor(
     },
     { timeout: 15_000 }
   );
+  // Allow pending XHR/fetch calls to settle so Auth.getSession() fast-path
+  // finds the session token before contractor-pre-approval.html's init() runs.
+  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
 }
 
 // --- Tests ---
 
 test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
   let state: TestState;
-  let originalSnapshot: ContractorStatusSnapshot;
 
   test.beforeAll(async () => {
     state = getTestState();
-    originalSnapshot = await getContractorSnapshot(state.contractorId);
+    const snap = await getContractorSnapshot(state.contractorId);
+    console.log(
+      `  Contractor ${state.contractorId} entering D-210 tests with status=${snap.status} onboarding_step=${snap.onboarding_step}`
+    );
+    // onboarding_step is the LAST COMPLETED step: contractor-pre-approval.html
+    // resumes at Math.max(2, onboarding_step + 1). A pending contractor still
+    // filling out the step-2 doc cards has completed only step 1, so seed it to
+    // 1 — seeding 2 resumes the wizard at step 3 and hides every step-2 card.
     await setContractorState(state.contractorId, {
       status: 'pending_approval',
-      onboarding_step: 2,
+      onboarding_step: 1,
     });
     console.log(
       `  Contractor ${state.contractorId} set to pending_approval for D-210 tests`
     );
   });
 
+  // Always restore to seed state (active/4) — never restore to whatever state
+  // we found on entry, which may itself be contaminated (e.g. pending_approval
+  // left over from a previous failed run). Retail-siding tests that follow
+  // require status=active to pass.
   test.afterAll(async () => {
-    await setContractorState(state.contractorId, originalSnapshot);
+    await setContractorState(state.contractorId, { status: 'active', onboarding_step: 4 });
     console.log(
-      `  Contractor ${state.contractorId} restored to status=${originalSnapshot.status}`
+      `  Contractor ${state.contractorId} restored to status=active onboarding_step=4 (seed state)`
     );
   });
 
@@ -223,7 +236,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
     } finally {
       await setContractorState(state.contractorId, {
         status: 'pending_approval',
-        onboarding_step: 2,
+        onboarding_step: 1,
       });
     }
   });
@@ -249,7 +262,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
     } finally {
       await setContractorState(state.contractorId, {
         status: 'pending_approval',
-        onboarding_step: 2,
+        onboarding_step: 1,
       });
     }
   });
@@ -378,7 +391,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
     } finally {
       await setContractorState(state.contractorId, {
         status: 'pending_approval',
-        onboarding_step: 2,
+        onboarding_step: 1,
       });
     }
   });
@@ -393,7 +406,9 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
     const noLicenseLabel = page.locator('#license-no-license-label');
     if (await noLicenseLabel.isVisible({ timeout: 3_000 }).catch(() => false)) {
       const labelText = await noLicenseLabel.textContent();
-      expect((labelText || '').toLowerCase()).toMatch(/no license|not required|exempt/);
+      // Shipped copy is "I don't have a license for this work" (.? matches a
+      // straight or curly apostrophe); accept that alongside other phrasings.
+      expect((labelText || '').toLowerCase()).toMatch(/no license|not required|exempt|don.?t have a license/);
     }
     console.log('  E16 pass: license card contains "No license required" checkbox');
   });

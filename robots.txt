@@ -23,7 +23,6 @@ Disallow: /landing.html
 Disallow: /trade-selector
 Disallow: /project-confirmation
 Disallow: /repair-intake
-Disallow: /schedule-inspection
 
 # Admin and internal tools
 Disallow: /stripe-mockup.html

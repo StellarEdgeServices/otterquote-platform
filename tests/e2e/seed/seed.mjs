@@ -353,6 +353,22 @@ async function seed() {
   }
   console.log(`  ✅ Completed hover_orders row created with material_list`);
 
+  // ── 6d. Verify contractor is in expected seed state ──────────────────────
+  console.log('6d. Verifying contractor seed state...');
+  const { data: verifyC, error: verifyErr } = await supabase
+    .from('contractors')
+    .select('status, onboarding_step')
+    .eq('id', contractorId)
+    .single();
+  if (verifyErr) throw new Error(`Contractor verification failed: ${verifyErr.message}`);
+  if (verifyC.status !== 'active' || verifyC.onboarding_step !== 4) {
+    throw new Error(
+      `Contractor state mismatch after seed: expected status=active onboarding_step=4, ` +
+      `got status=${verifyC.status} onboarding_step=${verifyC.onboarding_step}`
+    );
+  }
+  console.log('  ✅ Contractor verified: status=active, onboarding_step=4');
+
   // ── 7. Write .test-state.json ────────────────────────────────────────────
   // runId: deterministic per seed run — YYYYMMDD-HHmmss + first 8 chars of
   // testClaimId (without dashes). Unique enough for artifact storage paths.
