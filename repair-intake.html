@@ -853,7 +853,8 @@
 
     <script>
         // Initialize Supabase
-        let sb;
+        // sb (Supabase instance) is declared globally in js/config.js as `var sb`;
+        // assigned in initPage() below. Do not redeclare with let/const — causes a SyntaxError.
 
         // Initialize page (called after auth check)
         async function initPage() {

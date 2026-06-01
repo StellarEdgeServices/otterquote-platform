@@ -863,7 +863,8 @@
 
   <script>
     // ── Global State ──
-    let sb; // Supabase instance
+    // sb (Supabase instance) is declared globally in js/config.js as `var sb`;
+    // assigned below. Do not redeclare with let/const — causes a SyntaxError.
     let currentUser = null;
     let userReferralCode = null;
     let photoBefore = null;
