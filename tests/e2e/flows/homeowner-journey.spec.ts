@@ -258,3 +258,78 @@ test.describe('Flow B — Homeowner Journey (Phase 1 Stub)', () => {
   // Verify project_confirmation JSONB persists on submit.
 });
 
+// ─── AuthProvider warm-reload regression (86e1nbud6) ─────────────────────────
+//
+// Prevention test for bug 86e1mrwrx: get-started blank on warm reload.
+//
+// Root cause: AuthProvider only resolved loading:false inside onAuthStateChange.
+// On a warm reload, Supabase emits INITIAL_SESSION before the listener attaches —
+// the event is missed and the page hangs blank indefinitely.
+//
+// Fix (PR #195): proactive getSession() + 1.5s fallback in auth-provider.tsx.
+//
+// This test locks in the fix by verifying:
+//  1. Cold load renders the intake form within 2s
+//  2. Warm reload (page.reload()) also renders the intake form within 2s
+//
+// Targets the React app (/get-started route) — skips on non-otterquote.com envs
+// (e.g. Netlify preview URLs) where the app subdomain is not available.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function reactAppBaseUrl(marketingBaseUrl: string): string | null {
+  try {
+    const u = new URL(marketingBaseUrl);
+    const host = u.hostname;
+    if (host === 'otterquote.com') return `${u.protocol}//app.otterquote.com`;
+    if (host === 'staging.otterquote.com') return `${u.protocol}//app-staging.otterquote.com`;
+    if (host.endsWith('.otterquote.com')) return `${u.protocol}//app-${host}`;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+test.describe('AuthProvider warm-reload regression (86e1nbud6)', () => {
+  let state: TestState;
+  let reactAppUrl: string | null = null;
+
+  test.beforeAll(() => {
+    state = getTestState();
+    reactAppUrl = reactAppBaseUrl(state.baseUrl);
+  });
+
+  // B-WR1: Cold load — React /get-started renders intake form
+  test('B-WR1: React /get-started renders intake form on cold load (unauthenticated)', async ({ page }) => {
+    test.skip(!reactAppUrl, `Skipped: BASE_URL is not an otterquote.com domain (${state?.baseUrl}) — React app subdomain unavailable`);
+
+    await page.goto(`${reactAppUrl}/get-started`);
+    await page.waitForLoadState('load');
+
+    // The "Get Started" heading MUST appear within 2s of page load.
+    // If AuthProvider hangs, the page shows a blank loading state instead.
+    await expect(page.locator('h1').filter({ hasText: 'Get Started' }))
+      .toBeVisible({ timeout: 2_000 });
+  });
+
+  // B-WR2: Warm reload — critical regression path for 86e1mrwrx
+  test('B-WR2: React /get-started renders intake form after warm reload (unauthenticated)', async ({ page }) => {
+    test.skip(!reactAppUrl, `Skipped: BASE_URL is not an otterquote.com domain (${state?.baseUrl}) — React app subdomain unavailable`);
+
+    // Cold load first to establish the "warm" state (localStorage, cookies primed)
+    await page.goto(`${reactAppUrl}/get-started`);
+    await page.waitForLoadState('load');
+    await expect(page.locator('h1').filter({ hasText: 'Get Started' }))
+      .toBeVisible({ timeout: 2_000 });
+
+    // Warm reload: Supabase emits INITIAL_SESSION before onAuthStateChange attaches.
+    // Pre-fix (PR #195): the event is missed, loading never resolves, page hangs blank.
+    // Post-fix: proactive getSession() + 1.5s fallback ensures loading:false in time.
+    await page.reload();
+    await page.waitForLoadState('load');
+
+    // Must render the form within 2s of reload — not a blank/spinner page.
+    await expect(page.locator('h1').filter({ hasText: 'Get Started' }))
+      .toBeVisible({ timeout: 2_000 });
+  });
+});
+
