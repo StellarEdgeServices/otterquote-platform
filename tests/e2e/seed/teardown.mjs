@@ -50,6 +50,19 @@ async function teardown() {
 
   const state = JSON.parse(readFileSync(STATE_FILE, 'utf-8'));
 
+  // ── Delete hover_orders (FK prevents claim deletion without this) ────────
+  if (state.homeownerUserId) {
+    const { error: hoErr, count: hoCount } = await supabase
+      .from('hover_orders')
+      .delete({ count: 'exact' })
+      .eq('user_id', state.homeownerUserId);
+    if (hoErr) {
+      console.warn('  ⚠️  hover_orders cleanup warning:', hoErr.message);
+    } else {
+      console.log(`  ✅ Test hover_orders deleted (${hoCount ?? 0} rows)`);
+    }
+  }
+
   // ── Delete test bids ────────────────────────────────────────────────────
   if (state.contractorId && state.testClaimId) {
     const { error: qErr, count } = await supabase
