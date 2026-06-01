@@ -133,17 +133,15 @@ export default function GetStartedPage() {
         address: address.trim(),
       });
 
-      // 1. Insert into leads table (non-fatal)
-      try {
-        await supabase.from('leads').insert({
-          name: `${firstName.trim()} ${lastName.trim()}`,
-          email: emailTrimmed,
-          source: referralSource || 'web',
-          created_at: new Date().toISOString(),
-        });
-      } catch (leadErr) {
-        console.warn('[get-started] leads insert failed (non-fatal):', leadErr);
-      }
+      // 1. Insert into leads table (non-fatal, fire-and-forget — no await)
+      supabase.from('leads').insert({
+        name: `${firstName.trim()} ${lastName.trim()}`,
+        email: emailTrimmed,
+        source: referralSource || 'web',
+        created_at: new Date().toISOString(),
+      }).then(({ error: leadErr }) => {
+        if (leadErr) console.warn('[get-started] leads insert failed (non-fatal):', leadErr);
+      });
 
       // 2. Persist referral attribution from storage
       const storedReferralId =

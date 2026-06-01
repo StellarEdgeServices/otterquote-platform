@@ -811,20 +811,6 @@
                     </button>
                 </div>
             </div>
-
-            <!-- Tier 5: Schedule Inspection -->
-            <div class="accordion-item">
-                <button class="accordion-header">
-                    <span>📅 Tier 5: Schedule an Inspection</span>
-                    <span class="accordion-toggle">▼</span>
-                </button>
-                <div class="accordion-content" id="tier5-content">
-                    <p>Can't figure it out? No problem — a contractor can identify it on-site.</p>
-                    <button class="btn btn-primary" onclick="window.location.href='/schedule-inspection.html'">
-                        📅 Schedule an Inspection
-                    </button>
-                </div>
-            </div>
         </div>
 
         <!-- Opted-in Contractor List (shown after submission) -->
@@ -856,14 +842,6 @@
             </button>
         </div>
     </main>
-
-    <!-- Floating CTA -->
-    <div class="floating-cta">
-        <a href="/schedule-inspection.html" class="btn-floating">
-            📅 Schedule an Inspection Instead
-            <div class="subtext">Let a pro diagnose it</div>
-        </a>
-    </div>
 
     <footer id="site-footer"></footer>
 
@@ -1347,11 +1325,8 @@
                         <div style="padding:1.5rem; background:#FFF7ED; border-left:3px solid #E07B00; border-radius:6px;">
                             <strong>No contractors have opted into repairs yet.</strong>
                             <p style="margin-top:0.5rem; font-size:0.9rem; color:var(--text-light);">
-                                Your claim has been saved. Schedule an inspection and a contractor will diagnose the issue on site.
+                                Your claim has been saved. We'll notify you as soon as a contractor opts in to handle your repair.
                             </p>
-                            <a href="/schedule-inspection.html" class="btn btn-primary btn-sm" style="margin-top:1rem; display:inline-block;">
-                                📅 Schedule an Inspection
-                            </a>
                         </div>
                     `;
                     return;

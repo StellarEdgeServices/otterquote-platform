@@ -31,7 +31,20 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
-import { getHomeownerName } from "../_shared/getHomeownerName.ts";
+// Inlined from _shared/getHomeownerName.ts (shared file unavailable via body-deploy API)
+interface HomeownerProfile {
+  fullName: string;
+  email: string;
+}
+// deno-lint-ignore no-explicit-any
+async function getHomeownerName(supabase: any, claimId: string | null | undefined): Promise<HomeownerProfile> {
+  const empty: HomeownerProfile = { fullName: "", email: "" };
+  if (!claimId) return empty;
+  const { data: claimData } = await supabase.from("claims").select("user_id").eq("id", claimId).single();
+  if (!claimData?.user_id) return empty;
+  const { data: profile } = await supabase.from("profiles").select("full_name, email").eq("id", claimData.user_id).single();
+  return { fullName: profile?.full_name ?? "", email: profile?.email ?? "" };
+}
 
 const FUNCTION_NAME = "create-docusign-envelope";
 
@@ -116,27 +129,52 @@ function base64urlDecode(str: string): Uint8Array {
   return new Uint8Array(binary.split("").map((c) => c.charCodeAt(0)));
 }
 
-async function importRsaPrivateKey(pemBase64: string): Promise<CryptoKey> {
-  let b64 = pemBase64.trim();
-  if (b64.includes("-----BEGIN")) {
-    const match = b64.match(/-----BEGIN[^-]+-----([A-Za-z0-9+/=\s]+)-----END[^-]+-----/);
-    if (match) {
-      b64 = match[1];
-    } else {
-      b64 = b64.replace(/-----[^-]+-----/g, "");
-    }
+// ASN.1 DER helper for PKCS#1 -> PKCS#8 wrapping
+function encodeAsn1TLV(tag: number, content: Uint8Array): Uint8Array {
+  const len = content.length;
+  let header: Uint8Array;
+  if (len < 128) {
+    header = new Uint8Array([tag, len]);
+  } else if (len < 256) {
+    header = new Uint8Array([tag, 0x81, len]);
+  } else {
+    header = new Uint8Array([tag, 0x82, (len >> 8) & 0xff, len & 0xff]);
   }
-  b64 = b64.replace(/\s+/g, "");
+  const out = new Uint8Array(header.length + len);
+  out.set(header, 0);
+  out.set(content, header.length);
+  return out;
+}
 
-  const pemBinary = atob(b64);
-  const pemBytes = new Uint8Array(pemBinary.split("").map((c) => c.charCodeAt(0)));
-  return await crypto.subtle.importKey(
-    "pkcs8",
-    pemBytes,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
+function wrapPkcs1InPkcs8(pkcs1Der: Uint8Array): Uint8Array {
+  // AlgorithmIdentifier SEQUENCE { OID rsaEncryption, NULL }
+  const algId = new Uint8Array([
+    0x30, 0x0d,
+    0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+    0x05, 0x00,
+  ]);
+  const version = new Uint8Array([0x02, 0x01, 0x00]);
+  const octetString = encodeAsn1TLV(0x04, pkcs1Der);
+  const inner = new Uint8Array(version.length + algId.length + octetString.length);
+  inner.set(version, 0);
+  inner.set(algId, version.length);
+  inner.set(octetString, version.length + algId.length);
+  return encodeAsn1TLV(0x30, inner);
+}
+
+async function importRsaPrivateKey(pemBase64: string): Promise<CryptoKey> {
+  const b64 = pemBase64
+    .replace(/-----BEGIN[^-]*-----/g, "")
+    .replace(/-----END[^-]*-----/g, "")
+    .replace(/\s+/g, "");
+  const der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const algo = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
+  // Try PKCS#8 first; fall back to wrapping PKCS#1 (SP #5 — DocuSign key is PKCS#1 format)
+  try {
+    return await crypto.subtle.importKey("pkcs8", der, algo, false, ["sign"]);
+  } catch {
+    return await crypto.subtle.importKey("pkcs8", wrapPkcs1InPkcs8(der), algo, false, ["sign"]);
+  }
 }
 
 async function createJwtAssertion(

@@ -113,6 +113,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     resolved.current = false;
 
+    // Resolve auth state from a session object. Shared by the onAuthStateChange
+    // listener and the proactive getSession() fetch below. The `resolved` ref
+    // ensures the first resolver wins — a later real event cannot double-resolve
+    // or flash a logged-in user out. (86e1mrwrx)
+    const resolveSession = async (session: Session | null) => {
+      if (resolved.current) return;
+      if (session?.user) {
+        // Resolve role + admin in parallel
+        const [role, isAdmin] = await Promise.all([
+          resolveRole(session.user),
+          resolveIsAdmin(session.user),
+        ]);
+        // A competing resolver may have won during the awaits above.
+        if (resolved.current) return;
+        setSbAtCookie(session);
+        setState({
+          user: session.user as unknown as AuthUser,
+          role,
+          isAdmin,
+          loading: false,
+        });
+      } else {
+        setSbAtCookie(null);
+        setState({ user: null, role: null, isAdmin: false, loading: false });
+      }
+      resolved.current = true;
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'TOKEN_REFRESHED' && session) {
@@ -128,34 +156,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        if (
-          (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') &&
-          !resolved.current
-        ) {
-          if (session?.user) {
-            // Resolve role + admin in parallel
-            const [role, isAdmin] = await Promise.all([
-              resolveRole(session.user),
-              resolveIsAdmin(session.user),
-            ]);
-            setSbAtCookie(session);
-            setState({
-              user: session.user as unknown as AuthUser,
-              role,
-              isAdmin,
-              loading: false,
-            });
-          } else {
-            // INITIAL_SESSION with no user → unauthenticated
-            setSbAtCookie(null);
-            setState({ user: null, role: null, isAdmin: false, loading: false });
-          }
-          resolved.current = true;
+        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+          await resolveSession(session);
         }
       }
     );
 
+    // ROOT-CAUSE FIX (86e1mrwrx): on a warm reload the Supabase client can emit
+    // INITIAL_SESSION synchronously from cached storage BEFORE this listener is
+    // attached, so the event is missed and the app hangs on loading:true (blank
+    // get-started page). Proactively fetch the current session so we resolve
+    // regardless of event timing; the `resolved` guard prevents a race with a
+    // real event.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      void resolveSession(session);
+    });
+
+    // DEFENSE-IN-DEPTH: if neither the event nor getSession() has resolved within
+    // 1.5s, lift the blank loading screen to the unauthenticated view. The
+    // functional update only flips `loading` and does NOT set `resolved`, so a
+    // late real session can still correct the state without a logged-out flash.
+    const fallbackTimer = setTimeout(() => {
+      setState((prev) =>
+        prev.loading
+          ? { user: null, role: null, isAdmin: false, loading: false }
+          : prev
+      );
+    }, 1500);
+
     return () => {
+      clearTimeout(fallbackTimer);
       subscription.unsubscribe();
     };
   }, []);
