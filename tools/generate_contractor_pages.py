@@ -11,9 +11,7 @@ Usage:
   python tools/generate_contractor_pages.py [--dry-run]
 
 Notes:
-  - SQL migration for public_directory_optin column is Tier 3 pending approval (86e1h5hze).
-    Until that migration lands, all approved contractors are treated as opted-in.
-    After migration: add WHERE c.public_directory_optin = true to the query.
+  - Only contractors with public_directory_optin = true are included (SQL v83, live).
   - Requires SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY env vars or .deploy-secrets file.
   - Run from repo root: python tools/generate_contractor_pages.py
 """
@@ -87,10 +85,7 @@ def slugify(text: str) -> str:
 
 
 def fetch_contractors(service_key: str) -> list:
-    """
-    Fetch approved contractors with their profile data.
-    TODO (post-migration 86e1h5hze): add public_directory_optin=eq.true filter.
-    """
+    """Fetch approved contractors that have opted into the public directory (SQL v83)."""
     fields = (
         "id,company_name,about_us,why_choose_us,trades,service_counties,"
         "service_area_description,years_in_business,google_reviews_url,bbb_url,"
@@ -98,7 +93,10 @@ def fetch_contractors(service_key: str) -> list:
         "cert_status,intro_video_path,gallery_photo_urls,preferred_brands,"
         "address_city,address_state,created_at"
     )
-    path = f"contractors?select={fields}&status=eq.approved&order=company_name.asc"
+    path = (
+        f"contractors?select={fields}&status=eq.approved"
+        f"&public_directory_optin=eq.true&order=company_name.asc"
+    )
     return supabase_get(service_key, path)
 
 
