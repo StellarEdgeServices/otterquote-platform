@@ -386,6 +386,12 @@
 
         <div id="form-error" class="form-error" style="display:none;"></div>
 
+        <!-- D-243: Shown when checkEmailExists returns true (backend EF wired at deploy time) -->
+        <div id="email-exists-msg" style="display:none; background:rgba(224,123,0,0.1); border:1px solid rgba(224,123,0,0.4); border-radius:0.375rem; padding:0.75rem 1rem; text-align:center; margin-bottom:0.75rem;">
+          <span style="color:var(--amber); font-weight:600;">An account already exists for this email.</span>
+          <a href="login.html" style="color:var(--amber); font-weight:600; margin-left:0.25rem;">Sign in here &rarr;</a>
+        </div>
+
         <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">
           Create My Free Account
         </button>
@@ -517,10 +523,17 @@
     }).catch(function() {}); // Intentionally fire-and-forget — do not await
   }
 
+  // D-243: Stub for existing-account detection. Returns false until check-email-exists EF is
+  // approved (Tier 3 gate, D-220) and deployed. When wired: POST /functions/v1/check-email-exists.
+  async function checkEmailExists(_email) {
+    return false;
+  }
+
   // Form submission
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorEl.style.display = 'none';
+    document.getElementById('email-exists-msg').style.display = 'none';
 
     const firstName = document.getElementById('first-name').value.trim();
     const lastName = document.getElementById('last-name').value.trim();
@@ -544,6 +557,12 @@
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       errorEl.textContent = 'Please enter a valid email address.';
       errorEl.style.display = 'block';
+      return;
+    }
+
+    // D-243: Account-exists gate — stop before magic link if email is already registered
+    if (await checkEmailExists(email)) {
+      document.getElementById('email-exists-msg').style.display = 'block';
       return;
     }
 
