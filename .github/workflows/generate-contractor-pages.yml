@@ -1,0 +1,42 @@
+name: Generate Contractor Directory Pages
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # nightly at 2:00 AM UTC
+  workflow_dispatch:       # allow manual trigger from Actions UI
+
+jobs:
+  generate:
+    name: Generate Contractor Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write  # required to push generated files back to repo
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate contractor pages
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python3 tools/generate_contractor_pages.py
+
+      - name: Commit generated pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add contractor/ sitemap.xml
+          if git diff --staged --quiet; then
+            echo "No changes to commit — pages are up to date."
+          else
+            git commit -m "chore(seo): regenerate contractor directory pages [skip ci]"
+            git push
+          fi
