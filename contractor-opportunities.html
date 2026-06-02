@@ -291,6 +291,13 @@
         let currentContractor = null;
         const oppDocMap = {}; // claimId → { estimateFilename, measurementsAvailable } — populated by getDocLinksHtml()
 
+        // D-178: States where the contractor marketplace is live.
+        const OPEN_STATES = ['IN'];
+        const STATE_NAMES = {
+            IN:'Indiana', OH:'Ohio', IL:'Illinois', KY:'Kentucky',
+            MI:'Michigan', MO:'Missouri', TN:'Tennessee', WI:'Wisconsin',
+        };
+
         // =============================================================
         // ZIP CODE DISTANCE CALCULATION (Option C — zip centroids)
         // Sources: US Census ZCTA5 centroids (approximate, sufficient
@@ -484,6 +491,13 @@
                   window.location.href = '/contractor-dashboard.html';
                   return;
                 }
+              }
+
+              // D-178: State gate — show parked-state UX for contractors in not-yet-open states
+              const contractorState = (currentContractor?.address_state || '').toUpperCase();
+              if (contractorState && !OPEN_STATES.includes(contractorState)) {
+                renderParkedState(contractorState);
+                return;
               }
             } catch (err) {
               console.error('Error loading contractor:', err);
@@ -1047,6 +1061,22 @@
             if (modal) modal.style.display = 'none';
         }
 
+
+        // D-178: Parked-state message — contractor's registered state not yet open
+        function renderParkedState(stateCode) {
+            const stateName = STATE_NAMES[stateCode] || stateCode;
+            const countEl = document.getElementById('resultsCount');
+            const el = document.getElementById('opportunitiesContainer');
+            if (countEl) countEl.style.display = 'none';
+            if (!el) return;
+            el.innerHTML = `
+                <div class="empty-state-early">
+                    <span class="esa-otter">&#x1F9A6;</span>
+                    <h2 class="esa-headline">We&rsquo;re launching in <em>${escHtml(stateName)}</em> soon.</h2>
+                    <p class="esa-sub">You&rsquo;re on the list &mdash; we&rsquo;ll notify you the moment jobs become available in your area.</p>
+                    <div class="esa-notify-pill">&#x1F4F2;&nbsp; You&rsquo;ll be the first to know when we go live near you.</div>
+                </div>`;
+        }
 
         function applyFilters() {
             const jobType  = document.getElementById('jobTypeFilter')  ? document.getElementById('jobTypeFilter').value  : '';
