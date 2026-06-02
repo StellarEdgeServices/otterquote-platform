@@ -74,6 +74,9 @@ export interface TestState {
   contractorUserId: string;
   contractorId: string;
   contractorEmail: string;
+  /** Dedicated contractor for d210-document-gate.spec.ts — starts in pending_approval. */
+  d210ContractorId: string;
+  d210ContractorEmail: string;
   testClaimId: string;
   testRetailClaimId: string;
   baseUrl: string;

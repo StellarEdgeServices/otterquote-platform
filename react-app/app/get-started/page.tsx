@@ -744,7 +744,7 @@ export default function GetStartedPage() {
 
                 <p className="text-sm-center">
                   Are you a contractor?{' '}
-                  <a href="https://otterquote.com/contractor-login.html">Sign in to your contractor account</a>
+                  <a href="https://otterquote.com/contractor-join.html">Apply to join here</a>
                 </p>
               </form>
             )}
