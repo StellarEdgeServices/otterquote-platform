@@ -77,7 +77,7 @@ async function findOrCreateUser(email, role) {
 
   const lookupUrl =
     `${SUPABASE_URL}/auth/v1/admin/users` +
-    `?email=${encodeURIComponent(email)}&page=1&per_page=1`;
+    `?filter=${encodeURIComponent(email)}&page=1&per_page=1`;
   const lookupResp = await fetch(lookupUrl, {
     headers: {
       Authorization: `Bearer ${SERVICE_KEY}`,
