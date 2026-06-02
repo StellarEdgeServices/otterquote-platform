@@ -9,6 +9,21 @@ function escapeHtml(str) {
   return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/**
+ * Clear the domain-wide auth cookies and canonical localStorage key.
+ * Called when Auth.getSession() detects a fast-path / live-session identity
+ * mismatch (ADR-012) or during sign-out to prevent identity bleed across accounts.
+ */
+function _clearStaleAuthCookies() {
+  try {
+    if (window.OtterQuoteCookieStorage) {
+      window.OtterQuoteCookieStorage.removeItem(
+        window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth'
+      );
+    }
+  } catch (e) { /* non-fatal */ }
+}
+
 window.Auth = {
   /** Get current session - robust race-free implementation.
    *
@@ -61,8 +76,28 @@ window.Auth = {
                 if (jwtParts.length === 3) {
                   var jwtPayload = JSON.parse(atob(jwtParts[1].replace(/-/g, '+').replace(/_/g, '/')));
                   if (jwtPayload.exp && jwtPayload.exp > Math.floor(Date.now() / 1000)) {
-                    // Token still valid locally — skip network call entirely
-                    return parsed;
+                    // Token valid locally — reconcile against live sb client before returning.
+                    // Prevents domain-wide cookie identity bleed when a different account
+                    // was active in the same browser (ADR-012 / D-212 — task 86e1p4n2k).
+                    try {
+                      var liveResult = await sb.auth.getSession();
+                      var liveSession = liveResult && liveResult.data && liveResult.data.session;
+                      if (liveSession && liveSession.user && liveSession.user.id) {
+                        if (liveSession.user.id !== jwtPayload.sub) {
+                          // Mismatch — live client holds a different user.
+                          // Prefer the live session and clear the stale domain cookies.
+                          console.warn(
+                            '[Auth.getSession] identity mismatch: fast-path uid=' + jwtPayload.sub +
+                            ' live uid=' + liveSession.user.id + '. Clearing stale cookies.'
+                          );
+                          _clearStaleAuthCookies();
+                          return liveSession;
+                        }
+                        // IDs match — fast-path is consistent with live session
+                        return parsed;
+                      }
+                      // No live session user — fall through to network resolution path
+                    } catch (e) { /* sb.auth.getSession() threw — fall through */ }
                   }
                 }
               } catch (e) { /* JWT decode failed — fall through to network path */ }
@@ -185,6 +220,7 @@ window.Auth = {
   /** Sign out */
   async signOut() {
     if (!sb) return;
+    _clearStaleAuthCookies(); // Eagerly clear domain-wide cookies before sign-out
     await sb.auth.signOut();
     window.location.href = '/index.html';
   },
