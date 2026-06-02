@@ -299,6 +299,22 @@ async function seed() {
     console.log(`  ✅ Created D210 contractor record (${d210ContractorId})`);
   }
 
+  // ── 5d. Clean up orphaned D-210 contractor rows ──────────────────────────
+  // Multiple seed runs can create duplicate D-210 auth users if the previous
+  // user was deleted from auth.users but its contractors row was not cleaned up.
+  // Delete any D-210 email contractors rows that are NOT the current valid one.
+  console.log('5d. Cleaning up orphaned D-210 contractor rows...');
+  const { error: orphanErr } = await supabase
+    .from('contractors')
+    .delete()
+    .like('email', 'test-contractor-d210@%')
+    .neq('id', d210ContractorId);
+  if (orphanErr) {
+    console.warn(`  ⚠️  Orphaned D-210 cleanup warning: ${orphanErr.message}`);
+  } else {
+    console.log('  ✅ Orphaned D-210 contractor rows cleaned up');
+  }
+
   // ── 6. Fresh test claim ──────────────────────────────────────────────────
   console.log('6. Test claim (delete old, create fresh)...');
   // hover_orders.claim_id has a FK to claims — must delete hover_orders first

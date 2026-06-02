@@ -152,13 +152,27 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
   });
 
   // Restore D-210 contractor to its seed state (pending_approval/1) so the next
-  // run starts clean. This contractor is dedicated to D-210 and is never used by
-  // other specs — no cross-spec contamination possible.
+  // run starts clean. This contractor is dedicated to D-210 — cross-spec
+  // contamination is prevented by seed (step 5c) creating a dedicated user.
   test.afterAll(async () => {
     await setContractorState(state.d210ContractorId, { status: 'pending_approval', onboarding_step: 1 });
     console.log(
       `  D210 contractor ${state.d210ContractorId} restored to pending_approval/1 (seed state)`
     );
+  });
+
+  // Belt-and-suspenders: reset contractor to pending_approval/1 before each test.
+  // E4/E6 temporarily set the contractor active and their finally blocks restore it,
+  // but if a prior retry or an external force left the contractor active, wizard-
+  // visible tests (E5, E7-E14, E16-E17) fail on first attempt. This makes every
+  // test in Flow E start from a known state. E4/E6 explicitly override it inside
+  // their test body, so this does not affect their logic.
+  test.beforeEach(async () => {
+    if (!state?.d210ContractorId) return;
+    await setContractorState(state.d210ContractorId, {
+      status: 'pending_approval',
+      onboarding_step: 1,
+    });
   });
 
   test('E1: pending contractor is redirected away from contractor-opportunities.html', async ({ page }) => {

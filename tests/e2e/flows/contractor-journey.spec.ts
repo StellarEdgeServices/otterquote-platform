@@ -24,7 +24,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { generateMagicLink, getTestState, type TestState } from '../helpers/auth.js';
+import { generateMagicLink, getTestState, type TestState, createAdminClient } from '../helpers/auth.js';
 import { verifyBidPersisted } from '../helpers/db.js';
 import { runArtifactCapture, isDocuSignE2EEnabled } from '../helpers/docusign-artifacts.js';
 
@@ -74,8 +74,18 @@ async function loginAsContractor(page: import('@playwright/test').Page, state: T
 test.describe('Flow A — Contractor Journey', () => {
   let state: TestState;
 
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     state = getTestState();
+    // Ensure the test contractor starts active. D-210 spec (which may share the
+    // same contractor ID in some staging DB states) sets pending_approval in its
+    // own beforeAll. Belt-and-suspenders reset so A-flow is never blocked by a
+    // stale pending_approval status from a prior spec or interrupted run.
+    const supabase = createAdminClient();
+    await supabase
+      .from('contractors')
+      .update({ status: 'active', onboarding_step: 4 })
+      .eq('id', state.contractorId);
+    console.log(`  A-flow: contractor ${state.contractorId} confirmed active/4 before A-flow tests`);
   });
 
 
