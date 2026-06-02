@@ -87,8 +87,18 @@ async function unlockDesignGate(claimId: string): Promise<void> {
 test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
   let state: TestState;
 
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     state = getTestState();
+    // Ensure contractor is active before C-flow tests run. D-210 spec may have
+    // set it to pending_approval (especially when d210ContractorId collides with
+    // contractorId on the staging DB). This prevents the pending_approval redirect
+    // on contractor-opportunities.html that blocks C2-C4.
+    const supabase = createAdminClient();
+    await supabase
+      .from('contractors')
+      .update({ status: 'active', onboarding_step: 4 })
+      .eq('id', state.contractorId);
+    console.log(`  C-flow: contractor ${state.contractorId} confirmed active/4 before C-flow tests`);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
