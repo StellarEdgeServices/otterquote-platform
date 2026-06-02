@@ -401,7 +401,11 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
     await page.goto('/contractor-pre-approval.html');
     await page.waitForLoadState('load');
     await expect(page.locator('#panelWizard')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('#card-license')).toBeVisible();
+    // Wait for #step2 to be visible — it starts display:none in HTML and is
+    // shown by showStep(2) after the async init() DB fetch. On slow CI runners
+    // #panelWizard can become visible slightly before showStep() finishes.
+    await expect(page.locator('#step2')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#card-license')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('#license-no-license')).toHaveCount(1);
     const noLicenseLabel = page.locator('#license-no-license-label');
     if (await noLicenseLabel.isVisible({ timeout: 3_000 }).catch(() => false)) {
@@ -418,6 +422,7 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
     await page.goto('/contractor-pre-approval.html');
     await page.waitForLoadState('load');
     await expect(page.locator('#panelWizard')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#step2')).toBeVisible({ timeout: 15_000 });
     const addLicenseBtn = page.locator('#license-add-btn');
     await expect(addLicenseBtn).toBeVisible();
     await addLicenseBtn.click();
