@@ -271,6 +271,12 @@
 
 
 
+                    <!-- D-243: Shown when checkEmailExists returns true (backend EF wired at deploy time) -->
+                    <div id="email-exists-msg" style="display:none; background:rgba(224,123,0,0.1); border:1px solid rgba(224,123,0,0.4); border-radius:0.375rem; padding:0.75rem 1rem; text-align:center; margin-bottom:0.75rem;">
+                      <span style="color:var(--amber); font-weight:600;">An account already exists for this email.</span>
+                      <a href="contractor-login.html" style="color:var(--amber); font-weight:600; margin-left:0.25rem;">Sign in here &rarr;</a>
+                    </div>
+
                     <button type="submit" id="submitBtn" class="submit-btn">Continue &mdash; Send My Login Link</button>
                 </form>
             </div>
@@ -289,8 +295,15 @@
         // Sends magic link with redirectTo=contractor-pre-approval.html.
         // All agreements and upload collected post-auth (pages 2-4).
 
+        // D-243: Stub for existing-account detection. Returns false until check-email-exists EF is
+        // approved (Tier 3 gate, D-220) and deployed. When wired: POST /functions/v1/check-email-exists.
+        async function checkEmailExists(_email) {
+            return false;
+        }
+
         document.getElementById('contractorForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            document.getElementById('email-exists-msg').style.display = 'none';
 
             const email       = document.getElementById('businessEmail').value.trim();
             const bizName     = document.getElementById('businessName').value.trim();
@@ -302,6 +315,12 @@
             if (!email) { alert('Please enter your business email address.'); return; }
             if (!bizName || !firstName || !lastName || !phone) {
                 alert('Please complete all required fields.');
+                return;
+            }
+
+            // D-243: Account-exists gate — stop before magic link if email is already registered
+            if (await checkEmailExists(email)) {
+                document.getElementById('email-exists-msg').style.display = 'block';
                 return;
             }
 
