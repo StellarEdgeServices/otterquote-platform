@@ -787,6 +787,27 @@
     </div>
 
     <!-- ═══════════════════════════════════════ -->
+    <!-- Public Contractor Directory (SEO P2)   -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="settings-card">
+      <div class="settings-card-title">Public Contractor Directory</div>
+      <div class="settings-card-subtitle">
+        Opt in to be listed on the public Otter Quotes contractor directory. Homeowners researching contractors can discover your business through search engines and our directory pages.
+      </div>
+      <div class="autobid-toggle-row" style="margin-top:var(--sp-4);">
+        <label class="switch">
+          <input type="checkbox" id="publicDirectoryOptinToggle">
+          <span class="slider"></span>
+        </label>
+        <div class="autobid-toggle-label">List me in the Otter Quotes public contractor directory</div>
+      </div>
+      <p style="font-size:0.8rem;color:var(--slate);margin:var(--sp-3) 0 0;">Off by default. When on, your company name, service area, and trade are visible on the public directory.</p>
+      <div style="margin-top: var(--sp-6); border-top: 1px solid var(--light); padding-top: var(--sp-4);">
+        <button class="save-button" onclick="saveSettings()" style="font-size:0.875rem; padding:var(--sp-3) var(--sp-6);">Save Directory Settings</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
     <!-- Auto-Bid Settings (D-193: moved page) -->
     <!-- ═══════════════════════════════════════ -->
     <div class="settings-card" style="text-align:center; padding: var(--sp-10) var(--sp-8);">
@@ -2312,6 +2333,9 @@
             document.getElementById('autoRenewBidsToggle').checked = data.auto_renew_bids;
           }
 
+          // SEO P2: load public_directory_optin toggle (defaults to false per v83 column default)
+          document.getElementById('publicDirectoryOptinToggle').checked = !!data.public_directory_optin;
+
           // Update payment method UI
           updatePaymentMethodUI();
 
@@ -2605,6 +2629,7 @@
           bid_renewal_requested: document.getElementById('notifBidRenewalRequested').checked, // D-150
         },
         auto_renew_bids: document.getElementById('autoRenewBidsToggle').checked, // D-150
+        public_directory_optin: document.getElementById('publicDirectoryOptinToggle').checked, // SEO P2
         updated_at: new Date().toISOString(),
       };
 

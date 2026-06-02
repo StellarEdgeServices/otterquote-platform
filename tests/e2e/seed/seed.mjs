@@ -200,9 +200,85 @@ async function seed() {
   if (tmplErr) throw new Error(`Contractor templates insert failed: ${tmplErr.message}`);
   console.log(`  ✅ Contractor templates seeded (roofing/insurance, roofing/retail, siding/retail, siding/insurance)`);
 
+  // ── 5c. D-210 dedicated test contractor ──────────────────────────────────
+  // Isolated from the main flow-A contractor so D-210 beforeAll/afterAll status
+  // flips never race with A8 (or any other spec) on concurrent CI runs.
+  console.log('5c. D-210 document gate contractor (dedicated, starts pending_approval)...');
+  const D210_CONTRACTOR_EMAIL = 'test-contractor-d210@otterquote-internal.test';
+  const d210ContractorUserId = await findOrCreateUser(D210_CONTRACTOR_EMAIL, 'contractor');
+
+  const { error: d210ProfErr } = await supabase.from('profiles').upsert(
+    {
+      id: d210ContractorUserId,
+      full_name: 'Test D210 Contractor',
+      email: D210_CONTRACTOR_EMAIL,
+      phone: '317-555-0201',
+      role: 'contractor',
+      is_test: true,
+    },
+    { onConflict: 'id' }
+  );
+  if (d210ProfErr) throw new Error(`D210 contractor profile upsert failed: ${d210ProfErr.message}`);
+
+  const { data: existingD210C } = await supabase
+    .from('contractors')
+    .select('id')
+    .eq('user_id', d210ContractorUserId)
+    .maybeSingle();
+
+  const d210Payload = {
+    user_id: d210ContractorUserId,
+    status: 'pending_approval',
+    company_name: 'Test D210 Roofing Co (E2E)',
+    contact_name: 'Test D210 Contractor',
+    email: D210_CONTRACTOR_EMAIL,
+    phone: '317-555-0201',
+    trades: ['roofing'],
+    service_counties: ['IN:*'],
+    address_state: 'IN',
+    years_in_business: 5,
+    has_general_liability: true,
+    has_workers_comp: true,
+    agreement_accepted_at: new Date().toISOString(),
+    agreement_version: 'v1-2026-04',
+    cpa_accepted_at: new Date().toISOString(),
+    cpa_version: 'v1-2026-04',
+    attestation_accepted_at: new Date().toISOString(),
+    attestation_signer_name: 'Test D210 Contractor',
+    attestation_signer_title: 'Owner',
+    onboarding_step: 1,
+    coi_file_url: 'https://staging--jade-alpaca-b82b5e.netlify.app/test-coi-placeholder.pdf',
+    coi_expires_at: '2027-12-31',
+    coi_uploaded_at: new Date().toISOString(),
+    coi_insurer: 'E2E Test Insurance Co',
+    coi_policy_number: 'TEST-E2E-D210-00001',
+  };
+
+  let d210ContractorId;
+  if (existingD210C) {
+    d210ContractorId = existingD210C.id;
+    const { error: d210UpdErr } = await supabase
+      .from('contractors')
+      .update(d210Payload)
+      .eq('id', d210ContractorId);
+    if (d210UpdErr) throw new Error(`D210 contractor update failed: ${d210UpdErr.message}`);
+    console.log(`  ✅ Updated D210 contractor record (${d210ContractorId})`);
+  } else {
+    const { data: newD210C, error: d210InsErr } = await supabase
+      .from('contractors')
+      .insert(d210Payload)
+      .select('id')
+      .single();
+    if (d210InsErr) throw new Error(`D210 contractor insert failed: ${d210InsErr.message}`);
+    d210ContractorId = newD210C.id;
+    console.log(`  ✅ Created D210 contractor record (${d210ContractorId})`);
+  }
+
   // ── 6. Fresh test claim ──────────────────────────────────────────────────
   console.log('6. Test claim (delete old, create fresh)...');
-  // Delete previous test claims to ensure a clean state each run
+  // hover_orders.claim_id has a FK to claims — must delete hover_orders first
+  // or the claims DELETE silently fails and claims accumulate across runs.
+  await supabase.from('hover_orders').delete().eq('user_id', homeownerUserId);
   await supabase.from('claims').delete().eq('user_id', homeownerUserId);
 
   const { data: claim, error: claimErr } = await supabase
@@ -385,6 +461,8 @@ async function seed() {
     contractorUserId,
     contractorId,
     contractorEmail: CONTRACTOR_EMAIL,
+    d210ContractorId,
+    d210ContractorEmail: D210_CONTRACTOR_EMAIL,
     testClaimId,
     testRetailClaimId,
     baseUrl: BASE_URL,
@@ -396,8 +474,9 @@ async function seed() {
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('  ✅ Seed complete');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`  Homeowner:  ${HOMEOWNER_EMAIL}`);
-  console.log(`  Contractor: ${CONTRACTOR_EMAIL} → contractors.id ${contractorId}`);
+  console.log(`  Homeowner:         ${HOMEOWNER_EMAIL}`);
+  console.log(`  Contractor:        ${CONTRACTOR_EMAIL} → contractors.id ${contractorId}`);
+  console.log(`  D210 Contractor:   ${D210_CONTRACTOR_EMAIL} → contractors.id ${d210ContractorId}`);
   console.log(`  Test claim (insurance): ${testClaimId}`);
   console.log(`  Test claim (retail siding): ${testRetailClaimId}`);
   console.log(`  State file: .test-state.json\n`);

@@ -39,15 +39,17 @@ SYMPTOM_KEYWORDS = re.compile(
 
 # Ordered most-specific first. Each entry: (regex_pattern, subsystem_name)
 SUBSYSTEM_RULES: list[tuple[str, str]] = [
+    (r'(?:^|/)CLAUDE\.md$', 'docs'),
+    (r'(?:^|/)\.claude/commands/|slash[-_]command', 'tooling'),
     (r'netlify/edge-functions/admin', 'admin'),
-    (r'netlify/edge-functions/auth-callback|js/auth\.js|auth-callback\.html|login\.html|contractor-login\.html|contractor-join\.html', 'auth'),
+    (r'netlify/edge-functions/auth-callback|js/auth\.js|auth-callback|login-gate|contractor-login|contractor-join|(?:^|/)login\.html', 'auth'),
     (r'netlify/edge-functions/create-docusign|docusign', 'contracts'),
     (r'netlify/edge-functions/send-email|mailgun|email', 'email'),
     (r'netlify/edge-functions/stripe|stripe|payment', 'payment'),
     (r'netlify/edge-functions', 'edge-functions'),
     (r'contractor', 'contractor'),
     (r'homeowner|claim-start|claimant', 'homeowner'),
-    (r'sql/|supabase/migrations', 'database'),
+    (r'sql/|supabase/migrations', 'schema'),
     (r'scripts/', 'tooling'),
     (r'\.github/', 'ci-cd'),
     (r'netlify\.toml|_redirects|_headers', 'deploy'),
