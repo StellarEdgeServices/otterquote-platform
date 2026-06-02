@@ -202,7 +202,9 @@ async function seed() {
 
   // ── 6. Fresh test claim ──────────────────────────────────────────────────
   console.log('6. Test claim (delete old, create fresh)...');
-  // Delete previous test claims to ensure a clean state each run
+  // hover_orders.claim_id has a FK to claims — must delete hover_orders first
+  // or the claims DELETE silently fails and claims accumulate across runs.
+  await supabase.from('hover_orders').delete().eq('user_id', homeownerUserId);
   await supabase.from('claims').delete().eq('user_id', homeownerUserId);
 
   const { data: claim, error: claimErr } = await supabase
