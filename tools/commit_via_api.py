@@ -53,6 +53,94 @@ _RETRY_DELAYS = (0, 2, 6)
 _LEGACY_STAGING_BRANCHES = {"staging"}
 
 
+def read_repo_text(path: str, working_dir: str) -> tuple[str, str]:
+    """Read a repo file in binary mode and return (text, newline_style).
+
+    IMPORTANT: Always use this function when reading file content you intend to
+    edit and re-commit via commit_files(). Never use subprocess text mode or
+    open(path, 'r') without 'rb' — text mode silently normalizes CRLF to LF,
+    causing a full-file-rewrite diff on files stored as CRLF in the repo.
+    (Root cause of the repair-intake.html phantom-rewrite incident, 2026-06-01.)
+
+    Args:
+        path:        Repo-relative file path.
+        working_dir: Local directory where path is resolved.
+
+    Returns:
+        (text, newline) where newline is '\\r\\n' if the file uses Windows line
+        endings, or '\\n' otherwise. The returned text always uses '\\n' as the
+        line separator — use encode_with_newlines(text, newline) to restore the
+        original style before writing back.
+    """
+    full = os.path.join(working_dir, path)
+    with open(full, "rb") as fh:
+        raw = fh.read()
+    newline = "\r\n" if b"\r\n" in raw else "\n"
+    text = raw.decode("utf-8", errors="replace").replace("\r\n", "\n")
+    return text, newline
+
+
+def encode_with_newlines(text: str, newline: str) -> bytes:
+    """Re-encode text with the original newline style detected by read_repo_text().
+
+    Use this to write back an edited file so its line endings match the repo:
+
+        text, nl = read_repo_text("foo.html", working_dir)
+        text = text.replace("old string", "new string")
+        with open(os.path.join(working_dir, "foo.html"), "wb") as fh:
+            fh.write(encode_with_newlines(text, nl))
+        commit_files(["foo.html"], ...)  # now produces a surgical diff
+
+    Args:
+        text:    Normalized LF text (as returned by read_repo_text).
+        newline: '\\r\\n' or '\\n' (as returned by read_repo_text).
+
+    Returns:
+        UTF-8 encoded bytes with the requested line endings applied.
+    """
+    if newline == "\r\n":
+        text = text.replace("\n", "\r\n")
+    return text.encode("utf-8")
+
+
+def _warn_lineending_mismatch(path: str, new_bytes: bytes, head_sha: str) -> None:
+    """Warn to stderr if new_bytes has different line endings than the HEAD blob.
+
+    Detects CRLF->LF or LF->CRLF conversions that would produce a full-file-rewrite
+    diff despite only a small net change. Best-effort: silently skips on API errors.
+    """
+    try:
+        head_data = _request("GET", f"/repos/{REPO}/contents/{path}?ref={head_sha}")
+        encoded = head_data.get("content", "").replace("\n", "").replace("\r", "")
+        if not encoded:
+            return
+        head_bytes = base64.b64decode(encoded)
+    except Exception:
+        return  # best-effort guard; never block a commit
+
+    head_has_crlf = b"\r\n" in head_bytes
+    new_has_crlf = b"\r\n" in new_bytes
+
+    if head_has_crlf == new_has_crlf:
+        return  # consistent — no issue
+
+    # Line-ending mismatch found. Check if net byte change is small (likely phantom rewrite).
+    net_delta = abs(len(new_bytes) - len(head_bytes))
+    size_ratio = net_delta / max(len(head_bytes), 1)
+
+    direction = "CRLF→LF" if (head_has_crlf and not new_has_crlf) else "LF→CRLF"
+    severity = "PHANTOM REWRITE" if size_ratio < 0.05 else "line-ending change"
+
+    sys.stderr.write(
+        f"[commit_via_api] WARNING ({severity}): {path} stored as "
+        f"{'CRLF' if head_has_crlf else 'LF'} in repo but upload is "
+        f"{'LF' if not new_has_crlf else 'CRLF'}-only ({direction}). "
+        f"Net byte delta {net_delta:,} ({size_ratio:.1%} of file). "
+        f"This will produce a full-file-rewrite diff. "
+        f"Use read_repo_text()+encode_with_newlines() to preserve line endings.\n"
+    )
+
+
 class GitHubApiError(Exception):
     """Raised on any non-2xx response from the GitHub API."""
 
@@ -251,6 +339,20 @@ def commit_files(paths: list[str], message: str, branch: str,
     mirror of main and direct commits to it are blocked by branch protection
     (impl 2/6, May 13, 2026).
 
+    LINE ENDINGS WARNING: This function reads files from working_dir in binary
+    mode ('rb'), preserving whatever line endings are on disk. If a caller reads
+    a file in text mode (subprocess, open(f, 'r'), etc.) and writes it back, CRLF
+    sequences are silently stripped to LF on most systems, producing a
+    full-file-rewrite diff on any CRLF-stored repo file. To safely round-trip
+    text edits, use:
+        text, nl = read_repo_text(path, working_dir)   # binary-safe read
+        text = text.replace(...)                        # edit in LF-normalized space
+        with open(os.path.join(working_dir, path), "wb") as f:
+            f.write(encode_with_newlines(text, nl))     # restore original endings
+    This was the root cause of the repair-intake.html phantom-rewrite (2026-06-01).
+    A pre-commit guard (_warn_lineending_mismatch) emits a stderr warning if it
+    detects a mismatch between the uploaded blob and the HEAD blob's line endings.
+
     Args:
         paths:           Repo-relative file paths to commit.
         message:         Git commit message.
@@ -285,6 +387,12 @@ def commit_files(paths: list[str], message: str, branch: str,
     head_sha = get_branch_head(branch)
     head_commit = _get_commit(head_sha)
     head_tree_sha = head_commit["tree"]["sha"]
+
+    # Pre-commit line-ending guard: warn if any file has a CRLF<->LF mismatch vs HEAD.
+    # This catches edits made in subprocess/text mode that would produce phantom
+    # full-file-rewrite diffs. Use read_repo_text()+encode_with_newlines() to avoid.
+    for path, file_bytes in file_bytes_by_path.items():
+        _warn_lineending_mismatch(path, file_bytes, head_sha)
 
     blob_shas: dict[str, str] = {}
     for path, file_bytes in file_bytes_by_path.items():
