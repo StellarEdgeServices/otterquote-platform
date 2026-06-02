@@ -54,25 +54,50 @@ const STATE_FILE = resolve(__dirname, '..', '.test-state.json');
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async function findOrCreateUser(email, role) {
-  // Supabase admin.listUsers paginates at 1000 max — fine for our use case
-  const { data: listData, error: listErr } =
-    await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  if (listErr) throw new Error(`listUsers failed: ${listErr.message}`);
-
-  const existing = listData?.users?.find((u) => u.email === email);
-  if (existing) {
-    console.log(`  ✅ Existing ${role}: ${email} (${existing.id})`);
-    return existing.id;
-  }
-
-  const { data, error } = await supabase.auth.admin.createUser({
+  // Strategy: attempt createUser first — avoids an expensive listUsers full-scan
+  // on large projects (6K+ auth users + Disk IO throttle = timeout). On 422
+  // ("User already registered") fall back to a targeted email-filtered request
+  // against the auth admin REST endpoint. Fixes: 86e1nxn4x.
+  const { data: createData, error: createErr } = await supabase.auth.admin.createUser({
     email,
     email_confirm: true, // skip OTP verification for test accounts
     user_metadata: { role },
   });
-  if (error) throw new Error(`createUser(${email}) failed: ${error.message}`);
-  console.log(`  ✅ Created ${role}: ${email} (${data.user.id})`);
-  return data.user.id;
+
+  if (!createErr) {
+    console.log(`  ✅ Created ${role}: ${email} (${createData.user.id})`);
+    return createData.user.id;
+  }
+
+  // 422 = "User already registered" — look up the existing user via a targeted
+  // email-filtered admin REST request (avoids O(n_users) listUsers full-scan).
+  if (createErr.status !== 422) {
+    throw new Error(`createUser(${email}) failed: ${createErr.message}`);
+  }
+
+  const lookupUrl =
+    `${SUPABASE_URL}/auth/v1/admin/users` +
+    `?email=${encodeURIComponent(email)}&page=1&per_page=1`;
+  const lookupResp = await fetch(lookupUrl, {
+    headers: {
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,
+    },
+  });
+  if (!lookupResp.ok) {
+    throw new Error(
+      `getUserByEmail(${email}) HTTP ${lookupResp.status}: ${await lookupResp.text()}`
+    );
+  }
+  const body = await lookupResp.json();
+  const existing = body.users?.[0];
+  if (!existing) {
+    throw new Error(
+      `getUserByEmail(${email}): user not found after 422 on createUser`
+    );
+  }
+  console.log(`  ✅ Existing ${role}: ${email} (${existing.id})`);
+  return existing.id;
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
