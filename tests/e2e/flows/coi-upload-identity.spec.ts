@@ -119,6 +119,22 @@ test('COI-1: upload to own path succeeds and path uses live session uid, even wi
   // Wait for the pre-approval wizard to appear (confirms B's session initialized)
   await expect(page.locator('#panelWizard')).toBeVisible({ timeout: 15_000 });
 
+  // Wait for the live sb client session to definitively settle on B's uid.
+  // #panelWizard visible confirms the page's auth check passed, but the Supabase
+  // client's internal auth state can lag the DOM render by a frame or two — this
+  // was the source of the COI-1 flakiness (failed twice, passed on retry #2).
+  // Polling until sb.auth.getSession() returns bUserId makes COI-1 deterministic.
+  await page.waitForFunction(
+    async (bUid: string) => {
+      const sbClient = (window as any).sb; // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (!sbClient) return false;
+      const { data } = await sbClient.auth.getSession();
+      return data?.session?.user?.id === bUid;
+    },
+    bUserId,
+    { timeout: 10_000 }
+  );
+
   // Step 3: Probe the storage invariant directly via the global `sb` client.
   //
   // var sb is window-scoped (config.js uses `var`, not `let`), so page.evaluate
