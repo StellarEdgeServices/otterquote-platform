@@ -39,22 +39,43 @@ test.beforeAll(async () => {
   state = getTestState();
   const admin = createAdminClient();
 
-  // Find or create Account B auth user
-  const { data: listData, error: listErr } =
-    await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  if (listErr) throw new Error(`listUsers failed: ${listErr.message}`);
+  // Find or create Account B auth user.
+  // Strategy: createUser-first to avoid listUsers full-scan on 6K+ user projects
+  // (perPage:1000 times out with {} on IO-throttled Supabase). On 422 ("User
+  // already registered"), fall back to a targeted email-filter REST lookup.
+  // Mirrors the fix applied to seed.mjs in 23e58af (86e1nxn4x).
+  const { data: createData, error: createErr } = await admin.auth.admin.createUser({
+    email: B_EMAIL,
+    email_confirm: true,
+    user_metadata: { role: 'contractor' },
+  });
 
-  let existingB = listData?.users?.find((u) => u.email === B_EMAIL);
-  if (!existingB) {
-    const { data, error } = await admin.auth.admin.createUser({
-      email: B_EMAIL,
-      email_confirm: true,
-      user_metadata: { role: 'contractor' },
+  let existingB: { id: string } | null = createData?.user ?? null;
+  if (createErr) {
+    if (createErr.status !== 422) {
+      throw new Error(`createUser(B) failed: ${createErr.message ?? JSON.stringify(createErr)}`);
+    }
+    // 422 = "User already registered" — targeted email-filter REST lookup
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const lookupUrl =
+      `${supabaseUrl}/auth/v1/admin/users` +
+      `?filter=${encodeURIComponent(B_EMAIL)}&page=1&per_page=1`;
+    const lookupResp = await fetch(lookupUrl, {
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
     });
-    if (error) throw new Error(`createUser(B) failed: ${error.message}`);
-    existingB = data.user!;
+    if (!lookupResp.ok) {
+      throw new Error(
+        `getUserByEmail(${B_EMAIL}) HTTP ${lookupResp.status}: ${await lookupResp.text()}`
+      );
+    }
+    const body = (await lookupResp.json()) as { users?: Array<{ id: string }> };
+    existingB = body.users?.[0] ?? null;
+    if (!existingB) {
+      throw new Error(`getUserByEmail(${B_EMAIL}): user not found after 422 on createUser`);
+    }
   }
-  bUserId = existingB.id;
+  bUserId = existingB!.id;
 
   // Reset B's contractor row to a clean pre-approval state (onboarding_step=1).
   // This ensures B lands on step 2 (documents) when loading the pre-approval page.

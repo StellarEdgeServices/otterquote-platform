@@ -269,7 +269,9 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
     try {
       await loginAsContractor(page, state);
       await page.goto('/contractor-pre-approval.html');
-      await page.waitForURL(/contractor-dashboard/, { timeout: 15_000 });
+      // 30_000 (was 15_000): pre-approval auth init + DB fetch + redirect can
+      // exceed 15s on IO-throttled staging under CI load (86e1ppn36).
+      await page.waitForURL(/contractor-dashboard/, { timeout: 30_000 });
       await expect(page).toHaveURL(/contractor-dashboard/);
       console.log('  E6 pass: active contractor redirected from pre-approval');
     } finally {
