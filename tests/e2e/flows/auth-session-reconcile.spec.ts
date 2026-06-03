@@ -148,16 +148,28 @@ test('AR-5: Auth.getSession() returns live uid when sb-otterquote-at cookie has 
         })
       );
       const staleJwt = h + '.' + p + '.fake_signature_for_test_only';
+      // Mirror getCookieDomain() from cookie-storage.js exactly — Netlify preview
+      // URLs (staging--jade-alpaca-b82b5e.netlify.app) are NOT *.otterquote.com
+      // subdomains, so Domain=.otterquote.com is rejected by the browser and the
+      // stale write silently fails. The previous check (hostname !== 'localhost')
+      // always produced Domain=.otterquote.com on CI, making the test a no-op.
+      const host = window.location.hostname;
       const domain =
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1'
+        (host === 'localhost' || host === '127.0.0.1')
           ? ''
-          : '; Domain=.otterquote.com';
+          : (host.endsWith('.otterquote.com') || host === 'otterquote.com')
+            ? '; Domain=.otterquote.com'
+            : '';  // Netlify preview URL — no cross-domain
+      // Must include Secure on HTTPS: Chrome 94+ blocks non-Secure writes
+      // from overwriting an existing Secure cookie of the same name+path.
+      // cookie-storage.js writeCookie() adds "; Secure" on HTTPS, so without
+      // it here the stale-cookie write is silently rejected on CI.
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
       document.cookie =
         'sb-otterquote-at=' +
         encodeURIComponent(staleJwt) +
         '; Path=/' + domain +
-        '; SameSite=Lax; Max-Age=3600';
+        '; SameSite=Lax; Max-Age=3600' + secure;
     },
     { staleUid, staleExp }
   );
