@@ -1,374 +1,229 @@
 #!/usr/bin/env python3
-"""patch-fatigue-detector.py — Patch Fatigue Detector for OtterQuote.
-
-Scans git log for symptom-keyword commits by subsystem over the past 90 days.
-Detects breach thresholds:
-  - SHORT: 3 or more symptom-fix commits within any 14-day window per subsystem
-  - LONG:  5 or more symptom-fix commits within any 60-day window per subsystem
-
-Creates ClickUp tasks for detected breaches when --clickup-token is provided.
-
-Usage:
-    python3 scripts/patch-fatigue-detector.py [--clickup-token TOKEN] [--repo-dir DIR]
-
-Output:
-    Human-readable summary to stdout, JSON with --output-json.
-    Exit code 0 = clean, 1 = breach(es) detected, 2 = error.
 """
-from __future__ import annotations
+OtterQuote Patch-Fatigue Detector
+Scans git history for subsystem-level symptom-keyword commit accretion.
+Triggers architectural review when thresholds breach.
 
-import argparse
-import json
-import os
-import re
-import subprocess
-import sys
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any
+Thresholds:
+  - 3 symptom commits in 14 days -> trigger
+  - 5 symptom commits in 60 days -> trigger
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
+Usage: python3 scripts/patch-fatigue-detector.py [--dry-run] [--clickup-token TOKEN]
+"""
 
-SYMPTOM_KEYWORDS = re.compile(
-    r'\b(fix|bug|hotfix|patch|workaround|revert|repair|broken|crash|error|issue|'
-    r'regression|typo|oops|wrong|missed|forgot|correct|undo)\b',
-    re.IGNORECASE,
-)
+import subprocess, json, sys, os, re
+from datetime import datetime, timedelta
 
-# Ordered most-specific first. Each entry: (regex_pattern, subsystem_name)
-SUBSYSTEM_RULES: list[tuple[str, str]] = [
-    (r'(?:^|/)CLAUDE\.md$', 'docs'),
-    (r'(?:^|/)\.claude/commands/|slash[-_]command', 'tooling'),
-    (r'netlify/edge-functions/admin', 'admin'),
-    (r'netlify/edge-functions/auth-callback|js/auth\.js|auth-callback|login-gate|contractor-login|contractor-join|(?:^|/)login\.html', 'auth'),
-    (r'netlify/edge-functions/create-docusign|docusign', 'contracts'),
-    (r'netlify/edge-functions/send-email|mailgun|email', 'email'),
-    (r'netlify/edge-functions/stripe|stripe|payment', 'payment'),
-    (r'netlify/edge-functions', 'edge-functions'),
-    (r'contractor', 'contractor'),
-    (r'homeowner|claim-start|claimant', 'homeowner'),
-    (r'sql/|supabase/migrations', 'schema'),
-    (r'scripts/', 'tooling'),
-    (r'\.github/', 'ci-cd'),
-    (r'netlify\.toml|_redirects|_headers', 'deploy'),
-    (r'\.html$|\.css$', 'frontend'),
-    (r'\.js$|\.ts$|\.jsx$|\.tsx$', 'frontend'),
+# --- Config ---
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SUBSYSTEM_MAP = os.path.join(REPO_ROOT, "forge-config", "subsystem-map.json")
+
+GLOBAL_SYMPTOM_KEYWORDS = [
+    "fix", "hotfix", "patch", "broken", "broke", "race", "retry",
+    "still broken", "revert", "again", "workaround", "hack", "temp", "temporary"
 ]
 
-SHORT_WINDOW_DAYS = 14
-SHORT_BREACH_THRESHOLD = 3
-LONG_WINDOW_DAYS = 60
-LONG_BREACH_THRESHOLD = 5
+THRESHOLDS = [
+    {"days": 14, "count": 3, "label": "3 patches in 14 days"},
+    {"days": 60, "count": 5, "label": "5 patches in 60 days"},
+]
 
 CLICKUP_LIST_ID = "901711730553"
-CLICKUP_API_ROOT = "https://api.clickup.com/api/v2"
 
-# ---------------------------------------------------------------------------
-# Subsystem detection
-# ---------------------------------------------------------------------------
+def run(cmd):
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    return result.stdout.strip()
 
+def get_git_log(since_days, file_patterns=None):
+    """Get git log entries with file paths and dates."""
+    since = (datetime.now() - timedelta(days=since_days)).strftime("%Y-%m-%d")
+    if file_patterns:
+        pattern_args = " ".join(f'"{p}"' for p in file_patterns)
+        cmd = f'cd {REPO_ROOT} && git log --format="%h %ai %s" --since="{since}" --name-only -- {pattern_args}'
+    else:
+        cmd = f'cd {REPO_ROOT} && git log --format="%h %ai %s" --since="{since}" --name-only'
+    return run(cmd)
 
-def classify_path(file_path: str) -> str:
-    """Return the subsystem name for a given file path."""
-    for pattern, name in SUBSYSTEM_RULES:
-        if re.search(pattern, file_path, re.IGNORECASE):
-            return name
-    return 'other'
-
-
-def classify_paths(file_paths: list[str]) -> set[str]:
-    """Return all subsystems touched by a list of file paths."""
-    return {classify_path(p) for p in file_paths} if file_paths else {'other'}
-
-
-# ---------------------------------------------------------------------------
-# Git log parsing
-# ---------------------------------------------------------------------------
-
-
-def get_commits(repo_dir: str, days: int) -> list[dict[str, Any]]:
-    """Return commits from the last N days with metadata and files changed."""
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%d')
-
-    log_result = subprocess.run(
-        ['git', 'log', f'--since={since}', '--format=%H|%at|%s', '--no-merges'],
-        cwd=repo_dir,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if log_result.returncode != 0:
-        raise RuntimeError(f"git log failed: {log_result.stderr.strip()}")
-
-    commits: list[dict[str, Any]] = []
-    for line in log_result.stdout.strip().splitlines():
-        if not line.strip():
-            continue
-        parts = line.split('|', 2)
-        if len(parts) < 3:
-            continue
-        sha, timestamp_str, subject = parts
-        try:
-            ts = datetime.fromtimestamp(int(timestamp_str), tz=timezone.utc)
-        except (ValueError, OverflowError):
-            continue
-
-        files_result = subprocess.run(
-            ['git', 'diff-tree', '--no-commit-id', '-r', '--name-only', sha],
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        file_paths = [f for f in files_result.stdout.strip().splitlines() if f]
-
-        commits.append({
-            'sha': sha[:12],
-            'timestamp': ts,
-            'subject': subject,
-            'file_paths': file_paths,
-        })
-
+def parse_commits(log_output):
+    """Parse git log output into [{hash, date, message, files}]."""
+    commits = []
+    current = None
+    for line in log_output.splitlines():
+        if re.match(r'^[a-f0-9]{7} \d{4}-\d{2}-\d{2}', line):
+            if current:
+                commits.append(current)
+            parts = line.split(None, 3)
+            current = {
+                "hash": parts[0],
+                "date": parts[1] if len(parts) > 1 else "",
+                "message": parts[3] if len(parts) > 3 else "",
+                "files": []
+            }
+        elif line and current:
+            current["files"].append(line)
+    if current:
+        commits.append(current)
     return commits
 
+def is_symptom_commit(message, subsystem_keywords):
+    """Check if a commit message contains symptom keywords."""
+    msg_lower = message.lower()
+    all_keywords = GLOBAL_SYMPTOM_KEYWORDS + subsystem_keywords
+    return any(kw.lower() in msg_lower for kw in all_keywords)
 
-# ---------------------------------------------------------------------------
-# Breach detection
-# ---------------------------------------------------------------------------
+def file_matches_subsystem(filepath, file_patterns):
+    """Check if a file matches a subsystem's file patterns."""
+    for pattern in file_patterns:
+        pat = pattern.replace("**", ".*").replace("*", "[^/]*")
+        if re.search(pat, filepath):
+            return True
+    return False
 
+def analyze_subsystem(subsystem, commits):
+    """Count symptom commits touching a subsystem's files in time windows."""
+    symptom_commits = []
+    for commit in commits:
+        file_match = any(
+            file_matches_subsystem(f, subsystem["files"])
+            for f in commit["files"]
+        )
+        if file_match and is_symptom_commit(commit["message"], subsystem.get("keywords", [])):
+            symptom_commits.append(commit)
+    return symptom_commits
 
-def is_symptom_commit(subject: str) -> bool:
-    """Return True if the commit subject contains symptom keywords."""
-    return bool(SYMPTOM_KEYWORDS.search(subject))
-
-
-def detect_breaches(commits: list[dict]) -> dict[str, list[dict]]:
-    """Detect patch fatigue breaches by subsystem using sliding-window analysis.
-
-    Returns: dict mapping subsystem -> list of breach report dicts.
-    """
-    symptom_commits = [c for c in commits if is_symptom_commit(c['subject'])]
-
-    # Group by subsystem
-    by_subsystem: dict[str, list[dict]] = defaultdict(list)
-    for commit in symptom_commits:
-        for sub in classify_paths(commit['file_paths']):
-            by_subsystem[sub].append(commit)
-
-    breaches: dict[str, list[dict]] = {}
-
-    for subsystem, sub_commits in by_subsystem.items():
-        sorted_commits = sorted(sub_commits, key=lambda c: c['timestamp'])
-        sub_breaches: list[dict] = []
-
-        for window_days, threshold, breach_type in [
-            (SHORT_WINDOW_DAYS, SHORT_BREACH_THRESHOLD, 'SHORT'),
-            (LONG_WINDOW_DAYS, LONG_BREACH_THRESHOLD, 'LONG'),
-        ]:
-            for i, c in enumerate(sorted_commits):
-                window_end = c['timestamp'] + timedelta(days=window_days)
-                window_commits = [
-                    x for x in sorted_commits[i:]
-                    if x['timestamp'] <= window_end
-                ]
-                if len(window_commits) >= threshold:
-                    sub_breaches.append({
-                        'type': breach_type,
-                        'window_days': window_days,
-                        'threshold': threshold,
-                        'count': len(window_commits),
-                        'window_start': c['timestamp'].isoformat(),
-                        'window_end': window_end.isoformat(),
-                        'commits': [x['sha'] for x in window_commits],
-                        'subjects': [x['subject'] for x in window_commits],
-                    })
-                    break  # One breach report per type per subsystem is enough
-
-        if sub_breaches:
-            breaches[subsystem] = sub_breaches
-
+def check_thresholds(symptom_commits):
+    """Check if any threshold is breached based on commit dates."""
+    breaches = []
+    now = datetime.now()
+    
+    for threshold in THRESHOLDS:
+        days = threshold["days"]
+        cutoff = now - timedelta(days=days)
+        count = 0
+        for commit in symptom_commits:
+            try:
+                commit_date = datetime.fromisoformat(commit["date"])
+                if commit_date >= cutoff:
+                    count += 1
+            except:
+                count += 1
+        
+        if count >= threshold["count"]:
+            breaches.append({
+                "threshold": threshold["label"],
+                "count": count,
+                "days": days
+            })
+    
     return breaches
 
+def create_clickup_task(subsystem_name, breaches, patch_history, clickup_token):
+    """Create a ClickUp architectural review task."""
+    if not clickup_token:
+        print(f"  [DRY-RUN] Would create ClickUp task: [ARCH REVIEW] {subsystem_name} — patch fatigue detected")
+        return None
+    
+    import urllib.request, urllib.parse
+    
+    breach_lines = "\n".join(f"- {b['threshold']}: {b['count']} symptom commits" for b in breaches)
+    history_lines = "\n".join(f"  - {c['hash']}: {c['message']}" for c in patch_history[-10:])
+    
+    description = f"""PATCH-FATIGUE ALERT: {subsystem_name}
 
-# ---------------------------------------------------------------------------
-# ClickUp integration
-# ---------------------------------------------------------------------------
+Thresholds breached:
+{breach_lines}
 
+Recent symptom commits (last 10):
+{history_lines}
 
-def create_clickup_task(token: str, subsystem: str, breach: dict) -> str | None:
-    """Create a ClickUp task for a detected patch fatigue breach."""
+## Required Actions
+1. **Name the failure mode:** What is the underlying structural issue? Write it in one sentence.
+2. **Classify:** Is this (a) a design flaw needing architectural change [D-flow], (b) a process/tooling gap [R-flow], or (c) legitimate iteration on a new feature?
+3. **Route:**
+   - If architectural -> run Decision Protocol (D-flow)
+   - If process gap -> run Decision Protocol (R-flow)
+   - If legitimate iteration -> close this task with a note
+
+Auto-generated by patch-fatigue-detector.py on {datetime.now().strftime('%Y-%m-%d')}.
+"""
+    
+    payload = json.dumps({
+        "name": f"[ARCH REVIEW] {subsystem_name} — patch fatigue ({breaches[0]['threshold']})",
+        "description": description,
+        "priority": 2,
+        "tags": ["architectural-review", "patch-fatigue"]
+    }).encode()
+    
+    req = urllib.request.Request(
+        f"https://api.clickup.com/api/v2/list/{CLICKUP_LIST_ID}/task",
+        data=payload,
+        headers={"Authorization": clickup_token, "Content-Type": "application/json"},
+        method="POST"
+    )
     try:
-        import urllib.request
-        import urllib.error
-
-        breach_type = breach['type']
-        count = breach['count']
-        window = breach['window_days']
-        threshold = breach['threshold']
-
-        name = (
-            f"[PATCH FATIGUE] {subsystem} — "
-            f"{count} symptom-commits in {window} days "
-            f"({breach_type}: threshold {threshold})"
-        )
-
-        subjects_preview = '\n'.join(f'  - {s}' for s in breach['subjects'][:5])
-        if len(breach['subjects']) > 5:
-            subjects_preview += f'\n  ... and {len(breach["subjects"]) - 5} more'
-
-        description = (
-            f"Patch Fatigue Detector — {breach_type} Breach\n\n"
-            f"Subsystem: {subsystem}\n"
-            f"Window: {window} days ({breach_type} threshold: {threshold})\n"
-            f"Detected: {count} symptom-fix commits\n"
-            f"Period: {breach['window_start'][:10]} to {breach['window_end'][:10]}\n\n"
-            f"Commits involved:\n{subjects_preview}\n\n"
-            f"SHAs: {', '.join(breach['commits'][:10])}\n\n"
-            f"Action Required\n\n"
-            f"The {subsystem} subsystem shows repeated symptom-fix commits. "
-            f"This pattern suggests an unresolved root cause. "
-            f"Schedule a root-cause investigation rather than continuing to patch."
-        )
-
-        payload = json.dumps({
-            "name": name,
-            "description": description,
-            "priority": 2,
-            "tags": ["patch-fatigue"],
-        }).encode()
-
-        req = urllib.request.Request(
-            f"{CLICKUP_API_ROOT}/list/{CLICKUP_LIST_ID}/task",
-            data=payload,
-            headers={
-                "Authorization": token,
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            task_data = json.loads(resp.read())
-            task_id = task_data.get("id")
-            sys.stderr.write(f"[patch-fatigue-detector] Created ClickUp task {task_id}: {name}\n")
-            return task_id
-
-    except Exception as exc:
-        sys.stderr.write(f"[patch-fatigue-detector] WARNING: ClickUp task creation failed: {exc}\n")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+            return result.get("url", "created")
+    except Exception as e:
+        print(f"  ClickUp API error: {e}")
         return None
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Patch Fatigue Detector for OtterQuote — scans git log for recurring symptom-fix commits"
-    )
-    parser.add_argument(
-        '--clickup-token',
-        help='ClickUp API token for creating breach tasks',
-        default=os.environ.get('CLICKUP_TOKEN'),
-    )
-    parser.add_argument(
-        '--repo-dir',
-        help='Path to the git repository root (default: current directory)',
-        default='.',
-    )
-    parser.add_argument(
-        '--output-json',
-        action='store_true',
-        help='Output results as JSON instead of human-readable format',
-    )
-    args = parser.parse_args()
-
-    repo_dir = os.path.abspath(args.repo_dir)
-
-    if not os.path.isdir(os.path.join(repo_dir, '.git')):
-        sys.stderr.write(f"[patch-fatigue-detector] ERROR: {repo_dir} is not a git repository\n")
-        return 2
-
-    sys.stderr.write(f"[patch-fatigue-detector] Scanning git log (last 90 days) in {repo_dir}...\n")
-
-    try:
-        commits = get_commits(repo_dir, days=90)
-    except Exception as exc:
-        sys.stderr.write(f"[patch-fatigue-detector] ERROR: Failed to read git log: {exc}\n")
-        return 2
-
-    symptom_count = sum(1 for c in commits if is_symptom_commit(c['subject']))
-    sys.stderr.write(
-        f"[patch-fatigue-detector] Scanned {len(commits)} commits, "
-        f"{symptom_count} matched symptom keywords.\n"
-    )
-
-    breaches = detect_breaches(commits)
-
-    result: dict[str, Any] = {
-        "scan_date": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-        "repo_dir": repo_dir,
-        "commits_scanned": len(commits),
-        "symptom_commits": symptom_count,
-        "breaches": breaches,
-        "status": "BREACH" if breaches else "CLEAN",
-    }
-
-    if args.output_json:
-        print(json.dumps(result, default=str, indent=2))
-    else:
-        sep = '=' * 60
-        print(f"\n{sep}")
-        print(f"PATCH FATIGUE DETECTOR — {result['status']}")
-        print(sep)
-        print(f"Scan date:        {result['scan_date'][:10]}")
-        print(f"Commits scanned:  {result['commits_scanned']}")
-        print(f"Symptom commits:  {result['symptom_commits']}")
-
-        if not breaches:
-            print("\n✓ No patch fatigue breaches detected.")
+def main():
+    dry_run = "--dry-run" in sys.argv
+    clickup_token = None
+    for i, arg in enumerate(sys.argv):
+        if arg == "--clickup-token" and i + 1 < len(sys.argv):
+            clickup_token = sys.argv[i + 1]
+    
+    with open(SUBSYSTEM_MAP) as f:
+        config = json.load(f)
+    
+    subsystems = config["subsystems"]
+    
+    print(f"=== Patch-Fatigue Detector ===")
+    print(f"Scanning git history... {'(DRY-RUN)' if dry_run else ''}")
+    print()
+    
+    max_days = max(t["days"] for t in THRESHOLDS)
+    log_output = get_git_log(max_days)
+    all_commits = parse_commits(log_output)
+    
+    print(f"Total commits in last {max_days} days: {len(all_commits)}")
+    print()
+    
+    triggered = []
+    clean = []
+    
+    for subsystem in subsystems:
+        symptom_commits = analyze_subsystem(subsystem, all_commits)
+        breaches = check_thresholds(symptom_commits)
+        
+        if breaches:
+            print(f"BREACH: {subsystem['name']}")
+            for b in breaches:
+                print(f"   {b['threshold']}: {b['count']} symptom commits")
+            print(f"   Recent: {', '.join(c['hash'] for c in symptom_commits[-3:])}")
+            
+            if not dry_run and clickup_token:
+                url = create_clickup_task(subsystem["name"], breaches, symptom_commits, clickup_token)
+                print(f"   ClickUp: {url}")
+            elif dry_run:
+                print(f"   [DRY-RUN] Would create ClickUp task")
+            
+            triggered.append({"subsystem": subsystem["name"], "breaches": breaches, "count": len(symptom_commits)})
+            print()
         else:
-            print(f"\n⚠  BREACHES DETECTED — {len(breaches)} subsystem(s)\n")
-            for subsystem, sub_breaches in sorted(breaches.items()):
-                for breach in sub_breaches:
-                    print(
-                        f"  [{breach['type']}] {subsystem}: "
-                        f"{breach['count']} commits in {breach['window_days']} days "
-                        f"(threshold: {breach['threshold']})"
-                    )
-                    print(
-                        f"    Window: {breach['window_start'][:10]} → "
-                        f"{breach['window_end'][:10]}"
-                    )
-                    for subject in breach['subjects'][:3]:
-                        print(f"    • {subject}")
-                    if len(breach['subjects']) > 3:
-                        print(f"    ... and {len(breach['subjects']) - 3} more")
-                    print()
+            clean.append(subsystem["name"])
+    
+    print(f"=== Summary ===")
+    print(f"Breaches: {len(triggered)} subsystems")
+    print(f"Clean: {len(clean)} subsystems")
+    if triggered:
+        print(f"Review required: {', '.join(t['subsystem'] for t in triggered)}")
+    else:
+        print("No architectural review needed — patch counts within thresholds.")
+    
+    return 0 if not triggered else 1
 
-        print(sep)
-
-    # Create ClickUp tasks for detected breaches
-    if breaches and args.clickup_token:
-        sys.stderr.write(
-            f"[patch-fatigue-detector] Creating ClickUp tasks for {len(breaches)} breach(es)...\n"
-        )
-        created = 0
-        for subsystem, sub_breaches in breaches.items():
-            for breach in sub_breaches:
-                if create_clickup_task(args.clickup_token, subsystem, breach):
-                    created += 1
-        sys.stderr.write(f"[patch-fatigue-detector] Created {created} ClickUp task(s).\n")
-    elif breaches and not args.clickup_token:
-        sys.stderr.write(
-            "[patch-fatigue-detector] NOTE: Breaches detected but no --clickup-token provided. "
-            "Pass --clickup-token TOKEN to auto-create ClickUp tasks.\n"
-        )
-
-    return 1 if breaches else 0
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
