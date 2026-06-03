@@ -135,8 +135,33 @@ test('AR-5: Auth.getSession() returns live uid when sb-otterquote-at cookie has 
   const staleUid = state.contractorUserId; // A's uid
   const staleExp = Math.floor(Date.now() / 1000) + 3600;
 
-  await page.evaluate(
-    ({ staleUid, staleExp }) => {
+  // Steps 3–4: Plant stale identity then call Auth.getSession() in a single
+  // evaluate. Combined so we can mock sb.auth.getSession atomically.
+  //
+  // The ADR-012 bleed scenario: sb-otterquote-at carries A's identity (domain-wide
+  // cookie from a different subdomain) while the Supabase JS client's in-memory
+  // session is B's (established on this subdomain). Auth.getSession() must detect
+  // the discrepancy and prefer the live session.
+  //
+  // Challenge on CI: Auth.getSession() calls sb.auth.getSession() for reconciliation.
+  // In Supabase JS v2, getSession() re-reads from the storage adapter on each call —
+  // so if we plant A's stale session in storage, BOTH the fast-path and the "live"
+  // side read A, producing no mismatch. The mock below solves this: we save B's real
+  // session before overwriting storage, then force sb.auth.getSession to return the
+  // saved B session for the duration of the reconciliation call. This correctly
+  // models the production scenario (live in-memory session = B, stale cookie = A).
+  const result: {
+    uid: string | null;
+    warnFired: boolean;
+  } = await page.evaluate(
+    async ({ staleUid, staleExp }) => {
+      const sbClient = (window as any).sb;
+
+      // Step 3a: Save B's real live session BEFORE planting the stale identity.
+      const bLiveResult = await sbClient.auth.getSession();
+      const bLiveSession = bLiveResult?.data?.session;
+
+      // Step 3b: Build the stale JWT (A's uid, valid exp, fake signature).
       const h = btoa('{"alg":"HS256","typ":"JWT"}');
       const p = btoa(
         JSON.stringify({
@@ -149,22 +174,8 @@ test('AR-5: Auth.getSession() returns live uid when sb-otterquote-at cookie has 
       );
       const staleJwt = h + '.' + p + '.fake_signature_for_test_only';
 
-      // Plant the stale identity via OtterQuoteCookieStorage.setItem rather than
-      // a raw document.cookie write. This is reliable across all environments:
-      //
-      // Why raw document.cookie failed on HTTPS/CI (Netlify preview URL):
-      //   (a) Prior domain logic: hostname !== 'localhost' → '; Domain=.otterquote.com'
-      //       but staging--jade-alpaca-b82b5e.netlify.app is not *.otterquote.com so
-      //       the browser silently rejects the cross-domain cookie write.
-      //   (b) Chrome 94+: a non-Secure write cannot overwrite an existing Secure cookie
-      //       with the same name+path (the Secure flag was not included in the write).
-      //
-      // Using setItem writes to BOTH the cookie (sb-otterquote-at via writeCookie,
-      // which adds the correct domain/Secure flags automatically) AND localStorage
-      // under the canonical key. Auth.getSession()'s fast-path reads from
-      // OtterQuoteCookieStorage.getItem, which checks cookies first (path 1) then
-      // localStorage (path 2) — both now carry the stale access_token, so the
-      // identity mismatch is detected regardless of which read path is taken.
+      // Step 3c: Plant the stale session in storage (cookie + localStorage) so
+      // Auth.getSession()'s fast-path reads A's uid.
       const staleSession = JSON.stringify({
         access_token: staleJwt,
         refresh_token: 'stale-refresh-token-for-test-only',
@@ -178,29 +189,37 @@ test('AR-5: Auth.getSession() returns live uid when sb-otterquote-at cookie has 
       if ((window as any).OtterQuoteCookieStorage) {
         (window as any).OtterQuoteCookieStorage.setItem(storageKey, staleSession);
       } else {
-        // Fallback: direct localStorage write (cookie-storage.js not loaded)
         localStorage.setItem(storageKey, staleSession);
       }
+
+      // Step 3d: Mock sb.auth.getSession to return B's saved live session.
+      // Auth.getSession()'s reconciliation code calls sb.auth.getSession() to get
+      // the "live" uid. Without this mock, Supabase re-reads from storage (now A)
+      // and returns A — making both sides equal, so no mismatch is ever detected.
+      const origGetSession = sbClient.auth.getSession.bind(sbClient.auth);
+      sbClient.auth.getSession = async () => ({
+        data: { session: bLiveSession },
+        error: null,
+      });
+
+      // Step 4: Call Auth.getSession() — must detect A.uid (stale) ≠ B.uid (live).
+      let warnFired = false;
+      const origWarn = console.warn.bind(console);
+      (console as any).warn = (...args: unknown[]) => {
+        if (String(args[0]).includes('[Auth.getSession] identity mismatch'))
+          warnFired = true;
+        origWarn(...args);
+      };
+      const session = await (window as any).Auth.getSession();
+      (console as any).warn = origWarn;
+
+      // Restore sb.auth.getSession before returning.
+      sbClient.auth.getSession = origGetSession;
+
+      return { uid: session?.user?.id ?? null, warnFired };
     },
     { staleUid, staleExp }
   );
-
-  // Step 4: Call Auth.getSession() — the reconciliation must detect the mismatch
-  // (stale cookie sub ≠ live session uid) and return the live session.
-  const result: {
-    uid: string | null;
-    warnFired: boolean;
-  } = await page.evaluate(async () => {
-    let warnFired = false;
-    const origWarn = console.warn.bind(console);
-    (console as any).warn = (...args: unknown[]) => {
-      if (String(args[0]).includes('[Auth.getSession] identity mismatch')) warnFired = true;
-      origWarn(...args);
-    };
-    const session = await (window as any).Auth.getSession();
-    (console as any).warn = origWarn;
-    return { uid: session?.user?.id ?? null, warnFired };
-  });
 
   // Must return B's uid from the live session — not the stale A uid from the cookie
   expect(result.uid).toBe(bUserId);
