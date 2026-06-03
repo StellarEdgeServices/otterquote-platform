@@ -148,28 +148,39 @@ test('AR-5: Auth.getSession() returns live uid when sb-otterquote-at cookie has 
         })
       );
       const staleJwt = h + '.' + p + '.fake_signature_for_test_only';
-      // Mirror getCookieDomain() from cookie-storage.js exactly — Netlify preview
-      // URLs (staging--jade-alpaca-b82b5e.netlify.app) are NOT *.otterquote.com
-      // subdomains, so Domain=.otterquote.com is rejected by the browser and the
-      // stale write silently fails. The previous check (hostname !== 'localhost')
-      // always produced Domain=.otterquote.com on CI, making the test a no-op.
-      const host = window.location.hostname;
-      const domain =
-        (host === 'localhost' || host === '127.0.0.1')
-          ? ''
-          : (host.endsWith('.otterquote.com') || host === 'otterquote.com')
-            ? '; Domain=.otterquote.com'
-            : '';  // Netlify preview URL — no cross-domain
-      // Must include Secure on HTTPS: Chrome 94+ blocks non-Secure writes
-      // from overwriting an existing Secure cookie of the same name+path.
-      // cookie-storage.js writeCookie() adds "; Secure" on HTTPS, so without
-      // it here the stale-cookie write is silently rejected on CI.
-      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-      document.cookie =
-        'sb-otterquote-at=' +
-        encodeURIComponent(staleJwt) +
-        '; Path=/' + domain +
-        '; SameSite=Lax; Max-Age=3600' + secure;
+
+      // Plant the stale identity via OtterQuoteCookieStorage.setItem rather than
+      // a raw document.cookie write. This is reliable across all environments:
+      //
+      // Why raw document.cookie failed on HTTPS/CI (Netlify preview URL):
+      //   (a) Prior domain logic: hostname !== 'localhost' → '; Domain=.otterquote.com'
+      //       but staging--jade-alpaca-b82b5e.netlify.app is not *.otterquote.com so
+      //       the browser silently rejects the cross-domain cookie write.
+      //   (b) Chrome 94+: a non-Secure write cannot overwrite an existing Secure cookie
+      //       with the same name+path (the Secure flag was not included in the write).
+      //
+      // Using setItem writes to BOTH the cookie (sb-otterquote-at via writeCookie,
+      // which adds the correct domain/Secure flags automatically) AND localStorage
+      // under the canonical key. Auth.getSession()'s fast-path reads from
+      // OtterQuoteCookieStorage.getItem, which checks cookies first (path 1) then
+      // localStorage (path 2) — both now carry the stale access_token, so the
+      // identity mismatch is detected regardless of which read path is taken.
+      const staleSession = JSON.stringify({
+        access_token: staleJwt,
+        refresh_token: 'stale-refresh-token-for-test-only',
+        expires_at: staleExp,
+        expires_in: 3600,
+        token_type: 'bearer',
+        user: { id: staleUid, email: 'stale-cookie@test.com' },
+      });
+      const storageKey =
+        (window as any).OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth';
+      if ((window as any).OtterQuoteCookieStorage) {
+        (window as any).OtterQuoteCookieStorage.setItem(storageKey, staleSession);
+      } else {
+        // Fallback: direct localStorage write (cookie-storage.js not loaded)
+        localStorage.setItem(storageKey, staleSession);
+      }
     },
     { staleUid, staleExp }
   );
