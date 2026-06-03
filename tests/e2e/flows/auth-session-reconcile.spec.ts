@@ -35,21 +35,43 @@ test.beforeAll(async () => {
   state = getTestState();
   const admin = createAdminClient();
 
-  const { data: listData, error: listErr } =
-    await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  if (listErr) throw new Error(`listUsers failed: ${listErr.message}`);
+  // Find or create Account B auth user.
+  // Strategy: createUser-first to avoid listUsers full-scan on 6K+ user projects
+  // (perPage:1000 times out with {} on IO-throttled Supabase). On 422 ("User
+  // already registered"), fall back to a targeted email-filter REST lookup.
+  // Mirrors the fix applied to seed.mjs in 23e58af (86e1nxn4x).
+  const { data: createData, error: createErr } = await admin.auth.admin.createUser({
+    email: B_EMAIL,
+    email_confirm: true,
+    user_metadata: { role: 'contractor' },
+  });
 
-  let existingB = listData?.users?.find((u) => u.email === B_EMAIL);
-  if (!existingB) {
-    const { data, error } = await admin.auth.admin.createUser({
-      email: B_EMAIL,
-      email_confirm: true,
-      user_metadata: { role: 'contractor' },
+  let existingB: { id: string } | null = createData?.user ?? null;
+  if (createErr) {
+    if (createErr.status !== 422) {
+      throw new Error(`createUser(B) failed: ${createErr.message ?? JSON.stringify(createErr)}`);
+    }
+    // 422 = "User already registered" — targeted email-filter REST lookup
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const lookupUrl =
+      `${supabaseUrl}/auth/v1/admin/users` +
+      `?filter=${encodeURIComponent(B_EMAIL)}&page=1&per_page=1`;
+    const lookupResp = await fetch(lookupUrl, {
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
     });
-    if (error) throw new Error(`createUser(B) failed: ${error.message}`);
-    existingB = data.user!;
+    if (!lookupResp.ok) {
+      throw new Error(
+        `getUserByEmail(${B_EMAIL}) HTTP ${lookupResp.status}: ${await lookupResp.text()}`
+      );
+    }
+    const body = (await lookupResp.json()) as { users?: Array<{ id: string }> };
+    existingB = body.users?.[0] ?? null;
+    if (!existingB) {
+      throw new Error(`getUserByEmail(${B_EMAIL}): user not found after 422 on createUser`);
+    }
   }
-  bUserId = existingB.id;
+  bUserId = existingB!.id;
 
   // Ensure B has a contractors row so the pre-approval wizard renders
   await admin.from('contractors').delete().eq('user_id', bUserId);
@@ -113,8 +135,33 @@ test('AR-5: Auth.getSession() returns live uid when sb-otterquote-at cookie has 
   const staleUid = state.contractorUserId; // A's uid
   const staleExp = Math.floor(Date.now() / 1000) + 3600;
 
-  await page.evaluate(
-    ({ staleUid, staleExp }) => {
+  // Steps 3–4: Plant stale identity then call Auth.getSession() in a single
+  // evaluate. Combined so we can mock sb.auth.getSession atomically.
+  //
+  // The ADR-012 bleed scenario: sb-otterquote-at carries A's identity (domain-wide
+  // cookie from a different subdomain) while the Supabase JS client's in-memory
+  // session is B's (established on this subdomain). Auth.getSession() must detect
+  // the discrepancy and prefer the live session.
+  //
+  // Challenge on CI: Auth.getSession() calls sb.auth.getSession() for reconciliation.
+  // In Supabase JS v2, getSession() re-reads from the storage adapter on each call —
+  // so if we plant A's stale session in storage, BOTH the fast-path and the "live"
+  // side read A, producing no mismatch. The mock below solves this: we save B's real
+  // session before overwriting storage, then force sb.auth.getSession to return the
+  // saved B session for the duration of the reconciliation call. This correctly
+  // models the production scenario (live in-memory session = B, stale cookie = A).
+  const result: {
+    uid: string | null;
+    warnFired: boolean;
+  } = await page.evaluate(
+    async ({ staleUid, staleExp }) => {
+      const sbClient = (window as any).sb;
+
+      // Step 3a: Save B's real live session BEFORE planting the stale identity.
+      const bLiveResult = await sbClient.auth.getSession();
+      const bLiveSession = bLiveResult?.data?.session;
+
+      // Step 3b: Build the stale JWT (A's uid, valid exp, fake signature).
       const h = btoa('{"alg":"HS256","typ":"JWT"}');
       const p = btoa(
         JSON.stringify({
@@ -126,36 +173,53 @@ test('AR-5: Auth.getSession() returns live uid when sb-otterquote-at cookie has 
         })
       );
       const staleJwt = h + '.' + p + '.fake_signature_for_test_only';
-      const domain =
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1'
-          ? ''
-          : '; Domain=.otterquote.com';
-      document.cookie =
-        'sb-otterquote-at=' +
-        encodeURIComponent(staleJwt) +
-        '; Path=/' + domain +
-        '; SameSite=Lax; Max-Age=3600';
+
+      // Step 3c: Plant the stale session in storage (cookie + localStorage) so
+      // Auth.getSession()'s fast-path reads A's uid.
+      const staleSession = JSON.stringify({
+        access_token: staleJwt,
+        refresh_token: 'stale-refresh-token-for-test-only',
+        expires_at: staleExp,
+        expires_in: 3600,
+        token_type: 'bearer',
+        user: { id: staleUid, email: 'stale-cookie@test.com' },
+      });
+      const storageKey =
+        (window as any).OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth';
+      if ((window as any).OtterQuoteCookieStorage) {
+        (window as any).OtterQuoteCookieStorage.setItem(storageKey, staleSession);
+      } else {
+        localStorage.setItem(storageKey, staleSession);
+      }
+
+      // Step 3d: Mock sb.auth.getSession to return B's saved live session.
+      // Auth.getSession()'s reconciliation code calls sb.auth.getSession() to get
+      // the "live" uid. Without this mock, Supabase re-reads from storage (now A)
+      // and returns A — making both sides equal, so no mismatch is ever detected.
+      const origGetSession = sbClient.auth.getSession.bind(sbClient.auth);
+      sbClient.auth.getSession = async () => ({
+        data: { session: bLiveSession },
+        error: null,
+      });
+
+      // Step 4: Call Auth.getSession() — must detect A.uid (stale) ≠ B.uid (live).
+      let warnFired = false;
+      const origWarn = console.warn.bind(console);
+      (console as any).warn = (...args: unknown[]) => {
+        if (String(args[0]).includes('[Auth.getSession] identity mismatch'))
+          warnFired = true;
+        origWarn(...args);
+      };
+      const session = await (window as any).Auth.getSession();
+      (console as any).warn = origWarn;
+
+      // Restore sb.auth.getSession before returning.
+      sbClient.auth.getSession = origGetSession;
+
+      return { uid: session?.user?.id ?? null, warnFired };
     },
     { staleUid, staleExp }
   );
-
-  // Step 4: Call Auth.getSession() — the reconciliation must detect the mismatch
-  // (stale cookie sub ≠ live session uid) and return the live session.
-  const result: {
-    uid: string | null;
-    warnFired: boolean;
-  } = await page.evaluate(async () => {
-    let warnFired = false;
-    const origWarn = console.warn.bind(console);
-    (console as any).warn = (...args: unknown[]) => {
-      if (String(args[0]).includes('[Auth.getSession] identity mismatch')) warnFired = true;
-      origWarn(...args);
-    };
-    const session = await (window as any).Auth.getSession();
-    (console as any).warn = origWarn;
-    return { uid: session?.user?.id ?? null, warnFired };
-  });
 
   // Must return B's uid from the live session — not the stale A uid from the cookie
   expect(result.uid).toBe(bUserId);
