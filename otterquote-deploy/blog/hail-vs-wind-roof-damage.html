@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Hail vs. Wind Damage: How Insurers Tell the Difference · Otter Quotes</title>
+<meta name="description" content="Hail and wind leave different marks on a roof, and insurers treat them differently. Here's how each type of damage looks and why it matters for a claim.">
+<link rel="canonical" href="https://otterquote.com/blog/hail-vs-wind-roof-damage.html">
+<meta property="og:title" content="Hail vs. Wind Damage: How Insurers Tell the Difference · Otter Quotes">
+<meta property="og:description" content="Hail dents, wind lifts and tears. Knowing which kind of damage you have helps you understand your roof and your claim.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/blog/hail-vs-wind-roof-damage.html">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:author" content="Dustin Stohler">
+<meta property="article:published_time" content="2026-06-02">
+
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments)}
+  gtag('js', new Date());
+  gtag('config', 'G-JNQ6XR3LX2');
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+.page-hero { padding: var(--sp-16) 0 var(--sp-12); text-align: center; background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%); }
+.page-hero h1 { margin-bottom: var(--sp-4); }
+.page-hero .subtitle { max-width: 700px; margin: 0 auto; font-size: 1.1rem; color: var(--slate); }
+.page-hero .meta { font-size: 0.9rem; color: var(--gray); margin-top: var(--sp-4); }
+.article-body { max-width: 760px; margin: 0 auto; padding: 0 var(--sp-6); }
+.article-intro { background: rgba(224, 123, 0, 0.06); border-left: 4px solid var(--amber); padding: var(--sp-6); margin-bottom: var(--sp-10); border-radius: var(--radius-md); }
+.article-intro p { font-size: 1.05rem; color: var(--slate); line-height: 1.8; }
+.step { margin-bottom: var(--sp-10); padding-bottom: var(--sp-8); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.step:last-of-type { border-bottom: none; }
+.step h2 { margin-bottom: var(--sp-3); margin-top: var(--sp-2); }
+.step p { color: var(--slate); margin-bottom: var(--sp-4); line-height: 1.8; }
+.step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step li { margin-bottom: var(--sp-3); color: var(--slate); line-height: 1.7; }
+.step li strong { color: var(--white); }
+.step em { color: var(--amber); font-style: italic; }
+.highlight-box { background: rgba(245, 158, 11, 0.08); border-left: 4px solid #E07B00; padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.highlight-box strong { color: #fbbf24; }
+.highlight-box, .highlight-box p { color: var(--slate); line-height: 1.7; }
+.warning-box { background: rgba(239, 68, 68, 0.08); border-left: 4px solid var(--red); padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.warning-box strong { color: #f87171; }
+.warning-box, .warning-box p { color: var(--slate); line-height: 1.7; }
+.cta-box { background: var(--navy-2); border: 1px solid rgba(224, 123, 0, 0.2); padding: var(--sp-10); border-radius: var(--radius-lg); margin: var(--sp-10) 0; text-align: center; }
+.cta-box h3 { color: var(--white); margin-bottom: var(--sp-4); }
+.cta-box p { color: var(--slate); margin-bottom: var(--sp-6); line-height: 1.6; }
+.related-links { background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06); padding: var(--sp-6) var(--sp-8); border-radius: var(--radius-lg); margin: var(--sp-10) 0; }
+.related-links h3 { color: var(--white); margin-bottom: var(--sp-4); font-size: 1.05rem; }
+.related-links ul { margin-left: var(--sp-6); }
+.related-links li { margin-bottom: var(--sp-2); line-height: 1.7; }
+.faq-section { background: var(--navy-2); padding: var(--sp-10) var(--sp-8); border-radius: var(--radius-lg); margin-top: var(--sp-12); border: 1px solid rgba(255,255,255,0.06); }
+.faq-section h2 { margin-bottom: var(--sp-8); text-align: center; }
+.faq-item { margin-bottom: var(--sp-6); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: var(--sp-6); }
+.faq-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.faq-item h3 { color: var(--white); font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; margin-bottom: var(--sp-3); cursor: pointer; display: flex; align-items: center; user-select: none; transition: color var(--duration) var(--ease); }
+.faq-item h3:hover { color: var(--amber); }
+.faq-item h3::before { content: "\25B6"; color: var(--amber); margin-right: var(--sp-3); font-size: 0.8rem; transition: transform 0.3s var(--ease); }
+.faq-item.active h3::before { transform: rotate(90deg); }
+.faq-answer { color: var(--slate); line-height: 1.8; display: none; padding-left: var(--sp-6); }
+.faq-item.active .faq-answer { display: block; }
+.back-link { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--amber); font-size: 0.9rem; font-weight: 500; margin-bottom: var(--sp-8); transition: color var(--duration) var(--ease); }
+.back-link:hover { color: var(--amber-2); text-decoration: none; }
+@media (max-width: 768px) { .article-body { padding: 0 var(--sp-4); } .cta-box { padding: var(--sp-6) var(--sp-4); } .faq-section { padding: var(--sp-6) var(--sp-4); } }
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Hail vs. Wind Damage: How Insurers Tell the Difference</h1>
+    <p class="subtitle">Hail and wind leave different signatures on a roof &mdash; and insurers read them differently. Here's what each looks like and why it matters.</p>
+    <p class="meta">By Dustin Stohler · June 2, 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/blog/" class="back-link">&#8592; All Articles</a>
+
+    <div class="article-intro">
+      <p>To a homeowner, storm damage is storm damage. To an insurance adjuster, hail and wind are two distinct kinds of loss with different fingerprints, and telling them apart is part of how a claim gets evaluated. Knowing the difference helps you understand what an adjuster is looking for, describe your damage accurately, and recognize when a contractor's assessment lines up with reality. Here's how the two types of damage actually look on a roof.</p>
+    </div>
+
+    <section class="step">
+      <h2>What Hail Damage Looks Like</h2>
+      <p>Hail strikes straight down (or at a slight angle) and impacts the surface of the shingle. Its marks tend to be scattered and random rather than directional:</p>
+      <ul>
+        <li><strong>Bruises and dents</strong> &mdash; soft spots where the granules are knocked away and the mat underneath is exposed, often round.</li>
+        <li><strong>Granule loss</strong> that collects in gutters and downspouts, leaving dark, pitted circles on the shingle.</li>
+        <li><strong>A random, spatter-like pattern</strong> across slopes, with matching dents on soft metals like vents, flashing, and gutters.</li>
+      </ul>
+      <p>Adjusters frequently confirm hail by checking those soft metal surfaces and by looking for a consistent strike pattern across the roof and other exposed surfaces around the property.</p>
+    </section>
+
+    <section class="step">
+      <h2>What Wind Damage Looks Like</h2>
+      <p>Wind works differently. Instead of impacting the surface, it lifts and pulls, so its damage is directional and concentrated where the wind hit hardest:</p>
+      <ul>
+        <li><strong>Lifted, creased, or folded shingles</strong> where the seal was broken and the shingle bent back.</li>
+        <li><strong>Missing shingles</strong> entirely, often in patches along edges, ridges, and corners where uplift is strongest.</li>
+        <li><strong>Torn or displaced flashing</strong> and damage that follows a clear directional line rather than a random spatter.</li>
+      </ul>
+      <p>Because wind concentrates on the windward edges and high points, wind damage often clusters, while hail tends to be spread more evenly across the roof.</p>
+    </section>
+
+    <section class="step">
+      <h2>Why the Distinction Matters for a Claim</h2>
+      <p>The type of peril affects how a claim is handled. Many policies carry a separate wind/hail deductible &mdash; sometimes a percentage of dwelling coverage rather than a flat amount &mdash; and the cause of loss noted on the claim can influence coverage. Damage that an adjuster attributes to age, wear, or a manufacturing issue rather than a storm event may be treated very differently from sudden hail or wind damage.</p>
+      <div class="highlight-box">
+        <strong>This is why documentation helps:</strong> dated photos taken after the storm, plus the storm's date, give the adjuster context and help establish that the damage came from a specific weather event rather than gradual wear.
+      </div>
+    </section>
+
+    <div class="cta-box">
+      <h3>Storm Damage Confirmed? Compare Repair Bids.</h3>
+      <p>Once you understand the damage, the next step is the repair. On Otter Quotes, licensed, insured contractors compete for your project &mdash; so you can compare estimates side by side before you choose.</p>
+      <a href="/how-it-works.html" class="btn btn-primary btn-lg">See How It Works</a>
+    </div>
+
+    <section class="step">
+      <h2>Damage You Can't See From the Ground</h2>
+      <p>Both hail and wind can cause harm that isn't visible from the driveway. Hail can fracture a shingle's mat without obvious surface loss, shortening its life and opening the door to leaks months later. Wind can break the adhesive seal between shingles without physically moving them, leaving them vulnerable to the next gust. This is why a proper roof assessment looks closely at the surface and the seals &mdash; not just whether shingles are obviously missing. A roof that looks fine from the ground can still have storm damage worth addressing.</p>
+    </section>
+
+    <section class="step">
+      <h2>What to Do After a Storm</h2>
+      <p>A calm, orderly response serves you better than rushing:</p>
+      <ul>
+        <li><strong>Stay safe.</strong> Don't climb onto a damaged roof; assess from the ground and through photos.</li>
+        <li><strong>Document promptly.</strong> Dated photos of shingles, gutters, vents, and any interior leaks, plus the storm date.</li>
+        <li><strong>Get a professional assessment</strong> to understand the extent of the damage.</li>
+        <li><strong>Mind the deadlines.</strong> Policies have time limits for reporting a claim, so don't wait indefinitely.</li>
+      </ul>
+      <div class="warning-box">
+        <strong>An important boundary:</strong> classifying a loss and applying your policy is the adjuster's and insurer's job. Otter Quotes connects homeowners with contractors and is <strong>not a public adjuster</strong> &mdash; we don't determine cause of loss or handle claims. For coverage questions, work with your carrier or a licensed professional.
+      </div>
+    </section>
+
+    <div class="related-links">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/blog/aerial-roof-measurement-reports.html">Aerial Roof Measurement Reports vs. Tape-Measure Quotes</a></li>
+        <li><a href="/blog/what-is-scope-of-loss-roofing.html">What "Scope of Loss" Actually Means</a></li>
+        <li><a href="/how-it-works.html">How Otter Quotes Works for Homeowners</a></li>
+      </ul>
+    </div>
+
+    <section class="faq-section">
+      <h2>Frequently Asked Questions</h2>
+      <div class="faq-item">
+        <h3>How can I tell if my roof has hail or wind damage?</h3>
+        <div class="faq-answer"><p>Hail tends to leave random, scattered dents and granule loss, with matching marks on soft metals like vents and gutters. Wind leaves directional damage &mdash; lifted, creased, or missing shingles concentrated along edges and ridges. A professional assessment confirms which you have, since some damage isn't visible from the ground.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Does it matter whether my claim is for hail or wind?</h3>
+        <div class="faq-answer"><p>It can. Many policies have a specific wind/hail deductible, sometimes set as a percentage of dwelling coverage, and the noted cause of loss can affect how the claim is handled. Your carrier and policy determine the details.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Can a roof have storm damage that I can't see?</h3>
+        <div class="faq-answer"><p>Yes. Hail can fracture a shingle's mat without obvious surface loss, and wind can break the seal between shingles without moving them. Both can lead to leaks later, which is why a close inspection of the surface and seals matters, not just a look for missing shingles.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>How soon do I need to report storm damage?</h3>
+        <div class="faq-answer"><p>Policies set time limits for reporting a claim, so report promptly once you've documented the damage. Waiting too long can complicate a claim. Check your policy for the specific deadline and contact your carrier with questions.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Does Otter Quotes decide if my damage is hail or wind?</h3>
+        <div class="faq-answer"><p>No. Determining the cause of loss is the role of your insurer's adjuster. Otter Quotes is a marketplace connecting you with licensed, insured contractors for the repair; we're not a public adjuster and don't classify damage or handle claims.</p></div>
+      </div>
+    </section>
+
+    <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
+      <h3>Get Your Roof Repaired Right</h3>
+      <p>Post your project on Otter Quotes and let licensed, insured contractors compete for your business. Compare bids, materials, and warranties side by side &mdash; then choose. It's free for homeowners.</p>
+      <a href="/get-started.html" class="btn btn-primary btn-lg">Get Started Today</a>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Hail vs. Wind Damage: How Insurers Tell the Difference",
+    "description": "Hail and wind leave different marks on a roof, and insurers treat them differently. Here's how each type of damage looks and why it matters for a claim.",
+    "image": "https://otterquote.com/img/otter-logo.svg",
+    "author": { "@type": "Person", "name": "Dustin Stohler" },
+    "datePublished": "2026-06-02",
+    "dateModified": "2026-06-02",
+    "publisher": {
+        "@type": "Organization",
+        "name": "Otter Quotes",
+        "logo": { "@type": "ImageObject", "url": "https://otterquote.com/img/otter-logo.svg" }
+    },
+    "mainEntityOfPage": { "@type": "WebPage", "@id": "https://otterquote.com/blog/hail-vs-wind-roof-damage.html" }
+}
+</script>
+
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+        {
+            "@type": "Question",
+            "name": "How can I tell if my roof has hail or wind damage?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Hail tends to leave random, scattered dents and granule loss, with matching marks on soft metals like vents and gutters. Wind leaves directional damage: lifted, creased, or missing shingles concentrated along edges and ridges. A professional assessment confirms which you have, since some damage isn't visible from the ground." }
+        },
+        {
+            "@type": "Question",
+            "name": "Does it matter whether my claim is for hail or wind?",
+            "acceptedAnswer": { "@type": "Answer", "text": "It can. Many policies have a specific wind/hail deductible, sometimes set as a percentage of dwelling coverage, and the noted cause of loss can affect how the claim is handled. Your carrier and policy determine the details." }
+        },
+        {
+            "@type": "Question",
+            "name": "Can a roof have storm damage that I can't see?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Hail can fracture a shingle's mat without obvious surface loss, and wind can break the seal between shingles without moving them. Both can lead to leaks later, which is why a close inspection of the surface and seals matters, not just a look for missing shingles." }
+        },
+        {
+            "@type": "Question",
+            "name": "How soon do I need to report storm damage?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Policies set time limits for reporting a claim, so report promptly once you've documented the damage. Waiting too long can complicate a claim. Check your policy for the specific deadline and contact your carrier with questions." }
+        },
+        {
+            "@type": "Question",
+            "name": "Does Otter Quotes decide if my damage is hail or wind?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Determining the cause of loss is the role of your insurer's adjuster. Otter Quotes is a marketplace connecting you with licensed, insured contractors for the repair; we're not a public adjuster and don't classify damage or handle claims." }
+        }
+    ]
+}
+</script>
+
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<!-- FAQ Interactivity -->
+<script>
+document.querySelectorAll('.faq-item h3').forEach(item => {
+    item.addEventListener('click', function() {
+        this.parentElement.classList.toggle('active');
+    });
+});
+</script>
+</body>
+</html>
