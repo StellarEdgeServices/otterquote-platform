@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Aerial Roof Measurement Reports vs. Tape-Measure Quotes · Otter Quotes</title>
+<meta name="description" content="Aerial roof measurement reports give every contractor the same exact numbers. Here's why that makes for more accurate, more comparable roofing quotes.">
+<link rel="canonical" href="https://otterquote.com/blog/aerial-roof-measurement-reports.html">
+<meta property="og:title" content="Aerial Roof Measurement Reports vs. Tape-Measure Quotes · Otter Quotes">
+<meta property="og:description" content="When every roofer measures your roof differently, every quote is different. Aerial measurement reports fix that with one set of precise numbers.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/blog/aerial-roof-measurement-reports.html">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:author" content="Dustin Stohler">
+<meta property="article:published_time" content="2026-06-02">
+
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments)}
+  gtag('js', new Date());
+  gtag('config', 'G-JNQ6XR3LX2');
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+.page-hero { padding: var(--sp-16) 0 var(--sp-12); text-align: center; background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%); }
+.page-hero h1 { margin-bottom: var(--sp-4); }
+.page-hero .subtitle { max-width: 700px; margin: 0 auto; font-size: 1.1rem; color: var(--slate); }
+.page-hero .meta { font-size: 0.9rem; color: var(--gray); margin-top: var(--sp-4); }
+.article-body { max-width: 760px; margin: 0 auto; padding: 0 var(--sp-6); }
+.article-intro { background: rgba(224, 123, 0, 0.06); border-left: 4px solid var(--amber); padding: var(--sp-6); margin-bottom: var(--sp-10); border-radius: var(--radius-md); }
+.article-intro p { font-size: 1.05rem; color: var(--slate); line-height: 1.8; }
+.step { margin-bottom: var(--sp-10); padding-bottom: var(--sp-8); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.step:last-of-type { border-bottom: none; }
+.step h2 { margin-bottom: var(--sp-3); margin-top: var(--sp-2); }
+.step p { color: var(--slate); margin-bottom: var(--sp-4); line-height: 1.8; }
+.step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step li { margin-bottom: var(--sp-3); color: var(--slate); line-height: 1.7; }
+.step li strong { color: var(--white); }
+.step em { color: var(--amber); font-style: italic; }
+.highlight-box { background: rgba(245, 158, 11, 0.08); border-left: 4px solid #E07B00; padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.highlight-box strong { color: #fbbf24; }
+.highlight-box, .highlight-box p { color: var(--slate); line-height: 1.7; }
+.warning-box { background: rgba(239, 68, 68, 0.08); border-left: 4px solid var(--red); padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.warning-box strong { color: #f87171; }
+.warning-box, .warning-box p { color: var(--slate); line-height: 1.7; }
+.cta-box { background: var(--navy-2); border: 1px solid rgba(224, 123, 0, 0.2); padding: var(--sp-10); border-radius: var(--radius-lg); margin: var(--sp-10) 0; text-align: center; }
+.cta-box h3 { color: var(--white); margin-bottom: var(--sp-4); }
+.cta-box p { color: var(--slate); margin-bottom: var(--sp-6); line-height: 1.6; }
+.related-links { background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06); padding: var(--sp-6) var(--sp-8); border-radius: var(--radius-lg); margin: var(--sp-10) 0; }
+.related-links h3 { color: var(--white); margin-bottom: var(--sp-4); font-size: 1.05rem; }
+.related-links ul { margin-left: var(--sp-6); }
+.related-links li { margin-bottom: var(--sp-2); line-height: 1.7; }
+.faq-section { background: var(--navy-2); padding: var(--sp-10) var(--sp-8); border-radius: var(--radius-lg); margin-top: var(--sp-12); border: 1px solid rgba(255,255,255,0.06); }
+.faq-section h2 { margin-bottom: var(--sp-8); text-align: center; }
+.faq-item { margin-bottom: var(--sp-6); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: var(--sp-6); }
+.faq-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.faq-item h3 { color: var(--white); font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; margin-bottom: var(--sp-3); cursor: pointer; display: flex; align-items: center; user-select: none; transition: color var(--duration) var(--ease); }
+.faq-item h3:hover { color: var(--amber); }
+.faq-item h3::before { content: "\25B6"; color: var(--amber); margin-right: var(--sp-3); font-size: 0.8rem; transition: transform 0.3s var(--ease); }
+.faq-item.active h3::before { transform: rotate(90deg); }
+.faq-answer { color: var(--slate); line-height: 1.8; display: none; padding-left: var(--sp-6); }
+.faq-item.active .faq-answer { display: block; }
+.back-link { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--amber); font-size: 0.9rem; font-weight: 500; margin-bottom: var(--sp-8); transition: color var(--duration) var(--ease); }
+.back-link:hover { color: var(--amber-2); text-decoration: none; }
+@media (max-width: 768px) { .article-body { padding: 0 var(--sp-4); } .cta-box { padding: var(--sp-6) var(--sp-4); } .faq-section { padding: var(--sp-6) var(--sp-4); } }
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Aerial Roof Measurement Reports vs. Tape-Measure Quotes</h1>
+    <p class="subtitle">When every roofer measures your roof a little differently, every quote comes out differently. A precise aerial measurement gives everyone the same numbers.</p>
+    <p class="meta">By Dustin Stohler · June 2, 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/blog/" class="back-link">&#8592; All Articles</a>
+
+    <div class="article-intro">
+      <p>Every roof estimate starts with one number: how big is the roof? Traditionally a roofer climbs up with a tape measure, or estimates from the ground, and works from there. Aerial measurement reports &mdash; built from satellite or drone imagery &mdash; replace that guesswork with a precise diagram of your roof's area, pitch, and features. The result is more accurate estimates and, just as importantly, quotes you can actually compare on equal footing.</p>
+    </div>
+
+    <section class="step">
+      <h2>How Roofs Were Traditionally Measured</h2>
+      <p>The classic approach has a contractor physically measure the roof or eyeball it from the driveway, then calculate the squares (a "square" is 100 square feet of roof area). It works, but it carries real downsides:</p>
+      <ul>
+        <li><strong>It varies by person.</strong> Two roofers measuring the same roof can land on different totals, which is one reason two quotes can differ before materials or labor even enter the picture.</li>
+        <li><strong>It can be unsafe.</strong> Steep, high, or storm-damaged roofs are hazardous to walk.</li>
+        <li><strong>It's easy to under- or over-estimate.</strong> Complex roofs with many facets, valleys, and dormers are hard to measure precisely by hand.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What an Aerial Measurement Report Provides</h2>
+      <p>An aerial report uses high-resolution imagery to generate a detailed model of your roof without anyone climbing on it. A typical report includes:</p>
+      <ul>
+        <li><strong>Total roof area</strong> in squares, calculated from precise measurements.</li>
+        <li><strong>Pitch and slope</strong> for each facet, which affects both material needs and labor.</li>
+        <li><strong>Lengths of ridges, hips, valleys, rakes, and eaves</strong> &mdash; the details that drive flashing, ridge cap, and underlayment quantities.</li>
+        <li><strong>A labeled diagram</strong> of every facet, so the scope is visual and unambiguous.</li>
+      </ul>
+      <div class="highlight-box">
+        <strong>The key advantage:</strong> when every contractor bids from the same measured report, their numbers describe the same roof. Differences in price then reflect materials, labor, and warranty &mdash; not disagreement about how big your roof is.
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>Why Accuracy Protects You Both Ways</h2>
+      <p>Precise measurements cut both directions, and both help you:</p>
+      <ul>
+        <li><strong>Against under-ordering:</strong> a roof measured short means too few materials, mid-job delays, and sometimes a change order that raises your final cost.</li>
+        <li><strong>Against over-ordering:</strong> an inflated estimate means you pay for squares and materials you don't need.</li>
+      </ul>
+      <p>An accurate report keeps the estimate honest in both directions, so the price you're quoted is tied to the roof you actually have.</p>
+    </section>
+
+    <div class="cta-box">
+      <h3>Comparable Numbers, Competitive Bids</h3>
+      <p>Accurate measurements are most powerful when contractors compete from the same scope. On Otter Quotes, licensed, insured contractors bid on your project &mdash; so you can compare estimates that describe the same roof.</p>
+      <a href="/how-it-works.html" class="btn btn-primary btn-lg">See How It Works</a>
+    </div>
+
+    <section class="step">
+      <h2>Where Aerial Reports Especially Help</h2>
+      <p>Aerial measurement is useful on any roof, but it earns its keep most on:</p>
+      <ul>
+        <li><strong>Steep or multi-story roofs</strong> that are dangerous or impractical to walk.</li>
+        <li><strong>Complex roofs</strong> with many facets, dormers, and valleys, where manual measurement is most error-prone.</li>
+        <li><strong>Comparison shopping,</strong> because a shared report removes the "are they even quoting the same thing?" problem.</li>
+        <li><strong>Insurance documentation,</strong> where a precise, labeled diagram supports a clear scope of work.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>A Tool, Not a Replacement for Inspection</h2>
+      <p>An aerial report measures the roof; it doesn't assess its condition. It can tell you the exact area and pitch, but it won't tell you whether the decking is rotten or a seal has failed. A thorough contractor still inspects the roof &mdash; the report and the inspection work together. Treat the measurement as the precise foundation for an estimate, with an in-person condition assessment layered on top.</p>
+      <div class="warning-box">
+        <strong>A boundary worth noting:</strong> a measurement report documents your roof's dimensions &mdash; it isn't an insurance determination. Otter Quotes connects homeowners with contractors and is <strong>not a public adjuster</strong>; for claims and coverage, work with your carrier or a licensed professional.
+      </div>
+    </section>
+
+    <div class="related-links">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/blog/hail-vs-wind-roof-damage.html">Hail vs. Wind Damage: How Insurers Tell the Difference</a></li>
+        <li><a href="/blog/what-is-scope-of-loss-roofing.html">What "Scope of Loss" Actually Means</a></li>
+        <li><a href="/how-it-works.html">How Otter Quotes Works for Homeowners</a></li>
+      </ul>
+    </div>
+
+    <section class="faq-section">
+      <h2>Frequently Asked Questions</h2>
+      <div class="faq-item">
+        <h3>What is an aerial roof measurement report?</h3>
+        <div class="faq-answer"><p>It's a detailed diagram of your roof generated from satellite or drone imagery, giving precise area, pitch, and the lengths of ridges, valleys, and edges &mdash; without anyone climbing on the roof. Contractors use it to build accurate estimates.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Why are aerial measurements better than a tape measure?</h3>
+        <div class="faq-answer"><p>They're consistent and precise. A tape-measure estimate varies by who's measuring and can be hard to get right on complex or steep roofs. An aerial report gives every contractor the same exact numbers, so quotes describe the same roof and are easier to compare.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Does an aerial report replace an in-person inspection?</h3>
+        <div class="faq-answer"><p>No. A report measures dimensions; it doesn't assess condition like rotten decking or failed seals. A good contractor still inspects the roof. The measurement and the inspection work together to produce an accurate estimate.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Are aerial measurements accurate enough to order materials?</h3>
+        <div class="faq-answer"><p>Yes &mdash; that's their main purpose. A quality report provides area, pitch, and component lengths precise enough to calculate materials, which reduces both costly under-ordering and wasteful over-ordering.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Does Otter Quotes provide measurement reports?</h3>
+        <div class="faq-answer"><p>Otter Quotes is a marketplace connecting homeowners with licensed, insured contractors who compete for your project. Measurement practices vary by contractor; the value of the platform is comparable, competitive bids. We're not a public adjuster and don't handle insurance claims.</p></div>
+      </div>
+    </section>
+
+    <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
+      <h3>Compare Bids on the Same Roof</h3>
+      <p>Post your project on Otter Quotes and let licensed, insured contractors compete for your business. Compare scope, materials, and price side by side &mdash; then choose. It's free for homeowners.</p>
+      <a href="/get-started.html" class="btn btn-primary btn-lg">Get Started Today</a>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Aerial Roof Measurement Reports vs. Tape-Measure Quotes",
+    "description": "Aerial roof measurement reports give every contractor the same exact numbers. Here's why that makes for more accurate, more comparable roofing quotes.",
+    "image": "https://otterquote.com/img/otter-logo.svg",
+    "author": { "@type": "Person", "name": "Dustin Stohler" },
+    "datePublished": "2026-06-02",
+    "dateModified": "2026-06-02",
+    "publisher": {
+        "@type": "Organization",
+        "name": "Otter Quotes",
+        "logo": { "@type": "ImageObject", "url": "https://otterquote.com/img/otter-logo.svg" }
+    },
+    "mainEntityOfPage": { "@type": "WebPage", "@id": "https://otterquote.com/blog/aerial-roof-measurement-reports.html" }
+}
+</script>
+
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+        {
+            "@type": "Question",
+            "name": "What is an aerial roof measurement report?",
+            "acceptedAnswer": { "@type": "Answer", "text": "It's a detailed diagram of your roof generated from satellite or drone imagery, giving precise area, pitch, and the lengths of ridges, valleys, and edges without anyone climbing on the roof. Contractors use it to build accurate estimates." }
+        },
+        {
+            "@type": "Question",
+            "name": "Why are aerial measurements better than a tape measure?",
+            "acceptedAnswer": { "@type": "Answer", "text": "They're consistent and precise. A tape-measure estimate varies by who's measuring and can be hard to get right on complex or steep roofs. An aerial report gives every contractor the same exact numbers, so quotes describe the same roof and are easier to compare." }
+        },
+        {
+            "@type": "Question",
+            "name": "Does an aerial report replace an in-person inspection?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. A report measures dimensions; it doesn't assess condition like rotten decking or failed seals. A good contractor still inspects the roof. The measurement and the inspection work together to produce an accurate estimate." }
+        },
+        {
+            "@type": "Question",
+            "name": "Are aerial measurements accurate enough to order materials?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes, that's their main purpose. A quality report provides area, pitch, and component lengths precise enough to calculate materials, which reduces both costly under-ordering and wasteful over-ordering." }
+        },
+        {
+            "@type": "Question",
+            "name": "Does Otter Quotes provide measurement reports?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Otter Quotes is a marketplace connecting homeowners with licensed, insured contractors who compete for your project. Measurement practices vary by contractor; the value of the platform is comparable, competitive bids. We're not a public adjuster and don't handle insurance claims." }
+        }
+    ]
+}
+</script>
+
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<!-- FAQ Interactivity -->
+<script>
+document.querySelectorAll('.faq-item h3').forEach(item => {
+    item.addEventListener('click', function() {
+        this.parentElement.classList.toggle('active');
+    });
+});
+</script>
+</body>
+</html>

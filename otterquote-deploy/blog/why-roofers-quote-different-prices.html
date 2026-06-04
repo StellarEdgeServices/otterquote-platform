@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Why Two Roofers Quote Different Prices for the Same Job · Otter Quotes</title>
+<meta name="description" content="Two roofers, one roof, two very different prices. Here's what actually drives the gap between quotes, and how to compare them fairly.">
+<link rel="canonical" href="https://otterquote.com/blog/why-roofers-quote-different-prices.html">
+<meta property="og:title" content="Why Two Roofers Quote Different Prices for the Same Job · Otter Quotes">
+<meta property="og:description" content="A higher roofing quote isn't automatically a worse deal, and a lower one isn't automatically a better one. Here's what's really behind the gap.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/blog/why-roofers-quote-different-prices.html">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:author" content="Dustin Stohler">
+<meta property="article:published_time" content="2026-06-02">
+
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments)}
+  gtag('js', new Date());
+  gtag('config', 'G-JNQ6XR3LX2');
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+.page-hero { padding: var(--sp-16) 0 var(--sp-12); text-align: center; background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%); }
+.page-hero h1 { margin-bottom: var(--sp-4); }
+.page-hero .subtitle { max-width: 700px; margin: 0 auto; font-size: 1.1rem; color: var(--slate); }
+.page-hero .meta { font-size: 0.9rem; color: var(--gray); margin-top: var(--sp-4); }
+.article-body { max-width: 760px; margin: 0 auto; padding: 0 var(--sp-6); }
+.article-intro { background: rgba(224, 123, 0, 0.06); border-left: 4px solid var(--amber); padding: var(--sp-6); margin-bottom: var(--sp-10); border-radius: var(--radius-md); }
+.article-intro p { font-size: 1.05rem; color: var(--slate); line-height: 1.8; }
+.step { margin-bottom: var(--sp-10); padding-bottom: var(--sp-8); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.step:last-of-type { border-bottom: none; }
+.step h2 { margin-bottom: var(--sp-3); margin-top: var(--sp-2); }
+.step p { color: var(--slate); margin-bottom: var(--sp-4); line-height: 1.8; }
+.step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step li { margin-bottom: var(--sp-3); color: var(--slate); line-height: 1.7; }
+.step li strong { color: var(--white); }
+.step em { color: var(--amber); font-style: italic; }
+.highlight-box { background: rgba(245, 158, 11, 0.08); border-left: 4px solid #E07B00; padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.highlight-box strong { color: #fbbf24; }
+.highlight-box, .highlight-box p { color: var(--slate); line-height: 1.7; }
+.warning-box { background: rgba(239, 68, 68, 0.08); border-left: 4px solid var(--red); padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.warning-box strong { color: #f87171; }
+.warning-box, .warning-box p { color: var(--slate); line-height: 1.7; }
+.cta-box { background: var(--navy-2); border: 1px solid rgba(224, 123, 0, 0.2); padding: var(--sp-10); border-radius: var(--radius-lg); margin: var(--sp-10) 0; text-align: center; }
+.cta-box h3 { color: var(--white); margin-bottom: var(--sp-4); }
+.cta-box p { color: var(--slate); margin-bottom: var(--sp-6); line-height: 1.6; }
+.related-links { background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06); padding: var(--sp-6) var(--sp-8); border-radius: var(--radius-lg); margin: var(--sp-10) 0; }
+.related-links h3 { color: var(--white); margin-bottom: var(--sp-4); font-size: 1.05rem; }
+.related-links ul { margin-left: var(--sp-6); }
+.related-links li { margin-bottom: var(--sp-2); line-height: 1.7; }
+.faq-section { background: var(--navy-2); padding: var(--sp-10) var(--sp-8); border-radius: var(--radius-lg); margin-top: var(--sp-12); border: 1px solid rgba(255,255,255,0.06); }
+.faq-section h2 { margin-bottom: var(--sp-8); text-align: center; }
+.faq-item { margin-bottom: var(--sp-6); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: var(--sp-6); }
+.faq-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.faq-item h3 { color: var(--white); font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; margin-bottom: var(--sp-3); cursor: pointer; display: flex; align-items: center; user-select: none; transition: color var(--duration) var(--ease); }
+.faq-item h3:hover { color: var(--amber); }
+.faq-item h3::before { content: "\25B6"; color: var(--amber); margin-right: var(--sp-3); font-size: 0.8rem; transition: transform 0.3s var(--ease); }
+.faq-item.active h3::before { transform: rotate(90deg); }
+.faq-answer { color: var(--slate); line-height: 1.8; display: none; padding-left: var(--sp-6); }
+.faq-item.active .faq-answer { display: block; }
+.back-link { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--amber); font-size: 0.9rem; font-weight: 500; margin-bottom: var(--sp-8); transition: color var(--duration) var(--ease); }
+.back-link:hover { color: var(--amber-2); text-decoration: none; }
+@media (max-width: 768px) { .article-body { padding: 0 var(--sp-4); } .cta-box { padding: var(--sp-6) var(--sp-4); } .faq-section { padding: var(--sp-6) var(--sp-4); } }
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Why Two Roofers Quote Different Prices for the Same Job</h1>
+    <p class="subtitle">Same roof, same address, two quotes thousands of dollars apart. The gap is rarely random &mdash; here's what's actually behind it.</p>
+    <p class="meta">By Dustin Stohler · June 2, 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/blog/" class="back-link">&#8592; All Articles</a>
+
+    <div class="article-intro">
+      <p>You invite two roofers to look at the same roof and get back two prices that don't seem to belong to the same project. It's one of the most confusing parts of hiring a contractor &mdash; and one of the most important to understand. The spread between honest quotes comes from real, explainable differences. Once you know what they are, a higher number stops looking like a rip-off and a lower one stops looking like a steal, and you can judge each bid on what it actually delivers.</p>
+    </div>
+
+    <section class="step">
+      <h2>They're Not Quoting the Same Scope</h2>
+      <p>This is the single biggest driver. Two estimates can describe two different jobs even on one roof:</p>
+      <ul>
+        <li><strong>New vs. reused components.</strong> One bid includes new flashing, drip edge, and pipe boots; the other plans to reuse what's there. Reusing parts is cheaper today and a common source of future leaks.</li>
+        <li><strong>Underlayment and ice-and-water shield.</strong> Synthetic underlayment and proper ice-and-water coverage in valleys and eaves cost more than the bare minimum &mdash; and protect more.</li>
+        <li><strong>Decking allowance.</strong> A thorough bid notes what happens if rotten decking is found underneath; a thin one stays silent, then charges for it mid-job.</li>
+      </ul>
+      <div class="highlight-box">
+        <strong>The fix:</strong> compare scopes before prices. When two estimates cover the same materials and the same work, the remaining difference is the part actually worth negotiating.
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>Material Grade and Manufacturer System</h2>
+      <p>"Architectural shingles" is a category, not a single product. A builder-grade three-tab, a mid-tier architectural shingle, and a premium designer line carry very different costs. Two roofers can both write "architectural shingles" and mean products that differ by thousands across a full roof. The same applies to whether they're installing a complete, matched manufacturer system &mdash; which unlocks better warranty coverage but costs more than mixing economy components.</p>
+      <p>The supporting materials matter just as much as the shingle. Synthetic versus felt underlayment, the brand and thickness of the ice-and-water barrier, ridge vent versus box vents, and the gauge of the metal flashing all move the price. None of these show up in a glance at the bottom line, but together they can account for a large share of the gap between two bids. When you ask each roofer to name the specific products they're quoting, the "mystery" difference usually resolves into a list of concrete choices you can actually evaluate.</p>
+    </section>
+
+    <section class="step">
+      <h2>Labor, Crew, and Overhead</h2>
+      <p>A roofer's price has to cover more than shingles. The differences here are legitimate even when the materials match:</p>
+      <ul>
+        <li><strong>Crew experience and pay.</strong> An established crew that does clean, code-compliant work costs more than a rotating set of day laborers.</li>
+        <li><strong>Insurance and licensing.</strong> A properly licensed, insured contractor carries general liability and workers' comp &mdash; real costs that an uninsured operator simply skips, which is part of why their number is lower.</li>
+        <li><strong>Overhead and warranty.</strong> A company that answers the phone in two years, honors a workmanship warranty, and pulls permits has overhead a fly-by-night operation doesn't.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Roof Complexity and Access</h2>
+      <p>The same square footage can be easy or hard to work on. Steep pitches, multiple stories, intricate valleys, skylights, chimneys, and limited ground access all add labor and safety cost. One roofer may price your cut-up, steep roof realistically while another lowballs it and hopes to make up the difference later. Complexity is a legitimate reason for a higher number &mdash; it's harder, slower, and riskier work.</p>
+    </section>
+
+    <div class="cta-box">
+      <h3>The Easiest Way to See the Real Range</h3>
+      <p>One quote tells you a price. Several quotes tell you the market. On Otter Quotes, licensed, insured contractors submit competitive bids for your project &mdash; so you can see where honest prices cluster and what each one includes.</p>
+      <a href="/how-it-works.html" class="btn btn-primary btn-lg">See How It Works</a>
+    </div>
+
+    <section class="step">
+      <h2>Timing, Demand, and the Post-Storm Spike</h2>
+      <p>Prices move with demand. After a major storm, every roofer in the area is booked, material is in short supply, and quotes climb &mdash; sometimes sharply. A contractor with a full schedule may quote high simply because they don't need the work, while one with an opening prices competitively to win it. Neither is wrong; it's the market. Knowing this helps you read an unusually high quote for what it often is &mdash; a reflection of timing, not a measure of quality.</p>
+    </section>
+
+    <section class="step">
+      <h2>How to Compare Quotes Fairly</h2>
+      <p>Put the bids side by side and normalize them before you judge price:</p>
+      <ul>
+        <li><strong>Match the scope.</strong> Same squares, same underlayment, same flashing plan, same ventilation. Adjust mentally for anything one includes that another omits.</li>
+        <li><strong>Match the materials.</strong> Confirm the exact shingle line and whether it's a full manufacturer system.</li>
+        <li><strong>Match the protections.</strong> License, insurance, workmanship warranty length, and permit handling.</li>
+        <li><strong>Then look at price.</strong> Whatever gap remains after matching the above is the real, decision-worthy difference.</li>
+      </ul>
+      <div class="warning-box">
+        <strong>If a claim is involved:</strong> your insurer's estimate is its own document, separate from any contractor bid. Otter Quotes connects homeowners with contractors and is <strong>not a public adjuster</strong> &mdash; we don't negotiate claims or interpret your policy. For claim questions, contact your carrier or a licensed professional.
+      </div>
+    </section>
+
+    <div class="related-links">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/blog/roofing-estimate-red-flags.html">7 Red Flags in a Roofing Contractor Estimate</a></li>
+        <li><a href="/blog/roof-shingle-warranty-tiers-explained.html">Roofing Warranty Tiers Explained (GAF, Owens Corning, CertainTeed)</a></li>
+        <li><a href="/how-it-works.html">How Otter Quotes Works for Homeowners</a></li>
+      </ul>
+    </div>
+
+    <section class="faq-section">
+      <h2>Frequently Asked Questions</h2>
+      <div class="faq-item">
+        <h3>Why is one roofing quote so much higher than the others?</h3>
+        <div class="faq-answer"><p>Usually because it includes more &mdash; new flashing, better underlayment, a premium shingle or full manufacturer system, a longer workmanship warranty, or it accounts for a steep, complex roof honestly. A higher number can also reflect a busy contractor's schedule after a storm. Match the scope before deciding it's "too high."</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Should I always pick the cheapest roofing quote?</h3>
+        <div class="faq-answer"><p>Only if it covers the same scope, materials, insurance, and warranty as the others. A low bid that's low because it reuses old flashing, skips ice-and-water shield, or comes from an uninsured crew isn't actually cheaper &mdash; the cost shows up later.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>How big a price difference between roofing quotes is normal?</h3>
+        <div class="faq-answer"><p>Honest quotes for identical scope often land within a moderate band of each other. A bid that's 30&ndash;40% below the rest is the one to question, because that gap usually signals a smaller scope, cheaper materials, or missing insurance rather than a better deal.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Do roofing prices really go up after a storm?</h3>
+        <div class="faq-answer"><p>Yes. Heavy local demand and tight material supply push prices up after major storms, and fully-booked contractors have little reason to bid low. It's one reason comparing several current quotes &mdash; rather than acting on the first one &mdash; protects you.</p></div>
+      </div>
+      <div class="faq-item">
+        <h3>Does Otter Quotes set the prices contractors quote?</h3>
+        <div class="faq-answer"><p>No. Contractors set their own prices and compete for your project. Otter Quotes is a marketplace connecting you with licensed, insured contractors; we're not a public adjuster and don't set pricing or handle insurance claims.</p></div>
+      </div>
+    </section>
+
+    <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
+      <h3>See Where Honest Prices Land</h3>
+      <p>Post your project on Otter Quotes and let licensed, insured contractors compete for your business. Compare scope, materials, and price side by side &mdash; then choose. It's free for homeowners.</p>
+      <a href="/get-started.html" class="btn btn-primary btn-lg">Get Started Today</a>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Why Two Roofers Quote Different Prices for the Same Job",
+    "description": "Two roofers, one roof, two very different prices. Here's what actually drives the gap between quotes, and how to compare them fairly.",
+    "image": "https://otterquote.com/img/otter-logo.svg",
+    "author": { "@type": "Person", "name": "Dustin Stohler" },
+    "datePublished": "2026-06-02",
+    "dateModified": "2026-06-02",
+    "publisher": {
+        "@type": "Organization",
+        "name": "Otter Quotes",
+        "logo": { "@type": "ImageObject", "url": "https://otterquote.com/img/otter-logo.svg" }
+    },
+    "mainEntityOfPage": { "@type": "WebPage", "@id": "https://otterquote.com/blog/why-roofers-quote-different-prices.html" }
+}
+</script>
+
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+        {
+            "@type": "Question",
+            "name": "Why is one roofing quote so much higher than the others?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Usually because it includes more: new flashing, better underlayment, a premium shingle or full manufacturer system, a longer workmanship warranty, or it accounts for a steep, complex roof honestly. A higher number can also reflect a busy contractor's schedule after a storm. Match the scope before deciding it's too high." }
+        },
+        {
+            "@type": "Question",
+            "name": "Should I always pick the cheapest roofing quote?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Only if it covers the same scope, materials, insurance, and warranty as the others. A low bid that's low because it reuses old flashing, skips ice-and-water shield, or comes from an uninsured crew isn't actually cheaper; the cost shows up later." }
+        },
+        {
+            "@type": "Question",
+            "name": "How big a price difference between roofing quotes is normal?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Honest quotes for identical scope often land within a moderate band of each other. A bid that's 30 to 40 percent below the rest is the one to question, because that gap usually signals a smaller scope, cheaper materials, or missing insurance rather than a better deal." }
+        },
+        {
+            "@type": "Question",
+            "name": "Do roofing prices really go up after a storm?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Heavy local demand and tight material supply push prices up after major storms, and fully-booked contractors have little reason to bid low. It's one reason comparing several current quotes rather than acting on the first one protects you." }
+        },
+        {
+            "@type": "Question",
+            "name": "Does Otter Quotes set the prices contractors quote?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Contractors set their own prices and compete for your project. Otter Quotes is a marketplace connecting you with licensed, insured contractors; we're not a public adjuster and don't set pricing or handle insurance claims." }
+        }
+    ]
+}
+</script>
+
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<!-- FAQ Interactivity -->
+<script>
+document.querySelectorAll('.faq-item h3').forEach(item => {
+    item.addEventListener('click', function() {
+        this.parentElement.classList.toggle('active');
+    });
+});
+</script>
+</body>
+</html>
