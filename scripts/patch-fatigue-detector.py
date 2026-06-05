@@ -81,7 +81,14 @@ def parse_commits(log_output):
     return commits
 
 def is_symptom_commit(message, subsystem_keywords):
-    """Check if a commit message contains symptom keywords."""
+    """Check if a commit message contains symptom keywords.
+
+    Commits referencing a D-number (e.g. "fix(D-237)") are deliberate decision
+    corrections, not patch-fatigue symptoms — they only match the "fix" keyword
+    by accident. Exclude them so the detector does not overcount intentional work.
+    """
+    if re.search(r'\(D-\d+\)', message):
+        return False
     msg_lower = message.lower()
     all_keywords = GLOBAL_SYMPTOM_KEYWORDS + subsystem_keywords
     return any(kw.lower() in msg_lower for kw in all_keywords)
