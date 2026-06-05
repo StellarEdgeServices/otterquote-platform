@@ -1,0 +1,20 @@
+{
+  "_description": "Subsystem map for scripts/patch-fatigue-detector.py. Externalized from the hardcoded SUBSYSTEM_RULES in PR #227 (fa475f6) but never committed; reconstructed from pre-#227 version git rev e1a9a55 (task 86e1qtn5z).",
+  "_schema": "Each subsystem: name + files[] (regex patterns matched against changed file paths; '*'/'**' glob tokens supported). Detector also applies GLOBAL_SYMPTOM_KEYWORDS plus optional per-subsystem keywords[].",
+  "subsystems": [
+    { "name": "docs", "files": ["(?:^|/)CLAUDE\\.md$"] },
+    { "name": "tooling", "files": ["(?:^|/)\\.claude/commands/", "slash[-_]command", "scripts/"] },
+    { "name": "admin", "files": ["netlify/edge-functions/admin"] },
+    { "name": "auth", "files": ["netlify/edge-functions/auth-callback", "js/auth\\.js", "auth-callback", "login-gate", "contractor-login", "contractor-join", "(?:^|/)login\\.html"] },
+    { "name": "contracts", "files": ["netlify/edge-functions/create-docusign", "docusign"] },
+    { "name": "email", "files": ["netlify/edge-functions/send-email", "mailgun", "email"] },
+    { "name": "payment", "files": ["netlify/edge-functions/stripe", "stripe", "payment"] },
+    { "name": "edge-functions", "files": ["netlify/edge-functions"] },
+    { "name": "contractor", "files": ["contractor"] },
+    { "name": "homeowner", "files": ["homeowner", "claim-start", "claimant"] },
+    { "name": "schema", "files": ["sql/", "supabase/migrations"] },
+    { "name": "ci-cd", "files": ["\\.github/"] },
+    { "name": "deploy", "files": ["netlify\\.toml", "_redirects", "_headers"] },
+    { "name": "frontend", "files": ["\\.html$", "\\.css$", "\\.js$", "\\.ts$", "\\.jsx$", "\\.tsx$"] }
+  ]
+}
