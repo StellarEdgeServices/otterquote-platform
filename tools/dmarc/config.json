@@ -1,0 +1,16 @@
+{
+  "imap_host": "imap.gmail.com",
+  "imap_port": 993,
+  "imap_user": "dustinstohler1@gmail.com",
+  "reporter_senders": [
+    "dmarcreport@microsoft.com",
+    "noreply-dmarc-support@google.com"
+  ],
+  "domains": [
+    "tryotterquote.com",
+    "otterquote.com"
+  ],
+  "output_dir": "tools/dmarc/results",
+  "handoff_dir": "handoffs",
+  "clickup_list_id": "901711730553"
+}

@@ -49,3 +49,15 @@ handoffs/*
 # Generated code-map artifacts — stored in Docs/ in Google Drive, not git
 Docs/code-map.json
 Docs/code-map.md
+
+# DMARC pipeline — allow subdirectory files (overrides *.py above), exclude secrets/output
+!tools/dmarc/
+!tools/dmarc/**
+!tools/dmarc/tests/
+!tools/dmarc/tests/**
+!tools/dmarc/tests/fixtures/
+!tools/dmarc/tests/fixtures/**
+tools/dmarc/.secrets
+tools/dmarc/results/
+tools/dmarc/__pycache__/
+tools/dmarc/tests/__pycache__/
