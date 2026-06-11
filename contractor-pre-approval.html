@@ -901,12 +901,44 @@
                 updateObj.license_path = 'not_provided';
             }
 
-            // Update contractors table — 10s limit
-            const { error: updateError } = await withTimeout(
-                sb.from('contractors').update(updateObj).eq('user_id', user_id),
+            // Update contractors table — 10s limit.
+            // 86e1p4pre: a blind UPDATE keyed on user_id silently affects 0 rows
+            // (no error) when init() never created the stub row — e.g. the session
+            // wasn't ready at page load, or the page was reached via programmatic/
+            // direct navigation (Chrome MCP form_input in PFW). Detect the 0-row
+            // case via .select() and create the row here so a profile save can
+            // never silently succeed with nothing persisted. JS-path fix; no DB trigger.
+            const { data: updatedRows, error: updateError } = await withTimeout(
+                sb.from('contractors').update(updateObj).eq('user_id', user_id).select(),
                 10000, 'Contractor record update'
             );
             if (updateError) throw updateError;
+
+            if (!updatedRows || updatedRows.length === 0) {
+                // No contractors row for this live user_id — create it now, folding the
+                // profile fields (updateObj) over the signup stub data.
+                const signupRaw = localStorage.getItem('cs_contractor_signup');
+                const signup    = signupRaw ? JSON.parse(signupRaw) : {};
+                const createObj = {
+                    user_id:                  user_id,
+                    email:                    (liveSession?.user?.email) || currentUser?.email || '',
+                    company_name:             signup.company_name || '',
+                    contact_name:             signup.contact_name || '',
+                    attestation_signer_title: signup.signer_title || '',
+                    status:                   'pending_approval',
+                    ...updateObj,
+                };
+                const createRes = await withTimeout(
+                    sb.from('contractors').insert(createObj).select().single(),
+                    10000, 'Contractor record create (86e1p4pre stub fallback)'
+                );
+                if (createRes.error) throw createRes.error;
+                contractor = createRes.data;
+                console.log('[pre-approval] 86e1p4pre: created missing contractors row during step-2 save for user_id=' + user_id);
+            } else {
+                // Row existed and was updated — adopt the authoritative live-session row.
+                contractor = updatedRows[0];
+            }
             contractor.onboarding_step = 2;
 
             // Insert contractor_licenses rows (D-218) — 10s per insert
