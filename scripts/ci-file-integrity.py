@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CI File Integrity Check — null-byte, size sanity, JS syntax, and TS structure gate.
+CI File Integrity Check — null-byte, size sanity, JS syntax, TS structure, and MD gate.
 
 Catches FUSE/bindfs mount truncation before corrupt files reach production.
 Root cause (original): May 3, 2026 production outage — login.html and contractor-join.html
@@ -9,6 +9,8 @@ Root cause (extended): May 25, 2026 — PR #136 committed a truncated
 create-docusign-envelope/index.ts (47,139 bytes; complete is 74,299 bytes), causing
 an 8-day EF redeploy block and a D-123 compliance gap. TypeScript EF files
 were not scanned by this script at the time. Task 86e1k3yjq.
+Extended again: June 11, 2026 — README.md null-byte corruption incident. Markdown
+files added to EXTENSIONS for null-byte and size-floor scanning. Task 86e1unc2b.
 
 Detects six violation classes:
   1. Null-byte padding    -- file is full-size but filled with \x00 after real content
@@ -30,16 +32,18 @@ import subprocess
 import sys
 
 # Extensions to scan
-EXTENSIONS = {".html", ".js", ".css", ".ts"}
+EXTENSIONS = {".html", ".js", ".css", ".ts", ".md"}
 
 # Minimum size floors per extension (bytes)
 # A legitimate HTML page cannot be < 500 bytes; a real JS module cannot be < 50 bytes
 # Supabase Edge Function index.ts files are typically 5,000-75,000 bytes
+# Markdown files: 50 bytes catches null-padded or near-empty files
 MIN_SIZES = {
     ".html": 500,
     ".js": 50,
     ".css": 50,
     ".ts": 500,
+    ".md": 50,
 }
 
 # Canary files: critical pages/scripts with hard minimum thresholds (bytes).
@@ -246,5 +250,5 @@ if failures:
     print("Check the commit source -- do not deploy until all violations are resolved.")
     sys.exit(1)
 else:
-    print(f"All {checked} files passed null-byte, size, HTML structure, JS syntax, and TS EF structure checks.")
+    print(f"All {checked} files passed null-byte, size, HTML structure, JS syntax, TS EF structure, and MD checks.")
     sys.exit(0)
