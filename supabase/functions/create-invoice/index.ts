@@ -6,6 +6,47 @@ const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const mailgunDomain = "mail.otterquote.com";
 const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
 
+// ── 86e1tz17j: best-effort Sentry reporter for swallowed audit-write failures ──
+// Inlined (not imported from _shared) because the EF body-deploy path does not
+// resolve _shared imports — same precedent as create-docusign-envelope's inlined
+// getHomeownerName. No-ops to console.error until SENTRY_DSN is set, so it is safe
+// to deploy before the secret exists. Never throws; callers stay non-fatal.
+async function reportToSentry(
+  error: unknown,
+  ctx: { fn: string; op?: string; extra?: Record<string, unknown> },
+): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[sentry:${ctx.fn}${ctx.op ? ":" + ctx.op : ""}]`, message, ctx.extra ?? "");
+  const dsn = Deno.env.get("SENTRY_DSN");
+  if (!dsn) return; // graceful no-op until the secret is configured
+  try {
+    const u = new URL(dsn);
+    const projectId = u.pathname.replace(/^\//, "");
+    if (!projectId) return;
+    const eventId = crypto.randomUUID().replace(/-/g, "");
+    const sentAt = new Date().toISOString();
+    const event = {
+      event_id: eventId, timestamp: sentAt, platform: "javascript", level: "error",
+      logger: `edge.${ctx.fn}`,
+      environment: Deno.env.get("SENTRY_ENVIRONMENT") || "production",
+      tags: { fn: ctx.fn, ...(ctx.op ? { op: ctx.op } : {}) },
+      extra: ctx.extra ?? {},
+      exception: { values: [{ type: error instanceof Error ? error.name : "EdgeFunctionError", value: message }] },
+    };
+    const envelope =
+      JSON.stringify({ event_id: eventId, sent_at: sentAt }) + "\n" +
+      JSON.stringify({ type: "event" }) + "\n" + JSON.stringify(event) + "\n";
+    await fetch(`${u.protocol}//${u.host}/api/${projectId}/envelope/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-sentry-envelope",
+        "X-Sentry-Auth": `Sentry sentry_version=7, sentry_client=otterquote-ef/1.0, sentry_key=${u.username}` },
+      body: envelope,
+    });
+  } catch (postErr) {
+    console.error("[sentry] post failed (non-fatal):", postErr);
+  }
+}
+
 interface CreateInvoiceRequest {
   quote_id: string;
   contractor_id: string;
@@ -282,8 +323,13 @@ serve(async (req: Request) => {
     });
 
     if (logError) {
-      console.error("Activity log error:", logError);
-      // Don't fail the function — email was sent, log is secondary
+      // 86e1tz17j: de-blind — report the failure (was silently swallowed), but
+      // keep non-fatal: the email was already sent, log is secondary.
+      await reportToSentry(logError, {
+        fn: "create-invoice",
+        op: "activity_log.insert",
+        extra: { event_type: "invoice_created", quote_id, contractor_id },
+      });
     }
 
     await sendGA4Event("payment_completed", {
