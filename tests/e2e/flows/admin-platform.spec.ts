@@ -7,7 +7,7 @@
  *   C3: rate_limit_config table — SQL v57 is applied (table exists + has rows)
  *   C4: Partner dashboard access — logged-in partner user can load partner-dashboard.html
  *   C5: SEO meta tags on index — description and ld+json structured data present
- *   C6: GA4 wired on index — G-JNQ6XR3LX2 tag present and configured
+ *   C6: GA4 wired on index — G-D1Y1TLGEFY tag present and configured
  *
  * Prerequisites:
  *   - Run `npm run seed` before this spec
@@ -214,8 +214,8 @@ test.describe('Flow C — Admin & Platform Features (Phase 5)', () => {
   // ──────────────────────────────────────────────────────────────────────────
   // C6: GA4 tag wired on index
   // ──────────────────────────────────────────────────────────────────────────
-  test('C6: index.html contains GA4 tracking code (G-JNQ6XR3LX2)', async ({ page }) => {
-    // Per the index.html lines 22-29, GA4 is configured with G-JNQ6XR3LX2.
+  test('C6: index.html contains GA4 tracking code (G-D1Y1TLGEFY)', async ({ page }) => {
+    // Per the index.html lines 22-29, GA4 is configured with G-D1Y1TLGEFY.
     // Verify the tag is present and gtag config exists.
 
     await page.goto('/index.html');
@@ -227,12 +227,12 @@ test.describe('Flow C — Admin & Platform Features (Phase 5)', () => {
     
     // Check for the measurement ID in the src
     const gaSrc = await gaScript.getAttribute('src');
-    expect(gaSrc).toContain('G-JNQ6XR3LX2');
-    console.log('✅ GA4 gtag library loaded (G-JNQ6XR3LX2)');
+    expect(gaSrc).toContain('G-D1Y1TLGEFY');
+    console.log('✅ GA4 gtag library loaded (G-D1Y1TLGEFY)');
 
     // Check for gtag() call and config in the page script
     const pageContent = await page.content();
-    expect(pageContent).toContain("gtag('config', 'G-JNQ6XR3LX2')");
+    expect(pageContent).toContain("gtag('config', 'G-D1Y1TLGEFY')");
     console.log('✅ GA4 config call present');
   });
 

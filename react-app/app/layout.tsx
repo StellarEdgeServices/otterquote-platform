@@ -5,9 +5,11 @@
  *   1. AuthProvider  — F-007 race-free auth state (INITIAL_SESSION)
  *   2. QueryClientProvider — React Query client singleton (data layer)
  *   3. SentryInitializer — error tracking (D-211 Phase 0)
+ *   4. GA4 tag (G-D1Y1TLGEFY) — OtterQuote analytics property
  */
 
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import './globals.css';
 import { SentryInitializer } from './components/SentryInitializer';
 import { AuthProvider } from './providers/auth-provider';
@@ -26,11 +28,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <SentryInitializer />
-        <QueryClientProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </QueryClientProvider>
-      </body>
-    </html>
-  );
-}
+        {/* GA4 — OtterQuote property (G-D1Y1TLGEFY) */}
+        <Script
+    

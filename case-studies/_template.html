@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title><!-- CASE STUDY HEADLINE · Otter Quotes --></title>
+<meta name="description" content="<!-- 150-160 char description: homeowner situation + outcome -->">
+<link rel="canonical" href="https://otterquote.com/case-studies/<!-- SLUG -->.html">
+<meta property="og:title" content="<!-- CASE STUDY HEADLINE · Otter Quotes -->">
+<meta property="og:description" content="<!-- OG description -->">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/case-studies/<!-- SLUG -->.html">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:author" content="Dustin Stohler">
+<meta property="article:published_time" content="<!-- YYYY-MM-DD -->">
+
+<!-- Article + BreadcrumbList schema -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "<!-- CASE STUDY HEADLINE -->",
+      "description": "<!-- 160-char description -->",
+      "url": "https://otterquote.com/case-studies/<!-- SLUG -->.html",
+      "datePublished": "<!-- YYYY-MM-DD -->",
+      "dateModified": "<!-- YYYY-MM-DD -->",
+      "author": {
+        "@type": "Person",
+        "name": "Dustin Stohler",
+        "url": "https://otterquote.com"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "Otter Quotes",
+        "url": "https://otterquote.com",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://otterquote.com/img/brand-assets/favicon.png"
+        }
+      },
+      "about": {
+        "@type": "Thing",
+        "name": "Insurance claim contractor bidding"
+      }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Home",
+          "item": "https://otterquote.com"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Case Studies",
+          "item": "https://otterquote.com/case-studies/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "<!-- CASE STUDY SHORT TITLE -->",
+          "item": "https://otterquote.com/case-studies/<!-- SLUG -->.html"
+        }
+      ]
+    }
+  ]
+}
+</script>
+
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments)}
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--gray);
+  margin-top: var(--sp-4);
+}
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+.article-body h2 {
+  margin-top: var(--sp-10);
+  margin-bottom: var(--sp-4);
+}
+.article-body p {
+  line-height: 1.75;
+  margin-bottom: var(--sp-5);
+}
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--sp-4);
+  margin: var(--sp-8) 0;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-5);
+  text-align: center;
+}
+.stat-card .stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--brand);
+}
+.stat-card .stat-label {
+  font-size: 0.85rem;
+  color: var(--slate);
+  margin-top: var(--sp-1);
+}
+.pullquote {
+  border-left: 4px solid var(--brand);
+  margin: var(--sp-8) 0;
+  padding: var(--sp-5) var(--sp-6);
+  background: var(--surface);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+.pullquote p {
+  font-size: 1.15rem;
+  font-style: italic;
+  margin-bottom: var(--sp-2);
+}
+.pullquote cite {
+  font-size: 0.9rem;
+  color: var(--slate);
+  font-style: normal;
+}
+.cta-block {
+  background: var(--brand);
+  color: #fff;
+  border-radius: var(--radius-lg);
+  padding: var(--sp-10) var(--sp-8);
+  text-align: center;
+  margin: var(--sp-12) 0 var(--sp-16);
+}
+.cta-block h2 {
+  color: #fff;
+  margin-bottom: var(--sp-3);
+}
+.cta-block p {
+  opacity: 0.9;
+  margin-bottom: var(--sp-6);
+}
+</style>
+</head>
+
+<body>
+<!-- NAV -->
+<div id="nav-placeholder"></div>
+<script>
+  fetch('/nav.html').then(r => r.text()).then(h => {
+    document.getElementById('nav-placeholder').innerHTML = h;
+  });
+</script>
+
+<!-- HERO -->
+<section class="page-hero">
+  <div class="container">
+    <p class="eyebrow">Case Study</p>
+    <h1><!-- CASE STUDY HEADLINE --></h1>
+    <p class="subtitle"><!-- One-sentence outcome summary. Anonymized or with consent. --></p>
+    <p class="meta"><!-- Region, State &mdash; Month Year --></p>
+  </div>
+</section>
+
+<!-- STATS ROW -->
+<section class="section-sm">
+  <div class="container">
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value"><!-- X --></div>
+        <div class="stat-label">Bids received</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value"><!-- Xh --></div>
+        <div class="stat-label">Time to first bid</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value"><!-- X days --></div>
+        <div class="stat-label">Claim to signed contract</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value"><!-- X% --></div>
+        <div class="stat-label">Estimate accuracy</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARTICLE BODY -->
+<article class="section" itemscope itemtype="https://schema.org/Article">
+  <div class="article-body">
+
+    <h2>The Situation</h2>
+    <p><!-- 2-3 sentences. What happened, what the claim covered. No identifying details. --></p>
+
+    <h2>The Problem</h2>
+    <p><!-- 1-2 sentences. The specific friction before Otter Quotes. Bid variance, information asymmetry, trust gap. --></p>
+
+    <!-- HOMEOWNER PULLQUOTE -->
+    <div class="pullquote">
+      <p>"<!-- Homeowner quote. Verbatim with consent, or paraphrased if anonymous. -->"</p>
+      <cite>— <!-- Homeowner first name or "Anonymous homeowner, [Region, State]" --></cite>
+    </div>
+
+    <h2>How Otter Quotes Helped</h2>
+    <p><!-- 2-3 sentences. What the platform specifically enabled. Anchor to the wow stat. --></p>
+
+    <h2>The Contractor They Chose</h2>
+    <p><!-- Why this contractor. What visible signals drove the decision. License/insurance verification, bid accuracy, response time. --></p>
+
+    <!-- CONTRACTOR PULLQUOTE (optional) -->
+    <div class="pullquote">
+      <p>"<!-- Contractor quote if available and consented. Remove block if not. -->"</p>
+      <cite>— <!-- Contractor first name or "Participating contractor, [Region, State]" --></cite>
+    </div>
+
+    <h2>The Outcome</h2>
+    <p><!-- How the job went. Time from contract to completion. Any notable result. --></p>
+
+  </div>
+</article>
+
+<!-- CTA -->
+<section class="section">
+  <div class="container">
+    <div class="cta-block">
+      <h2>Filed a claim? Get competing bids at no cost.</h2>
+      <p>Otter Quotes connects homeowners with licensed contractors — free, with no obligation to choose.</p>
+      <a href="/index.html" class="btn btn-white btn-lg">Get started</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<div id="footer-placeholder"></div>
+<script>
+  fetch('/footer.html').then(r => r.text()).then(h => {
+    document.getElementById('footer-placeholder').innerHTML = h;
+  });
+</script>
+
+</body>
+</html>
