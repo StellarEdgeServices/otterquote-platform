@@ -245,7 +245,7 @@ async function handleRequest(req: Request): Promise<Response> {
         .from("quotes")
         .select("contractor_id, contractors:contractor_id(user_id, profiles:profiles(email, full_name))")
         .eq("claim_id", claim.id)
-        .eq("status", "awarded")
+        .eq("status", "selected")
         .single();
 
       if (quoteError || !quote) {
