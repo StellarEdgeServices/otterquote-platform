@@ -23,8 +23,8 @@
 <meta name="description" content="Get accurate contractor quotes for roofing, siding, gutters, windows and more. Referred by a trusted real estate agent.">
 <link rel="canonical" href="https://otterquote.com/ref-re.html">
 
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
-<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
@@ -652,10 +652,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem('ref_code', refCode);
     localStorage.setItem('ref_timestamp', new Date().toISOString());
 
-    // Look up agent in Supabase
+    // Look up agent via public-safe view (v88: base table restricted)
     try {
       const { data, error } = await sb
-        .from('referral_agents')
+        .from('referral_agents_public')
         .select('*')
         .eq('unique_code', refCode)
         .single();
