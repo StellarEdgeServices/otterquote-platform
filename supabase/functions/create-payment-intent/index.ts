@@ -175,9 +175,10 @@ serve(async (req) => {
         }
         const { data: settings } = await supabase
           .from("platform_settings")
-          .select("platform_fee_percent")
+          .select("value")
+          .eq("key", "platform_fee_percentage")
           .single();
-        const feePct = quote.platform_fee_pct ?? settings?.platform_fee_percent;
+        const feePct = quote.platform_fee_pct ?? settings?.value;
         if (feePct == null) {
           return new Response(JSON.stringify({ error: "Cannot determine platform fee percentage" }), {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },

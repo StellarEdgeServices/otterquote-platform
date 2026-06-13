@@ -1642,20 +1642,9 @@
       document.getElementById('docusignSigned').style.display = 'block';
       document.getElementById('signContractBtn').disabled = false;
 
-      // Update claim status and quote homeowner_signed_at in Supabase
+      // Update quote homeowner_signed_at in Supabase
       if (sb && state.claimId) {
         try {
-          // Update claim status
-          const { error } = await sb
-            .from('claims')
-            .update({
-              status: 'contract_signed',
-              contract_signed_at: new Date().toISOString(),
-            })
-            .eq('id', state.claimId);
-
-          if (error) console.error('Error updating claim status:', error);
-
           // Update quote with homeowner_signed_at (IC 24-5-11 tracking)
           if (state.quoteId) {
             const { error: quoteErr } = await sb

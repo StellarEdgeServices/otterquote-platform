@@ -311,7 +311,7 @@ serve(async (req) => {
               .from("quotes")
               .select("id, contractor_id, total_price, payment_status, platform_fee_pct")
               .eq("claim_id", claim.id)
-              .eq("status", "awarded")
+              .eq("status", "selected")
               .single();
 
             if (quoteErr || !quote) {
@@ -347,13 +347,14 @@ serve(async (req) => {
             // Fetch platform fee percentage (fallback only — per-bid fee takes precedence per D-214/D-215)
             const { data: platformSettings } = await supabase
               .from("platform_settings")
-              .select("platform_fee_percent")
+              .select("value")
+              .eq("key", "platform_fee_percentage")
               .single();
 
             // D-214: use the fee accepted at bid submission (quote.platform_fee_pct).
             // Fall back to platform_settings only for pre-D-214 quotes where platform_fee_pct was not recorded.
             // Never fabricate a rate — throw if both sources are absent.
-            const platformFeePercent = quote.platform_fee_pct ?? platformSettings?.platform_fee_percent;
+            const platformFeePercent = quote.platform_fee_pct ?? platformSettings?.value;
             if (platformFeePercent == null) {
               throw new Error(
                 `[docusign-webhook] D-214 violation: no fee_pct on quote ${quote.id} and platform_settings unavailable — aborting payment to prevent fabricated rate charge`
@@ -471,7 +472,7 @@ serve(async (req) => {
               .from("quotes")
               .update({
                 payment_intent_id: paymentResult.payment_intent_id,
-                payment_status: "paid",
+                payment_status: "succeeded",
               })
               .eq("id", quote.id);
 
@@ -594,7 +595,7 @@ serve(async (req) => {
             .from("quotes")
             .select("contractor_id")
             .eq("claim_id", claim.id)
-            .eq("status", "awarded")
+            .eq("status", "selected")
             .maybeSingle();
           if (awardedQuote?.contractor_id) {
             const { data: contractorRow } = await supabase
@@ -684,7 +685,7 @@ serve(async (req) => {
             .from("quotes")
             .select("id, contractor_id")
             .eq("claim_id", claim.id)
-            .eq("payment_status", "paid")
+            .eq("payment_status", "succeeded")
             .maybeSingle();
 
           if (!paidQuote || !paidQuote.contractor_id) {
