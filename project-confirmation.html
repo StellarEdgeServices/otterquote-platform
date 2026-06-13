@@ -20,8 +20,8 @@
   <meta name="description" content="Confirm your project scope and materials so your contractor can get started.">
   <meta name="robots" content="noindex, nofollow">
 
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
-  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
@@ -2191,9 +2191,9 @@
           return;
         }
 
-        // ── Load contractor ──
+        // ── Load contractor (v89: public-safe view) ──
         const { data: contractorData, error: contractorError } = await sb
-          .from('contractors')
+          .from('contractors_public')
           .select('id, company_name, years_in_business, logo_url')
           .eq('id', state.contractorId)
           .single();
