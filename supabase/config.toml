@@ -34,6 +34,10 @@ verify_jwt = false
 # JWT verification disabled to allow service-role callers; rate-limited (10/day, 50/month per claim).
 verify_jwt = false
 
+[functions.get-contractor-info]
+# Auth enforced inside handler: homeowner JWT + claim ownership + contractor link check (86e1v6nnh).
+verify_jwt = true
+
 [auth]
 site_url = "https://stellaredgeservices.com"
 additional_redirect_urls = [
