@@ -1907,17 +1907,24 @@
         // Required for post-signing charging (D-127): charge happens after contract is signed, not here
         document.getElementById('modalBody').textContent = 'Verifying contractor payment method...';
 
-        const { data: contractorPM, error: pmCheckErr } = await sb
-          .from('contractors')
-          .select('stripe_payment_method_id, stripe_customer_id, company_name, user_id')
-          .eq('id', bid.contractor_id)
-          .single();
+        const { data: { session: ciSession } } = await sb.auth.getSession();
+        const _ciResp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/get-contractor-info', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (ciSession?.access_token || ''),
+            'apikey': CONFIG.SUPABASE_ANON,
+          },
+          body: JSON.stringify({ claim_id: currentClaim.id, contractor_id: bid.contractor_id }),
+        });
+        const pmCheckErr = _ciResp.ok ? null : { status: _ciResp.status };
+        const contractorPM = _ciResp.ok ? await _ciResp.json() : null;
 
         if (pmCheckErr) {
           console.error('Could not check contractor payment method:', pmCheckErr);
         }
 
-        if (!contractorPM || !contractorPM.stripe_payment_method_id) {
+        if (!contractorPM || !contractorPM.has_payment_method) {
           // No payment method on file — notify contractor and tell homeowner to wait
           document.getElementById('modalTitle').textContent = 'Almost There';
           document.getElementById('modalBody').innerHTML =

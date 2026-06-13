@@ -1214,13 +1214,18 @@
         }
 
         // ── Load contractor data ──
-        const { data: contractorData, error: contractorError } = await sb
-          .from('contractors')
-          .select('*')
-          .eq('id', state.contractorId)
-          .single();
-
-        if (contractorError || !contractorData) throw new Error('Contractor not found.');
+        const { data: { session: contractorSession } } = await sb.auth.getSession();
+        const contractorInfoResp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/get-contractor-info', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (contractorSession?.access_token || ''),
+            'apikey': CONFIG.SUPABASE_ANON,
+          },
+          body: JSON.stringify({ claim_id: state.claimId, contractor_id: state.contractorId }),
+        });
+        if (!contractorInfoResp.ok) throw new Error('Contractor not found.');
+        const contractorData = await contractorInfoResp.json();
         state.contractor = contractorData;
 
         // Normalize name

@@ -2,7 +2,7 @@
  * OtterQuote Edge Function: submit-partner-w9
  *
  * Accepts a W-9 PDF upload from an authenticated referral partner,
- * stores it in the partner-photos bucket (prefix: w9/{user_id}/),
+ * stores it in the partner-w9 bucket (prefix: w9/{user_id}/),
  * and clears the payments_blocked flag on the partner's referral_agents row.
  *
  * Auth: partner JWT required. Caller must have a referral_agents row
@@ -10,7 +10,7 @@
  *
  * Input: multipart/form-data with field "w9_file" (PDF, max 5 MB).
  *
- * Storage: partner-photos bucket — w9/{user_id}/{unix_ms}.pdf
+ * Storage: partner-w9 bucket — w9/{user_id}/{unix_ms}.pdf
  *   (private bucket; admin views W-9 via signed URL)
  *
  * DB writes on success:
@@ -166,13 +166,13 @@ serve(async (req) => {
       );
     }
 
-    // ── Upload to partner-photos bucket ──────────────────────────────────────
+    // ── Upload to partner-w9 bucket ─────────────────────────────────────────────
     // Path: w9/{user_id}/{timestamp_ms}.pdf
     const timestamp  = Date.now();
     const storagePath = `w9/${user.id}/${timestamp}.pdf`;
 
     const { error: uploadErr } = await sbAdmin.storage
-      .from("partner-photos")
+      .from("partner-w9")
       .upload(storagePath, fileBytes, {
         contentType: "application/pdf",
         upsert: true,   // allow re-upload (partner correcting a bad submission)
@@ -196,7 +196,7 @@ serve(async (req) => {
     if (updateErr) {
       console.error("submit-partner-w9: DB update error", updateErr);
       // Don't leave an orphaned file — attempt to clean up, but don't fail hard
-      await sbAdmin.storage.from("partner-photos").remove([storagePath]).catch(() => {});
+      await sbAdmin.storage.from("partner-w9").remove([storagePath]).catch(() => {});
       throw new Error(`Database update failed: ${updateErr.message}`);
     }
 

@@ -556,7 +556,7 @@
         async function viewW9(storagePath) {
             // Generate a 60-second signed URL for the W-9 PDF
             const { data, error } = await sb.storage
-                .from('partner-photos')
+                .from('partner-w9')
                 .createSignedUrl(storagePath, 60);
 
             if (error || !data?.signedUrl) {
