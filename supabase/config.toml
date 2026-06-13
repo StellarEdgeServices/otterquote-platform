@@ -1,3 +1,8 @@
+[functions.submit-partner-w9]
+# verify_jwt=false: auth performed in-handler via user-scoped client (auth.getUser).
+# Preserves existing behavior; bucket changed to partner-w9 (86e1v6nnh Item 4).
+verify_jwt = false
+
 [functions.create-payment-intent]
 # Auth enforced inside handler: user JWT → claim ownership + server-side amount; service-role → platform_fee only (86e1v6nnh).
 verify_jwt = true
