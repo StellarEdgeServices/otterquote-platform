@@ -852,6 +852,7 @@ serve(async (req) => {
                 headers: {
                   Authorization: `Basic ${basicAuth}`,
                   "Content-Type": "application/x-www-form-urlencoded",
+                  "Idempotency-Key": `dunning-${quote_id}-${method.stripe_pm_id}`,
                 },
                 body: formData.toString(),
               });
@@ -865,7 +866,7 @@ serve(async (req) => {
                 // Update quote with payment info
                 const quoteUpdate: Record<string, any> = {
                   payment_intent_id: respData.id,
-                  payment_status: "paid",
+                  payment_status: "succeeded",
                   payment_method_type: method.payment_type,
                 };
                 if (method.cpm_id) quoteUpdate.payment_method_id = method.cpm_id;
