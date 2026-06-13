@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Trade Selector — D-211 Phase 2
  *
  * Auth-protected homeowner intake wizard (step 2 of intake flow).
@@ -62,9 +62,9 @@ function gtag(...args: unknown[]) {
 async function resolveReferralAgentId(partnerIdParam: string | null): Promise<string | null> {
   if (!partnerIdParam) return null;
   try {
-    // Try unique_code match first
+    // Try unique_code match first (v88: use public-safe view)
     const { data } = await supabase
-      .from('referral_agents')
+      .from('referral_agents_public')
       .select('id')
       .eq('unique_code', partnerIdParam.toUpperCase())
       .eq('status', 'active')
@@ -76,7 +76,7 @@ async function resolveReferralAgentId(partnerIdParam: string | null): Promise<st
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidPattern.test(partnerIdParam)) {
       const { data: byId } = await supabase
-        .from('referral_agents')
+        .from('referral_agents_public')
         .select('id')
         .eq('id', partnerIdParam)
         .eq('status', 'active')

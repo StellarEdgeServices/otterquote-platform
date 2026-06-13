@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
@@ -29,8 +29,8 @@
 <meta property="og:site_name" content="Otter Quotes">
 <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
 
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
-<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
@@ -1173,7 +1173,7 @@
 
     try {
       const { data: recruiter, error } = await sb
-        .from('referral_agents')
+        .from('referral_agents_public')
         .select('id, first_name, last_name, company')
         .eq('recruit_code', recruitCode)
         .eq('status', 'active')
@@ -1313,7 +1313,7 @@
       // Insert into referral_agents table
       // RLS: "Public can register as partner" policy allows anon insert where user_id IS NULL
       const { data: agentData, error: agentError } = await sb
-        .from('referral_agents')
+        .from('referral_agents_public')
         .insert({
           agent_type:       're_agent',
           first_name:       firstName,

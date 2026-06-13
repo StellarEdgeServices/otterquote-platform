@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
@@ -23,8 +23,8 @@
 <meta name="description" content="Your insurance agent referred you to Otter Quotes. Get the best contractor for your insurance claim &mdash; 100% free for homeowners.">
 <link rel="canonical" href="https://otterquote.com/ref-insurance.html">
 
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
-<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
@@ -711,10 +711,10 @@
 
     referralCodeInput.value = ref;
 
-    // Try to look up agent from referral_agents table
+    // Try to look up agent via public-safe view (v88: base table restricted)
     try {
       const { data, error } = await sb
-        .from('referral_agents')
+        .from('referral_agents_public')
         .select('*')
         .eq('referral_code', ref)
         .single();
