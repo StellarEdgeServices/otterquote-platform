@@ -254,14 +254,20 @@ serve(async (req) => {
     }
 
     // ── 5. Load the winning quote ─────────────────────────────────────────
-    const { data: winningQuote, error: quoteError } = await sb
-      .from("quotes")
-      .select("*, contractors(id, company_name, email, user_id)")
-      .eq("claim_id", claim_id)
-      .in("status", ["selected", "awarded", "submitted"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+    // Scoped to the selected contractor so we never refund the wrong quote.
+    let winningQuote: any = null;
+    if (claim.selected_contractor_id) {
+      const { data: quote } = await sb
+        .from("quotes")
+        .select("*, contractors(id, company_name, email, user_id)")
+        .eq("claim_id", claim_id)
+        .eq("contractor_id", claim.selected_contractor_id)
+        .in("status", ["selected", "awarded"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      winningQuote = quote;
+    }
 
     // It's OK if there's no quote record (e.g., older flow) — we continue
     const contractor = winningQuote?.contractors;
