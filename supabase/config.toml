@@ -1,3 +1,15 @@
+[functions.create-payment-intent]
+# Auth enforced inside handler: user JWT → claim ownership + server-side amount; service-role → platform_fee only (86e1v6nnh).
+verify_jwt = true
+
+[functions.create-docusign-envelope]
+# Auth enforced inside handler: caller must be a party to the claim (86e1v6nnh).
+verify_jwt = true
+
+[functions.hover-oauth-callback]
+# OAuth redirect URI — Hover redirects the browser here with no JWT. CSRF-state enforced inside handler (86e1v6nnh).
+verify_jwt = false
+
 [functions.send-incomplete-onboarding-reminders]
 # Cron-exception: JWT verification disabled; access is gated by CRON_SECRET header check inside the function.
 verify_jwt = false
