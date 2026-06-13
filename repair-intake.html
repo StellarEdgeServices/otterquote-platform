@@ -1314,10 +1314,9 @@
             try {
                 // Fetch contractors who have opted into repairs and serve this trade
                 const { data: contractors, error } = await sb
-                    .from('contractors')
-                    .select('id, name, years_in_business, rating, service_counties, phone, email')
+                    .from('contractors_public')
+                    .select('id, company_name, years_in_business, rating, service_counties')
                     .eq('repairs_accepted', true)
-                    .eq('active', true)
                     .contains('trades', [trade])
                     .limit(10);
 
@@ -1337,7 +1336,7 @@
                     <div style="padding:1.25rem; border:1px solid var(--border-gray); border-radius:8px; margin-bottom:1rem; background:white;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <strong style="font-size:1.05rem;">${c.name}</strong>
+                                <strong style="font-size:1.05rem;">${c.company_name}</strong>
                                 ${c.years_in_business ? `<span style="margin-left:0.75rem; font-size:0.85rem; color:var(--text-light);">${c.years_in_business} yrs in business</span>` : ''}
                             </div>
                             ${c.rating ? `<span style="background:#FFF7ED; color:#D97706; padding:0.25rem 0.75rem; border-radius:4px; font-size:0.85rem; font-weight:600;">★ ${c.rating}</span>` : ''}
