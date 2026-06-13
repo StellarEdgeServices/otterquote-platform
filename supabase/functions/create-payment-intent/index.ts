@@ -75,6 +75,26 @@ serve(async (req) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
+  // ===== AUTH (86e1v6nnh) =====
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const jwtToken = authHeader.slice(7);
+  const isServiceRole = jwtToken === supabaseKey;
+  let callerId: string | null = null;
+  if (!isServiceRole) {
+    const { data: { user: caller }, error: authErr } = await supabase.auth.getUser(jwtToken);
+    if (authErr || !caller) {
+      return new Response(JSON.stringify({ error: "Unauthorized: invalid token" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    callerId = caller.id;
+  }
+
   try {
     const { amount: clientAmount, currency, description, metadata, contractor_id, off_session } = await req.json();
 
@@ -130,10 +150,84 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // ===== CALLER AUTHORIZATION + SERVER-SIDE AMOUNT DERIVATION (86e1v6nnh) =====
+    if (metadata.type === "platform_fee") {
+      // Only internal service-role calls may trigger contractor platform-fee charges.
+      if (!isServiceRole) {
+        return new Response(JSON.stringify({ error: "Forbidden: platform_fee requires service authorization" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Re-derive fee amount from DB to prevent a compromised upstream EF from fabricating the charge.
+      if (off_session && contractor_id) {
+        const { data: quote, error: quoteErr } = await supabase
+          .from("quotes")
+          .select("total_price, platform_fee_pct")
+          .eq("claim_id", metadata.claim_id)
+          .eq("contractor_id", contractor_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        if (quoteErr || !quote) {
+          return new Response(JSON.stringify({ error: "No matching quote found for platform_fee charge" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const { data: settings } = await supabase
+          .from("platform_settings")
+          .select("platform_fee_percent")
+          .single();
+        const feePct = quote.platform_fee_pct ?? settings?.platform_fee_percent;
+        if (feePct == null) {
+          return new Response(JSON.stringify({ error: "Cannot determine platform fee percentage" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        amount = Math.round(Number(quote.total_price) * (Number(feePct) / 100) * 100);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return new Response(JSON.stringify({ error: "Computed platform fee amount is invalid" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    } else {
+      // hover_measurement / deductible_escrow: must be an authenticated user who owns the claim.
+      if (!callerId) {
+        return new Response(JSON.stringify({ error: "Forbidden: this operation requires user authentication" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: claimRow, error: claimErr } = await supabase
+        .from("claims")
+        .select("user_id, deductible_amount")
+        .eq("id", metadata.claim_id)
+        .single();
+      if (claimErr || !claimRow || claimRow.user_id !== callerId) {
+        return new Response(JSON.stringify({ error: "Forbidden: caller does not own this claim" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (metadata.type === "deductible_escrow") {
+        if (claimRow.deductible_amount == null) {
+          return new Response(JSON.stringify({ error: "Deductible amount not recorded on this claim" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        // deductible_amount is stored in dollars (NUMERIC(10,2)); Stripe needs cents.
+        amount = Math.round(Number(claimRow.deductible_amount) * 100);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return new Response(JSON.stringify({ error: "Invalid deductible_amount on claim" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+      // hover_measurement amount is already enforced server-side by D-181 above.
+    }
+
     // ===== RATE LIMIT =====
     const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
       p_function_name: FUNCTION_NAME,
-      p_user_id: null,  // repo version: no JWT auth in handler; anonymous bucket applies
+      p_user_id: callerId ?? null,
     });
     if (rlError) {
       console.error("Rate limit check failed:", rlError);
@@ -241,9 +335,14 @@ serve(async (req) => {
         if (thisCardFee > 0) form.append("metadata[card_fee_cents]", String(thisCardFee));
         form.append("payment_method_types[]", method.payment_type === "us_bank_account" ? "us_bank_account" : "card");
         try {
+          const offSessionKey = `plat-fee-${metadata.claim_id}-${contractor_id}-${method.stripe_payment_method_id}`;
           const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {
             method: "POST",
-            headers: { Authorization: `Basic ${basicAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
+            headers: {
+              Authorization: `Basic ${basicAuth}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+              "Idempotency-Key": offSessionKey,
+            },
             body: form.toString(),
           });
           const rd = await r.json();
@@ -291,9 +390,14 @@ serve(async (req) => {
       form.append("metadata[claim_id]", metadata.claim_id);
       form.append("metadata[type]", metadata.type);
       form.append("automatic_payment_methods[enabled]", "true");
+      const idempotencyKey = `${metadata.type}-${metadata.claim_id}`;
       const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {
         method: "POST",
-        headers: { Authorization: `Basic ${basicAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          Authorization: `Basic ${basicAuth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Idempotency-Key": idempotencyKey,
+        },
         body: form.toString(),
       });
       if (!r.ok) {

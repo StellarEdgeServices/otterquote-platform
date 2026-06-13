@@ -19,6 +19,11 @@ serve(async (req) => {
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
     const error = url.searchParams.get("error");
+    const stateParam = url.searchParams.get("state");
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     if (error) {
       console.error("Hover OAuth error:", error);
@@ -32,15 +37,78 @@ serve(async (req) => {
       );
     }
 
+    // ===== INITIATION PATH (86e1v6nnh) =====
+    // No code → generate CSRF state, store it, redirect browser to Hover OAuth.
     if (!code) {
+      const oauthState = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const { error: storeErr } = await supabase.from("platform_settings").upsert(
+        { key: "hover_oauth_state", value: { state: oauthState, expires_at: expiresAt } },
+        { onConflict: "key" }
+      );
+      if (storeErr) {
+        console.error("Failed to store OAuth state:", storeErr);
+        return new Response(
+          generateHTML("OAuth Error", "Could not initiate Hover authorization. Please try again.", false),
+          { status: 500, headers: { "Content-Type": "text/html" } }
+        );
+      }
+      const HOVER_CLIENT_ID_INIT = Deno.env.get("HOVER_CLIENT_ID")!;
+      const HOVER_REDIRECT_URI_INIT = Deno.env.get("HOVER_REDIRECT_URI")!;
+      const authUrl = new URL("https://hover.to/oauth/authorize");
+      authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("client_id", HOVER_CLIENT_ID_INIT);
+      authUrl.searchParams.set("redirect_uri", HOVER_REDIRECT_URI_INIT);
+      authUrl.searchParams.set("state", oauthState);
+      return new Response(null, { status: 302, headers: { Location: authUrl.toString() } });
+    }
+
+    // ===== CSRF STATE VALIDATION (86e1v6nnh) =====
+    if (!stateParam) {
       return new Response(
         generateHTML(
-          "Missing Authorization Code",
-          "No authorization code received from Hover. Please try again.",
+          "Authorization Failed",
+          "Missing OAuth state parameter. Please restart the authorization flow.",
           false
         ),
         { status: 400, headers: { "Content-Type": "text/html" } }
       );
+    }
+    {
+      const { data: stateRow } = await supabase
+        .from("platform_settings")
+        .select("value")
+        .eq("key", "hover_oauth_state")
+        .maybeSingle();
+      // Always clear the state row first to prevent replay attacks.
+      await supabase.from("platform_settings").delete().eq("key", "hover_oauth_state");
+      if (!stateRow) {
+        return new Response(
+          generateHTML(
+            "Authorization Failed",
+            "OAuth state not found or expired. Please restart the authorization flow.",
+            false
+          ),
+          { status: 400, headers: { "Content-Type": "text/html" } }
+        );
+      }
+      const stored = stateRow.value as { state: string; expires_at: string };
+      if (stored.state !== stateParam) {
+        return new Response(
+          generateHTML("Authorization Failed", "Invalid OAuth state. Please restart the authorization flow.", false),
+          { status: 400, headers: { "Content-Type": "text/html" } }
+        );
+      }
+      if (new Date(stored.expires_at) < new Date()) {
+        return new Response(
+          generateHTML(
+            "Authorization Failed",
+            "OAuth session expired. Please restart the authorization flow.",
+            false
+          ),
+          { status: 400, headers: { "Content-Type": "text/html" } }
+        );
+      }
     }
 
     const HOVER_CLIENT_ID = Deno.env.get("HOVER_CLIENT_ID")!;
@@ -93,14 +161,12 @@ serve(async (req) => {
       Date.now() + (tokenData.expires_in || 7200) * 1000
     ).toISOString();
 
-    // Store tokens in Supabase
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Upsert: delete any existing tokens, insert the new ones
-    // (We only keep one active token set — org-level auth)
-    await supabase.from("hover_tokens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    // Store tokens in Supabase — scope deletion to this owner (86e1v6nnh).
+    if (tokenData.owner_id) {
+      await supabase.from("hover_tokens").delete().eq("owner_id", tokenData.owner_id);
+    } else {
+      await supabase.from("hover_tokens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    }
 
     const { error: insertError } = await supabase
       .from("hover_tokens")

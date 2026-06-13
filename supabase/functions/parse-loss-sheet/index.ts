@@ -232,28 +232,85 @@ serve(async (req) => {
 
     console.log(`[parse-loss-sheet] claim_id=${claim_id}, storage_path=${storage_path}`);
 
-    // ── Rate limit ─────────────────────────────────────────────────
-    const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
-      p_function_name: FUNCTION_NAME,
-      p_user_id: null,
-    });
+    // ── Auth + ownership check (86e1v6nnh) ─────────────────────────
+    // verify_jwt=false so we get both user-JWT and service-role callers.
+    // Service-role callers (other EFs) are trusted; user-JWT callers must own the claim.
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const isServiceRole = token === serviceKey;
 
-    if (rlError) {
-      console.error("Rate limit check failed:", rlError);
-      return new Response(
-        JSON.stringify({ error: "Rate limit check failed" }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (!isServiceRole) {
+      if (!token) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const { data: { user: caller }, error: authErr } = await supabase.auth.getUser(token);
+      if (authErr || !caller) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized: invalid token" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // Verify caller owns the claim.
+      const { data: claimRow, error: claimErr } = await supabase
+        .from("claims")
+        .select("user_id")
+        .eq("id", claim_id)
+        .single();
+      if (claimErr || !claimRow || claimRow.user_id !== caller.id) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden: caller does not own this claim" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // ── Rate limit ─────────────────────────────────────────────────
+      const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
+        p_function_name: FUNCTION_NAME,
+        p_user_id: caller.id,
+      });
+
+      if (rlError) {
+        console.error("Rate limit check failed:", rlError);
+        return new Response(
+          JSON.stringify({ error: "Rate limit check failed" }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!rateLimitResult?.allowed) {
+        console.warn(`[parse-loss-sheet] Rate limited for claim ${claim_id}: ${rateLimitResult?.reason}`);
+        return new Response(
+          JSON.stringify({ error: "Rate limit exceeded", reason: rateLimitResult?.reason }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      // Service-role: skip ownership check; still apply rate limit (anonymous bucket).
+      const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
+        p_function_name: FUNCTION_NAME,
+        p_user_id: null,
+      });
+
+      if (rlError) {
+        console.error("Rate limit check failed:", rlError);
+        return new Response(
+          JSON.stringify({ error: "Rate limit check failed" }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!rateLimitResult?.allowed) {
+        console.warn(`[parse-loss-sheet] Rate limited for claim ${claim_id}: ${rateLimitResult?.reason}`);
+        return new Response(
+          JSON.stringify({ error: "Rate limit exceeded", reason: rateLimitResult?.reason }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
-
-    if (!rateLimitResult?.allowed) {
-      console.warn(`[parse-loss-sheet] Rate limited for claim ${claim_id}: ${rateLimitResult?.reason}`);
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded", reason: rateLimitResult?.reason }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // ── Fetch PDF from Supabase Storage ────────────────────────────
     // storage_path format: "user_id/claim_id/filename.pdf"
     // The bucket is "claim-documents"

@@ -1958,20 +1958,35 @@ serve(async (req) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
+  // ===== AUTH (86e1v6nnh) =====
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const jwtToken = authHeader.slice(7);
+  const { data: { user: caller }, error: authErr } = await supabase.auth.getUser(jwtToken);
+  if (authErr || !caller) {
+    return new Response(JSON.stringify({ error: "Unauthorized: invalid token" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const callerId = caller.id;
+
   try {
     const requestBody = await req.json();
     const {
       claim_id,
       document_type,
       contractor_id,
-      signer,
     } = requestBody;
 
-    if (!claim_id || !document_type || !contractor_id || !signer?.email || !signer?.name) {
+    if (!claim_id || !document_type || !contractor_id) {
       return new Response(
         JSON.stringify({
           error: "Missing required fields",
-          required: ["claim_id", "document_type", "contractor_id", "signer.email", "signer.name"],
+          required: ["claim_id", "document_type", "contractor_id"],
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -1986,6 +2001,65 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // ===== CALLER AUTHORIZATION + SERVER-SIDE SIGNER IDENTITY (86e1v6nnh) =====
+    // Derive signer name/email from authenticated identity — never trust the request body.
+    let verifiedSigner: { email: string; name: string };
+
+    if (document_type === "contractor_sign") {
+      // Caller must be the contractor for contractor_id.
+      const { data: contractorRow, error: cErr } = await supabase
+        .from("contractors")
+        .select("id, email, company_name, owner_name, user_id")
+        .eq("id", contractor_id)
+        .eq("user_id", callerId)
+        .maybeSingle();
+      if (cErr || !contractorRow) {
+        return new Response(JSON.stringify({ error: "Forbidden: caller is not the contractor for this contractor_id" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      verifiedSigner = {
+        email: contractorRow.email || "",
+        name: contractorRow.company_name || contractorRow.owner_name || "Contractor",
+      };
+      if (!verifiedSigner.email) {
+        return new Response(JSON.stringify({ error: "Contractor profile has no email on file" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      // homeowner_sign / contract / color_confirmation / project_confirmation:
+      // Caller must own the claim.
+      const { data: claimRow, error: claimErr } = await supabase
+        .from("claims")
+        .select("user_id")
+        .eq("id", claim_id)
+        .single();
+      if (claimErr || !claimRow || claimRow.user_id !== callerId) {
+        return new Response(JSON.stringify({ error: "Forbidden: caller does not own this claim" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Derive homeowner identity from profiles.
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", callerId)
+        .single();
+      verifiedSigner = {
+        email: profileRow?.email || caller.email || "",
+        name: profileRow?.full_name || "",
+      };
+      if (!verifiedSigner.email) {
+        return new Response(JSON.stringify({ error: "Could not resolve homeowner email from profile" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Replace request-body signer with server-derived identity.
+    requestBody.signer = verifiedSigner;
 
     if (document_type !== "homeowner_sign") {
       const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
