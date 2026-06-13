@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import json
+import html
 import pathlib
 import datetime
 import argparse
@@ -104,8 +105,12 @@ def fetch_contractors(service_key: str) -> list:
 def trade_list_html(trades: list) -> str:
     if not trades:
         return ""
-    labels = [TRADE_LABELS.get(t, t.title()) for t in trades]
+    labels = [html.escape(TRADE_LABELS.get(t, t.title()), quote=True) for t in trades]
     return ", ".join(labels)
+
+
+def safe_jsonld(obj) -> str:
+    return json.dumps(obj, indent=2).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
 def generate_html(c: dict, slug: str, _licenses: list) -> str:
@@ -120,6 +125,11 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
     state = c.get("address_state", "")
     location_str = f"{city}, {state}" if city and state else (city or state or "Indiana")
     trades_str = trade_list_html(c.get("trades") or [])
+
+    company_esc = html.escape(company, quote=True)
+    city_esc = html.escape(city, quote=True)
+    state_esc = html.escape(state, quote=True)
+    location_esc = f"{city_esc}, {state_esc}" if city and state else (city_esc or state_esc or "Indiana")
 
     rating = c.get("rating")
     review_count = c.get("review_count") or 0
@@ -168,11 +178,11 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<title>{company} — Contractor Profile · Otter Quotes</title>
-<meta name="description" content="{company} is available on Otter Quotes. {trades_str} services in {location_str}. Get competing bids from qualified contractors.">
+<title>{company_esc} — Contractor Profile · Otter Quotes</title>
+<meta name="description" content="{company_esc} is available on Otter Quotes. {trades_str} services in {location_esc}. Get competing bids from qualified contractors.">
 <link rel="canonical" href="{SITE_BASE}/contractors/{slug}/">
-<meta property="og:title" content="{company} — Contractor Profile · Otter Quotes">
-<meta property="og:description" content="{company}: {trades_str} contractor serving {location_str} via Otter Quotes.">
+<meta property="og:title" content="{company_esc} — Contractor Profile · Otter Quotes">
+<meta property="og:description" content="{company_esc}: {trades_str} contractor serving {location_esc} via Otter Quotes.">
 <meta property="og:type" content="profile">
 <meta property="og:url" content="{SITE_BASE}/contractors/{slug}/">
 <meta property="og:site_name" content="Otter Quotes">
@@ -186,8 +196,8 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
   gtag('config', 'G-JNQ6XR3LX2');
 </script>
 
-<script type="application/ld+json">{json.dumps(schema_org, indent=2)}</script>
-<script type="application/ld+json">{json.dumps(breadcrumb, indent=2)}</script>
+<script type="application/ld+json">{safe_jsonld(schema_org)}</script>
+<script type="application/ld+json">{safe_jsonld(breadcrumb)}</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -268,11 +278,11 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
 <main>
   <div class="profile-hero">
     <div class="breadcrumb">
-      <a href="/">Home</a> &rsaquo; <a href="/contractors/">Contractor Directory</a> &rsaquo; {company}
+      <a href="/">Home</a> &rsaquo; <a href="/contractors/">Contractor Directory</a> &rsaquo; {company_esc}
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
-      <div class="location-badge">{location_str}</div>
-      <h1>{company}</h1>
+      <div class="location-badge">{location_esc}</div>
+      <h1>{company_esc}</h1>
       {trades_section}
       {rating_html}
     </div>
@@ -281,7 +291,7 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
   <div class="profile-body">
 
     <div class="profile-card">
-      <p>This contractor is available on Otter Quotes for insurance-related repair and exterior improvement projects in {location_str}.</p>
+      <p>This contractor is available on Otter Quotes for insurance-related repair and exterior improvement projects in {location_esc}.</p>
     </div>
 
     <div class="cta-bar">
@@ -350,18 +360,20 @@ def generate_directory_index(contractors_with_slugs: list[tuple], dry_run: bool)
         state = c.get("address_state", "")
         trades_str = trade_list_html(c.get("trades") or [])
         location = f"{city}, {state}" if city and state else (city or state or "Indiana")
+        company_esc = html.escape(company, quote=True)
+        location_esc = html.escape(location, quote=True)
         rating = c.get("rating")
         rating_snippet = f'<span class="dir-rating">{rating:.1f} ★</span>' if rating else ""
         cards.append(
             f"""<a href="/contractors/{slug}/" class="dir-card">
-  <strong>{company}</strong>
-  <span class="dir-location">{location}</span>
+  <strong>{company_esc}</strong>
+  <span class="dir-location">{location_esc}</span>
   <span class="dir-trades">{trades_str}</span>
   {rating_snippet}
 </a>"""
         )
 
-    html = f"""<!DOCTYPE html>
+    html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -413,7 +425,7 @@ def generate_directory_index(contractors_with_slugs: list[tuple], dry_run: bool)
         print(f"[DRY RUN] Would write {index_path}")
     else:
         CONTRACTOR_DIR.mkdir(parents=True, exist_ok=True)
-        index_path.write_text(html, encoding="utf-8")
+        index_path.write_text(html_content, encoding="utf-8")
         print(f"Written: {index_path}")
 
 
@@ -446,7 +458,7 @@ def main():
         print(f"  Processing: {company} -> /contractors/{slug}/")
 
         # Generate profile page (only 4 approved public fields per D-249)
-        html = generate_html(c, slug, [])
+        html_out = generate_html(c, slug, [])
         profile_dir = CONTRACTOR_DIR / slug
         profile_path = profile_dir / "index.html"
 
@@ -454,7 +466,7 @@ def main():
             print(f"  [DRY RUN] Would write {profile_path}")
         else:
             profile_dir.mkdir(parents=True, exist_ok=True)
-            profile_path.write_text(html, encoding="utf-8")
+            profile_path.write_text(html_out, encoding="utf-8")
             print(f"  Written: {profile_path}")
 
         generated_slugs.append(slug)
