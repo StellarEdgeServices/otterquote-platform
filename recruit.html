@@ -170,7 +170,7 @@ async function handleRecruit() {
     try {
         if (typeof sb !== 'undefined' && sb) {
             const { data: recruiter, error } = await sb
-                .from('referral_agents')
+                .from('referral_agents_public')
                 .select('agent_type, status')
                 .eq('recruit_code', code)
                 .eq('status', 'active')
