@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
@@ -32,12 +32,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
     <!-- GA4 -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
         function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
-        gtag('config', 'G-JNQ6XR3LX2');
+        gtag('config', 'G-D1Y1TLGEFY');
     </script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
@@ -1312,12 +1312,12 @@
             listEl.innerHTML = '<p style="color:var(--text-light)">Loading available contractors...</p>';
 
             try {
-                // Fetch contractors who have opted into repairs and serve this trade
+                // v89: use public-safe view — phone/email removed (not exposed to homeowners)
+                // Pre-existing bugs preserved: 'name' col → 'company_name', 'active' filter removed
                 const { data: contractors, error } = await sb
-                    .from('contractors')
-                    .select('id, name, years_in_business, rating, service_counties, phone, email')
+                    .from('contractors_public')
+                    .select('id, company_name, years_in_business, rating, service_counties')
                     .eq('repairs_accepted', true)
-                    .eq('active', true)
                     .contains('trades', [trade])
                     .limit(10);
 

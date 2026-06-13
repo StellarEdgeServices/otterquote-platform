@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
@@ -20,8 +20,8 @@
   <meta name="description" content="Learn more about this contractor &mdash; their experience, certifications, license, and bid for your project.">
 
   <!-- Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
-  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
@@ -498,7 +498,7 @@
     async function loadContractor() {
       if (!sb) return;
       const { data, error } = await sb
-        .from('contractors')
+        .from('contractors_public')
         .select(`
           id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
           service_area_description, service_counties, license_number, verified,
@@ -522,14 +522,13 @@
       if (data) licenses = data;
     }
 
-    // Optional fetch — fails silently if intro_video_path column doesn't exist
-    // (pre-v67 migration). Once column exists, surfaces video naturally.
+    // Optional fetch — intro_video_path is in contractors_public (v89)
     async function loadAndRenderIntroVideo() {
       if (!sb || !contractorId) return;
       let videoPath = null;
       try {
         const { data, error } = await sb
-          .from('contractors')
+          .from('contractors_public')
           .select('intro_video_path')
           .eq('id', contractorId)
           .maybeSingle();
