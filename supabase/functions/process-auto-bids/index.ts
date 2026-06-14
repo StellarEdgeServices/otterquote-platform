@@ -6,7 +6,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const PLATFORM_FEE_PCT = 5.00; // Matches all production quotes (observed)
+const DEFAULT_PLATFORM_FEE_PCT = 5.00; // Fallback if platform_fee_config lookup returns no rows
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -27,6 +27,7 @@ interface Contractor {
   service_counties: string[];
   auto_bid_value_adds: Record<string, unknown> | null;
   default_auto_renew: boolean;
+  state: string | null;
 }
 
 interface Claim {
@@ -103,7 +104,7 @@ serve(async (req: Request) => {
     // ── Step 2: Active contractors with auto-bid enabled for roofing ──────────
     const { data: contractors, error: contractorsError } = await supabase
       .from('contractors')
-      .select('id, user_id, email, notification_emails, contact_name, service_counties, auto_bid_value_adds, default_auto_renew')
+      .select('id, user_id, email, notification_emails, contact_name, service_counties, auto_bid_value_adds, default_auto_renew, state')
       .eq('auto_bid_enabled', true)
       .eq('status', 'active')
       .contains('trades', ['roofing'])
@@ -151,7 +152,23 @@ serve(async (req: Request) => {
 
         try {
           const rcvAmount = Number(claim.rcv_amount);
-          const feeAmount = Math.round(rcvAmount * (PLATFORM_FEE_PCT / 100) * 100) / 100;
+
+          // D-214: resolve fee from platform_fee_config (mirrors contractor-bid-form.html:fetchPlatformFeePercentage)
+          // Precedence: state+trade specific → state-only or trade-only → null/null default
+          const contractorState = (contractor.state || '').toUpperCase();
+          const { data: feeConfigData } = await supabase
+            .from('platform_fee_config')
+            .select('fee_pct')
+            .or(`state.is.null,state.eq.${contractorState}`)
+            .or(`trade.is.null,trade.eq.roofing`)
+            .order('state', { ascending: false, nullsFirst: false })
+            .order('trade', { ascending: false, nullsFirst: false })
+            .limit(1);
+          const resolvedFeePct = (feeConfigData && feeConfigData.length > 0)
+            ? (parseFloat(feeConfigData[0].fee_pct) || DEFAULT_PLATFORM_FEE_PCT)
+            : DEFAULT_PLATFORM_FEE_PCT;
+
+          const feeAmount = Math.round(rcvAmount * (resolvedFeePct / 100) * 100) / 100;
           const now = new Date().toISOString();
 
           // Insert auto-bid quote
@@ -161,7 +178,8 @@ serve(async (req: Request) => {
               claim_id: claim.id,
               contractor_id: contractor.id,
               total_price: rcvAmount,
-              fee_percentage: PLATFORM_FEE_PCT,
+              fee_percentage: resolvedFeePct,
+              platform_fee_pct: resolvedFeePct,
               fee_amount: feeAmount,
               fee_agreed: true,
               fee_agreed_at: now,
@@ -223,7 +241,7 @@ serve(async (req: Request) => {
           const toEmail = contractor.email ?? recipients[0];
           if (MAILGUN_API_KEY && MAILGUN_DOMAIN && toEmail) {
             const name = contractor.contact_name ?? 'there';
-            const html = buildEmailHtml(name, rcvAmount, feeAmount);
+            const html = buildEmailHtml(name, rcvAmount, feeAmount, resolvedFeePct);
 
             const fd = new FormData();
             fd.append('from', `Otter Quotes <noreply@${MAILGUN_DOMAIN}>`);
@@ -271,7 +289,7 @@ serve(async (req: Request) => {
 });
 
 // ── Email template ────────────────────────────────────────────────────────────
-function buildEmailHtml(name: string, rcvAmount: number, feeAmount: number): string {
+function buildEmailHtml(name: string, rcvAmount: number, feeAmount: number, feePct: number): string {
   const fmtUSD = (n: number) =>
     n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
@@ -288,7 +306,7 @@ function buildEmailHtml(name: string, rcvAmount: number, feeAmount: number): str
       <td style="padding:8px 12px;">${fmtUSD(rcvAmount)}</td>
     </tr>
     <tr>
-      <td style="padding:8px 12px;font-weight:bold;">Platform Fee (${PLATFORM_FEE_PCT}%)</td>
+      <td style="padding:8px 12px;font-weight:bold;">Platform Fee (${feePct}%)</td>
       <td style="padding:8px 12px;">${fmtUSD(feeAmount)}</td>
     </tr>
     <tr style="background:#f4f6f8;">
