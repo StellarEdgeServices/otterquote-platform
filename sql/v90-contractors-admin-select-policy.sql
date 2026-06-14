@@ -1,9 +1,7 @@
 -- ============================================================================
 -- Migration v90 — contractors: admin email SELECT policy (pre-req for DROP)
 -- Created: 2026-06-13
--- Status: FILE ONLY — NOT YET APPLIED. Coordinator applies after:
---         (a) bids.html Stripe read moved to service-role EF
---         (b) contract-signing.html contract_templates read moved to service-role EF
+-- Status: APPLIED to prod 2026-06-13 (migration version 20260613200922). Repo replay file: supabase/migrations/20260613200922_v90_contractors_admin_select_policy.sql
 -- ============================================================================
 -- Purpose:
 --   Adds an explicit admin SELECT policy on public.contractors keyed on the
@@ -39,17 +37,7 @@ CREATE POLICY "Admin can read all contractors"
   TO authenticated
   USING (auth.jwt()->>'email' = 'dustinstohler1@gmail.com');
 
--- ============================================================================
--- 2. Deferred DROP — run ONLY after bids.html + contract-signing.html EF migration
---
--- DROP POLICY "Authenticated users can read contractors" ON public.contractors;
---
--- Verification checklist before running the DROP:
---   [ ] bids.html:1911 Stripe check moved to service-role EF
---   [ ] contract-signing.html:1218 contract_templates/contract_pdf_url moved to EF
---   [ ] All homeowner-facing reads confirmed on contractors_public
---   [ ] Admin pages verified to work under this new policy
---   [ ] Contractor own-session reads verified under "Contractors can read own record"
--- ============================================================================
+-- The companion DROP of "Authenticated users can read contractors" is realized as migration v90b
+-- (supabase/migrations/20260613201225_v90b_drop_contractors_authenticated_read_using_true.sql) — applied to prod 2026-06-13.
 
 COMMIT;
