@@ -241,7 +241,7 @@ serve(async (req: Request) => {
           const toEmail = contractor.email ?? recipients[0];
           if (MAILGUN_API_KEY && MAILGUN_DOMAIN && toEmail) {
             const name = contractor.contact_name ?? 'there';
-            const html = buildEmailHtml(name, rcvAmount, feeAmount);
+            const html = buildEmailHtml(name, rcvAmount, feeAmount, resolvedFeePct);
 
             const fd = new FormData();
             fd.append('from', `Otter Quotes <noreply@${MAILGUN_DOMAIN}>`);
@@ -289,7 +289,7 @@ serve(async (req: Request) => {
 });
 
 // ── Email template ────────────────────────────────────────────────────────────
-function buildEmailHtml(name: string, rcvAmount: number, feeAmount: number): string {
+function buildEmailHtml(name: string, rcvAmount: number, feeAmount: number, feePct: number): string {
   const fmtUSD = (n: number) =>
     n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
@@ -306,7 +306,7 @@ function buildEmailHtml(name: string, rcvAmount: number, feeAmount: number): str
       <td style="padding:8px 12px;">${fmtUSD(rcvAmount)}</td>
     </tr>
     <tr>
-      <td style="padding:8px 12px;font-weight:bold;">Platform Fee (${PLATFORM_FEE_PCT}%)</td>
+      <td style="padding:8px 12px;font-weight:bold;">Platform Fee (${feePct}%)</td>
       <td style="padding:8px 12px;">${fmtUSD(feeAmount)}</td>
     </tr>
     <tr style="background:#f4f6f8;">
