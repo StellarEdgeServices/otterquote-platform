@@ -120,9 +120,9 @@ describe('useClaimStatus', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    // Simulate realtime update
+    // Simulate realtime update — .on(event, filter, handler) so handler is at index [2]
     const updatedData = { ...mockData, title: 'Updated Claim' };
-    const payloadHandler = (mockChannel.on as any).mock.calls[0][1];
+    const payloadHandler = (mockChannel.on as any).mock.calls[0][2];
     payloadHandler({
       eventType: 'UPDATE',
       new: updatedData,
@@ -153,8 +153,9 @@ describe('useClaimStatus', () => {
     (supabase.from as any).mockImplementation(mockFrom);
     (supabase.channel as any).mockReturnValue(mockChannel);
 
-    const { unmount } = renderHook(() => useClaimStatus('claim-123'));
+    const { result, unmount } = renderHook(() => useClaimStatus('claim-123'));
 
+    await waitFor(() => expect(result.current.loading).toBe(false));
     unmount();
 
     expect(supabase.removeChannel).toHaveBeenCalled();
