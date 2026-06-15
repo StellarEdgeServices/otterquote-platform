@@ -1,0 +1,42 @@
+name: React App Unit Tests
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - 'feature/**'
+      - 'feat/**'
+    paths:
+      - 'react-app/**'
+      - '.github/workflows/react-app-tests.yml'
+  pull_request:
+    branches:
+      - main
+      - staging
+    paths:
+      - 'react-app/**'
+      - '.github/workflows/react-app-tests.yml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  react-app-tests:
+    name: React App Unit Tests (Vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: react-app
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run Vitest unit tests
+        run: npm test
