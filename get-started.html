@@ -517,7 +517,7 @@
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': CONFIG.SUPABASE_ANON_KEY,
+        'apikey': CONFIG.SUPABASE_ANON,
       },
       body: JSON.stringify(data),
     }).catch(function() {}); // Intentionally fire-and-forget — do not await

@@ -367,7 +367,7 @@ const Nav = {
 
       try {
         const SUPABASE_URL  = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)  || '';
-        const SUPABASE_ANON = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON_KEY) || '';
+        const SUPABASE_ANON = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) || '';
 
         const res = await fetch(`${SUPABASE_URL}/functions/v1/send-support-email`, {
           method: 'POST',
