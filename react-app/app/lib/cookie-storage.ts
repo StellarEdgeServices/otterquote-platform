@@ -120,26 +120,63 @@ function parseSession(jsonStr: string): ParsedSession | null {
   }
 }
 
+/**
+ * Reconstruct a Supabase session JSON string from access + refresh tokens.
+ *
+ * D-212 fix (ported from js/cookie-storage.js, May 13 2026): populate the user
+ * object from JWT claims at reconstruction time. The previous TS port set
+ * user:null on the assumption Supabase would auto-fetch via getUser(); in
+ * practice, pages/providers reading session.user on init (e.g. AuthProvider's
+ * resolveSession, contractor pages) got null and treated the user as logged-out
+ * — breaking cross-subdomain SSO into the React app and warm reloads that
+ * survive only as the sb-otterquote-at/rt cookies. Decoding the JWT payload
+ * locally fills the same fields Supabase would have written.
+ *
+ * The payload segment is base64url; normalize to base64 before atob() (mirrors
+ * auth-provider.tsx + middleware.ts). Without this, atob() throws on tokens
+ * whose base64 contains '-' or '_' and user/expiry silently fall back to null.
+ */
 function reconstructSession(accessToken: string, refreshToken: string): string {
   let expSec: number | null = null;
   let expiresIn: number | null = null;
+  let user: Record<string, unknown> | null = null;
   try {
     const parts = accessToken.split('.');
     if (parts.length === 3) {
-      const payload = JSON.parse(atob(parts[1]));
-      if (payload && payload.exp) {
-        expSec = payload.exp;
-        expiresIn = Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (payload) {
+        if (payload.exp) {
+          expSec = payload.exp;
+          expiresIn = Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
+        }
+        if (payload.sub) {
+          const iatIso = payload.iat ? new Date(payload.iat * 1000).toISOString() : null;
+          user = {
+            id: payload.sub,
+            email: payload.email || null,
+            aud: payload.aud || 'authenticated',
+            role: payload.role || 'authenticated',
+            app_metadata: payload.app_metadata || {},
+            user_metadata: payload.user_metadata || {},
+            email_confirmed_at: payload.email_verified ? iatIso : null,
+            phone: payload.phone || '',
+            confirmed_at: payload.email_verified ? iatIso : null,
+            last_sign_in_at: iatIso,
+            created_at: iatIso,
+            updated_at: iatIso,
+            identities: payload.user_metadata && payload.user_metadata.identities ? payload.user_metadata.identities : [],
+          };
+        }
       }
     }
-  } catch { /* leave nulls */ }
+  } catch { /* invalid JWT — leave nulls */ }
   return JSON.stringify({
     access_token: accessToken,
     refresh_token: refreshToken,
     expires_at: expSec,
     expires_in: expiresIn,
     token_type: 'bearer',
-    user: null,
+    user,
   });
 }
 

@@ -21,7 +21,7 @@ describe('useNotificationCount', () => {
     const mockFrom = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+          is: vi.fn().mockResolvedValue({
             count: 0,
             error: null,
           }),
@@ -41,7 +41,7 @@ describe('useNotificationCount', () => {
     const mockFrom = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+          is: vi.fn().mockResolvedValue({
             count: 5,
             error: null,
           }),
@@ -75,7 +75,7 @@ describe('useNotificationCount', () => {
     const mockFrom = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+          is: vi.fn().mockResolvedValue({
             count: 3,
             error: null,
           }),
@@ -93,7 +93,7 @@ describe('useNotificationCount', () => {
     });
 
     // Get the INSERT handler
-    const insertHandler = (mockChannel.on as any).mock.calls[0][1];
+    const insertHandler = (mockChannel.on as any).mock.calls[0][2];
     insertHandler({
       eventType: 'INSERT',
       new: { id: 'notif-1', read: false },
@@ -113,7 +113,7 @@ describe('useNotificationCount', () => {
     const mockFrom = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+          is: vi.fn().mockResolvedValue({
             count: 0,
             error: null,
           }),
@@ -124,8 +124,9 @@ describe('useNotificationCount', () => {
     (supabase.from as any).mockImplementation(mockFrom);
     (supabase.channel as any).mockReturnValue(mockChannel);
 
-    const { unmount } = renderHook(() => useNotificationCount('user-123'));
+    const { result, unmount } = renderHook(() => useNotificationCount('user-123'));
 
+    await waitFor(() => expect(result.current.loading).toBe(false));
     unmount();
 
     expect(supabase.removeChannel).toHaveBeenCalled();
