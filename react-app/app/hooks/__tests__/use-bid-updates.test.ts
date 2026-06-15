@@ -110,8 +110,8 @@ describe('useBidUpdates', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    // Get the INSERT handler (second .on() call)
-    const insertHandler = (mockChannel.on as any).mock.calls[0][1];
+    // Get the INSERT handler — .on(event, filter, handler) so handler is at index [2]
+    const insertHandler = (mockChannel.on as any).mock.calls[0][2];
     const newBid = { ...initialBid, id: 'bid-2', amount: 600 };
     insertHandler({ eventType: 'INSERT', new: newBid });
 
@@ -138,8 +138,9 @@ describe('useBidUpdates', () => {
     (supabase.from as any).mockImplementation(mockFrom);
     (supabase.channel as any).mockReturnValue(mockChannel);
 
-    const { unmount } = renderHook(() => useBidUpdates('claim-123'));
+    const { result, unmount } = renderHook(() => useBidUpdates('claim-123'));
 
+    await waitFor(() => expect(result.current.loading).toBe(false));
     unmount();
 
     expect(supabase.removeChannel).toHaveBeenCalled();
