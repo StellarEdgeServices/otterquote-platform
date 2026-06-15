@@ -862,7 +862,7 @@
             if (!user) return;
 
             // Init Supabase client
-            sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+            sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
 
             Nav.renderHeader({ active: 'dashboard' });
             Nav.renderFooter();

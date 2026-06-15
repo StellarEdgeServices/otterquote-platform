@@ -189,7 +189,7 @@ window.Auth = {
       ? '/contractor-pre-approval.html'
       : partnerRoles.includes(role)
         ? '/partner-dashboard.html'
-        : '/trade-selector.html';
+        : '/auth-callback.html';
     const redirectPage = redirectTo || defaultRedirectPage;
     const { error } = await sb.auth.signInWithOtp({
       email,
