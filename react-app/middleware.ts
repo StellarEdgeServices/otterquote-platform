@@ -4,7 +4,8 @@
  * Protects /admin/* routes in the React app.
  * Mirrors the security model of admin-auth-gate.ts (Netlify edge function):
  *   - No JWT signature verification (Supabase RLS is the real data gate)
- *   - Reads sb_at cookie set by AuthProvider._setSingleAuthCookie
+ *   - Reads sb_at cookie set by AuthProvider._setSingleAuthCookie, falling back
+ *     to the canonical sb-otterquote-at cookie written by cookie-storage.ts
  *   - Verifies: token present + structurally valid + not expired + email in allowlist
  *
  * NOTE: Uses atob() (not Buffer) — Next.js middleware runs in the Edge runtime
@@ -26,7 +27,13 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get('sb_at')?.value;
+  // Dual-read: AuthProvider sets sb_at, but the canonical D-212 cross-subdomain
+  // cookie written by cookie-storage.ts is sb-otterquote-at. Accept either so a
+  // session that arrived via SSO (or before AuthProvider synced sb_at) still
+  // passes the gate. Both hold the raw access JWT.
+  const token =
+    request.cookies.get('sb_at')?.value ??
+    request.cookies.get('sb-otterquote-at')?.value;
 
   const redirectToLogin = () =>
     NextResponse.redirect(new URL('/get-started', request.url));
