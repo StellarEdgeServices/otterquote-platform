@@ -37,7 +37,7 @@ export const CONTRACTOR_LOGIN_ROUTE = '/contractor/login';
 export const CONTRACTOR_NAV_LINKS: { id: ContractorNavId; label: string; href: string }[] = [
   { id: 'home', label: 'Home', href: '/contractor/dashboard' },
   { id: 'opportunities', label: 'Opportunities', href: '/contractor/opportunities' },
-  { id: 'profile', label: 'Profile', href: 'https://otterquote.com/contractor-profile.html' },
+  { id: 'profile', label: 'Profile', href: '/contractor/profile' },
   { id: 'settings', label: 'Settings', href: 'https://otterquote.com/contractor-settings.html' },
 ];
 
