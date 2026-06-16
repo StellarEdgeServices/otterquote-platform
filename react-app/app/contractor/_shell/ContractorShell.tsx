@@ -38,7 +38,7 @@ export const CONTRACTOR_NAV_LINKS: { id: ContractorNavId; label: string; href: s
   { id: 'home', label: 'Home', href: '/contractor/dashboard' },
   { id: 'opportunities', label: 'Opportunities', href: '/contractor/opportunities' },
   { id: 'profile', label: 'Profile', href: '/contractor/profile' },
-  { id: 'settings', label: 'Settings', href: 'https://otterquote.com/contractor-settings.html' },
+  { id: 'settings', label: 'Settings', href: '/contractor/settings' },
 ];
 
 interface ContractorShellProps {
