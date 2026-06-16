@@ -25,6 +25,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { useNotificationCount } from '@/hooks/use-notification-count';
+import { markContractorGateBounce } from '@/lib/contractor-gate';
 
 export type ContractorNavId = 'home' | 'opportunities' | 'profile' | 'settings';
 
@@ -48,7 +49,7 @@ interface ContractorShellProps {
 }
 
 export function ContractorShell({ active, children }: ContractorShellProps) {
-  const { user, role, loading, signOut } = useAuthReady();
+  const { user, role, loading, settled, signOut } = useAuthReady();
   const router = useRouter();
 
   // Auth + contractor-role gate. Wait for `loading` to settle (F-007) so there is
@@ -57,11 +58,25 @@ export function ContractorShell({ active, children }: ContractorShellProps) {
   const blocked = !user || (!!role && role !== 'contractor');
 
   useEffect(() => {
-    if (loading) return;
-    if (blocked) router.replace(CONTRACTOR_LOGIN_ROUTE);
-  }, [loading, blocked, router]);
+    // Bounce ONLY once auth hydration is definitively resolved (`settled`). The
+    // provider's 1.5s blank-screen fallback can flip `loading` to false with a
+    // still-null user during a slow cold load or an expired-token refresh; acting
+    // on that transient state would eject an authenticated contractor to
+    // /contractor/login mid-hydration (postmortem 2026-06-16). An expired access
+    // token is refreshed by the provider (getSession / auto-refresh) — we wait for
+    // that resolution rather than bounce.
+    if (!settled || loading) return;
+    if (blocked) {
+      // Drop a one-shot marker that survives this CLIENT-SIDE router.replace
+      // (document.referrer is not set on client nav) so /contractor/login can
+      // detect the bounce and refuse to send the user straight back — the
+      // loop-proof half of the dashboard ⇄ login guard.
+      markContractorGateBounce();
+      router.replace(CONTRACTOR_LOGIN_ROUTE);
+    }
+  }, [settled, loading, blocked, router]);
 
-  if (loading || blocked) {
+  if (!settled || loading || blocked) {
     return (
       <div className="oqc-gate" role="status" aria-live="polite" aria-label="Loading">
         <div className="oqc-spin" />

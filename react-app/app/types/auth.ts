@@ -26,6 +26,15 @@ export interface AuthState {
   isAdmin: boolean;
   /** True while INITIAL_SESSION has not yet fired */
   loading: boolean;
+  /**
+   * True once auth has been DEFINITIVELY resolved (a real session decision was
+   * made via INITIAL_SESSION / SIGNED_IN / getSession(), or SIGNED_OUT). Distinct
+   * from `loading`: the 1.5s blank-screen fallback flips `loading` to false
+   * WITHOUT setting `settled`, so a gate (e.g. ContractorShell) can wait for a
+   * definitive answer instead of bouncing an authenticated user mid-hydration
+   * (D-211; postmortem 2026-06-16).
+   */
+  settled: boolean;
 }
 
 export interface AuthContextValue extends AuthState {

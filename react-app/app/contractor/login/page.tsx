@@ -16,7 +16,8 @@
  *   - already-authenticated handling is contractor-scoped: only an authenticated
  *     CONTRACTOR is redirected to the dashboard; homeowners/unknown roles stay on
  *     this page so they can sign in with a contractor account (parity with the
- *     static page). The dashboard ↔ login flip loop is broken via document.referrer.
+ *     static page). The dashboard ⇄ login flip loop is broken via a sessionStorage one-shot
+ *     marker set by ContractorShell (document.referrer is not set on client nav).
  *
  * Auth model preserved: D-212 cross-subdomain cookie SSO + contractor-table-first
  * role resolution, both supplied by the shared AuthProvider / cookie-storage.
@@ -38,6 +39,7 @@ import {
   isValidEmail,
   cameFromContractorDashboard,
 } from './utils';
+import { consumeContractorGateBounce } from '@/lib/contractor-gate';
 
 // ─── GA4 helper (parity with contractor-login.html gtag) ──────────────
 function gtag(...args: unknown[]) {
@@ -59,6 +61,7 @@ export default function ContractorLoginPage() {
   const [error, setError] = useState('');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [sentToEmail, setSentToEmail] = useState('');
+  const [staying, setStaying] = useState(false);
 
   // ── Already-authenticated redirect — CONTRACTOR-ONLY ──
   // Only an authenticated contractor is sent to the dashboard. Homeowners and
@@ -68,8 +71,14 @@ export default function ContractorLoginPage() {
   useEffect(() => {
     if (loading || !user) return;
     if (role !== 'contractor') return;
-    if (cameFromContractorDashboard(referrer())) {
-      console.warn('[contractor-login] return-bounce from contractor-dashboard; staying to break the loop.');
+    // Loop-proof guard: ContractorShell bounces an unhydrated request here via a
+    // CLIENT-SIDE router.replace (no document.referrer), so a fresh sessionStorage
+    // one-shot marker — not the referrer — is what actually breaks a same-origin
+    // dashboard ⇄ login loop (postmortem 2026-06-16). The legacy referrer check is
+    // kept for a full-nav return from the static contractor-dashboard.html.
+    if (consumeContractorGateBounce() || cameFromContractorDashboard(referrer())) {
+      console.warn('[contractor-login] gate-bounce detected; staying to break the dashboard ⇄ login loop.');
+      setStaying(true);
       return;
     }
     window.location.href = CONTRACTOR_DASHBOARD_URL;
@@ -146,7 +155,7 @@ export default function ContractorLoginPage() {
   // Spinner while auth resolves, or while an authenticated contractor (not a
   // dashboard return-bounce) is being redirected away.
   const redirectingContractor =
-    !!user && role === 'contractor' && !cameFromContractorDashboard(referrer());
+    !!user && role === 'contractor' && !staying && !cameFromContractorDashboard(referrer());
   if (loading || redirectingContractor) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>

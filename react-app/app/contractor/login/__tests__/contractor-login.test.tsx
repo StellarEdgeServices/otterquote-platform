@@ -41,6 +41,7 @@ import {
   CONTRACTOR_JOIN_URL,
   LOGIN_URL,
 } from '../utils';
+import { markContractorGateBounce } from '@/lib/contractor-gate';
 
 // ── Exact strings from static contractor-login.html @ 6a93d62 ──
 const STATIC = {
@@ -77,11 +78,17 @@ function asHomeowner() {
     user: { id: 'u1' }, role: 'homeowner', isAdmin: false, loading: false, signOut: vi.fn(),
   });
 }
+function asContractor() {
+  (useAuthReady as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    user: { id: 'c1' }, role: 'contractor', isAdmin: false, loading: false, signOut: vi.fn(),
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   window.history.replaceState({}, '', '/');
   localStorage.clear();
+  sessionStorage.clear();
   (supabase.auth.signInWithOtp as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
   (supabase.auth.signInWithOAuth as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
 });
@@ -210,6 +217,17 @@ describe('<ContractorLoginPage /> already-authenticated handling', () => {
     asHomeowner();
     render(<ContractorLoginPage />);
     // role !== 'contractor' → no redirect → the contractor sign-in form is still shown.
+    expect(screen.getByRole('button', { name: STATIC.submit })).toBeInTheDocument();
+    expect(screen.getByText(STATIC.title)).toBeInTheDocument();
+  });
+
+  it('stays on the page (breaks the loop) when ContractorShell just bounced here', () => {
+    // A fresh gate-bounce one-shot marker means the shell ejected this request in
+    // the dashboard cold-load window; do NOT send the authed contractor straight
+    // back (postmortem 2026-06-16). The form stays visible — no redirect.
+    markContractorGateBounce();
+    asContractor();
+    render(<ContractorLoginPage />);
     expect(screen.getByRole('button', { name: STATIC.submit })).toBeInTheDocument();
     expect(screen.getByText(STATIC.title)).toBeInTheDocument();
   });

@@ -105,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: null,
     isAdmin: false,
     loading: true,
+    settled: false,
   });
 
   // Prevent double-resolution if StrictMode fires the effect twice
@@ -133,10 +134,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role,
           isAdmin,
           loading: false,
+          settled: true,
         });
       } else {
         setSbAtCookie(null);
-        setState({ user: null, role: null, isAdmin: false, loading: false });
+        setState({ user: null, role: null, isAdmin: false, loading: false, settled: true });
       }
       resolved.current = true;
     };
@@ -151,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (event === 'SIGNED_OUT') {
           setSbAtCookie(null);
-          setState({ user: null, role: null, isAdmin: false, loading: false });
+          setState({ user: null, role: null, isAdmin: false, loading: false, settled: true });
           resolved.current = true;
           return;
         }
@@ -179,7 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const fallbackTimer = setTimeout(() => {
       setState((prev) =>
         prev.loading
-          ? { user: null, role: null, isAdmin: false, loading: false }
+          ? { user: null, role: null, isAdmin: false, loading: false, settled: false }
           : prev
       );
     }, 1500);
