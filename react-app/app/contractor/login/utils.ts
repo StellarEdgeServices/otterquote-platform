@@ -16,8 +16,9 @@ export const AUTH_CALLBACK_URL = 'https://app.otterquote.com/auth-callback';
 // Auth.signInWithGoogle('/auth-callback.html?intent=contractor').
 export const GOOGLE_OAUTH_REDIRECT = `${AUTH_CALLBACK_URL}?intent=contractor`;
 
-// Cross-stack app-shell destinations (static stack still serves these).
-export const CONTRACTOR_DASHBOARD_URL = 'https://otterquote.com/contractor-dashboard.html';
+// App-shell destinations (static stack still serves these — except the contractor
+// dashboard, now LIVE in React per D-211 Phase 2).
+export const CONTRACTOR_DASHBOARD_URL = '/contractor/dashboard';
 export const CONTRACTOR_JOIN_URL = 'https://otterquote.com/contractor-join.html';
 export const LOGIN_URL = 'https://otterquote.com/login.html';
 
@@ -35,5 +36,9 @@ export function isValidEmail(email: string): boolean {
  * dashboard, or we create an infinite loop.
  */
 export function cameFromContractorDashboard(referrer: string | null | undefined): boolean {
-  return (referrer || '').includes('/contractor-dashboard.html');
+  const r = referrer || '';
+  // Match the static contractor-dashboard.html AND the live React /contractor/dashboard
+  // route (D-211 Phase 2): the already-authed redirect now targets the React dashboard,
+  // so the flip-loop guard must catch a return-bounce from either stack.
+  return r.includes('/contractor-dashboard.html') || r.includes('/contractor/dashboard');
 }
