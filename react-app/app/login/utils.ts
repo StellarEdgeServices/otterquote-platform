@@ -13,9 +13,10 @@ export const AUTH_CALLBACK_URL = 'https://app.otterquote.com/auth-callback';
 // Google OAuth carries the homeowner intent (parity with login.html ?intent=homeowner).
 export const GOOGLE_OAUTH_REDIRECT = `${AUTH_CALLBACK_URL}?intent=homeowner`;
 
-// Cross-stack app-shell destinations (static stack still serves these).
+// App-shell destinations (static stack still serves these — except the contractor
+// dashboard, now LIVE in React per D-211 Phase 2).
 export const DASHBOARD_URL = 'https://otterquote.com/dashboard.html';
-export const CONTRACTOR_DASHBOARD_URL = 'https://otterquote.com/contractor-dashboard.html';
+export const CONTRACTOR_DASHBOARD_URL = '/contractor/dashboard';
 export const GET_STARTED_URL = 'https://otterquote.com/get-started.html';
 export const CONTRACTOR_LOGIN_URL = 'https://otterquote.com/contractor-login.html';
 

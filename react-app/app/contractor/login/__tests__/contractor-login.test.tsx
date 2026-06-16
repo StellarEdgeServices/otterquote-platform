@@ -131,13 +131,14 @@ describe('redirect targets parity (contractor intent)', () => {
     expect(AUTH_CALLBACK_URL).toBe('https://app.otterquote.com/auth-callback');
     expect(GOOGLE_OAUTH_REDIRECT).toBe('https://app.otterquote.com/auth-callback?intent=contractor');
   });
-  it('cross-stack links point at the static app shell', () => {
-    expect(CONTRACTOR_DASHBOARD_URL).toBe('https://otterquote.com/contractor-dashboard.html');
+  it('contractor dashboard points at the live React route; join + login stay static', () => {
+    expect(CONTRACTOR_DASHBOARD_URL).toBe('/contractor/dashboard');
     expect(CONTRACTOR_JOIN_URL).toBe('https://otterquote.com/contractor-join.html');
     expect(LOGIN_URL).toBe('https://otterquote.com/login.html');
   });
-  it('dashboard ↔ login flip guard detects a return-bounce', () => {
+  it('dashboard ↔ login flip guard detects a return-bounce from either stack', () => {
     expect(cameFromContractorDashboard('https://otterquote.com/contractor-dashboard.html')).toBe(true);
+    expect(cameFromContractorDashboard('https://app.otterquote.com/contractor/dashboard')).toBe(true);
     expect(cameFromContractorDashboard('https://otterquote.com/get-started.html')).toBe(false);
     expect(cameFromContractorDashboard('')).toBe(false);
     expect(cameFromContractorDashboard(null)).toBe(false);
