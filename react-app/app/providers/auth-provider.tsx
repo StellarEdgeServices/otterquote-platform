@@ -170,9 +170,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // get-started page). Proactively fetch the current session so we resolve
     // regardless of event timing; the `resolved` guard prevents a race with a
     // real event.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      void resolveSession(session);
-    });
+    // Fail-safe resolver: settle to unauthenticated WITHOUT marking `resolved`, so a
+    // late real session event can still correct the state. Used when getSession()
+    // errors or never returns (e.g. an orphaned Supabase auth Web Lock — D-211
+    // 2026-06-16, the true root of Blocker 1).
+    const failSafeUnauthenticated = () => {
+      setState((prev) =>
+        prev.settled
+          ? prev
+          : { user: null, role: null, isAdmin: false, loading: false, settled: true }
+      );
+    };
+
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        void resolveSession(session);
+      })
+      .catch(() => {
+        // getSession() should not reject, but never leave the gate unresolved if it does.
+        failSafeUnauthenticated();
+      });
 
     // DEFENSE-IN-DEPTH: if neither the event nor getSession() has resolved within
     // 1.5s, lift the blank loading screen to the unauthenticated view. The
@@ -186,8 +204,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
     }, 1500);
 
+    // BACKSTOP (D-211 2026-06-16): never let an auth gate hang forever. If neither a
+    // real event nor getSession() has definitively settled auth within this window
+    // (e.g. an orphaned Supabase Web Lock froze getSession), resolve to
+    // unauthenticated so gates fail safe to /login instead of spinning. `resolved`
+    // stays false so a late real session still corrects the state.
+    const settleSafetyTimer = setTimeout(failSafeUnauthenticated, 6000);
+
     return () => {
       clearTimeout(fallbackTimer);
+      clearTimeout(settleSafetyTimer);
       subscription.unsubscribe();
     };
   }, []);

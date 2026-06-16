@@ -3,6 +3,7 @@ import {
   otterquoteCookieStorage,
   OTTERQUOTE_AUTH_STORAGE_KEY,
 } from './cookie-storage';
+import { nonDeadlockingLock } from './supabase-lock';
 
 /**
  * Singleton Supabase client for the browser.
@@ -38,6 +39,9 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
     persistSession: true,
     storageKey: OTTERQUOTE_AUTH_STORAGE_KEY,
     storage: otterquoteCookieStorage,
+    // Avoid the supabase-js navigator.locks deadlock that froze getSession() and
+    // the contractor dashboard (D-211 2026-06-16, true root of Blocker 1).
+    lock: nonDeadlockingLock,
   },
 });
 
