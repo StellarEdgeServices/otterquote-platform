@@ -14,4 +14,5 @@ export const ADMIN_NAV_LINKS: AdminNavLink[] = [
   { key: 'template-review', label: 'Template Review', href: '/admin/template-review', isReactRoute: true },
   { key: 'cert-verifications', label: 'Cert Verifications', href: '/admin/cert-verifications', isReactRoute: true },
   { key: 'warranty-drift', label: 'Warranty Drift', href: '/admin/warranty-drift', isReactRoute: true },
+  { key: 'fee-config', label: 'Fee Config', href: '/admin/fee-config', isReactRoute: true },
 ];
