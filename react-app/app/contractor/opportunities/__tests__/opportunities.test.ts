@@ -195,9 +195,9 @@ describe('copy: filter catalogs + bid deep-links', () => {
     expect(TRADE_OPTIONS.map((o) => o.value)).toContain('multi');
     expect(SORT_OPTIONS[0].value).toBe('newest');
   });
-  it('builds bid-form deep links (static stack until C3 migrates)', () => {
-    expect(submitBidHref('CL1')).toBe('https://otterquote.com/contractor-bid-form.html?project=CL1');
-    expect(renewBidHref('CL1', 'Q9')).toBe('https://otterquote.com/contractor-bid-form.html?renew=true&quote_id=Q9&claim_id=CL1');
-    expect(detailBidHref('CL1')).toBe('https://otterquote.com/contractor-bid-form.html?claim_id=CL1');
+  it('builds bid-form deep links → React /contractor/bid/[claimId] (flipped, D-211 Phase 7)', () => {
+    expect(submitBidHref('CL1')).toBe('/contractor/bid/CL1');
+    expect(renewBidHref('CL1', 'Q9')).toBe('/contractor/bid/CL1?renew=true');
+    expect(detailBidHref('CL1')).toBe('/contractor/bid/CL1');
   });
 });

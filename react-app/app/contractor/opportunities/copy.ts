@@ -4,6 +4,8 @@
  * (Tier-A/B); no D-numbered or legal-locked strings on this page.
  */
 
+import { bidRoutePath, renewBidRoutePath } from '../bid/[claimId]/copy';
+
 export interface SelectOption {
   value: string;
   label: string;
@@ -87,16 +89,18 @@ export const OPP_COPY = {
   },
 } as const;
 
-// Deep-link targets into the bid form (static stack until C3 migrates — coexistence).
-export const BID_FORM_BASE = 'https://otterquote.com/contractor-bid-form.html';
+// Deep-link targets into the bid form — FLIPPED to the React route /contractor/bid/[claimId]
+// (D-211 Phase 7 / BF-2). Consumes the PR-1 route helpers (the single source of truth);
+// the static contractor-bid-form.html base + quote_id query are no longer used — the React
+// route resolves the existing quote from claim_id + contractor.
 export function submitBidHref(claimId: string): string {
-  return `${BID_FORM_BASE}?project=${encodeURIComponent(claimId)}`;
+  return bidRoutePath(claimId);
 }
-export function renewBidHref(claimId: string, expiredQuoteId: string): string {
-  return `${BID_FORM_BASE}?renew=true&quote_id=${encodeURIComponent(expiredQuoteId)}&claim_id=${encodeURIComponent(claimId)}`;
+export function renewBidHref(claimId: string, _expiredQuoteId?: string): string {
+  return renewBidRoutePath(claimId);
 }
 export function detailBidHref(claimId: string): string {
-  return `${BID_FORM_BASE}?claim_id=${encodeURIComponent(claimId)}`;
+  return bidRoutePath(claimId);
 }
 
 export const JOB_TYPE_OPTIONS: SelectOption[] = [

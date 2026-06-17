@@ -637,3 +637,338 @@ export function resolveBidMode(args: {
   }
   return 'submit';
 }
+
+// =============================================================================
+// VALUE-ADDS BUILDER (buildValueAdds — port of the submit handler's value_adds
+// JSON construction, contractor-bid-form.html:5149-5285). PR-2 (BF-2) extracts
+// this so the page can build the quotes.value_adds payload from typed form state
+// instead of a live FormData/DOM read, and so it can be unit-tested. Behavior is
+// byte-for-byte: every key, the `parseFloat(...) || null` coercions (0/NaN→null),
+// the `=== 'on'` checkbox booleans, the conditional gutter/siding/SLC/wizard
+// branches, and `warranties: null` (D-202 superseded).
+// =============================================================================
+
+/** `parseFloat(String(v)) || null` — 0, '', NaN all collapse to null (matches the static handler). */
+function numOrNull(v: string | number | null | undefined): number | null {
+  if (v === '' || v == null) return null;
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) && n !== 0 ? n : null;
+}
+
+/** One dynamic gutter-guard row (collectGutterGuards, :2747-2757). */
+export interface GutterGuardEntry {
+  type: string | null;
+  price: number | null;
+}
+
+/** Typed mirror of every bid-form field the static value_adds builder reads. */
+export interface ValueAddsFormState {
+  bidTypeOption: string;
+  otherBidDescription?: string | null;
+
+  gutterOption?: string | null;
+  gutter5AdditionalCost?: string | number | null;
+  gutter6AdditionalCost?: string | number | null;
+  gutterOtherText?: string | null;
+
+  gutterGuardPricingOnRequest?: boolean;
+  gutterGuardMeshOop?: string | number | null;
+  gutterGuardScrewInOop?: string | number | null;
+  gutterGuardNotes?: string | null;
+
+  chimneyType?: string | null;
+  chimneyOption?: string | null;
+  chimneyOopPrice?: string | number | null;
+
+  skylights?: string | null;
+
+  otherShingles?: string[];
+  shingleOtherNotes?: string | null;
+
+  underlaymentType?: string | null;
+  underlaymentNotes?: string | null;
+
+  iceWaterShield?: string | null;
+
+  ridgeVentIncluded?: boolean;
+  ridgeVentOopPrice?: string | number | null;
+  ventilationNotes?: string | null;
+
+  starterStrip?: string | null;
+
+  dripEdgeOption?: string | null;
+  dripEdgeOopPrice?: string | number | null;
+
+  tradeCoveredSidingFull?: string | null;
+  tradeCoveredSidingRepair?: string | null;
+  tradeCoveredGuttersFull?: string | null;
+  tradeCoveredGuttersRepair?: string | null;
+  tradeCoveredInterior?: string | null;
+  tradeCoveredPaint?: string | null;
+  tradeCoveredWindows?: string | null;
+  tradeCoveredOther?: string | null;
+  tradesCoveredAdditionalNotes?: string | null;
+
+  valueAddsOtherOffers?: string | null;
+  numStories?: string | null;
+
+  // ── Gutter-trade fields (only read when gutterTradeActive) ──
+  gutterLinearFootage?: string | number | null;
+  gutter5InchPrice?: string | number | null;
+  gutter6InchPrice?: string | number | null;
+  gutterGuardsRetail?: GutterGuardEntry[];
+  rottenWoodPricing?: string | null;
+  gutterAdditionalNotes?: string | null;
+  gutterWarrantyInfo?: string | null;
+
+  // ── Siding-trade fields (only read when sidingTradeActive) ──
+  sidingProductSupply?: string | null;
+  sidingEquivalentProduct?: string | null;
+  sidingRottenSheathingPricing?: string | null;
+  sidingAdditionalNotes?: string | null;
+  sidingWarrantyInfo?: string | null;
+  sidingInstallPerSquare?: string | number | null;
+  sidingTrimPrice?: string | number | null;
+  sidingWindowWrapPrice?: string | number | null;
+  sidingTeardownPrice?: string | number | null;
+
+  // ── Second-layer tear-off contingency (retail roofing) ──
+  slcPricePerSquare?: string | number | null;
+  slcFlatFeeAlternative?: string | number | null;
+  slcMethod?: string | null;
+
+  // ── Wizard step-3 fields (only read when wizardMode) ──
+  wizardBundleNote?: string | null;
+  wizardRationale?: string | null;
+}
+
+/** Context flags the value_adds builder branches on (deriveTradeFlags + claim trades + wizard). */
+export interface ValueAddsContext {
+  gutterTradeActive: boolean;
+  sidingTradeActive: boolean;
+  /** currentClaim.trades — the `!trades.includes('roofing')` siding-pricing gate (:5219). */
+  claimTrades: string[];
+  wizardMode: boolean;
+  /** wizardTradeQueue — recorded into value_adds.wizard_trade_queue (:5279). */
+  wizardTradeQueue: string[];
+}
+
+/**
+ * Build the quotes.value_adds JSON exactly as the static submit handler does
+ * (contractor-bid-form.html:5149-5285). Pure: the DOM/FormData reads become typed
+ * ValueAddsFormState input; the output object is identical key-for-key.
+ */
+export function buildValueAdds(
+  form: ValueAddsFormState,
+  ctx: ValueAddsContext,
+): Record<string, unknown> {
+  const gutterOption = form.gutterOption || 'none';
+
+  const valueAdds: Record<string, unknown> = {
+    bid_type_option: form.bidTypeOption,
+    other_bid_description: form.bidTypeOption === 'other' ? (form.otherBidDescription || null) : null,
+
+    gutters: {
+      option: gutterOption,
+      additional_cost_5inch: gutterOption === '5inch_additional' ? numOrNull(form.gutter5AdditionalCost) : null,
+      additional_cost_6inch: gutterOption === '6inch_additional' ? numOrNull(form.gutter6AdditionalCost) : null,
+      other_text: gutterOption === 'other' ? (form.gutterOtherText || null) : null,
+    } as Record<string, unknown>,
+
+    gutter_guards: {
+      pricing_on_request: !!form.gutterGuardPricingOnRequest,
+      mesh_oop: numOrNull(form.gutterGuardMeshOop),
+      screw_in_oop: numOrNull(form.gutterGuardScrewInOop),
+      notes: form.gutterGuardNotes || null,
+    },
+
+    // Chimney Flashing / Reflash — merged (86e10t28v); legacy keys kept null for back-compat.
+    chimney: {
+      type: form.chimneyType || 'na',
+      option: (form.chimneyType && form.chimneyType !== 'na') ? (form.chimneyOption || 'included') : null,
+      oop_price: form.chimneyOption === 'oop' ? numOrNull(form.chimneyOopPrice) : null,
+    },
+    chimney_flashing: null,
+    chimney_reflash: null,
+
+    skylights: form.skylights || 'na',
+
+    other_shingles: Array.isArray(form.otherShingles) ? form.otherShingles : [],
+    other_shingles_notes: form.shingleOtherNotes || null,
+
+    underlayment: {
+      type: form.underlaymentType || null,
+      notes: form.underlaymentNotes || null,
+    },
+
+    ice_water_shield: {
+      coverage: form.iceWaterShield || 'not_applicable',
+    },
+
+    ventilation: {
+      ridge_vent_included: !!form.ridgeVentIncluded,
+      ridge_vent_oop: numOrNull(form.ridgeVentOopPrice),
+      notes: form.ventilationNotes || null,
+    },
+
+    starter_strip: form.starterStrip || null,
+
+    drip_edge: {
+      option: form.dripEdgeOption || 'na',
+      oop_price: form.dripEdgeOption === 'oop' ? numOrNull(form.dripEdgeOopPrice) : null,
+    },
+
+    warranties: null, // D-202 Phase 2: superseded by quotes.warranty_option_id / warranty_snapshot.
+
+    other_trades_covered: {
+      siding_full: form.tradeCoveredSidingFull || null,
+      siding_repair: form.tradeCoveredSidingRepair || null,
+      gutters_full: form.tradeCoveredGuttersFull || null,
+      gutters_repair: form.tradeCoveredGuttersRepair || null,
+      interior: form.tradeCoveredInterior || null,
+      paint: form.tradeCoveredPaint || null,
+      windows: form.tradeCoveredWindows || null,
+      other: form.tradeCoveredOther || null,
+      additional_notes: form.tradesCoveredAdditionalNotes || null,
+    },
+
+    other_offers: form.valueAddsOtherOffers || null,
+
+    num_stories: form.numStories || null,
+  };
+
+  // Append gutter-trade fields (:5230-5238).
+  if (ctx.gutterTradeActive) {
+    const gutters = (valueAdds.gutters as Record<string, unknown>) || {};
+    gutters.linearFootage = numOrNull(form.gutterLinearFootage);
+    valueAdds.gutters = gutters;
+    valueAdds.gutter_5inch_price = numOrNull(form.gutter5InchPrice);
+    valueAdds.gutter_6inch_price = numOrNull(form.gutter6InchPrice);
+    valueAdds.gutter_guards_retail = Array.isArray(form.gutterGuardsRetail) ? form.gutterGuardsRetail : [];
+    valueAdds.rotten_wood_pricing = trimOrNull(form.rottenWoodPricing);
+    valueAdds.gutter_additional_notes = trimOrNull(form.gutterAdditionalNotes);
+    valueAdds.gutter_warranty = trimOrNull(form.gutterWarrantyInfo);
+  }
+
+  // Append siding-trade fields (:5242-5256).
+  if (ctx.sidingTradeActive) {
+    valueAdds.siding_product_supply = form.sidingProductSupply || null;
+    valueAdds.siding_equivalent_product = trimOrNull(form.sidingEquivalentProduct);
+    valueAdds.siding_rotten_sheathing_pricing = trimOrNull(form.sidingRottenSheathingPricing);
+    valueAdds.siding_additional_notes = trimOrNull(form.sidingAdditionalNotes);
+    valueAdds.siding_warranty = trimOrNull(form.sidingWarrantyInfo);
+    // Pricing fields only for siding-only jobs (no roofing in the claim trades).
+    if (!ctx.claimTrades.includes('roofing')) {
+      valueAdds.siding_install_per_square = numOrNull(form.sidingInstallPerSquare);
+      valueAdds.siding_trim_price = numOrNull(form.sidingTrimPrice);
+      valueAdds.siding_window_wrap_price = numOrNull(form.sidingWindowWrapPrice);
+      valueAdds.siding_teardown_price = numOrNull(form.sidingTeardownPrice);
+    }
+  }
+
+  // Second-Layer Tear-Off Contingency (retail roofing, :5259-5269).
+  const slcPerSq = numOrNull(form.slcPricePerSquare);
+  const slcFlat = numOrNull(form.slcFlatFeeAlternative);
+  if (slcPerSq != null || slcFlat != null) {
+    valueAdds.secondLayerContingency = {
+      pricePerSquare: slcPerSq,
+      flatFeeAlternative: slcFlat,
+      method: form.slcMethod || 'per_square',
+    };
+  }
+
+  // Wizard step-3 fields (:5272-5281).
+  if (ctx.wizardMode) {
+    const bundleNote = trimOrNull(form.wizardBundleNote);
+    const rationale = trimOrNull(form.wizardRationale);
+    if (bundleNote) valueAdds.wizard_bundle_note = bundleNote;
+    if (rationale) valueAdds.wizard_rationale = rationale;
+    valueAdds.wizard_trade_queue = ctx.wizardTradeQueue.length > 0 ? ctx.wizardTradeQueue : null;
+  }
+
+  return valueAdds;
+}
+
+// =============================================================================
+// D-162 MULTI-TRADE WIZARD — pure step-state (initWizard eligibility + the
+// wizardNext / wizardBack / wizardGoTo transitions, :2473-2665). The page keeps
+// the DOM/localStorage/history side effects; this models the state machine.
+// =============================================================================
+
+/** Wizard trade order (contractor-bid-form.html:2456). roofing → gutters → siding. */
+export const WIZARD_TRADE_ORDER: readonly string[] = ['roofing', 'gutters', 'siding'];
+
+/** Reduce an arbitrary trade list to WIZARD_TRADE_ORDER order (_syncWizardTradeSelection, :2517-2519). */
+export function orderWizardTrades(trades: string[]): string[] {
+  return WIZARD_TRADE_ORDER.filter((t) => trades.includes(t));
+}
+
+export interface WizardEligibility {
+  eligible: boolean;
+  queue: string[];
+}
+
+/**
+ * initWizard eligibility (:2473-2488): retail-only; >=2 of the ordered trades;
+ * the D-165 siding gate drops siding unless siding_bid_released_at is set; if the
+ * gated queue has <2 trades there is no wizard.
+ */
+export function computeWizardEligibility(
+  trades: string[],
+  opts: { isRetailJob: boolean; sidingReleased: boolean },
+): WizardEligibility {
+  if (!opts.isRetailJob) return { eligible: false, queue: [] };
+  const inOrder = WIZARD_TRADE_ORDER.filter((t) => trades.includes(t));
+  if (inOrder.length < 2) return { eligible: false, queue: [] };
+  const queued = inOrder.filter((t) => t !== 'siding' || opts.sidingReleased);
+  if (queued.length < 2) return { eligible: false, queue: [] };
+  return { eligible: true, queue: [...queued] };
+}
+
+export type WizardStep = 1 | 2 | 3;
+
+export interface WizardState {
+  step: WizardStep;
+  tradeIdx: number;
+  queue: string[];
+  selectedTrades: string[];
+}
+
+export type WizardAction =
+  | { type: 'setSelected'; selectedTrades: string[] }
+  | { type: 'goto'; step: WizardStep; tradeIdx: number }
+  | { type: 'next' }
+  | { type: 'back' };
+
+/**
+ * Pure transition for the D-162 wizard (wizardNext :2638-2655, wizardBack
+ * :2657-2665, wizardGoTo :2521, _syncWizardTradeSelection :2516). DOM, history,
+ * localStorage, and captureCurrentTradePrice stay in the page's effects.
+ */
+export function wizardReducer(state: WizardState, action: WizardAction): WizardState {
+  switch (action.type) {
+    case 'setSelected':
+      return { ...state, selectedTrades: orderWizardTrades(action.selectedTrades) };
+    case 'goto':
+      return { ...state, step: action.step, tradeIdx: action.tradeIdx };
+    case 'next':
+      if (state.step === 1) {
+        if (state.selectedTrades.length === 0) return state; // wizardNext alerts + no-ops
+        return { ...state, queue: [...state.selectedTrades], step: 2, tradeIdx: 0 };
+      }
+      if (state.step === 2) {
+        if (state.tradeIdx < state.queue.length - 1) {
+          return { ...state, step: 2, tradeIdx: state.tradeIdx + 1 };
+        }
+        return { ...state, step: 3, tradeIdx: 0 };
+      }
+      return state;
+    case 'back':
+      if (state.step === 2 && state.tradeIdx === 0) return { ...state, step: 1, tradeIdx: 0 };
+      if (state.step === 2 && state.tradeIdx > 0) return { ...state, step: 2, tradeIdx: state.tradeIdx - 1 };
+      if (state.step === 3) return { ...state, step: 2, tradeIdx: Math.max(0, state.queue.length - 1) };
+      return state;
+    default:
+      return state;
+  }
+}
