@@ -49,11 +49,16 @@ describe('AdminNav', () => {
     );
   });
 
-  it('emits a next/link (data-nextlink) for React-route links (Contractors)', () => {
-    render(<AdminNav active="payouts" />);
+  it('emits a next/link (data-nextlink) for React-route links (Contractors, Payouts)', () => {
+    render(<AdminNav active="contractors" />);
     const contractorsLink = screen.getByRole('link', { name: 'Contractors' });
     expect(contractorsLink).toHaveAttribute('data-nextlink', 'true');
     expect(contractorsLink).toHaveAttribute('href', '/admin/contractors');
+
+    // Payouts migrated to a React route in D-211 Phase 10 (was a static cross-stack link).
+    const payoutsLink = screen.getByRole('link', { name: 'Payouts' });
+    expect(payoutsLink).toHaveAttribute('data-nextlink', 'true');
+    expect(payoutsLink).toHaveAttribute('href', '/admin/payouts');
   });
 
   it('emits a plain <a href> (no data-nextlink) for static cross-stack links', () => {
@@ -64,13 +69,6 @@ describe('AdminNav', () => {
     expect(referralsLink).toHaveAttribute(
       'href',
       'https://otterquote.com/admin-referrals.html',
-    );
-
-    const payoutsLink = screen.getByRole('link', { name: 'Payouts' });
-    expect(payoutsLink).not.toHaveAttribute('data-nextlink');
-    expect(payoutsLink).toHaveAttribute(
-      'href',
-      'https://otterquote.com/admin-payouts.html',
     );
   });
 
