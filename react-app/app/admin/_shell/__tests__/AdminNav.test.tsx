@@ -61,15 +61,16 @@ describe('AdminNav', () => {
     expect(payoutsLink).toHaveAttribute('href', '/admin/payouts');
   });
 
-  it('emits a plain <a href> (no data-nextlink) for static cross-stack links', () => {
+  it('emits a next/link (data-nextlink) for Referrals (migrated to a React route in D-211 Phase 11)', () => {
     render(<AdminNav active="contractors" />);
 
+    // Referrals migrated to the React route /admin/referrals in D-211 Phase 11
+    // (it was the LAST static cross-stack link). Every canonical admin nav link
+    // is now a React route; AdminNav's plain-<a> branch is retained but no longer
+    // exercised by the real ADMIN_NAV_LINKS list.
     const referralsLink = screen.getByRole('link', { name: 'Referrals' });
-    expect(referralsLink).not.toHaveAttribute('data-nextlink');
-    expect(referralsLink).toHaveAttribute(
-      'href',
-      'https://otterquote.com/admin-referrals.html',
-    );
+    expect(referralsLink).toHaveAttribute('data-nextlink', 'true');
+    expect(referralsLink).toHaveAttribute('href', '/admin/referrals');
   });
 
   it('emits a next/link (data-nextlink) for the Warranty Drift React route', () => {

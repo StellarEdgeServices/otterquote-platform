@@ -9,7 +9,7 @@ export interface AdminNavLink {
 /** Canonical admin nav link list — single source of truth. Flip isReactRoute here when a page migrates. */
 export const ADMIN_NAV_LINKS: AdminNavLink[] = [
   { key: 'contractors', label: 'Contractors', href: '/admin/contractors', isReactRoute: true },
-  { key: 'referrals', label: 'Referrals', href: 'https://otterquote.com/admin-referrals.html', isReactRoute: false },
+  { key: 'referrals', label: 'Referrals', href: '/admin/referrals', isReactRoute: true },
   { key: 'payouts', label: 'Payouts', href: '/admin/payouts', isReactRoute: true },
   { key: 'template-review', label: 'Template Review', href: '/admin/template-review', isReactRoute: true },
   { key: 'cert-verifications', label: 'Cert Verifications', href: '/admin/cert-verifications', isReactRoute: true },
