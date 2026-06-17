@@ -72,6 +72,13 @@ describe('AdminNav', () => {
     );
   });
 
+  it('emits a next/link (data-nextlink) for the Warranty Drift React route', () => {
+    render(<AdminNav active="warranty-drift" />);
+    const wdLink = screen.getByRole('link', { name: 'Warranty Drift' });
+    expect(wdLink).toHaveAttribute('data-nextlink', 'true');
+    expect(wdLink).toHaveAttribute('href', '/admin/warranty-drift');
+  });
+
   it('applies active styling class (is-active) to the active key', () => {
     render(<AdminNav active="payouts" />);
     expect(screen.getByRole('link', { name: 'Payouts' }).className).toContain('is-active');
