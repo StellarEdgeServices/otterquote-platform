@@ -1,0 +1,239 @@
+/**
+ * Unit + parity tests for the Refer-a-Friend pure logic (D-211 Phase 13).
+ *
+ * Pins refer-a-friend.html @ main behavior, WITH the two documented bugs folded:
+ *   - BUG 1 (column-order): referralRowCells() yields all four header columns
+ *     [Friend's Name | Date Referred | Status | Commission] (the static body row
+ *     dropped Commission and transposed Status/Date).
+ *   - BUG 2 ($50 vs $200): summarizeReferrals().earned = completed * $200.
+ * Plus: referral link/code, the W-9 banner gate, the homeowner launch gate, the
+ * share-message builders, and the VERBATIM Tier-3 tax/legal copy (byte-for-byte).
+ *
+ * No network / supabase calls — every helper is side-effect-free.
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  type CustomerReferral,
+  PUBLIC_SITE_URL,
+  REFERRAL_COMMISSION_USD,
+  REFERRAL_CODE_CHARS,
+  COMING_SOON_REDIRECT,
+  referralUrl,
+  generateReferralCode,
+  referralFriendName,
+  referralDate,
+  referralStatusLabel,
+  referralStatusClass,
+  referralCommissionCell,
+  referralRowCells,
+  summarizeReferrals,
+  referralSummaryLine,
+  shouldShowW9Banner,
+  isHomeownerLaunchEnabled,
+  FACEBOOK_SHARE_MESSAGE,
+  smsShareMessage,
+  nextdoorShareMessage,
+  EMAIL_SHARE_SUBJECT,
+  emailShareBody,
+  emailSignatureBadgeHtml,
+  facebookShareUrl,
+} from '../utils';
+import {
+  HERO,
+  HOW_IT_WORKS,
+  FAQ,
+  TAX_NOTICE,
+  COMMISSION_APPROVAL_DISCLOSURE,
+  W9_BANNER,
+  REFERRALS,
+  LOGIN_ROUTE,
+  W9_UPLOAD_LINK,
+} from '../copy';
+
+const mkRef = (over: Partial<CustomerReferral> = {}): CustomerReferral => ({ id: over.id ?? 'r-1', ...over });
+
+// ============================================================
+// Referral link + code
+// ============================================================
+describe('referral link + code', () => {
+  it('referralUrl is `${SITE_URL}/ref/${code}` (path style — NOT ref.html?code=)', () => {
+    expect(referralUrl('ABC123')).toBe('https://otterquote.com/ref/ABC123');
+    expect(referralUrl('ABC123', 'https://staging.otterquote.com')).toBe('https://staging.otterquote.com/ref/ABC123');
+    expect(PUBLIC_SITE_URL).toBe('https://otterquote.com');
+  });
+  it('generateReferralCode is 8 chars from the A–Z0–9 alphabet', () => {
+    expect(generateReferralCode(() => 0)).toBe('AAAAAAAA');
+    const code = generateReferralCode(() => 0.5);
+    expect(code).toHaveLength(8);
+    expect(code).toMatch(/^[A-Z0-9]{8}$/);
+    expect(REFERRAL_CODE_CHARS).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789');
+  });
+});
+
+// ============================================================
+// Referrals table — BUG 1 (column-order / missing Commission)
+// ============================================================
+describe('referral table cells — BUG-1 fix (four columns, header order)', () => {
+  it('referralFriendName: referee_email || "—"', () => {
+    expect(referralFriendName({ referee_email: 'jane@x.com' })).toBe('jane@x.com');
+    expect(referralFriendName({ referee_email: null })).toBe('—');
+  });
+  it('referralDate: en-US short date; null → "—"', () => {
+    expect(referralDate(null)).toBe('—');
+    expect(referralDate('2026-03-04T00:00:00Z')).toBe(
+      new Date('2026-03-04T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    );
+  });
+  it('referralStatusLabel capitalizes; empty → "Pending"', () => {
+    expect(referralStatusLabel('completed')).toBe('Completed');
+    expect(referralStatusLabel('signed')).toBe('Signed');
+    expect(referralStatusLabel(null)).toBe('Pending');
+    expect(referralStatusLabel('')).toBe('Pending');
+  });
+  it('referralStatusClass reproduces the static 3-way color logic', () => {
+    expect(referralStatusClass('completed')).toBe('status-completed');
+    expect(referralStatusClass('signed')).toBe('status-in-progress');
+    expect(referralStatusClass('clicked')).toBe('status-clicked');
+    expect(referralStatusClass(null)).toBe('status-clicked');
+  });
+  it('referralCommissionCell: completed → $200, else "—" (the OMITTED column)', () => {
+    expect(referralCommissionCell('completed')).toBe('$200');
+    expect(referralCommissionCell('signed')).toBe('—');
+    expect(referralCommissionCell(null)).toBe('—');
+  });
+  it('referralRowCells yields ALL FOUR header columns in order', () => {
+    const cells = referralRowCells(mkRef({ referee_email: 'a@b.com', created_at: '2026-03-04T00:00:00Z', status: 'completed' }));
+    expect(cells.friend).toBe('a@b.com');
+    expect(cells.date).toBe(referralDate('2026-03-04T00:00:00Z'));
+    expect(cells.statusLabel).toBe('Completed');
+    expect(cells.statusClass).toBe('status-completed');
+    expect(cells.commission).toBe('$200'); // ← the column the static row dropped
+  });
+});
+
+// ============================================================
+// Summary — BUG 2 ($50 → $200)
+// ============================================================
+describe('summarizeReferrals — BUG-2 fix ($200, not $50)', () => {
+  const refs: CustomerReferral[] = [
+    mkRef({ status: 'completed' }),
+    mkRef({ status: 'completed' }),
+    mkRef({ status: 'completed' }),
+    mkRef({ status: 'signed' }),
+    mkRef({ status: 'clicked' }),
+  ];
+  it('earned = completed × $200 (NOT × $50)', () => {
+    const s = summarizeReferrals(refs);
+    expect(s.total).toBe(5);
+    expect(s.completed).toBe(3);
+    expect(s.earned).toBe(600); // 3 × $200 — the old bug produced 150
+    expect(s.earned).not.toBe(150);
+    expect(REFERRAL_COMMISSION_USD).toBe(200);
+  });
+  it('referralSummaryLine format is byte-for-byte the static (· separators)', () => {
+    expect(referralSummaryLine({ total: 5, completed: 3, earned: 600 })).toBe('5 referrals · 3 completed · $600 earned');
+    expect(referralSummaryLine({ total: 1, completed: 0, earned: 0 })).toBe('1 referral · 0 completed · $0 earned');
+  });
+});
+
+// ============================================================
+// W-9 banner gate (renderW9Banner) + homeowner launch gate
+// ============================================================
+describe('gates', () => {
+  it('shouldShowW9Banner: blocked && notified && not-submitted', () => {
+    expect(shouldShowW9Banner({ payments_blocked: true, w9_notification_sent_at: '2026-01-01', w9_submitted_at: null })).toBe(true);
+    expect(shouldShowW9Banner({ payments_blocked: false, w9_notification_sent_at: '2026-01-01', w9_submitted_at: null })).toBe(false);
+    expect(shouldShowW9Banner({ payments_blocked: true, w9_notification_sent_at: null, w9_submitted_at: null })).toBe(false);
+    expect(shouldShowW9Banner({ payments_blocked: true, w9_notification_sent_at: '2026-01-01', w9_submitted_at: '2026-02-01' })).toBe(false);
+    expect(shouldShowW9Banner(null)).toBe(false);
+  });
+  it('isHomeownerLaunchEnabled: only the literal "false" re-gates', () => {
+    expect(isHomeownerLaunchEnabled(undefined)).toBe(true);
+    expect(isHomeownerLaunchEnabled('true')).toBe(true);
+    expect(isHomeownerLaunchEnabled('1')).toBe(true);
+    expect(isHomeownerLaunchEnabled('false')).toBe(false);
+    expect(COMING_SOON_REDIRECT).toBe('/coming-soon.html?from=refer-a-friend&persona=homeowner');
+  });
+});
+
+// ============================================================
+// Share-message builders (verbatim marketing copy)
+// ============================================================
+describe('share builders', () => {
+  const url = 'https://otterquote.com/ref/ABC123';
+  it('Facebook fixed message + share URL', () => {
+    expect(FACEBOOK_SHARE_MESSAGE).toBe(
+      'I just got my roof replaced through Otter Quotes — multiple contractors competed for the job and I got a great deal. Check it out if you need any exterior work done!',
+    );
+    expect(facebookShareUrl(url)).toBe(
+      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(FACEBOOK_SHARE_MESSAGE)}`,
+    );
+  });
+  it('SMS message interpolates the URL', () => {
+    expect(smsShareMessage(url)).toBe(
+      `Hey! I just got my roof done through Otter Quotes — they had multiple contractors compete for the job. If you need any exterior work done, check them out: ${url}`,
+    );
+  });
+  it('Nextdoor message interpolates the URL', () => {
+    expect(nextdoorShareMessage(url)).toContain('Four contractors competed for the job');
+    expect(nextdoorShareMessage(url).endsWith(url)).toBe(true);
+  });
+  it('Email subject + body', () => {
+    expect(EMAIL_SHARE_SUBJECT).toBe('Check out Otter Quotes — best way to get contractor quotes');
+    expect(emailShareBody(url)).toContain('I recently used Otter Quotes to get my roof replaced');
+    expect(emailShareBody(url)).toContain(url);
+    expect(emailShareBody(url).endsWith('Best regards')).toBe(true);
+  });
+  it('Email-signature badge HTML interpolates link + logo', () => {
+    const html = emailSignatureBadgeHtml(url);
+    expect(html).toContain(`<a href="${url}" target="_blank"`);
+    expect(html).toContain(`<img src="https://otterquote.com/img/otter-logo.svg"`);
+    expect(html).toContain('<span>I trust Otter Quotes</span>');
+  });
+});
+
+// ============================================================
+// VERBATIM Tier-3 tax/legal copy (byte-for-byte) + $200 representations
+// ============================================================
+describe('verbatim Tier-3 tax/legal copy', () => {
+  it('1099-MISC Tax Reporting Notice (disclosure 1099-misc-v1-2026-04)', () => {
+    expect(TAX_NOTICE.version).toBe('1099-misc-v1-2026-04');
+    expect(TAX_NOTICE.label).toBe('Tax Reporting Notice');
+    expect(TAX_NOTICE.body).toBe(
+      'Your $200 referral bonus is taxable income. If you receive $600 or more in referral bonuses from Otter Quotes in a calendar year, we are required by federal law to file a Form 1099-MISC with the IRS reporting those payments, and to provide you a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.',
+    );
+  });
+  it('FAQ tax answer (1099-MISC / $600 / Jan 31)', () => {
+    expect(FAQ[3].q).toBe('Will I receive a tax form for my referral bonuses?');
+    expect(FAQ[3].a).toBe(
+      'Yes — referral bonuses are taxable income. If you receive $600 or more in bonuses from Otter Quotes in a calendar year, we are required to report those payments to the IRS and will issue you a Form 1099-MISC. You will receive a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. We recommend consulting a tax professional regarding your specific situation.',
+    );
+  });
+  it('D-180 commission-approval disclosure', () => {
+    expect(COMMISSION_APPROVAL_DISCLOSURE).toBe(
+      "Commission payments are subject to Otter Quotes' approval process and are typically completed within five business days of the qualifying job event.",
+    );
+  });
+  it('D-172 W-9 banner copy', () => {
+    expect(W9_BANNER.title).toBe('W-9 Required Before Payment');
+    expect(W9_BANNER.body).toBe("Your referral generated a commission, but it's on hold until we receive your W-9.");
+    expect(W9_BANNER.link).toBe('Upload your W-9 in your partner dashboard →');
+    expect(W9_UPLOAD_LINK).toBe('/partner-dashboard.html#w9Upload');
+  });
+  it('the $200 / $10,000 representations are intact (hero, How-It-Works, FAQ)', () => {
+    expect(HERO.heading).toBe('Love Your Project Results? Share the Love — and Earn $200');
+    expect(HERO.subtitle).toContain('completes a project over $10,000');
+    expect(HERO.subtitle).toContain('you earn $200');
+    expect(HOW_IT_WORKS[2].title).toBe('You Earn $200');
+    expect(HOW_IT_WORKS[2].text).toBe('When their job completes (over $10K), you earn $200 in commission.');
+    expect(FAQ[2].a).toContain("You won't receive a cash commission for jobs under $10K");
+  });
+  it('table headers match the static (four columns)', () => {
+    expect(REFERRALS.thFriend).toBe("Friend's Name");
+    expect(REFERRALS.thDate).toBe('Date Referred');
+    expect(REFERRALS.thStatus).toBe('Status');
+    expect(REFERRALS.thCommission).toBe('Commission');
+    expect(LOGIN_ROUTE).toBe('/login');
+  });
+});
