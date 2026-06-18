@@ -165,7 +165,7 @@ serve(async (req) => {
           .select("total_price, platform_fee_pct")
           .eq("claim_id", metadata.claim_id)
           .eq("contractor_id", contractor_id)
-          .order("created_at", { ascending: false })
+          .eq("status", "selected")
           .limit(1)
           .single();
         if (quoteErr || !quote) {
