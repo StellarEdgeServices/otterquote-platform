@@ -72,13 +72,18 @@ serve(async (req) => {
       );
     }
 
-    // ── Authenticate caller ────────────────────────────────────────
-    // Service role skips auth. Anon/JWT callers must own the claim.
+    // ── Authenticate & authorize caller ────────────────────────────
+    // Service role skips auth (admin/internal use). Every other caller must
+    // present a valid user JWT AND be associated with the claim — see
+    // canAccessClaim(). (D-211 Phase 16 Unit 2 — Hover IDOR fix: the prior gate
+    // allowed ANY active contractor to pull ANY claim's PDF, and a request with
+    // no Authorization header skipped the ownership check entirely.)
     let rateLimitUserId: string | null = null;
     const authHeader = req.headers.get("Authorization");
-    if (authHeader && !authHeader.includes(supabaseKey)) {
+    const isServiceRole = !!authHeader && authHeader.includes(supabaseKey);
+    if (!isServiceRole) {
       const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") || supabaseKey, {
-        global: { headers: { Authorization: authHeader } },
+        global: { headers: { Authorization: authHeader ?? "" } },
       });
       const { data: { user }, error: authErr } = await userClient.auth.getUser();
       if (authErr || !user) {
@@ -88,33 +93,12 @@ serve(async (req) => {
         );
       }
       rateLimitUserId = user.id;
-      // Verify ownership OR active contractor status
-      // Homeowners who own the claim may always access.
-      // Active contractors may also access (they need Hover PDFs to bid). (86e10t26y)
-      const { data: claim, error: claimErr } = await supabase
-        .from("claims")
-        .select("id, user_id")
-        .eq("id", claim_id)
-        .single();
-      if (claimErr || !claim) {
+      const allowed = await canAccessClaim(supabase, claim_id, user);
+      if (!allowed) {
         return new Response(
           JSON.stringify({ error: "Claim not found or access denied" }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
-      }
-      if (claim.user_id !== user.id) {
-        // Caller is not the homeowner — allow only if they are an active contractor
-        const { data: contractor } = await supabase
-          .from("contractors")
-          .select("id, status")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        if (!contractor || contractor.status !== "active") {
-          return new Response(
-            JSON.stringify({ error: "Access denied — active contractor account required" }),
-            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
       }
     }
 
@@ -268,6 +252,68 @@ serve(async (req) => {
     );
   }
 });
+
+
+// ── Authorization (D-211 Phase 16 Unit 2 — Hover IDOR fix) ─────────
+//
+// canAccessClaim mirrors the `claims`-table RLS SELECT boundary exactly — the
+// platform's canonical "which claims may this caller see" rule:
+//   (1) Homeowner who owns the claim          → claims.user_id = caller
+//   (2) Active contractor + released biddable → RLS "Contractors can view
+//       biddable claims" (sql/v10): ready_for_bids = true AND status IN
+//       ('active','bidding','pending') AND the caller has an active contractor
+//       record.
+//   (3) Contractor with an existing quote     → RLS "Contractors can view claims
+//       for their quotes" (sql/v20 + v21): a quote on this claim by one of the
+//       caller's contractor records.
+//
+// The opportunities trade / ZIP-distance / 6-bid filters are client-side DISPLAY
+// refinements, NOT an access boundary, so they are intentionally not replicated
+// here (replicating them would over-restrict and break legitimate browsing).
+//
+// `supabase` is the service-role client; the predicate is enforced explicitly.
+async function canAccessClaim(
+  supabase: any,
+  claimId: string,
+  user: { id: string },
+): Promise<boolean> {
+  // (1) Homeowner ownership.
+  const { data: claim } = await supabase
+    .from("claims")
+    .select("user_id, ready_for_bids, status")
+    .eq("id", claimId)
+    .maybeSingle();
+  if (!claim) return false; // unknown claim → deny
+  if (claim.user_id === user.id) return true;
+
+  // Resolve the caller's contractor record(s) once (a user may own more than one).
+  const { data: contractors } = await supabase
+    .from("contractors")
+    .select("id, status")
+    .eq("user_id", user.id);
+  const contractorRows = (contractors ?? []) as { id: string; status: string | null }[];
+  if (contractorRows.length === 0) return false; // not the owner and not a contractor
+
+  // (2) Active contractor + released, biddable claim.
+  const biddable =
+    claim.ready_for_bids === true &&
+    ["active", "bidding", "pending"].includes(claim.status);
+  if (biddable && contractorRows.some((c) => c.status === "active")) {
+    return true;
+  }
+
+  // (3) Contractor associated via an existing quote/selection on this claim.
+  const { data: quote } = await supabase
+    .from("quotes")
+    .select("id")
+    .eq("claim_id", claimId)
+    .in("contractor_id", contractorRows.map((c) => c.id))
+    .limit(1)
+    .maybeSingle();
+  if (quote) return true;
+
+  return false;
+}
 
 
 // ── Token management (same pattern as hover-webhook) ──────────────
