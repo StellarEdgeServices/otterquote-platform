@@ -293,7 +293,7 @@ function ReferView({
   );
 }
 
-// ── Referral link card (+ QR) ──────────────────────────────────────────────────
+// ── Referral link card (+ QR) ─────────────────────────────────────────────────
 function ReferralLinkCard({ link }: { link: string }) {
   const qrRef = useRef<HTMLDivElement>(null);
 
@@ -603,7 +603,7 @@ function EmailCard({ link }: { link: string }) {
   );
 }
 
-// ── Email-signature badge card ─────────────────────────────────────────────────
+// ── Email-signature badge card ───────────────────────────────────────────────
 function BadgeCard({ link }: { link: string }) {
   const html = emailSignatureBadgeHtml(link);
   return (
