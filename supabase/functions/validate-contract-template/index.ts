@@ -210,13 +210,27 @@ const MANIFEST: any = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// CORS — D-211 Phase 16 Unit 4: matched-origin allow-list replaces wildcard "*".
+// Mirrors record-attestation (D-210). Only these production origins are echoed back;
+// any other Origin falls back to the canonical apex (effectively denied for browsers).
+const ALLOWED_ORIGINS = [
+  "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
+];
 
-function jsonResponse(body: any, status = 200): Response {
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+}
+
+function jsonResponse(body: any, status = 200, corsHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -244,6 +258,8 @@ async function extractPdfText(pdfBytes: Uint8Array): Promise<string> {
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = buildCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -253,7 +269,7 @@ Deno.serve(async (req: Request) => {
 
     // Keepalive — no auth required
     if (body.health_check === true) {
-      return jsonResponse({ ok: true, function: "validate-contract-template", manifestVersion: MANIFEST.version });
+      return jsonResponse({ ok: true, function: "validate-contract-template", manifestVersion: MANIFEST.version }, 200, corsHeaders);
     }
 
     const { contractor_template_id } = body;
@@ -261,7 +277,7 @@ Deno.serve(async (req: Request) => {
     let manualOverrides = body.manualOverrides;
 
     if (!contractor_template_id) {
-      return jsonResponse({ error: "Missing contractor_template_id" }, 400);
+      return jsonResponse({ error: "Missing contractor_template_id" }, 400, corsHeaders);
     }
 
     // ─── Auth Gate ────────────────────────────────────────────────────────────
@@ -270,7 +286,7 @@ Deno.serve(async (req: Request) => {
     // Admin path (manualOverrides === "admin"): caller must have app_metadata.role === "admin".
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return jsonResponse({ error: "Missing or invalid Authorization header" }, 401);
+      return jsonResponse({ error: "Missing or invalid Authorization header" }, 401, corsHeaders);
     }
     const bearerToken = authHeader.slice(7);
 
@@ -283,7 +299,7 @@ Deno.serve(async (req: Request) => {
     // Verify the caller's JWT
     const { data: { user }, error: authErr } = await supabase.auth.getUser(bearerToken);
     if (authErr || !user) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
+      return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
     }
 
     // Determine path: admin vs contractor
@@ -293,7 +309,7 @@ Deno.serve(async (req: Request) => {
       // Admin path: verify admin role in JWT claims
       const callerRole = (user.app_metadata as any)?.role;
       if (callerRole !== "admin") {
-        return jsonResponse({ error: "Forbidden: admin role required" }, 403);
+        return jsonResponse({ error: "Forbidden: admin role required" }, 403, corsHeaders);
       }
       // Clear admin flag — not used as anchor overrides downstream
       manualOverrides = undefined;
@@ -307,7 +323,7 @@ Deno.serve(async (req: Request) => {
       .eq("id", contractor_template_id)
       .single();
     if (loadErr || !tmpl) {
-      return jsonResponse({ error: "Template not found", details: loadErr?.message }, 404);
+      return jsonResponse({ error: "Template not found", details: loadErr?.message }, 404, corsHeaders);
     }
 
     // Contractor path ownership check (runs after template load to avoid extra round-trip)
@@ -318,17 +334,17 @@ Deno.serve(async (req: Request) => {
         .eq("user_id", user.id)
         .single();
       if (contractorErr || !contractorRec) {
-        return jsonResponse({ error: "Forbidden: no contractor record for this user" }, 403);
+        return jsonResponse({ error: "Forbidden: no contractor record for this user" }, 403, corsHeaders);
       }
       if (tmpl.contractor_id !== contractorRec.id) {
-        return jsonResponse({ error: "Forbidden: you do not own this template" }, 403);
+        return jsonResponse({ error: "Forbidden: you do not own this template" }, 403, corsHeaders);
       }
     }
 
     // Manifest lookup
     const tradeManifest = MANIFEST.trades?.[tmpl.trade]?.[tmpl.funding_type];
     if (!tradeManifest) {
-      return jsonResponse({ error: `No manifest for ${tmpl.trade}/${tmpl.funding_type}` }, 400);
+      return jsonResponse({ error: `No manifest for ${tmpl.trade}/${tmpl.funding_type}` }, 400, corsHeaders);
     }
 
     // Download PDF from Supabase Storage
@@ -336,7 +352,7 @@ Deno.serve(async (req: Request) => {
       .from("contractor-templates")
       .download(tmpl.pdf_storage_path);
     if (downloadErr || !pdfBlob) {
-      return jsonResponse({ error: "PDF not found in storage", path: tmpl.pdf_storage_path, details: downloadErr?.message }, 404);
+      return jsonResponse({ error: "PDF not found in storage", path: tmpl.pdf_storage_path, details: downloadErr?.message }, 404, corsHeaders);
     }
 
     // Extract text
@@ -345,14 +361,20 @@ Deno.serve(async (req: Request) => {
       const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
       pdfText = await extractPdfText(pdfBytes);
     } catch (parseErr: any) {
-      return jsonResponse({ error: "Failed to parse PDF", details: parseErr.message }, 422);
+      return jsonResponse({ error: "Failed to parse PDF", details: parseErr.message }, 422, corsHeaders);
     }
 
     // Scan required anchors (case-sensitive substring match per manifest)
     // manualOverrides values may be:
-    //   true         — contractor confirms the anchor exists (legacy binary; counts as found)
-    //   "alt label"  — contractor's actual PDF text for this anchor; re-scan PDF for this string
+    //   "alt label"  — contractor's actual PDF text for this anchor; re-scanned against the PDF
     //   anything else — not overridden
+    // NOTE (D-211 Phase 16 Unit 4 — evidence integrity): a bare boolean `true` is NO LONGER
+    // accepted. Previously `override === true` marked an anchor "found" with no PDF check,
+    // letting a contractor self-validate a template containing none of the required anchors.
+    // An override is now honored ONLY when the contractor-supplied string is actually present
+    // in the PDF (stringOverrideMatch). Verified no client sends bare `true` — both contractor
+    // callers (js/contract-template-validation.js, react d199-validation.tsx) build string-only
+    // override maps, and the admin path clears manualOverrides before this scan.
     const anchorResults = tradeManifest.required.map((req: any) => {
       const literalMatch = pdfText.includes(req.anchor);
       const override = manualOverrides ? manualOverrides[req.anchor] : undefined;
@@ -360,7 +382,7 @@ Deno.serve(async (req: Request) => {
         ? override.trim()
         : null;
       const stringOverrideMatch = stringOverride !== null && pdfText.includes(stringOverride);
-      const overridden = override === true || stringOverrideMatch;
+      const overridden = stringOverrideMatch;
       return {
         anchor: req.anchor,
         field: req.field,
@@ -410,16 +432,16 @@ Deno.serve(async (req: Request) => {
       .eq("id", contractor_template_id);
 
     if (updateErr) {
-      return jsonResponse({ error: "Failed to update template", details: updateErr.message }, 500);
+      return jsonResponse({ error: "Failed to update template", details: updateErr.message }, 500, corsHeaders);
     }
 
     return jsonResponse({
       ok: true,
       status: newStatus,
       validation_result: validationResult,
-    });
+    }, 200, corsHeaders);
   } catch (e: any) {
     console.error("validate-contract-template error:", e);
-    return jsonResponse({ error: "Server error", message: e.message }, 500);
+    return jsonResponse({ error: "Server error", message: e.message }, 500, corsHeaders);
   }
 });
