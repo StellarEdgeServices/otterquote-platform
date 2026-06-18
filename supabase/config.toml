@@ -49,6 +49,40 @@ verify_jwt = true
 # contractors.email — replaces the former send-support-email open-relay welcome path.
 verify_jwt = true
 
+# ── D-211 Phase 16: pin verify_jwt for every EF touched this phase ──────────────
+# These match the live deployed state. Pinned so a future flagless `functions deploy`
+# (CLI default verify_jwt=true) can't silently flip them. No behavior change.
+
+[functions.process-auto-bids]
+# D-093 cron — auth gated in-handler (X-Cron-Secret/CRON_SECRET or service-role Bearer). Pin false so
+# a flagless redeploy can't JWT-protect the 5-min cron processor (D-211 Phase 16 Unit 0).
+verify_jwt = false
+
+[functions.send-support-email]
+# Public support form — emails the hardcoded admin + inserts a ticket; the to_email open-relay branch
+# was removed (D-211 Phase 16 Unit 1b). Pin false so the public form keeps working.
+verify_jwt = false
+
+[functions.get-hover-pdf]
+# Auth + claim-association enforced in-handler (D-211 Phase 16 Unit 2 IDOR fix). Pin false.
+verify_jwt = false
+
+[functions.get-hover-siding-data]
+# Auth + claim-association enforced in-handler (D-211 Phase 16 Unit 2 IDOR fix). Pin false.
+verify_jwt = false
+
+[functions.scrape-manufacturer-certs]
+# Cron/manual — CRON_SECRET / service-role gate in-handler (D-211 Phase 16 Unit 4). Pin false.
+verify_jwt = false
+
+[functions.validate-contract-template]
+# Auth + ownership/admin-role enforced in-handler (D-211 Phase 16 Unit 4). Pin false.
+verify_jwt = false
+
+[functions.rescind-bid]
+# Auth enforced at gateway + in-handler (verified JWT + contractor ownership; D-211 Phase 16 Unit 3).
+verify_jwt = true
+
 [auth]
 site_url = "https://stellaredgeservices.com"
 additional_redirect_urls = [
