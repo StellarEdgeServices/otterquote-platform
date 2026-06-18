@@ -27,15 +27,18 @@
  * 4. Return { success: true, attestation_type, recorded_at }
  *
  * ── Auth ──────────────────────────────────────────────────────────────────
- * --no-verify-jwt: Called from frontend without strict auth requirement.
- * Ownership check: If JWT present, verify contractor_id matches contractor.user_id.
- * If no JWT or JWT missing contractor context, allow anyway (some flows may
- * not have session context at attestation time).
+ * verify_jwt=true: a valid Supabase JWT is required (enforced at the platform
+ * edge and re-checked in-handler). The token is validated via auth.getUser
+ * (signature + expiry), and the resolved user MUST own the contractor record
+ * being attested for. There is no unauthenticated path.
  *
  * ── CORS ───────────────────────────────────────────────────────────────────
  * Allow:
  *   - https://otterquote.com
  *   - https://app.otterquote.com
+ *   - https://app-staging.otterquote.com
+ *   - https://jade-alpaca-b82b5e.netlify.app
+ *   - https://staging--jade-alpaca-b82b5e.netlify.app
  *   - http://localhost:* (dev)
  *
  * ── Returns ────────────────────────────────────────────────────────────────
@@ -48,8 +51,9 @@
  *
  * Errors:
  * - 400: Invalid request (missing fields, invalid attestation_type)
+ * - 401: Authentication required (missing token) or invalid/expired session
  * - 404: Contractor not found
- * - 403: Ownership mismatch (JWT present but contractor_id doesn't match user_id)
+ * - 403: Ownership mismatch (authenticated user doesn't own the contractor)
  * - 500: Database or server error
  */
 
@@ -62,6 +66,9 @@ const FUNCTION_NAME = "record-attestation";
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
   "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
+  "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];
 
 // Regex for localhost with any port
@@ -98,39 +105,6 @@ function jsonResponse(
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
-}
-
-// =============================================================================
-// AUTH HELPER
-// =============================================================================
-
-interface JWTPayload {
-  sub?: string;
-  [key: string]: unknown;
-}
-
-function extractJWT(req: Request): JWTPayload | null {
-  const authHeader = req.headers.get("Authorization") || "";
-  const match = authHeader.match(/^Bearer\s+(.+)$/);
-  if (!match) return null;
-
-  try {
-    const token = match[1];
-    // JWT structure: header.payload.signature
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-
-    // Decode payload (second part)
-    const payload = parts[1];
-    // Add padding if needed
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    const decoded = atob(padded);
-    const jwtObj = JSON.parse(decoded) as JWTPayload;
-    return jwtObj;
-  } catch (err) {
-    console.error(`[${FUNCTION_NAME}] JWT parse failed:`, err);
-    return null;
-  }
 }
 
 // =============================================================================
@@ -200,9 +174,16 @@ serve(async (req) => {
 
   const { contractor_id, attestation_type, ip_address, user_agent } = requestBody;
 
-  // ── Extract JWT if present ──────────────────────────────────────────────
-  const jwtPayload = extractJWT(req);
-  const userIdFromJWT = jwtPayload?.sub as string | undefined;
+  // ── Require a Bearer token ───────────────────────────────────────────────
+  // D-220 / Phase 16: attestations must be made by the authenticated owner.
+  // A missing token is rejected outright — there is no unauthenticated path.
+  const authHeader = req.headers.get("Authorization") || "";
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/);
+  const accessToken = bearerMatch?.[1];
+
+  if (!accessToken) {
+    return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+  }
 
   // ── Set up Supabase client ──────────────────────────────────────────────
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -214,6 +195,14 @@ serve(async (req) => {
   }
 
   const supabase = createClient(supabaseUrl, serviceKey);
+
+  // ── Verify the token resolves to a real user ─────────────────────────────
+  // auth.getUser validates the JWT signature + expiry against the Auth server,
+  // so a forged or expired token cannot pass (closes the prior base64-only gap).
+  const { data: u, error: ue } = await supabase.auth.getUser(accessToken);
+  if (ue || !u?.user) {
+    return jsonResponse({ error: "Invalid or expired session" }, 401, corsHeaders);
+  }
 
   // ── Check contractor exists ─────────────────────────────────────────────
   const { data: contractor, error: contractorError } = await supabase
@@ -229,13 +218,11 @@ serve(async (req) => {
     return jsonResponse({ error: "Contractor not found" }, 404, corsHeaders);
   }
 
-  // ── Ownership check (if JWT present) ─────────────────────────────────────
-  // If we have a JWT with a user_id, verify it matches the contractor's user_id.
-  // If JWT is missing or doesn't have a sub, we allow it anyway (some flows may
-  // not have session context).
-  if (userIdFromJWT && contractor.user_id && userIdFromJWT !== contractor.user_id) {
+  // ── Ownership check (required) ───────────────────────────────────────────
+  // The authenticated user must own the contractor record being attested for.
+  if (contractor.user_id !== u.user.id) {
     console.warn(
-      `[${FUNCTION_NAME}] Ownership mismatch: JWT user ${userIdFromJWT} ` +
+      `[${FUNCTION_NAME}] Ownership mismatch: auth user ${u.user.id} ` +
         `vs contractor user ${contractor.user_id}`
     );
     return jsonResponse({ error: "Unauthorized" }, 403, corsHeaders);

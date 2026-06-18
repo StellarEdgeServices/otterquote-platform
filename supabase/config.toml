@@ -38,6 +38,11 @@ verify_jwt = false
 # Auth enforced inside handler: homeowner JWT + claim ownership + contractor link check (86e1v6nnh).
 verify_jwt = true
 
+[functions.record-attestation]
+# Auth enforced inside handler: caller must present a verified JWT (auth.getUser) and own the
+# contractor record being attested for (D-220 Phase 16; prior --no-verify-jwt bypass closed).
+verify_jwt = true
+
 [auth]
 site_url = "https://stellaredgeservices.com"
 additional_redirect_urls = [
