@@ -603,7 +603,7 @@ function EmailCard({ link }: { link: string }) {
   );
 }
 
-// ── Email-signature badge card ───────────────────────────────────────────────
+// ── Email-signature badge card ────────────────────────────────────────────────
 function BadgeCard({ link }: { link: string }) {
   const html = emailSignatureBadgeHtml(link);
   return (
