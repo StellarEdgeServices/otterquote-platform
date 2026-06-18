@@ -24,6 +24,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 const FN_VERSION = "v1.0.0-soft";
 
 interface Contractor {
@@ -228,6 +229,35 @@ Deno.serve(async (req) => {
 
   if (body.health_check) {
     return new Response(JSON.stringify({ ok: true, fn: "scrape-manufacturer-certs", version: FN_VERSION }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // ── Auth gate ──────────────────────────────────────────────────────────────
+  // This function performs service-role writes to contractor_cert_verifications,
+  // so unauthenticated callers MUST be rejected before any DB work. Mirrors the
+  // process-auto-bids (D-093) cron auth block: accept CRON_SECRET via the
+  // X-Cron-Secret header or Authorization: Bearer <CRON_SECRET>, or the service-role
+  // key as Bearer. (verify_jwt=false — cron/manual invocation carries the cron secret
+  // or the service-role key, not an end-user JWT. The health_check ping above stays
+  // unauthenticated.)
+  const incomingCronSecret = req.headers.get("X-Cron-Secret");
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+
+  let authorized = false;
+  if (!CRON_SECRET) {
+    authorized = !!SUPABASE_SERVICE_ROLE_KEY && bearerToken === SUPABASE_SERVICE_ROLE_KEY;
+  } else {
+    authorized =
+      (incomingCronSecret !== null && incomingCronSecret === CRON_SECRET) ||
+      bearerToken === CRON_SECRET ||
+      (!!SUPABASE_SERVICE_ROLE_KEY && bearerToken === SUPABASE_SERVICE_ROLE_KEY);
+  }
+
+  if (!authorized) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
       headers: { "Content-Type": "application/json" },
     });
   }
