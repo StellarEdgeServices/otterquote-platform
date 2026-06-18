@@ -159,7 +159,32 @@ serve(async (req) => {
     const hmacKey = Deno.env.get("DOCUSIGN_CONNECT_HMAC_KEY") || "";
     const signatureHeader = req.headers.get("x-docusign-signature-1");
 
-    if (hmacKey) {
+    // U15-3: HMAC fail-CLOSED behind a flag. When DOCUSIGN_REQUIRE_SIGNATURE === 'true',
+    // a valid signature is MANDATORY regardless of key presence — reject (401) if the
+    // HMAC key is unset, the x-docusign-signature-1 header is missing, OR verification
+    // fails. When the flag is unset/'false' (default), behavior is byte-for-byte the
+    // prior fail-OPEN logic (verify only when a key is configured), so this PR is safe
+    // to merge/deploy before the secret is confirmed; flipping to fail-closed is then a
+    // pure config change. The verifyHmacSignature crypto/algorithm is unchanged.
+    const requireSignature =
+      Deno.env.get("DOCUSIGN_REQUIRE_SIGNATURE") === "true";
+
+    if (requireSignature) {
+      const isValid =
+        !!hmacKey &&
+        !!signatureHeader &&
+        (await verifyHmacSignature(rawBody, signatureHeader, hmacKey));
+      if (!isValid) {
+        console.error(
+          "HMAC signature verification failed (fail-closed: DOCUSIGN_REQUIRE_SIGNATURE=true)"
+        );
+        return new Response(
+          JSON.stringify({ error: "Invalid signature" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.log("HMAC signature verified (fail-closed)");
+    } else if (hmacKey) {
       const isValid = await verifyHmacSignature(rawBody, signatureHeader, hmacKey);
       if (!isValid) {
         console.error("HMAC signature verification failed");
@@ -305,6 +330,11 @@ serve(async (req) => {
           // Not yet marked signed — time to charge
           console.log(`Contract signed for claim ${claim.id}. Attempting payment charge...`);
 
+          // U15-2: hoisted so the de-blinding `catch (paymentErr)` below can name the
+          // contractor/quote even though both are looked up inside the try block.
+          let quoteIdForAlert: string | null = null;
+          let contractorIdForAlert: string | null = null;
+
           try {
             // Look up the winning quote to get contractor ID and amount
             const { data: quote, error: quoteErr } = await supabase
@@ -319,6 +349,9 @@ serve(async (req) => {
                 `Could not find awarded quote for claim ${claim.id}: ${quoteErr?.message || "not found"}`
               );
             }
+            // U15-2: capture identifiers for the de-blinding alert (catch below).
+            quoteIdForAlert = quote.id;
+            contractorIdForAlert = quote.contractor_id;
 
             // Get contractor's Stripe info
             const { data: contractor, error: contractorErr } = await supabase
@@ -339,6 +372,15 @@ serve(async (req) => {
               !contractor.stripe_customer_id ||
               !contractor.stripe_payment_method_id
             ) {
+              // U15-2: distinct signed-but-unbilled state. No card on file at signing
+              // (pre-charge) — record 'no_method' on the selected quote so this stall is
+              // queryable and distinct from 'dunning' (a charge was attempted + declined).
+              // Leave payment_intent_id null and do NOT set contract_signed_at; the throw
+              // below is then de-blinded by the augmented catch (alert + activity_log).
+              await supabase
+                .from("quotes")
+                .update({ payment_status: "no_method" })
+                .eq("id", quote.id);
               throw new Error(
                 `Contractor ${contractor.id} does not have payment method on file`
               );
@@ -485,19 +527,66 @@ serve(async (req) => {
             // Flag for contractor notification (only after successful payment)
             shouldNotifyContractor = true;
           } catch (paymentErr) {
+            const paymentErrReason =
+              paymentErr instanceof Error ? paymentErr.message : "Unknown payment error";
             console.error(
               "Error processing payment after contract signing:",
               paymentErr
             );
-            // Don't mark as signed if something went wrong
-            // Return early to prevent partial updates
+
+            // U15-2: de-blind the signed-but-unbilled stall. Previously EVERY pre-charge
+            // throw (quote-not-found, contractor-not-found, no card on file, create-payment-intent
+            // non-OK, D-214 fee-absent) landed here and returned 200 with NO state write and
+            // NO alert — a signed claim stalled silently (the default today: 0/6 contractors
+            // have a card). Record a distinct alert + activity_log row so the stall is visible.
+            // Both writes are best-effort (own try/catch -> Sentry) so an audit-write failure
+            // cannot itself re-silence the webhook. We still return 200 — no DocuSign retry-storm.
+            try {
+              await supabase.from("platform_alerts_log").insert({
+                alert_type: "signed_unbilled_no_method",
+                function_name: "docusign-webhook",
+                message:
+                  `Claim ${claim.id} contract signed but not billed` +
+                  (contractorIdForAlert ? `, contractor ${contractorIdForAlert}` : "") +
+                  (quoteIdForAlert ? `, quote ${quoteIdForAlert}` : "") +
+                  `: ${paymentErrReason}`,
+                sent_at: new Date().toISOString(),
+              });
+            } catch (alertErr) {
+              await reportToSentry(alertErr, {
+                fn: "docusign-webhook",
+                op: "platform_alerts_log.insert",
+                extra: { alert_type: "signed_unbilled_no_method", claim_id: claim.id },
+              });
+            }
+            try {
+              await supabase.from("activity_log").insert({
+                event_type: "signed_unbilled_no_method",
+                metadata: {
+                  claim_id: claim.id,
+                  contractor_id: contractorIdForAlert,
+                  quote_id: quoteIdForAlert,
+                  reason: paymentErrReason,
+                },
+              });
+            } catch (activityErr) {
+              await reportToSentry(activityErr, {
+                fn: "docusign-webhook",
+                op: "activity_log.insert",
+                extra: { event_type: "signed_unbilled_no_method", claim_id: claim.id },
+              });
+            }
+
+            // Don't mark as signed if something went wrong; return 200 (no DocuSign retry-storm).
+            // The distinct state ('no_method' on the quote, when reached) + the alert above are
+            // now recorded, so the stall is no longer silent.
             return new Response(
               JSON.stringify({
                 received: true,
                 envelope_id: envelopeId,
                 status,
                 claim_id: claim.id,
-                error: paymentErr instanceof Error ? paymentErr.message : "Unknown payment error",
+                error: paymentErrReason,
               }),
               {
                 status: 200,
