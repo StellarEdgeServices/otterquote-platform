@@ -718,6 +718,39 @@ Deno.serve(async (req: Request) => {
       { auth: { persistSession: false } },
     );
 
+    // ---------------------------------------------------------------------------
+    // Event-level idempotency guard (D-211 P15 U15-1)
+    // Stripe is at-least-once and redelivers on any non-2xx response. Record the
+    // event id in the stripe_webhook_events ledger BEFORE any side-effect fires;
+    // a unique violation means this event was already processed — ack and stop.
+    // ---------------------------------------------------------------------------
+    if (event.id) {
+      const { error: dedupeErr } = await supabase
+        .from("stripe_webhook_events")
+        .insert({ event_id: event.id, event_type: event.type });
+
+      if (dedupeErr) {
+        if (dedupeErr.code === "23505") {
+          console.log(
+            `[${FN_NAME}] Duplicate event ${event.id} (${event.type}) already processed — skipping side-effects`,
+          );
+          return new Response(JSON.stringify({ received: true, duplicate: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        console.error(
+          `[${FN_NAME}] Failed to record webhook event ${event.id} in ledger:`,
+          dedupeErr,
+        );
+        return new Response(JSON.stringify({ error: "Failed to record webhook event" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (event.type === "charge.dispute.created") {
       await handleDisputeCreated(event, supabase);
     } else {
