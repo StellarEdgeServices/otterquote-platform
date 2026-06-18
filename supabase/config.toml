@@ -43,6 +43,12 @@ verify_jwt = true
 # contractor record being attested for (D-220 Phase 16; prior --no-verify-jwt bypass closed).
 verify_jwt = true
 
+[functions.send-welcome-email]
+# Auth enforced at gateway + in-handler: contractor presents a verified JWT (auth.getUser) and must
+# own the contractor record being welcomed (D-220 Phase 16 Unit 1b). Recipient is server-derived from
+# contractors.email — replaces the former send-support-email open-relay welcome path.
+verify_jwt = true
+
 [auth]
 site_url = "https://stellaredgeservices.com"
 additional_redirect_urls = [

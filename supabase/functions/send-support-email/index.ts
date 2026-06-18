@@ -64,8 +64,6 @@ serve(async (req) => {
       from_email,
       subject,
       message,
-      to_email,
-      html,
       user_id, // optional — passed when a logged-in user submits the support form
     } = await req.json();
 
@@ -84,27 +82,18 @@ serve(async (req) => {
       throw new Error("Mailgun credentials not configured.");
     }
 
-    // Support form submissions (no to_email) → route to admin inbox + insert ticket
-    // Direct emails (to_email provided, e.g. welcome emails) → bypass ticket insert
-    const isSupportForm = !to_email;
-    const recipient     = to_email || SUPPORT_DESTINATION;
+    // This function ONLY forwards support-form submissions to the admin inbox
+    // (SUPPORT_DESTINATION) and inserts a support_ticket. The former "direct send"
+    // branch (arbitrary to_email + arbitrary html) was an unauthenticated open
+    // relay and has been removed (D-220 Phase 16 Unit 1b). The contractor welcome
+    // email now lives in the verify_jwt'd send-welcome-email Edge Function.
+    const recipient = SUPPORT_DESTINATION;
 
-    let emailSubject: string;
-    let emailBody: string;
-    let from: string;
+    const emailSubject = subject
+      ? `[Otter Quotes Support] ${subject}`
+      : `[Otter Quotes Support] Message from ${from_name}`;
 
-    if (!isSupportForm) {
-      // Direct email to a specific recipient (e.g., contractor welcome email)
-      emailSubject = subject || "Welcome to Otter Quotes";
-      emailBody    = message;
-      from         = `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`;
-    } else {
-      // Support form email to admin
-      emailSubject = subject
-        ? `[Otter Quotes Support] ${subject}`
-        : `[Otter Quotes Support] Message from ${from_name}`;
-
-      emailBody = `Otter Quotes Support Request
+    const emailBody = `Otter Quotes Support Request
 ===========================
 From:    ${from_name}
 Email:   ${from_email}
@@ -117,20 +106,19 @@ ${message}
 Sent via Otter Quotes support form.
 Reply directly to this email to respond.`;
 
-      from = `Otter Quotes Support <noreply@${MAILGUN_DOMAIN}>`;
-    }
+    const from = `Otter Quotes Support <noreply@${MAILGUN_DOMAIN}>`;
+
+    // Strip CR/LF from caller-supplied fields before they enter the h:Reply-To
+    // header, to prevent SMTP header injection.
+    const replyToName  = (from_name  || "").replace(/[\r\n]+/g, " ").trim();
+    const replyToEmail = (from_email || "").replace(/[\r\n]+/g, "").trim();
 
     const formData = new URLSearchParams();
     formData.append("from",    from);
     formData.append("to",      recipient);
     formData.append("subject", emailSubject);
     formData.append("text",    emailBody);
-    // HTML only applies to direct emails (e.g., branded welcome emails).
-    // Plain-text above is the fallback for all clients.
-    if (!isSupportForm && html) formData.append("html", html);
-    if (isSupportForm) {
-      formData.append("h:Reply-To", `${from_name} <${from_email}>`);
-    }
+    formData.append("h:Reply-To", `${replyToName} <${replyToEmail}>`);
 
     // ── Mailgun call with 10-second AbortController timeout ──────────────────
     const controller = new AbortController();
@@ -169,32 +157,30 @@ Reply directly to this email to respond.`;
 
     // ── D-195: Insert support_ticket record for inbound support form submissions ──
     // Non-blocking: email was already sent; a DB failure here must not fail the response.
-    if (isSupportForm) {
-      try {
-        const supabase = createClient(
-          Deno.env.get("SUPABASE_URL")!,
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-        );
-        const { error: insertError } = await supabase
-          .from("support_tickets")
-          .insert({
-            source:     "form",
-            from_name,
-            from_email,
-            subject:    subject || null,
-            body:       message,
-            user_id:    user_id || null,
-            status:     "open",
-            priority:   "normal",
-          });
-        if (insertError) {
-          console.error("D-195: Failed to insert support_ticket:", insertError.message);
-        } else {
-          console.log("D-195: support_ticket inserted for", from_email);
-        }
-      } catch (dbErr) {
-        console.error("D-195: support_ticket insert exception:", dbErr);
+    try {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      const { error: insertError } = await supabase
+        .from("support_tickets")
+        .insert({
+          source:     "form",
+          from_name,
+          from_email,
+          subject:    subject || null,
+          body:       message,
+          user_id:    user_id || null,
+          status:     "open",
+          priority:   "normal",
+        });
+      if (insertError) {
+        console.error("D-195: Failed to insert support_ticket:", insertError.message);
+      } else {
+        console.log("D-195: support_ticket inserted for", from_email);
       }
+    } catch (dbErr) {
+      console.error("D-195: support_ticket insert exception:", dbErr);
     }
 
     return new Response(
