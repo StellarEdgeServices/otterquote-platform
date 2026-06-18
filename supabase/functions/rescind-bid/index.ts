@@ -5,8 +5,34 @@ const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Statuses that permit rescission
-const RESCINDABLE_STATUSES = ["submitted", "pending", "under_review"];
+// CORS allow-list. A comma-joined Access-Control-Allow-Origin is invalid and is
+// rejected by browsers, so a single origin must be chosen per request: echo the
+// request Origin when it is allow-listed, otherwise fall back to the first.
+const ALLOWED_ORIGINS = [
+  "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
+];
+
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin)
+    ? origin
+    : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Vary": "Origin",
+  };
+}
+
+// Statuses that permit rescission.
+// 'active' is the live status a freshly-submitted bid lands in (quotes.bid_status
+// schema default; the non-renewal submit path never overrides it). 'submitted' is
+// produced by the D-150 renewal path. NOTE: the renew-expiry side
+// (process-bid-expirations) is intentionally NOT touched here — separate Phase-18 item.
+const RESCINDABLE_STATUSES = ["active", "submitted", "pending", "under_review"];
 
 interface RescindBidRequest {
   quote_id: string;
@@ -17,14 +43,7 @@ interface RescindBidRequest {
 Deno.serve(async (req: Request) => {
   // CORS handling
   if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: {
-        "Access-Control-Allow-Origin":
-          "https://otterquote.com, https://app.otterquote.com, http://localhost:*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      },
-    });
+    return new Response("ok", { headers: buildCorsHeaders(req) });
   }
 
   // Get Authorization header for JWT verification
@@ -36,7 +55,7 @@ Deno.serve(async (req: Request) => {
         status: 401,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://otterquote.com",
+          ...buildCorsHeaders(req),
         },
       }
     );
@@ -55,7 +74,7 @@ Deno.serve(async (req: Request) => {
       status: 401,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "https://otterquote.com",
+        ...buildCorsHeaders(req),
       },
     });
   }
@@ -71,7 +90,7 @@ Deno.serve(async (req: Request) => {
         status: 400,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://otterquote.com",
+          ...buildCorsHeaders(req),
         },
       }
     );
@@ -87,7 +106,7 @@ Deno.serve(async (req: Request) => {
         status: 400,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://otterquote.com",
+          ...buildCorsHeaders(req),
         },
       }
     );
@@ -107,7 +126,7 @@ Deno.serve(async (req: Request) => {
         status: 404,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://otterquote.com",
+          ...buildCorsHeaders(req),
         },
       }
     );
@@ -121,7 +140,7 @@ Deno.serve(async (req: Request) => {
         status: 403,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://otterquote.com",
+          ...buildCorsHeaders(req),
         },
       }
     );
@@ -141,7 +160,7 @@ Deno.serve(async (req: Request) => {
         status: 403,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://otterquote.com",
+          ...buildCorsHeaders(req),
         },
       }
     );
@@ -159,7 +178,7 @@ Deno.serve(async (req: Request) => {
         status: 409,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://otterquote.com",
+          ...buildCorsHeaders(req),
         },
       }
     );
@@ -184,7 +203,7 @@ Deno.serve(async (req: Request) => {
         status: 500,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://otterquote.com",
+          ...buildCorsHeaders(req),
         },
       }
     );
@@ -192,7 +211,7 @@ Deno.serve(async (req: Request) => {
 
   // Insert activity log entry
   const { error: logError } = await supabase.from("activity_log").insert({
-    user_id: body.contractor_id,
+    user_id: user.id,
     event_type: "bid_rescinded",
     title: `Bid rescinded for quote ${body.quote_id}`,
     metadata: {
@@ -220,7 +239,7 @@ Deno.serve(async (req: Request) => {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "https://otterquote.com",
+        ...buildCorsHeaders(req),
       },
     }
   );
