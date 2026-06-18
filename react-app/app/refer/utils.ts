@@ -23,7 +23,7 @@
  * inherently escaped (the static page used innerHTML/textContent assignment).
  */
 
-// ── Constants ───────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 /** Public site origin — matches CONFIG.SITE_URL in js/config.js (hardcoded, as
  *  in the Phase-12 referralLinkFor precedent). */
@@ -43,7 +43,7 @@ export const REFERRAL_CODE_LENGTH = 8;
 /** Coming-soon redirect target when the homeowner launch gate is OFF (verbatim). */
 export const COMING_SOON_REDIRECT = '/coming-soon.html?from=refer-a-friend&persona=homeowner';
 
-// ── Data models (only the columns this page reads) ───────────────────────────
+// ── Data models (only the columns this page reads) ────────────────────────────
 
 /** A row of the `referrals` table for a customer referrer (referrer_id = user.id). */
 export interface CustomerReferral {
@@ -64,7 +64,7 @@ export interface CustomerReferralAgent {
   [key: string]: unknown;
 }
 
-// ── Referral link + code ───────────────────────────────────────────────────────
+// ── Referral link + code ──────────────────────────────────────────────────────
 
 /** Referral URL: `${siteUrl}/ref/${code}` — byte-for-byte from displayReferralLink(). */
 export function referralUrl(code: string, siteUrl: string = PUBLIC_SITE_URL): string {
@@ -141,7 +141,7 @@ export function referralRowCells(ref: CustomerReferral): ReferralRowCells {
   };
 }
 
-// ── Summary (calculateSummary) — BUG-2 FIX ───────────────────────────────
+// ── Summary (calculateSummary) — BUG-2 FIX ────────────────────────────────────
 
 export interface ReferralSummary {
   total: number;
@@ -165,7 +165,7 @@ export function referralSummaryLine(s: ReferralSummary): string {
   return `${s.total} referral${s.total !== 1 ? 's' : ''} · ${s.completed} completed · $${s.earned} earned`;
 }
 
-// ── W-9 banner gate (renderW9Banner) — D-172 ─────────────────────────────
+// ── W-9 banner gate (renderW9Banner) — D-172 ──────────────────────────────────
 
 /** Show the W-9 banner iff payments_blocked && notified && not-yet-submitted. */
 export function shouldShowW9Banner(
@@ -175,7 +175,7 @@ export function shouldShowW9Banner(
   return Boolean(a.payments_blocked && a.w9_notification_sent_at && !a.w9_submitted_at);
 }
 
-// ── Homeowner coming-soon launch gate ────────────────────────────────────
+// ── Homeowner coming-soon launch gate ─────────────────────────────────────────
 
 /**
  * Homeowner launch gate (mirrors `!CONFIG.HOMEOWNER_LAUNCH_ENABLED` in the static
