@@ -187,6 +187,34 @@ serve(async (req) => {
       });
     }
 
+    // ── Authenticate & authorize caller (before any Hover fetch) ───
+    // Service role skips auth (admin/internal use). Every other caller must
+    // present a valid user JWT AND be associated with the claim — see
+    // canAccessClaim(). (D-211 Phase 16 Unit 2 — Hover IDOR fix: this endpoint
+    // previously had NO caller auth at all, so any claim_id returned its
+    // address / material_total / materials / design images.)
+    const authHeader = req.headers.get("Authorization");
+    const isServiceRole = !!authHeader && authHeader.includes(supabaseKey);
+    if (!isServiceRole) {
+      const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") || supabaseKey, {
+        global: { headers: { Authorization: authHeader ?? "" } },
+      });
+      const { data: { user }, error: authErr } = await userClient.auth.getUser();
+      if (authErr || !user) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const allowed = await canAccessClaim(supabase, claim_id, user);
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({ error: "Claim not found or access denied" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // ── Step 1: Resolve hover_job_id ─────────────────────────────
     let hoverId: number | null = null;
     let storedMeasurementsJson: any = null;
@@ -301,7 +329,7 @@ serve(async (req) => {
         console.warn(`Hover material_list API returned ${mlResponse.status} for job ${hoverId} - checking measurements_json cache`);
         if (Array.isArray(storedMeasurementsJson?.material_list)) {
           listItemsResolved = storedMeasurementsJson.material_list;
-          console.log(`Using ${listItemsResolved.length} cached material items from hover_orders.measurements_json`);
+          console.log(`Using ${listItemsResolved!.length} cached material items from hover_orders.measurements_json`);
         }
       }
 
@@ -494,6 +522,68 @@ serve(async (req) => {
     );
   }
 });
+
+// ── Authorization (D-211 Phase 16 Unit 2 — Hover IDOR fix) ───────────
+//
+// canAccessClaim mirrors the `claims`-table RLS SELECT boundary exactly — the
+// platform's canonical "which claims may this caller see" rule:
+//   (1) Homeowner who owns the claim          → claims.user_id = caller
+//   (2) Active contractor + released biddable → RLS "Contractors can view
+//       biddable claims" (sql/v10): ready_for_bids = true AND status IN
+//       ('active','bidding','pending') AND the caller has an active contractor
+//       record.
+//   (3) Contractor with an existing quote     → RLS "Contractors can view claims
+//       for their quotes" (sql/v20 + v21): a quote on this claim by one of the
+//       caller's contractor records.
+//
+// The opportunities trade / ZIP-distance / 6-bid filters are client-side DISPLAY
+// refinements, NOT an access boundary, so they are intentionally not replicated
+// here (replicating them would over-restrict and break legitimate browsing).
+//
+// `supabase` is the service-role client; the predicate is enforced explicitly.
+// (Kept in sync with the identical helper in get-hover-pdf/index.ts.)
+async function canAccessClaim(
+  supabase: any,
+  claimId: string,
+  user: { id: string },
+): Promise<boolean> {
+  // (1) Homeowner ownership.
+  const { data: claim } = await supabase
+    .from("claims")
+    .select("user_id, ready_for_bids, status")
+    .eq("id", claimId)
+    .maybeSingle();
+  if (!claim) return false; // unknown claim → deny
+  if (claim.user_id === user.id) return true;
+
+  // Resolve the caller's contractor record(s) once (a user may own more than one).
+  const { data: contractors } = await supabase
+    .from("contractors")
+    .select("id, status")
+    .eq("user_id", user.id);
+  const contractorRows = (contractors ?? []) as { id: string; status: string | null }[];
+  if (contractorRows.length === 0) return false; // not the owner and not a contractor
+
+  // (2) Active contractor + released, biddable claim.
+  const biddable =
+    claim.ready_for_bids === true &&
+    ["active", "bidding", "pending"].includes(claim.status);
+  if (biddable && contractorRows.some((c) => c.status === "active")) {
+    return true;
+  }
+
+  // (3) Contractor associated via an existing quote/selection on this claim.
+  const { data: quote } = await supabase
+    .from("quotes")
+    .select("id")
+    .eq("claim_id", claimId)
+    .in("contractor_id", contractorRows.map((c) => c.id))
+    .limit(1)
+    .maybeSingle();
+  if (quote) return true;
+
+  return false;
+}
 
 // ── Token management (same pattern as get-hover-pdf) ─────────────────
 
