@@ -27,7 +27,7 @@ interface Contractor {
   service_counties: string[];
   auto_bid_value_adds: Record<string, unknown> | null;
   default_auto_renew: boolean;
-  state: string | null;
+  address_state: string | null;
 }
 
 interface Claim {
@@ -104,7 +104,7 @@ serve(async (req: Request) => {
     // ── Step 2: Active contractors with auto-bid enabled for roofing ──────────
     const { data: contractors, error: contractorsError } = await supabase
       .from('contractors')
-      .select('id, user_id, email, notification_emails, contact_name, service_counties, auto_bid_value_adds, default_auto_renew, state')
+      .select('id, user_id, email, notification_emails, contact_name, service_counties, auto_bid_value_adds, default_auto_renew, address_state')
       .eq('auto_bid_enabled', true)
       .eq('status', 'active')
       .contains('trades', ['roofing'])
@@ -155,7 +155,7 @@ serve(async (req: Request) => {
 
           // D-214: resolve fee from platform_fee_config (mirrors contractor-bid-form.html:fetchPlatformFeePercentage)
           // Precedence: state+trade specific → state-only or trade-only → null/null default
-          const contractorState = (contractor.state || '').toUpperCase();
+          const contractorState = (contractor.address_state || '').toUpperCase();
           const { data: feeConfigData } = await supabase
             .from('platform_fee_config')
             .select('fee_pct')
@@ -190,14 +190,16 @@ serve(async (req: Request) => {
               value_adds: contractor.auto_bid_value_adds ?? null,
               scope_summary: 'Auto-submitted bid — insurance full replacement roofing at RCV amount.',
               bid_status: 'active',
+              expires_at: new Date(Date.now() + 14 * 86400 * 1000).toISOString(),
             })
             .select('id')
             .single();
 
           if (quoteError) {
-            result.errors.push(
-              `Quote insert failed — contractor ${contractor.id}, claim ${claim.id}: ${quoteError.message}`
-            );
+            // 23505 = unique_violation on quotes_autobid_unique_idx (Phase 16 UNIT 0):
+            // an overlapping cron run already inserted this auto-bid. Benign — skip, don't error.
+            if ((quoteError as { code?: string }).code === '23505') { alreadyBid.add(contractor.id); continue; }
+            result.errors.push(`Quote insert failed — contractor ${contractor.id}, claim ${claim.id}: ${quoteError.message}`);
             continue;
           }
 
