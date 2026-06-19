@@ -187,6 +187,60 @@ function getCookieMaxAge(expSec: number | null): number {
   return Math.max(3600, Math.max(remaining, defaultSec));
 }
 
+/**
+ * Pull { sub, exp } from a stored session JSON string (or a bare access-token JWT)
+ * by decoding the access token's payload. Returns null when the input is absent or
+ * unparseable. Used to compare the per-origin localStorage copy against the shared
+ * cookie session so a stale/cross-user copy can be detected (D-212 precedence).
+ */
+function extractSubExp(value: string | null): { sub: string | null; exp: number | null } | null {
+  if (!value) return null;
+  let token = value;
+  if (value.charAt(0) === '{') {
+    try {
+      const parsed = JSON.parse(value);
+      token = parsed && typeof parsed.access_token === 'string' ? parsed.access_token : '';
+    } catch {
+      return null;
+    }
+  }
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (!payload || typeof payload !== 'object') return null;
+    return {
+      sub: typeof payload.sub === 'string' ? payload.sub : null,
+      exp: typeof payload.exp === 'number' ? payload.exp : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Align the per-origin localStorage copy with the shared cookie session. Writes the
+ * reconstructed cookie session to localStorage ONLY when the local copy is missing,
+ * malformed, expired, or belongs to a different user (sub) than the cookie — so a
+ * stale/cross-user value can never shadow the cookie on a subsequent read, while
+ * avoiding needless writes when the two already agree. Best-effort: localStorage may
+ * be unavailable/blocked, in which case the cookie return value is still correct.
+ */
+function hydrateFromCookie(key: string, cookieSession: string): void {
+  try {
+    const local = extractSubExp(window.localStorage.getItem(key));
+    const cookie = extractSubExp(cookieSession);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const localStale =
+      !local ||
+      local.sub !== (cookie ? cookie.sub : null) ||
+      (local.exp !== null && local.exp <= nowSec);
+    if (localStale) window.localStorage.setItem(key, cookieSession);
+  } catch {
+    /* localStorage blocked — cookie return value is still correct */
+  }
+}
+
 function readLegacy(callerKey: string): string | null {
   if (!isBrowser()) return null;
   try {
@@ -221,10 +275,21 @@ export const otterquoteCookieStorage: CookieStorage = {
   getItem(key: string): string | null {
     if (!isBrowser()) return null;
 
-    // 1. Canonical two-cookie format
+    // 1. Canonical two-cookie format — the cross-subdomain source of truth.
+    // A valid shared cookie session ALWAYS wins over the per-origin localStorage
+    // copy. localStorage is per-origin: the magic-link login runs on otterquote.com
+    // and never populates app.otterquote.com's copy, so that copy may be empty,
+    // expired, or left over from a previously-signed-in DIFFERENT user. Reconstruct
+    // from the cookie and rehydrate localStorage whenever its copy is missing,
+    // expired, or cross-user so a stale value can never shadow the cookie on a later
+    // read (D-212 session-precedence fix).
     const at = readCookie(COOKIE_ACCESS);
     const rt = readCookie(COOKIE_REFRESH);
-    if (at && rt) return reconstructSession(at, rt);
+    if (at && rt) {
+      const cookieSession = reconstructSession(at, rt);
+      hydrateFromCookie(key, cookieSession);
+      return cookieSession;
+    }
 
     // 2. Same-key localStorage (recent same-origin write)
     let stored: string | null = null;
@@ -274,6 +339,50 @@ export const otterquoteCookieStorage: CookieStorage = {
     } catch { /* ignore */ }
   },
 };
+
+/**
+ * The minimal session shape reconstructed from the two cross-subdomain cookies.
+ * Mirrors what getItem() returns (and what supabase-js persists), parsed.
+ */
+export interface ReconstructedCookieSession {
+  access_token: string;
+  refresh_token: string;
+  expires_at: number | null;
+  expires_in: number | null;
+  token_type: string;
+  user: Record<string, unknown> | null;
+}
+
+/**
+ * Reconstruct the shared cookie session and return it as a parsed object IFF the
+ * cookie carries a structurally valid, NON-EXPIRED access token with a hydrated
+ * user. Returns null otherwise (no cookie, malformed, no user, or expired).
+ *
+ * This lets the auth layer recover a known-good session WITHOUT going through a
+ * possibly-slow-or-hung supabase getSession(): a stuck auth init must not
+ * fail-close an authenticated contractor to /contractor/login when the valid
+ * shared session is sitting right here in the cookie (D-212 session-precedence).
+ * `now` (ms) is injectable for deterministic tests. SSR-safe: null off-browser.
+ */
+export function readValidCookieSession(now: number = Date.now()): ReconstructedCookieSession | null {
+  if (!isBrowser()) return null;
+  const at = readCookie(COOKIE_ACCESS);
+  const rt = readCookie(COOKIE_REFRESH);
+  if (!at || !rt) return null;
+  let session: ReconstructedCookieSession;
+  try {
+    session = JSON.parse(reconstructSession(at, rt)) as ReconstructedCookieSession;
+  } catch {
+    return null;
+  }
+  // Treat as a live session only with a hydrated user and a future expiry. An
+  // expired access token is intentionally rejected here — refreshing it is
+  // supabase-js's job, not this fail-safe recovery path's.
+  if (!session.user) return null;
+  if (typeof session.expires_at !== 'number') return null;
+  if (session.expires_at <= Math.floor(now / 1000)) return null;
+  return session;
+}
 
 // Diagnostics + contract-test exports
 export const _COOKIE_ACCESS  = COOKIE_ACCESS;

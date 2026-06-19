@@ -40,6 +40,7 @@ import {
   cameFromContractorDashboard,
 } from './utils';
 import { consumeContractorGateBounce } from '@/lib/contractor-gate';
+import { readValidCookieSession } from '@/lib/cookie-storage';
 
 // ─── GA4 helper (parity with contractor-login.html gtag) ──────────────
 function gtag(...args: unknown[]) {
@@ -76,8 +77,18 @@ export default function ContractorLoginPage() {
     // one-shot marker — not the referrer — is what actually breaks a same-origin
     // dashboard ⇄ login loop (postmortem 2026-06-16). The legacy referrer check is
     // kept for a full-nav return from the static contractor-dashboard.html.
-    if (consumeContractorGateBounce() || cameFromContractorDashboard(referrer())) {
-      console.warn('[contractor-login] gate-bounce detected; staying to break the dashboard ⇄ login loop.');
+    // Consume the one-shot bounce marker (always — preserves its one-shot semantics)
+    // and check the legacy full-nav referrer signal.
+    const bounced = consumeContractorGateBounce() || cameFromContractorDashboard(referrer());
+    // A bounce normally means "you were just ejected from the dashboard gate — don't
+    // send the user straight back" (loop guard, postmortem 2026-06-16). BUT a confirmed
+    // contractor who STILL holds a valid shared cookie session was bounced by a
+    // transient (slow hydration), not because they lack a session; pinning them on
+    // /contractor/login is the D-212 regression. Only stay when there is genuinely no
+    // live session to honor — otherwise redirect to the dashboard (the gate now recovers
+    // the cookie session, so it will not re-bounce and the loop cannot re-form).
+    if (bounced && !readValidCookieSession()) {
+      console.warn('[contractor-login] gate-bounce with no live cookie session; staying to break the dashboard ⇄ login loop.');
       setStaying(true);
       return;
     }

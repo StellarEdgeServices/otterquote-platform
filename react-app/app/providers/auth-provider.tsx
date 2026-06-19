@@ -17,6 +17,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { readValidCookieSession } from '../lib/cookie-storage';
 import type { AuthContextValue, AuthState, AuthUser, OtterRole } from '../types/auth';
 
 // ─── Admin allow-list (mirrors admin-auth-gate.ts) ───────────────────────────
@@ -175,6 +176,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // errors or never returns (e.g. an orphaned Supabase auth Web Lock — D-211
     // 2026-06-16, the true root of Blocker 1).
     const failSafeUnauthenticated = () => {
+      // A real session already won — nothing to fail-safe.
+      if (resolved.current) return;
+      // Do NOT fail closed to /login if the shared cross-subdomain cookie still
+      // holds a valid (non-expired) session. A slow or orphaned-lock getSession()
+      // must not eject an authenticated contractor whose session is sitting in the
+      // sb-otterquote-at/rt cookie — the D-212 session-precedence bug. Recover the
+      // session from the cookie and resolve normally (role resolution still runs, so
+      // this neither broadens access nor changes role gating) instead of declaring
+      // the user logged-out.
+      const cookieSession = readValidCookieSession();
+      if (cookieSession) {
+        void resolveSession(cookieSession as unknown as Session);
+        return;
+      }
       setState((prev) =>
         prev.settled
           ? prev
