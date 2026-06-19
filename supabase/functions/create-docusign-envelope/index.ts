@@ -2010,7 +2010,7 @@ serve(async (req) => {
       // Caller must be the contractor for contractor_id.
       const { data: contractorRow, error: cErr } = await supabase
         .from("contractors")
-        .select("id, email, company_name, owner_name, user_id")
+        .select("id, email, company_name, contact_name, user_id")
         .eq("id", contractor_id)
         .eq("user_id", callerId)
         .maybeSingle();
@@ -2021,7 +2021,7 @@ serve(async (req) => {
       }
       verifiedSigner = {
         email: contractorRow.email || "",
-        name: contractorRow.company_name || contractorRow.owner_name || "Contractor",
+        name: contractorRow.company_name || contractorRow.contact_name || "Contractor",
       };
       if (!verifiedSigner.email) {
         return new Response(JSON.stringify({ error: "Contractor profile has no email on file" }), {
