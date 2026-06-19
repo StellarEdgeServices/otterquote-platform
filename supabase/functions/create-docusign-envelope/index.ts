@@ -1133,7 +1133,14 @@ function buildTextTabs(
     tabs.push({
       anchorString: anchor,
       anchorUnits: "pixels",
-      anchorXOffset: "150",
+      // [D-211 Phase 17 hotfix] anchorXOffset 150 -> 8. DocuSign anchors the value tab to the
+      // END of the matched anchor string. Several anchor labels also appear verbatim in this
+      // template's notice/reference prose near the right margin (widest: "Contract Price:" in the
+      // page-1 notice ends at x~515 on a 612pt page), so a +150px push ran the tab off-page and
+      // DocuSign rejected the whole envelope with 400 INVALID_USER_OFFSET. 8px lands the value at
+      // the start of the underscore blank (measured median label-end -> blank gap = 5pt) for every
+      // anchor while keeping every occurrence on-page (worst case 515 + 8 = 523 <= 612).
+      anchorXOffset: "8",
       anchorYOffset: "-5",
       value: String(fieldValue),
       locked: "true",
