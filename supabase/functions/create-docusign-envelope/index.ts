@@ -1390,7 +1390,23 @@ async function handleContractorSign(
   }
 
   let templateBase64: string;
-  if (matchingTemplate?.file_url && matchingTemplate.file_url.includes("contractor-templates")) {
+  if (matchingTemplate?.path) {
+    // Real contract_templates entries carry the storage location under `path`
+    // (e.g. "<contractor_id>/<trade>/<funding>.pdf"), NOT `file_url`. Resolve the
+    // matched template directly from the contractor-templates bucket using that
+    // path. Production values are bucket-relative; defensively strip a leading
+    // "contractor-templates/" prefix in case an entry is ever stored fully-qualified.
+    const storagePath = String(matchingTemplate.path).replace(/^contractor-templates\//, "");
+    console.log(`contractor_sign template: resolving from contractor-templates/${storagePath}`);
+    const { data: blob, error } = await supabase.storage.from("contractor-templates").download(storagePath);
+    if (error) throw new Error(`Template download error (${storagePath}): ${error.message}`);
+    const ab = await blob.arrayBuffer();
+    const templateBytes = new Uint8Array(ab);
+    if (templateBytes.length > PDF_MAX_BYTES) {
+      throw new DocumentTooLargeError(storagePath, templateBytes.length);
+    }
+    templateBase64 = base64EncodeBinary(templateBytes);
+  } else if (matchingTemplate?.file_url && matchingTemplate.file_url.includes("contractor-templates")) {
     const pathMatch = matchingTemplate.file_url.match(/contractor-templates\/(.+)$/);
     if (pathMatch) {
       const storagePath = decodeURIComponent(pathMatch[1]);
