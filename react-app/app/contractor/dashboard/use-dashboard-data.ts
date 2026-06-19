@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import {
   buildLocation,
   buildMaterial,
+  contractorNeedsToSign,
   filterOpportunities,
   formatActivityTime,
   formatMoney,
@@ -35,6 +36,7 @@ export interface ActiveProject {
   status: string; // 'Won' | 'Completed' | raw
   completionDate: string | null;
   warrantyUrl: string | null;
+  needsSignature: boolean; // contractor still owes Step-A signature (D-211 P17 Unit B)
 }
 
 export interface ActivityItem {
@@ -165,7 +167,7 @@ export function useDashboardData(
         // 5) All quotes → submitted bids + active/won projects (D-074 privacy).
         const { data: allQuotes } = await supabase
           .from('quotes')
-          .select('id, claim_id, total_price, status, bid_status, expires_at, created_at, warranty_document_url, claims(id, property_address, damage_type, material_category, shingle_type, rcv_amount, completion_date)')
+          .select('id, claim_id, total_price, status, contractor_signed_at, bid_status, expires_at, created_at, warranty_document_url, claims(id, property_address, damage_type, material_category, shingle_type, rcv_amount, completion_date)')
           .eq('contractor_id', contractorId)
           .in('status', ['submitted', 'selected', 'awarded', 'completed'])
           .order('created_at', { ascending: false })
@@ -197,6 +199,7 @@ export function useDashboardData(
               status: PROJECT_STATUS_LABEL[status] || status,
               completionDate: (claim.completion_date as string) || null,
               warrantyUrl: (q.warranty_document_url as string) || null,
+              needsSignature: contractorNeedsToSign(status, (q.contractor_signed_at as string | null) ?? null),
             });
           }
         });
