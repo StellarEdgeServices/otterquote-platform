@@ -101,6 +101,26 @@ export const PROJECT_STATUS_LABEL: Record<string, string> = {
   completed: 'Completed',
 };
 
+// ── Contractor contract-signing CTA gate (D-211 Phase 17 Unit B) ──
+// A won quote (selected/awarded) awaits the contractor's Step-A signature until
+// the docusign-webhook stamps contractor_signed_at. Single source of truth shared
+// by the dashboard "Sign Contract" CTA and the /contractor/sign gate (sign utils).
+export const CONTRACTOR_SIGNABLE_STATUSES = ['selected', 'awarded'] as const;
+
+/**
+ * True when the contractor still owes Step A (contractor-signs-first, IC 24-5-11)
+ * on a won quote: status is selected/awarded AND contractor_signed_at is null.
+ * Flips false once the docusign-webhook records contractor_signed_at — so the CTA
+ * disappears without any client-side write to that column.
+ */
+export function contractorNeedsToSign(
+  status: string | null | undefined,
+  contractorSignedAt: string | null | undefined,
+): boolean {
+  const signable = (CONTRACTOR_SIGNABLE_STATUSES as readonly string[]).includes(status ?? '');
+  return signable && !contractorSignedAt;
+}
+
 // ── Profile-completion checklist (the 7 checks, identical in
 //    showGettingStartedChecklist + calculateProfileCompletion). ──
 export interface ChecklistContractor {

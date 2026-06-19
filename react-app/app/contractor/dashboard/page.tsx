@@ -233,6 +233,9 @@ function ProjectRow({ project, onCompleted, onWarranty }: {
           : <span className="oqd-badge oqd-badge-won">{project.status}</span>}
       </td>
       <td>
+        {project.needsSignature && (
+          <a className="oqd-btn oqd-btn-sm oqd-btn-primary" href={`/contractor/sign/${project.fullId}`}>Sign Contract</a>
+        )}
         {project.status !== 'Completed' && (
           <button type="button" className="oqd-btn oqd-btn-sm oqd-btn-success" onClick={() => setMarkOpen(true)}>Mark Complete</button>
         )}
