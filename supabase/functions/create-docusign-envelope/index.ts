@@ -1133,7 +1133,14 @@ function buildTextTabs(
     tabs.push({
       anchorString: anchor,
       anchorUnits: "pixels",
-      anchorXOffset: "150",
+      // [D-211 Phase 17 hotfix] anchorXOffset 150 -> 8. DocuSign anchors the value tab to the
+      // END of the matched anchor string. Several anchor labels also appear verbatim in this
+      // template's notice/reference prose near the right margin (widest: "Contract Price:" in the
+      // page-1 notice ends at x~515 on a 612pt page), so a +150px push ran the tab off-page and
+      // DocuSign rejected the whole envelope with 400 INVALID_USER_OFFSET. 8px lands the value at
+      // the start of the underscore blank (measured median label-end -> blank gap = 5pt) for every
+      // anchor while keeping every occurrence on-page (worst case 515 + 8 = 523 <= 612).
+      anchorXOffset: "8",
       anchorYOffset: "-5",
       value: String(fieldValue),
       locked: "true",
@@ -1390,7 +1397,23 @@ async function handleContractorSign(
   }
 
   let templateBase64: string;
-  if (matchingTemplate?.file_url && matchingTemplate.file_url.includes("contractor-templates")) {
+  if (matchingTemplate?.path) {
+    // Real contract_templates entries carry the storage location under `path`
+    // (e.g. "<contractor_id>/<trade>/<funding>.pdf"), NOT `file_url`. Resolve the
+    // matched template directly from the contractor-templates bucket using that
+    // path. Production values are bucket-relative; defensively strip a leading
+    // "contractor-templates/" prefix in case an entry is ever stored fully-qualified.
+    const storagePath = String(matchingTemplate.path).replace(/^contractor-templates\//, "");
+    console.log(`contractor_sign template: resolving from contractor-templates/${storagePath}`);
+    const { data: blob, error } = await supabase.storage.from("contractor-templates").download(storagePath);
+    if (error) throw new Error(`Template download error (${storagePath}): ${error.message}`);
+    const ab = await blob.arrayBuffer();
+    const templateBytes = new Uint8Array(ab);
+    if (templateBytes.length > PDF_MAX_BYTES) {
+      throw new DocumentTooLargeError(storagePath, templateBytes.length);
+    }
+    templateBase64 = base64EncodeBinary(templateBytes);
+  } else if (matchingTemplate?.file_url && matchingTemplate.file_url.includes("contractor-templates")) {
     const pathMatch = matchingTemplate.file_url.match(/contractor-templates\/(.+)$/);
     if (pathMatch) {
       const storagePath = decodeURIComponent(pathMatch[1]);
@@ -2010,7 +2033,7 @@ serve(async (req) => {
       // Caller must be the contractor for contractor_id.
       const { data: contractorRow, error: cErr } = await supabase
         .from("contractors")
-        .select("id, email, company_name, owner_name, user_id")
+        .select("id, email, company_name, contact_name, user_id")
         .eq("id", contractor_id)
         .eq("user_id", callerId)
         .maybeSingle();
@@ -2021,7 +2044,7 @@ serve(async (req) => {
       }
       verifiedSigner = {
         email: contractorRow.email || "",
-        name: contractorRow.company_name || contractorRow.owner_name || "Contractor",
+        name: contractorRow.company_name || contractorRow.contact_name || "Contractor",
       };
       if (!verifiedSigner.email) {
         return new Response(JSON.stringify({ error: "Contractor profile has no email on file" }), {
