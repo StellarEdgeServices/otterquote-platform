@@ -13,6 +13,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { parsePayload } from "./payload-parser.ts";
 
 // ── 86e1tz17j: best-effort Sentry reporter for swallowed audit-write failures ──
 // Inlined (not imported from _shared) because the EF body-deploy path does not
@@ -199,49 +200,31 @@ serve(async (req) => {
     // Parse the payload
     const payload = JSON.parse(rawBody);
 
-    // DocuSign Connect sends envelope status in different formats depending on config.
-    // JSON format: { event, apiVersion, uri, retryCount, configurationId, generatedDateTime,
-    //               data: { envelopeId, envelopeSummary: { status, emailSubject, ... } } }
-    // or sometimes: { envelopeId, status, ... } directly
-
-    let envelopeId: string | null = null;
-    let status: string | null = null;
-    let recipientEmail: string | null = null;
-    let completedDateTime: string | null = null;
-    let declinedDateTime: string | null = null;
-    let voidedDateTime: string | null = null;
-    let event: string | null = null;
-
-    // Handle the Connect JSON payload format
-    if (payload.data?.envelopeSummary) {
-      const summary = payload.data.envelopeSummary;
-      envelopeId = payload.data.envelopeId || summary.envelopeId;
-      status = summary.status;
-      completedDateTime = summary.completedDateTime;
-      declinedDateTime = summary.declinedDateTime;
-      voidedDateTime = summary.voidedDateTime;
-      event = payload.event;
-
-      // Try to get the first signer's email
-      const signers = summary.recipients?.signers;
-      if (signers && signers.length > 0) {
-        recipientEmail = signers[0].email;
-      }
-    } else if (payload.envelopeId) {
-      // Simpler format
-      envelopeId = payload.envelopeId;
-      status = payload.status;
-      completedDateTime = payload.completedDateTime;
-      declinedDateTime = payload.declinedDateTime;
-      voidedDateTime = payload.voidedDateTime;
-      event = payload.event;
-    } else {
+    // DocuSign Connect sends envelope status in three shapes depending on config:
+    //   (a) rich:  data.envelopeSummary present (Include Data ON)
+    //   (b) flat:  top-level envelopeId
+    //   (c) lean:  data.envelopeId only, no envelopeSummary (Include Data OFF) — the
+    //              Phase 18 fee-path defense; v53 dropped this as "Unrecognized" and
+    //              never reached the charge code.
+    // parsePayload (./payload-parser.ts) is a pure, unit-tested helper that handles
+    // all three; field-derivation behavior for (a)/(b) is unchanged from v53.
+    const parsed = parsePayload(payload);
+    if (!parsed.recognized) {
       console.warn("Unrecognized payload format:", JSON.stringify(payload).slice(0, 500));
       return new Response(
         JSON.stringify({ received: true, warning: "Unrecognized payload format" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    const {
+      envelopeId,
+      status,
+      recipientEmail,
+      completedDateTime,
+      declinedDateTime,
+      voidedDateTime,
+      event,
+    } = parsed;
 
     if (!envelopeId) {
       console.warn("No envelopeId in payload");
@@ -523,6 +506,10 @@ serve(async (req) => {
               completedDateTime || new Date().toISOString();
             updateData.contract_signed_by = recipientEmail || null;
             updateData.status = "contract_signed";
+            // Phase 18: record fee-charged on confirmed payment success.
+            // claims.platform_fee_charged is boolean DEFAULT false; v53 never
+            // wrote it. Set only on the succeeded path, alongside the status flip.
+            updateData.platform_fee_charged = true;
 
             // Flag for contractor notification (only after successful payment)
             shouldNotifyContractor = true;
