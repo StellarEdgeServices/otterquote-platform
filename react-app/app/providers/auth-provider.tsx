@@ -26,6 +26,14 @@ const ADMIN_EMAILS: string[] = [
   'dustin@otterquote.com',
 ];
 
+// Bound role/admin resolution so a stalled Supabase read can never strand the auth
+// gate on "Loading" (D-212 cookie-only contractor hang, ClickUp 86e1yv72z). On
+// timeout we settle AUTHENTICATED with a best-effort null role rather than spin
+// forever; the contractor gate treats a null role as not-blocked and page-level RLS
+// remains the authority. Kept < the 6s settle backstop so the primary resolver
+// settles before the backstop can re-enter it.
+const ROLE_RESOLVE_TIMEOUT_MS = 4000;
+
 // ─── Cookie helper (F-007 _setSingleAuthCookie) ──────────────────────────────
 function setSbAtCookie(session: Session | null): void {
   if (typeof document === 'undefined') return;
@@ -122,10 +130,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const resolveSession = async (session: Session | null) => {
       if (resolved.current) return;
       if (session?.user) {
-        // Resolve role + admin in parallel
-        const [role, isAdmin] = await Promise.all([
-          resolveRole(session.user),
-          resolveIsAdmin(session.user),
+        // Resolve role + admin in parallel — but NEVER let a stalled query strand the
+        // gate on "Loading". A hung contractors/profiles read (the orphaned-lock /
+        // slow-auth window the rest of D-211 hardens against) must not keep
+        // `resolved`/`settled` false forever: that is the D-212 cookie-only hang — the
+        // 6s backstop recovers the valid cookie, re-enters this resolver, and loops
+        // straight back to the spinner (86e1yv72z). Bound the wait and settle
+        // AUTHENTICATED with a best-effort null role; a late real value cannot override
+        // because `resolved` is set just below.
+        const [role, isAdmin] = await Promise.race<[OtterRole, boolean]>([
+          Promise.all([resolveRole(session.user), resolveIsAdmin(session.user)]),
+          new Promise<[OtterRole, boolean]>((resolve) => {
+            setTimeout(() => resolve([null, false]), ROLE_RESOLVE_TIMEOUT_MS);
+          }),
         ]);
         // A competing resolver may have won during the awaits above.
         if (resolved.current) return;
