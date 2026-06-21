@@ -26,7 +26,8 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const FUNCTION_NAME = "reject-payout";
-const ADMIN_EMAIL   = "dustinstohler1@gmail.com";
+// D-211 Phase 18 Unit 2: admin allow-list (was single ADMIN_EMAIL). Admit either operator email.
+const ADMIN_EMAILS  = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -74,7 +75,7 @@ serve(async (req: Request) => {
   });
   const { data: userData, error: userError } = await userClient.auth.getUser();
 
-  if (userError || !userData?.user || userData.user.email !== ADMIN_EMAIL) {
+  if (userError || !userData?.user || !ADMIN_EMAILS.includes(userData.user.email ?? "")) {
     return new Response(JSON.stringify({ ok: false, error: "Unauthorized — admin only" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

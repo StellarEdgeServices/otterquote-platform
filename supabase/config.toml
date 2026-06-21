@@ -101,6 +101,17 @@ verify_jwt = false
 # Cron/manual — CRON_SECRET / service-role gate in-handler (D-211 Phase 18 Unit 1b). Pin false.
 verify_jwt = false
 
+# ── D-211 Phase 18 Unit 2+3: pin verify_jwt for the payout-approval admin EFs (86e1xx4ep, 86e1xvj4f) ──
+# These match the live deployed state (both false). Auth is enforced in-handler via a
+# user-scoped auth.getUser() admin allow-list (ADMIN_EMAILS). Pinned so a future flagless
+# `functions deploy` (CLI default verify_jwt=true) can't silently flip them. No behavior change.
+
+[functions.approve-payout]
+verify_jwt = false
+
+[functions.reject-payout]
+verify_jwt = false
+
 [auth]
 site_url = "https://stellaredgeservices.com"
 additional_redirect_urls = [

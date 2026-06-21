@@ -217,6 +217,7 @@ serve(async (req: Request) => {
     remindersDigestSent:  false,
     pendingReminderCount: 0,
     autoApproved:         0,
+    heldPendingW9:        0,
     catchupNotified:      0,
     errors:               [] as string[],
     ranAt:                new Date().toISOString(),
@@ -341,7 +342,7 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
 
     const { data: autoApproveRows, error: aaError } = await supabase
       .from("payout_approvals")
-      .select("id, referral_id, partner_name, amount, payout_type")
+      .select("id, referral_id, partner_id, partner_name, amount, payout_type")
       .eq("status", "pending_approval")
       .lt("auto_approve_at", now);
 
@@ -350,9 +351,37 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
       console.error(`[${FUNCTION_NAME}] Auto-approve query error:`, aaError.message);
     } else if (autoApproveRows && autoApproveRows.length > 0) {
       const approvedAt = new Date().toISOString();
+      const approvedRows: typeof autoApproveRows = [];
+      const heldRows:     typeof autoApproveRows = [];
 
       for (const row of autoApproveRows) {
         try {
+          // ── W-9 / payments gate (D-211 Phase 18 Unit 3) ────────────────────
+          // Auto-approve is the terminal money-state (no separate Stripe
+          // disbursement EF). Never cross it for a partner without a verified W-9
+          // and unblocked payments. Fail-safe: missing partner_id / agent row /
+          // lookup error SKIPS — the row stays pending_approval, no commission_paid_at.
+          let gateOk = false;
+          if (row.partner_id) {
+            const { data: agent, error: agentError } = await supabase
+              .from("referral_agents")
+              .select("payments_blocked, w9_verified_at")
+              .eq("id", row.partner_id)
+              .single();
+            if (agentError) {
+              results.errors.push(`Auto-approve gate: agent lookup failed for ${row.partner_id}: ${agentError.message}`);
+            } else if (agent && agent.payments_blocked === false && agent.w9_verified_at != null) {
+              gateOk = true;
+            }
+          }
+
+          if (!gateOk) {
+            results.heldPendingW9++;
+            heldRows.push(row);
+            console.log(`[${FUNCTION_NAME}] HELD auto-approve ${row.id} — partner ${row.partner_id ?? "none"} not W-9-verified`);
+            continue;
+          }
+
           // Update payout_approvals
           const { error: updateError } = await supabase
             .from("payout_approvals")
@@ -379,32 +408,25 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
           }
 
           results.autoApproved++;
+          approvedRows.push(row);
         } catch (err) {
           results.errors.push(`Auto-approve row ${row.id} threw: ${String(err)}`);
         }
       }
 
-      // Send Dustin a summary of what auto-approved
-      if (results.autoApproved > 0) {
-        const autoTotal = autoApproveRows
-          .slice(0, results.autoApproved)
-          .reduce((sum, r) => sum + Number(r.amount), 0);
+      // Send Dustin a summary of what auto-approved AND what was held pending W-9.
+      if (approvedRows.length > 0 || heldRows.length > 0) {
+        const autoTotal = approvedRows.reduce((sum, r) => sum + Number(r.amount), 0);
+        const heldTotal = heldRows.reduce((sum, r) => sum + Number(r.amount), 0);
 
-        const autoRowsHtml = autoApproveRows.map(r => `
+        const rowHtml = (r: typeof autoApproveRows[number], amountColor: string) => `
 <tr>
   <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#0B1929;">${r.partner_name || "Unknown"}</td>
   <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#64748B;">${formatPayoutType(r.payout_type)}</td>
-  <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;font-weight:600;color:#0B1929;">${formatCurrency(Number(r.amount))}</td>
-</tr>`).join("");
+  <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;font-weight:600;color:${amountColor};">${formatCurrency(Number(r.amount))}</td>
+</tr>`;
 
-        const autoBodyHtml = `
-<h2 style="font-size:1.5rem;font-weight:700;color:#0B1929;margin:0 0 8px;">
-  Auto-Approval Summary
-</h2>
-<p style="color:#374151;font-size:0.95rem;margin:0 0 24px;">
-  ${results.autoApproved} commission${results.autoApproved === 1 ? "" : "s"} were automatically approved after 7 days with no action.
-  Total auto-approved: <strong>${formatCurrency(autoTotal)}</strong>
-</p>
+        const tableShell = (rowsHtml: string) => `
 <table width="100%" cellpadding="0" cellspacing="0" border="0"
        style="border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:24px;">
   <thead>
@@ -414,16 +436,52 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
       <th style="padding:8px 12px;text-align:left;font-size:0.8rem;color:#64748B;font-weight:600;">Amount</th>
     </tr>
   </thead>
-  <tbody>${autoRowsHtml}</tbody>
-</table>
+  <tbody>${rowsHtml}</tbody>
+</table>`;
+
+        const approvedSection = approvedRows.length > 0 ? `
+<p style="color:#374151;font-size:0.95rem;margin:0 0 24px;">
+  ${approvedRows.length} commission${approvedRows.length === 1 ? "" : "s"} were automatically approved after 7 days with no action.
+  Total auto-approved: <strong>${formatCurrency(autoTotal)}</strong>
+</p>
+${tableShell(approvedRows.map(r => rowHtml(r, "#0B1929")).join(""))}` : `
+<p style="color:#374151;font-size:0.95rem;margin:0 0 24px;">
+  No commissions were auto-approved on this run.
+</p>`;
+
+        const heldSection = heldRows.length > 0 ? `
+<p style="color:#B45309;font-size:0.95rem;margin:0 0 12px;">
+  ⚠️ ${heldRows.length} commission${heldRows.length === 1 ? "" : "s"} were <strong>HELD pending W-9</strong>
+  (partner W-9 not on file / payments blocked) — total <strong>${formatCurrency(heldTotal)}</strong>.
+  These remain pending and were <strong>not</strong> paid. Resolve the partner's W-9 to release them.
+</p>
+${tableShell(heldRows.map(r => rowHtml(r, "#B45309")).join(""))}` : "";
+
+        const autoBodyHtml = `
+<h2 style="font-size:1.5rem;font-weight:700;color:#0B1929;margin:0 0 8px;">
+  Auto-Approval Summary
+</h2>
+${approvedSection}
+${heldSection}
 ${ctaButton("View Full History →", ADMIN_PAYOUTS_URL)}
 `;
 
+        const subject = approvedRows.length > 0
+          ? (heldRows.length > 0
+              ? `Auto-approved ${approvedRows.length} (${formatCurrency(autoTotal)}) · ${heldRows.length} held pending W-9`
+              : `Auto-approved: ${approvedRows.length} commission${approvedRows.length === 1 ? "" : "s"} (${formatCurrency(autoTotal)})`)
+          : `Payout auto-approve: 0 approved · ${heldRows.length} held pending W-9 (${formatCurrency(heldTotal)})`;
+
+        const bodyText = [
+          `Auto-approved: ${approvedRows.length} commission(s), total ${formatCurrency(autoTotal)}.`,
+          `Held pending W-9: ${heldRows.length} commission(s), total ${formatCurrency(heldTotal)} (NOT paid).`,
+          ``,
+          `View: ${ADMIN_PAYOUTS_URL}`,
+        ].join("\n");
+
         await sendMailgunEmail(
           mailgunApiKey, mailgunDomain, ADMIN_EMAIL, fromAddress,
-          `Auto-approved: ${results.autoApproved} commission${results.autoApproved === 1 ? "" : "s"} (${formatCurrency(autoTotal)})`,
-          `${results.autoApproved} commissions auto-approved after 7 days. Total: ${formatCurrency(autoTotal)}\n\nView: ${ADMIN_PAYOUTS_URL}`,
-          buildEmail(autoBodyHtml)
+          subject, bodyText, buildEmail(autoBodyHtml)
         );
       }
     } else {
