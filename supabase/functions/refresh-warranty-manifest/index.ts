@@ -20,6 +20,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY")!;
 const MAILGUN_DOMAIN = "mail.otterquote.com";
 const ADMIN_EMAIL = "dustinstohler1@gmail.com";
+const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 
 // Minimum days between auto-triggered runs (dedup window).
 // Manual trigger with {"force": true} bypasses this.
@@ -86,6 +87,36 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // ── Auth gate ──────────────────────────────────────────────────────────────
+  // This function performs service-role writes to warranty_manifest_drift and
+  // triggers outbound manufacturer fetches + an admin email, so unauthenticated
+  // callers MUST be rejected before any work (a {"force":true} POST would otherwise
+  // bypass the dedup window and run a full refresh). Mirrors the scrape-manufacturer-certs
+  // / process-auto-bids (D-093) cron auth block: accept CRON_SECRET via the
+  // X-Cron-Secret header or Authorization: Bearer <CRON_SECRET>, or the service-role
+  // key as Bearer. (verify_jwt=false — cron/manual invocation carries the cron secret
+  // or the service-role key, not an end-user JWT.)
+  const incomingCronSecret = req.headers.get("X-Cron-Secret");
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+
+  let authorized = false;
+  if (!CRON_SECRET) {
+    authorized = !!SUPABASE_SERVICE_ROLE_KEY && bearerToken === SUPABASE_SERVICE_ROLE_KEY;
+  } else {
+    authorized =
+      (incomingCronSecret !== null && incomingCronSecret === CRON_SECRET) ||
+      bearerToken === CRON_SECRET ||
+      (!!SUPABASE_SERVICE_ROLE_KEY && bearerToken === SUPABASE_SERVICE_ROLE_KEY);
+  }
+
+  if (!authorized) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
       headers: { "Content-Type": "application/json" },
     });
   }

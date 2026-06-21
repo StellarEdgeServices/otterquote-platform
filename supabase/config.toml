@@ -83,6 +83,24 @@ verify_jwt = false
 # Auth enforced at gateway + in-handler (verified JWT + contractor ownership; D-211 Phase 16 Unit 3).
 verify_jwt = true
 
+# ── D-211 Phase 18 Unit 1b: pin verify_jwt for the warranty-drift EFs (86e1xrwq2) ──
+# These match the live deployed state (all false). Pinned so a future flagless
+# `functions deploy` (CLI default verify_jwt=true) can't silently flip them.
+
+[functions.approve-warranty-drift]
+# Auth enforced in-handler: caller presents an admin Bearer JWT (auth.getUser + admin-role
+# check). Pin false so the admin page (app.otterquote.com) keeps working (D-211 Phase 18 Unit 1b).
+verify_jwt = false
+
+[functions.reject-warranty-drift]
+# Auth enforced in-handler: caller presents an admin Bearer JWT (auth.getUser + admin-role
+# check). Pin false so the admin page (app.otterquote.com) keeps working (D-211 Phase 18 Unit 1b).
+verify_jwt = false
+
+[functions.refresh-warranty-manifest]
+# Cron/manual — CRON_SECRET / service-role gate in-handler (D-211 Phase 18 Unit 1b). Pin false.
+verify_jwt = false
+
 [auth]
 site_url = "https://stellaredgeservices.com"
 additional_redirect_urls = [
