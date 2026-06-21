@@ -23,25 +23,39 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY")!;
 const MAILGUN_DOMAIN = "mail.otterquote.com";
 
+const ALLOWED_ORIGINS = [
+  "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
+  "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
+];
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  };
+}
+
 Deno.serve(async (req: Request) => {
+  const corsHeaders = buildCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "https://otterquote.com",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, Content-Type",
-      },
-    });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   // Verify caller is an admin
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
   const callerToken = authHeader.slice(7);
 
@@ -49,12 +63,12 @@ Deno.serve(async (req: Request) => {
   const sbCaller = createClient(SUPABASE_URL, callerToken);
   const { data: { user }, error: authErr } = await sbCaller.auth.getUser();
   if (authErr || !user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   const isAdmin = await checkAdminRole(user.id, user.email ?? "");
   if (!isAdmin) {
-    return new Response(JSON.stringify({ error: "Forbidden: admin role required" }), { status: 403 });
+    return new Response(JSON.stringify({ error: "Forbidden: admin role required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   const adminEmail = user.email ?? "unknown";
@@ -68,7 +82,7 @@ Deno.serve(async (req: Request) => {
     proposedValueOverride = body.proposed_value ?? null;
     if (!driftId) throw new Error("drift_id required");
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), { status: 400 });
+    return new Response(JSON.stringify({ error: String(e) }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -81,12 +95,12 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
 
   if (driftErr || !drift) {
-    return new Response(JSON.stringify({ error: "Drift row not found" }), { status: 404 });
+    return new Response(JSON.stringify({ error: "Drift row not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
   if (drift.status !== "pending_review") {
     return new Response(
       JSON.stringify({ error: `Row is already ${drift.status}` }),
-      { status: 409 }
+      { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
@@ -108,13 +122,13 @@ Deno.serve(async (req: Request) => {
         if (!effectiveProposed) {
           return new Response(
             JSON.stringify({ error: "proposed_value required for modified change type" }),
-            { status: 400 }
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         if (!drift.warranty_option_id) {
           return new Response(
             JSON.stringify({ error: "warranty_option_id required for modified update" }),
-            { status: 400 }
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         const { error: updateErr } = await sb
@@ -129,7 +143,7 @@ Deno.serve(async (req: Request) => {
         if (!effectiveProposed) {
           return new Response(
             JSON.stringify({ error: "proposed_value required for added change type" }),
-            { status: 400 }
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         const { error: insertErr } = await sb
@@ -143,7 +157,7 @@ Deno.serve(async (req: Request) => {
         if (!drift.warranty_option_id) {
           return new Response(
             JSON.stringify({ error: "warranty_option_id required for deprecated change type" }),
-            { status: 400 }
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         const { error: deactivateErr } = await sb
@@ -170,7 +184,7 @@ Deno.serve(async (req: Request) => {
 
         return new Response(
           JSON.stringify({ status: "skipped", drift_id: driftId }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
     }
@@ -193,14 +207,14 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ status: "applied", drift_id: driftId }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[approve-warranty-drift] Error: ${message}`);
     return new Response(
       JSON.stringify({ error: message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
