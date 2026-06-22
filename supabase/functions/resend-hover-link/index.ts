@@ -60,6 +60,41 @@ serve(async (req) => {
       );
     }
 
+    // ── Auth + claim ownership (D-211 P19 Unit 7c) ────────────────────────
+    // verify_jwt=false, so enforce in-code. Dual pattern (mirrors
+    // parse-loss-sheet): trusted service-role callers bypass; user-JWT callers
+    // must own the claim. Closes the unauthenticated-email + PII-echo hole.
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const isServiceRole = token === supabaseKey;
+
+    if (!isServiceRole) {
+      if (!token) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const { data: { user: caller }, error: authErr } = await supabase.auth.getUser(token);
+      if (authErr || !caller) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized: invalid token" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const { data: ownerRow, error: ownerErr } = await supabase
+        .from("claims")
+        .select("user_id")
+        .eq("id", claim_id)
+        .single();
+      if (ownerErr || !ownerRow || ownerRow.user_id !== caller.id) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden: caller does not own this claim" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // ── Global kill switch check ──────────────────────────────────────────
     const { data: configRow } = await supabase
       .from("rate_limit_config")
@@ -249,8 +284,8 @@ https://otterquote.com`;
 
     return new Response(
       JSON.stringify({
+        // PII: do NOT echo the homeowner email back to the caller (D-211 P19 Unit 7c).
         status: "sent",
-        email: homeownerEmail,
         resend_count: newCount,
         resends_remaining_today: MAX_RESENDS_PER_DAY - newCount,
         mailgun_id: mailgunResult.id,
