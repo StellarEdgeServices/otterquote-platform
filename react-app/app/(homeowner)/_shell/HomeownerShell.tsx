@@ -52,7 +52,7 @@ export const CONTRACTOR_DASHBOARD_URL = 'https://otterquote.com/contractor-dashb
 // by design). Single source of truth — flip an href here once its page lands.
 export const HOMEOWNER_NAV_LINKS: { id: HomeownerNavId; label: string; href: string }[] = [
   { id: 'dashboard', label: 'Dashboard', href: '/dashboard' },
-  { id: 'bids', label: 'My Bids', href: 'https://otterquote.com/bids.html' },
+  { id: 'bids', label: 'My Bids', href: '/bids' },
 ];
 
 interface HomeownerShellProps {
