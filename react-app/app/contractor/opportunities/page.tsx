@@ -23,7 +23,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { ContractorShell } from '../_shell/ContractorShell';
-import { useContractorRecord, type ContractorRecord } from '../_shell/use-contractor-record';
+import { useContractorRecordGate, type ContractorRecord } from '../_shell/use-contractor-record';
 import { enforceCpaRedirect } from '../_shell/cpa-guard';
 import { isPendingApproval } from '../_shell/contractor-gating';
 import { useOpportunitiesData } from './use-opportunities-data';
@@ -53,7 +53,7 @@ export default function ContractorOpportunitiesPage() {
 function OpportunitiesContent() {
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
-  const { contractor, loading: contractorLoading } = useContractorRecord(userId);
+  const { contractor, loading: contractorLoading } = useContractorRecordGate(userId);
   const router = useRouter();
 
   const [gateResolved, setGateResolved] = useState(false);

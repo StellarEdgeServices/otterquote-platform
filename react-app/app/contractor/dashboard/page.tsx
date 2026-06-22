@@ -26,7 +26,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { ContractorShell } from '../_shell/ContractorShell';
-import { useContractorRecord } from '../_shell/use-contractor-record';
+import { useContractorRecordGate } from '../_shell/use-contractor-record';
 import { CURRENT_CPA_VERSION, shouldShowCpaModal, clearCpaRedirectGuard } from '../_shell/cpa-guard';
 import { isPendingApproval } from '../_shell/contractor-gating';
 import { DASHBOARD_COPY as C, QUICK_LINKS } from './copy';
@@ -49,7 +49,7 @@ export default function ContractorDashboardPage() {
 function DashboardContent() {
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
-  const { contractor, loading: contractorLoading, refetch } = useContractorRecord(userId);
+  const { contractor, loading: contractorLoading, refetch } = useContractorRecordGate(userId);
   const data = useDashboardData(contractor, userId);
 
   // Local copy of projects so EF successes can update rows in place.

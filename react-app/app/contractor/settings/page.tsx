@@ -37,7 +37,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { ContractorShell } from '../_shell/ContractorShell';
-import { useContractorRecord, type ContractorRecord } from '../_shell/use-contractor-record';
+import { useContractorRecordGate, type ContractorRecord } from '../_shell/use-contractor-record';
 import { enforceCpaRedirect } from '../_shell/cpa-guard';
 import { StripePaymentMethods } from './StripePaymentMethods';
 import { SETTINGS_COPY as T } from './copy';
@@ -64,7 +64,7 @@ export default function ContractorSettingsPage() {
 function SettingsContent() {
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
-  const { contractor, loading: contractorLoading } = useContractorRecord(userId);
+  const { contractor, loading: contractorLoading } = useContractorRecordGate(userId);
   const router = useRouter();
 
   const [record, setRecord] = useState<ContractorRecord | null>(null);

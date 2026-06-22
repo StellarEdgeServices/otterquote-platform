@@ -25,7 +25,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { ContractorShell } from '../../_shell/ContractorShell';
-import { useContractorRecord } from '../../_shell/use-contractor-record';
+import { useContractorRecordGate } from '../../_shell/use-contractor-record';
 import { SIGN_COPY as C } from './copy';
 import {
   resolveClaimIdFromPath,
@@ -91,7 +91,7 @@ export default function ContractorSignPage() {
 function SignContent() {
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
-  const { contractor, loading: contractorLoading } = useContractorRecord(userId);
+  const { contractor, loading: contractorLoading } = useContractorRecordGate(userId);
   const router = useRouter();
 
   // Route segment from window.location (client-only) — same pattern as the bid route.
