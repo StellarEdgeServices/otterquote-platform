@@ -240,6 +240,10 @@ serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const isServiceRole = token === serviceKey;
 
+    // Hoisted to handler scope so the success response can read rate_limit_counts
+    // regardless of which auth branch assigned it (fixes latent ReferenceError 500).
+    let rateLimitResult: { allowed?: boolean; reason?: string; counts?: unknown } | null = null;
+
     if (!isServiceRole) {
       if (!token) {
         return new Response(
@@ -282,10 +286,11 @@ serve(async (req) => {
       }
 
       // ── Rate limit ─────────────────────────────────────────────────
-      const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
+      const { data: rlData, error: rlError } = await supabase.rpc("check_rate_limit", {
         p_function_name: FUNCTION_NAME,
         p_user_id: caller.id,
       });
+      rateLimitResult = rlData;
 
       if (rlError) {
         console.error("Rate limit check failed:", rlError);
@@ -304,10 +309,11 @@ serve(async (req) => {
       }
     } else {
       // Service-role: skip ownership check; still apply rate limit (anonymous bucket).
-      const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
+      const { data: rlData, error: rlError } = await supabase.rpc("check_rate_limit", {
         p_function_name: FUNCTION_NAME,
         p_user_id: null,
       });
+      rateLimitResult = rlData;
 
       if (rlError) {
         console.error("Rate limit check failed:", rlError);
