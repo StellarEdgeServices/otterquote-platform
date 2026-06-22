@@ -130,30 +130,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const resolveSession = async (session: Session | null) => {
       if (resolved.current) return;
       if (session?.user) {
+        const sessionUser = session.user;
         // Resolve role + admin in parallel — but NEVER let a stalled query strand the
         // gate on "Loading". A hung contractors/profiles read (the orphaned-lock /
         // slow-auth window the rest of D-211 hardens against) must not keep
         // `resolved`/`settled` false forever: that is the D-212 cookie-only hang — the
         // 6s backstop recovers the valid cookie, re-enters this resolver, and loops
         // straight back to the spinner (86e1yv72z). Bound the wait and settle
-        // AUTHENTICATED with a best-effort null role; a late real value cannot override
-        // because `resolved` is set just below.
+        // AUTHENTICATED with a best-effort null role. Keep a handle on the authoritative
+        // lookup so a value that lands AFTER the timeout placeholder can SELF-HEAL the
+        // role below (D-211 wrong-role render, 86e1zve9n) rather than be discarded —
+        // without re-running session recovery or un-settling.
+        const roleLookup = Promise.all([
+          resolveRole(sessionUser),
+          resolveIsAdmin(sessionUser),
+        ]);
+        let timedOut = false;
         const [role, isAdmin] = await Promise.race<[OtterRole, boolean]>([
-          Promise.all([resolveRole(session.user), resolveIsAdmin(session.user)]),
+          roleLookup,
           new Promise<[OtterRole, boolean]>((resolve) => {
-            setTimeout(() => resolve([null, false]), ROLE_RESOLVE_TIMEOUT_MS);
+            setTimeout(() => {
+              timedOut = true;
+              resolve([null, false]);
+            }, ROLE_RESOLVE_TIMEOUT_MS);
           }),
         ]);
         // A competing resolver may have won during the awaits above.
         if (resolved.current) return;
         setSbAtCookie(session);
         setState({
-          user: session.user as unknown as AuthUser,
+          user: sessionUser as unknown as AuthUser,
           role,
           isAdmin,
           loading: false,
           settled: true,
         });
+        // SELF-HEAL (D-211 86e1zve9n): if we settled on the 4s timeout placeholder, the
+        // authoritative contractor/profile lookup is still in flight. Apply its result
+        // when it lands so a slow-classified contractor is redirected by the
+        // HomeownerShell gate (which depends on `role`) instead of being stranded on the
+        // homeowner page — turning a PERMANENT wrong-role render into a transient one.
+        // This ONLY upgrades role/isAdmin for the SAME settled user; it never un-settles,
+        // never touches the recovered session/cookie (#343), and a failed lookup keeps
+        // the best-effort null role (still fail-open per D-212). It introduces NO
+        // get-started bounce: the user/`settled` decision is already locked in above.
+        if (timedOut) {
+          void roleLookup
+            .then(([healedRole, healedIsAdmin]) => {
+              setState((prev) =>
+                prev.user?.id === sessionUser.id
+                  ? { ...prev, role: healedRole, isAdmin: healedIsAdmin }
+                  : prev,
+              );
+            })
+            .catch(() => {
+              /* lookup failed — keep the fail-open null role (D-212) */
+            });
+        }
       } else {
         // COLD-START PRECEDENCE (D-211, ClickUp 86e1zpryf). A null/no-user session
         // can reach the PRIMARY resolve path before supabase-js has loaded the
