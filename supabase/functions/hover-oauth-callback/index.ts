@@ -9,6 +9,7 @@
  *   HOVER_CLIENT_ID
  *   HOVER_CLIENT_SECRET
  *   HOVER_REDIRECT_URI
+ *   HOVER_WEBHOOK_SECRET   (shared secret embedded in the registered webhook URL)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -194,35 +195,48 @@ serve(async (req) => {
 
     console.log("Hover OAuth tokens stored successfully. Expires:", expiresAt);
 
-    // Now register the webhook for job-state-changed events
+    // Now register the webhook for job-state-changed events.
+    // D-211 Phase 19 / Unit 3: embed a high-entropy shared secret in the
+    // registered URL so hover-webhook can authenticate inbound events (Hover
+    // does not sign webhooks). If the secret is not configured, skip
+    // registration rather than register an unauthenticated (forgeable) webhook.
     try {
-      const webhookUrl = `${supabaseUrl}/functions/v1/hover-webhook`;
-      const webhookResponse = await fetch(
-        "https://hover.to/api/v2/webhooks",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${tokenData.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            webhook: {
-              url: webhookUrl,
-              "content-type": "json",
-            },
-          }),
-        }
-      );
-
-      if (webhookResponse.ok) {
-        console.log("Hover webhook registered at:", webhookUrl);
-      } else {
-        const whErr = await webhookResponse.text();
+      const webhookSecret = Deno.env.get("HOVER_WEBHOOK_SECRET");
+      if (!webhookSecret) {
         console.warn(
-          "Webhook registration failed (non-blocking):",
-          webhookResponse.status,
-          whErr
+          "HOVER_WEBHOOK_SECRET not set — skipping webhook registration. " +
+            "Set the secret, then reconnect Hover to register a secured webhook."
         );
+      } else {
+        const webhookUrl = `${supabaseUrl}/functions/v1/hover-webhook?token=${encodeURIComponent(webhookSecret)}`;
+        const webhookResponse = await fetch(
+          "https://hover.to/api/v2/webhooks",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${tokenData.access_token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              webhook: {
+                url: webhookUrl,
+                "content-type": "json",
+              },
+            }),
+          }
+        );
+
+        if (webhookResponse.ok) {
+          // Do NOT log webhookUrl — it contains the shared secret.
+          console.log("Hover webhook registered (secured URL).");
+        } else {
+          const whErr = await webhookResponse.text();
+          console.warn(
+            "Webhook registration failed (non-blocking):",
+            webhookResponse.status,
+            whErr
+          );
+        }
       }
     } catch (whError) {
       console.warn("Webhook registration error (non-blocking):", whError);
