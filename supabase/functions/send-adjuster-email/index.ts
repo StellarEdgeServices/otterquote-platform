@@ -49,14 +49,15 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    const { to, to_name, subject, body, reply_to, request_id } =
-      await req.json();
+    const { subject, body, request_id } = await req.json();
 
-    // Validate required fields
-    if (!to || !subject || !body) {
+    // Validate required fields. request_id is now REQUIRED — the recipient is
+    // derived from the adjuster_email_requests row it identifies, never from a
+    // caller-supplied `to` (which was the open-relay vector). (D-211 P19 Unit 5)
+    if (!request_id || !subject || !body) {
       return new Response(
         JSON.stringify({
-          error: "Missing required fields: to, subject, body",
+          error: "Missing required fields: request_id, subject, body",
         }),
         {
           status: 400,
@@ -65,12 +66,82 @@ serve(async (req) => {
       );
     }
 
-    // ========== RATE LIMIT CHECK ==========
+    // ========== AUTH (mirror parse-loss-sheet dual pattern) ==========
+    // verify_jwt=false; enforce in-code. Trusted service-role callers bypass
+    // ownership; user-JWT callers must own the claim behind request_id.
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const isServiceRole = token === supabaseKey;
+    let callerId: string | null = null;
+
+    if (!isServiceRole) {
+      if (!token) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const { data: { user: caller }, error: authErr } =
+        await supabase.auth.getUser(token);
+      if (authErr || !caller) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized: invalid token" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      callerId = caller.id;
+    }
+
+    // ========== BIND RECIPIENT TO THE CLAIM'S ADJUSTER ==========
+    // recipient / name / reply-to come from the stored adjuster_email_requests
+    // row (written by the homeowner flow), NOT from the request body. This is
+    // what closes the open relay.
+    const { data: reqRow, error: reqErr } = await supabase
+      .from("adjuster_email_requests")
+      .select("id, claim_id, to_email, to_name, ingest_email")
+      .eq("id", request_id)
+      .single();
+
+    if (reqErr || !reqRow) {
+      return new Response(
+        JSON.stringify({ error: "Adjuster email request not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // User-JWT callers must own the claim behind this request.
+    if (!isServiceRole) {
+      const { data: claimRow, error: claimErr } = await supabase
+        .from("claims")
+        .select("user_id")
+        .eq("id", reqRow.claim_id)
+        .single();
+      if (claimErr || !claimRow || claimRow.user_id !== callerId) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden: caller does not own this claim" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Derive + sanitize. Reject a stored address containing separators so it
+    // cannot fan out to additional recipients via the display-name field.
+    const recipient = String(reqRow.to_email || "").trim();
+    if (!recipient || /[\s,<>"]/.test(recipient)) {
+      return new Response(
+        JSON.stringify({ error: "No valid adjuster email on file for this request" }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const recipientName = String(reqRow.to_name || "").replace(/[\r\n<>,"]+/g, " ").trim();
+    const replyTo = String(reqRow.ingest_email || "").replace(/[\r\n]+/g, "").trim();
+
+    // ========== RATE LIMIT CHECK (per-user; null => global bucket for service-role) ==========
     const { data: rateLimitResult, error: rlError } = await supabase.rpc(
       "check_rate_limit",
       {
         p_function_name: FUNCTION_NAME,
-        p_user_id: null,
+        p_user_id: callerId,
       }
     );
 
@@ -121,14 +192,14 @@ serve(async (req) => {
     // Build URL-encoded form data for Mailgun
     const formData = new URLSearchParams();
     formData.append("from", fromAddress);
-    formData.append("to", to_name ? `${to_name} <${to}>` : to);
+    formData.append("to", recipientName ? `${recipientName} <${recipient}>` : recipient);
     formData.append("subject", subject);
     formData.append("text", body);
-    if (reply_to) {
-      formData.append("h:Reply-To", reply_to);
+    if (replyTo) {
+      formData.append("h:Reply-To", replyTo);
     }
 
-    console.log("Sending Mailgun email to:", to, "subject:", subject);
+    console.log("Sending Mailgun email to:", recipient, "subject:", subject);
 
     const mailgunResponse = await fetch(
       `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
@@ -182,7 +253,7 @@ serve(async (req) => {
 
     console.log(
       "Email sent to:",
-      to,
+      recipient,
       "Mailgun ID:",
       responseData.id,
       "Request ID:",
@@ -193,7 +264,7 @@ serve(async (req) => {
       JSON.stringify({
         id: responseData.id,
         status: "sent",
-        to: to,
+        to: recipient,
         rate_limit_counts: rateLimitResult?.counts,
       }),
       {
