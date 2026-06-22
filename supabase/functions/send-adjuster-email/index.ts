@@ -239,6 +239,7 @@ serve(async (req) => {
         .from("adjuster_email_requests")
         .update({
           sent_at: new Date().toISOString(),
+          mailgun_id: responseData.id,
         })
         .eq("id", request_id);
 
