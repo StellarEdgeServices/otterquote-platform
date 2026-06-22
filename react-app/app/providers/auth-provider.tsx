@@ -155,6 +155,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           settled: true,
         });
       } else {
+        // COLD-START PRECEDENCE (D-211, ClickUp 86e1zpryf). A null/no-user session
+        // can reach the PRIMARY resolve path before supabase-js has loaded the
+        // cross-subdomain cookie session — on a fresh app.otterquote.com origin the
+        // client can emit INITIAL_SESSION with session=null while storage/lock is
+        // still priming, ahead of the getSession() that returns the reconstructed
+        // cookie session. Settling unauthenticated here — and locking it in via
+        // `resolved` — ejects an authenticated user mid-hydration: the homeowner gate
+        // hard-redirects to get-started.html, the contractor gate to /contractor/login.
+        // Recover the valid shared cookie session first (the SAME readValidCookieSession
+        // precedence the 6s fail-safe already uses, now applied on the primary path so a
+        // FAST null-resolve can't slip past it). The recovered session has a user, so the
+        // recursive call takes the authenticated branch; role resolution still runs, so
+        // this neither broadens access nor changes gating. A genuinely logged-out request
+        // (no valid cookie) falls through and still settles unauthenticated → still bounces.
+        const cookieSession = readValidCookieSession();
+        if (cookieSession) {
+          void resolveSession(cookieSession as unknown as Session);
+          return;
+        }
         setSbAtCookie(null);
         setState({ user: null, role: null, isAdmin: false, loading: false, settled: true });
       }
