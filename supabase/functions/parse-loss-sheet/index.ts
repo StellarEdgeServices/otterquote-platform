@@ -267,6 +267,20 @@ serve(async (req) => {
         );
       }
 
+      // ── Bind storage_path to this caller + claim (cross-tenant doc read) ──
+      // storage_path is caller-supplied. Owning claim X is not enough — without
+      // this guard an owner of claim X could pass another tenant's storage_path
+      // and parse their stored document into claim X. Enforce the documented
+      // "<user_id>/<claim_id>/<filename>" convention (within the claim-documents
+      // bucket). Service-role callers (trusted internal EFs) are exempt.
+      const requiredPrefix = `${caller.id}/${claim_id}/`;
+      if (typeof storage_path !== "string" || !storage_path.startsWith(requiredPrefix)) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden: storage_path does not belong to this caller and claim" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // ── Rate limit ─────────────────────────────────────────────────
       const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
         p_function_name: FUNCTION_NAME,
