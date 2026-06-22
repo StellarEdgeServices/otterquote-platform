@@ -10,9 +10,14 @@
  *
  * No rate limiting needed — Hover calls us, not the other way around.
  *
+ * Authenticity (D-211 Phase 19 / Unit 3): Hover does NOT sign webhook events,
+ * so we require a high-entropy shared secret embedded in the registered webhook
+ * URL (?token=...) and validate it fail-closed before doing any work.
+ *
  * Environment variables:
  *   HOVER_CLIENT_ID
  *   HOVER_CLIENT_SECRET
+ *   HOVER_WEBHOOK_SECRET   (shared secret embedded in the registered webhook URL)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -26,6 +31,24 @@ serve(async (req) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
+  // ── Webhook authenticity gate (fail-closed) — D-211 Phase 19 / Unit 3 ──
+  // Hover does NOT sign webhook events (no per-event HMAC); its only security
+  // mechanism is the one-time registration handshake. We therefore require a
+  // high-entropy shared secret embedded in the registered webhook URL
+  // (?token=...) and validate it here before doing ANY work. Without a valid
+  // secret the endpoint is forgeable (anyone could flip hover_orders state and
+  // trigger the D-164 bid-release gate). Fail closed: reject if the env secret
+  // is unset OR the provided token does not match.
+  const expectedSecret = Deno.env.get("HOVER_WEBHOOK_SECRET");
+  const providedSecret = new URL(req.url).searchParams.get("token") ?? "";
+  if (!expectedSecret || !constantTimeEqual(providedSecret, expectedSecret)) {
+    console.warn("hover-webhook: rejected request — missing or invalid shared secret");
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -34,6 +57,31 @@ serve(async (req) => {
     const payload = await req.json();
 
     console.log("Hover webhook received:", JSON.stringify(payload));
+
+    // ── Hover webhook verification handshake — D-211 Phase 19 / Unit 3 ──
+    // On (re)registration Hover immediately POSTs a one-time verification code
+    // to the registered URL. Because this request already passed the secret
+    // gate above, complete the handshake so the secured webhook activates.
+    if (payload?.event === "webhook-verification-code" && payload?.code) {
+      try {
+        const accessToken = await getValidAccessToken(supabase);
+        if (accessToken) {
+          const verifyRes = await fetch(
+            `${HOVER_API_BASE}/api/v2/webhooks/${encodeURIComponent(payload.code)}/verify`,
+            { method: "PUT", headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          console.log("hover-webhook: verification handshake responded", verifyRes.status);
+        } else {
+          console.error("hover-webhook: no Hover access token available for verification handshake");
+        }
+      } catch (verifyErr) {
+        console.error("hover-webhook: verification handshake error:", verifyErr);
+      }
+      return new Response(JSON.stringify({ received: true, verification: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     // Hover webhook payload includes:
     // { event: "job-state-changed", job_id: 12345, state: "complete", ... }
@@ -296,4 +344,19 @@ async function getValidAccessToken(supabase: any): Promise<string | null> {
     .eq("id", token.id);
 
   return newTokenData.access_token;
+}
+
+/**
+ * Constant-time string comparison to avoid leaking the shared secret via
+ * response timing. Length mismatch returns false immediately (the secret
+ * length is not itself sensitive).
+ */
+function constantTimeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
 }
