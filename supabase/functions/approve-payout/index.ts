@@ -25,7 +25,8 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const FUNCTION_NAME     = "approve-payout";
-const ADMIN_EMAIL       = "dustinstohler1@gmail.com";
+// D-211 Phase 18 Unit 2: admin allow-list (was single ADMIN_EMAIL). Admit either operator email.
+const ADMIN_EMAILS      = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
 const PARTNER_DASH_URL  = "https://otterquote.com/partner-dashboard.html";
 
 const ALLOWED_ORIGINS = [
@@ -182,7 +183,7 @@ serve(async (req: Request) => {
   });
   const { data: userData, error: userError } = await userClient.auth.getUser();
 
-  if (userError || !userData?.user || userData.user.email !== ADMIN_EMAIL) {
+  if (userError || !userData?.user || !ADMIN_EMAILS.includes(userData.user.email ?? "")) {
     return new Response(JSON.stringify({ ok: false, error: "Unauthorized — admin only" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -244,6 +245,44 @@ serve(async (req: Request) => {
       });
     }
 
+    // ── W-9 / payments gate (D-211 Phase 18 Unit 2) ──────────────────────────
+    // Flipping status to 'approved' + stamping commission_paid_at is the terminal
+    // money-state (no separate Stripe disbursement EF). Never cross that line for a
+    // partner without a verified W-9 and unblocked payments. Fail-safe: a missing
+    // partner_id / agent row / lookup error HOLDS — the row stays pending_approval
+    // and commission_paid_at is never set. Held is returned as { ok:false, held:true }
+    // with `error` so admin-payouts.html surfaces the reason (and skips its
+    // optimistic "approved" row update, which only runs on the ok:true path).
+    const heldResponse = (reason: string) =>
+      new Response(JSON.stringify({ ok: false, held: true, reason, error: reason }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+
+    if (!approval.partner_id) {
+      console.log(`[${FUNCTION_NAME}] HELD ${payoutApprovalId} — no partner_id on approval row`);
+      return heldResponse("Held — no partner on file; cannot verify W-9");
+    }
+
+    const { data: agent, error: agentError } = await supabase
+      .from("referral_agents")
+      .select("payments_blocked, w9_verified_at, email, first_name, last_name")
+      .eq("id", approval.partner_id)
+      .single();
+
+    if (agentError || !agent) {
+      console.log(`[${FUNCTION_NAME}] HELD ${payoutApprovalId} — partner ${approval.partner_id} not resolvable (${agentError?.message ?? "no row"})`);
+      return heldResponse("Held — partner record not found; cannot verify W-9");
+    }
+
+    if (agent.payments_blocked !== false || agent.w9_verified_at == null) {
+      console.log(`[${FUNCTION_NAME}] HELD ${payoutApprovalId} — partner ${approval.partner_id} payments_blocked=${agent.payments_blocked} w9_verified_at=${agent.w9_verified_at}`);
+      return heldResponse(
+        agent.payments_blocked !== false
+          ? "Held — partner payments are blocked (W-9 not on file)"
+          : "Held — partner W-9 not on file"
+      );
+    }
+
     const now = new Date().toISOString();
 
     // ── Update payout_approvals ──────────────────────────────────────────────
@@ -278,18 +317,11 @@ serve(async (req: Request) => {
     }
 
     // ── Send confirmation email to partner ───────────────────────────────────
-    let partnerEmail: string | null = null;
-    if (approval.partner_id) {
-      const { data: partnerData } = await supabase
-        .from("referral_agents")
-        .select("email, first_name, last_name")
-        .eq("id", approval.partner_id)
-        .single();
-      partnerEmail = partnerData?.email || null;
-      if (partnerData && !approval.partner_name) {
-        // Use fetched name if approval row has no partner_name stored
-        approval.partner_name = [partnerData.first_name, partnerData.last_name].filter(Boolean).join(" ") || "Partner";
-      }
+    // Reuse the agent row already loaded by the W-9 gate above (same columns).
+    const partnerEmail: string | null = agent.email || null;
+    if (!approval.partner_name) {
+      // Use fetched name if approval row has no partner_name stored
+      approval.partner_name = [agent.first_name, agent.last_name].filter(Boolean).join(" ") || "Partner";
     }
 
     let emailSent = false;
