@@ -1245,6 +1245,37 @@ function getDocumentLabel(documentType: string): string {
   }
 }
 
+// ========== PER-ENVELOPE EVENT NOTIFICATION (D-211 P18 U5) ==========
+// Embeds the DocuSign Connect completion subscription directly on each envelope so the
+// platform-fee path (docusign-webhook -> create-payment-intent) is in-repo and self-healing,
+// independent of the account-level Connect config 21822232 and its manual "Include Data"
+// toggle (an empty toggle was the 0-fees-ever root cause).
+//
+// includeHMAC:"true" is REQUIRED. Per-envelope eventNotification deliveries are otherwise
+// unsigned, and docusign-webhook enforces HMAC fail-closed (DOCUSIGN_REQUIRE_SIGNATURE=true) —
+// an unsigned delivery would 401. With includeHMAC the message is signed with the account's
+// configured Connect HMAC key (the same secret docusign-webhook reads as
+// DOCUSIGN_CONNECT_HMAC_KEY), so verification passes.
+//
+// eventData mirrors the account "Include Data = recipients" so docusign-webhook's parser sees
+// data.envelopeSummary/recipients. Completed-only; documents are not included.
+function buildEventNotification() {
+  const webhookUrl = `${Deno.env.get("SUPABASE_URL") ?? "https://yeszghaspzwwstvsrioa.supabase.co"}/functions/v1/docusign-webhook`;
+  return {
+    url: webhookUrl,
+    requireAcknowledgment: "true",
+    includeHMAC: "true",
+    loggingEnabled: "true",
+    includeDocuments: "false",
+    envelopeEvents: [{ envelopeEventStatusCode: "completed" }],
+    eventData: {
+      version: "restv2.1",
+      format: "json",
+      includeData: ["recipients"],
+    },
+  };
+}
+
 // ========== AUTO-POPULATE FIELDS FROM DB ==========
 async function autoPopulateFields(
   supabase: any,
@@ -1549,6 +1580,8 @@ async function handleContractorSign(
       ],
     },
     status: "sent",
+    // [D-211 P18 U5] In-repo, self-healing fee-path completion subscription. See buildEventNotification.
+    eventNotification: buildEventNotification(),
   };
 
   console.log("Creating DocuSign envelope (contractor_sign)");
@@ -1876,6 +1909,8 @@ async function handleLegacyFlow(
       ],
     },
     status: "sent",
+    // [D-211 P18 U5] In-repo, self-healing fee-path completion subscription. See buildEventNotification.
+    eventNotification: buildEventNotification(),
   };
 
   console.log(`Creating DocuSign envelope (legacy: ${document_type})`);
