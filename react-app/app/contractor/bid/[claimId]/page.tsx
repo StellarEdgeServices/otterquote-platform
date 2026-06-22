@@ -26,7 +26,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { ContractorShell } from '../../_shell/ContractorShell';
-import { useContractorRecord } from '../../_shell/use-contractor-record';
+import { useContractorRecordGate } from '../../_shell/use-contractor-record';
 import { enforceCpaRedirect } from '../../_shell/cpa-guard';
 import { BID_STYLES } from './bid-ui';
 import { BidForm } from './bid-form';
@@ -51,7 +51,7 @@ export default function ContractorBidPage() {
 function BidPageContent() {
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
-  const { contractor, loading: contractorLoading } = useContractorRecord(userId);
+  const { contractor, loading: contractorLoading } = useContractorRecordGate(userId);
   const router = useRouter();
 
   // Read the route segment + query from window.location (client-only), mirroring the
