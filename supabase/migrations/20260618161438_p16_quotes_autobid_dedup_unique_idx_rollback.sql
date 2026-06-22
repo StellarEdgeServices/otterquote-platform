@@ -1,5 +1,5 @@
--- Rollback: 20260618150000_p16_quotes_autobid_unique_idx_rollback.sql
--- Reverts: 20260618150000_p16_quotes_autobid_unique_idx.sql
+-- Rollback: 20260618161438_p16_quotes_autobid_dedup_unique_idx_rollback.sql
+-- Reverts: 20260618161438_p16_quotes_autobid_dedup_unique_idx.sql
 -- Author: Claude Code (Opus 4.8) — D-211 Phase 16, Unit 0
 -- Date: 2026-06-18
 --

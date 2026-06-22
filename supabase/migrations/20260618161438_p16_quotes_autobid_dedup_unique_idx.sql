@@ -1,8 +1,8 @@
--- Migration: 20260618150000_p16_quotes_autobid_unique_idx
+-- Migration: 20260618161438_p16_quotes_autobid_dedup_unique_idx
 -- Author: Claude Code (Opus 4.8) — D-211 Phase 16, Unit 0
 -- Date: 2026-06-18
 -- D-numbers: D-211 P16 (UNIT 0 — process-auto-bids 500 fix); D-150 (14-day auto-bid window)
--- Rollback: 20260618150000_p16_quotes_autobid_unique_idx_rollback.sql
+-- Rollback: 20260618161438_p16_quotes_autobid_dedup_unique_idx_rollback.sql
 --
 -- Summary: ADDITIVE — adds a partial UNIQUE index that enforces one auto-bid per
 --          (claim_id, contractor_id, trade_type) tuple. process-auto-bids runs on a
@@ -19,6 +19,12 @@
 --            * Net-new index only. Touches no existing column, policy, or row.
 --            * Idempotent (IF NOT EXISTS) — already applied to PROD via apply_migration;
 --              this file is committed for repo/drift parity.
+--
+-- Repo-reconciliation (D-211 Phase 18 Unit 4): renamed from the placeholder version
+-- 20260618150000_p16_quotes_autobid_unique_idx to the real applied identity recorded in
+-- supabase_migrations.schema_migrations (version 20260618161438, name
+-- p16_quotes_autobid_dedup_unique_idx) so `supabase migration list` / `db push` recognizes
+-- it as applied and never re-runs it. Index DDL unchanged.
 
 BEGIN;
 
