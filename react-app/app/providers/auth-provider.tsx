@@ -17,7 +17,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { readValidCookieSession } from '../lib/cookie-storage';
+import { otterquoteCookieStorage, OTTERQUOTE_AUTH_STORAGE_KEY, readValidCookieSession } from '../lib/cookie-storage';
 import type { AuthContextValue, AuthState, AuthUser, OtterRole } from '../types/auth';
 
 // ─── Admin allow-list (mirrors admin-auth-gate.ts) ───────────────────────────
@@ -303,8 +303,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    // SIGNED_OUT event above handles state + cookie reset
+    try {
+      // scope:'local' clears the client session WITHOUT a network revoke that can
+      // fail and strand the live cross-subdomain cookies (86e20pdta).
+      await supabase.auth.signOut({ scope: 'local' });
+    } finally {
+      // Force-clear regardless of the revoke result. removeItem() deletes
+      // sb-otterquote-at/rt at Domain=.otterquote.com; setSbAtCookie(null) clears
+      // host-only sb_at. The SIGNED_OUT handler still resets React state.
+      otterquoteCookieStorage.removeItem(OTTERQUOTE_AUTH_STORAGE_KEY);
+      setSbAtCookie(null);
+    }
   };
 
   return (
