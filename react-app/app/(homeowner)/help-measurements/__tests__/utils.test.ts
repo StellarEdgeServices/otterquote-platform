@@ -20,6 +20,7 @@ import {
   buildHoverPaymentIntentParams,
   buildHoverOrderParams,
   buildAdjusterEmailParams,
+  buildAdjusterClaimWriteback,
   isAdjusterFormValid,
   isHoverPath,
 } from '../utils';
@@ -266,6 +267,59 @@ describe('isAdjusterFormValid (email-only gate, mirrors static checkReady)', () 
     expect(isAdjusterFormValid({ adjusterEmail: 'john@x.com' })).toBe(true);
     // present name but invalid email → still invalid
     expect(isAdjusterFormValid({ adjusterEmail: '', adjusterName: 'John Smith' })).toBe(false);
+  });
+});
+
+describe('buildAdjusterClaimWriteback (write only entered values into empty claim fields)', () => {
+  it('writes all three fields when the claim has none', () => {
+    expect(
+      buildAdjusterClaimWriteback({
+        claim: {},
+        adjusterName: 'John Smith',
+        adjusterEmail: 'john@insurance.com',
+        adjusterPhone: '(317) 555-1234',
+      }),
+    ).toEqual({
+      adjuster_name: 'John Smith',
+      adjuster_email: 'john@insurance.com',
+      adjuster_phone: '(317) 555-1234',
+    });
+  });
+
+  it('skips a field whose claim value is already set (does NOT overwrite)', () => {
+    expect(
+      buildAdjusterClaimWriteback({
+        claim: { adjuster_name: 'Existing', adjuster_email: null, adjuster_phone: '' },
+        adjusterName: 'New Name',
+        adjusterEmail: 'new@insurance.com',
+        adjusterPhone: '(317) 555-9999',
+      }),
+    ).toEqual({
+      adjuster_email: 'new@insurance.com',
+      adjuster_phone: '(317) 555-9999',
+    });
+  });
+
+  it('skips a field whose entered value is empty', () => {
+    expect(
+      buildAdjusterClaimWriteback({
+        claim: {},
+        adjusterName: '',
+        adjusterEmail: 'only@email.com',
+        adjusterPhone: '',
+      }),
+    ).toEqual({ adjuster_email: 'only@email.com' });
+  });
+
+  it('returns {} when there is nothing to write', () => {
+    expect(
+      buildAdjusterClaimWriteback({
+        claim: { adjuster_name: 'A', adjuster_email: 'b@c.com', adjuster_phone: '111' },
+        adjusterName: 'A2',
+        adjusterEmail: 'b2@c.com',
+        adjusterPhone: '222',
+      }),
+    ).toEqual({});
   });
 });
 
