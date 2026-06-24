@@ -207,6 +207,47 @@ export function buildAdjusterEmailParams({
   };
 }
 
+// ── Adjuster info write-back (help-measurements.html:1071-1077) ────────────────────
+
+/** Subset of the claim the write-back reads (the currently-stored adjuster fields). */
+export interface AdjusterWritebackClaim {
+  adjuster_name?: string | null;
+  adjuster_email?: string | null;
+  adjuster_phone?: string | null;
+}
+
+/** The partial claims update the page applies after a measurement request. */
+export interface AdjusterClaimWriteback {
+  adjuster_name?: string;
+  adjuster_email?: string;
+  adjuster_phone?: string;
+}
+
+/**
+ * Build the partial claims update written back after the measurement request is sent.
+ * Mirrors the static EXACTLY (help-measurements.html:1071-1077): include a field ONLY
+ * when a value was entered AND the claim's existing field is empty/absent. Returns {}
+ * when there is nothing to write (the page then skips the update, like the static).
+ * Pure — the page performs the actual supabase update with the returned object.
+ */
+export function buildAdjusterClaimWriteback({
+  claim,
+  adjusterName,
+  adjusterEmail,
+  adjusterPhone,
+}: {
+  claim: AdjusterWritebackClaim;
+  adjusterName: string;
+  adjusterEmail: string;
+  adjusterPhone: string;
+}): AdjusterClaimWriteback {
+  const updates: AdjusterClaimWriteback = {};
+  if (adjusterName && !claim.adjuster_name) updates.adjuster_name = adjusterName;
+  if (adjusterEmail && !claim.adjuster_email) updates.adjuster_email = adjusterEmail;
+  if (adjusterPhone && !claim.adjuster_phone) updates.adjuster_phone = adjusterPhone;
+  return updates;
+}
+
 // ── Adjuster form readiness (help-measurements.html:1021-1024) ─────────────────────
 
 /**
