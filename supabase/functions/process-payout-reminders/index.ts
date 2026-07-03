@@ -231,7 +231,7 @@ serve(async (req: Request) => {
     });
     if (rlError) {
       console.error(`[${FUNCTION_NAME}] Rate limit RPC error:`, rlError.message);
-    } else if (!rlData) {
+    } else if (rlData?.allowed === false) {
       console.warn(`[${FUNCTION_NAME}] Rate limit exceeded — skipping run.`);
       return new Response(JSON.stringify({ ok: false, error: "Rate limit exceeded" }), {
         status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -274,7 +274,7 @@ serve(async (req: Request) => {
     });
     if (rlError) {
       console.warn(`[${FUNCTION_NAME}] Rate limit RPC error (non-fatal):`, rlError.message);
-    } else if (!rlOk) {
+    } else if (rlOk?.allowed === false) {
       return jsonResponse({ ok: false, error: "Rate limit exceeded — please try again shortly" }, 429, corsHeaders);
     }
 
