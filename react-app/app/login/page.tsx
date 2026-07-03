@@ -34,8 +34,8 @@ import {
 
 // ─── GA4 helper (parity with login.html gtag) ──────────────────────────
 function gtag(...args: unknown[]) {
-  if (typeof window !== 'undefined' && (window as { gtag?: (...a: unknown[]) => void }).gtag) {
-    (window as { gtag: (...a: unknown[]) => void }).gtag(...args);
+  if (typeof window !== 'undefined' && window.gtag) {
+    window.gtag(...args);
   }
 }
 
