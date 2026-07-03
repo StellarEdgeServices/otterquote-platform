@@ -161,7 +161,7 @@
     "auth-callback.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -177,7 +177,7 @@
     "bids.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -198,7 +198,7 @@
     "color-selection.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -217,7 +217,7 @@
     "coming-soon.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -235,7 +235,7 @@
     "contract-signing.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -254,7 +254,7 @@
     "contractor-about.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -273,7 +273,7 @@
     "contractor-agreement.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -292,7 +292,7 @@
     "contractor-auto-bids.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -311,7 +311,7 @@
     "contractor-bid-form.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -331,7 +331,7 @@
     "contractor-dashboard.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -353,7 +353,7 @@
     "contractor-faq.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -372,7 +372,7 @@
     "contractor-how-it-works.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -391,7 +391,7 @@
     "contractor-join.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -409,7 +409,7 @@
     "contractor-login.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -428,7 +428,7 @@
     "contractor-onboarding.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -447,7 +447,7 @@
     "contractor-opportunities.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -485,7 +485,7 @@
     "contractor-profile.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -506,7 +506,7 @@
     "contractor-settings.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "https://js.stripe.com/v3/",
         "js/cookie-storage.js",
@@ -526,7 +526,7 @@
     "dashboard.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -547,7 +547,7 @@
     "faq.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -567,7 +567,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "js/config.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -588,7 +588,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "js/cookie-storage.js",
         "js/config.js",
         "js/auth.js",
@@ -608,7 +608,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "js/cookie-storage.js",
         "js/config.js",
         "js/auth.js",
@@ -628,7 +628,7 @@
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "https://js.stripe.com/v3/",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "js/cookie-storage.js",
         "js/config.js",
         "js/auth.js",
@@ -647,7 +647,7 @@
     "how-it-works.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -666,7 +666,7 @@
     "index.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -685,7 +685,7 @@
     "inspector-landing.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -704,7 +704,7 @@
     "landing.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -724,7 +724,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "js/config.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -758,7 +758,7 @@
     "partner-dashboard.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -779,7 +779,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "js/config.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -799,7 +799,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "js/config.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -819,7 +819,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "js/config.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -838,7 +838,7 @@
     "privacy.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -857,7 +857,7 @@
     "project-confirmation.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -876,7 +876,7 @@
     "recruit.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -894,7 +894,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "js/config.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -914,7 +914,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "js/config.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -934,7 +934,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "js/config.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -966,7 +966,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "js/config.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js",
         "js/cookie-storage.js",
@@ -987,7 +987,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "js/cookie-storage.js",
         "js/config.js",
         "js/auth.js",
@@ -1006,7 +1006,7 @@
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "js/cookie-storage.js",
         "js/config.js",
         "js/auth.js",
@@ -1033,7 +1033,7 @@
     "terms.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",
@@ -1052,7 +1052,7 @@
     "trade-selector.html": {
       "scripts": [
         "https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js",
-        "https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2",
+        "https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY",
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
         "js/cookie-storage.js",
         "js/config.js",

@@ -188,12 +188,12 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
 <meta property="og:site_name" content="Otter Quotes">
 
 <!-- GA4 -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){{dataLayer.push(arguments)}}
   gtag('js', new Date());
-  gtag('config', 'G-JNQ6XR3LX2');
+  gtag('config', 'G-D1Y1TLGEFY');
 </script>
 
 <script type="application/ld+json">{safe_jsonld(schema_org)}</script>
@@ -382,8 +382,8 @@ def generate_directory_index(contractors_with_slugs: list[tuple], dry_run: bool)
 <title>Contractor Directory — Otter Quotes</title>
 <meta name="description" content="Browse contractors available on the Otter Quotes platform. Get competing bids from qualified roofing and exterior contractors.">
 <link rel="canonical" href="{SITE_BASE}/contractors/">
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
-<script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments)}}gtag('js',new Date());gtag('config','G-JNQ6XR3LX2');</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments)}}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/design-system.css">

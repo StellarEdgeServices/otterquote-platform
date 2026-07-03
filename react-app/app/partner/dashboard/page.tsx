@@ -35,7 +35,7 @@
  *
  * Analytics: the React app's global gtag is used app-wide; this page fires no
  * analytics events (the static dashboard fired none), so the stale GA4 id
- * (G-JNQ6XR3LX2) is intentionally NOT carried over.
+ * (G-D1Y1TLGEFY) is intentionally NOT carried over.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
