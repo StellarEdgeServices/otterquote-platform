@@ -462,6 +462,8 @@ mcp__bbfecab5-2116-4d6b-99d8-19a7d6db65c6__clickup_remove_tag_from_task
 - `triage-needed` = blocked on a **decision** Dustin must make
 - `lane-2` = blocked on a **physical action** Dustin must take
 
+> **Dispatch-comment idempotency guard (86e1v9mtp):** Before posting ANY dispatch comment, call `clickup_get_task_comments` for the task and scan existing comment text. If any existing comment starts with `[WINGMAN-LANE2:`, `[ATC DISPATCH`, `[ATC LANE-2 DISPATCH`, or `[ATC STEP 6` — skip the post entirely; dispatch already exists. Never post a duplicate dispatch comment.
+
 For `triage-needed` tasks: post summary of blocking decision via `mcp__bbfecab5-2116-4d6b-99d8-19a7d6db65c6__clickup_create_task_comment`. Do NOT remove `triage-needed` tag.
 
 For `lane-2` tasks: verify `[WINGMAN-LANE2:]` comment exists. If not, add one. Do NOT remove `lane-2` tag.
