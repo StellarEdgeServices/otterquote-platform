@@ -96,7 +96,12 @@ function CertVerificationsContent() {
       return;
     }
 
-    setRows((data || []) as CertVerificationRow[]);
+    // `contractors!inner(...)` is a to-one FK embed (one cert row → one
+    // contractor), but supabase-js's untyped query-string inference always
+    // shapes embeds as arrays. Route through `unknown` — the DB relationship
+    // (and the `row.contractors?.company_name` single-object read below) is
+    // the source of truth, not the generic join-string inference.
+    setRows((data || []) as unknown as CertVerificationRow[]);
     setLoading(false);
   }
 

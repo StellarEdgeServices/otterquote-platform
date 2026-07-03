@@ -112,6 +112,14 @@ verify_jwt = false
 [functions.reject-payout]
 verify_jwt = false
 
+# ── D-149 counter-signature nudge cadence (86e1gabf4) ──
+# counter-sig-reminders is invoked by pg_cron (sql/v92) every 30 min with the
+# service-role bearer token (v50a invocation pattern) — a valid JWT, so the
+# platform gate stays ON. Pinned so a future flagless `functions deploy` can't
+# silently flip it.
+[functions.counter-sig-reminders]
+verify_jwt = true
+
 [auth]
 site_url = "https://stellaredgeservices.com"
 additional_redirect_urls = [

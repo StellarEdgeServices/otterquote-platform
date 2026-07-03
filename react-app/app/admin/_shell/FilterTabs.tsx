@@ -18,7 +18,7 @@ export function FilterTabs({
   tabs: { key: string; label: string }[];
   active: string;
   onChange: (key: string) => void;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <div className="filter-tabs">
       {tabs.map((tab) => (

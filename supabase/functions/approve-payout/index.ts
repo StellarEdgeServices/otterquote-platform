@@ -200,7 +200,7 @@ serve(async (req: Request) => {
     });
     if (rlError) {
       console.error(`[${FUNCTION_NAME}] Rate limit RPC error:`, rlError.message);
-    } else if (!rlData) {
+    } else if (rlData?.allowed === false) {
       return new Response(JSON.stringify({ ok: false, error: "Rate limit exceeded" }), {
         status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -286,19 +286,32 @@ serve(async (req: Request) => {
     const now = new Date().toISOString();
 
     // ── Update payout_approvals ──────────────────────────────────────────────
-    const { error: updateError } = await supabase
+    // Atomic status guard (86e1xrwq2 #1): the JS pre-check above is advisory only.
+    // Constrain the UPDATE itself to pending_approval (mirrors the
+    // process-payout-reminders auto-approve guard) and treat 0 rows updated as a
+    // concurrent-processing conflict — before commission_paid_at or the email.
+    const { data: updatedRows, error: updateError } = await supabase
       .from("payout_approvals")
       .update({
         status:      "approved",
         approved_at: now,
         approved_by: "admin",
       })
-      .eq("id", payoutApprovalId);
+      .eq("id", payoutApprovalId)
+      .eq("status", "pending_approval")
+      .select("id");
 
     if (updateError) {
       console.error(`[${FUNCTION_NAME}] Failed to update payout_approvals:`, updateError.message);
       return new Response(JSON.stringify({ ok: false, error: "Database update failed" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      console.warn(`[${FUNCTION_NAME}] Conflict — payout ${payoutApprovalId} was no longer pending_approval at UPDATE time (processed concurrently)`);
+      return new Response(JSON.stringify({ ok: false, error: "Conflict — payout already processed (status changed since it was loaded)" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 

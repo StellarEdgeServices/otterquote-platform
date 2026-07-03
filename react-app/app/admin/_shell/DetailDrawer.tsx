@@ -26,7 +26,7 @@ export function DetailDrawer({
   title: string;
   onClose: () => void;
   children: ReactNode;
-}): JSX.Element | null {
+}): React.JSX.Element | null {
   if (!open) {
     return null;
   }

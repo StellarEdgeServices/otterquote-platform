@@ -26,6 +26,12 @@ export interface ContractorRecord {
   agreement_version?: string | null;
   service_counties?: string[] | null;
   trades?: string[] | null;
+  address_state?: string | null;
+  attestation_accepted_at?: unknown;
+  coi_file_url?: unknown;
+  coi_insurer?: unknown;
+  coi_policy_number?: unknown;
+  coi_expires_at?: unknown;
   [key: string]: unknown;
 }
 
