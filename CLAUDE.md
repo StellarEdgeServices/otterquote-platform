@@ -57,14 +57,14 @@ Authoritative memory is file-based only. Location: `C:\Users\Dustin Stohler\Down
 Key files to read when needed:
 - `claude-memory.md` — master index, identity, rules summary
 - `otterquote-memory.md` — build status, credentials, infrastructure
-- `otterquote-reference.md` — D-number registry (D-001 through D-232+)
-- `rule-reference.md` — R-number registry (R-001 through R-039)
+- `otterquote-reference.md` — D-number registry
+- `rule-reference.md` — R-number registry
 - `otterquote-ref-platform.md` — architecture, deploy, integrations
 - `otterquote-ref-product.md` — product decisions, UX flows
 - `otterquote-ref-legal.md` — legal decisions, DocuSign, compliance
 
 Do NOT use native memory tools. Do NOT trust training data about OtterQuote.
-Next D-number: D-233. Next R-number: R-040.
+Never assign D/R numbers from this file. Current counters live in otterquote-reference.md (§ Next D-Number) and rule-reference.md (§ Next R-Number); claude-memory.md is pointer-only.
 
 ---
 
