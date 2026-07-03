@@ -91,7 +91,7 @@ serve(async (req: Request) => {
     });
     if (rlError) {
       console.error(`[${FUNCTION_NAME}] Rate limit RPC error:`, rlError.message);
-    } else if (!rlData) {
+    } else if (rlData?.allowed === false) {
       return new Response(JSON.stringify({ ok: false, error: "Rate limit exceeded" }), {
         status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -162,19 +162,32 @@ serve(async (req: Request) => {
     // D-180: status = 'rejected', rejected_at = NOW(), rejection_reason = <value>.
     // commission_paid_at on referrals is intentionally NOT touched —
     // rejected commission is deferred (can be re-approved), not voided.
-    const { error: updateError } = await supabase
+    // Atomic status guard (86e1xrwq2 #1): the JS pre-check above is advisory only.
+    // Constrain the UPDATE itself to pending_approval (mirrors the
+    // process-payout-reminders auto-approve guard) and treat 0 rows updated as a
+    // concurrent-processing conflict.
+    const { data: updatedRows, error: updateError } = await supabase
       .from("payout_approvals")
       .update({
         status:           "rejected",
         rejected_at:      new Date().toISOString(),
         rejection_reason: rejectionReason,
       })
-      .eq("id", payoutApprovalId);
+      .eq("id", payoutApprovalId)
+      .eq("status", "pending_approval")
+      .select("id");
 
     if (updateError) {
       console.error(`[${FUNCTION_NAME}] Failed to update payout_approvals:`, updateError.message);
       return new Response(JSON.stringify({ ok: false, error: "Database update failed" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      console.warn(`[${FUNCTION_NAME}] Conflict — payout ${payoutApprovalId} was no longer pending_approval at UPDATE time (processed concurrently)`);
+      return new Response(JSON.stringify({ ok: false, error: "Conflict — payout already processed (status changed since it was loaded)" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 

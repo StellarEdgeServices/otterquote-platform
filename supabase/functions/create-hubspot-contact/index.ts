@@ -5,7 +5,9 @@
  *
  * Homeowner mode (default):
  *   Called fire-and-forget from get-started.html page 1.
- *   Auth: no JWT required — called pre-auth
+ *   Auth: requires a valid Supabase user JWT resolved via auth.getUser()
+ *   (86e1xdaxe #1 — anon-key-only bearers are rejected); input is validated
+ *   and sanitized (email format, bounded lengths, control chars stripped).
  *
  * Contractor mode (D-210/D-218):
  *   Called from contractor-pre-approval.html after page 2 submission.
@@ -24,6 +26,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const HUBSPOT_API = "https://api.hubapi.com";
 const BOOTSTRAP_KEY = "otter-hs-prop-bootstrap-d218-2026";
@@ -325,11 +328,52 @@ serve(async (req: Request) => {
   }
 
   // ── HOMEOWNER MODE (D-189) ───────────────────────────────────────────────────
-  // Original logic — unchanged.
-  const { email, firstname, lastname, phone, address } = body as Record<string, string>;
+  // D-211 CODE-3 hardening (86e1xdaxe #1): homeowner mode previously required only
+  // a non-empty email — no JWT check, no validation → arbitrary contact creation.
+  // Now requires a valid Supabase user JWT (auth.getUser() rejects anon-key-only
+  // bearers) and validates/sanitizes all fields before they reach HubSpot.
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!supabaseUrl || (!supabaseAnon && !serviceRoleKey)) {
+    console.error("create-hubspot-contact (homeowner): Supabase env vars not set");
+    return jsonResponse({ error: "server configuration error" }, 500, cors);
+  }
 
-  if (!email) {
-    return jsonResponse({ error: "email required" }, 400, cors);
+  const authHeader = req.headers.get("Authorization") || "";
+  const userClient = createClient(supabaseUrl, supabaseAnon || serviceRoleKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: userData, error: userError } = await userClient.auth.getUser();
+  if (userError || !userData?.user) {
+    return jsonResponse({ error: "unauthorized" }, 401, cors);
+  }
+
+  // Basic input validation: strip control chars, enforce format + bounded lengths.
+  const stripControl = (v: unknown): string =>
+    typeof v === "string" ? v.replace(/[\u0000-\u001F\u007F]/g, "").trim() : "";
+
+  const email     = stripControl(body.email);
+  const firstname = stripControl(body.firstname);
+  const lastname  = stripControl(body.lastname);
+  const phone     = stripControl(body.phone);
+  const address   = stripControl(body.address);
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || email.length > 254 || !EMAIL_RE.test(email)) {
+    return jsonResponse({ error: "valid email required" }, 400, cors);
+  }
+
+  const FIELD_LIMITS: Array<[string, string, number]> = [
+    ["firstname", firstname, 100],
+    ["lastname",  lastname,  100],
+    ["phone",     phone,     30],
+    ["address",   address,   200],
+  ];
+  for (const [name, value, max] of FIELD_LIMITS) {
+    if (value.length > max) {
+      return jsonResponse({ error: `${name} exceeds ${max} character limit` }, 400, cors);
+    }
   }
 
   const properties: Record<string, string> = { email };
