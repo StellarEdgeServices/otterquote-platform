@@ -51,7 +51,7 @@ export function SignedDocLink({
   ttlSeconds: number;
   label: string;
   className?: string;
-}): JSX.Element {
+}): React.JSX.Element {
   if (!path) {
     return <></>;
   }
