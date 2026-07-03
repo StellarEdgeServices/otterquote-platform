@@ -45,6 +45,9 @@
       try { localStorage.removeItem('cs_auth_role'); } catch (e) {}
       log('BOUNCING to /contractor-pre-approval.html');
       window.location.replace('/contractor-pre-approval.html' + search + hash);
+    } else if (role === 'homeowner') {
+      log('BOUNCING to /dashboard.html');
+      window.location.replace('/dashboard.html' + search + hash);
     } else {
       log('not a contractor (role=' + role + '), letting homepage render');
     }
