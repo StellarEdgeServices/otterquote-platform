@@ -8,7 +8,7 @@ This is the Next.js 15 + React 19 application for OtterQuote, scaffolded as part
 - **Tailwind CSS** configured to inherit CSS variables from the static site
 - **App Router** (Next.js 13+ app directory structure)
 - **Supabase** integration ready (env vars provided)
-- **Google Analytics 4** configured (property: G-JNQ6XR3LX2)
+- **Google Analytics 4** configured (property: G-D1Y1TLGEFY)
 - **Netlify** configuration for deployment
 
 ## Local Development
@@ -93,7 +93,7 @@ Required environment variables (copy from `.env.local.example`):
 6. Set environment variables in Netlify:
    - `NEXT_PUBLIC_SUPABASE_URL=https://yeszghaspzwwstvsrioa.supabase.co`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY=<get from Supabase dashboard>`
-   - `NEXT_PUBLIC_GA4_ID=G-JNQ6XR3LX2`
+   - `NEXT_PUBLIC_GA4_ID=G-D1Y1TLGEFY`
 7. Deploy from the `feature/d211-react-scaffold` branch first (for staging verification)
 8. Once verified on staging, create a Netlify alias or second site for production if needed
 

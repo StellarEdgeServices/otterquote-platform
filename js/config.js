@@ -10,7 +10,7 @@ var CONFIG = {
   SUPABASE_ANON: 'sb_publishable_mKmYIsRMc6dCG8ZrGGbyyw_l_MOTwZP',
 
   // ── Google Analytics 4 ──
-  GA4_ID: 'G-JNQ6XR3LX2',
+  GA4_ID: 'G-D1Y1TLGEFY',
 
   // ── Mailgun (inbound email parsing) ──
   MAILGUN_DOMAIN:  'sandboxd2b099fad357409b845e5f4c5e8bd74e.mailgun.org',
