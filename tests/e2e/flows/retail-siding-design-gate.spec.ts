@@ -111,9 +111,20 @@ test.describe('Flow C — Retail Siding Design Gate (D-164)', () => {
     await page.goto('/contractor-opportunities.html');
     await page.waitForLoadState('load');
 
-    // Wait for opportunities to load
+    // Wait for the opportunities list to finish loading. The container settles to
+    // EITHER opportunity cards OR an empty-state panel. Do NOT require a card to
+    // exist -- C1's contract is only that the SIDING claim stays hidden, not that
+    // some other opportunity is present. The previous `[data-claim-id].length > 0`
+    // wait timed out (and reddened the entire suite on every main run since the
+    // D-165 per-trade release / ready_for_bids filter landed 2026-06-23) whenever
+    // no non-siding opportunity rendered for the test contractor at C1 time. (86e25p8bu)
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-claim-id]').length > 0,
+      () => {
+        const el = document.getElementById('opportunitiesContainer');
+        if (!el) return false;
+        return el.querySelector('[data-claim-id]') !== null ||
+               el.querySelector('.empty-state, .empty-state-early') !== null;
+      },
       { timeout: 15_000 }
     );
 
