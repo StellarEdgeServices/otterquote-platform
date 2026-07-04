@@ -11,6 +11,18 @@
  *   TWILIO_AUTH_TOKEN
  *   TWILIO_MESSAGING_SERVICE_SID   ← preferred (A2P / TCR campaign)
  *   TWILIO_PHONE_NUMBER             ← fallback only if messaging service not set
+ *
+ * ── Auth (D-211 Phase 16/32 — open-relay closure) ─────────────────────────
+ * verify_jwt=false at the gateway (preserved) so trusted internal callers
+ * (notify-contractors uses the service-role bearer) and logged-in browser
+ * callers both work. Authorization is enforced IN-HANDLER: the caller must
+ * present EITHER the service-role key OR a valid authenticated-user JWT
+ * (auth.getUser). Anonymous / anon-key-only / missing-token callers are
+ * rejected — this closes the prior unauthenticated open-relay (86e207gey).
+ * NOTE: for authenticated end-user callers the recipient is still caller-
+ * supplied; claim-scoped recipient derivation (selected contractor + claimant)
+ * is deferred to the SMS re-enablement work, gated behind the Twilio A2P/TCR
+ * vendor remediation. Tracked — do not ship user-facing SMS live without it.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -50,6 +62,32 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
+    // ── AUTH GATE (D-211 Phase 32 — close the open SMS relay, 86e207gey) ────
+    // Require EITHER the service-role key (trusted internal callers, e.g.
+    // notify-contractors) OR a valid authenticated-user JWT. Reject anyone
+    // presenting no token or only the public anon key.
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+    let isAuthorized = false;
+    if (token && token === supabaseKey) {
+      isAuthorized = true; // trusted internal caller (service role)
+    } else if (token) {
+      const { data: userData } = await supabase.auth.getUser(token);
+      if (userData?.user) isAuthorized = true; // authenticated end user
+    }
+
+    if (!isAuthorized) {
+      console.warn(`[${FUNCTION_NAME}] Unauthorized call rejected (no valid user/service token).`);
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     const { to, message, notification_id } = await req.json();
 
     // Validate required fields
@@ -64,6 +102,13 @@ serve(async (req) => {
         }
       );
     }
+
+    // Defensive sanitization of the caller-supplied message (D-211 Phase 32):
+    // strip C0 control characters (keep \t \n \r) and clamp length (~10 SMS
+    // segments) to limit content-injection / oversized-send abuse.
+    const safeMessage = String(message)
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+      .slice(0, 1600);
 
     // ========== RATE LIMIT CHECK ==========
     const { data: rateLimitResult, error: rlError } = await supabase.rpc(
@@ -129,7 +174,7 @@ serve(async (req) => {
 
     const formData = new URLSearchParams();
     formData.append("To", to);
-    formData.append("Body", message);
+    formData.append("Body", safeMessage);
 
     // Use Messaging Service SID for A2P / TCR compliance when available.
     // Fall back to a direct phone number only if the SID is not configured.
