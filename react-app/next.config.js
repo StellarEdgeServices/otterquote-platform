@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 // build-stamp: main 2026-05-07
-// typescript.ignoreBuildErrors: true — TS cleanup tracked in ClickUp (see D-211 post-launch task)
+// typescript.ignoreBuildErrors removed (86e1z7tn2) — tsc --noEmit is now a CI gate;
+// pre-existing type errors were fixed, not suppressed. See react-app-tests.yml.
 
 // Phase 16 (D-211): baseline security headers. CSP ships REPORT-ONLY first (observe, don't break);
 // flip to an enforcing Content-Security-Policy after a clean observation window.
@@ -31,7 +32,6 @@ const securityHeaders = [
 
 const nextConfig = {
   reactStrictMode: true,
-  typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
   async headers() {
     return [

@@ -45,6 +45,9 @@
       try { localStorage.removeItem('cs_auth_role'); } catch (e) {}
       log('BOUNCING to /contractor-pre-approval.html');
       window.location.replace('/contractor-pre-approval.html' + search + hash);
+    } else if (role === 'homeowner') {
+      log('BOUNCING to /dashboard.html');
+      window.location.replace('/dashboard.html' + search + hash);
     } else {
       log('not a contractor (role=' + role + '), letting homepage render');
     }
@@ -80,12 +83,12 @@
 <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
 
 <!-- GA4 -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-JNQ6XR3LX2"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-  gtag('config', 'G-JNQ6XR3LX2');
+  gtag('config', 'G-D1Y1TLGEFY');
 </script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
@@ -332,6 +335,9 @@
 }
 
 .track-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
   padding: var(--sp-7) var(--sp-8);
   border-radius: var(--radius-lg);
   border: 1px solid rgba(255,255,255,0.08);
@@ -704,7 +710,7 @@
     </p>
     <div class="hero-cta">
       <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get My Free Quotes</a>
-      <a href="contractor-login.html" class="btn btn-secondary btn-lg">I'm a Contractor</a>
+      <a href="contractor-join.html" class="btn btn-secondary btn-lg">I'm a Contractor</a>
     </div>
     <div class="hero-trust">
       <div class="trust-item">
@@ -731,16 +737,16 @@
   <div class="container">
     <p class="two-track-heading">Otter Quotes works for both types of homeowner:</p>
     <div class="two-track-grid">
-      <div class="track-card">
+      <a href="https://app.otterquote.com/get-started" class="track-card">
         <span class="track-card-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:12px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
         <h3>I have an insurance claim</h3>
         <p>Your insurer has approved a repair &mdash; or you're in the process of filing. Otter Quotes helps you gather your insurance estimate and measurements, then gets multiple licensed contractors competing on your job. You choose the one you trust most.</p>
-      </div>
-      <div class="track-card">
+      </a>
+      <a href="https://app.otterquote.com/get-started" class="track-card">
         <span class="track-card-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:12px"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
         <h3>I'm paying out of pocket</h3>
         <p>No insurance involved &mdash; you just need the work done and you want a fair price. Otter Quotes handles the measurements and gets contractors to compete for your business, so you know what the market actually charges before you commit to anyone.</p>
-      </div>
+      </a>
     </div>
   </div>
 </section>
@@ -828,7 +834,7 @@
 <section class="mid-cta">
   <div class="container">
     <p>Ready to see what contractors in your area will offer?</p>
-    <a href="coming-soon.html" class="btn btn-primary btn-lg">Tell Us About Your Home &mdash; It's Free</a>
+    <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Tell Us About Your Home &mdash; It's Free</a>
   </div>
 </section>
 
@@ -976,7 +982,7 @@
   <div class="container">
     <h2>Get Your Best Deal on Home Repairs</h2>
     <p>It takes less than 2 minutes to describe your home and what needs to be done. We'll walk you through the rest &mdash; and it costs you nothing.</p>
-    <a href="coming-soon.html" class="btn btn-primary btn-lg">Get Started Free</a>
+    <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Started Free</a>
     <div class="guarantee-banner">
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       <p>

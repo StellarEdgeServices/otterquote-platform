@@ -297,6 +297,179 @@ serve(async (req) => {
       }
     }
 
+    // ========== D-149 COUNTER-SIGNATURE NUDGE (86e1gabf4) ==========
+    // Immediate Mailgun nudge to the CONTRACTOR at the homeowner-signed
+    // transition: homeowner_1 completed while contractor_1 has not. The check
+    // is routing-order-agnostic, so it covers both signer orderings used by
+    // create-docusign-envelope. Runs AFTER HMAC verification and AFTER the
+    // contractor_signed_at tracking write above — nothing upstream changes.
+    //
+    // Entirely NON-FATAL: every failure logs and falls through so DocuSign
+    // Connect always receives the normal success response (never an error
+    // because Mailgun or a lookup hiccuped).
+    //
+    // State marker: a `notifications` row (channel 'system',
+    // notification_type 'countersign_nudge_pending') is inserted BEFORE the
+    // send. It is (a) the idempotency guard for this immediate nudge across
+    // repeated Connect events, and (b) the work queue drained by the scheduled
+    // counter-sig-reminders EF for the 2-hour business-hours cadence.
+    // activity_log is deliberately NOT used: its live schema has NOT NULL
+    // user_id + title and an event_type CHECK, which reject webhook-context
+    // inserts (86e1tz17j audit-write class).
+    if (isContract && status !== "completed" && status !== "declined" && status !== "voided") {
+      try {
+        const nudgeSigners: any[] = (
+          payload.data?.envelopeSummary?.recipients?.signers ||
+          payload.recipients?.signers ||
+          []
+        );
+        const homeownerCompleted = nudgeSigners.find(
+          (s: any) => s.clientUserId === "homeowner_1" && s.status === "completed"
+        );
+        const contractorCompleted = nudgeSigners.find(
+          (s: any) => s.clientUserId === "contractor_1" && s.status === "completed"
+        );
+
+        if (homeownerCompleted && !contractorCompleted) {
+          // Idempotency: at most one pending-marker (and one immediate nudge)
+          // per envelope, no matter how many Connect events repeat this state.
+          const { data: existingMarker } = await supabase
+            .from("notifications")
+            .select("id")
+            .eq("notification_type", "countersign_nudge_pending")
+            .like("message_preview", `envelope=${envelopeId};%`)
+            .limit(1)
+            .maybeSingle();
+
+          if (!existingMarker) {
+            // Resolve the awaiting quote + contractor. Contact data comes from
+            // the PRIVATE contractors table — contractors_public has no
+            // contact columns.
+            const { data: nudgeQuote } = await supabase
+              .from("quotes")
+              .select("id, contractor_id")
+              .eq("docusign_envelope_id", envelopeId)
+              .is("contractor_signed_at", null)
+              .maybeSingle();
+
+            if (nudgeQuote?.contractor_id) {
+              const { data: nudgeContractor } = await supabase
+                .from("contractors")
+                .select("id, contact_name, company_name, email, notification_emails")
+                .eq("id", nudgeQuote.contractor_id)
+                .single();
+
+              const nudgeRecipients: string[] = [];
+              if (nudgeContractor?.email) nudgeRecipients.push(nudgeContractor.email);
+              if (Array.isArray(nudgeContractor?.notification_emails)) {
+                for (const e of nudgeContractor.notification_emails) {
+                  if (e && !nudgeRecipients.includes(e)) nudgeRecipients.push(e);
+                }
+              }
+
+              if (nudgeRecipients.length > 0) {
+                const homeownerSignedAt =
+                  homeownerCompleted.signedDateTime || new Date().toISOString();
+
+                // Marker FIRST (claim the send) so a crash after Mailgun cannot
+                // produce duplicate immediate nudges on the next Connect event.
+                const { error: markerErr } = await supabase.from("notifications").insert({
+                  claim_id: claim.id,
+                  channel: "system",
+                  notification_type: "countersign_nudge_pending",
+                  recipient: nudgeRecipients[0],
+                  message_preview: `envelope=${envelopeId};homeowner_signed_at=${homeownerSignedAt}`,
+                });
+                if (markerErr) {
+                  // Loud: without the marker the scheduled reminder cadence
+                  // will not see this envelope. The immediate email still goes
+                  // out below.
+                  console.error(
+                    `[D-149] countersign_nudge_pending marker insert failed for envelope ${envelopeId}:`,
+                    markerErr
+                  );
+                  await reportToSentry(markerErr, {
+                    fn: "docusign-webhook",
+                    op: "notifications.insert",
+                    extra: { notification_type: "countersign_nudge_pending", claim_id: claim.id },
+                  });
+                }
+
+                // Property address + Job # for the email body (same
+                // derivations as the D-225 C5 homeowner fan-out below).
+                let nudgeAddress = "your project";
+                const { data: nudgeClaimRow } = await supabase
+                  .from("claims")
+                  .select("property_address")
+                  .eq("id", claim.id)
+                  .single();
+                if (nudgeClaimRow?.property_address) nudgeAddress = nudgeClaimRow.property_address;
+                const nudgeJobNumber = `Job #${(claim.id || "").slice(-8).toUpperCase()}`;
+                const contractorDashboardUrl = "https://otterquote.com/contractor-dashboard.html";
+                const nudgeName = nudgeContractor?.contact_name || "Contractor";
+
+                const nudgeSubject = "The homeowner has signed — your counter-signature is needed";
+                const nudgeText =
+                  `Hi ${nudgeName},\n\n` +
+                  `Good news — the homeowner has signed the contract for ${nudgeAddress} (${nudgeJobNumber}).\n\n` +
+                  `The contract is now waiting on your counter-signature. Once you sign, the agreement is fully executed and the project can move forward.\n\n` +
+                  `Counter-sign from your dashboard:\n${contractorDashboardUrl}\n\n` +
+                  `We'll send you a reminder every couple of hours during business hours until the contract is fully executed.\n\n` +
+                  `Questions? Reply to this email or call (844) 875-3412.\n\n` +
+                  `— The Otter Quotes Team`;
+                const nudgeHtml =
+                  `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">` +
+                  `<p>Hi ${nudgeName},</p>` +
+                  `<p>Good news — the homeowner has signed the contract for <strong>${nudgeAddress}</strong> (${nudgeJobNumber}).</p>` +
+                  `<p>The contract is now waiting on <strong>your counter-signature</strong>. Once you sign, the agreement is fully executed and the project can move forward.</p>` +
+                  `<p><a href="${contractorDashboardUrl}" style="color:#0066cc;">Counter-sign from your dashboard</a></p>` +
+                  `<p>We'll send you a reminder every couple of hours during business hours until the contract is fully executed.</p>` +
+                  `<p>Questions? Reply to this email or call (844) 875-3412.</p>` +
+                  `<p>— The Otter Quotes Team</p></body></html>`;
+
+                const nudgeApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
+                // MAILGUN_DOMAIN with a fallback to the domain already
+                // hardcoded in this file's D-225 C5 block — this EF's secrets
+                // may predate the MAILGUN_DOMAIN var.
+                const nudgeDomain = Deno.env.get("MAILGUN_DOMAIN") || "mail.otterquote.com";
+                if (nudgeApiKey) {
+                  for (const recipient of nudgeRecipients) {
+                    const fd = new FormData();
+                    fd.append("from", `Otter Quotes <notifications@${nudgeDomain}>`);
+                    fd.append("to", recipient);
+                    fd.append("subject", nudgeSubject);
+                    fd.append("text", nudgeText);
+                    fd.append("html", nudgeHtml);
+                    const nudgeResp = await fetch(
+                      `https://api.mailgun.net/v3/${nudgeDomain}/messages`,
+                      {
+                        method: "POST",
+                        headers: { Authorization: `Basic ${btoa(`api:${nudgeApiKey}`)}` },
+                        body: fd,
+                      }
+                    );
+                    console.log(
+                      `[D-149] immediate counter-sign nudge Mailgun status=${nudgeResp.status} to=${recipient} envelope=${envelopeId}`
+                    );
+                  }
+                } else {
+                  console.warn("[D-149] MAILGUN_API_KEY not configured — immediate counter-sign nudge skipped");
+                }
+              } else {
+                console.warn(`[D-149] contractor ${nudgeQuote.contractor_id} has no email — nudge skipped`);
+              }
+            } else {
+              console.warn(`[D-149] no un-countersigned quote for envelope ${envelopeId} — nudge skipped`);
+            }
+          }
+        }
+      } catch (nudgeErr) {
+        // Non-fatal by contract: the webhook must still return its normal
+        // success response to DocuSign Connect.
+        console.error("[D-149] immediate counter-sign nudge failed (non-fatal):", nudgeErr);
+      }
+    }
+
     // ========== UPDATE CLAIM BASED ON STATUS ==========
     const updateData: Record<string, any> = {};
     let shouldNotifyContractor = false;

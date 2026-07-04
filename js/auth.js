@@ -220,9 +220,15 @@ window.Auth = {
   /** Sign out */
   async signOut() {
     if (!sb) return;
-    _clearStaleAuthCookies(); // Eagerly clear domain-wide cookies before sign-out
-    await sb.auth.signOut();
-    window.location.href = '/index.html';
+    _clearStaleAuthCookies(); // parent-domain cookies (unchanged)
+    try {
+      // scope:'local' avoids a network revoke that can throw and strand the
+      // host-only sb_at cookie + skip the redirect (86e20pdta — mirrors React).
+      await sb.auth.signOut({ scope: 'local' });
+    } finally {
+      try { document.cookie = 'sb_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT'; } catch (e) { /* non-fatal */ }
+      window.location.href = '/index.html';
+    }
   },
 
   /**

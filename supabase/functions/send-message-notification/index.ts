@@ -224,7 +224,7 @@ async function handleRequest(req: Request): Promise<Response> {
     });
     if (rlError) {
       console.error(`[${FUNCTION_NAME}] Rate limit check error:`, rlError.message);
-    } else if (!rlData) {
+    } else if (rlData?.allowed === false) {
       return new Response(
         JSON.stringify({ success: false, notification_sent: false, reason: "rate_limited" }),
         {
@@ -290,8 +290,8 @@ async function handleRequest(req: Request): Promise<Response> {
       // Send email to contractor
       const subject = "You have a new message on your Otter Quotes project";
       const htmlBody = buildEmail(`
-        <p>Hi ${contractorProfile.full_name},</p>
-        <p>You have a new message from <strong>${senderProfile.full_name}</strong> regarding your project.</p>
+        <p>Hi ${escapeHtml(contractorProfile.full_name || "")},</p>
+        <p>You have a new message from <strong>${escapeHtml(senderProfile.full_name || "")}</strong> regarding your project.</p>
         <p><strong>Message preview:</strong></p>
         <blockquote style="border-left: 4px solid #14B8A6; padding-left: 16px; margin: 16px 0; color: #666;">
           ${escapeHtml(message.body.substring(0, 200))}${message.body.length > 200 ? "..." : ""}
@@ -348,8 +348,8 @@ async function handleRequest(req: Request): Promise<Response> {
       // Send email to homeowner
       const subject = "You have a new message on your Otter Quotes project";
       const htmlBody = buildEmail(`
-        <p>Hi ${homeownerProfile.full_name},</p>
-        <p>You have a new message from <strong>${senderProfile.full_name}</strong> regarding your project.</p>
+        <p>Hi ${escapeHtml(homeownerProfile.full_name || "")},</p>
+        <p>You have a new message from <strong>${escapeHtml(senderProfile.full_name || "")}</strong> regarding your project.</p>
         <p><strong>Message preview:</strong></p>
         <blockquote style="border-left: 4px solid #14B8A6; padding-left: 16px; margin: 16px 0; color: #666;">
           ${escapeHtml(message.body.substring(0, 200))}${message.body.length > 200 ? "..." : ""}
