@@ -849,6 +849,13 @@
         </p>
       </section>
 
+      <!-- D-266: Referral-fee eligibility disclaimer -->
+      <section class="refer-section">
+        <p class="referral-fee-disclaimer" style="color: var(--slate); font-size: 0.85rem; line-height: 1.6; text-align: center; margin: 0;">
+          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+        </p>
+      </section>
+
     </div>
   </main>
 
@@ -1241,7 +1248,7 @@ Best regards`;
       const earned = completed * 50;
       const el = document.getElementById('referral-summary');
       if (el) {
-        el.textContent = total + ' referral' + (total !== 1 ? 's' : '') + ' \u00b7 ' + completed + ' completed \u00b7 $' + earned + ' earned';
+        el.textContent = total + ' referral' + (total !== 1 ? 's' : '') + ' · ' + completed + ' completed · $' + earned + ' earned';
       }
     }
 
