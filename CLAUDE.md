@@ -1,7 +1,5 @@
 # OtterQuote — Claude Code Project Instructions
-# Operation Hardshell | Project CLAUDE.md | Written 2026-05-18 | Ghost-cleanup pass 2026-07-05
-
-> **⚠️ CONSOLIDATION SPRINT (2026-07-05 → ~2026-07-12):** Autonomous queue executors and nightly bats are PAUSED. Do not claim ClickUp queue tasks from scheduled/headless sessions during the sprint. Critical fixes (security, production incidents) proceed normally. A full CLAUDE.md v2 lands at sprint close.
+# Operation Hardshell | Project CLAUDE.md | Written 2026-05-18 | v2 cutover 2026-07-06
 
 ---
 
@@ -9,7 +7,7 @@
 Every Code session must do these three things before any other work:
 
 1. Read the most recent file in `handoffs/` (sorted by date in filename). If no handoff exists, proceed normally.
-2. Check ClickUp list 901711730553 for any open `[HARDSHELL]` tasks — report current phase if migration is active.
+2. Check GitHub Issues on this repo for any open items in your lane — report current phase if migration is active.
 3. Confirm MCP tools are available: ClickUp, Supabase, GitHub, Gmail, Sentry.
 
 Then state: "Session initialized. Last handoff: [date or 'none']. Ready."
@@ -25,14 +23,20 @@ Then state: "Session initialized. Last handoff: [date or 'none']. Ready."
 
 ---
 
-## AUTHORITY MODEL (R-004)
-| Tier | When | Action |
-|------|------|--------|
-| A — Autonomous | Pure implementation, no visible product change | Execute, no ask |
-| B — Notify-After | Visible UX detail, no D-number impact | Ship, then tell Dustin |
-| C — Ask First | D-number, money, legal, brand, Stripe, Tier 3B deploy | Ask before proceeding |
+## AUTHORITY MODEL (R-097)
+Claude ships all technical work autonomously — security patches, dependency upgrades, Edge Function changes, additive schema (Tier 3A), bug fixes, refactors, deploys, task closure.
 
-Pre-escalation check (R-015): Before surfacing ANY Tier C question, verify whether an existing rule or D-number already resolves it. If yes → Tier A.
+The CEO (Dustin) is asked BEFORE action on exactly four categories:
+1. Money (pricing/fees/charges/vendor spend)
+2. Legal wording (D-registry-protected copy: D-104, D-123, D-147, D-151, D-170, D-177, D-266…)
+3. Brand & user promises
+4. Irreversible destruction
+
+Destructive/irreversible changes (DROP/ALTER/RLS, EFs with external side effects touching Stripe/email/SMS/webhooks, migration rollbacks) post a 24-hour risk brief to the CEO board and proceed after the window absent objection (R-097; replaces the old indefinite Tier-3B wait).
+
+Questions to the CEO must be phrased as business decisions with a recommended answer.
+
+Pre-escalation check (R-015): Before surfacing ANY question to the CEO, verify whether an existing rule or D-number already resolves it. If yes → proceed autonomously.
 
 ---
 
@@ -43,7 +47,7 @@ Every meaningful Code session writes a handoff file before exiting.
 **Template sections:**
 - Session Type
 - Date/Time
-- Tasks Completed (ClickUp IDs)
+- Tasks Completed (GitHub Issue links)
 - Files Changed (list every file)
 - Unresolved Items
 - Next Session Should
@@ -72,13 +76,13 @@ Never assign D/R numbers from this file. Current counters live in otterquote-D-r
 ## DEPLOY CHAIN (D-221 Path A)
 `commit_via_api.py` → GitHub feature branch → PR → GitHub Actions CI → merge to main → Netlify auto-deploys
 
-**No direct commits to main — ever.** (A June 13 revenue fix went direct-to-main with no PR; it worked, but it left no review trail and broke task-closure evidence. Don't repeat it.)
+**Direct-to-main commits are PROHIBITED even when correct.** (June 13 lesson: the revenue fix was right but invisible — cost a 3-week false alarm.) Every change: feature branch → PR → CI green (required checks success, not just monitors) → merge. Post-deploy smoke test + Sentry check are part of the deploy, not optional follow-up.
 
 Tier system (D-182, amended D-261):
 - Tier 1: Frontend changes — autonomous after checklist
 - Tier 2: New features — exec check first
 - Tier 3A: Additive SQL/EF (new nullable columns, new tables, indexes, new EFs with no external side effects) — autonomous
-- Tier 3B: Destructive/irreversible (DROP/ALTER/RLS changes, EFs touching Stripe/email/SMS/webhooks, migration rollbacks) — approval task per D-220
+- Tier 3B: Destructive/irreversible (DROP/ALTER/RLS changes, EFs touching Stripe/email/SMS/webhooks, migration rollbacks) — 24-hour risk brief to the CEO board, proceed after the window absent objection (R-097)
 
 Before any git push: check Netlify deploy state (R-012). If state == 'error' → halt.
 
@@ -89,12 +93,11 @@ Deploy PAT: name `otterquote-wingman-deploy` (classic) — expires August 11, 20
 ## CRITICAL R-NUMBERS (full text in rule-reference.md)
 - R-001: File-based memory only. No native memory tools.
 - R-003: Error-log skill invoked proactively on ANY unexpected behavior. No deferring.
-- R-004: Tier A/B/C authority model (above).
-- R-005: Real-time task closure. When Dustin says "done/close/kill" → execute ClickUp closure that turn.
+- R-005: Real-time task closure. When Dustin says "done/close/kill" → execute closure that turn.
 - R-006: Claude's effort is not a cost. Default to production-grade.
 - R-007: Bug-Killer protocol. Bugs route to bug-killer skill, not run-work.
 - R-012: Pre-deploy Netlify state check.
-- R-015: Pre-escalation check before any Tier C surface.
+- R-015: Pre-escalation check before any CEO-facing question.
 - R-016: Proactive surface rule. Surface risks/gaps in the same turn, unprompted.
 - R-019: Cost discipline (pre-launch). Opus for strategic; Sonnet for builds; Haiku for scans.
 - R-031: Off-peak scheduling. Automated work runs 3 PM–7 AM ET.
@@ -103,6 +106,8 @@ Deploy PAT: name `otterquote-wingman-deploy` (classic) — expires August 11, 20
 - R-062: Skill masters live at `Claude Downloads\Claude's Memories\Skills\[skill]\SKILL.md`. (Supersedes retired R-013 "Skills Output" location — do not read or write `Skills Output/` skill files.)
 - R-089: GitHub credential discipline — token values never in memory/SKILL/CLAUDE files.
 - R-093: All content reads/writes in the Claude Downloads tree use host file tools, never the bash mount.
+- R-097: Authority model — autonomous execution, four ask-first categories, 24h risk brief for destructive/irreversible changes (above).
+- R-098: Task system split — GitHub Issues is the sole engineering backlog; ClickUp is the CEO board only (below).
 
 ---
 
@@ -117,22 +122,22 @@ When you need to update memory files → write to Claude Downloads paths above.
 
 ## TASK EXECUTION — run-work (unified executor)
 
-**RETIRED (2026-06-10, R-087/R-088; kill-list finalized 2026-07-05):** the `/executor` and `/wingman` slash commands and their skill families (wingman, wingman-f18, wingman-code, wingman-f18-code, executor, executor-code, cowork-drain, cowork-drain-f18, cowork-lane2-light, cowork-lane2-light-f18). Do NOT invoke these names or read their SKILL.md files, even if copies still exist on disk. Any bat file, task, or document referencing them is stale — flag it via error-log.
+**Current executor:** `run-work` v1.4 — read `C:\Users\Dustin Stohler\Downloads\Claude Downloads\Claude's Memories\Skills\run-work\SKILL.md` and follow it exactly. Three parameters: environment (cowork|code), model (haiku|sonnet|opus — DEFAULT HAIKU per R-088), mode (single|fanout|lane2light).
 
-**Current executor:** `run-work` — read `C:\Users\Dustin Stohler\Downloads\Claude Downloads\Claude's Memories\Skills\run-work\SKILL.md` and follow it exactly. Three parameters: environment (cowork|code), model (haiku|sonnet|opus — DEFAULT HAIKU per R-088), mode (single|fanout|lane2light). Budget: single = 9 tasks/60 min/2 failures; fanout = 12 tasks/60 min/2 bad waves.
+Invocations: `run run-work [code] [F-18/F-22/F-35] [drain]`. Budget: single = 9 tasks/60 min/2 failures; fanout = 12 tasks/60 min/2 bad waves.
 
-⚠️ Paused during the 2026-07-05 consolidation sprint (see banner).
+run-work is the sole executor family. There is no other executor, wingman, drain, or architect process — do not invoke or reference retired names.
 
 ---
 
-### /bug-killer [task_id] [description]
+### /bug-killer [issue_id] [description]
 
 Sequential, evidence-first bug investigation protocol. Routes the bug through the Stage 0–5 protocol — Stage 0 stop bleeding, Stage 1 read evidence (read-only sub-agent), Stage 2 hypothesis (autonomous for frontend+high-confidence; checkpoint for auth/payment/schema), Stage 3 minimal fix, Stage 4 verify+merge, Stage 5 prevention layer. Codified as R-007.
 
 When invoked, reads and follows `C:\Users\Dustin Stohler\Downloads\Claude Downloads\Claude's Memories\Skills\bug-killer-code\SKILL.md` exactly.
 
-Pass the ClickUp task ID and a short description as the bug identifier:
-- `/bug-killer 86e1XXXXX [short bug name]` — opens or resumes the bug thread at `Bug Threads/[task_id]-[name].md`
+Pass the GitHub Issue number and a short description as the bug identifier:
+- `/bug-killer #123 [short bug name]` — opens or resumes the bug thread at `Bug Threads/[issue_id]-[name].md`
 
 Orchestrator: Opus. Sub-agents: Sonnet (read-only Stage 1; bounded Stage 3). No parallel sub-agents — bug-killer is sequential. Two failed attempts = mandatory Dustin checkpoint. Prevention artifact in Stage 5 is non-negotiable.
 
@@ -144,15 +149,21 @@ Supabase SQL migration author. Drafts forward + rollback halves, runs against a 
 
 When invoked, reads and follows `C:\Users\Dustin Stohler\Downloads\Claude Downloads\Claude's Memories\Skills\migration-author-code\SKILL.md` exactly.
 
-All destructive migrations are **D-182 Tier 3B** — no migration self-deploys. After files are written and branch test passes, the skill creates a ClickUp approval task per D-220. Deploy chain is D-221 Path A: GitHub PR → merge → Supabase migration auto-run.
+All destructive migrations are **D-182 Tier 3B** — no migration self-deploys. After files are written and branch test passes, the skill posts a 24-hour risk brief to the CEO board per R-097. Deploy chain is D-221 Path A: GitHub PR → merge → Supabase migration auto-run.
 
 ---
 
-## CLICKUP
-List 901711730553 = Product and Tech (primary work queue)
-Close tasks with status: `complete`
-Tier/Model custom fields must be populated for executor routing.
-Board split migration in progress (2026-07-05 sprint) — engineering backlog moves to GitHub Issues at cutover; ClickUp becomes the CEO-facing board. Until cutover is announced in a handoff, ClickUp remains the queue.
+## TASK SYSTEM (R-098)
+
+The engineering backlog lives EXCLUSIVELY in GitHub Issues on this repo.
+
+**Labels:** `model:haiku`/`model:sonnet`/`model:opus` (execution tier), `lane:auto`/`lane:ceo-input`, `env:code`/`env:cowork`, `tier:3a`/`tier:3b`, `incident`, `triage`.
+
+**Claims:** comment `[RW-CLAIM: <thread-id> | <ISO UTC>]` + in-progress label. Legacy `[WINGMAN-*]` markers are honored on read.
+
+**Closure:** requires evidence — a PR link, commit, or verification note in an `[RW-DONE]` comment — and issues close with reason `completed`.
+
+**ClickUp** is the CEO board only (decisions, 24h risk briefs, business items): never file engineering work there, never file CEO decisions here.
 
 ---
 
