@@ -4346,6 +4346,12 @@
     // Insurance jobs: fee is 5% of RCV (from loss sheet), not 5% of bid amount.
     // Retail jobs: fee is 5% of bid amount as before.
     function updateFeeCalculator() {
+      // D-215: keep the fee-acceptance disclosure in sync too. Retail/gutter/
+      // siding price inputs sync the hidden #totalPrice programmatically (no
+      // input event), so the disclosure showed $0.00 while the contractor
+      // accepted the fee (E2E walk fix 2026-07-07). updateFeeDisclosure is
+      // async; fire-and-forget is fine for display refresh.
+      if (typeof updateFeeDisclosure === 'function') { try { updateFeeDisclosure(); } catch (e) { /* non-fatal */ } }
       const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
 
       // For insurance jobs, fee base is RCV; for retail, fee base is bid amount
