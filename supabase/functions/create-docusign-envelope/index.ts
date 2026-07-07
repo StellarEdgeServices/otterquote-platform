@@ -1408,17 +1408,24 @@ async function handleContractorSign(
 
   const trades = claimData?.selected_trades || [];
   const trade = trades.length ? trades[0].toLowerCase() : "roofing";
-  let fundingType = "insurance";
-  if (claimData?.funding_type) {
-    fundingType = claimData.funding_type.toLowerCase();
-  } else if (claimData?.job_type === "retail" || claimData?.job_type === "cash") {
-    fundingType = "retail";
-  }
+  // Canonicalize claim funding to the template vocabulary. claims.funding_type
+  // is 'insurance' | 'cash' — the old code compared raw 'cash' against slot
+  // labels like 'Retail'/'Insurance (full replacement)', so the primary match
+  // NEVER hit and the trade-only fallback could attach the wrong contract type
+  // (insurance agreement on a retail job). (E2E walk fix 2026-07-07.)
+  const rawClaimFunding = String(claimData?.funding_type || claimData?.job_type || "insurance").toLowerCase();
+  const fundingType = rawClaimFunding.includes("insurance") ? "insurance" : "retail";
+  const normalizeSlotFunding = (f: unknown): string => {
+    const s = String(f || "").toLowerCase();
+    if (s.includes("insurance")) return "insurance";
+    if (s.includes("retail") || s.includes("cash")) return "retail";
+    return s;
+  };
 
   const templates = contractorData?.contract_templates || [];
   let matchingTemplate = templates.find((t: any) =>
     t.trade && t.trade.toLowerCase() === trade &&
-    t.funding_type && t.funding_type.toLowerCase() === fundingType
+    t.funding_type && normalizeSlotFunding(t.funding_type) === fundingType
   );
   if (!matchingTemplate) {
     matchingTemplate = templates.find((t: any) => t.trade && t.trade.toLowerCase() === trade);
