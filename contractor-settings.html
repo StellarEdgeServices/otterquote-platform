@@ -1687,6 +1687,7 @@
   <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/contract-template-validation.js"></script>
   <script src="js/nav.js"></script>
 
   <script>
@@ -2493,6 +2494,10 @@
                     trade: trade,
                     funding_type: fundingType,
                     file_url: filePath,
+                    // `path` is the key create-docusign-envelope resolves first —
+                    // without it the EF treats file_url as a fetchable URL and 500s
+                    // (E2E walk fix 2026-07-07).
+                    path: filePath,
                     file_name: file.name,
                     uploaded_at: new Date().toISOString()
                 });
@@ -2506,6 +2511,18 @@
                 // Update local state and reload templates
                 contractorRecord.contract_templates = updatedTemplates;
                 await loadContractTemplates();
+
+                // D-199: create the contractor_templates validation row + run the
+                // anchor scan. Without this, bid_can_submit blocks every bid
+                // (IMP-009 relocation dropped the hook — E2E walk fix 2026-07-07).
+                if (window.D199 && window.D199.validateNewlyUploadedTemplate) {
+                    try {
+                        await window.D199.validateNewlyUploadedTemplate(contractorRecord.id, trade, fundingType, filePath, null);
+                    } catch (valErr) {
+                        console.warn('[D-199] post-upload validation failed (non-fatal):', valErr);
+                    }
+                    await loadContractTemplates();
+                }
 
                 // Open field mapping review modal for the just-uploaded template
                 openFieldMappingModal(trade, fundingType);
