@@ -2048,10 +2048,12 @@
           {
             id: 'estimate',
             title: 'Insurance Estimate',
-            required: true,
+            required: currentClaim.funding_type !== 'cash',
             status: currentClaim.has_estimate ? 'uploaded' : 'pending',
             filename: fileDisplayName(currentClaim.estimate_filename),
-            description: 'Upload your insurance adjuster\'s estimate or preliminary damage report.',
+            description: currentClaim.funding_type === 'cash'
+              ? 'Not required for retail projects. Optionally upload any existing estimates or documents you want bidders to see.'
+              : 'Upload your insurance adjuster\'s estimate or preliminary damage report.',
             buttons: [
               { label: 'Upload', action: 'upload', data: 'estimate' },
               { label: 'Help Me', action: 'help', data: 'estimate' }
@@ -2495,13 +2497,20 @@
         const needsMeasurements = currentClaim?.funding_type === 'cash';
         const measurementsOk    = !needsMeasurements || hasMeasurements;
 
-        const isReady = hasEstimate && hasMaterial && measurementsOk;
+        // E2E walk fix (2026-07-07): retail/cash claims have no insurance
+        // estimate — the estimate is a hard gate ONLY for insurance (and
+        // unknown) funding types. Requiring it unconditionally locked every
+        // retail homeowner out of Submit for Bids.
+        const needsEstimate = currentClaim?.funding_type !== 'cash';
+        const estimateOk    = !needsEstimate || hasEstimate;
+
+        const isReady = estimateOk && hasMaterial && measurementsOk;
 
         btn.disabled = !isReady;
 
         if (!isReady) {
           const missing = [];
-          if (!hasEstimate) missing.push('Insurance Estimate');
+          if (needsEstimate && !hasEstimate) missing.push('Insurance Estimate');
           if (!hasMaterial) missing.push('Material Selection');
           if (needsMeasurements && !hasMeasurements) missing.push('Property Measurements (required for retail projects)');
           hint.textContent = `Complete the required items: ${missing.join(', ')}.`;
