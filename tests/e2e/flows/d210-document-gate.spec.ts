@@ -349,18 +349,20 @@ test.describe('Flow E -- D-210 Document Gate (Contractor Pre-Approval)', () => {
     console.log(`  E11 pass: ${count} trade checkboxes found and selectable`);
   });
 
-  test('E12: profile card contains service counties text field', async ({ page }) => {
+  test('E12: profile card contains states selector with selectable state checkboxes', async ({ page }) => {
     await loginAsContractor(page, state);
     await page.goto('/contractor-pre-approval.html');
     await page.waitForLoadState('load');
     await expect(page.locator('#panelWizard')).toBeVisible({ timeout: 15_000 });
-    const countiesInput = page.locator('#profile-counties');
-    await expect(countiesInput).toBeVisible();
-    await expect(countiesInput).toBeEnabled();
-    await countiesInput.fill('Marion-IN, Hamilton-IN');
-    const value = await countiesInput.inputValue();
-    expect(value).toContain('Marion');
-    console.log('  E12 pass: service counties field present and writable');
+    const statesGrid = page.locator('#profile-states');
+    await expect(statesGrid).toBeVisible();
+    const inCheckbox = statesGrid.locator('input[name="profile-state"][value="IN"]');
+    await expect(inCheckbox).toBeVisible();
+    await inCheckbox.check({ force: true });
+    await expect(inCheckbox).toBeChecked();
+    const count = await statesGrid.locator('input[name="profile-state"]').count();
+    expect(count).toBeGreaterThan(0);
+    console.log(`  E12 pass: states selector present with ${count} states, IN selectable`);
   });
 
   test('E13: COI card is visible with file upload input and expiry date field', async ({ page }) => {
