@@ -69,6 +69,13 @@ Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable 
 - [ ] **React AuthProvider resolves independent of event timing.** Any change to `react-app/app/providers/auth-provider.tsx` (or a new React auth context) MUST flip `loading:false` even if `INITIAL_SESSION` never reaches the listener — pair `onAuthStateChange` with a proactive `supabase.auth.getSession()` on mount AND a ≤1.5s fallback timer. Verified by a WARM-reload probe (cold load alone does not catch this).
   - *Why: 2026-06-01 (bug 86e1mrwrx) — the React provider resolved `loading` only inside the `onAuthStateChange` callback. On a warm reload Supabase emits `INITIAL_SESSION` synchronously from cached storage before React's useEffect attaches the listener, so the event was missed and `/get-started` hung blank for returning homeowners. Cold loads worked, so the original 86e1f6nud probe wrongly called it a false positive. See ADR-011.*
 
+### Async State Guards (classic pages)
+*(Check only if a classic HTML page reads async-loaded state — e.g. `contractorRecord`, `sb` — in an event handler or page-init routine.)*
+- [ ] **Async-loaded state guarded at point of use.** Every handler that dereferences module-level async-loaded state guards `if (!state || !sb) { <friendly message>; return; }` at the top (matching sibling handlers). No raw caught error (`'…' + err.message`) is shown to the user for a predictable not-loaded race. Controls that depend on loaded state ship `disabled` and enable only after the load is confirmed.
+- [ ] **Independent page-init loads isolated.** A page-init routine with multiple independent async loads wraps each in its own `try/catch` (the D-204 pattern) so one failure can't skip the others. No single outer `try/catch` that only `console.error`s guarding multiple user-visible sections.
+- [ ] **Every "Loading…" placeholder resolves.** Any element showing a "Loading…" placeholder has a path that replaces it with content or a visible error/retry state on failure — never a permanent placeholder. Verified by exercising the FAILURE path (throttle network / force an early load to throw), not just the happy path.
+  - *Why: 2026-07-07 — #467 (`initializeStripeSetup` deref'd `contractorRecord.id` with no guard; buttons clickable pre-fetch → raw "Setup error: Cannot read properties of null (reading 'id')" shown to the user) and #469 (Contract Templates ran after cert/lic/stats awaits in one try whose catch only logged; an early throw left "Loading templates…" stuck forever). See ADR-013.*
+
 ### Config Scope
 *(Check only if config.js or any file referencing CONFIG/sb was modified.)*
 - [ ] **`var CONFIG` (not `const`/`let`).** `config.js` uses `var CONFIG` so `window.CONFIG` works across classic `<script>` tags.
