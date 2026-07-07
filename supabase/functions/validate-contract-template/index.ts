@@ -28,6 +28,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.104.0";
 import * as pdfjsLib from "npm:pdfjs-dist@4.0.379/legacy/build/pdf.mjs";
+// Deno cannot spawn pdfjs web workers; importing the worker module sets
+// globalThis.pdfjsWorker so the "fake worker" path works. Without this,
+// EVERY validation failed 422 "Setting up fake worker failed" (E2E walk fix
+// 2026-07-07 — no real contractor template could ever validate).
+import "npm:pdfjs-dist@4.0.379/legacy/build/pdf.worker.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inlined D-199 anchor manifest v2 (APPROVED April 30, 2026)
