@@ -1252,6 +1252,15 @@
         Add one or more payment methods so we can charge the platform fee when you win a project. Bank accounts (ACH) have no processing fee. Card payments include a small processing fee.
       </div>
 
+      <!-- Load-failure banner: shown if the contractor record can't be fetched, so the page
+           doesn't silently look normal while payment setup is broken -->
+      <div id="pmLoadError" style="padding: var(--sp-6); background: #FEE2E2; border: 1px solid #EF4444; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
+        <div style="font-size: 0.9rem; color: #991B1B; font-weight: 600; margin-bottom: var(--sp-2);">&#9888;&#65039; We couldn't load your account</div>
+        <p style="font-size: 0.875rem; color: #7F1D1D; margin-bottom: 0; line-height: 1.5;">
+          We couldn't load your account details, so payment setup is temporarily unavailable. Please refresh the page or try again in a moment.
+        </p>
+      </div>
+
       <!-- Status display: No payment methods on file (amber) -->
       <div id="pmStatusNoPayment" style="padding: var(--sp-6); background: #FFFBEB; border: 1px solid #E07B00; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
         <div style="font-size: 0.9rem; color: #92400E; font-weight: 600; margin-bottom: var(--sp-2);">⚠️ Payment Method Required</div>
@@ -1275,7 +1284,7 @@
         <p style="font-size: 0.85rem; color: #334155; line-height: 1.7; margin-bottom: var(--sp-6);">
           This isn't about us collecting fees faster. It's about making sure that when a homeowner chooses you, the experience is seamless from start to finish.
         </p>
-        <button class="btn btn-primary" onclick="initializeStripeSetup('us_bank_account')" style="background: #1E3A5F; color: #E07B00; border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;">
+        <button class="btn btn-primary pm-add-btn" disabled onclick="initializeStripeSetup('us_bank_account')" style="background: #1E3A5F; color: #E07B00; border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;">
           Add Backup Payment Method
         </button>
       </div>
@@ -1289,11 +1298,11 @@
 
       <!-- Add method buttons (Bank Account first = default/recommended) -->
       <div id="pmAddButtons" style="display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-3);">
-        <button class="btn btn-primary" style="flex: 1; min-width: 200px;" onclick="initializeStripeSetup('us_bank_account')">
+        <button class="btn btn-primary pm-add-btn" disabled style="flex: 1; min-width: 200px;" onclick="initializeStripeSetup('us_bank_account')">
           🏦 Add Bank Account
           <span style="display: block; font-size: 0.75rem; font-weight: 400; opacity: 0.85; margin-top: 2px;">Free &mdash; No Processing Fee</span>
         </button>
-        <button class="btn btn-secondary" style="flex: 1; min-width: 200px;" onclick="initializeStripeSetup('card')">
+        <button class="btn btn-secondary pm-add-btn" disabled style="flex: 1; min-width: 200px;" onclick="initializeStripeSetup('card')">
           💳 Add Credit/Debit Card
           <span style="display: block; font-size: 0.75rem; font-weight: 400; opacity: 0.85; margin-top: 2px;">Processing fee applies</span>
         </button>
@@ -1826,6 +1835,15 @@
 
     // Initialize Stripe setup for a specific payment type
     window.initializeStripeSetup = async function(paymentType) {
+      // Guard: the contractor record must be loaded before we can create a SetupIntent.
+      // Every sibling handler that reads contractorRecord guards the same way; without this,
+      // clicking an Add-payment-method button before initSettings() resolves the contractor
+      // fetch throws "Cannot read properties of null (reading 'id')" at the create-setup-intent
+      // call below (which is caught and shown to the user as a raw "Setup error: ..." string).
+      if (!contractorRecord || !sb) {
+        alert('Your account is still loading. Please wait a moment and try again.');
+        return;
+      }
       initializeStripe();
       currentSetupType = paymentType || 'card';
 
@@ -2116,6 +2134,10 @@
 
     // Update payment method UI &mdash; called from page load
     function updatePaymentMethodUI() {
+      // Contractor record is confirmed loaded by the time this runs (called from initSettings
+      // after the contractor fetch succeeds), so it is now safe to enable the Add-payment-method
+      // buttons that ship disabled to prevent clicking ahead of the fetch.
+      document.querySelectorAll('.pm-add-btn').forEach(btn => { btn.disabled = false; });
       loadPaymentMethods();
     }
 
@@ -2180,7 +2202,12 @@
             .eq('user_id', currentUser.id)
             .single();
 
-          if (error) { console.error('Error loading contractor:', error); return; }
+          if (error) {
+            console.error('Error loading contractor:', error);
+            const errBanner = document.getElementById('pmLoadError');
+            if (errBanner) errBanner.style.display = 'block';
+            return;
+          }
           contractorRecord = data;
 
           // CPA version guard &mdash; redirect to dashboard to show re-acceptance modal
