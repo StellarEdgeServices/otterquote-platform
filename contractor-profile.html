@@ -1393,38 +1393,61 @@
                     populateViewFromData(contractorRecord);
                     populateEditFromData(contractorRecord);
 
-                    // Load certifications
-                    const certResult = await sb
-                        .from('contractor_certifications')
-                        .select('*')
-                        .eq('contractor_id', contractorRecord.id)
-                        .order('created_at', { ascending: true });
+                    // Load certifications (isolated - a failure here must not skip the
+                    // template grids below, which previously left "Loading templates" stuck)
+                    try {
+                        const certResult = await sb
+                            .from('contractor_certifications')
+                            .select('*')
+                            .eq('contractor_id', contractorRecord.id)
+                            .order('created_at', { ascending: true });
 
-                    if (certResult.data) {
-                        contractorCertifications = certResult.data;
+                        if (certResult.data) {
+                            contractorCertifications = certResult.data;
+                        }
+                    } catch (e) { console.error('Error loading certifications:', e); }
+
+                    // Load licenses for credentials display (isolated)
+                    try {
+                        const licResult = await sb
+                            .from('contractor_licenses')
+                            .select('*')
+                            .eq('contractor_id', contractorRecord.id);
+
+                        if (licResult.data) {
+                            renderCredentials(licResult.data);
+                        }
+                    } catch (e) { console.error('Error loading licenses:', e); }
+
+                    // Load platform stats (isolated)
+                    try {
+                        const statsResult = await sb
+                            .from('quotes')
+                            .select('id', { count: 'exact' })
+                            .eq('contractor_id', contractorRecord.id);
+
+                        const statJobsEl = document.getElementById('statJobs');
+                        if (statJobsEl) statJobsEl.textContent = statsResult.count || '0';
+                    } catch (e) { console.error('Error loading platform stats:', e); }
+
+                    // B-2 fix: render template grids on page load (not just after upload).
+                    // IMP-009 loading-hang fix: each grid load is isolated so one failure can't
+                    // leave the other stuck on its "Loading templates" placeholder, and a failure
+                    // inside a loader resolves to a visible retry message instead of a blank/stuck grid.
+                    try {
+                        await loadContractTemplates();
+                    } catch (e) {
+                        console.error('Error loading contract templates:', e);
+                        const g = document.getElementById('contractTemplatesGrid');
+                        if (g) g.innerHTML = '<div style="text-align: center; color: #991B1B; padding: var(--sp-8);">Unable to load contract templates — please refresh the page to retry.</div>';
                     }
-
-                    // Load licenses for credentials display
-                    const licResult = await sb
-                        .from('contractor_licenses')
-                        .select('*')
-                        .eq('contractor_id', contractorRecord.id);
-
-                    if (licResult.data) {
-                        renderCredentials(licResult.data);
+                    try {
+                        await loadPcTemplates();
+                    } catch (e) {
+                        console.error('Error loading PC templates:', e);
+                        const g = document.getElementById('pcTemplatesGrid');
+                        if (g) g.innerHTML = '<div style="color: #991B1B; font-size: 0.875rem;">Unable to load project-confirmation templates — please refresh the page to retry.</div>';
                     }
-
-                    // Load platform stats
-                    const statsResult = await sb
-                        .from('quotes')
-                        .select('id', { count: 'exact' })
-                        .eq('contractor_id', contractorRecord.id);
-
-                    document.getElementById('statJobs').textContent = statsResult.count || '0';
-
-                    // B-2 fix: render template grids on page load (not just after upload)
-                    await loadContractTemplates();
-                    await loadPcTemplates();
 
                     // D-204: render manufacturer cert verification badges
                     try { await renderD204CertBadges(); } catch (e) { console.warn('[D-204] renderD204CertBadges failed:', e); }
