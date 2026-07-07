@@ -3594,9 +3594,14 @@
             const hasCompanyName     = !!(data.company_name && data.company_name.trim());
             const hasPhone           = !!(data.phone && data.phone.trim());
             const hasTrades          = Array.isArray(data.trades) && data.trades.length > 0;
+            // #466 (2026-07-07) replaced the pre-approval county picker with a
+            // states grid stored in service_area_description — contractors
+            // onboarded since then have service_counties = null. Accept either
+            // as a valid service area (E2E walk fix 2026-07-07).
             const hasServiceCounties = Array.isArray(data.service_counties) && data.service_counties.length > 0;
+            const hasServiceStates   = !!(data.service_area_description && String(data.service_area_description).trim());
 
-            if (!hasCompanyName || !hasPhone || !hasTrades || !hasServiceCounties) {
+            if (!hasCompanyName || !hasPhone || !hasTrades || !(hasServiceCounties || hasServiceStates)) {
               window.location.href = 'contractor-profile.html?incomplete=bid';
               return;
             }
