@@ -188,7 +188,7 @@
                             <h3 style="margin: 0; font-size: 1.125rem; color: var(--navy);">Your Profile</h3>
                             <span class="card-status" id="status-profile" style="font-weight: 600; color: var(--slate);">Required</span>
                         </div>
-                        <p style="font-size: 0.9rem; color: var(--slate); margin: 0 0 1rem 0;">Tells us where to send opportunities and how to reach you. You can refine your service area and add more counties later from your profile.</p>
+                        <p style="font-size: 0.9rem; color: var(--slate); margin: 0 0 1rem 0;">Tell us where you operate. You'll choose specific counties in your profile settings after you're approved.</p>
 
                         <div style="margin-bottom: 1rem;">
                             <label for="profile-phone" style="display: block; font-size: 0.9rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">Phone Number <span style="color:#ef4444;">*</span></label>
@@ -214,9 +214,9 @@
                         </div>
 
                         <div style="margin-bottom: 0;">
-                            <label for="profile-counties" style="display: block; font-size: 0.9rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">Counties You Serve <span style="color:#ef4444;">*</span></label>
-                            <input type="text" id="profile-counties" placeholder="Marion-IN, Hamilton-IN, Boone-IN" autocomplete="off" style="width: 100%; padding: 0.5rem 0.75rem; background:#fff; color:#1e293b; border:1px solid #cbd5e1; border-radius:0.375rem; font-size:0.95rem;">
-                            <p style="margin: 0.4rem 0 0 0; font-size: 0.8rem; color: var(--slate);">Format: <em>CountyName-StateCode</em>, separated by commas. You can edit this later in your profile to pick from a full county list.</p>
+                            <label style="display: block; font-size: 0.9rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">In which states do you operate? <span style="color:#ef4444;">*</span></label>
+                            <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; color: var(--slate);">Select all that apply. You'll choose specific counties in your profile settings after you're approved.</p>
+                            <div id="profile-states" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.4rem; max-height: 220px; overflow-y: auto; padding: 0.75rem; background:#fff; border:1px solid #cbd5e1; border-radius:0.375rem;"></div>
                         </div>
                     </div>
 
@@ -324,7 +324,8 @@
                                     <div id="lic-file-name" style="font-size: 0.85rem; color: var(--navy); display: none; margin-bottom: 0.25rem;">📎 <span id="lic-file-label"></span></div>
                                 </div>
                                 <div>
-                                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">Verification URL <span style="font-weight:400; color:var(--slate)">(optional)</span> <span title="Give homeowners a link to the local municipality website where they can verify your license." style="display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border-radius: 50%; border: 1px solid var(--slate); color: var(--slate); font-size: 0.7rem; font-weight: 700; cursor: help; vertical-align: middle;">?</span></label>
+                                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-bottom: 0.25rem;">Verification URL <span style="font-weight:400; color:var(--slate)">(optional)</span> <button type="button" onclick="toggleLicHelp(event)" aria-label="What is this?" style="display: inline-flex; align-items: center; justify-content: center; width: 1.1rem; height: 1.1rem; border-radius: 50%; border: 1px solid var(--slate); background: transparent; color: var(--slate); font-size: 0.72rem; font-weight: 700; cursor: pointer; vertical-align: middle; padding: 0; line-height: 1;">?</button></label>
+                                    <div id="lic-help-box" style="display:none; margin-top:0.4rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:0.375rem; padding:0.6rem 0.75rem; font-size:0.8rem; font-weight:400; color:#1e3a5f; line-height:1.45;">Give homeowners the link to the municipality that issued your license. This allows them to confirm that your license is legitimate and in good standing.<button type="button" onclick="toggleLicHelp(event)" style="display:block; margin-top:0.5rem; background:none; border:none; color:#2563eb; font-weight:600; font-size:0.78rem; cursor:pointer; padding:0;">Got it ✕</button></div>
                                     <input type="url" id="lic-verification-url" placeholder="https://..." style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 0.9rem; color: var(--navy);">
                                 </div>
                             </div>
@@ -348,6 +349,7 @@
                     </div>
 
                     <button class="btn-primary" id="step2-advance-btn" onclick="submitStep2()" disabled style="opacity: 0.5; cursor: not-allowed;">Continue to Agreements →</button>
+                    <p id="step2-needed" style="margin: 0.6rem 0 0 0; font-size: 0.85rem; color: #b45309;"></p>
                 </div>
 
                 <!-- Step 3: Platform Agreements -->
@@ -715,25 +717,58 @@
     }
 
     // ── Profile basics card state (B3/B4/B5 — captured in step 2, not deferred) ──
+    // -- US state options + dynamic builders (D-190 states-not-counties) --
+    const US_STATES = [
+        ['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],
+        ['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['DC','District of Columbia'],['FL','Florida'],
+        ['GA','Georgia'],['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],['IN','Indiana'],
+        ['IA','Iowa'],['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],['ME','Maine'],
+        ['MD','Maryland'],['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],['MS','Mississippi'],
+        ['MO','Missouri'],['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],
+        ['NJ','New Jersey'],['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],
+        ['OH','Ohio'],['OK','Oklahoma'],['OR','Oregon'],['PA','Pennsylvania'],['RI','Rhode Island'],
+        ['SC','South Carolina'],['SD','South Dakota'],['TN','Tennessee'],['TX','Texas'],['UT','Utah'],
+        ['VT','Vermont'],['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming']
+    ];
+    function populateStates() {
+        const grid = document.getElementById('profile-states');
+        if (!grid || grid.dataset.built === 'true') return;
+        grid.innerHTML = US_STATES.map(function(s) {
+            return '<label style="display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0.4rem; font-size:0.85rem; color:#1e293b; cursor:pointer;">' +
+                '<input type="checkbox" name="profile-state" value="' + s[0] + '" style="accent-color: var(--amber);"> ' + s[1] + '</label>';
+        }).join('');
+        grid.dataset.built = 'true';
+        grid.querySelectorAll('input[name="profile-state"]').forEach(function(cb) {
+            cb.addEventListener('change', updateStep2Button);
+        });
+    }
+    function toggleLicHelp(e) {
+        if (e) e.preventDefault();
+        const box = document.getElementById('lic-help-box');
+        if (box) box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+    }
+    function setCardStatus(id, ok) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = ok ? '✓ Complete' : 'Required';
+        el.style.color = ok ? '#10b981' : 'var(--slate)';
+    }
+
     function readProfileBasics() {
         const phone = (document.getElementById('profile-phone')?.value || '').trim();
         const trades = Array.from(document.querySelectorAll('input[name="profile-trade"]:checked'))
             .map(cb => cb.value);
-        const countiesRaw = (document.getElementById('profile-counties')?.value || '').trim();
-        const counties = countiesRaw
-            ? countiesRaw.split(',').map(s => s.trim()).filter(Boolean)
-            : [];
+        const states = Array.from(document.querySelectorAll('input[name="profile-state"]:checked')).map(function(cb){ return cb.value; });
         // Lightweight phone validation: at least 10 digits
         const digits = phone.replace(/\D/g, '');
         const phoneOk = digits.length >= 10;
-        // County format: each entry must look like "Word-XX"
-        const countyOk = counties.length > 0 && counties.every(c => /^[A-Za-z][A-Za-z .\'-]*-[A-Z]{2}$/.test(c));
-        return { phone, trades, counties, phoneOk, tradesOk: trades.length > 0, countyOk };
+        const statesOk = states.length > 0;
+        return { phone, trades, states, phoneOk, tradesOk: trades.length > 0, statesOk };
     }
 
     function updateProfileCardStatus() {
-        const { phoneOk, tradesOk, countyOk } = readProfileBasics();
-        const allOk = phoneOk && tradesOk && countyOk;
+        const { phoneOk, tradesOk, statesOk } = readProfileBasics();
+        const allOk = phoneOk && tradesOk && statesOk;
         const status = document.getElementById('status-profile');
         if (status) {
             status.textContent = allOk ? '✓ Complete' : 'Required';
@@ -747,10 +782,13 @@
         const coiOk = docState.coi.file !== null && !!coiExpiryVal;
         const wcOk = docState.wc.satisfied;
         const licenseOk = licenseState.entries.length > 0 || licenseState.noLicense;
-        const { phoneOk, tradesOk, countyOk } = readProfileBasics();
-        const profileOk = phoneOk && tradesOk && countyOk;
+        const { phoneOk, tradesOk, statesOk } = readProfileBasics();
+        const profileOk = phoneOk && tradesOk && statesOk;
 
         updateProfileCardStatus();
+        setCardStatus('status-coi', coiOk);
+        setCardStatus('status-wc', wcOk);
+        setCardStatus('status-license', licenseOk);
 
         const btn = document.getElementById('step2-advance-btn');
         const allSatisfied = profileOk && coiOk && wcOk && licenseOk;
@@ -758,6 +796,22 @@
         btn.disabled = !allSatisfied;
         btn.style.opacity = allSatisfied ? '1' : '0.5';
         btn.style.cursor = allSatisfied ? 'pointer' : 'not-allowed';
+
+        const needed = document.getElementById('step2-needed');
+        if (needed) {
+            if (allSatisfied) {
+                needed.textContent = '';
+            } else {
+                const missing = [];
+                if (!phoneOk) missing.push('a valid phone number');
+                if (!tradesOk) missing.push('at least one trade');
+                if (!statesOk) missing.push('at least one state');
+                if (!coiOk) missing.push('CGL certificate + expiry date');
+                if (!wcOk) missing.push("workers' comp (upload + expiry, or WCE-1 exemption)");
+                if (!licenseOk) missing.push('a license, or check "I don\'t have a license for this work"');
+                needed.textContent = 'Still needed before you can continue: ' + missing.join('; ') + '.';
+            }
+        }
     }
 
     // ── Step 2 submit ──────────────────────────────────────────────────────────
@@ -783,8 +837,8 @@
         const profile = readProfileBasics();
         if (!profile.phoneOk) { alert('Please enter a valid phone number (at least 10 digits).'); return; }
         if (!profile.tradesOk) { alert('Please select at least one trade you serve.'); return; }
-        if (!profile.countyOk) {
-            alert('Please enter at least one county in the format CountyName-StateCode (e.g. Marion-IN, Hamilton-IN).');
+        if (!profile.statesOk) {
+            alert('Please select at least one state where you operate.');
             return;
         }
 
@@ -881,7 +935,7 @@
                 coi_uploaded_at: new Date().toISOString(),
                 phone: profile.phone,
                 trades: profile.trades,
-                service_counties: profile.counties,
+                service_area_description: profile.states.join(', '),
                 onboarding_step: 2,
                 updated_at: new Date().toISOString()
             };
@@ -1150,6 +1204,7 @@
 
     // ── Init ───────────────────────────────────────────────────────────────────
     async function init() {
+        populateStates();
         showPanel('loading');
 
         try {
@@ -1219,9 +1274,11 @@
                         cb.checked = ct.trades.includes(cb.value);
                     });
                 }
-                const countiesInput = document.getElementById('profile-counties');
-                if (countiesInput && !countiesInput.value && Array.isArray(ct.service_counties)) {
-                    countiesInput.value = ct.service_counties.join(', ');
+                if (ct.service_area_description) {
+                    const savedStates = ct.service_area_description.split(',').map(function(s){ return s.trim().toUpperCase(); });
+                    document.querySelectorAll('input[name="profile-state"]').forEach(function(cb){
+                        if (savedStates.includes(cb.value)) cb.checked = true;
+                    });
                 }
             } catch (_) { /* non-fatal pre-population */ }
 
@@ -1280,8 +1337,7 @@
         document.querySelectorAll('input[name="profile-trade"]').forEach(cb => {
             cb.addEventListener('change', updateStep2Button);
         });
-        const profileCounties = document.getElementById('profile-counties');
-        if (profileCounties) profileCounties.addEventListener('input', updateStep2Button);
+        // State checkboxes are built and wired for change in populateStates().
         // Initial validation tick in case the form is pre-populated.
         updateStep2Button();
 
