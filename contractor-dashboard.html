@@ -1327,7 +1327,7 @@
                 // D-074: Full address hidden for submitted-only bids; revealed once bid is awarded.
                 const { data: allQuotes } = await sb
                   .from('quotes')
-                  .select('id, claim_id, total_price, status, bid_status, expires_at, created_at, warranty_document_url, claims(id, property_address, damage_type, material_category, shingle_type, rcv_amount, completion_date)')
+                  .select('id, claim_id, total_price, status, bid_status, expires_at, created_at, warranty_document_url, contractor_signed_at, homeowner_signed_at, claims(id, property_address, damage_type, material_category, shingle_type, rcv_amount, completion_date, status, contract_signed_at)')
                   .eq('contractor_id', contractor.id)
                   .in('status', ['submitted', 'selected', 'awarded', 'completed'])
                   .order('created_at', { ascending: false })
@@ -1387,6 +1387,8 @@
                         status: statusMap[q.status] || q.status,
                         completionDate: claim.completion_date || null,
                         warrantyUrl: q.warranty_document_url || null,
+                        contractorSignedAt: q.contractor_signed_at || null,
+                        contractSigned: !!(claim.contract_signed_at) || claim.status === 'contract_signed',
                       });
                     }
                   });
@@ -1563,6 +1565,18 @@
                             actionsCell = `<span class="status-badge" style="background:#DCFCE7; color:#15803D; border:1px solid #BBF7D0; white-space:nowrap;">✅ Completed ${dateStr}</span>` +
                                 `<br><button class="btn btn-sm upload-warranty-btn" data-claim-id="${lead.fullId}" data-quote-id="${lead.quoteId}" style="margin-top:4px; font-size:0.75rem; padding:2px 8px; background:transparent; color:#0284C7; border:1px solid #0284C7; border-radius:0.25rem; cursor:pointer; white-space:nowrap;">📄 Upload Warranty</button>`;
                         }
+                    } else if (lead.status === 'Won' && !lead.contractSigned && !lead.contractorSignedAt) {
+                        // Contractor must sign first (IC 24-5-11 routing order 1).
+                        // Entry point restored 2026-07-08 (E2E walk): won jobs jumped
+                        // straight to Mark Complete with no way to sign the contract.
+                        const signUrl = `/contract-signing.html?claim_id=${encodeURIComponent(lead.fullId)}&quote_id=${encodeURIComponent(lead.quoteId)}&role=contractor`;
+                        actionsCell = `<a href="${signUrl}"
+                            class="btn btn-sm"
+                            style="display:inline-block; background:#E07B00; color:#fff; border:none; border-radius:0.375rem; padding:4px 12px; font-size:0.8rem; cursor:pointer; white-space:nowrap; text-decoration:none;">
+                            ✍️ Sign Contract
+                        </a>`;
+                    } else if (lead.status === 'Won' && lead.contractorSignedAt && !lead.contractSigned) {
+                        actionsCell = `<span class="status-badge" style="background:#FEF3C7; color:#92400E; border:1px solid #FDE68A; white-space:nowrap;">Awaiting homeowner signature</span>`;
                     } else if (lead.status === 'Won') {
                         actionsCell = `<button
                             class="btn btn-sm mark-complete-btn"
