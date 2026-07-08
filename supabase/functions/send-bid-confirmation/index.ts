@@ -56,7 +56,7 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Vary": "Origin",
   };
 }
@@ -93,6 +93,9 @@ function buildEmailHtml(
   const bidAmountFormatted = formatCurrency(bidAmount);
   const feeAmountFormatted = formatCurrency(feeAmount);
   const bidFormUrl = `https://otterquote.com/contractor-bid-form.html?claim_id=${claimId}`;
+  // D-225 bugfix (86e1ex733): rescind link must carry action=rescind so the
+  // bid form opens the rescind UI (was on the live EF, lost in repo drift).
+  const rescindUrl = `https://otterquote.com/contractor-bid-form.html?action=rescind&claim_id=${claimId}`;
 
   return `
 <!DOCTYPE html>
@@ -148,7 +151,7 @@ function buildEmailHtml(
     <div class="section" style="border-left-color: #cc3300; text-align: center;">
       <div class="section-title">--- YOUR BID IS LIVE ---</div>
       <p>Not comfortable with these terms? Rescind your bid now. Your offer is currently live and could be accepted by the homeowner at any time.</p>
-      <a href="${bidFormUrl}" class="btn btn-rescind">Rescind My Bid</a>
+      <a href="${rescindUrl}" class="btn btn-rescind">Rescind My Bid</a>
       <a href="${bidFormUrl}" class="btn btn-review">Review My Bid</a>
     </div>
 
@@ -173,6 +176,7 @@ function buildEmailText(
   const bidAmountFormatted = formatCurrency(bidAmount);
   const feeAmountFormatted = formatCurrency(feeAmount);
   const bidFormUrl = `https://otterquote.com/contractor-bid-form.html?claim_id=${claimId}`;
+  const rescindUrl = `https://otterquote.com/contractor-bid-form.html?action=rescind&claim_id=${claimId}`;
 
   return `Hi ${firstName},
 
@@ -193,7 +197,7 @@ Questions? Reply to this email or contact support@otterquote.com.
 --- YOUR BID IS LIVE ---
 Not comfortable with these terms? Rescind your bid now. Your offer is currently live and could be accepted by the homeowner at any time.
 
-Rescind My Bid: ${bidFormUrl}
+Rescind My Bid: ${rescindUrl}
 Review My Bid: ${bidFormUrl}`;
 }
 
