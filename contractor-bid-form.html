@@ -5138,10 +5138,25 @@
             if (!__gateResult.can_submit) {
               submitBtn.disabled = false;
               submitBtn.textContent = 'Submit Bid';
-              const __msg = (__gateResult.reason || 'Your contract template has not been validated for this trade and funding type.')
-                + '\n\nUpload and validate it in your settings before bidding.';
-              if (window.confirm(__msg + '\n\nClick OK to go to your settings.')) {
-                window.location.href = 'contractor-settings.html#contract-templates';
+              // #505: was window.confirm() — a native modal freezes the renderer
+              // (invisible to E2E automation) and is a poor blocking pattern.
+              // Surface the reason inline with a link to Settings instead.
+              const __msg = (__gateResult.reason || 'Your contract template has not been validated for this trade and funding type.');
+              if (typeof showError === 'function') {
+                showError(__msg + ' Upload and validate it in Settings \u2192 Contract Templates before bidding.');
+              } else {
+                const __banner = document.createElement('div');
+                __banner.className = 'alert alert-error';
+                __banner.setAttribute('role', 'alert');
+                __banner.style.cssText = 'margin:1rem 0;padding:1rem;border-radius:8px;background:#FEE2E2;color:#991B1B;';
+                __banner.textContent = __msg + ' ';
+                const __link = document.createElement('a');
+                __link.href = 'contractor-settings.html#contract-templates';
+                __link.textContent = 'Go to Contract Templates \u2192';
+                __link.style.cssText = 'color:#991B1B;font-weight:600;text-decoration:underline;';
+                __banner.appendChild(__link);
+                submitBtn.parentElement.insertBefore(__banner, submitBtn);
+                __banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }
               return;
             }
