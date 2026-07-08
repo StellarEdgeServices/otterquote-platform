@@ -69,14 +69,36 @@ serve(async (req: Request) => {
     return json({ error: "Missing required fields: claim_id, contractor_id" }, 400, corsHeaders);
   }
 
-  // (a) Caller must own the claim
+  // Load the claim + contractor up front so authorization can accept EITHER
+  // party. (E2E walk fix 2026-07-08: previously homeowner-only, which 403'd the
+  // contractor's own signing page — the contractor cannot load contract-signing
+  // to sign first.)
   const { data: claim, error: claimErr } = await sb
     .from("claims")
     .select("id, user_id, selected_contractor_id")
     .eq("id", claim_id)
     .single();
 
-  if (claimErr || !claim || claim.user_id !== callerId) {
+  if (claimErr || !claim) {
+    return json({ error: "Forbidden" }, 403, corsHeaders);
+  }
+
+  // Service-role read bypasses RLS
+  const { data: contractor, error: contractorErr } = await sb
+    .from("contractors")
+    .select("company_name, user_id, stripe_payment_method_id, contract_templates, contract_pdf_url")
+    .eq("id", contractor_id)
+    .single();
+
+  if (contractorErr || !contractor) {
+    return json({ error: "Contractor not found" }, 404, corsHeaders);
+  }
+
+  // (a) Caller must be the claim owner (homeowner) OR the contractor being queried
+  //     (contractor reading its own record for the signing page).
+  const isHomeowner = claim.user_id === callerId;
+  const isTheContractor = contractor.user_id === callerId;
+  if (!isHomeowner && !isTheContractor) {
     return json({ error: "Forbidden" }, 403, corsHeaders);
   }
 
@@ -95,17 +117,6 @@ serve(async (req: Request) => {
 
   if (!linkedViaSelected && !linkedViaQuote) {
     return json({ error: "Forbidden" }, 403, corsHeaders);
-  }
-
-  // Service-role read bypasses RLS
-  const { data: contractor, error: contractorErr } = await sb
-    .from("contractors")
-    .select("company_name, user_id, stripe_payment_method_id, contract_templates, contract_pdf_url")
-    .eq("id", contractor_id)
-    .single();
-
-  if (contractorErr || !contractor) {
-    return json({ error: "Contractor not found" }, 404, corsHeaders);
   }
 
   // Return only safe fields; never expose Stripe IDs
