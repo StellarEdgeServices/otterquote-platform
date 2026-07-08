@@ -1284,6 +1284,22 @@
           state.contractorAlreadySigned = true;
         }
 
+        // Role detection (E2E walk fix 2026-07-08): this page serves BOTH signers.
+        // The contractor signs first (IC 24-5-11 routing order 1); the homeowner
+        // second. Previously it was homeowner-only and NOTHING created the
+        // contractor_sign envelope, so no contract could ever be executed.
+        // Prefer an explicit ?role= hint, then fall back to matching the signed-in
+        // user against the contractor's user_id.
+        const roleParam = (params.get('role') || '').toLowerCase();
+        if (roleParam === 'contractor' || roleParam === 'homeowner') {
+          state.signRole = roleParam;
+        } else if (state.contractor && state.contractor.user_id && state.currentUser
+                   && state.contractor.user_id === state.currentUser.id) {
+          state.signRole = 'contractor';
+        } else {
+          state.signRole = 'homeowner';
+        }
+
         // ── Render the page ──
         await renderContractorCard();
         await loadContractTemplate();
@@ -1570,19 +1586,17 @@
         const { data: { session } } = await sb.auth.getSession();
         if (!session) throw new Error('Not authenticated. Please refresh and try again.');
 
-        // Build signer info
-        const signerName = state.claim.homeowner_name
-          || state.currentUser.user_metadata?.full_name
-          || state.currentUser.email;
-
-        // Always use homeowner_sign. contract-signing.html is exclusively the homeowner signing page.
-        // The contractor_sign envelope is created earlier (at contractor selection time) and its
-        // envelope_id is stored on the quote. handleHomeownerSign() looks it up from the quote record.
-        // If no envelope exists yet, the Edge Function returns a clear actionable error.
-        // 'contract' (the deprecated legacy handler) is intentionally never used here: it pointed at
-        // an old storage path (contractorId/contract.pdf) that doesn't exist for D-161 contractors,
-        // and its signing order (homeowner first) violated IC 24-5-11 D-152 sequential flow.
-        const docType = 'homeowner_sign';
+        // Role-aware signer + document type (E2E walk fix 2026-07-08).
+        // contractor_sign CREATES the envelope (routing order 1); homeowner_sign
+        // adds the homeowner as the next signer on that existing envelope.
+        const isContractorSigning = state.signRole === 'contractor';
+        const signerName = isContractorSigning
+          ? (state.contractor?.company_name || state.contractor?.name
+             || state.currentUser.user_metadata?.full_name || state.currentUser.email)
+          : (state.claim.homeowner_name || state.currentUser.user_metadata?.full_name
+             || state.currentUser.email);
+        const signerEmail = state.currentUser.email;
+        const docType = isContractorSigning ? 'contractor_sign' : 'homeowner_sign';
 
         console.log(`DocuSign flow: ${docType}, contractor_signed: ${state.contractorAlreadySigned}, envelope: ${state.existingEnvelopeId}`);
 
@@ -1594,7 +1608,7 @@
             contractor_id: state.contractorId,
             quote_id: state.quoteId,
             signer: {
-              email: state.currentUser.email,
+              email: signerEmail,
               name: signerName,
             },
           },
@@ -1653,24 +1667,25 @@
       document.getElementById('docusignSigned').style.display = 'block';
       document.getElementById('signContractBtn').disabled = false;
 
-      // Update quote homeowner_signed_at in Supabase
+      // Role-aware signature timestamp (E2E walk fix 2026-07-08). The
+      // docusign-webhook is the source of truth, but writing the client-side
+      // stamp keeps the UI/gates responsive before the webhook lands.
+      const _signedField = state.signRole === 'contractor' ? 'contractor_signed_at' : 'homeowner_signed_at';
       if (sb && state.claimId) {
         try {
-          // Update quote with homeowner_signed_at (IC 24-5-11 tracking)
           if (state.quoteId) {
             const { error: quoteErr } = await sb
               .from('quotes')
-              .update({ homeowner_signed_at: new Date().toISOString() })
+              .update({ [_signedField]: new Date().toISOString() })
               .eq('id', state.quoteId);
-            if (quoteErr) console.error('Error updating homeowner_signed_at:', quoteErr);
+            if (quoteErr) console.error('Error updating ' + _signedField + ':', quoteErr);
           } else if (state.contractorId) {
-            // Fallback: update by claim_id + contractor_id
             const { error: quoteErr } = await sb
               .from('quotes')
-              .update({ homeowner_signed_at: new Date().toISOString() })
+              .update({ [_signedField]: new Date().toISOString() })
               .eq('claim_id', state.claimId)
               .eq('contractor_id', state.contractorId);
-            if (quoteErr) console.error('Error updating homeowner_signed_at:', quoteErr);
+            if (quoteErr) console.error('Error updating ' + _signedField + ':', quoteErr);
           }
         } catch (err) {
           console.error('Error updating claim:', err);
@@ -1683,10 +1698,13 @@
         envelope_id: state.envelopeId,
       });
 
-      // Redirect to project-confirmation.html after a brief pause
-      // Two-document flow: contract first, then project confirmation (D-110)
+      // Redirect after a brief pause. The contractor (first signer) returns to
+      // their dashboard to await the homeowner's signature; the homeowner (second
+      // signer) proceeds to project confirmation (two-document flow, D-110).
       setTimeout(() => {
-        window.location.href = `/project-confirmation.html?claim_id=${state.claimId}`;
+        window.location.href = state.signRole === 'contractor'
+          ? `/contractor-dashboard.html?signed=1`
+          : `/project-confirmation.html?claim_id=${state.claimId}`;
       }, 1500);
     }
 
