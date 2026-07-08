@@ -36,9 +36,27 @@ export async function resendHoverLink(claimId: string): Promise<ActionResult> {
 
 /** Submit the claim for bids: flip to active, then notify contractors (non-fatal). */
 export async function submitForBids(claimId: string): Promise<ActionResult> {
+  // #482: static-stack parity (PR #473) — stamp {trade}_bid_released_at for
+  // releasable trades at submit. Siding releases via the D-164 design gate.
+  const update: Record<string, unknown> = { status: 'active', ready_for_bids: true };
+  try {
+    const { data: claimRow } = await supabase
+      .from('claims')
+      .select('trades, roofing_bid_released_at, gutters_bid_released_at, windows_bid_released_at')
+      .eq('id', claimId)
+      .maybeSingle();
+    const row = (claimRow ?? {}) as Record<string, unknown>;
+    const trades = Array.isArray(row.trades) ? (row.trades as string[]) : [];
+    const now = new Date().toISOString();
+    for (const trade of ['roofing', 'gutters', 'windows']) {
+      if (trades.includes(trade) && !row[`${trade}_bid_released_at`]) {
+        update[`${trade}_bid_released_at`] = now;
+      }
+    }
+  } catch { /* non-fatal — submit still proceeds */ }
   const { error: updErr } = await supabase
     .from('claims')
-    .update({ status: 'active', ready_for_bids: true })
+    .update(update)
     .eq('id', claimId);
   if (updErr) return { ok: false, error: updErr.message };
 
@@ -60,8 +78,9 @@ export async function uploadClaimDocument(params: {
   claimId: string;
   file: File;
   timestamp: number;
+  kind: 'estimate' | 'measurements';
 }): Promise<{ ok: boolean; storagePath?: string; error?: string }> {
-  const { userId, claimId, file, timestamp } = params;
+  const { userId, claimId, file, timestamp, kind } = params;
   const storagePath = `${userId}/${claimId}/${timestamp}-${file.name}`;
 
   const { error: upErr } = await supabase.storage
@@ -69,13 +88,27 @@ export async function uploadClaimDocument(params: {
     .upload(storagePath, file);
   if (upErr) return { ok: false, error: upErr.message };
 
+  // #482: static-stack parity — flip the checklist flag and store the FULL
+  // storage path (contractor pages open the doc via createSignedUrl; a bare
+  // display name 404s — PR #473).
+  const flagField = kind === 'estimate' ? 'has_estimate' : 'has_measurements';
+  const nameField = kind === 'estimate' ? 'estimate_filename' : 'measurements_filename';
+  const { error: updErr } = await supabase
+    .from('claims')
+    .update({ [flagField]: true, [nameField]: storagePath })
+    .eq('id', claimId);
+  if (updErr) return { ok: false, error: updErr.message };
+
   // Parsing is non-blocking — a parse failure must not fail the upload (#336).
-  try {
-    await supabase.functions.invoke('parse-loss-sheet', {
-      body: { claim_id: claimId, storage_path: storagePath },
-    });
-  } catch (err) {
-    console.warn('[dashboard] parse-loss-sheet failed (non-fatal):', err);
+  // Estimates only (F-005): parse-loss-sheet writes RCV/ACV back to the claim.
+  if (kind === 'estimate') {
+    try {
+      await supabase.functions.invoke('parse-loss-sheet', {
+        body: { claim_id: claimId, storage_path: storagePath },
+      });
+    } catch (err) {
+      console.warn('[dashboard] parse-loss-sheet failed (non-fatal):', err);
+    }
   }
   return { ok: true, storagePath };
 }
