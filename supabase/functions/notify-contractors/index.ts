@@ -18,10 +18,6 @@
  *      when a homeowner clicked "Request Agreement." No longer triggered in the current
  *      flow since signing happens after homeowner selection, not before.
  *
- * Auth: Default Supabase JWT verification (no verify_jwt entry in config.toml).
- *   Called from frontend (user JWT) and from EFs using service role key as bearer.
- *   Multi-caller design is intentional; rate-limited (10/day, 30/month) per D-030.
- *
  * Environment variables:
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_ROLE_KEY
@@ -1180,13 +1176,56 @@ async function handleNewOpportunity(
   supabaseKey: string,
   corsHeaders: Record<string, string>
 ): Promise<Response> {
-  const { claim_id, claim_zip, claim_city, claim_state, claim_county, trade_types, job_type } = body;
+  const { claim_id, claim_county, trade_types, job_type } = body;
+  let { claim_zip, claim_city, claim_state } = body;
 
-  if (!claim_id || !claim_zip || !claim_city || !claim_state) {
+  if (!claim_id) {
     return new Response(
-      JSON.stringify({ error: "Missing required fields: claim_id, claim_zip, claim_city, claim_state" }),
+      JSON.stringify({ error: "Missing required field: claim_id" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+  }
+
+  // Fix 2026-07-08 (PFW run pfw-1783551078): dashboard.html submitForBids() sends only
+  // { claim_id }, so the strict field check 400'd every dashboard-submitted claim and
+  // contractors never received new-opportunity notifications. Derive the location from
+  // the claims row server-side; explicit caller-supplied fields keep precedence.
+  if (!claim_zip || !claim_city || !claim_state) {
+    const { data: locRow, error: locErr } = await supabase
+      .from("claims")
+      .select("property_address, property_state")
+      .eq("id", claim_id)
+      .single();
+
+    if (locErr || !locRow) {
+      console.error("handleNewOpportunity: claim not found for location derivation", claim_id, locErr?.message);
+      return new Response(
+        JSON.stringify({ error: "Claim not found", detail: locErr?.message }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const addr: string = locRow.property_address || "";
+    if (!claim_zip) {
+      const zipMatch = addr.match(/\b(\d{5})(?:-\d{4})?\s*$/) || addr.match(/\b(\d{5})(?:-\d{4})?\b/);
+      claim_zip = zipMatch ? zipMatch[1] : null;
+    }
+    if (!claim_city) {
+      const parts = addr.split(",").map((s: string) => s.trim()).filter(Boolean);
+      claim_city = parts.length >= 2 ? parts[1] : null;
+    }
+    if (!claim_state) {
+      const stMatch = addr.match(/,\s*([A-Za-z]{2})\s+\d{5}/);
+      claim_state = locRow.property_state || (stMatch ? stMatch[1].toUpperCase() : null);
+    }
+
+    if (!claim_zip || !claim_city || !claim_state) {
+      return new Response(
+        JSON.stringify({ error: "Missing location fields and could not derive them from claim.property_address", claim_id }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    console.log(`handleNewOpportunity: derived location for claim ${claim_id}: ${claim_city}, ${claim_state} ${claim_zip}`);
   }
 
   // Rate limit check — once per invocation, regardless of trade count
@@ -1221,7 +1260,7 @@ async function handleNewOpportunity(
     // No trades provided — look up the claim and fire only for released trades (D-165 gate-aware path)
     const { data: claimData, error: claimErr } = await supabase
       .from("claims")
-      .select("selected_trades, trades, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at")
+      .select("trades, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at")
       .eq("id", claim_id)
       .single();
 
@@ -1233,7 +1272,9 @@ async function handleNewOpportunity(
       );
     }
 
-    const allTrades: string[] = claimData.selected_trades || claimData.trades || ["roofing"];
+    // Fix 2026-07-08 (PFW run pfw-1783551078): claims.selected_trades does not exist —
+    // selecting it made PostgREST error the whole lookup, 404ing every gate-aware call.
+    const allTrades: string[] = claimData.trades || ["roofing"];
     // Only notify for trades that have been released
     tradesToProcess = allTrades
       .map((t: string) => t.toLowerCase())
@@ -1416,8 +1457,8 @@ async function handleAgreementRequested(
       claim_id,
       channel: "dashboard",
       notification_type: "agreement_requested",
-      recipient: "",
       message_preview: `A homeowner is interested in your bid for ${displayLocation} — sign your agreement now to be selected`,
+      metadata: { quote_id, signing_link: signingLink },
     });
   } catch (err) {
     console.warn("Could not insert dashboard notification for agreement_requested:", err);
@@ -1500,3 +1541,4 @@ serve(async (req) => {
     );
   }
 });
+      
