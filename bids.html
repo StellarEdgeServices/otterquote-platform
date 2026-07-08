@@ -7,7 +7,7 @@
   crossorigin="anonymous"
 ></script>
 <script>
-  Sentry.onLoad(function() {
+  window.Sentry && Sentry.onLoad(function() {
     Sentry.init({
       environment: window.location.hostname.includes("staging") ? "staging" : "production"
     });
@@ -1241,7 +1241,7 @@
 
             ${netToContractor !== null ? `
             <div style="margin:calc(-1 * var(--sp-2)) 0 var(--sp-5);padding:var(--sp-2) var(--sp-3);background:rgba(255,255,255,0.03);border-radius:var(--radius-sm);font-size:0.8rem;color:var(--slate);">
-              Contractor receives: <strong style="color:var(--white);">$${Math.round(netToContractor).toLocaleString()}</strong> after ${feeLabel} Otter Quotes fee
+              Contractor receives: <strong style="color:var(--white);">$${netToContractor.toLocaleString('en-US', { minimumFractionDigits: netToContractor % 1 ? 2 : 0, maximumFractionDigits: 2 })}</strong> after ${feeLabel} Otter Quotes fee
             </div>` : ''}
 
             <!-- ── PER-TRADE BREAKDOWN (wizard bids) ── -->
