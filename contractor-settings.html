@@ -2515,6 +2515,8 @@
                 // D-199: create the contractor_templates validation row + run the
                 // anchor scan. Without this, bid_can_submit blocks every bid
                 // (IMP-009 relocation dropped the hook — E2E walk fix 2026-07-07).
+                // #505: D199.fundingKey normalizes internally, but pass the raw label
+                // through explicitly so the intent is visible at the call site.
                 if (window.D199 && window.D199.validateNewlyUploadedTemplate) {
                     try {
                         await window.D199.validateNewlyUploadedTemplate(contractorRecord.id, trade, fundingType, filePath, null);
