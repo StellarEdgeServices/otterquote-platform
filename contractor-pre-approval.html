@@ -459,6 +459,9 @@
     <footer id="site-footer"></footer>
 
     <script src="js/cookie-storage.js"></script>
+    <!-- #505: D-199 validation helpers — step 4 must create the contractor_templates
+         row and validate it, or the quotes_enforce_bid_can_submit trigger blocks every bid. -->
+    <script src="js/contract-template-validation.js"></script>
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
@@ -1165,6 +1168,29 @@
             const existing = contractor.contract_templates || [];
             const filtered = existing.filter(t => !(t.trade === trade && t.funding_type === funding));
             const updated  = [...filtered, { trade, funding_type: funding, path: filePath, uploaded_at: new Date().toISOString() }];
+
+            // #505: create the contractor_templates row + run D-199 validation.
+            // Without this the row never exists, bid_can_submit() returns
+            // 'not_found', and the quotes_enforce_bid_can_submit BEFORE INSERT
+            // trigger blocks EVERY bid on this trade x funding slot — a silent
+            // dead-end for every wizard-onboarded contractor.
+            // funding_type must be normalized to the RPC/manifest vocabulary
+            // ('insurance' | 'retail'); the select value is e.g. "Insurance (full replacement)".
+            try {
+                const normalizedFunding = /insurance/i.test(funding) ? 'insurance' : 'retail';
+                if (window.D199 && typeof D199.validateNewlyUploadedTemplate === 'function') {
+                    setUploadStatus('Validating contract template…', 'info');
+                    await D199.validateNewlyUploadedTemplate(
+                        contractor.id, trade.toLowerCase(), normalizedFunding, filePath, null
+                    );
+                } else {
+                    console.warn('[#505] D199 helpers unavailable — contract_templates row not created');
+                }
+            } catch (validationErr) {
+                // Non-fatal: the application still submits. The contractor can
+                // complete validation from Settings -> Contract Templates.
+                console.error('[#505] template validation failed (non-fatal):', validationErr);
+            }
 
             await finishAndSubmit(updated);
         } catch (err) {
