@@ -1915,7 +1915,10 @@
             'Authorization': 'Bearer ' + (ciSession?.access_token || ''),
             'apikey': CONFIG.SUPABASE_ANON,
           },
-          body: JSON.stringify({ claim_id: currentClaim.id, contractor_id: bid.contractor_id }),
+          // #486: ask the EF to create the contractor's in-app notification
+          // server-side when no payment method is on file (RLS blocks a
+          // homeowner-session insert into another user's notifications).
+          body: JSON.stringify({ claim_id: currentClaim.id, contractor_id: bid.contractor_id, notify_no_payment_method: true }),
         });
         const pmCheckErr = _ciResp.ok ? null : { status: _ciResp.status };
         const contractorPM = _ciResp.ok ? await _ciResp.json() : null;
@@ -1934,21 +1937,10 @@
             '<button class="btn btn-secondary" onclick="closeModal()">OK, I\'ll Check Back</button>';
           document.getElementById('modalActions').style.display = 'flex';
 
-          // Create in-app notification for the contractor
-          try {
-            if (contractorPM && contractorPM.user_id) {
-              await sb.from('notifications').insert({
-                user_id: contractorPM.user_id,
-                claim_id: currentClaim.id,
-                notification_type: 'payment_method_needed',
-                channel: 'dashboard',
-                recipient: '',
-                message_preview: 'A homeowner wants to select you, but you don\'t have a payment method on file. Please add one in Settings.',
-              });
-            }
-          } catch (notifErr) {
-            console.warn('Could not send notification to contractor:', notifErr);
-          }
+          // #486: the contractor's notification is created SERVER-SIDE by
+          // get-contractor-info (notify_no_payment_method flag in the check
+          // above) — the old homeowner-session insert into another user's
+          // notifications was rightly blocked by RLS and silently no-oped.
 
           gtag('event', 'contractor_no_payment_method', {
             bid_id: bidId,

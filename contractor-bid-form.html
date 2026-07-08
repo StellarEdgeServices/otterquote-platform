@@ -4369,9 +4369,10 @@
       if (typeof updateFeeDisclosure === 'function') { try { updateFeeDisclosure(); } catch (e) { /* non-fatal */ } }
       const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
 
-      // For insurance jobs, fee base is RCV; for retail, fee base is bid amount
-      const isInsurance = currentClaim && currentClaim.job_type === 'insurance_rcv';
-      const feeBase = (isInsurance && claimRcv) ? claimRcv : bidAmount;
+      // #487 (CEO decision 2026-07-08): fee base is the bid amount for every
+      // job type — aligned with the D-215 disclosure, fee_acceptances.fee_basis
+      // ('bid_amount'), and the actual charge (docusign-webhook × total_price).
+      const feeBase = bidAmount;
 
       const contractSigningFee = feeBase * PLATFORM_FEES.contractSigning;
       const totalFee = contractSigningFee;
@@ -4390,11 +4391,8 @@
       // Show fee basis note for insurance jobs
       const feeInfoEl = document.querySelector('.fee-info');
       if (feeInfoEl) {
-        if (isInsurance && claimRcv) {
-          feeInfoEl.innerHTML = '<div>ℹ A flat 5% platform fee based on the RCV (' + formatCurrency(claimRcv) + ') applies upon contract signing.</div>';
-        } else {
-          feeInfoEl.innerHTML = '<div>ℹ A flat 5% platform fee applies to all projects upon contract signing.</div>';
-        }
+        // #487: uniform note — the fee basis is the bid amount for every job type.
+        feeInfoEl.innerHTML = '<div>ℹ A flat 5% platform fee applies to all projects upon contract signing.</div>';
       }
     }
 
@@ -5151,16 +5149,14 @@
           const totalPrice = parseFloat(document.getElementById('totalPrice').value) || 0;
           const feePercentage = 5.0;
 
-          // Insurance jobs: fee is based on RCV from loss sheet, not bid amount
-          let feeBase = totalPrice;
-          if (currentClaim.job_type === 'insurance_rcv' && currentClaim.parsed_line_items) {
-            const pli = typeof currentClaim.parsed_line_items === 'string'
-              ? JSON.parse(currentClaim.parsed_line_items)
-              : currentClaim.parsed_line_items;
-            if (pli && pli.summary && pli.summary.rcv) {
-              feeBase = pli.summary.rcv;
-            }
-          }
+          // #487 (CEO decision 2026-07-08): the platform fee basis is the BID
+          // AMOUNT for every job type — matching platform_fee_config.fee_basis
+          // ('bid_amount'), the D-215 disclosure, fee_acceptances.fee_basis, and
+          // what docusign-webhook actually charges (quote.total_price × pct).
+          // The old insurance_rcv override recorded fee-on-RCV here while the
+          // charge used fee-on-bid — the contractor accepted one number and was
+          // charged another whenever bid ≠ RCV.
+          const feeBase = totalPrice;
 
           const scopeSummary = JSON.stringify({
             brand: formData.get('brandProduct') || null,
