@@ -568,25 +568,45 @@
 
     async function loadBids() {
       if (!sb || !currentClaim) return;
+      // #511: do NOT embed the `contractors` base table. Post-D-211 security sprint
+      // its RLS scopes SELECT to own-record + admin, so a homeowner's embed resolves
+      // to null with NO error — every bid card silently rendered as "Contractor" with
+      // no company name, rating, license, reviews or photo. Read the public-safe
+      // `contractors_public` view instead and stitch it on. (user_id is intentionally
+      // absent from the view; the payment-method notification is server-side per #486.)
       const { data, error } = await sb
         .from('quotes')
-        .select(`
-          *,
-          contractors (
-            id, user_id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
-            service_area_description, service_counties, license_number, verified,
-            google_reviews_url, rating, review_count, bbb_url, angi_url, yelp_url,
-            specialties, why_choose_us, num_employees, trades, website_url
-          )
-        `)
+        .select('*')
         .eq('claim_id', currentClaim.id)
         .order('created_at', { ascending: true });
 
       if (!error && data) {
         bids = data;
-        data.forEach(bid => {
-          if (bid.contractors) contractors[bid.contractor_id] = bid.contractors;
-        });
+
+        const contractorIds = [...new Set(data.map(b => b.contractor_id).filter(Boolean))];
+        if (contractorIds.length) {
+          const { data: pub, error: pubErr } = await sb
+            .from('contractors_public')
+            .select(`
+              id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
+              service_area_description, service_counties, license_number, verified,
+              google_reviews_url, rating, review_count, bbb_url, angi_url, yelp_url,
+              specialties, why_choose_us, num_employees, trades, website_url
+            `)
+            .in('id', contractorIds);
+
+          if (pubErr) {
+            console.error('[bids] contractors_public lookup failed:', pubErr.message);
+          } else if (pub) {
+            const byId = Object.create(null);
+            pub.forEach(row => { byId[row.id] = row; });
+            data.forEach(bid => {
+              const row = byId[bid.contractor_id] || null;
+              bid.contractors = row;                       // preserve existing shape
+              if (row) contractors[bid.contractor_id] = row;
+            });
+          }
+        }
       }
     }
 
