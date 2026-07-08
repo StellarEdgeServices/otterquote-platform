@@ -19,7 +19,28 @@
   // Slot keys are stored title-cased ("Roofing", "Insurance") in JSONB
   // but the contractor_templates table uses lowercase. Normalize both ways.
   function tradeKey(t)        { return String(t || '').toLowerCase(); }
-  function fundingKey(f)      { return String(f || '').toLowerCase(); }
+
+  /**
+   * Normalize a funding label to the canonical vocabulary used by
+   * contractor_templates.funding_type, the bid_can_submit() RPC, and the
+   * validate-contract-template EF manifest: 'insurance' | 'retail'.
+   *
+   * #505 follow-up: contractor-settings.html's roofing slot label is
+   * "Insurance (full replacement)". Lowercasing it verbatim produced
+   * funding_type = 'insurance (full replacement)', which matches NOTHING —
+   * findValidationRow missed, upsertValidationRow wrote a foreign value, the
+   * EF 400'd with "No manifest for roofing/insurance (full replacement)", and
+   * bid_can_submit('roofing','insurance') returned not_found → the D-199
+   * trigger blocked every roofing insurance bid. Every other slot label
+   * ('Retail', 'Insurance') happened to normalize correctly, so only the
+   * platform's most important slot was broken.
+   */
+  function fundingKey(f)      {
+    var s = String(f || '').toLowerCase();
+    if (s.indexOf('insurance') !== -1) return 'insurance';
+    if (s.indexOf('retail') !== -1 || s.indexOf('cash') !== -1) return 'retail';
+    return s;
+  }
 
   const STATUS_LABELS = {
     pending_validation:         { cls: 'val-pending',   label: 'Pending validation', icon: '⏳' },
