@@ -45,18 +45,23 @@
   var COOKIE_ACCESS  = 'sb-otterquote-at';
   var COOKIE_REFRESH = 'sb-otterquote-rt';
 
-  // Legacy storage keys consulted for transparent migration. Read-only fallbacks
-  // so in-flight contractor sessions and pre-fix React sessions survive deploy.
-  // Order: project-ref key first (static stack v1), then sb_at (React stack pre-fix).
-  var LEGACY_KEYS = (function () {
+  // Legacy storage keys consulted for purge + cookie-less fallback.
+  // #488 follow-up: this file loads BEFORE config.js, so the project-ref key
+  // MUST be computed lazily (at call time) — the old load-time IIFE never saw
+  // CONFIG, the project-ref key never joined the list, and sign-out left a
+  // resurrection seed in localStorage.
+  function legacyKeys() {
     var keys = ['sb_at'];
     try {
-      var url = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : '';
-      var refMatch = url.match(/https:\/\/([^.]+)/);
-      if (refMatch) keys.unshift('sb-' + refMatch[1] + '-auth-token');
-    } catch (e) { /* CONFIG not loaded yet */ }
+      // Pattern scan instead of CONFIG-derivation: catches every Supabase
+      // default-storage key regardless of script load order or environment.
+      for (var i = 0; i < window.localStorage.length; i++) {
+        var k = window.localStorage.key(i);
+        if (k && /^sb-[a-z0-9]+-auth-token$/.test(k)) keys.push(k);
+      }
+    } catch (e) { /* localStorage blocked */ }
     return keys;
-  })();
+  }
 
   /** Parse a Supabase session JSON. Returns null if not a valid session. */
   function parseSession(jsonStr) {
@@ -219,8 +224,9 @@
     try {
       var direct = window.localStorage.getItem(callerKey);
       if (direct) return direct;
-      for (var i = 0; i < LEGACY_KEYS.length; i++) {
-        var v = window.localStorage.getItem(LEGACY_KEYS[i]);
+      var lk = legacyKeys();
+      for (var i = 0; i < lk.length; i++) {
+        var v = window.localStorage.getItem(lk[i]);
         if (v) return v;
       }
     } catch (e) { /* localStorage blocked */ }
@@ -261,8 +267,9 @@
       if (cookiesUsable()) {
         try { window.localStorage.removeItem(key); } catch (e) {}
         try {
-          for (var i = 0; i < LEGACY_KEYS.length; i++) {
-            window.localStorage.removeItem(LEGACY_KEYS[i]);
+          var purge = legacyKeys();
+          for (var i = 0; i < purge.length; i++) {
+            window.localStorage.removeItem(purge[i]);
           }
         } catch (e) {}
         return null;
@@ -307,8 +314,9 @@
       try { window.localStorage.removeItem(key); } catch (e) {}
       // Also clear legacy keys so signOut on either subdomain truly logs out.
       try {
-        for (var i = 0; i < LEGACY_KEYS.length; i++) {
-          window.localStorage.removeItem(LEGACY_KEYS[i]);
+        var lk2 = legacyKeys();
+        for (var i = 0; i < lk2.length; i++) {
+          window.localStorage.removeItem(lk2[i]);
         }
       } catch (e) {}
     }
