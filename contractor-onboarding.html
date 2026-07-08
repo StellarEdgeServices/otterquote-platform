@@ -468,7 +468,7 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             if (!sb && typeof supabase !== 'undefined') {
-                sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+                sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // #488: adapter, not default storage
             }
             init();
         });
