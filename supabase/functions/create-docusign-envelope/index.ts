@@ -1314,7 +1314,9 @@ async function autoPopulateFields(
     fields.customer_city_zip = `${claimData.address_city || ""}, ${claimData.address_state || ""} ${claimData.address_zip || ""}`.trim();
     fields.customer_phone = claimData.phone || "";
     fields.customer_email = signerEmail || "";
-    fields.insurance_company = claimData.insurance_carrier || "";
+    // #514: claims has no `insurance_carrier` column — read carrier_name
+    // (written by parse-loss-sheet), with the legacy name as a fallback.
+    fields.insurance_company = claimData.carrier_name || claimData.insurance_carrier || "";
     fields.claim_number = claimData.claim_number || "";
     fields.deductible = claimData.deductible_amount ? `$${Number(claimData.deductible_amount).toLocaleString()}` : "";
     fields.contract_date = new Date().toLocaleDateString("en-US");

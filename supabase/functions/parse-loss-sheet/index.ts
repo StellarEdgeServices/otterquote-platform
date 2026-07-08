@@ -456,6 +456,12 @@ serve(async (req) => {
     // Extract RCV and ACV from summary for direct column storage (F-005 fix)
     const rcvAmount = parsed.summary?.rcv ?? null;
     const acvAmount = parsed.summary?.acv ?? null;
+    // #514: promote the PII-safe insurance fields to their claim columns so the
+    // DocuSign "Insurance Co" / "DEDUCTIBLE:" anchors fill on the contract.
+    // carrier_name and the numeric deductible are NOT PII (claim_number/policy #
+    // stay redacted by the prompt above and are intentionally left untouched).
+    const deductibleAmount = parsed.summary?.deductible ?? null;
+    const carrierName = parsed.carrier_name ?? null;
 
     const { error: updateError } = await supabase
       .from("claims")
@@ -465,6 +471,8 @@ serve(async (req) => {
         loss_sheet_parsed_at: new Date().toISOString(),
         rcv_amount: rcvAmount,
         acv_amount: acvAmount,
+        deductible_amount: deductibleAmount,
+        carrier_name: carrierName,
       })
       .eq("id", claim_id);
 
