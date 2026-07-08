@@ -2312,7 +2312,11 @@
                 cell.appendChild(header);
 
                 if (matchingTemplate) {
-                    const fileUrl  = String(matchingTemplate.file_url || '');
+                    // #505c: the contract_templates JSONB stores the storage location under
+                    // `path` (pre-approval + settings both write it). Reading only `file_url`
+                    // left fileUrl empty, which broke the View button AND silently disabled the
+                    // D-199 legacy backfill in attachValidationStatus (it no-ops without a path).
+                    const fileUrl  = String(matchingTemplate.file_url || matchingTemplate.path || '');
                     const fileName = String(matchingTemplate.file_name || 'template.pdf');
                     const uploadDate = matchingTemplate.uploaded_at
                         ? new Date(matchingTemplate.uploaded_at).toLocaleDateString()
