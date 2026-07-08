@@ -1418,19 +1418,26 @@
         const trades = cl.selected_trades || [];
         const trade = trades.length ? trades[0].toLowerCase() : 'roofing';
 
-        // Determine funding type: insurance vs retail (cash)
-        let fundingType = 'insurance';
-        if (cl.funding_type) {
-          fundingType = cl.funding_type.toLowerCase();
-        } else if (cl.job_type === 'retail' || cl.job_type === 'cash') {
-          fundingType = 'retail';
-        }
+        // Determine funding type: insurance vs retail (cash).
+        // Fix (E2E walk 2026-07-08, same class as PR #476): claims carry
+        // 'insurance'|'cash' while template slots carry labels like
+        // 'Insurance (full replacement)'/'Retail' — the raw compare never
+        // matched and the trade-only fallback previewed the WRONG contract
+        // type (retail agreement shown on an insurance claim).
+        const rawFunding = String(cl.funding_type || cl.job_type || 'insurance').toLowerCase();
+        const fundingType = rawFunding.includes('insurance') ? 'insurance' : 'retail';
+        const normalizeSlotFunding = function (f) {
+          const s = String(f || '').toLowerCase();
+          if (s.indexOf('insurance') !== -1) return 'insurance';
+          if (s.indexOf('retail') !== -1 || s.indexOf('cash') !== -1) return 'retail';
+          return s;
+        };
 
         // Look up contractor's contract_templates JSONB for a matching template
         const templates = state.contractor.contract_templates || [];
         let matchingTemplate = templates.find(t =>
           t.trade && t.trade.toLowerCase() === trade &&
-          t.funding_type && t.funding_type.toLowerCase() === fundingType
+          normalizeSlotFunding(t.funding_type) === fundingType
         );
 
         // Fallback: try matching trade only (any funding type)
@@ -1443,6 +1450,10 @@
           matchingTemplate = { file_url: state.contractor.contract_pdf_url, file_name: 'contract.pdf' };
         }
 
+        if (matchingTemplate && !matchingTemplate.file_url && matchingTemplate.path) {
+          // Settings/React uploads store the bucket path under `path`.
+          matchingTemplate = Object.assign({}, matchingTemplate, { file_url: matchingTemplate.path });
+        }
         if (matchingTemplate && matchingTemplate.file_url) {
           // Generate a signed URL for display.
           // Handles both bare storage paths ("contractor-id/file.pdf") and legacy full
