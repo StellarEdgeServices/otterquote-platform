@@ -1458,7 +1458,8 @@ async function handleAgreementRequested(
       channel: "dashboard",
       notification_type: "agreement_requested",
       message_preview: `A homeowner is interested in your bid for ${displayLocation} — sign your agreement now to be selected`,
-      metadata: { quote_id, signing_link: signingLink },
+      // Fix 2026-07-08 (PFW pfw-1783551078): notifications has no metadata column —
+      // the insert PGRST204'd on every call and the in-app notification never landed.
     });
   } catch (err) {
     console.warn("Could not insert dashboard notification for agreement_requested:", err);
@@ -1541,4 +1542,3 @@ serve(async (req) => {
     );
   }
 });
-      
