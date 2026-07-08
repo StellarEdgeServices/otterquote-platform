@@ -590,14 +590,27 @@ serve(async (req) => {
               }
             );
 
+            // #480: a non-200 from create-payment-intent is a HARD charge
+            // failure (Stripe API error, amount-below-minimum, …), not a
+            // webhook error. Route it into the same signed-but-unpaid dunning
+            // path as a declined charge instead of throwing — the old throw
+            // skipped dunning, left the claim un-signed, and mislabeled the
+            // alert as "no_method".
+            let paymentResult: Record<string, unknown>;
             if (!paymentResponse.ok) {
               const paymentError = await paymentResponse.text();
-              throw new Error(
+              console.error(
                 `Payment function returned ${paymentResponse.status}: ${paymentError}`
               );
+              paymentResult = {
+                succeeded: false,
+                status: "hard_failure",
+                payment_intent_id: null,
+                error: `create-payment-intent ${paymentResponse.status}: ${paymentError.slice(0, 500)}`,
+              };
+            } else {
+              paymentResult = await paymentResponse.json();
             }
-
-            const paymentResult = await paymentResponse.json();
             console.log(
               `Payment result: status=${paymentResult.status}, id=${paymentResult.payment_intent_id}`
             );
@@ -606,7 +619,10 @@ serve(async (req) => {
             const isPaymentSuccessful = paymentResult.succeeded === true;
 
             if (!isPaymentSuccessful) {
-              // ── Payment FAILED — do NOT mark contract as signed, trigger dunning ──
+              // ── Payment FAILED — #480: the signing is a FACT; record it. ──
+              // Collection moves to dunning. Retries won't re-charge: the outer
+              // `if (!claim.contract_signed_at)` idempotency guard now holds
+              // because contract_signed_at is set on this path too.
               console.error(
                 `Payment failed for quote ${quote.id}: ${paymentResult.status}`
               );
@@ -619,6 +635,42 @@ serve(async (req) => {
                   payment_status: "dunning",
                 })
                 .eq("id", quote.id);
+
+              // #480: mark the claim signed (platform_fee_charged stays false)
+              await supabase
+                .from("claims")
+                .update({
+                  contract_signed_at: completedDateTime || new Date().toISOString(),
+                  contract_signed_by: recipientEmail || null,
+                  status: "contract_signed",
+                })
+                .eq("id", claim.id);
+
+              // #480: durable failure record for dunning/audit
+              try {
+                await supabase.from("payment_failures").insert({
+                  quote_id: quote.id,
+                  contractor_id: quote.contractor_id,
+                  claim_id: claim.id,
+                  amount_cents: feeAmount,
+                  stripe_error: String(paymentResult.error || paymentResult.status || "charge failed"),
+                });
+              } catch (pfErr) {
+                console.error("payment_failures insert failed:", pfErr);
+              }
+
+              // #480: correct alert taxonomy — a card WAS on file; this is a
+              // hard/declined charge, not "no_method".
+              try {
+                await supabase.from("platform_alerts_log").insert({
+                  alert_type: "payment_failed_hard",
+                  function_name: "docusign-webhook",
+                  message: `Claim ${claim.id} contract signed, charge FAILED (quote ${quote.id}, contractor ${quote.contractor_id}): ${String(paymentResult.error || paymentResult.status)}`,
+                  sent_at: new Date().toISOString(),
+                });
+              } catch (alertErr) {
+                console.error("platform_alerts_log insert failed:", alertErr);
+              }
 
               // Trigger dunning sequence
               try {
@@ -737,9 +789,26 @@ serve(async (req) => {
               });
             }
 
-            // Don't mark as signed if something went wrong; return 200 (no DocuSign retry-storm).
-            // The distinct state ('no_method' on the quote, when reached) + the alert above are
-            // now recorded, so the stall is no longer silent.
+            // #480: the claim IS marked signed below (signing is a fact) while
+            // platform_fee_charged stays false; return 200 (no DocuSign retry-storm).
+            // The distinct state ('no_method' on the quote, when reached) + the alert
+            // above keep the unbilled stall visible.
+            try {
+              await supabase
+                .from("claims")
+                .update({
+                  contract_signed_at: completedDateTime || new Date().toISOString(),
+                  contract_signed_by: recipientEmail || null,
+                  status: "contract_signed",
+                })
+                .eq("id", claim.id);
+            } catch (signErr) {
+              await reportToSentry(signErr, {
+                fn: "docusign-webhook",
+                op: "claims.update.signed_unbilled",
+                extra: { claim_id: claim.id },
+              });
+            }
             return new Response(
               JSON.stringify({
                 received: true,

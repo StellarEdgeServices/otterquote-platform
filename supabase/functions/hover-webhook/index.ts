@@ -176,10 +176,13 @@ serve(async (req) => {
               })
               .eq("id", order.id);
 
-            // Also update the claim's measurements_filename to indicate Hover data is available
+            // Also update the claim so Hover data is available AND the dashboard
+            // submit gate opens — #481: a paid, completed Hover order must set
+            // has_measurements (the cash-claim Submit-for-Bids hard gate).
             await supabase
               .from("claims")
               .update({
+                has_measurements: true,
                 measurements_filename: `hover_${job_id}_measurements.json`,
               })
               .eq("id", order.claim_id);

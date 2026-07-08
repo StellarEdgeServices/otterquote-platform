@@ -73,10 +73,12 @@ interface SendBidConfirmationRequest {
 }
 
 function formatCurrency(amount: number): string {
+  // #485: fractional amounts must render both decimals — "$0.5" in the fee
+  // disclosure email misstates a legal disclosure. Whole dollars stay clean.
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: 0,
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(amount);
 }
