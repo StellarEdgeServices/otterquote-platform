@@ -348,7 +348,7 @@ serve(async (req: Request) => {
     // Look up contractor email and name
     const { data: contractorData, error: contractorError } = await supabase
       .from("contractors")
-      .select("email, contact_name")
+      .select("email, contact_name, user_id")
       .eq("id", contractor_id)
       .single();
 
@@ -441,8 +441,12 @@ serve(async (req: Request) => {
     const messageId = mailgunData.id || mailgunData.message;
 
     // Log activity
+    // Fix 2026-07-08 (PFW run pfw-1783551078): user_id must be the contractor's
+    // auth.users id — activity_log.user_id FKs auth.users(id) ON DELETE CASCADE.
+    // Passing contractors.id violated the FK on every insert, so this audit row
+    // silently never landed (the failure was swallowed as non-fatal by design).
     const { error: logError } = await supabase.from("activity_log").insert({
-      user_id: contractor_id,
+      user_id: contractorData.user_id,
       event_type: "bid_confirmation_email_sent",
       title: `Bid confirmation email sent for quote ${quote_id}`,
       metadata: {
@@ -452,6 +456,7 @@ serve(async (req: Request) => {
         fee_amount: platform_fee_amount,
         fee_percentage: platform_fee_pct,
         message_id: messageId,
+        mailgun_status: mailgunResponse.status,
       },
     });
 
