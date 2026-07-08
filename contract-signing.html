@@ -1607,6 +1607,13 @@
             document_type: docType,
             contractor_id: state.contractorId,
             quote_id: state.quoteId,
+            // #495: send the contractor back HERE (?signed=true) so the client
+            // completion fast-path (contractor_signed_at write + done screen)
+            // runs. The EF default returned contractors to contractor-bid-form.
+            ...(isContractorSigning ? {
+              return_url: window.location.origin + '/contract-signing.html?claim_id=' +
+                encodeURIComponent(state.claimId) + '&role=contractor&signed=true'
+            } : {}),
             signer: {
               email: signerEmail,
               name: signerName,

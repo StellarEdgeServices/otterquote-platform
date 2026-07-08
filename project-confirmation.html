@@ -2194,7 +2194,7 @@
         // ── Load contractor ──
         const { data: contractorData, error: contractorError } = await sb
           .from('contractors_public')
-          .select('id, company_name, years_in_business, logo_url')
+          .select('id, company_name, years_in_business, owner_photo_url')
           .eq('id', state.contractorId)
           .single();
 
@@ -2239,8 +2239,8 @@
 
         // ── Populate contractor card ──
         const avatarEl = document.getElementById('contractorAvatar');
-        if (contractorData.logo_url) {
-          avatarEl.innerHTML = `<img src="${escHtml(contractorData.logo_url)}" alt="${escHtml(contractorData.company_name)}">`;
+        if (contractorData.owner_photo_url) {
+          avatarEl.innerHTML = `<img src="${escHtml(contractorData.owner_photo_url)}" alt="${escHtml(contractorData.company_name)}">`;
         } else {
           avatarEl.textContent = contractorData.company_name
             ? contractorData.company_name.charAt(0).toUpperCase()

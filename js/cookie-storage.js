@@ -227,6 +227,20 @@
     return null;
   }
 
+  // #488 — cookie-usability probe (memoized per page load). When cookies are
+  // blocked entirely the cookie cannot be canonical and localStorage remains
+  // the only viable store; everywhere else, absent cookies mean signed out.
+  var _cookiesUsable = null;
+  function cookiesUsable() {
+    if (_cookiesUsable !== null) return _cookiesUsable;
+    try {
+      document.cookie = 'oq-cookie-probe=1; Path=/; Max-Age=60; SameSite=Lax';
+      _cookiesUsable = document.cookie.indexOf('oq-cookie-probe=') !== -1;
+      document.cookie = 'oq-cookie-probe=; Path=/; Max-Age=0; SameSite=Lax';
+    } catch (e) { _cookiesUsable = false; }
+    return _cookiesUsable;
+  }
+
   /**
    * Storage adapter implementing the localStorage-compatible interface
    * expected by Supabase JS v2's `storage` option.
@@ -238,24 +252,28 @@
       var rt = readCookie(COOKIE_REFRESH);
       if (at && rt) return reconstructSession(at, rt);
 
-      // 2. Try same-key localStorage (recent same-origin write)
+      // 2. Cookies are canonical (#488). If BOTH cookies are absent the user
+      // is signed out — the per-origin localStorage copy must never resurrect
+      // the session (or rewrite the domain-wide cookies): that silently signed
+      // users back in as the previous account after a sign-out on the other
+      // subdomain. Purge local copies so sign-out sticks everywhere. Only a
+      // browser that cannot hold cookies at all falls back to localStorage.
+      if (cookiesUsable()) {
+        try { window.localStorage.removeItem(key); } catch (e) {}
+        try {
+          for (var i = 0; i < LEGACY_KEYS.length; i++) {
+            window.localStorage.removeItem(LEGACY_KEYS[i]);
+          }
+        } catch (e) {}
+        return null;
+      }
+
+      // 3. Cookie-less browser fallback — localStorage is the only store left.
       try {
         var stored = window.localStorage.getItem(key);
-        if (stored) {
-          // Cookies missing but localStorage has the session — proactively
-          // migrate so future cross-subdomain reads work.
-          this.setItem(key, stored);
-          return stored;
-        }
+        if (stored) return stored;
       } catch (e) { /* localStorage blocked */ }
-
-      // 3. Legacy localStorage keys — transparent migration
-      var legacy = readLegacy(key);
-      if (legacy) {
-        this.setItem(key, legacy);
-        return legacy;
-      }
-      return null;
+      return readLegacy(key);
     },
 
     setItem: function (key, value) {
