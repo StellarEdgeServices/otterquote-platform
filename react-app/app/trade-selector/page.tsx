@@ -498,11 +498,19 @@ export default function TradeSelectorPage() {
             .limit(1)
             .maybeSingle();
 
+          // #482: static-stack parity — property_address/property_state must land
+          // on the claim (contractor cards + D-178 state gating read them).
+          const csAddress = (csSignup.address as string) || '';
+          const csParts = csAddress.split(',').map((s: string) => s.trim());
+          const csStateToken = ((csParts[2] || '').split(/\s+/)[0] || '').toUpperCase() || null;
+
           const claimPayload: Record<string, unknown> = {
             funding_type: fundingType,
             policy_type: policyType,
             trades: trades,
             job_type: jobType,
+            property_address: csAddress || null,
+            property_state: csStateToken,
             updated_at: new Date().toISOString(),
             ...(referralSource && { referral_source: referralSource }),
             ...(referralAgentId && { referral_agent_id: referralAgentId }),

@@ -39,7 +39,7 @@ export function Checklist({
     setBusy(kind);
     setError(null);
     setNotice(null);
-    const res = await uploadClaimDocument({ userId, claimId: claim.id, file, timestamp: Date.now() });
+    const res = await uploadClaimDocument({ userId, claimId: claim.id, file, timestamp: Date.now(), kind });
     setBusy(null);
     e.target.value = '';
     if (res.ok) {
@@ -73,13 +73,20 @@ export function Checklist({
     }
   }
 
+  // #482: static-stack parity (dashboard.html updateSubmitButton) — retail/cash
+  // claims have no insurance estimate (measurements are their hard gate);
+  // insurance claims gate on the estimate. Material selection required for both.
+  const isCash = claim.funding_type === 'cash';
   const items: { id: DocKind | 'material'; label: string; done: boolean }[] = [
-    { id: 'estimate', label: 'Insurance estimate', done: !!claim.has_estimate },
-    { id: 'measurements', label: 'Property measurements', done: !!claim.has_measurements },
-    { id: 'material', label: 'Material selection', done: !!claim.has_material_selection },
+    ...(isCash ? [] : [{ id: 'estimate' as DocKind, label: 'Insurance estimate', done: !!claim.has_estimate }]),
+    { id: 'measurements' as DocKind, label: 'Property measurements', done: !!claim.has_measurements },
+    { id: 'material' as const, label: 'Material selection', done: !!claim.has_material_selection },
   ];
 
-  const canSubmit = !claim.ready_for_bids && !!claim.has_estimate;
+  const canSubmit =
+    !claim.ready_for_bids &&
+    (isCash ? !!claim.has_measurements : !!claim.has_estimate) &&
+    !!claim.has_material_selection;
   const showResend =
     !!hoverOrder && ['pending', 'link_sent'].includes(hoverOrder.status) && !!hoverOrder.capture_link;
 
