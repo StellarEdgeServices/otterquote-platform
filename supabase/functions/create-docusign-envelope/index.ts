@@ -1155,17 +1155,31 @@ function buildTextTabs(fields, documentId, documentType) {
     if (!anchor) {
       continue;
     }
+    // [2026-07-09 alignment fix] Per-field anchorXOffset, measured from the standard
+    // OtterQuote retail/insurance template geometry (label left-edge -> blank left-edge).
+    // The prior single 8px offset landed the value ON the label ("NameGregory Paulsen"):
+    // DocuSign positions the value at the LEFT edge of the matched anchor string, not the
+    // END, so the offset must span the full label width to reach the underscore blank.
+    // Anchor STRINGS are unchanged (a label that lacks a colon, e.g. "Name", must keep its
+    // exact deployed string or the value would stop matching and vanish). Offsets are capped
+    // well under the page width: max here is 66px, so even an anchor that also recurs in the
+    // right-margin prose (historic INVALID_USER_OFFSET risk at ~515px) lands at <=581 < 612.
+    const anchorXOffsets = {
+      customer_name: "30",
+      customer_address: "42",
+      customer_city_zip: "40",
+      customer_phone: "32",
+      customer_email: "32",
+      contract_price: "66",
+      estimated_start: "48",
+      job_description: "54",
+      material_type: "40",
+      decking_per_sheet: "66"
+    };
     tabs.push({
       anchorString: anchor,
       anchorUnits: "pixels",
-      // [D-211 Phase 17 hotfix] anchorXOffset 150 -> 8. DocuSign anchors the value tab to the
-      // END of the matched anchor string. Several anchor labels also appear verbatim in this
-      // template's notice/reference prose near the right margin (widest: "Contract Price:" in the
-      // page-1 notice ends at x~515 on a 612pt page), so a +150px push ran the tab off-page and
-      // DocuSign rejected the whole envelope with 400 INVALID_USER_OFFSET. 8px lands the value at
-      // the start of the underscore blank (measured median label-end -> blank gap = 5pt) for every
-      // anchor while keeping every occurrence on-page (worst case 515 + 8 = 523 <= 612).
-      anchorXOffset: "8",
+      anchorXOffset: anchorXOffsets[fieldName] ?? "8",
       anchorYOffset: "-5",
       value: String(fieldValue),
       locked: "true",
