@@ -430,6 +430,15 @@ test.describe('Flow A — Contractor Journey', () => {
     ).first();
     await expect(submitBtn).toBeVisible();
 
+    // D-214/D-215: the platform-fee acceptance checkbox gates the submit button
+    // (#478 wired updateFeeCalculator -> updateFeeCheckboxState, activating the
+    // previously-dormant gate). A real contractor must tick it before Submit
+    // enables, so the test does too.
+    const feeAcceptance = page.locator('#feeAcceptanceCheckbox');
+    await expect(feeAcceptance).toBeVisible();
+    await feeAcceptance.check();
+    await expect(submitBtn).toBeEnabled();
+
     // Bypass HTML5 native form validation — the form has no novalidate attribute,
     // so the browser's built-in validation runs silently before the submit event
     // fires, blocking submission without any JS dialog or console error.
