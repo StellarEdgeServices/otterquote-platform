@@ -94,55 +94,69 @@ async function sendGA4Event(eventName: string, params: Record<string, unknown> =
 async function sendInvoiceEmail(
   contractorEmail: string,
   contractorName: string,
+  contractorAddress: string, // D-237: mailing address line (v14 columns)
   propertyAddress: string,
   homeownerName: string,
   bidAmount: number,
   platformFeeAmount: number,
   feePct: number,
-  contractorNet: number,
   feeAcceptedAt: string,
-  jobNumber: string // D-216: "Job #XXXXXXXX" formatted identifier
+  contractSignedAt: string,
+  jobNumber: string, // D-216: "Job #XXXXXXXX" formatted identifier
+  invoiceNumber: string, // INV-[YYYYMMDD]-[last 8 of bid ID, uppercase]
+  bidId: string // full bid/quote ID — audit tie to fee_acceptances.bid_id
 ): Promise<void> {
-  const contractSignedDate = formatDate(new Date().toISOString());
+  // GC-approved fixed-field template (#547 item 2, D-215-conformant).
+  // Direct-charge model (D-226): no "Net Payment" line, no collect-and-disburse
+  // framing. Deviations from this wording require new GC sign-off.
+  const dateIssued = formatDate(contractSignedAt);
   const feeAcceptedDate = formatDate(feeAcceptedAt);
 
   const emailBody = `
 INVOICE
 
-Date: ${contractSignedDate}
-Job: ${jobNumber}
+Invoice #:   ${invoiceNumber}
+Date Issued: ${dateIssued}
+Due:         Upon contract execution (Net 0)
+Job:         ${jobNumber}
+Bid ID:      ${bidId}
 
-TO: ${contractorName}
-FROM: OtterQuote (Stellar Edge Services, LLC)
+FROM:  Stellar Edge Services, LLC d/b/a Otter Quotes
+       3410 N High School Rd, Ste G #102, Indianapolis, IN 46224
 
-PROPERTY: ${propertyAddress}
+TO:    ${contractorName}
+       ${contractorAddress}
+
+PROPERTY:  ${propertyAddress}
 HOMEOWNER: ${homeownerName}
 
---- FEE SUMMARY ---
-Contract Value (Bid Amount): $${formatCurrency(bidAmount)}
-Platform Fee (${feePct}%):   $${formatCurrency(platformFeeAmount)}
-Net Payment to Contractor:   $${formatCurrency(contractorNet)}
+--- CHARGES ---
+Otter Quotes Platform Fee — ${propertyAddress} — ${jobNumber}   $${formatCurrency(platformFeeAmount)}
+Fee rate: ${feePct}% of contract value ($${formatCurrency(bidAmount)}) — agreed to at
+bid submission on ${feeAcceptedDate}
+
+AMOUNT DUE: $${formatCurrency(platformFeeAmount)}
 
 --- PLATFORM FEE DISCLOSURE ---
-This invoice confirms the platform fee of ${feePct}% ($${formatCurrency(platformFeeAmount)}) 
-you agreed to pay OtterQuote upon contract execution. This fee was disclosed 
-and accepted on ${feeAcceptedDate}. Per your agreement, you will 
-receive $${formatCurrency(contractorNet)} upon project completion.
+This invoice confirms the platform fee of $${formatCurrency(platformFeeAmount)} (${feePct}%) you agreed
+to pay Otter Quotes at bid submission on ${feeAcceptedDate}.
+The fee is due upon contract execution and will be charged to your
+card on file.
 
 Questions? Contact support@otterquote.com.
 
-Stellar Edge Services, LLC | OtterQuote
+Stellar Edge Services, LLC d/b/a Otter Quotes
 `;
 
   const formData = new FormData();
   formData.append(
     "from",
-    "OtterQuote <noreply@mail.otterquote.com>"
+    "Otter Quotes <noreply@mail.otterquote.com>"
   );
   formData.append("to", contractorEmail);
   formData.append(
     "subject",
-    `OtterQuote Invoice — ${propertyAddress}`
+    `Otter Quotes Invoice ${invoiceNumber} — ${propertyAddress}`
   );
   formData.append("text", emailBody);
 
@@ -273,10 +287,10 @@ serve(async (req: Request) => {
     const platformFeeAmount = Math.round((bidAmount * feePct) / 100);
     const contractorNet = bidAmount - platformFeeAmount;
 
-    // Fetch contractor email
+    // Fetch contractor email + mailing address (D-237; v14 address columns)
     const { data: contractor, error: contractorError } = await sb
       .from("contractors")
-      .select("contact_name, email, user_id")
+      .select("contact_name, email, user_id, address_line1, address_city, address_state, address_zip")
       .eq("id", contractor_id)
       .single();
 
@@ -293,18 +307,37 @@ serve(async (req: Request) => {
       ? `Job #${claimId.slice(-8).toUpperCase()}`
       : "Job #UNKNOWN";
 
+    // Invoice #: INV-[YYYYMMDD from contract-signed date]-[last 8 of bid ID, uppercase]
+    const signedDate = new Date(contract_signed_at);
+    const yyyymmdd = (isNaN(signedDate.getTime()) ? new Date() : signedDate)
+      .toISOString().slice(0, 10).replace(/-/g, "");
+    const invoiceNumber = `INV-${yyyymmdd}-${quote_id.slice(-8).toUpperCase()}`;
+
+    // D-237: single-line mailing address from whatever v14 columns are on file.
+    const addressParts = [
+      contractor.address_line1,
+      [contractor.address_city, contractor.address_state].filter(Boolean).join(", "),
+      contractor.address_zip,
+    ].filter((p) => p && String(p).trim().length > 0);
+    const contractorAddress = addressParts.length > 0
+      ? addressParts.join(", ")
+      : "Address not on file";
+
     // Send invoice email
     await sendInvoiceEmail(
       contractor.email,
       contractor.contact_name,
+      contractorAddress,
       property_address,
       homeowner_name,
       bidAmount,
       platformFeeAmount,
       feePct,
-      contractorNet,
       quote.fee_accepted_at,
-      jobNumber
+      contract_signed_at,
+      jobNumber,
+      invoiceNumber,
+      quote_id
     );
 
     // Insert activity log entry
