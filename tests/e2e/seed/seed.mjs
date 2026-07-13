@@ -162,6 +162,7 @@ async function seed() {
   const contractorPayload = {
     user_id: contractorUserId,
     status: 'active', // bypass admin approval gate — test account only
+    is_test: true, // #543: excluded from homeowner-facing matching (notify-contractors)
     company_name: 'Test Roofing Co (E2E)',
     contact_name: 'Test Contractor',
     email: CONTRACTOR_EMAIL,
@@ -254,6 +255,7 @@ async function seed() {
   const d210Payload = {
     user_id: d210ContractorUserId,
     status: 'pending_approval',
+    is_test: true, // #543: excluded from homeowner-facing matching (notify-contractors)
     company_name: 'Test D210 Roofing Co (E2E)',
     contact_name: 'Test D210 Contractor',
     email: D210_CONTRACTOR_EMAIL,

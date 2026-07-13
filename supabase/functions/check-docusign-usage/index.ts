@@ -4,7 +4,8 @@
  * Runs daily at noon UTC (pg_cron job 9: "0 12 * * *").
  * - Fetches current billing-period envelope usage via DocuSign REST API
  * - Compares against hardcoded monthly limit (40 - "Basic API Plan - Monthly - 40")
- * - Sends Mailgun alert to dustinstohler1@gmail.com if usage > 80%
+ * - Sends Mailgun alert to dustinstohler1@gmail.com if usage >= 75% (30 of 40 envelopes;
+ *   changed from >80% on 2026-07-12, P7 launch-hardening: alert must fire AT 30, not 33)
  * - Logs result to cron_health table via record_cron_health() RPC (key: docusign-usage)
  * - Returns { used, limit, percentUsed, alertSent }
  *
@@ -18,7 +19,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Plan limit: "Basic API Plan - Monthly - 40"
 // API returns "unlimited" for billingPeriodEnvelopesAllowed, so hardcode from plan name.
 const MONTHLY_LIMIT = 40;
-const ALERT_THRESHOLD_PCT = 80;
+const ALERT_THRESHOLD_PCT = 75;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "https://otterquote.com",
@@ -165,7 +166,7 @@ async function sendMailgunAlert(used: number, limit: number, pct: number): Promi
 
   const subject = `[ALERT] DocuSign envelope usage at ${pct}% of monthly limit - ${used}/${limit} used`;
   const body = [
-    "DocuSign envelope usage has exceeded the 80% alert threshold.",
+    "DocuSign envelope usage has reached the 75% alert threshold (30 of 40 envelopes).",
     "",
     `Plan: Basic API Plan - Monthly - 40`,
     `Used this billing period: ${used}`,
@@ -174,6 +175,7 @@ async function sendMailgunAlert(used: number, limit: number, pct: number): Promi
     "",
     "If this pace continues, envelopes may be exhausted before the billing period ends.",
     "Consider reviewing pending contracts or upgrading the DocuSign plan.",
+    "Runbook: CEO/CTO/Runbooks/docusign-quota.md",
     "",
     "-- OtterQuote Platform Monitor",
   ].join("\n");
@@ -247,8 +249,8 @@ serve(async (req) => {
     console.log(`[check-docusign-usage] Usage: ${used}/${limit} (${percentUsed}%)`);
 
     let alertSent = false;
-    if (percentUsed > ALERT_THRESHOLD_PCT) {
-      console.log(`[check-docusign-usage] Usage ${percentUsed}% > ${ALERT_THRESHOLD_PCT}% - sending alert`);
+    if (percentUsed >= ALERT_THRESHOLD_PCT) {
+      console.log(`[check-docusign-usage] Usage ${percentUsed}% >= ${ALERT_THRESHOLD_PCT}% - sending alert`);
       await sendMailgunAlert(used, limit, percentUsed);
       alertSent = true;
     }
