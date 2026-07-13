@@ -27,6 +27,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isExcludedTestContractor } from "./test-exclusion.ts";
 
 const FUNCTION_NAME = "notify-contractors";
 const DASHBOARD_URL = "https://otterquote.com/contractor-dashboard.html";
@@ -1019,7 +1020,7 @@ async function notifyContractorsForSingleTrade(
   // Fetch all active contractors (no DB-level limit — we filter and cap below)
   const { data: contractors, error: contractorsError } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, trades, service_counties")
+    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, trades, service_counties, is_test")
     .eq("status", "active");
 
   if (contractorsError) {
@@ -1028,10 +1029,20 @@ async function notifyContractorsForSingleTrade(
   }
   if (!contractors || contractors.length === 0) return [];
 
+  // Filter 0 — #543: test contractors (is_test=true or @otterquote-internal.test
+  // email) must never receive real-homeowner opportunities or be biddable.
+  const realContractors = contractors.filter((c: any) => !isExcludedTestContractor(c));
+  if (realContractors.length < contractors.length) {
+    console.log(
+      `notify-contractors [${trade}]: excluded ${contractors.length - realContractors.length} test contractor(s) from matching`
+    );
+  }
+  if (realContractors.length === 0) return [];
+
   const tradeLower = trade.toLowerCase();
 
   // Filter 1 — trade match: contractor must list this trade (or have no trades set = conservative include)
-  let matched = contractors.filter((c: any) => {
+  let matched = realContractors.filter((c: any) => {
     if (!c.trades || c.trades.length === 0) return true;
     return c.trades.some((t: string) => t.toLowerCase() === tradeLower);
   });

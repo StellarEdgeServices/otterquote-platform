@@ -183,15 +183,15 @@ export const NO_LICENSE_REQUIRED_LABEL = `No contractor license is required in m
 export const WCE1_EXEMPTION_OPTION_LABEL = `I qualify for WCE-1 exemption (sole proprietor, no employees)`;
 
 /**
- * Fee Basis for Insurance vs. Retail (from onboarding messaging)
+ * Fee Basis (D-267: 5% of accepted bid amount, all job types)
  * References: D-214, D-215
  * Source: contractor-pre-approval.html (Step 3: Platform Agreements info box)
  * Status: Found in onboarding copy
  * 
- * "The platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs."
+ * "The platform fee is 5% of your accepted bid amount for all job types."
  * NOTE: D-214 makes these rates flexible and configurable per job. This represents the CURRENT default messaging shown to contractors.
  */
-export const FEE_BASIS_DISCLOSURE_ONBOARDING = `The platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs.`;
+export const FEE_BASIS_DISCLOSURE_ONBOARDING = `The platform fee is 5% of your accepted bid amount for all job types.`;
 
 /**
  * Contract Attestation Notice
