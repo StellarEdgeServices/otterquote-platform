@@ -24,6 +24,27 @@ function _clearStaleAuthCookies() {
   } catch (e) { /* non-fatal */ }
 }
 
+/**
+ * Persist the live session back through the storage adapter after the
+ * mismatch path cleared the shared cookies. The two-cookie set is shared by
+ * both identities: clearing the stale identity also deletes the live user's
+ * freshly-written tokens, and since #488 made cookies canonical the
+ * localStorage copy no longer resurrects them (getItem purges it instead).
+ * Without this re-write, the mismatch path silently signs the live user out
+ * (E2E AR-5/COI-1 board red, 2026-07-08).
+ */
+function _writeLiveSessionToStorage(session) {
+  try {
+    if (!session || !session.access_token || !session.refresh_token) return;
+    if (window.OtterQuoteCookieStorage) {
+      window.OtterQuoteCookieStorage.setItem(
+        window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth',
+        JSON.stringify(session)
+      );
+    }
+  } catch (e) { /* non-fatal */ }
+}
+
 window.Auth = {
   /** Get current session - robust race-free implementation.
    *
@@ -91,6 +112,7 @@ window.Auth = {
                             ' live uid=' + liveSession.user.id + '. Clearing stale cookies.'
                           );
                           _clearStaleAuthCookies();
+                          _writeLiveSessionToStorage(liveSession);
                           return liveSession;
                         }
                         // IDs match — fast-path is consistent with live session
