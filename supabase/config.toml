@@ -156,6 +156,12 @@ verify_jwt = false
 # Cron — auth gated in-handler. Pin false (matches deployed v45).
 verify_jwt = false
 
+[functions.create-invoice]
+# Server-to-server (docusign-webhook) + client calls - auth enforced in-handler
+# (D-225 Phase 2C C3: service-role or owner JWT). Pin false (matches deployed v21);
+# was unpinned - a flagless deploy would silently flip it to true.
+verify_jwt = false
+
 [functions.notify-partner-w9]
 # System-invoked notification — auth gated in-handler. Pin false (matches deployed v30).
 verify_jwt = false
