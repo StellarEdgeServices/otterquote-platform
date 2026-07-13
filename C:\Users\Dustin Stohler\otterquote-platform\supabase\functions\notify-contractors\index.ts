@@ -1,0 +1,1544 @@
+/**
+ * Otter Quotes Edge Function: notify-contractors
+ *
+ * Handles four event types:
+ *
+ *   1. new_opportunity (default) — called when a homeowner submits for bidding.
+ *      Notifies all matching active contractors via email + SMS.
+ *      Rate-limited: 10/day, 30/month (D-030). Capped at 6 contractors per opportunity.
+ *
+ *   2. contract_signed — called from docusign-webhook when envelope status = completed.
+ *      Looks up the winning contractor for the claim and sends a targeted
+ *      "your project package is ready" email + SMS.
+ *
+ *   3. bid_update_confirmed — called from contractor-bid-form.html after a successful
+ *      bid update. Sends a confirmation email to the contractor who submitted the update.
+ *
+ *   4. agreement_requested (DEPRECATED — D-134 removed) — formerly called from bids.html
+ *      when a homeowner clicked "Request Agreement." No longer triggered in the current
+ *      flow since signing happens after homeowner selection, not before.
+ *
+ * Environment variables:
+ *   SUPABASE_URL
+ *   SUPABASE_SERVICE_ROLE_KEY
+ *   MAILGUN_API_KEY
+ *   MAILGUN_DOMAIN
+ */
+
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const FUNCTION_NAME = "notify-contractors";
+const DASHBOARD_URL = "https://otterquote.com/contractor-dashboard.html";
+const OPPORTUNITIES_URL = "https://otterquote.com/contractor-opportunities.html";
+const SETTINGS_URL = "https://otterquote.com/contractor-settings.html";
+
+// CORS tightened (Session 254): origin-allowlisted instead of wildcard.
+const ALLOWED_ORIGINS = [
+  "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
+  "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
+];
+
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  };
+}
+
+// =============================================================================
+// EMAIL HELPERS
+// =============================================================================
+
+/** Translate a job_type slug to a human-readable label. */
+function jobTypeLabel(jobType: string): string {
+  const map: Record<string, string> = {
+    insurance_rcv: "Insurance Restoration (RCV)",
+    insurance_acv: "Insurance Restoration (ACV)",
+    retail_cash: "Retail / Cash",
+    repair: "Repair",
+  };
+  return map[(jobType || "").toLowerCase()] || "Insurance Restoration";
+}
+
+/** Shared HTML footer used in all contractor emails. */
+function emailFooter(): string {
+  return `
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td align="center" style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#64748B;">
+      <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
+      &nbsp;&nbsp;|&nbsp;&nbsp;
+      <a href="tel:+18448753412" style="color:#0EA5E9;text-decoration:none;">(844) 875-3412</a>
+      <br><br>
+      <a href="${SETTINGS_URL}" style="color:#94A3B8;font-size:12px;text-decoration:none;">Manage notification preferences</a>
+    </td>
+  </tr>
+</table>`.trim();
+}
+
+/** Render a teal CTA button. */
+function ctaButton(text: string, url: string, color = "#14B8A6"): string {
+  return `
+<table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+  <tr>
+    <td align="center" bgcolor="${color}" style="border-radius:8px;">
+      <a href="${url}" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;padding:14px 28px;">${text}</a>
+    </td>
+  </tr>
+</table>`.trim();
+}
+
+/** Wrap any body HTML in the shared Otter Quotes email shell. */
+function buildEmail(bodyHtml: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#F1F5F9;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
+  <tr>
+    <td align="center" style="padding:24px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <tr>
+          <td align="left" style="background:#0B1929;padding:24px 32px;">
+            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Otter Quotes</span>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding:32px 32px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+            ${bodyHtml}
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td>${emailFooter()}</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`.trim();
+}
+
+// =============================================================================
+// EMAIL BODY BUILDERS
+// =============================================================================
+
+/**
+ * Email 1 — New Opportunity
+ * Leads with trade + location, shows value prop, prominent CTA, auto-bid tip.
+ */
+function newOpportunityEmailHtml(
+  contractorName: string,
+  city: string,
+  state: string,
+  tradeLabel: string,
+  jobType: string
+): string {
+  const jLabel = jobTypeLabel(jobType);
+  const tradeCap = tradeLabel.charAt(0).toUpperCase() + tradeLabel.slice(1);
+
+  const body = `
+    <p style="margin:0 0 6px;color:#64748B;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">New Opportunity</p>
+    <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">${tradeCap} Project &mdash; ${city}, ${state}</h2>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F0F9FF;border-radius:8px;margin-bottom:20px;">
+      <tr>
+        <td style="padding:12px 16px;border-right:1px solid #BAE6FD;width:33%;">
+          <p style="margin:0;color:#64748B;font-size:12px;">Trade</p>
+          <p style="margin:4px 0 0;color:#0F172A;font-size:14px;font-weight:600;">${tradeCap}</p>
+        </td>
+        <td style="padding:12px 16px;border-right:1px solid #BAE6FD;width:33%;">
+          <p style="margin:0;color:#64748B;font-size:12px;">Type</p>
+          <p style="margin:4px 0 0;color:#0F172A;font-size:14px;font-weight:600;">${jLabel}</p>
+        </td>
+        <td style="padding:12px 16px;width:34%;">
+          <p style="margin:0;color:#64748B;font-size:12px;">Location</p>
+          <p style="margin:4px 0 0;color:#0F172A;font-size:14px;font-weight:600;">${city}, ${state}</p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">A new opportunity is available in your service area. The winning contractor receives a fully executed contract, Hover aerial measurements, and the homeowner&rsquo;s contact information &mdash; everything you need to schedule and start work.</p>
+
+    ${ctaButton("View Opportunity &rarr;", OPPORTUNITIES_URL)}
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;margin-top:8px;">
+      <tr>
+        <td style="padding:14px 16px;">
+          <p style="margin:0 0 4px;color:#92400E;font-size:14px;font-weight:600;">&#9889; Save time with Auto-Bid</p>
+          <p style="margin:0;color:#78350F;font-size:13px;line-height:1.5;">Enable Auto-Bid in Settings and you&rsquo;ll automatically compete for every matching project &mdash; no manual action needed between jobs.</p>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  return buildEmail(body);
+}
+
+/**
+ * Plain-text fallback for Email 1 (new_opportunity).
+ */
+function newOpportunityEmailText(
+  contractorName: string,
+  city: string,
+  state: string,
+  tradeLabel: string,
+  jobType: string
+): string {
+  const jLabel = jobTypeLabel(jobType);
+  return `Hi ${contractorName},
+
+New ${tradeLabel} project in ${city}, ${state} (${jLabel}).
+
+The winning contractor receives a fully executed contract, Hover aerial measurements, and the homeowner's contact information — ready to schedule and start work.
+
+View opportunity:
+${OPPORTUNITIES_URL}
+
+Tip: Enable Auto-Bid in Settings to automatically compete for every matching project without manual action.
+${SETTINGS_URL}
+
+---
+support@otterquote.com | (844) 875-3412
+Manage preferences: ${SETTINGS_URL}`;
+}
+
+/**
+ * Email 2 — Contract Signed / Project Package Ready
+ */
+function contractSignedEmailHtml(contractorName: string, claimId: string): string {
+  const body = `
+    <p style="margin:0 0 6px;color:#14B8A6;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Contract Signed</p>
+    <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Your Project Package Is Ready</h2>
+
+    <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">Both parties have signed the contract. Your complete project package is waiting in your dashboard.</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;margin-bottom:24px;">
+      <tr><td style="padding:16px 20px;">
+        <p style="margin:0 0 10px;color:#166534;font-size:14px;font-weight:700;">What&rsquo;s included:</p>
+        <table cellpadding="0" cellspacing="0" border="0">
+          <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Fully executed contract</td></tr>
+          <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Insurance loss sheet with AI-parsed summary</td></tr>
+          <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Trade-specific Hover aerial measurements</td></tr>
+          <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Material and color selections</td></tr>
+          <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Homeowner contact information (released now)</td></tr>
+        </table>
+      </td></tr>
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FEF9C3;border:1px solid #FDE68A;border-radius:8px;margin-bottom:24px;">
+      <tr><td style="padding:12px 16px;">
+        <p style="margin:0;color:#92400E;font-size:14px;font-weight:600;">&#9201; 48-hour window</p>
+        <p style="margin:4px 0 0;color:#78350F;font-size:13px;">You have 48 hours to make initial contact with the homeowner. Log in now to view their information.</p>
+      </td></tr>
+    </table>
+
+    ${ctaButton("Go to My Dashboard &rarr;", DASHBOARD_URL)}
+  `;
+
+  return buildEmail(body);
+}
+
+function contractSignedEmailText(contractorName: string): string {
+  return `Hi ${contractorName},
+
+Both parties have signed your contract. Your complete project package is ready in your Otter Quotes dashboard.
+
+What's included:
+- Fully executed contract
+- Insurance loss sheet with AI-parsed summary
+- Trade-specific Hover aerial measurements
+- Material and color selections
+- Homeowner contact information (released now)
+
+You have 48 hours to make initial contact with the homeowner.
+
+Log in to view your project package:
+${DASHBOARD_URL}
+
+---
+support@otterquote.com | (844) 875-3412`;
+}
+
+/**
+ * Email 3 — Bid Update Confirmed
+ */
+function bidUpdateEmailHtml(contractorName: string): string {
+  const body = `
+    <p style="margin:0 0 6px;color:#64748B;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Bid Update</p>
+    <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Bid Update Confirmed</h2>
+
+    <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">Your updated bid has been saved. The homeowner has been notified and will see your revised figures when they review their options.</p>
+
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">You can update your bid any time before the homeowner makes a selection.</p>
+
+    ${ctaButton("View My Dashboard &rarr;", DASHBOARD_URL, "#0369A1")}
+  `;
+
+  return buildEmail(body);
+}
+
+function bidUpdateEmailText(contractorName: string): string {
+  return `Hi ${contractorName},
+
+Your updated bid has been saved. The homeowner has been notified and will see your revised figures when they review their options.
+
+You can update your bid any time before the homeowner makes a selection.
+
+Log in to your dashboard:
+${DASHBOARD_URL}
+
+---
+support@otterquote.com | (844) 875-3412`;
+}
+
+/**
+ * Email 4 — Agreement Requested
+ * Urgency-driven: homeowner is ready to select, contractor just needs to sign.
+ */
+function agreementRequestedEmailHtml(
+  contractorName: string,
+  displayLocation: string,
+  signingLink: string
+): string {
+  const body = `
+    <p style="margin:0 0 6px;color:#DC2626;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Action Required</p>
+    <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">A Homeowner Is Ready to Select You</h2>
+
+    <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">A homeowner reviewing bids for a project in <strong>${displayLocation}</strong> wants to work with you &mdash; but they can&rsquo;t select you until you sign your contractor agreement.</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;margin-bottom:24px;">
+      <tr><td style="padding:14px 16px;">
+        <p style="margin:0;color:#991B1B;font-size:14px;font-weight:600;">Contractors who sign promptly get selected first.</p>
+        <p style="margin:6px 0 0;color:#7F1D1D;font-size:13px;">Slower contractors lose to competitors who are ready. This takes about 2 minutes.</p>
+      </td></tr>
+    </table>
+
+    ${ctaButton("Sign My Agreement Now &rarr;", signingLink, "#DC2626")}
+
+    <p style="margin:16px 0 0;color:#6B7280;font-size:13px;">This link takes you directly to your agreement signing page and keeps your bid active.</p>
+  `;
+
+  return buildEmail(body);
+}
+
+function agreementRequestedEmailText(
+  contractorName: string,
+  displayLocation: string,
+  signingLink: string
+): string {
+  return `Hi ${contractorName},
+
+A homeowner reviewing bids for a project in ${displayLocation} is interested in working with you.
+
+To be selected, you need to sign your contractor agreement. Contractors who sign promptly get selected first — slower contractors lose to competitors who are ready.
+
+Sign your agreement now:
+${signingLink}
+
+This takes about 2 minutes and keeps your bid active.
+
+---
+support@otterquote.com | (844) 875-3412`;
+}
+
+/**
+ * Email 5 — Bid Expired
+ * Sent when a bid reaches its 14-day window without auto-renew.
+ */
+function bidExpiredEmailHtml(
+  contractorName: string,
+  location: string,
+  tradeCap: string,
+  quoteId: string,
+  claimId: string,
+  mailgunDomain: string
+): string {
+  const renewUrl = `https://otterquote.com/contractor-bid-form.html?renew=true&quote_id=${encodeURIComponent(quoteId)}&claim_id=${encodeURIComponent(claimId)}`;
+  const body = `
+    <p style="margin:0 0 6px;color:#D97706;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Bid Update</p>
+    <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Your Bid Has Expired</h2>
+
+    <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">Your <strong>${tradeCap}</strong> bid for the project in <strong>${location}</strong> has passed its 14-day validity window. The homeowner is still reviewing options &mdash; you can renew your bid in one click to stay in the running.</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;margin-bottom:24px;">
+      <tr><td style="padding:14px 16px;">
+        <p style="margin:0;color:#92400E;font-size:14px;font-weight:600;">Renewing re-submits your existing bid with a fresh 14-day window.</p>
+        <p style="margin:6px 0 0;color:#78350F;font-size:13px;">You can adjust your price before confirming if needed.</p>
+      </td></tr>
+    </table>
+
+    ${ctaButton("Renew My Bid &rarr;", renewUrl, "#D97706")}
+
+    <p style="margin:16px 0 0;color:#6B7280;font-size:13px;">Don&rsquo;t want renewal reminders? Update your <a href="https://otterquote.com/contractor-settings.html" style="color:#0369A1;">notification preferences</a>.</p>
+  `;
+  return buildEmail(body);
+}
+
+function bidExpiredEmailText(contractorName: string, location: string, tradeCap: string, quoteId: string, claimId: string): string {
+  const renewUrl = `https://otterquote.com/contractor-bid-form.html?renew=true&quote_id=${encodeURIComponent(quoteId)}&claim_id=${encodeURIComponent(claimId)}`;
+  return `Hi ${contractorName},
+
+Your ${tradeCap} bid for the project in ${location} has passed its 14-day validity window. The homeowner is still reviewing options.
+
+Renew your bid in one click to stay in the running:
+${renewUrl}
+
+Renewing re-submits your existing bid with a fresh 14-day window. You can adjust your price before confirming if needed.
+
+---
+support@otterquote.com | (844) 875-3412`;
+}
+
+/**
+ * Email 6 — Bid Renewal Requested (confirmation)
+ * Sent when a contractor manually renews a bid from the dashboard or bid form.
+ */
+function bidRenewalRequestedEmailHtml(
+  contractorName: string,
+  location: string,
+  tradeCap: string
+): string {
+  const body = `
+    <p style="margin:0 0 6px;color:#059669;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Bid Renewed</p>
+    <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Your Bid Has Been Renewed</h2>
+
+    <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">Your <strong>${tradeCap}</strong> bid for the project in <strong>${location}</strong> is active again. The homeowner will see your bid for another 14 days.</p>
+
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">You can update your bid details at any time before the homeowner makes a selection.</p>
+
+    ${ctaButton("View My Dashboard &rarr;", DASHBOARD_URL, "#059669")}
+  `;
+  return buildEmail(body);
+}
+
+function bidRenewalRequestedEmailText(contractorName: string, location: string, tradeCap: string): string {
+  return `Hi ${contractorName},
+
+Your ${tradeCap} bid for the project in ${location} is active again. The homeowner will see your bid for another 14 days.
+
+You can update your bid details at any time before the homeowner makes a selection.
+
+Log in to your dashboard:
+${DASHBOARD_URL}
+
+---
+support@otterquote.com | (844) 875-3412`;
+}
+
+// =============================================================================
+// NOTIFICATION PREFERENCE HELPER
+// =============================================================================
+
+/**
+ * Determine whether a notification should be sent to a contractor based on their
+ * saved notification_preferences JSONB.
+ *
+ * Key mapping — MUST match the keys written by contractor-settings.html:
+ *   new_opportunity      → notification_preferences.new_opportunity
+ *   contract_signed      → notification_preferences.contract_signed
+ *   bid_update_confirmed → notification_preferences.bid_update_confirmed
+ *   auto_bid_selected    → notification_preferences.auto_bid_placed
+ *   agreement_requested  → notification_preferences.agreement_requested
+ *
+ * Defaults to TRUE (send) when the preference key is absent, null, or undefined.
+ * Only suppresses when the key is explicitly set to false.
+ */
+function shouldNotify(
+  contractor: Record<string, any>,
+  notificationType: string
+): boolean {
+  const prefs: Record<string, any> = contractor.notification_preferences || {};
+
+  const keyMap: Record<string, string> = {
+    new_opportunity: "new_opportunity",
+    contract_signed: "contract_signed",
+    bid_update_confirmed: "bid_update_confirmed",
+    auto_bid_selected: "auto_bid_placed",
+    agreement_requested: "agreement_requested",
+    bid_expired: "bid_expired",
+    bid_renewal_requested: "bid_renewal_requested",
+  };
+
+  const prefKey = keyMap[notificationType] ?? notificationType;
+  return prefs[prefKey] !== false;
+}
+
+function normalizePhone(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return null;
+}
+
+function buildTradeLabel(trades: string[]): string {
+  if (!trades || trades.length === 0) return "general";
+  if (trades.length === 1) return trades[0].toLowerCase();
+  if (trades.length === 2) return trades.map((t) => t.toLowerCase()).join(" & ");
+  return "multiple trades";
+}
+
+// =============================================================================
+// MAILGUN HELPER
+// =============================================================================
+
+/** Send a single Mailgun email. Accepts optional html body (text is plain-text fallback). */
+async function sendMailgunEmail(
+  apiKey: string,
+  domain: string,
+  to: string,
+  from: string,
+  subject: string,
+  text: string,
+  html?: string
+): Promise<boolean> {
+  const basicAuth = btoa(`api:${apiKey}`);
+  const formData = new URLSearchParams();
+  formData.append("from", from);
+  formData.append("to", to);
+  formData.append("subject", subject);
+  formData.append("text", text);
+  if (html) formData.append("html", html);
+
+  const response = await fetch(
+    `https://api.mailgun.net/v3/${domain}/messages`,
+    {
+      method: "POST",
+      headers: { Authorization: `Basic ${basicAuth}` },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error(`Mailgun error (${response.status}):`, errText);
+    return false;
+  }
+  return true;
+}
+
+// =============================================================================
+// SMS HELPER
+// =============================================================================
+
+/** Send SMS via the send-sms Edge Function. Returns true on success. */
+async function sendSmsViaEdgeFunction(
+  supabaseUrl: string,
+  supabaseKey: string,
+  to: string,
+  message: string,
+  contractorId: string
+): Promise<boolean> {
+  const response = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${supabaseKey}`,
+    },
+    body: JSON.stringify({ to, message }),
+  });
+
+  if (response.status === 429) {
+    console.warn(`SMS rate limit exceeded for contractor ${contractorId} — skipping`);
+    return false;
+  }
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error(`send-sms error for contractor ${contractorId}:`, response.status, errText);
+    return false;
+  }
+  return true;
+}
+
+// =============================================================================
+// HANDLER: contract_signed
+// =============================================================================
+async function handleContractSigned(
+  body: Record<string, any>,
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  supabaseUrl: string,
+  supabaseKey: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const { claim_id } = body;
+
+  if (!claim_id) {
+    return new Response(
+      JSON.stringify({ error: "contract_signed requires claim_id" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const { data: claim, error: claimErr } = await supabase
+    .from("claims")
+    .select("id, selected_contractor_id, property_address")
+    .eq("id", claim_id)
+    .single();
+
+  if (claimErr || !claim) {
+    console.error("contract_signed: could not find claim", claim_id, claimErr?.message);
+    return new Response(
+      JSON.stringify({ error: "Claim not found", detail: claimErr?.message }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!claim.selected_contractor_id) {
+    console.warn("contract_signed: claim has no selected_contractor_id", claim_id);
+    return new Response(
+      JSON.stringify({ error: "No winning contractor on this claim" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const { data: contractor, error: contractorErr } = await supabase
+    .from("contractors")
+    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences")
+    .eq("id", claim.selected_contractor_id)
+    .single();
+
+  if (contractorErr || !contractor) {
+    console.error("contract_signed: could not find contractor", claim.selected_contractor_id, contractorErr?.message);
+    return new Response(
+      JSON.stringify({ error: "Contractor not found", detail: contractorErr?.message }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!shouldNotify(contractor, "contract_signed")) {
+    console.log("Contractor", contractor.id, "opted out of contract_signed notifications");
+    return new Response(
+      JSON.stringify({ notified: false, reason: "opt_out" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const emailRecipients: string[] =
+    contractor.notification_emails?.length > 0
+      ? contractor.notification_emails
+      : contractor.email ? [contractor.email] : [];
+
+  const rawPhones: string[] =
+    contractor.notification_phones?.length > 0
+      ? contractor.notification_phones
+      : contractor.phone ? [contractor.phone] : [];
+
+  const phoneRecipients = rawPhones
+    .map((p: string) => normalizePhone(p))
+    .filter((p: string | null): p is string => p !== null);
+
+  const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
+
+  const emailSubject = `Your contract is signed — project package ready`;
+  const emailText = contractSignedEmailText(contractorName);
+  const emailHtml = contractSignedEmailHtml(contractorName, claim_id);
+  const smsMessage = `Otter Quotes: Your contract is signed. Project package is ready — log in within 48 hrs to contact the homeowner: ${DASHBOARD_URL}`;
+
+  let emailSent = false;
+  let smsSent = false;
+
+  for (const recipientEmail of emailRecipients) {
+    try {
+      const ok = await sendMailgunEmail(
+        mailgunApiKey, mailgunDomain, recipientEmail, fromAddress, emailSubject, emailText, emailHtml
+      );
+      if (ok) {
+        emailSent = true;
+        await supabase.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id,
+          channel: "email",
+          notification_type: "contract_signed",
+          recipient: recipientEmail,
+          message_preview: `Contract signed — project package ready for claim ${claim_id.slice(0, 8)}`,
+        });
+        console.log("contract_signed email sent to", recipientEmail, "for claim", claim_id);
+      }
+    } catch (err) {
+      console.error("Error sending contract_signed email:", err);
+    }
+  }
+
+  for (const phone of phoneRecipients) {
+    try {
+      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id);
+      if (ok) {
+        smsSent = true;
+        await supabase.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id,
+          channel: "sms",
+          notification_type: "contract_signed",
+          recipient: phone,
+          message_preview: smsMessage.substring(0, 100),
+        });
+      }
+    } catch (err) {
+      console.error("Error sending contract_signed SMS:", err);
+    }
+  }
+
+  return new Response(
+    JSON.stringify({ notified: true, email_sent: emailSent, sms_sent: smsSent }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// =============================================================================
+// HANDLER: bid_update_confirmed
+// =============================================================================
+async function handleBidUpdateConfirmed(
+  body: Record<string, any>,
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const { claim_id, contractor_id } = body;
+
+  if (!claim_id || !contractor_id) {
+    return new Response(
+      JSON.stringify({ error: "bid_update_confirmed requires claim_id and contractor_id" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const { data: contractor, error: contractorErr } = await supabase
+    .from("contractors")
+    .select("id, user_id, email, contact_name, company_name, notification_emails, notification_preferences")
+    .eq("id", contractor_id)
+    .single();
+
+  if (contractorErr || !contractor) {
+    console.warn("bid_update_confirmed: contractor not found", contractor_id, contractorErr?.message);
+    return new Response(
+      JSON.stringify({ notified: false, reason: "contractor_not_found" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!shouldNotify(contractor, "bid_update_confirmed")) {
+    return new Response(
+      JSON.stringify({ notified: false, reason: "opt_out" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const emailRecipients: string[] =
+    contractor.notification_emails?.length > 0
+      ? contractor.notification_emails
+      : contractor.email ? [contractor.email] : [];
+
+  if (emailRecipients.length === 0) {
+    console.warn("bid_update_confirmed: no email recipients for contractor", contractor_id);
+    return new Response(
+      JSON.stringify({ notified: false, reason: "no_recipients" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
+  const emailSubject = `Bid update confirmed — homeowner notified`;
+  const emailText = bidUpdateEmailText(contractorName);
+  const emailHtml = bidUpdateEmailHtml(contractorName);
+
+  let emailSent = false;
+
+  for (const recipientEmail of emailRecipients) {
+    try {
+      const ok = await sendMailgunEmail(
+        mailgunApiKey, mailgunDomain, recipientEmail, fromAddress, emailSubject, emailText, emailHtml
+      );
+      if (ok) {
+        emailSent = true;
+        await supabase.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id,
+          channel: "email",
+          notification_type: "bid_update_confirmed",
+          recipient: recipientEmail,
+          message_preview: `Your bid update was saved — homeowner notified`,
+        });
+        console.log("bid_update_confirmed email sent to", recipientEmail);
+      }
+    } catch (err) {
+      console.error("Error sending bid_update_confirmed email:", err);
+    }
+  }
+
+  return new Response(
+    JSON.stringify({ notified: true, email_sent: emailSent }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// =============================================================================
+// HANDLER: bid_expired
+// =============================================================================
+/**
+ * Called when a bid expires without auto-renew (from process-bid-expirations or
+ * directly from the UI). Sends the contractor an email with a one-click renew CTA.
+ *
+ * Required body fields: contractor_id, claim_id, quote_id, trade (optional), location (optional)
+ */
+async function handleBidExpired(
+  body: Record<string, any>,
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const { contractor_id, claim_id, quote_id, trade, location } = body;
+
+  if (!contractor_id || !claim_id || !quote_id) {
+    return new Response(
+      JSON.stringify({ error: "bid_expired requires contractor_id, claim_id, and quote_id" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const { data: contractor, error: contractorErr } = await supabase
+    .from("contractors")
+    .select("id, user_id, email, contact_name, company_name, notification_emails, notification_preferences")
+    .eq("id", contractor_id)
+    .single();
+
+  if (contractorErr || !contractor) {
+    console.warn("bid_expired: contractor not found", contractor_id, contractorErr?.message);
+    return new Response(
+      JSON.stringify({ notified: false, reason: "contractor_not_found" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!shouldNotify(contractor, "bid_expired")) {
+    return new Response(
+      JSON.stringify({ notified: false, reason: "opt_out" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const emailRecipients: string[] =
+    contractor.notification_emails?.length > 0
+      ? contractor.notification_emails
+      : contractor.email ? [contractor.email] : [];
+
+  if (emailRecipients.length === 0) {
+    console.warn("bid_expired: no email recipients for contractor", contractor_id);
+    return new Response(
+      JSON.stringify({ notified: false, reason: "no_recipients" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
+  const tradeCap = (trade || "roofing").charAt(0).toUpperCase() + (trade || "roofing").slice(1);
+  const displayLocation = location || "your service area";
+
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
+  const emailSubject = `Your ${tradeCap} bid has expired — renew to stay in the running`;
+  const emailHtml = bidExpiredEmailHtml(contractorName, displayLocation, tradeCap, quote_id, claim_id, mailgunDomain);
+  const emailText = bidExpiredEmailText(contractorName, displayLocation, tradeCap, quote_id, claim_id);
+
+  let emailSent = false;
+
+  for (const recipientEmail of emailRecipients) {
+    try {
+      const ok = await sendMailgunEmail(
+        mailgunApiKey, mailgunDomain, recipientEmail, fromAddress, emailSubject, emailText, emailHtml
+      );
+      if (ok) {
+        emailSent = true;
+        await supabase.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id,
+          channel: "email",
+          notification_type: "bid_expired",
+          recipient: recipientEmail,
+          message_preview: `Your ${tradeCap} bid has expired — renew to stay in the running`,
+        }).then(() => {}).catch(() => {}); // non-fatal
+        console.log("bid_expired email sent to", recipientEmail, "quote", quote_id);
+      }
+    } catch (err) {
+      console.error("Error sending bid_expired email:", err);
+    }
+  }
+
+  return new Response(
+    JSON.stringify({ notified: true, email_sent: emailSent }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// =============================================================================
+// HANDLER: bid_renewal_requested
+// =============================================================================
+/**
+ * Called when a contractor manually renews a bid from the dashboard or bid form.
+ * Sends a confirmation email: "Your bid is active again for another 14 days."
+ *
+ * Required body fields: contractor_id, claim_id, trade (optional), location (optional)
+ */
+async function handleBidRenewalRequested(
+  body: Record<string, any>,
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const { contractor_id, claim_id, trade, location } = body;
+
+  if (!contractor_id || !claim_id) {
+    return new Response(
+      JSON.stringify({ error: "bid_renewal_requested requires contractor_id and claim_id" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const { data: contractor, error: contractorErr } = await supabase
+    .from("contractors")
+    .select("id, user_id, email, contact_name, company_name, notification_emails, notification_preferences")
+    .eq("id", contractor_id)
+    .single();
+
+  if (contractorErr || !contractor) {
+    console.warn("bid_renewal_requested: contractor not found", contractor_id, contractorErr?.message);
+    return new Response(
+      JSON.stringify({ notified: false, reason: "contractor_not_found" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!shouldNotify(contractor, "bid_renewal_requested")) {
+    return new Response(
+      JSON.stringify({ notified: false, reason: "opt_out" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const emailRecipients: string[] =
+    contractor.notification_emails?.length > 0
+      ? contractor.notification_emails
+      : contractor.email ? [contractor.email] : [];
+
+  if (emailRecipients.length === 0) {
+    return new Response(
+      JSON.stringify({ notified: false, reason: "no_recipients" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
+  const tradeCap = (trade || "roofing").charAt(0).toUpperCase() + (trade || "roofing").slice(1);
+  const displayLocation = location || "your service area";
+
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
+  const emailSubject = `Your ${tradeCap} bid has been renewed — active for 14 more days`;
+  const emailHtml = bidRenewalRequestedEmailHtml(contractorName, displayLocation, tradeCap);
+  const emailText = bidRenewalRequestedEmailText(contractorName, displayLocation, tradeCap);
+
+  let emailSent = false;
+
+  for (const recipientEmail of emailRecipients) {
+    try {
+      const ok = await sendMailgunEmail(
+        mailgunApiKey, mailgunDomain, recipientEmail, fromAddress, emailSubject, emailText, emailHtml
+      );
+      if (ok) {
+        emailSent = true;
+        await supabase.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id,
+          channel: "email",
+          notification_type: "bid_renewal_requested",
+          recipient: recipientEmail,
+          message_preview: `Your ${tradeCap} bid has been renewed — active for 14 more days`,
+        }).then(() => {}).catch(() => {}); // non-fatal
+        console.log("bid_renewal_requested email sent to", recipientEmail, "claim", claim_id);
+      }
+    } catch (err) {
+      console.error("Error sending bid_renewal_requested email:", err);
+    }
+  }
+
+  return new Response(
+    JSON.stringify({ notified: true, email_sent: emailSent }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// =============================================================================
+// D-165 HELPER: notify contractors for a single specific trade
+// =============================================================================
+/**
+ * Fires new_opportunity email + SMS to all active contractors whose service
+ * trades include `trade` AND whose service area covers the claim county.
+ * Capped at 6 contractors per trade per D-030.
+ *
+ * Returns the per-contractor result array (used by handleNewOpportunity to
+ * aggregate results across multiple trades).
+ */
+async function notifyContractorsForSingleTrade(
+  trade: string,
+  claim_id: string,
+  claim_city: string,
+  claim_state: string,
+  claim_zip: string,
+  claim_county: string | undefined,
+  job_type: string,
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  supabaseUrl: string,
+  supabaseKey: string
+): Promise<Array<{ id: string; email_sent: boolean; sms_sent: boolean; skipped?: boolean; trade: string }>> {
+  // Fetch all active contractors (no DB-level limit — we filter and cap below)
+  const { data: contractors, error: contractorsError } = await supabase
+    .from("contractors")
+    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, trades, service_counties")
+    .eq("status", "active");
+
+  if (contractorsError) {
+    console.error(`notifyContractorsForSingleTrade [${trade}]: DB error`, contractorsError.message);
+    return [];
+  }
+  if (!contractors || contractors.length === 0) return [];
+
+  const tradeLower = trade.toLowerCase();
+
+  // Filter 1 — trade match: contractor must list this trade (or have no trades set = conservative include)
+  let matched = contractors.filter((c: any) => {
+    if (!c.trades || c.trades.length === 0) return true;
+    return c.trades.some((t: string) => t.toLowerCase() === tradeLower);
+  });
+
+  // Filter 2 — service county: only when claim_county is provided
+  if (claim_county && claim_state) {
+    const countyKeyFull = `${claim_state.toUpperCase()}:${claim_county}`.toUpperCase();
+    const countyKeyShort = claim_county.toUpperCase();
+    matched = matched.filter((c: any) => {
+      if (!c.service_counties || c.service_counties.length === 0) return true; // conservative fallback
+      return c.service_counties.some((sc: string) => {
+        const scUp = (sc || "").trim().toUpperCase();
+        return scUp === countyKeyFull || scUp === countyKeyShort;
+      });
+    });
+    console.log(
+      `notify-contractors [${trade}]: county filter (${countyKeyFull}), ` +
+      `${matched.length} contractor(s) remain`
+    );
+  }
+
+  // Cap at 6 per trade per D-030
+  matched = matched.slice(0, 6);
+  if (matched.length === 0) return [];
+
+  const tradeCap = tradeLower.charAt(0).toUpperCase() + tradeLower.slice(1);
+  const emailSubject = `New ${tradeCap} Opportunity — ${claim_city}, ${claim_state}`;
+  const smsMessage   = `New Otter Quotes ${tradeCap} opportunity in ${claim_city}, ${claim_zip}. Log in to bid: ${OPPORTUNITIES_URL}`;
+  const fromAddress  = `Otter Quotes <notifications@${mailgunDomain}>`;
+
+  const results: Array<{ id: string; email_sent: boolean; sms_sent: boolean; skipped?: boolean; trade: string }> = [];
+
+  for (const contractor of matched) {
+    let emailSent = false;
+    let smsSent   = false;
+
+    if (!shouldNotify(contractor, "new_opportunity")) {
+      results.push({ id: contractor.id, email_sent: false, sms_sent: false, skipped: true, trade: tradeLower });
+      continue;
+    }
+
+    const emailRecipients: string[] =
+      contractor.notification_emails?.length > 0
+        ? contractor.notification_emails
+        : contractor.email ? [contractor.email] : [];
+
+    const rawPhones: string[] =
+      contractor.notification_phones?.length > 0
+        ? contractor.notification_phones
+        : contractor.phone ? [contractor.phone] : [];
+
+    const phoneRecipients = rawPhones
+      .map((p: string) => normalizePhone(p))
+      .filter((p: string | null): p is string => p !== null);
+
+    const contractorName = contractor.contact_name || "there";
+    const emailText = newOpportunityEmailText(contractorName, claim_city, claim_state, tradeCap, job_type || "");
+    const emailHtml = newOpportunityEmailHtml(contractorName, claim_city, claim_state, tradeCap, job_type || "");
+
+    for (const recipientEmail of emailRecipients) {
+      try {
+        const ok = await sendMailgunEmail(
+          mailgunApiKey, mailgunDomain, recipientEmail, fromAddress, emailSubject, emailText, emailHtml
+        );
+        if (ok) {
+          emailSent = true;
+          await supabase.from("notifications").insert({
+            user_id: contractor.user_id,
+            claim_id,
+            channel: "email",
+            notification_type: "new_opportunity",
+            recipient: recipientEmail,
+            message_preview: `New ${tradeCap} opportunity in ${claim_city}, ${claim_state}`,
+          });
+          console.log(`new_opportunity [${tradeLower}] email sent to contractor ${contractor.id} -> ${recipientEmail}`);
+        }
+      } catch (err) {
+        console.error(`Error sending new_opportunity [${tradeLower}] email to contractor ${contractor.id}:`, err);
+      }
+    }
+
+    for (const phone of phoneRecipients) {
+      try {
+        const smsResponse = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}` },
+          body: JSON.stringify({ to: phone, message: smsMessage }),
+        });
+        if (smsResponse.status === 429) {
+          console.warn(`SMS rate limit exceeded for contractor ${contractor.id} [${tradeLower}]`);
+          continue;
+        }
+        if (!smsResponse.ok) continue;
+
+        const smsData = await smsResponse.json();
+        smsSent = true;
+        await supabase.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id,
+          channel: "sms",
+          notification_type: "new_opportunity",
+          recipient: phone,
+          message_preview: smsMessage.substring(0, 100),
+        });
+        console.log(`new_opportunity [${tradeLower}] SMS sent for contractor ${contractor.id} SID: ${smsData.sid}`);
+      } catch (err) {
+        console.error(`Error sending SMS [${tradeLower}] to contractor ${contractor.id}:`, err);
+      }
+    }
+
+    results.push({ id: contractor.id, email_sent: emailSent, sms_sent: smsSent, trade: tradeLower });
+  }
+
+  return results;
+}
+
+// =============================================================================
+// HANDLER: new_opportunity (default)
+// =============================================================================
+/**
+ * D-165 per-trade release behavior:
+ *
+ *   • trade_types provided (e.g. ["roofing"] or ["siding"]):
+ *       Fire per-trade notifications for each trade in the list.
+ *       Each trade's notifications go only to contractors whose service
+ *       trades include that specific trade (and whose county matches).
+ *       Callers should pass one trade at a time — but multiple are
+ *       tolerated for backwards-compatibility.
+ *
+ *   • trade_types absent / empty:
+ *       Look up the claim's selected_trades and per-trade release
+ *       timestamps from the DB. Only fire for trades where
+ *       {trade}_bid_released_at IS NOT NULL. Skip trades that are
+ *       still held (e.g. siding on a retail claim awaiting Hover design).
+ */
+async function handleNewOpportunity(
+  body: Record<string, any>,
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  supabaseUrl: string,
+  supabaseKey: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const { claim_id, claim_county, trade_types, job_type } = body;
+  let { claim_zip, claim_city, claim_state } = body;
+
+  if (!claim_id) {
+    return new Response(
+      JSON.stringify({ error: "Missing required field: claim_id" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Fix 2026-07-08 (PFW run pfw-1783551078): dashboard.html submitForBids() sends only
+  // { claim_id }, so the strict field check 400'd every dashboard-submitted claim and
+  // contractors never received new-opportunity notifications. Derive the location from
+  // the claims row server-side; explicit caller-supplied fields keep precedence.
+  if (!claim_zip || !claim_city || !claim_state) {
+    const { data: locRow, error: locErr } = await supabase
+      .from("claims")
+      .select("property_address, property_state")
+      .eq("id", claim_id)
+      .single();
+
+    if (locErr || !locRow) {
+      console.error("handleNewOpportunity: claim not found for location derivation", claim_id, locErr?.message);
+      return new Response(
+        JSON.stringify({ error: "Claim not found", detail: locErr?.message }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const addr: string = locRow.property_address || "";
+    if (!claim_zip) {
+      const zipMatch = addr.match(/\b(\d{5})(?:-\d{4})?\s*$/) || addr.match(/\b(\d{5})(?:-\d{4})?\b/);
+      claim_zip = zipMatch ? zipMatch[1] : null;
+    }
+    if (!claim_city) {
+      const parts = addr.split(",").map((s: string) => s.trim()).filter(Boolean);
+      claim_city = parts.length >= 2 ? parts[1] : null;
+    }
+    if (!claim_state) {
+      const stMatch = addr.match(/,\s*([A-Za-z]{2})\s+\d{5}/);
+      claim_state = locRow.property_state || (stMatch ? stMatch[1].toUpperCase() : null);
+    }
+
+    if (!claim_zip || !claim_city || !claim_state) {
+      return new Response(
+        JSON.stringify({ error: "Missing location fields and could not derive them from claim.property_address", claim_id }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    console.log(`handleNewOpportunity: derived location for claim ${claim_id}: ${claim_city}, ${claim_state} ${claim_zip}`);
+  }
+
+  // Rate limit check — once per invocation, regardless of trade count
+  const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
+    p_function_name: FUNCTION_NAME,
+    p_user_id: null,
+  });
+
+  if (rlError) {
+    console.error("Rate limit check failed:", rlError);
+    return new Response(
+      JSON.stringify({ error: "Rate limit check failed", detail: rlError.message }),
+      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!rateLimitResult?.allowed) {
+    console.warn(`RATE LIMITED [${FUNCTION_NAME}]: ${rateLimitResult?.reason}`);
+    return new Response(
+      JSON.stringify({ error: "Rate limit exceeded", reason: rateLimitResult?.reason }),
+      { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // ── Determine which trades to fire notifications for ─────────────────────
+  let tradesToProcess: string[];
+
+  if (trade_types && trade_types.length > 0) {
+    // Specific trades provided by caller — use as given (backwards-compat + D-165 per-trade path)
+    tradesToProcess = (trade_types as string[]).map((t) => t.toLowerCase());
+  } else {
+    // No trades provided — look up the claim and fire only for released trades (D-165 gate-aware path)
+    const { data: claimData, error: claimErr } = await supabase
+      .from("claims")
+      .select("trades, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at")
+      .eq("id", claim_id)
+      .single();
+
+    if (claimErr || !claimData) {
+      console.error("handleNewOpportunity: claim not found for release-timestamp lookup", claim_id, claimErr?.message);
+      return new Response(
+        JSON.stringify({ error: "Claim not found", detail: claimErr?.message }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fix 2026-07-08 (PFW run pfw-1783551078): claims.selected_trades does not exist —
+    // selecting it made PostgREST error the whole lookup, 404ing every gate-aware call.
+    const allTrades: string[] = claimData.trades || ["roofing"];
+    // Only notify for trades that have been released
+    tradesToProcess = allTrades
+      .map((t: string) => t.toLowerCase())
+      .filter((t: string) => {
+        const col = `${t}_bid_released_at` as keyof typeof claimData;
+        return !!(claimData as any)[col];
+      });
+
+    if (tradesToProcess.length === 0) {
+      console.log(`handleNewOpportunity: no released trades for claim ${claim_id} — notifications held`);
+      return new Response(
+        JSON.stringify({ notified_count: 0, message: "No trades released yet — notifications held pending gate clearance" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`handleNewOpportunity: no trade_types provided; firing for released trades [${tradesToProcess.join(", ")}]`);
+  }
+
+  // ── Fire per-trade notifications ─────────────────────────────────────────
+  const allNotified: Array<{ id: string; email_sent: boolean; sms_sent: boolean; skipped?: boolean; trade: string }> = [];
+
+  for (const trade of tradesToProcess) {
+    console.log(`notify-contractors: firing new_opportunity for trade=${trade} claim=${claim_id}`);
+    const tradeResults = await notifyContractorsForSingleTrade(
+      trade,
+      claim_id, claim_city, claim_state, claim_zip,
+      claim_county,
+      job_type || "",
+      supabase, mailgunApiKey, mailgunDomain, supabaseUrl, supabaseKey
+    );
+    allNotified.push(...tradeResults);
+  }
+
+  return new Response(
+    JSON.stringify({
+      notified_count: allNotified.filter((c) => !c.skipped).length,
+      contractors: allNotified,
+      trades_processed: tradesToProcess,
+      rate_limit_counts: rateLimitResult?.counts,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// =============================================================================
+// HANDLER: agreement_requested (D-134)
+// =============================================================================
+async function handleAgreementRequested(
+  body: Record<string, any>,
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  supabaseUrl: string,
+  supabaseKey: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const { claim_id, contractor_id, quote_id } = body;
+
+  if (!claim_id || !contractor_id || !quote_id) {
+    return new Response(
+      JSON.stringify({ error: "agreement_requested requires claim_id, contractor_id, and quote_id" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const { data: claim, error: claimErr } = await supabase
+    .from("claims")
+    .select("id, property_address")
+    .eq("id", claim_id)
+    .single();
+
+  if (claimErr || !claim) {
+    console.error("agreement_requested: could not find claim", claim_id, claimErr?.message);
+    return new Response(
+      JSON.stringify({ error: "Claim not found", detail: claimErr?.message }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const { data: contractor, error: contractorErr } = await supabase
+    .from("contractors")
+    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences")
+    .eq("id", contractor_id)
+    .single();
+
+  if (contractorErr || !contractor) {
+    console.error("agreement_requested: could not find contractor", contractor_id, contractorErr?.message);
+    return new Response(
+      JSON.stringify({ error: "Contractor not found", detail: contractorErr?.message }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!shouldNotify(contractor, "agreement_requested")) {
+    return new Response(
+      JSON.stringify({ notified: false, reason: "opt_out" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const emailRecipients: string[] =
+    contractor.notification_emails?.length > 0
+      ? contractor.notification_emails
+      : contractor.email ? [contractor.email] : [];
+
+  const rawPhones: string[] =
+    contractor.notification_phones?.length > 0
+      ? contractor.notification_phones
+      : contractor.phone ? [contractor.phone] : [];
+
+  const phoneRecipients = rawPhones
+    .map((p: string) => normalizePhone(p))
+    .filter((p: string | null): p is string => p !== null);
+
+  const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
+
+  // Privacy: strip full address — show only city and state to contractor
+  const addrParts = (claim.property_address || "").split(",");
+  const displayLocation = addrParts.length >= 2
+    ? addrParts.slice(1).join(",").trim()
+    : claim.property_address || "your project";
+
+  const signingLink = `https://otterquote.com/contractor-bid-form.html?claim_id=${claim_id}&quote_id=${quote_id}&action=sign`;
+
+  const emailSubject = `A homeowner is waiting — sign your agreement to be selected`;
+  const emailText = agreementRequestedEmailText(contractorName, displayLocation, signingLink);
+  const emailHtml = agreementRequestedEmailHtml(contractorName, displayLocation, signingLink);
+  const smsMessage = `Otter Quotes: A homeowner wants to select you for a project in ${displayLocation}. Sign your agreement now to stay in the running: ${signingLink}`;
+
+  let emailSent = false;
+  let smsSent = false;
+
+  for (const recipientEmail of emailRecipients) {
+    try {
+      const ok = await sendMailgunEmail(
+        mailgunApiKey, mailgunDomain, recipientEmail, fromAddress, emailSubject, emailText, emailHtml
+      );
+      if (ok) {
+        emailSent = true;
+        await supabase.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id,
+          channel: "email",
+          notification_type: "agreement_requested",
+          recipient: recipientEmail,
+          message_preview: `A homeowner is waiting — sign your agreement for ${displayLocation}`,
+        });
+        console.log("agreement_requested email sent to", recipientEmail, "for claim", claim_id);
+      }
+    } catch (err) {
+      console.error("Error sending agreement_requested email:", err);
+    }
+  }
+
+  for (const phone of phoneRecipients) {
+    try {
+      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id);
+      if (ok) {
+        smsSent = true;
+        await supabase.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id,
+          channel: "sms",
+          notification_type: "agreement_requested",
+          recipient: phone,
+          message_preview: smsMessage.substring(0, 100),
+        });
+      }
+    } catch (err) {
+      console.error("Error sending agreement_requested SMS:", err);
+    }
+  }
+
+  // Always insert an in-app dashboard notification
+  try {
+    await supabase.from("notifications").insert({
+      user_id: contractor.user_id,
+      claim_id,
+      channel: "dashboard",
+      notification_type: "agreement_requested",
+      message_preview: `A homeowner is interested in your bid for ${displayLocation} — sign your agreement now to be selected`,
+      // Fix 2026-07-08 (PFW pfw-1783551078): notifications has no metadata column —
+      // the insert PGRST204'd on every call and the in-app notification never landed.
+    });
+  } catch (err) {
+    console.warn("Could not insert dashboard notification for agreement_requested:", err);
+  }
+
+  return new Response(
+    JSON.stringify({ notified: true, email_sent: emailSent, sms_sent: smsSent }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// =============================================================================
+// MAIN ENTRY POINT
+// =============================================================================
+serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  // Health check ping -- returns immediately without doing real work.
+  // Called by platform-health-check every 15 minutes.
+  try {
+    const bodyPeek = await req.clone().json().catch(() => ({}));
+    if (bodyPeek?.health_check === true) {
+      return new Response(JSON.stringify({ status: "ok" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
+      });
+    }
+  } catch { /* no-op */ }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY");
+  const MAILGUN_DOMAIN = Deno.env.get("MAILGUN_DOMAIN");
+
+  if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
+    return new Response(
+      JSON.stringify({ error: "Mailgun credentials not configured" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  try {
+    const body = await req.json();
+    const event_type = body.event_type || "new_opportunity";
+
+    console.log(`notify-contractors: event_type=${event_type}, claim_id=${body.claim_id}`);
+
+    if (event_type === "contract_signed") {
+      return await handleContractSigned(body, supabase, MAILGUN_API_KEY, MAILGUN_DOMAIN, supabaseUrl, supabaseKey, corsHeaders);
+    }
+
+    if (event_type === "bid_update_confirmed") {
+      return await handleBidUpdateConfirmed(body, supabase, MAILGUN_API_KEY, MAILGUN_DOMAIN, corsHeaders);
+    }
+
+    if (event_type === "agreement_requested") {
+      return await handleAgreementRequested(body, supabase, MAILGUN_API_KEY, MAILGUN_DOMAIN, supabaseUrl, supabaseKey, corsHeaders);
+    }
+
+    if (event_type === "bid_expired") {
+      return await handleBidExpired(body, supabase, MAILGUN_API_KEY, MAILGUN_DOMAIN, corsHeaders);
+    }
+
+    if (event_type === "bid_renewal_requested") {
+      return await handleBidRenewalRequested(body, supabase, MAILGUN_API_KEY, MAILGUN_DOMAIN, corsHeaders);
+    }
+
+    // Default: new_opportunity
+    return await handleNewOpportunity(body, supabase, MAILGUN_API_KEY, MAILGUN_DOMAIN, supabaseUrl, supabaseKey, corsHeaders);
+
+  } catch (error) {
+    console.error("notify-contractors unhandled error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
