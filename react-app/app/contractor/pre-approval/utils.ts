@@ -259,9 +259,15 @@ export function wce1Path(userId: string, fileName: string, nowMs: number): strin
   return `${userId}/wce1_cert_${nowMs}_${fileName}`;
 }
 
-/** Per-entry license document path. Port of `licenses/${user_id}/${Date.now()}-${name}`. */
+/**
+ * Per-entry license document path - UID-first (D-220 convention) so the
+ * contractor-documents RLS policy (foldername[1] === auth.uid()) admits the
+ * upload. The legacy `licenses/${userId}/...` prefix put 'licenses' in
+ * segment 1 and was silently RLS-rejected (86e1nyc60); mirrors the static
+ * page fix in contractor-pre-approval.html.
+ */
 export function licenseDocPath(userId: string, fileName: string, nowMs: number): string {
-  return `licenses/${userId}/${nowMs}-${fileName}`;
+  return `${userId}/licenses/${nowMs}-${fileName}`;
 }
 
 // ================================================================
