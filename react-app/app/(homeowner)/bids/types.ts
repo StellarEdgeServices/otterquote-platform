@@ -63,6 +63,10 @@ export interface ContractorProfile {
   service_area_description?: string | null;
   license_number?: string | null;
   verified?: boolean | null;
+  /** D-210 gate state ('active' | 'approved' | ...) — drives the #534 status chip. */
+  status?: string | null;
+  /** Storage path or the 'not_provided' sentinel — drives the #534 license chip. */
+  license_path?: string | null;
   rating?: number | null;
   review_count?: number | null;
   specialties?: string | string[] | null;
@@ -83,6 +87,16 @@ export interface BidsClaim {
   has_measurements?: boolean | null;
   selected_contractor_id?: string | null;
   [key: string]: unknown;
+}
+
+/** A contractor_licenses_public row (v93 view) — the D-218 drill-down (#534). */
+export interface PublicLicense {
+  contractor_id: string;
+  jurisdiction_level?: string | null;
+  municipality?: string | null;
+  license_number?: string | null;
+  expiration_date?: string | null;
+  verification_url?: string | null;
 }
 
 /** Unread `bid_updated` notification surfaced as the "bids revised" banner. */

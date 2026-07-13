@@ -11,7 +11,14 @@
  * accessors + SECTIONS ~2093-2252, helpers ~2028-2116).
  */
 
-import type { BidRow, CompareCell, ContractorProfile, BidsClaim } from './types';
+import type { BidRow, CompareCell, ContractorProfile, BidsClaim, PublicLicense } from './types';
+import {
+  BADGE_APPLICATION_UNDER_REVIEW,
+  BADGE_DOCUMENTS_ON_FILE,
+  BADGE_LICENSE_NOT_PROVIDED,
+  BADGE_LICENSE_ON_FILE,
+  badgeLicensesOnFile,
+} from './copy';
 
 // The static stack origin — cross-track links (contract-signing.html) still serve
 // from otterquote.com until those pages migrate (coexistence; matches the shell's
@@ -513,4 +520,57 @@ export function buildCompareModel(
   }));
 
   return { headers, sections };
+}
+
+// ── #534 credential chips (GC-approved wording 2026-07-13, recorded on #534) ─
+// Chips key off actual artifact state — contractor_licenses_public rows plus
+// the license_path-derived doc state — never the ambiguous `verified` flag
+// (D-104/D-210/D-217/D-218). Parity with bids.html licenseChipHtml/statusChipHtml.
+
+/**
+ * Mirror of the v93 contractors_public.license_doc_state derivation, applied
+ * client-side because this page reads the contractors table directly.
+ */
+export function licenseDocState(
+  licensePath: string | null | undefined,
+): 'uploaded' | 'not_provided' | null {
+  if (licensePath === 'not_provided') return 'not_provided';
+  if (licensePath) return 'uploaded';
+  return null;
+}
+
+export interface CredentialChip {
+  label: string;
+  /** 'on-file' renders green; 'neutral' renders gray (a lawful state — no ⚠). */
+  kind: 'on-file' | 'neutral';
+}
+
+/** License chip: uploaded license(s) vs the D-217 "not provided" state. */
+export function licenseChip(c: ContractorProfile, licenses: PublicLicense[]): CredentialChip {
+  const hasDoc = licenses.length > 0 || licenseDocState(c.license_path) === 'uploaded';
+  if (!hasDoc) return { label: BADGE_LICENSE_NOT_PROVIDED, kind: 'neutral' };
+  return {
+    label: licenses.length > 1 ? badgeLicensesOnFile(licenses.length) : BADGE_LICENSE_ON_FILE,
+    kind: 'on-file',
+  };
+}
+
+/**
+ * Status chip, keyed to the D-210 three-artifact gate. Contractors surfaced to
+ * homeowners are active/approved by definition, so the pending state should be
+ * unreachable here — `warn` fires if it ever renders (GC note on #534).
+ */
+export function statusChip(
+  c: ContractorProfile,
+  warn: (msg: string) => void = (msg) => console.warn(msg),
+): CredentialChip {
+  const ok = c.status === 'active' || c.status === 'approved';
+  if (!ok) {
+    warn(
+      `[bids] contractor ${c.id} rendered without active/approved status — ` +
+        `"${BADGE_APPLICATION_UNDER_REVIEW}" chip shown, which should be unreachable on bids`,
+    );
+    return { label: BADGE_APPLICATION_UNDER_REVIEW, kind: 'neutral' };
+  }
+  return { label: BADGE_DOCUMENTS_ON_FILE, kind: 'on-file' };
 }
