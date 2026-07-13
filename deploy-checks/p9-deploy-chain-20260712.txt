@@ -1,0 +1,8 @@
+P9 Deploy Chain Verification Marker
+====================================
+Date: 2026-07-12 (ET)
+Purpose: Pre-launch D-221 Path A end-to-end rehearsal (P9, part 1).
+Chain: commit_via_api.py -> feature branch -> PR -> Null-Byte & Size
+Sanity Check -> squash merge to main -> Netlify auto-deploy ->
+post-deploy verification at https://otterquote.com/deploy-checks/p9-deploy-chain-20260712.txt
+This file is a no-op verification artifact. It has no runtime effect.
