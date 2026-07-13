@@ -578,7 +578,7 @@ serve(async (req) => {
                 body: JSON.stringify({
                   amount: feeAmount,
                   currency: "usd",
-                  description: `OtterQuote platform fee (${platformFeePercent}%) for claim ${claim.id}`,
+                  description: `Otter Quotes platform fee (${platformFeePercent}%) for claim ${claim.id}`,
                   metadata: {
                     claim_id: claim.id,
                     contractor_id: quote.contractor_id,

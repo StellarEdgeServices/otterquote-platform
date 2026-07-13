@@ -176,14 +176,14 @@ Renew your bid: ${renewUrl}
 
 If you're no longer interested in this project, no action is needed.
 
-— The OtterQuote Team`;
+— The Otter Quotes Team`;
 
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">
-    <img src="https://otterquote.com/img/otter-logo.svg" alt="OtterQuote" width="40" style="margin-bottom:16px;" />
+    <img src="https://otterquote.com/img/otter-logo.svg" alt="Otter Quotes" width="40" style="margin-bottom:16px;" />
     <h2 style="color:#0A1E2C;margin:0 0 8px;">Your bid has expired</h2>
     <p style="color:#555;margin:0 0 16px;">Hi ${contractorName},</p>
     <p style="color:#555;margin:0 0 16px;">
@@ -200,7 +200,7 @@ If you're no longer interested in this project, no action is needed.
     </p>
     <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
     <p style="color:#aaa;font-size:11px;">
-      OtterQuote &bull; notifications@${mailgunDomain}
+      Otter Quotes &bull; notifications@${mailgunDomain}
     </p>
   </div>
 </body>
@@ -228,14 +228,14 @@ Your ${tradeLabel} bid for ${homeownerAddress} was auto-renewed. It's now valid 
 
 To stop auto-renewing this bid: ${stopUrl}
 
-— The OtterQuote Team`;
+— The Otter Quotes Team`;
 
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">
-    <img src="https://otterquote.com/img/otter-logo.svg" alt="OtterQuote" width="40" style="margin-bottom:16px;" />
+    <img src="https://otterquote.com/img/otter-logo.svg" alt="Otter Quotes" width="40" style="margin-bottom:16px;" />
     <h2 style="color:#0A1E2C;margin:0 0 8px;">Your bid was auto-renewed ✓</h2>
     <p style="color:#555;margin:0 0 16px;">Hi ${contractorName},</p>
     <p style="color:#555;margin:0 0 16px;">
@@ -247,7 +247,7 @@ To stop auto-renewing this bid: ${stopUrl}
     </p>
     <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
     <p style="color:#aaa;font-size:11px;">
-      OtterQuote &bull; notifications@${mailgunDomain}
+      Otter Quotes &bull; notifications@${mailgunDomain}
     </p>
   </div>
 </body>
@@ -274,14 +274,14 @@ The homeowner can still see your original bid for comparison, but it is marked e
 
 If you'd like to stay competitive, log in to submit a fresh bid: https://otterquote.com/contractor-opportunities.html
 
-— The OtterQuote Team`;
+— The Otter Quotes Team`;
 
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">
-    <img src="https://otterquote.com/img/otter-logo.svg" alt="OtterQuote" width="40" style="margin-bottom:16px;" />
+    <img src="https://otterquote.com/img/otter-logo.svg" alt="Otter Quotes" width="40" style="margin-bottom:16px;" />
     <h2 style="color:#0A1E2C;margin:0 0 8px;">Auto-renewal limit reached</h2>
     <p style="color:#555;margin:0 0 16px;">Hi ${contractorName},</p>
     <p style="color:#555;margin:0 0 16px;">
@@ -298,7 +298,7 @@ If you'd like to stay competitive, log in to submit a fresh bid: https://otterqu
     </a>
     <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
     <p style="color:#aaa;font-size:11px;">
-      OtterQuote &bull; notifications@${mailgunDomain}
+      Otter Quotes &bull; notifications@${mailgunDomain}
     </p>
   </div>
 </body>
@@ -327,14 +327,14 @@ View your project: ${bidsUrl}
 
 If you have any questions, reply to this email or call us at (844) 875-3412.
 
-— The OtterQuote Team`;
+— The Otter Quotes Team`;
 
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">
-    <img src="https://otterquote.com/img/otter-logo.svg" alt="OtterQuote" width="40" style="margin-bottom:16px;" />
+    <img src="https://otterquote.com/img/otter-logo.svg" alt="Otter Quotes" width="40" style="margin-bottom:16px;" />
     <h2 style="color:#0A1E2C;margin:0 0 8px;">Your bids have expired</h2>
     <p style="color:#555;margin:0 0 16px;">Hi ${homeownerName},</p>
     <p style="color:#555;margin:0 0 16px;">
@@ -354,7 +354,7 @@ If you have any questions, reply to this email or call us at (844) 875-3412.
     </p>
     <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
     <p style="color:#aaa;font-size:11px;">
-      OtterQuote &bull; notifications@${mailgunDomain}
+      Otter Quotes &bull; notifications@${mailgunDomain}
     </p>
   </div>
 </body>
@@ -422,7 +422,7 @@ async function expireBids(
   let autoRenewedCount = 0;
 
   const now = new Date().toISOString();
-  const fromAddress = `OtterQuote <notifications@${mailgunDomain}>`;
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
 
   // ── Fetch candidates ────────────────────────────────────────────────────────
   // Join to claims so we can filter by claim status and get homeowner address.
@@ -718,7 +718,7 @@ async function notifyBidWindowExpirations(
   const errors: string[] = [];
   let windowsNotified = 0;
   const now = new Date().toISOString();
-  const fromAddress = `OtterQuote <notifications@${mailgunDomain}>`;
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
 
   // Find claims whose bid window has expired and haven't been notified yet.
   // No FK from claims.user_id → profiles.id, so profiles are fetched separately below.

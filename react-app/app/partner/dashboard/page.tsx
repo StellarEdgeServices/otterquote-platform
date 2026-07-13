@@ -88,6 +88,7 @@ import {
   W9_COPY,
   PAYOUT_COPY,
   RECRUIT_LINK_HINT,
+  REFERRAL_FEE_DISCLAIMER,
   RECRUIT_LINK_PENDING,
   RECRUIT_EARNINGS_TOOLTIP,
   HERO_COPY,
@@ -255,6 +256,8 @@ function DashboardView({
             <div className="referral-link-url">{referralLink}</div>
             <CopyButton text={referralLink} />
           </div>
+          {/* D-266 — mandatory verbatim funnel-legality disclaimer */}
+          <p className="link-hint referral-fee-disclaimer">{REFERRAL_FEE_DISCLAIMER}</p>
         </div>
 
         <div className="referral-link-section recruit-link-section">

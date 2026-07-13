@@ -353,13 +353,13 @@ serve(async (req) => {
           ? "No platform fee had been charged on this project, so no refund is necessary."
           : "We will process your platform fee refund separately. Please contact support at support@otterquote.com if you have questions.";
 
-      const emailText = `Hi ${contractorName},\n\nWe're writing to let you know that the homeowner on the following project has chosen to switch contractors through OtterQuote.\n\nThis is a platform feature available to homeowners up to 3 days before their scheduled installation date.\n\n${refundLine}\n\nThe project has been re-opened to the OtterQuote contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.\n\nWe appreciate your participation on OtterQuote and look forward to connecting you with future projects.\n\nBest regards,\nThe OtterQuote Team\nsupport@otterquote.com | (844) 875-3412`;
+      const emailText = `Hi ${contractorName},\n\nWe're writing to let you know that the homeowner on the following project has chosen to switch contractors through Otter Quotes.\n\nThis is a platform feature available to homeowners up to 3 days before their scheduled installation date.\n\n${refundLine}\n\nThe project has been re-opened to the Otter Quotes contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.\n\nWe appreciate your participation on Otter Quotes and look forward to connecting you with future projects.\n\nBest regards,\nThe Otter Quotes Team\nsupport@otterquote.com | (844) 875-3412`;
 
       emailSent = await sendEmail(
         mailgunKey,
         mailgunDomain,
         contractorEmail,
-        `OtterQuote <notifications@${mailgunDomain}>`,
+        `Otter Quotes <notifications@${mailgunDomain}>`,
         "Project Update — Contractor Switch",
         emailText
       );
@@ -381,7 +381,7 @@ serve(async (req) => {
         mailgunKey,
         mailgunDomain,
         "dustinstohler1@gmail.com",
-        `OtterQuote <notifications@${mailgunDomain}>`,
+        `Otter Quotes <notifications@${mailgunDomain}>`,
         `[Action Required] Homeowner switch request — ${propertyAddress}`,
         supportEmailText
       );

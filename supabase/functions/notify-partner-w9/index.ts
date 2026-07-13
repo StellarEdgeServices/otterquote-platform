@@ -92,7 +92,7 @@ function buildEmail(bodyHtml: string): string {
         <!-- Header -->
         <tr>
           <td align="left" style="background:#0B1929;padding:24px 32px;">
-            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">OtterQuote</span>
+            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Otter Quotes</span>
           </td>
         </tr>
         <!-- Body -->
@@ -128,7 +128,7 @@ function w9RequestEmailHtml(firstName: string): string {
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 6px;color:#92400E;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">Why is this required?</p>
-          <p style="margin:0;color:#78350F;font-size:14px;line-height:1.6;">The IRS requires OtterQuote to collect a W-9 from any partner who receives $600 or more in referral payments during a calendar year. We&rsquo;re required to issue a 1099-MISC for qualifying payments, and we cannot do so without your taxpayer information on file.</p>
+          <p style="margin:0;color:#78350F;font-size:14px;line-height:1.6;">The IRS requires Otter Quotes to collect a W-9 from any partner who receives $600 or more in referral payments during a calendar year. We&rsquo;re required to issue a 1099-MISC for qualifying payments, and we cannot do so without your taxpayer information on file.</p>
         </td>
       </tr>
     </table>
@@ -227,12 +227,12 @@ serve(async (req) => {
     const firstName = (agent.name || "").split(" ")[0].trim();
 
     const htmlBody = w9RequestEmailHtml(firstName);
-    const plainText = `Hi ${firstName || "there"},\n\nYour referral generated a commission payment, but we need a completed W-9 before we can release it.\n\nPlease log in to your partner dashboard to upload your W-9:\n${PARTNER_DASHBOARD_URL}\n\nQuestions? Email support@otterquote.com or call (844) 875-3412.\n\nOtterQuote Team`;
+    const plainText = `Hi ${firstName || "there"},\n\nYour referral generated a commission payment, but we need a completed W-9 before we can release it.\n\nPlease log in to your partner dashboard to upload your W-9:\n${PARTNER_DASHBOARD_URL}\n\nQuestions? Email support@otterquote.com or call (844) 875-3412.\n\nOtter Quotes Team`;
 
     const formData = new URLSearchParams();
-    formData.append("from",    `OtterQuote <notifications@${MAILGUN_DOMAIN}>`);
+    formData.append("from",    `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`);
     formData.append("to",      agent.email);
-    formData.append("subject", "Action required \u2014 submit your W-9 to receive your OtterQuote referral payment");
+    formData.append("subject", "Action required \u2014 submit your W-9 to receive your Otter Quotes referral payment");
     formData.append("text",    plainText);
     formData.append("html",    htmlBody);
 

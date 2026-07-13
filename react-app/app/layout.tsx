@@ -14,8 +14,8 @@ import { AuthProvider } from './providers/auth-provider';
 import { QueryClientProvider } from './lib/query-client';
 
 export const metadata: Metadata = {
-  title: 'OtterQuote App',
-  description: 'OtterQuote — D-211 React app surface',
+  title: 'Otter Quotes App',
+  description: 'Otter Quotes — D-211 React app surface',
 };
 
 export default function RootLayout({

@@ -173,7 +173,7 @@ function newOpportunityEmailHtml(
     </table>
 
     <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
-    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">A contract-ready project is available in your service area. The winning contractor receives a fully executed contract, Hover aerial measurements, and the homeowner&rsquo;s contact information &mdash; everything you need to schedule and start work.</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">A new opportunity is available in your service area. The winning contractor receives a fully executed contract, Hover aerial measurements, and the homeowner&rsquo;s contact information &mdash; everything you need to schedule and start work.</p>
 
     ${ctaButton("View Opportunity &rarr;", OPPORTUNITIES_URL)}
 

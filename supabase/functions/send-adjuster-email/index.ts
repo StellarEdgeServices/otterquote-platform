@@ -187,7 +187,7 @@ serve(async (req) => {
     }
 
     // ========== SEND EMAIL VIA MAILGUN ==========
-    const fromAddress = `OtterQuote <noreply@${MAILGUN_DOMAIN}>`;
+    const fromAddress = `Otter Quotes <noreply@${MAILGUN_DOMAIN}>`;
 
     // Build URL-encoded form data for Mailgun
     const formData = new URLSearchParams();
