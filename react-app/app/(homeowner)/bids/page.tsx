@@ -21,12 +21,13 @@ import { useCallback, useMemo, useState } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { useBidUpdates } from '@/hooks/use-bid-updates';
 import { HomeownerShell } from '../_shell/HomeownerShell';
-import { useBidContractors, useBidsClaim, useBidUpdatedNotifications } from './use-bids-data';
+import { useBidContractors, useBidsClaim, useBidUpdatedNotifications, useContractorLicenses } from './use-bids-data';
 import { acknowledgeBidUpdatedNotifications, requestBidRenewal } from './actions';
 import { isAllExpired, showCompareToggle } from './utils';
 import { BIDS_STYLES } from './styles';
 import { BidCard } from './components/BidCard';
 import { BidsCompareGrid } from './components/BidsCompareGrid';
+import { CredentialEducationModal } from './components/CredentialEducationModal';
 import { SelectContractorModal } from './components/SelectContractorModal';
 import { AllExpiredBanner, BidUpdatedBanner, EmptyState, ErrorState } from './components/Banners';
 import type { BidRow } from './types';
@@ -55,13 +56,16 @@ function BidsContent() {
   const { bids: rawBids, loading: bidsLoading, error: bidsError } = useBidUpdates(claimId || '');
   const bids = rawBids as unknown as BidRow[];
   const { contractors } = useBidContractors(bids);
+  const { licenses } = useContractorLicenses(bids);
   const notifs = useBidUpdatedNotifications(userId, claimId);
 
   const [view, setView] = useState<'cards' | 'compare'>('cards');
   const [pending, setPending] = useState<BidRow | null>(null);
+  const [eduContractorId, setEduContractorId] = useState<string | null>(null);
   const [renewals, setRenewals] = useState<Record<string, RenewState>>({});
 
   const onSelect = useCallback((bid: BidRow) => setPending(bid), []);
+  const onCredentials = useCallback((contractorId: string) => setEduContractorId(contractorId), []);
 
   const onRenew = useCallback(
     async (bid: BidRow) => {
@@ -131,8 +135,10 @@ function BidsContent() {
                   bids={bids}
                   claim={claim}
                   contractor={contractors[bid.contractor_id] || { id: bid.contractor_id }}
+                  licenses={licenses[bid.contractor_id] || []}
                   onSelect={onSelect}
                   onRenew={onRenew}
+                  onCredentials={onCredentials}
                   renewalState={renewals[bid.id] || 'idle'}
                 />
               ))}
@@ -147,6 +153,14 @@ function BidsContent() {
           claim={claim}
           contractor={contractors[pending.contractor_id] || { id: pending.contractor_id }}
           onClose={() => setPending(null)}
+        />
+      )}
+
+      {eduContractorId && (
+        <CredentialEducationModal
+          contractor={contractors[eduContractorId] || { id: eduContractorId }}
+          licenses={licenses[eduContractorId] || []}
+          onClose={() => setEduContractorId(null)}
         />
       )}
     </div>
