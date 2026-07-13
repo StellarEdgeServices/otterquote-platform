@@ -370,7 +370,7 @@ describe('verbatim Tier-3 legal copy', () => {
   it('partner agreement: 5% fee disclosure + sign-via-DocuSign', () => {
     const p = PRE_APPROVAL_COPY.step3.partnerAgreement;
     expect(p.heading).toBe('Contractor Partner Agreement');
-    expect(p.bodyPost).toContain('platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs');
+    expect(p.bodyPost).toContain('platform fee is 5% of your accepted bid amount for all job types');
     expect(p.checkLabel).toContain('platform fee structure');
   });
 

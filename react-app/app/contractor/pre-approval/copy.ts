@@ -147,7 +147,7 @@ export const PRE_APPROVAL_COPY = {
       bodyPre: 'By joining Otter Quotes, you agree to the terms of the ',
       linkText: 'Otter Quotes Contractor Partner Agreement',
       bodyPost:
-        '. You will also be asked to sign it via DocuSign when your first project is matched. The platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs.',
+        '. You will also be asked to sign it via DocuSign when your first project is matched. The platform fee is 5% of your accepted bid amount for all job types.',
       checkLabel:
         'I have reviewed the Contractor Partner Agreement and agree to its terms, including the platform fee structure.',
     },
