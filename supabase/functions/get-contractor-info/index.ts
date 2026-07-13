@@ -57,10 +57,12 @@ serve(async (req: Request) => {
   const callerId = user.id;
 
   let claim_id: string, contractor_id: string;
+  let notifyNoPaymentMethod = false;
   try {
     const body = await req.json();
     claim_id = body.claim_id;
     contractor_id = body.contractor_id;
+    notifyNoPaymentMethod = body.notify_no_payment_method === true;
   } catch {
     return json({ error: "Invalid JSON body" }, 400, corsHeaders);
   }
@@ -69,14 +71,36 @@ serve(async (req: Request) => {
     return json({ error: "Missing required fields: claim_id, contractor_id" }, 400, corsHeaders);
   }
 
-  // (a) Caller must own the claim
+  // Load the claim + contractor up front so authorization can accept EITHER
+  // party. (E2E walk fix 2026-07-08: previously homeowner-only, which 403'd the
+  // contractor's own signing page — the contractor cannot load contract-signing
+  // to sign first.)
   const { data: claim, error: claimErr } = await sb
     .from("claims")
     .select("id, user_id, selected_contractor_id")
     .eq("id", claim_id)
     .single();
 
-  if (claimErr || !claim || claim.user_id !== callerId) {
+  if (claimErr || !claim) {
+    return json({ error: "Forbidden" }, 403, corsHeaders);
+  }
+
+  // Service-role read bypasses RLS
+  const { data: contractor, error: contractorErr } = await sb
+    .from("contractors")
+    .select("company_name, user_id, stripe_payment_method_id, contract_templates, contract_pdf_url")
+    .eq("id", contractor_id)
+    .single();
+
+  if (contractorErr || !contractor) {
+    return json({ error: "Contractor not found" }, 404, corsHeaders);
+  }
+
+  // (a) Caller must be the claim owner (homeowner) OR the contractor being queried
+  //     (contractor reading its own record for the signing page).
+  const isHomeowner = claim.user_id === callerId;
+  const isTheContractor = contractor.user_id === callerId;
+  if (!isHomeowner && !isTheContractor) {
     return json({ error: "Forbidden" }, 403, corsHeaders);
   }
 
@@ -97,22 +121,43 @@ serve(async (req: Request) => {
     return json({ error: "Forbidden" }, 403, corsHeaders);
   }
 
-  // Service-role read bypasses RLS
-  const { data: contractor, error: contractorErr } = await sb
-    .from("contractors")
-    .select("company_name, user_id, stripe_payment_method_id, contract_templates, contract_pdf_url")
-    .eq("id", contractor_id)
-    .single();
+  const hasPaymentMethod = !!(contractor.stripe_payment_method_id && contractor.stripe_payment_method_id !== "");
 
-  if (contractorErr || !contractor) {
-    return json({ error: "Contractor not found" }, 404, corsHeaders);
+  // #486: when the homeowner's selection attempt finds no payment method on
+  // file, create the contractor's in-app notification SERVER-SIDE (service
+  // role). The old client-side insert wrote another user's notifications row
+  // from a homeowner session — RLS rightly blocked it and no one was notified.
+  if (notifyNoPaymentMethod && !hasPaymentMethod && isHomeowner && contractor.user_id) {
+    try {
+      const { data: existing } = await sb
+        .from("notifications")
+        .select("id")
+        .eq("user_id", contractor.user_id)
+        .eq("claim_id", claim_id)
+        .eq("notification_type", "payment_method_needed")
+        .is("read_at", null)
+        .maybeSingle();
+      if (!existing) {
+        await sb.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id: claim_id,
+          notification_type: "payment_method_needed",
+          channel: "dashboard",
+          recipient: "",
+          message_preview:
+            "A homeowner wants to select you, but you don't have a payment method on file. Please add one in Settings.",
+        });
+      }
+    } catch (notifyErr) {
+      console.error("[get-contractor-info] payment_method_needed notification failed:", notifyErr);
+    }
   }
 
   // Return only safe fields; never expose Stripe IDs
   return json({
     company_name: contractor.company_name,
     user_id: contractor.user_id,
-    has_payment_method: !!(contractor.stripe_payment_method_id && contractor.stripe_payment_method_id !== ""),
+    has_payment_method: hasPaymentMethod,
     contract_templates: contractor.contract_templates,
     contract_pdf_url: contractor.contract_pdf_url,
   }, 200, corsHeaders);

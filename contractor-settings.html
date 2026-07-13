@@ -1252,6 +1252,15 @@
         Add one or more payment methods so we can charge the platform fee when you win a project. Bank accounts (ACH) have no processing fee. Card payments include a small processing fee.
       </div>
 
+      <!-- Load-failure banner: shown if the contractor record can't be fetched, so the page
+           doesn't silently look normal while payment setup is broken -->
+      <div id="pmLoadError" style="padding: var(--sp-6); background: #FEE2E2; border: 1px solid #EF4444; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
+        <div style="font-size: 0.9rem; color: #991B1B; font-weight: 600; margin-bottom: var(--sp-2);">&#9888;&#65039; We couldn't load your account</div>
+        <p style="font-size: 0.875rem; color: #7F1D1D; margin-bottom: 0; line-height: 1.5;">
+          We couldn't load your account details, so payment setup is temporarily unavailable. Please refresh the page or try again in a moment.
+        </p>
+      </div>
+
       <!-- Status display: No payment methods on file (amber) -->
       <div id="pmStatusNoPayment" style="padding: var(--sp-6); background: #FFFBEB; border: 1px solid #E07B00; border-radius: var(--radius-md); margin-bottom: var(--sp-6); display: none;">
         <div style="font-size: 0.9rem; color: #92400E; font-weight: 600; margin-bottom: var(--sp-2);">⚠️ Payment Method Required</div>
@@ -1275,7 +1284,7 @@
         <p style="font-size: 0.85rem; color: #334155; line-height: 1.7; margin-bottom: var(--sp-6);">
           This isn't about us collecting fees faster. It's about making sure that when a homeowner chooses you, the experience is seamless from start to finish.
         </p>
-        <button class="btn btn-primary" onclick="initializeStripeSetup('us_bank_account')" style="background: #1E3A5F; color: #E07B00; border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;">
+        <button class="btn btn-primary pm-add-btn" disabled onclick="initializeStripeSetup('us_bank_account')" style="background: #1E3A5F; color: #E07B00; border: none; border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-6); font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; cursor: pointer;">
           Add Backup Payment Method
         </button>
       </div>
@@ -1289,11 +1298,11 @@
 
       <!-- Add method buttons (Bank Account first = default/recommended) -->
       <div id="pmAddButtons" style="display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-3);">
-        <button class="btn btn-primary" style="flex: 1; min-width: 200px;" onclick="initializeStripeSetup('us_bank_account')">
+        <button class="btn btn-primary pm-add-btn" disabled style="flex: 1; min-width: 200px;" onclick="initializeStripeSetup('us_bank_account')">
           🏦 Add Bank Account
           <span style="display: block; font-size: 0.75rem; font-weight: 400; opacity: 0.85; margin-top: 2px;">Free &mdash; No Processing Fee</span>
         </button>
-        <button class="btn btn-secondary" style="flex: 1; min-width: 200px;" onclick="initializeStripeSetup('card')">
+        <button class="btn btn-secondary pm-add-btn" disabled style="flex: 1; min-width: 200px;" onclick="initializeStripeSetup('card')">
           💳 Add Credit/Debit Card
           <span style="display: block; font-size: 0.75rem; font-weight: 400; opacity: 0.85; margin-top: 2px;">Processing fee applies</span>
         </button>
@@ -1329,6 +1338,78 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ════════════════════════════════════════ -->
+    <!-- Contract Templates (IMP-009, relocated from profile) -->
+    <!-- ════════════════════════════════════════ -->
+    <!-- Contract Templates Card (IMP-009) -->
+    <div class="settings-card" id="contract-templates">
+        <div class="settings-card-title">Contract Templates</div>
+
+        <div class="info-box" style="margin-bottom: var(--sp-6);">
+            Upload your contract template for each type of work. Otter Quotes will auto-populate your company details and get it signed by the homeowner. The contract is sent for e-signature via DocuSign.
+        </div>
+
+        <div style="margin-bottom: var(--sp-6);">
+            <h3 style="font-size: 1rem; margin-bottom: var(--sp-3); color: var(--text-secondary);">Auto-Fill Fields Detected</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--sp-3);">
+                Otter Quotes scans your contract for these labels and auto-fills the corresponding data:
+            </p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); font-size: 0.85rem;">
+                <div><strong>Name</strong> → Homeowner name</div>
+                <div><strong>Address:</strong> → Property address</div>
+                <div><strong>Phone</strong> → Homeowner phone</div>
+                <div><strong>Email:</strong> → Homeowner email</div>
+                <div><strong>Insurance Co</strong> → Insurance carrier</div>
+                <div><strong>Claim #</strong> → Claim number</div>
+                <div><strong>Deductible:</strong> → Deductible amount</div>
+                <div><strong>Contract Price:</strong> → Bid amount</div>
+                <div><strong>Material:</strong> → Shingle brand/type</div>
+                <div><strong>Warranty:</strong> → Warranty years</div>
+                <div><strong>Statement of Work:</strong> → Scope of work / SOW</div>
+                <div></div>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--sp-3);">
+                Tip: Include these exact labels in your contract to enable auto-fill. Fields not found will be left blank for manual entry. After uploading a template, click <strong>Review Mapping</strong> to customize which labels Otter Quotes looks for.
+            </p>
+        </div>
+
+        <div id="contractTemplatesGrid" style="display: grid; gap: var(--sp-6); margin-top: var(--sp-8);">
+            <!-- Templates will be rendered here by JavaScript -->
+            <div style="text-align: center; color: var(--slate); padding: var(--sp-8);">
+                Loading templates...
+            </div>
+        </div>
+    </div>
+
+    <!-- Field Mapping Review Modal -->
+    <div id="fieldMappingModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; align-items: center; justify-content: center; padding: var(--sp-4);">
+        <div style="background: #fff; border-radius: 12px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; padding: var(--sp-8); box-shadow: 0 20px 60px rgba(0,0,0,0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-6);">
+                <div>
+                    <h2 style="font-size: 1.25rem; margin: 0;">Review Field Mapping</h2>
+                    <p id="fieldMappingSubtitle" style="font-size: 0.85rem; color: var(--text-muted); margin: var(--sp-1) 0 0;"></p>
+                </div>
+                <button onclick="closeFieldMappingModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); line-height: 1;">✕</button>
+            </div>
+            <p style="font-size: 0.9rem; color: var(--slate); margin-bottom: var(--sp-5);">
+                Otter Quotes searches your PDF for the label text in the left column and replaces it with the Otter Quotes data shown on the right. If your contract uses different label text, update the left column to match exactly.
+            </p>
+            <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--sp-3); align-items: center; margin-bottom: var(--sp-2);">
+                <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Label in Your Contract</div>
+                <div></div>
+                <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Otter Quotes Data</div>
+            </div>
+            <div id="fieldMappingRows" style="display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--sp-2); align-items: center;">
+                <!-- Populated by JS -->
+            </div>
+            <div style="margin-top: var(--sp-6); display: flex; gap: var(--sp-3); justify-content: flex-end;">
+                <button class="btn-small btn-small-secondary" onclick="resetFieldMappings()">Reset to Defaults</button>
+                <button class="btn-small btn-small-primary" onclick="saveFieldMappings()">Save Mapping</button>
+            </div>
+            <div id="fieldMappingSaveStatus" style="display: none; margin-top: var(--sp-3); font-size: 0.85rem; text-align: right;"></div>
+        </div>
     </div>
 
     <!-- ═══════════════════════════════════════ -->
@@ -1606,6 +1687,7 @@
   <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/contract-template-validation.js"></script>
   <script src="js/nav.js"></script>
 
   <script>
@@ -1826,6 +1908,15 @@
 
     // Initialize Stripe setup for a specific payment type
     window.initializeStripeSetup = async function(paymentType) {
+      // Guard: the contractor record must be loaded before we can create a SetupIntent.
+      // Every sibling handler that reads contractorRecord guards the same way; without this,
+      // clicking an Add-payment-method button before initSettings() resolves the contractor
+      // fetch throws "Cannot read properties of null (reading 'id')" at the create-setup-intent
+      // call below (which is caught and shown to the user as a raw "Setup error: ..." string).
+      if (!contractorRecord || !sb) {
+        alert('Your account is still loading. Please wait a moment and try again.');
+        return;
+      }
       initializeStripe();
       currentSetupType = paymentType || 'card';
 
@@ -2116,6 +2207,10 @@
 
     // Update payment method UI &mdash; called from page load
     function updatePaymentMethodUI() {
+      // Contractor record is confirmed loaded by the time this runs (called from initSettings
+      // after the contractor fetch succeeds), so it is now safe to enable the Add-payment-method
+      // buttons that ship disabled to prevent clicking ahead of the fetch.
+      document.querySelectorAll('.pm-add-btn').forEach(btn => { btn.disabled = false; });
       loadPaymentMethods();
     }
 
@@ -2168,6 +2263,388 @@
     // ── Initialize: Load settings from Supabase ──
     // ── Project Confirmation Templates (D-194) moved to contractor-profile.html only ──
 
+    // ── Contract Templates (IMP-009, relocated from contractor-profile 2026-07-07) ──
+        async function loadContractTemplates() {
+            // Session 262: XSS hardening — build DOM instead of templated innerHTML
+            // so that DB-sourced file_url / filename values can never inject markup.
+            // Also refactored to single DB fetch (was one query per slot = 8 round trips).
+            const templateSlots = [
+                { trade: 'Roofing', fundingType: 'Insurance (full replacement)' },
+                { trade: 'Roofing', fundingType: 'Retail' },
+                { trade: 'Siding', fundingType: 'Insurance' },
+                { trade: 'Siding', fundingType: 'Retail' },
+                { trade: 'Gutters', fundingType: 'Insurance' },
+                { trade: 'Gutters', fundingType: 'Retail' },
+                { trade: 'Windows', fundingType: 'Insurance' },
+                { trade: 'Windows', fundingType: 'Retail' }
+            ];
+
+            const gridContainer = document.getElementById('contractTemplatesGrid');
+            gridContainer.innerHTML = '';
+            const grid = document.createElement('div');
+            grid.className = 'template-slots-grid';
+
+            // Fetch all contract templates in one query
+            let contractTemplates = [];
+            if (contractorRecord && sb && !CONFIG.DEMO_MODE) {
+                try {
+                    const { data: templates } = await sb.from('contractors')
+                        .select('contract_templates')
+                        .eq('id', contractorRecord.id)
+                        .single();
+                    contractTemplates = templates?.contract_templates || [];
+                } catch (err) {
+                    console.error('Error loading contract templates:', err);
+                }
+            }
+
+            for (const slot of templateSlots) {
+                const slotId = `template_${slot.trade.toLowerCase()}_${slot.fundingType.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '')}`;
+                const inputId = `${slotId}_input`;
+                const matchingTemplate = contractTemplates.find(t => t.trade === slot.trade && t.funding_type === slot.fundingType);
+
+                const cell = document.createElement('div');
+                cell.className = 'template-slot';
+
+                const header = document.createElement('div');
+                header.className = 'template-slot-header';
+                header.textContent = `${slot.trade} — ${slot.fundingType}`;
+                cell.appendChild(header);
+
+                if (matchingTemplate) {
+                    // #505c: the contract_templates JSONB stores the storage location under
+                    // `path` (pre-approval + settings both write it). Reading only `file_url`
+                    // left fileUrl empty, which broke the View button AND silently disabled the
+                    // D-199 legacy backfill in attachValidationStatus (it no-ops without a path).
+                    const fileUrl  = String(matchingTemplate.file_url || matchingTemplate.path || '');
+                    const fileName = String(matchingTemplate.file_name || 'template.pdf');
+                    const uploadDate = matchingTemplate.uploaded_at
+                        ? new Date(matchingTemplate.uploaded_at).toLocaleDateString()
+                        : 'Unknown date';
+
+                    const fileDisplay = document.createElement('div');
+                    fileDisplay.className = 'template-file-display';
+
+                    const nameEl = document.createElement('div');
+                    nameEl.className = 'template-file-name';
+                    nameEl.textContent = fileName;
+
+                    const dateEl = document.createElement('div');
+                    dateEl.className = 'template-file-date';
+                    dateEl.textContent = 'Uploaded: ' + uploadDate;
+
+                    fileDisplay.appendChild(nameEl);
+                    fileDisplay.appendChild(dateEl);
+                    cell.appendChild(fileDisplay);
+
+                    const btnRow = document.createElement('div');
+                    btnRow.style.cssText = 'display: flex; gap: var(--sp-3); flex-wrap: wrap;';
+
+                    // View — mints signed URL; never navigates to stored URL directly
+                    const viewBtn = document.createElement('button');
+                    viewBtn.className = 'btn-small btn-small-primary';
+                    viewBtn.textContent = 'View';
+                    viewBtn.addEventListener('click', () => viewContractTemplate(fileUrl));
+
+                    const mappingBtn = document.createElement('button');
+                    mappingBtn.className = 'btn-small btn-small-secondary';
+                    mappingBtn.textContent = 'Review Mapping';
+                    mappingBtn.addEventListener('click', () => openFieldMappingModal(slot.trade, slot.fundingType));
+
+                    const replaceBtn = document.createElement('button');
+                    replaceBtn.className = 'btn-small btn-small-secondary';
+                    replaceBtn.textContent = 'Replace';
+                    replaceBtn.addEventListener('click', () => replaceContractTemplate(slotId, slot.trade, slot.fundingType));
+
+                    btnRow.appendChild(viewBtn);
+                    btnRow.appendChild(mappingBtn);
+                    btnRow.appendChild(replaceBtn);
+                    cell.appendChild(btnRow);
+
+                    // D-199 anchor validation status (auto-renders inline; safe if D199 module not loaded)
+                    if (window.D199 && contractorRecord) {
+                        window.D199.attachValidationStatus(cell, contractorRecord.id, slot.trade, slot.fundingType, fileUrl);
+                    }
+                } else {
+                    const subtext = document.createElement('div');
+                    subtext.className = 'template-slot-subtext';
+                    subtext.textContent = 'No template uploaded';
+                    cell.appendChild(subtext);
+
+                    const uploadBox = document.createElement('div');
+                    uploadBox.className = 'template-upload-box';
+
+                    const label = document.createElement('label');
+                    label.htmlFor = inputId;
+                    label.className = 'template-upload-label';
+                    label.style.cursor = 'pointer';
+
+                    const icon = document.createElement('div');
+                    icon.className = 'template-upload-icon';
+                    icon.textContent = '📄';
+
+                    const uploadText = document.createElement('div');
+                    uploadText.className = 'template-upload-text';
+                    uploadText.textContent = 'Upload Template';
+
+                    const uploadHint = document.createElement('div');
+                    uploadHint.className = 'template-upload-hint';
+                    uploadHint.textContent = 'PDF format, max 10MB';
+
+                    label.appendChild(icon);
+                    label.appendChild(uploadText);
+                    label.appendChild(uploadHint);
+
+                    const fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.id = inputId;
+                    fileInput.accept = '.pdf';
+                    fileInput.style.display = 'none';
+                    fileInput.addEventListener('change', function () { uploadTemplateFile(slot.trade, slot.fundingType, this); });
+
+                    uploadBox.addEventListener('click', () => fileInput.click());
+                    uploadBox.appendChild(label);
+                    uploadBox.appendChild(fileInput);
+                    cell.appendChild(uploadBox);
+                }
+
+                grid.appendChild(cell);
+            }
+
+            gridContainer.appendChild(grid);
+        }
+
+        // View contract template — bucket is private, so mint a signed URL at click time
+        async function viewContractTemplate(fileUrl) {
+            if (!fileUrl) {
+                alert('No file URL available for this template.');
+                return;
+            }
+            try {
+                // Extract storage path after /contractor-templates/ (works for both full public URLs and bare paths)
+                const pathMatch = fileUrl.match(/contractor-templates\/(.+?)(\?|$)/);
+                const storagePath = pathMatch
+                    ? decodeURIComponent(pathMatch[1])
+                    : fileUrl; // already a path
+                const { data, error } = await sb.storage
+                    .from('contractor-templates')
+                    .createSignedUrl(storagePath, 3600); // 1 hour
+                if (error || !data?.signedUrl) {
+                    console.error('Signed URL generation failed:', error);
+                    alert('Unable to open template. Please try uploading again or contact support.');
+                    return;
+                }
+                window.open(data.signedUrl, '_blank');
+            } catch (err) {
+                console.error('viewContractTemplate error:', err);
+                alert('Unable to open template. Please try again.');
+            }
+        }
+
+        // Replace contract template
+        function replaceContractTemplate(slotId, trade, fundingType) {
+            const inputId = `${slotId}_input`;
+            // Check if input exists, if not create it
+            let input = document.getElementById(inputId);
+            if (!input) {
+                input = document.createElement('input');
+                input.type = 'file';
+                input.id = inputId;
+                input.accept = '.pdf';
+                input.style.display = 'none';
+                input.onchange = function() { uploadTemplateFile(trade, fundingType, this); };
+                document.body.appendChild(input);
+            }
+            input.click();
+        }
+
+        // Upload template file
+        async function uploadTemplateFile(trade, fundingType, inputElement) {
+            if (!inputElement.files.length) return;
+
+            const file = inputElement.files[0];
+            if (file.type !== 'application/pdf') {
+                alert('Please upload a PDF file.');
+                return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                alert('File too large. Maximum 10MB.');
+                return;
+            }
+
+            if (!contractorRecord || !sb) {
+                alert('Not connected to database.');
+                return;
+            }
+
+            try {
+                // Upload file to Supabase Storage
+                // Path: contractor-templates/{contractor_id}/{trade}_{funding_type}_{timestamp}.pdf
+                const timestamp = Date.now();
+                const safeFundingType = fundingType.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
+                const filePath = `${contractorRecord.id}/${trade.toLowerCase()}_${safeFundingType}_${timestamp}.pdf`;
+
+                const { error: uploadError } = await sb.storage
+                    .from('contractor-templates')
+                    .upload(filePath, file, { contentType: 'application/pdf' });
+
+                if (uploadError) throw uploadError;
+
+                // Store only the path — bucket is private; public URLs would return "Bucket not found" 404.
+                // viewContractTemplate() mints a short-lived signed URL at click time.
+                const currentTemplates = contractorRecord.contract_templates || [];
+                const updatedTemplates = currentTemplates.filter(t => !(t.trade === trade && t.funding_type === fundingType));
+                updatedTemplates.push({
+                    trade: trade,
+                    funding_type: fundingType,
+                    file_url: filePath,
+                    // `path` is the key create-docusign-envelope resolves first —
+                    // without it the EF treats file_url as a fetchable URL and 500s
+                    // (E2E walk fix 2026-07-07).
+                    path: filePath,
+                    file_name: file.name,
+                    uploaded_at: new Date().toISOString()
+                });
+
+                const { error: updateError } = await sb.from('contractors')
+                    .update({ contract_templates: updatedTemplates, updated_at: new Date().toISOString() })
+                    .eq('id', contractorRecord.id);
+
+                if (updateError) throw updateError;
+
+                // Update local state and reload templates
+                contractorRecord.contract_templates = updatedTemplates;
+                await loadContractTemplates();
+
+                // D-199: create the contractor_templates validation row + run the
+                // anchor scan. Without this, bid_can_submit blocks every bid
+                // (IMP-009 relocation dropped the hook — E2E walk fix 2026-07-07).
+                // #505: D199.fundingKey normalizes internally, but pass the raw label
+                // through explicitly so the intent is visible at the call site.
+                if (window.D199 && window.D199.validateNewlyUploadedTemplate) {
+                    try {
+                        await window.D199.validateNewlyUploadedTemplate(contractorRecord.id, trade, fundingType, filePath, null);
+                    } catch (valErr) {
+                        console.warn('[D-199] post-upload validation failed (non-fatal):', valErr);
+                    }
+                    await loadContractTemplates();
+                }
+
+                // Open field mapping review modal for the just-uploaded template
+                openFieldMappingModal(trade, fundingType);
+            } catch (err) {
+                console.error('Error uploading template:', err);
+                alert('Failed to upload template. Please try again.');
+            }
+        }
+
+        // ── Field Mapping Modal ──
+
+        const DEFAULT_FIELD_MAPPINGS = {
+            homeowner_name:    { label: 'Name',                description: 'Homeowner name' },
+            property_address:  { label: 'Address:',            description: 'Property address' },
+            homeowner_phone:   { label: 'Phone',               description: 'Homeowner phone' },
+            homeowner_email:   { label: 'Email:',              description: 'Homeowner email' },
+            insurance_carrier: { label: 'Insurance Co',        description: 'Insurance carrier' },
+            claim_number:      { label: 'Claim #',             description: 'Claim number' },
+            deductible:        { label: 'Deductible:',         description: 'Deductible amount' },
+            contract_price:    { label: 'Contract Price:',     description: 'Bid amount' },
+            material:          { label: 'Material:',           description: 'Shingle brand/type' },
+            warranty:          { label: 'Warranty:',           description: 'Warranty years' },
+            statement_of_work: { label: 'Statement of Work:',  description: 'Scope of work / SOW' }
+        };
+
+        let fieldMappingCurrentTrade = null;
+        let fieldMappingCurrentFundingType = null;
+
+        function openFieldMappingModal(trade, fundingType) {
+            fieldMappingCurrentTrade = trade;
+            fieldMappingCurrentFundingType = fundingType;
+
+            document.getElementById('fieldMappingSubtitle').textContent = `${trade} — ${fundingType}`;
+
+            // Get current mappings for this template (fall back to defaults)
+            const currentTemplates = contractorRecord?.contract_templates || [];
+            const template = currentTemplates.find(t => t.trade === trade && t.funding_type === fundingType);
+            const savedMappings = template?.field_mappings || {};
+
+            // Render rows
+            const rowsContainer = document.getElementById('fieldMappingRows');
+            let html = '';
+            for (const [key, defaults] of Object.entries(DEFAULT_FIELD_MAPPINGS)) {
+                const currentLabel = savedMappings[key] !== undefined ? savedMappings[key] : defaults.label;
+                html += `
+                    <input type="text" id="fm_${key}"
+                        value="${currentLabel.replace(/"/g, '&quot;')}"
+                        style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.875rem; font-family: inherit; width: 100%;">
+                    <span style="color: var(--text-muted); font-size: 0.85rem; text-align: center;">→</span>
+                    <span style="font-size: 0.875rem; color: var(--text-secondary);">${defaults.description}</span>
+                `;
+            }
+            rowsContainer.innerHTML = html;
+
+            const modal = document.getElementById('fieldMappingModal');
+            modal.style.display = 'flex';
+            document.getElementById('fieldMappingSaveStatus').style.display = 'none';
+        }
+
+        function closeFieldMappingModal() {
+            document.getElementById('fieldMappingModal').style.display = 'none';
+            fieldMappingCurrentTrade = null;
+            fieldMappingCurrentFundingType = null;
+        }
+
+        function resetFieldMappings() {
+            for (const [key, defaults] of Object.entries(DEFAULT_FIELD_MAPPINGS)) {
+                const input = document.getElementById(`fm_${key}`);
+                if (input) input.value = defaults.label;
+            }
+        }
+
+        async function saveFieldMappings() {
+            if (!fieldMappingCurrentTrade || !fieldMappingCurrentFundingType) return;
+            if (!contractorRecord || !sb) {
+                alert('Not connected to database.');
+                return;
+            }
+
+            // Collect current input values
+            const newMappings = {};
+            for (const key of Object.keys(DEFAULT_FIELD_MAPPINGS)) {
+                const input = document.getElementById(`fm_${key}`);
+                newMappings[key] = input ? input.value.trim() : DEFAULT_FIELD_MAPPINGS[key].label;
+            }
+
+            // Update the matching template in JSONB
+            const currentTemplates = contractorRecord.contract_templates || [];
+            const updatedTemplates = currentTemplates.map(t => {
+                if (t.trade === fieldMappingCurrentTrade && t.funding_type === fieldMappingCurrentFundingType) {
+                    return { ...t, field_mappings: newMappings };
+                }
+                return t;
+            });
+
+            const statusEl = document.getElementById('fieldMappingSaveStatus');
+            statusEl.style.display = 'block';
+            statusEl.textContent = 'Field mapping saved.';
+            statusEl.style.color = '#065F46';
+
+            try {
+                const { error } = await sb
+                    .from('contractors')
+                    .update({ contract_templates: updatedTemplates })
+                    .eq('id', contractorRecord.id);
+                if (error) throw error;
+                contractorRecord.contract_templates = updatedTemplates;
+                statusEl.textContent = '\u2705 Field mapping saved.';
+                setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+            } catch (err) {
+                console.error('saveFieldMappings error:', err);
+                statusEl.textContent = 'Error saving. Please try again.';
+                statusEl.style.color = '#DC2626';
+            }
+        }
+
     async function initSettings() {
       currentUser = await Auth.requireAuth('contractor');
       if (!currentUser && !CONFIG.DEMO_MODE) return;
@@ -2180,7 +2657,12 @@
             .eq('user_id', currentUser.id)
             .single();
 
-          if (error) { console.error('Error loading contractor:', error); return; }
+          if (error) {
+            console.error('Error loading contractor:', error);
+            const errBanner = document.getElementById('pmLoadError');
+            if (errBanner) errBanner.style.display = 'block';
+            return;
+          }
           contractorRecord = data;
 
           // CPA version guard &mdash; redirect to dashboard to show re-acceptance modal
@@ -2338,6 +2820,16 @@
 
           // Update payment method UI
           updatePaymentMethodUI();
+
+          // Contract Templates (IMP-009, relocated from contractor-profile per Dustin 2026-07-07).
+          // Isolated per ADR-013 so a failure renders a visible retry state, never a stuck placeholder.
+          try {
+            await loadContractTemplates();
+          } catch (e) {
+            console.error('Error loading contract templates:', e);
+            const g = document.getElementById('contractTemplatesGrid');
+            if (g) g.innerHTML = '<div style="text-align: center; color: #991B1B; padding: var(--sp-8);">Unable to load contract templates — please refresh the page to retry.</div>';
+          }
 
           // D-194: PC templates managed on contractor-profile.html only
 

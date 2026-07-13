@@ -2048,10 +2048,12 @@
           {
             id: 'estimate',
             title: 'Insurance Estimate',
-            required: true,
+            required: currentClaim.funding_type !== 'cash',
             status: currentClaim.has_estimate ? 'uploaded' : 'pending',
-            filename: currentClaim.estimate_filename,
-            description: 'Upload your insurance adjuster\'s estimate or preliminary damage report.',
+            filename: fileDisplayName(currentClaim.estimate_filename),
+            description: currentClaim.funding_type === 'cash'
+              ? 'Not required for retail projects. Optionally upload any existing estimates or documents you want bidders to see.'
+              : 'Upload your insurance adjuster\'s estimate or preliminary damage report.',
             buttons: [
               { label: 'Upload', action: 'upload', data: 'estimate' },
               { label: 'Help Me', action: 'help', data: 'estimate' }
@@ -2063,7 +2065,7 @@
             title: 'Measurements',
             required: isExplicitlyCash, // Hard required only for retail/cash; optional for insurance and unknown
             status: currentClaim.has_measurements ? 'uploaded' : (hasHoverOrder ? 'hover_pending' : 'pending'),
-            filename: currentClaim.measurements_filename,
+            filename: fileDisplayName(currentClaim.measurements_filename),
             description: measurementsDesc,
             note: measurementsNote,
             buttons: measurementsBtns,
@@ -2495,13 +2497,20 @@
         const needsMeasurements = currentClaim?.funding_type === 'cash';
         const measurementsOk    = !needsMeasurements || hasMeasurements;
 
-        const isReady = hasEstimate && hasMaterial && measurementsOk;
+        // E2E walk fix (2026-07-07): retail/cash claims have no insurance
+        // estimate — the estimate is a hard gate ONLY for insurance (and
+        // unknown) funding types. Requiring it unconditionally locked every
+        // retail homeowner out of Submit for Bids.
+        const needsEstimate = currentClaim?.funding_type !== 'cash';
+        const estimateOk    = !needsEstimate || hasEstimate;
+
+        const isReady = estimateOk && hasMaterial && measurementsOk;
 
         btn.disabled = !isReady;
 
         if (!isReady) {
           const missing = [];
-          if (!hasEstimate) missing.push('Insurance Estimate');
+          if (needsEstimate && !hasEstimate) missing.push('Insurance Estimate');
           if (!hasMaterial) missing.push('Material Selection');
           if (needsMeasurements && !hasMeasurements) missing.push('Property Measurements (required for retail projects)');
           hint.textContent = `Complete the required items: ${missing.join(', ')}.`;
@@ -2899,7 +2908,10 @@
               .from('claims')
               .update({
                 [updateField]: true,
-                [filenameField]: file.name,
+                // Full storage path — contractor pages open this document via
+                // createSignedUrl(), which needs the object path; a bare
+                // display name 404s (E2E walk fix 2026-07-07).
+                [filenameField]: uploadedStoragePath || file.name,
               })
               .eq('id', currentClaim.id)
                 .select('id')
@@ -2926,7 +2938,7 @@
 
           // Update local claim state
           currentClaim[updateField] = true;
-          currentClaim[filenameField] = file.name;
+          currentClaim[filenameField] = uploadedStoragePath || file.name;
 
           // Refresh UI
           renderChecklist();
@@ -2952,6 +2964,11 @@
       }
 
       // ── Submit for Bids ──
+      // Storage paths are stored in *_filename fields; show only the basename.
+      function fileDisplayName(path) {
+        return path ? String(path).split('/').pop() : path;
+      }
+
       async function submitForBids() {
         const btn = document.getElementById('submit-btn');
         if (!currentClaim) return;
@@ -2959,10 +2976,24 @@
         btn.textContent = 'Submitting…';
 
         try {
+          // Fix (E2E walk 2026-07-07): the opportunities query + RLS both
+          // require ready_for_bids=true — without it a submitted claim is
+          // invisible to every contractor. D-165: release each non-siding
+          // trade at submit; siding stays gated on the D-164 Hover design
+          // completion webhook.
+          const submitUpdate = { status: 'active', ready_for_bids: true };
+          const releasableTrades = ['roofing', 'gutters', 'windows'];
+          (Array.isArray(currentClaim.trades) ? currentClaim.trades : []).forEach(function (t) {
+            const trade = String(t).toLowerCase();
+            if (releasableTrades.indexOf(trade) !== -1 && !currentClaim[trade + '_bid_released_at']) {
+              submitUpdate[trade + '_bid_released_at'] = new Date().toISOString();
+            }
+          });
+
           if (!CONFIG.DEMO_MODE && sb && currentClaim.id) {
             const { error } = await sb
               .from('claims')
-              .update({ status: 'active' })
+              .update(submitUpdate)
               .eq('id', currentClaim.id);
 
             if (error) throw error;
@@ -2978,7 +3009,7 @@
           }
 
           // Update local state
-          if (currentClaim) currentClaim.status = 'active';
+          if (currentClaim) Object.assign(currentClaim, submitUpdate);
 
           // Show success state
           const submitSection = document.getElementById('submit-ready-section');

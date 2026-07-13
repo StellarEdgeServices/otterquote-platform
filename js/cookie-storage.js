@@ -45,18 +45,23 @@
   var COOKIE_ACCESS  = 'sb-otterquote-at';
   var COOKIE_REFRESH = 'sb-otterquote-rt';
 
-  // Legacy storage keys consulted for transparent migration. Read-only fallbacks
-  // so in-flight contractor sessions and pre-fix React sessions survive deploy.
-  // Order: project-ref key first (static stack v1), then sb_at (React stack pre-fix).
-  var LEGACY_KEYS = (function () {
+  // Legacy storage keys consulted for purge + cookie-less fallback.
+  // #488 follow-up: this file loads BEFORE config.js, so the project-ref key
+  // MUST be computed lazily (at call time) — the old load-time IIFE never saw
+  // CONFIG, the project-ref key never joined the list, and sign-out left a
+  // resurrection seed in localStorage.
+  function legacyKeys() {
     var keys = ['sb_at'];
     try {
-      var url = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : '';
-      var refMatch = url.match(/https:\/\/([^.]+)/);
-      if (refMatch) keys.unshift('sb-' + refMatch[1] + '-auth-token');
-    } catch (e) { /* CONFIG not loaded yet */ }
+      // Pattern scan instead of CONFIG-derivation: catches every Supabase
+      // default-storage key regardless of script load order or environment.
+      for (var i = 0; i < window.localStorage.length; i++) {
+        var k = window.localStorage.key(i);
+        if (k && /^sb-[a-z0-9]+-auth-token$/.test(k)) keys.push(k);
+      }
+    } catch (e) { /* localStorage blocked */ }
     return keys;
-  })();
+  }
 
   /** Parse a Supabase session JSON. Returns null if not a valid session. */
   function parseSession(jsonStr) {
@@ -219,12 +224,27 @@
     try {
       var direct = window.localStorage.getItem(callerKey);
       if (direct) return direct;
-      for (var i = 0; i < LEGACY_KEYS.length; i++) {
-        var v = window.localStorage.getItem(LEGACY_KEYS[i]);
+      var lk = legacyKeys();
+      for (var i = 0; i < lk.length; i++) {
+        var v = window.localStorage.getItem(lk[i]);
         if (v) return v;
       }
     } catch (e) { /* localStorage blocked */ }
     return null;
+  }
+
+  // #488 — cookie-usability probe (memoized per page load). When cookies are
+  // blocked entirely the cookie cannot be canonical and localStorage remains
+  // the only viable store; everywhere else, absent cookies mean signed out.
+  var _cookiesUsable = null;
+  function cookiesUsable() {
+    if (_cookiesUsable !== null) return _cookiesUsable;
+    try {
+      document.cookie = 'oq-cookie-probe=1; Path=/; Max-Age=60; SameSite=Lax';
+      _cookiesUsable = document.cookie.indexOf('oq-cookie-probe=') !== -1;
+      document.cookie = 'oq-cookie-probe=; Path=/; Max-Age=0; SameSite=Lax';
+    } catch (e) { _cookiesUsable = false; }
+    return _cookiesUsable;
   }
 
   /**
@@ -238,24 +258,29 @@
       var rt = readCookie(COOKIE_REFRESH);
       if (at && rt) return reconstructSession(at, rt);
 
-      // 2. Try same-key localStorage (recent same-origin write)
+      // 2. Cookies are canonical (#488). If BOTH cookies are absent the user
+      // is signed out — the per-origin localStorage copy must never resurrect
+      // the session (or rewrite the domain-wide cookies): that silently signed
+      // users back in as the previous account after a sign-out on the other
+      // subdomain. Purge local copies so sign-out sticks everywhere. Only a
+      // browser that cannot hold cookies at all falls back to localStorage.
+      if (cookiesUsable()) {
+        try { window.localStorage.removeItem(key); } catch (e) {}
+        try {
+          var purge = legacyKeys();
+          for (var i = 0; i < purge.length; i++) {
+            window.localStorage.removeItem(purge[i]);
+          }
+        } catch (e) {}
+        return null;
+      }
+
+      // 3. Cookie-less browser fallback — localStorage is the only store left.
       try {
         var stored = window.localStorage.getItem(key);
-        if (stored) {
-          // Cookies missing but localStorage has the session — proactively
-          // migrate so future cross-subdomain reads work.
-          this.setItem(key, stored);
-          return stored;
-        }
+        if (stored) return stored;
       } catch (e) { /* localStorage blocked */ }
-
-      // 3. Legacy localStorage keys — transparent migration
-      var legacy = readLegacy(key);
-      if (legacy) {
-        this.setItem(key, legacy);
-        return legacy;
-      }
-      return null;
+      return readLegacy(key);
     },
 
     setItem: function (key, value) {
@@ -289,8 +314,9 @@
       try { window.localStorage.removeItem(key); } catch (e) {}
       // Also clear legacy keys so signOut on either subdomain truly logs out.
       try {
-        for (var i = 0; i < LEGACY_KEYS.length; i++) {
-          window.localStorage.removeItem(LEGACY_KEYS[i]);
+        var lk2 = legacyKeys();
+        for (var i = 0; i < lk2.length; i++) {
+          window.localStorage.removeItem(lk2[i]);
         }
       } catch (e) {}
     }

@@ -271,6 +271,22 @@ function verifyWrite(key: string, expected: string, label: string): boolean {
   return true;
 }
 
+// #488 — cookie-usability probe (memoized per page load). When cookies are
+// blocked entirely the cookie cannot be canonical and localStorage remains
+// the only viable store; everywhere else, absent cookies mean signed out.
+let _cookiesUsable: boolean | null = null;
+function cookiesUsable(): boolean {
+  if (_cookiesUsable !== null) return _cookiesUsable;
+  try {
+    document.cookie = 'oq-cookie-probe=1; Path=/; Max-Age=60; SameSite=Lax';
+    _cookiesUsable = document.cookie.indexOf('oq-cookie-probe=') !== -1;
+    document.cookie = 'oq-cookie-probe=; Path=/; Max-Age=0; SameSite=Lax';
+  } catch {
+    _cookiesUsable = false;
+  }
+  return _cookiesUsable;
+}
+
 export const otterquoteCookieStorage: CookieStorage = {
   getItem(key: string): string | null {
     if (!isBrowser()) return null;
@@ -291,21 +307,25 @@ export const otterquoteCookieStorage: CookieStorage = {
       return cookieSession;
     }
 
-    // 2. Same-key localStorage (recent same-origin write)
-    let stored: string | null = null;
-    try { stored = window.localStorage.getItem(key); } catch { /* ignore */ }
-    if (stored) {
-      this.setItem(key, stored); // proactive migration
-      return stored;
+    // 2. Cookies are canonical (#488). If BOTH cookies are absent the user is
+    // signed out — the per-origin localStorage copy must never resurrect the
+    // session (or rewrite the domain-wide cookies): that silently signed users
+    // back in as the previous account after a sign-out on the other subdomain.
+    // Purge local copies so sign-out sticks everywhere. Only a browser that
+    // cannot hold cookies at all falls back to localStorage.
+    if (cookiesUsable()) {
+      try { window.localStorage.removeItem(key); } catch { /* ignore */ }
+      try {
+        for (const k of LEGACY_KEYS) window.localStorage.removeItem(k);
+      } catch { /* ignore */ }
+      return null;
     }
 
-    // 3. Legacy keys — transparent migration
-    const legacy = readLegacy(key);
-    if (legacy) {
-      this.setItem(key, legacy);
-      return legacy;
-    }
-    return null;
+    // 3. Cookie-less browser fallback — localStorage is the only store left.
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem(key); } catch { /* ignore */ }
+    if (stored) return stored;
+    return readLegacy(key);
   },
 
   setItem(key: string, value: string): void {

@@ -1,0 +1,24 @@
+-- Migration: add claims.hover_measurements (JSONB)
+-- Feature: detailed loss-sheet-style line-item Scope of Work on the retail
+-- roofing contract, generated from parsed Hover measurements.
+--
+-- Populated by the parse-hover-measurements Edge Function with the normalized
+-- shape:
+--   {
+--     "source": "pdf_parse",
+--     "parsed_at": "<ISO8601>",
+--     "roof_area_sf": 2260,
+--     "squares": 22.6,
+--     "ridge_hip_lf": 91.17,
+--     "valley_lf": 99.67,
+--     "rake_lf": 226.25,
+--     "eave_lf": 86.67,
+--     "drip_edge_perimeter_lf": 312.92,
+--     "step_flashing_lf": 55.83,
+--     "flashing_lf": 24.33,
+--     "predominant_pitch": "9/12"
+--   }
+--
+-- Idempotent: safe to re-run.
+
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS hover_measurements JSONB;
