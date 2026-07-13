@@ -84,18 +84,6 @@
     "last_successful_scrape_at",
     "days_since_last_scrape"
   ],
-  "claim_trade_items": [
-    "id",
-    "claim_id",
-    "trade",
-    "scope",
-    "estimated_amount",
-    "depreciation_amount",
-    "sides_affected",
-    "homeowner_decision",
-    "notes",
-    "created_at"
-  ],
   "claims": [
     "id",
     "user_id",
@@ -199,7 +187,10 @@
     "switch_reason_survey",
     "completion_date",
     "video_url",
-    "profile_prompt_sent_at"
+    "profile_prompt_sent_at",
+    "is_test",
+    "carrier_name",
+    "hover_measurements"
   ],
   "coming_soon_waitlist": [
     "id",
@@ -380,7 +371,41 @@
     "license_attestation_signed_at",
     "legacy_pre_approval",
     "wc_cert_reminder_30_sent_at",
-    "needs_cpa_reattestation"
+    "needs_cpa_reattestation",
+    "public_directory_optin",
+    "is_test"
+  ],
+  "contractors_public": [
+    "id",
+    "company_name",
+    "contact_name",
+    "address_city",
+    "address_state",
+    "trades",
+    "specialties",
+    "rating",
+    "review_count",
+    "years_in_business",
+    "num_employees",
+    "about_us",
+    "why_choose_us",
+    "owner_photo_url",
+    "gallery_photo_urls",
+    "intro_video_path",
+    "service_area_description",
+    "service_counties",
+    "verified",
+    "has_workers_comp",
+    "has_general_liability",
+    "license_number",
+    "google_reviews_url",
+    "bbb_url",
+    "angi_url",
+    "yelp_url",
+    "website_url",
+    "status",
+    "repairs_accepted",
+    "public_directory_optin"
   ],
   "contribution_summary": [
     "contribution_type",
@@ -425,17 +450,6 @@
     "stub_notes",
     "created_at",
     "updated_at"
-  ],
-  "documents": [
-    "id",
-    "claim_id",
-    "user_id",
-    "file_name",
-    "file_type",
-    "file_size",
-    "storage_path",
-    "doc_category",
-    "created_at"
   ],
   "expansion_waitlist": [
     "id",
@@ -549,39 +563,6 @@
     "outreach_notes",
     "imported_at",
     "created_at"
-  ],
-  "inspection_bookings": [
-    "id",
-    "claim_id",
-    "contractor_id",
-    "homeowner_id",
-    "scheduled_date",
-    "scheduled_time",
-    "status",
-    "inspection_type",
-    "inspection_fee",
-    "homeowner_guarantee_paid",
-    "contractor_penalty_charged",
-    "notes",
-    "created_at",
-    "updated_at"
-  ],
-  "job_assignments": [
-    "id",
-    "claim_id",
-    "quote_id",
-    "contractor_id",
-    "homeowner_id",
-    "quoted_price",
-    "fee_percentage",
-    "fee_amount",
-    "fee_status",
-    "stripe_charge_id",
-    "contract_signed",
-    "contract_signed_at",
-    "status",
-    "created_at",
-    "updated_at"
   ],
   "leads": [
     "id",
@@ -833,6 +814,20 @@
     "payments_blocked",
     "w9_notification_sent_at"
   ],
+  "referral_agents_public": [
+    "id",
+    "first_name",
+    "last_name",
+    "company",
+    "photo_url",
+    "bio",
+    "website",
+    "service_area",
+    "agent_type",
+    "status",
+    "unique_code",
+    "recruit_code"
+  ],
   "referral_network": [
     "id",
     "member_name",
@@ -867,6 +862,11 @@
   "state_summary": [
     "state",
     "member_count"
+  ],
+  "stripe_webhook_events": [
+    "event_id",
+    "event_type",
+    "received_at"
   ],
   "support_tickets": [
     "id",
