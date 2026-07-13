@@ -280,7 +280,7 @@ async function sendEmail(to: string, subject: string, html: string, from?: strin
   if (!key) { console.error("MAILGUN_API_KEY not set"); return false; }
 
   const body = new URLSearchParams();
-  body.append("from",    from || `OtterQuote <noreply@${domain}>`);
+  body.append("from",    from || `Otter Quotes <noreply@${domain}>`);
   body.append("to",      to);
   body.append("subject", subject);
   body.append("html",    html);
@@ -431,7 +431,7 @@ function emailWrapper(headerBg: string, headerColor: string, title: string, body
   return `
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:20px;">
   <div style="background:${headerBg};padding:20px;border-radius:8px 8px 0 0;text-align:center;">
-    <img src="${PLATFORM_URL}/img/otter-logo.svg" alt="OtterQuote" style="width:40px;height:40px;">
+    <img src="${PLATFORM_URL}/img/otter-logo.svg" alt="Otter Quotes" style="width:40px;height:40px;">
     <h1 style="color:${headerColor};font-size:18px;margin:10px 0 0;">${title}</h1>
   </div>
   <div style="background:#ffffff;padding:24px;border:1px solid #e5e7eb;border-radius:0 0 8px 8px;">
@@ -550,7 +550,7 @@ function homeownerResponsePage(title: string, message: string, isError = false):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title} — OtterQuote</title>
+  <title>${title} — Otter Quotes</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
            background: #F9FAFB; display: flex; justify-content: center; align-items: center;
@@ -667,8 +667,8 @@ serve(async (req) => {
 
         // Notify contractor they're proceeding (and are on the hook for fees)
         const proceedHtml = contractorProceedEmail(companyName);
-        await sendEmailToAll(contacts.emails, "Homeowner Chose to Move Forward — OtterQuote", proceedHtml);
-        const proceedSMS = `OtterQuote: The homeowner has chosen to move forward with you. You are liable for all fees including the $250 nonpayment fee. Update payment at ${SETTINGS_URL}`;
+        await sendEmailToAll(contacts.emails, "Homeowner Chose to Move Forward — Otter Quotes", proceedHtml);
+        const proceedSMS = `Otter Quotes: The homeowner has chosen to move forward with you. You are liable for all fees including the $250 nonpayment fee. Update payment at ${SETTINGS_URL}`;
         await sendSMSToAll(contacts.phones, proceedSMS);
 
         // Alert Dustin
@@ -721,8 +721,8 @@ serve(async (req) => {
 
         // Notify contractor they lost the project
         const lostHtml = contractorLostProjectEmail(companyName);
-        await sendEmailToAll(contacts.emails, "Project Update — OtterQuote", lostHtml);
-        const lostSMS = `OtterQuote: The homeowner on your pending project has selected a different contractor due to the unresolved payment issue. Visit ${SETTINGS_URL} to update your payment method.`;
+        await sendEmailToAll(contacts.emails, "Project Update — Otter Quotes", lostHtml);
+        const lostSMS = `Otter Quotes: The homeowner on your pending project has selected a different contractor due to the unresolved payment issue. Visit ${SETTINGS_URL} to update your payment method.`;
         await sendSMSToAll(contacts.phones, lostSMS);
 
         // Alert Dustin
@@ -834,7 +834,7 @@ serve(async (req) => {
             formData.append("payment_method", method.stripe_pm_id);
             formData.append("off_session", "true");
             formData.append("confirm", "true");
-            formData.append("description", `OtterQuote platform fee — quote ${quote_id.substring(0, 8)}`);
+            formData.append("description", `Otter Quotes platform fee — quote ${quote_id.substring(0, 8)}`);
             formData.append("metadata[claim_id]", claim_id || "");
             formData.append("metadata[type]", "platform_fee");
             formData.append("metadata[contractor_id]", contractor_id);
@@ -976,7 +976,7 @@ serve(async (req) => {
       // Send first notification immediately if applicable
       if (sendImmediately && contacts.emails.length > 0) {
         const html = hourlyReminderEmail(companyName);
-        const sent = await sendEmailToAll(contacts.emails, "Action Required: Payment Declined — OtterQuote", html);
+        const sent = await sendEmailToAll(contacts.emails, "Action Required: Payment Declined — Otter Quotes", html);
         await sendSMSToAll(contacts.phones, HOURLY_SMS);
 
         // Update reminder count
@@ -1056,7 +1056,7 @@ serve(async (req) => {
         console.log(`Sending 8 AM WARNING for failure ${failure.id}`);
 
         const html = warningEmail(companyName);
-        await sendEmailToAll(contacts.emails, "Final Notice: Payment Still Declined — OtterQuote", html);
+        await sendEmailToAll(contacts.emails, "Final Notice: Payment Still Declined — Otter Quotes", html);
         await sendSMSToAll(contacts.phones, WARNING_SMS);
 
         // Advance status — clear next_reminder_at to stop hourly loop
@@ -1075,7 +1075,7 @@ serve(async (req) => {
         console.log(`Sending hourly reminder #${failure.reminder_count + 1} for failure ${failure.id}`);
 
         const html = hourlyReminderEmail(companyName);
-        await sendEmailToAll(contacts.emails, "Payment Action Required — OtterQuote", html);
+        await sendEmailToAll(contacts.emails, "Payment Action Required — Otter Quotes", html);
         await sendSMSToAll(contacts.phones, HOURLY_SMS);
 
         const nextReminder = nextHourlyReminder(now, tz, warningAt);
@@ -1131,7 +1131,7 @@ serve(async (req) => {
         const html = homeownerNotificationEmail(homeownerName, companyName, failure.id, supabaseUrl);
         await sendEmail(
           hwProfile.email,
-          "Important Update on Your Project — OtterQuote",
+          "Important Update on Your Project — Otter Quotes",
           html
         );
         console.log(`Homeowner notification sent for failure ${failure.id} to ${hwProfile.email}`);

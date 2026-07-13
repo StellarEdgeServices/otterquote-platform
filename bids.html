@@ -1598,7 +1598,7 @@
         <div class="profile-avatar">${avatarHTML}</div>
         <div class="profile-hero-info">
           <h2>${esc(c.company_name)}</h2>
-          <p>${c.about_us ? esc(c.about_us) : `${c.company_name} is a licensed contractor serving ${esc(c.service_area_description || 'the local area')}.`}</p>
+          <p>${c.about_us ? esc(c.about_us) : `${c.company_name} is a contractor serving ${esc(c.service_area_description || 'the local area')}.`}</p>
           <div class="profile-hero-badges">
             ${c.years_in_business ? `<span class="badge badge-amber">${c.years_in_business} Years in Business</span>` : ''}
             ${c.verified ? '<span class="badge badge-green">✓ Verified</span>' : ''}
@@ -1652,7 +1652,7 @@
           </div>
           <div class="info-item">
             <span class="info-item-label">License #</span>
-            <span class="info-item-value">${esc(c.license_number || 'On file')}</span>
+            <span class="info-item-value">${esc(c.license_number || 'Not provided')}</span>
           </div>
         </div>
         ${c.why_choose_us ? `<h4 style="font-family:var(--font-body);font-size:1rem;font-weight:600;margin-bottom:var(--sp-3);">Why Choose Us</h4><div class="why-choose">${esc(c.why_choose_us)}</div>` : ''}

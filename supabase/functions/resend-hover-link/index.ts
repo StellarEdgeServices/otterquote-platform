@@ -231,11 +231,11 @@ This usually takes less than 24 hours. Once complete, you'll be able to submit y
 
 If you have questions, reply to this email or call us at (844) 875-3412.
 
-The OtterQuote Team
+The Otter Quotes Team
 https://otterquote.com`;
 
     const formData = new URLSearchParams();
-    formData.append("from", `OtterQuote <notifications@${MAILGUN_DOMAIN}>`);
+    formData.append("from", `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`);
     formData.append("to", homeownerEmail);
     formData.append("subject", "Your Hover Measurement Link — Action Required");
     formData.append("text", emailText);
