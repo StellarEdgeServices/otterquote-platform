@@ -182,3 +182,15 @@ verify_jwt = false
 # External DocuSign Connect webhook — fail-closed HMAC auth in-handler; MUST stay
 # JWT-free or every delivery 401s. Pin false (matches deployed v58).
 verify_jwt = false
+
+# ── #567 (2026-07-24): pin verify_jwt for the referral-payout hardening EFs ────
+# mark-job-complete was deployed verify_jwt=false but unpinned; pin it so a stray
+# `functions deploy` (CLI default verify_jwt=true) cannot silently flip it.
+# get-payout-completion-status: auth performed in-handler via the admin
+# allow-list (same pattern as approve-payout). No behavior change.
+
+[functions.mark-job-complete]
+verify_jwt = false
+
+[functions.get-payout-completion-status]
+verify_jwt = false

@@ -6,8 +6,9 @@
  *
  * Allows a contractor to mark one of their won jobs as complete.
  * Sets claims.completion_date, writes an activity_log entry,
- * sends a homeowner notification email via Mailgun (D-228), and
- * triggers the home profile prompt flow (D-231).
+ * sends a homeowner notification email via Mailgun (D-228),
+ * triggers the home profile prompt flow (D-231), and non-fatally
+ * advances a linked referral to 'job_completed' (D-139, #567).
  *
  * Authorization:
  *   - Caller must have a valid Supabase JWT (contractor)
@@ -329,7 +330,7 @@ serve(async (req: Request) => {
     // ── Fetch claim ────────────────────────────────────────────────────────────
     const { data: claim, error: claimError } = await supabase
       .from("claims")
-      .select("id, status, completion_date, property_address, user_id")
+      .select("id, status, completion_date, property_address, user_id, referral_id")
       .eq("id", claimId)
       .single();
 
@@ -387,6 +388,22 @@ serve(async (req: Request) => {
     if (logError) {
       // Non-fatal — completion_date is already written. Log and continue.
       console.error(`[${FUNCTION_NAME}] activity_log insert failed (non-fatal):`, logError.message);
+    }
+
+    // ── Referral advance (D-139, #567) ─────────────────────────────────────────
+    // If this claim arrived through a referral, advance the referral to
+    // 'job_completed' so the payout completion gate can release the commission.
+    // Same non-fatal pattern as the activity_log write above.
+    if (claim.referral_id) {
+      const { error: referralAdvanceError } = await supabase
+        .from("referrals")
+        .update({ status: "job_completed" })
+        .eq("id", claim.referral_id)
+        .not("status", "in", '("job_completed","commission_paid")');
+
+      if (referralAdvanceError) {
+        console.error(`[${FUNCTION_NAME}] referral advance failed (non-fatal) for referral ${claim.referral_id}:`, referralAdvanceError.message);
+      }
     }
 
     // ── Homeowner notification (job-complete email) ──────────────────────────────

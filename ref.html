@@ -197,6 +197,10 @@
                     sessionStorage.setItem('oq_referral_code', code);
                     // Also persist to localStorage so it survives magic-link redirect
                     localStorage.setItem('oq_referral_id', referralRow.id);
+                    // #567: agent id + code too — the claim writer needs all three
+                    // to stamp claims.referral_id / referral_agent_id / referral_code.
+                    localStorage.setItem('oq_referral_agent_id', agent.id);
+                    localStorage.setItem('oq_referral_code', code);
                 }
 
                 // 5b. Store agent display info for personalization on landing pages
@@ -220,6 +224,13 @@
                         redirectUrl = '/ref-inspector.html';
                         break;
                     case 'customer':
+                        redirectUrl = '/ref-re.html';
+                        break;
+                    case 'adjuster':
+                        // Adjuster-referred homeowners arrive in claim context (#567)
+                        redirectUrl = '/ref-insurance.html';
+                        break;
+                    case 'other':
                         redirectUrl = '/ref-re.html';
                         break;
                     default:

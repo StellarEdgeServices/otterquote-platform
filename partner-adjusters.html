@@ -15,16 +15,16 @@
 </script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
 <script src="js/config.js"></script>
-<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=partner-inspectors&persona=partner');}})()</script>
+<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=partner-adjusters&persona=partner');}})()</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<title>Become a Home Inspector Partner &mdash; Otter Quotes</title>
-<meta name="description" content="Give your clients a real answer when you find damage. Sign up as an Otter Quotes partner and earn $200 per completed job.">
-<link rel="canonical" href="https://otterquote.com/partner-inspectors.html">
-<meta property="og:title" content="Become a Home Inspector Partner &mdash; Otter Quotes">
-<meta property="og:description" content="Give your clients a real answer when you find damage. Sign up as an Otter Quotes partner and earn $200 per completed job.">
-<meta property="og:url" content="https://otterquote.com/partner-inspectors.html">
+<title>Become an Insurance Adjuster Partner &mdash; Otter Quotes</title>
+<meta name="description" content="You see the damage first. Give homeowners a clear next step and earn $200 per completed job. Otter Quotes is not a public adjuster and never touches your claim handling.">
+<link rel="canonical" href="https://otterquote.com/partner-adjusters.html">
+<meta property="og:title" content="Become an Insurance Adjuster Partner &mdash; Otter Quotes">
+<meta property="og:description" content="You see the damage first. Give homeowners a clear next step and earn $200 per completed job. Otter Quotes is not a public adjuster and never touches your claim handling.">
+<meta property="og:url" content="https://otterquote.com/partner-adjusters.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Otter Quotes">
 <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
@@ -83,10 +83,22 @@
   font-size: 1.1rem;
   color: var(--slate);
   line-height: 1.8;
-  margin-bottom: var(--sp-8);
+  margin-bottom: var(--sp-6);
   max-width: 680px;
   margin-left: auto;
   margin-right: auto;
+}
+
+.hero-notice {
+  max-width: 680px;
+  margin: 0 auto var(--sp-8);
+  padding: var(--sp-4) var(--sp-5);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  color: var(--white);
+  line-height: 1.6;
 }
 
 .hero-cta-group {
@@ -94,6 +106,14 @@
   gap: var(--sp-4);
   justify-content: center;
   flex-wrap: wrap;
+}
+
+.cta-disclaimer {
+  max-width: 680px;
+  margin: var(--sp-4) auto 0;
+  font-size: 0.8rem;
+  color: var(--slate);
+  line-height: 1.6;
 }
 
 /* ── How It Works Section ── */
@@ -594,15 +614,21 @@
   <!-- ── Hero ── -->
   <section class="hero">
     <div class="hero-content">
-      <div class="hero-badge">Home Inspector Partner Program</div>
-      <h1>Give Your Clients a Real Answer When You Find Damage</h1>
+      <div class="hero-badge">Insurance Adjuster Partner Program</div>
+      <h1>You See the Damage First. Give Homeowners a Clear Next Step.</h1>
       <p class="subtitle">
-        You find the problem. Your clients ask "what do I do now?" Otter Quotes is your answer &mdash; competing contractor bids, handled professionally, so your clients move forward and you get paid for the referral.
+        Every homeowner asks the same question once you've documented the damage: "who should fix this?" Otter Quotes is a neutral next step &mdash; the homeowner gathers competing bids from licensed, insured local contractors on their own terms. It's not a recommendation of any one contractor, and it's completely separate from how the claim itself is handled.
       </p>
+      <div class="hero-notice">
+        Otter Quotes is not a public adjuster and does not negotiate or advise on insurance claims.
+      </div>
       <div class="hero-cta-group">
         <a href="#signup" class="btn btn-primary">Get My Referral Link</a>
         <a href="#how-it-works" class="btn btn-secondary">See How It Works</a>
       </div>
+      <p class="cta-disclaimer referral-fee-disclaimer">
+        Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+      </p>
     </div>
   </section>
 
@@ -616,55 +642,55 @@
       <div class="step-card">
         <div class="step-number">1</div>
         <h3>Sign Up in 60 Seconds</h3>
-        <p>Enter your name, contact info, and company. We generate your unique referral link instantly &mdash; no approval process, no waiting.</p>
+        <p>Enter your name, contact info, and employer. We generate your unique referral link instantly &mdash; no approval process, no waiting.</p>
       </div>
       <div class="step-card">
         <div class="step-number">2</div>
-        <h3>Share Your Link When You Find Damage</h3>
-        <p>Add it to your inspection report, text it on-site, or email it to your client. Takes five seconds. Works for insurance claims and out-of-pocket repairs.</p>
+        <h3>Share Your Link When You Document Damage</h3>
+        <p>Hand it to the homeowner on-site, text it, or include it in your file notes. Takes five seconds. Works alongside any claim, regardless of how it's ultimately settled.</p>
       </div>
       <div class="step-card">
         <div class="step-number">3</div>
-        <h3>Otter Quotes Handles Everything</h3>
-        <p>Your client gets matched with local contractors who bid competitively &mdash; you can compare their licensing, insurance, and reviews all in one place. They compare bids, choose their contractor, and sign a contract &mdash; all through the platform.</p>
+        <h3>Otter Quotes Handles the Contractor Side</h3>
+        <p>The homeowner gets matched with local contractors who bid competitively. We make your research easy by gathering licensing, insurance, and review information all in one place. They compare bids, choose their contractor, and sign a contract &mdash; all through the platform.</p>
       </div>
       <div class="step-card">
         <div class="step-number">4</div>
         <h3>You Earn $200</h3>
-        <p>When a job over $10,000 completes, you get paid. No chasing checks &mdash; we track every referral and pay automatically. Bonus: if you recruit another inspector to Otter Quotes, you earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
+        <p>When a job over $10,000 completes, you get paid. No chasing checks &mdash; we track every referral and pay automatically. Bonus: if you recruit another adjuster to Otter Quotes, you earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
       </div>
     </div>
   </section>
 
-  <!-- ── Why Inspectors Love This ── -->
+  <!-- ── Why Adjusters Use This ── -->
   <section class="value-section">
     <div class="section-header">
-      <h2>Why It Works for Inspectors</h2>
+      <h2>Why It Works for Adjusters</h2>
     </div>
     <div class="value-grid">
       <div class="value-card">
-        <h3>Your Clients Already Have Confirmed Damage</h3>
-        <p>You documented it. They trust your finding. That's the highest-intent opportunity in the industry &mdash; your clients aren't browsing, they have a real problem that needs fixing.</p>
+        <h3>Homeowners Trust What You Documented</h3>
+        <p>You confirmed the damage. They trust your file. That's the highest-intent moment in the entire process &mdash; the homeowner isn't browsing, they have a real repair that needs to happen.</p>
       </div>
       <div class="value-card">
-        <h3>Your Clients Get a Better Experience Than Going It Alone</h3>
-        <p>Otter Quotes gives contractors everything they need to bid accurately &mdash; measurements, material specs, insurance docs. Your clients get bids on exactly what they need. No high-pressure sales pitches, no being ghosted after a site visit. Just apples-to-apples bids and a simple signing process.</p>
+        <h3>A Better Experience Than Searching Alone</h3>
+        <p>Otter Quotes gives contractors everything they need to bid accurately &mdash; measurements, material specs, documentation. Homeowners get bids on exactly what they need. No high-pressure sales pitches, no being ghosted after a site visit. Just apples-to-apples bids and a simple signing process.</p>
       </div>
       <div class="value-card">
-        <h3>Covers Insurance and Out-of-Pocket</h3>
-        <p>Whether your client is filing a claim or paying out of pocket, Otter Quotes handles both paths. You send one link and let the platform figure out the rest.</p>
+        <h3>Works Alongside Any Claim Path</h3>
+        <p>Whether the homeowner is working through a covered claim or paying out of pocket, Otter Quotes handles both. You send one link and let the platform take it from there.</p>
       </div>
       <div class="value-card">
-        <h3>Adds Value to Your Report</h3>
-        <p>Your inspection report is more useful when it includes a clear next step. "Here's what I found, and here's where to go to get it fixed" is better service &mdash; and it closes more referrals.</p>
+        <h3>Zero Effect on Your Claim Handling</h3>
+        <p>Sharing your referral link never touches how you scope, evaluate, or settle the claim. Otter Quotes only steps in after coverage and claim decisions are made &mdash; it helps the homeowner find a contractor, nothing more.</p>
       </div>
       <div class="value-card">
         <h3>You Don't Have to Manage Anything</h3>
-        <p>No contractor coordination. No follow-up. No chasing clients. You share the link and Otter Quotes does the work. Your dashboard shows your referral status in real time.</p>
+        <p>No contractor coordination. No follow-up. No chasing homeowners. You share the link and Otter Quotes does the work. Your dashboard shows your referral status in real time.</p>
       </div>
       <div class="value-card">
-        <h3>Your Clients Are in Good Hands</h3>
-        <p>Every contractor on Otter Quotes provides licensing, insurance, and review information so your clients can compare with confidence. Your clients compare multiple bids with a signed contract and deductible protection. You can refer knowing they'll be taken care of.</p>
+        <h3>Homeowners Are in Good Hands</h3>
+        <p>We make your research easy by gathering licensing, insurance, and review information all in one place, so homeowners can compare with confidence. They review multiple bids with a signed contract before any work starts.</p>
       </div>
     </div>
   </section>
@@ -677,11 +703,10 @@
       <div class="commission-secondary" style="margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid rgba(224,123,0,0.25); font-size: 1.75rem; font-weight: 800; color: var(--amber); font-family: var(--font-heading); line-height: 1.1;">+ $50</div>
       <div class="commission-label" style="margin-top: var(--sp-2);">For Every Job From a Partner You Recruit</div>
       <p class="commission-note" style="margin-top: var(--sp-5);">
-        Know another inspector who'd benefit? Share your recruit link and earn $50 every time their referral completes a job over $10K. One level &mdash; simple, transparent, no MLM.
+        Know another adjuster who'd benefit? Share your recruit link and earn $50 every time their referral completes a job over $10K. One level &mdash; simple, transparent, no MLM.
       </p>
       <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">A completed IRS Form W-9 is required before your first commission payment is issued.</p>
-      <!-- D-180: Approval process disclosure -->
-      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">Commissions are paid after job completion and approval — typically within 14 days of completion.</p>
+      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">Commissions are paid after job completion and approval &mdash; typically within 14 days of completion.</p>
     </div>
   </section>
 
@@ -706,7 +731,7 @@
 
         <div class="form-group">
           <label for="email">Email</label>
-          <input type="email" id="email" name="email" required placeholder="john@inspectionco.com">
+          <input type="email" id="email" name="email" required placeholder="john@adjustingco.com">
         </div>
 
         <div class="form-group">
@@ -715,21 +740,20 @@
         </div>
 
         <div class="form-group">
-          <label for="company">Company Name</label>
-          <input type="text" id="company" name="company" required placeholder="ABC Home Inspections">
+          <label for="employer">Employer / Adjusting Firm</label>
+          <input type="text" id="employer" name="employer" required placeholder="ABC Claims Adjusting">
         </div>
 
         <div class="form-group">
-          <label for="certification">
-            Certification <span class="optional-label">(optional)</span>
+          <label for="adjusterType">
+            Adjuster Type <span class="optional-label">(optional)</span>
           </label>
-          <select id="certification" name="certification">
+          <select id="adjusterType" name="adjusterType">
             <option value="">Select if applicable</option>
-            <option value="ashi">ASHI Member</option>
-            <option value="internachi">InterNACHI Member</option>
-            <option value="nahi">NAHI Member</option>
-            <option value="other">Other Certification</option>
-            <option value="none">Not Certified</option>
+            <option value="independent">Independent Adjuster</option>
+            <option value="staff">Staff / Company Adjuster</option>
+            <option value="cat">CAT (Catastrophe) Adjuster</option>
+            <option value="other">Other</option>
           </select>
         </div>
 
@@ -758,7 +782,7 @@
 
         <div class="toolkit-header">
           <h3>You're In &mdash; Here's Your Toolkit</h3>
-          <p>Four ways to put your link to work. Use whichever fits your workflow.</p>
+          <p>Five ways to put your link to work. Use whichever fits your workflow.</p>
         </div>
 
         <!-- Stats Row -->
@@ -783,23 +807,34 @@
             <span class="toolkit-card-icon">🔗</span>
             <h4>Your Referral Link</h4>
           </div>
-          <p class="toolkit-hint">Every client you send through this link is tracked back to you.</p>
+          <p class="toolkit-hint">Every homeowner you send through this link is tracked back to you.</p>
           <div class="ref-link-display" id="refLinkDisplay"></div>
           <button class="copy-btn" onclick="copyItem('link')">Copy Link</button>
         </div>
 
-        <!-- 2. Text Message -->
+        <!-- 2. Your Recruit Link -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">🤝</span>
+            <h4>Your Recruit Link</h4>
+          </div>
+          <p class="toolkit-hint">Share this with other adjusters. You earn $50 every time one of their referrals completes a job over $10K.</p>
+          <div class="ref-link-display" id="recruitLinkDisplay"></div>
+          <button class="copy-btn" onclick="copyItem('recruit')">Copy Recruit Link</button>
+        </div>
+
+        <!-- 3. Text Message -->
         <div class="toolkit-card">
           <div class="toolkit-card-header">
             <span class="toolkit-card-icon">💬</span>
             <h4>Text Message Template</h4>
           </div>
-          <p class="toolkit-hint">Edit the name, then paste into any text thread with your client. Works on iPhone and Android.</p>
+          <p class="toolkit-hint">Edit the name, then paste into any text thread with the homeowner. Works on iPhone and Android.</p>
           <div class="template-box" id="textTemplate"></div>
           <button class="copy-btn" onclick="copyItem('text')">Copy Text Message</button>
         </div>
 
-        <!-- 3. Email Template -->
+        <!-- 4. Email Template -->
         <div class="toolkit-card">
           <div class="toolkit-card-header">
             <span class="toolkit-card-icon">📧</span>
@@ -810,15 +845,15 @@
           <button class="copy-btn" onclick="copyItem('email')">Copy Email</button>
         </div>
 
-        <!-- 4. Report Insert -->
+        <!-- 5. File Note Insert -->
         <div class="toolkit-card">
           <div class="toolkit-card-header">
             <span class="toolkit-card-icon">📋</span>
-            <h4>Inspection Report Insert</h4>
+            <h4>File Note Insert</h4>
           </div>
-          <p class="toolkit-hint">Paste this into your report template's "Recommended Next Steps" or "Contractor Resources" section so it appears automatically on every report.</p>
+          <p class="toolkit-hint">Paste this into your file notes or the "Contractor Resources" section of your report so it appears automatically.</p>
           <div class="template-box" id="reportTemplate"></div>
-          <button class="copy-btn" onclick="copyItem('report')">Copy Report Text</button>
+          <button class="copy-btn" onclick="copyItem('report')">Copy File Note</button>
         </div>
 
       </div>
@@ -832,11 +867,21 @@
 
       <div class="faq-item">
         <button class="faq-header" onclick="toggleFaq(this)">
-          <span>What happens after I send a client my link?</span>
+          <span>What happens after I send a homeowner my link?</span>
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          Your client lands on a page that explains the Otter Quotes process, confirms what you found, and walks them through getting competing contractor bids. They enter their info, and Otter Quotes handles everything from there &mdash; matching them with local contractors (whose licensing, insurance, and review information is gathered in one place so your clients can compare with confidence), collecting bids, helping with their insurance estimate if needed, and getting a contract signed.
+          The homeowner lands on a page that explains the Otter Quotes process and walks them through getting competing contractor bids. They enter their info, and Otter Quotes handles everything from there &mdash; matching them with local contractors (whose licensing, insurance, and review information is gathered in one place so they can compare with confidence), collecting bids, and getting a contract signed.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Does referring a homeowner affect how I handle their claim?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          No. Referring a homeowner to Otter Quotes has zero effect on how you scope, evaluate, or settle their claim. Otter Quotes is not a public adjuster and does not negotiate or advise on insurance claims &mdash; it only helps the homeowner find a contractor after coverage and claim decisions have already been made independently.
         </div>
       </div>
 
@@ -856,7 +901,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          Commissions are paid when the job completes &mdash; not when your client signs a contract. A job "completes" when the contractor finishes the work and the final payment clears. Commissions are paid after job completion and approval — typically within 14 days of completion. If someone you recruited to Otter Quotes sends a referral that completes, you also earn a $50 recruit bonus &mdash; paid on the same schedule.
+          Commissions are paid after job completion and approval &mdash; typically within 14 days of completion. A job "completes" when the contractor finishes the work and the final payment clears. If someone you recruited to Otter Quotes sends a referral that completes, you also earn a $50 recruit bonus &mdash; paid on the same schedule.
         </div>
       </div>
 
@@ -866,27 +911,27 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          Any exterior repair or replacement job over $10,000 that completes through Otter Quotes &mdash; roofing, siding, gutters, windows. Insurance claims and out-of-pocket (retail) jobs both qualify. Jobs under $10,000 don't earn a cash commission, but we still handle your client professionally.
+          Any exterior repair or replacement job over $10,000 that completes through Otter Quotes &mdash; roofing, siding, gutters, windows. Covered claims and out-of-pocket (retail) jobs both qualify. Jobs under $10,000 don't earn a cash commission, but we still handle the homeowner professionally.
         </div>
       </div>
 
       <div class="faq-item">
         <button class="faq-header" onclick="toggleFaq(this)">
-          <span>Is this allowed under my professional guidelines?</span>
+          <span>Am I allowed to accept a referral fee?</span>
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          This is a straightforward referral arrangement &mdash; you refer clients to a service, and you earn a commission when they complete a transaction. ASHI and InterNACHI both permit referral arrangements that don't compromise inspector independence or objectivity. You're referring clients to a contractor bidding platform, not influencing your inspection findings.
+          This is a straightforward referral arrangement &mdash; you refer a homeowner to a contractor bidding platform, and you may earn a commission when they complete a job through it. Otter Quotes does not influence your claim work in any way. Whether you're permitted to accept a referral fee depends on your employer's policies and your state's adjuster licensing rules, so check both before you participate.
         </div>
       </div>
 
       <div class="faq-item">
         <button class="faq-header" onclick="toggleFaq(this)">
-          <span>Does my client pay anything?</span>
+          <span>Does the homeowner pay anything?</span>
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          Otter Quotes is 100% free for Homeowners. Your clients get a better outcome (competing bids, a signed contract, deductible protection) at no cost to them.
+          Otter Quotes is 100% free for homeowners. They get a better outcome (competing bids, a signed contract, deductible protection) at no cost to them.
         </div>
       </div>
 
@@ -896,7 +941,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          When you bring another inspector to Otter Quotes using your recruit link, you earn $50 for every job over $10,000 that their referrals complete. It's one level only &mdash; you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on your partner dashboard.
+          When you bring another adjuster to Otter Quotes using your recruit link, you earn $50 for every job over $10,000 that their referrals complete. It's one level only &mdash; you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on this page after you sign up, and on your partner dashboard.
         </div>
       </div>
 
@@ -915,9 +960,14 @@
 
 <script>
 /**
- * Partner Inspectors Page
+ * Partner Adjusters Page
  * Handles signup form submission: creates a record in referral_agents,
- * generates a unique referral code, and displays the partner's link.
+ * and displays the partner's referral + recruit links.
+ *
+ * IMPORTANT: unique_code and recruit_code are generated server-side by
+ * BEFORE INSERT triggers on referral_agents. This client intentionally
+ * does NOT generate or send either value — it reads them back from the
+ * insert response instead.
  */
 
 // Module-scoped recruit context. Populated by detectRecruitCode() on DOM ready
@@ -942,7 +992,7 @@ async function detectRecruitCode() {
   if (!recruitCode) return;
 
   try {
-    // Public read allowed by existing RLS on referral_agents
+    // Public read allowed by existing RLS on referral_agents, via the public view
     const { data: recruiter, error } = await sb
       .from('referral_agents_public')
       .select('id, first_name, last_name, company')
@@ -980,15 +1030,6 @@ async function detectRecruitCode() {
 }
 
 /**
- * Generate a short unique referral code (8 chars, URL-safe)
- */
-function generateRefCode(firstName, lastName) {
-  const base = (firstName.slice(0, 3) + lastName.slice(0, 3)).toLowerCase().replace(/[^a-z]/g, '');
-  const rand = Math.random().toString(36).slice(2, 6);
-  return base + rand;
-}
-
-/**
  * Handle form submission
  */
 async function handleSignup(e) {
@@ -998,45 +1039,45 @@ async function handleSignup(e) {
   const lastName     = document.getElementById('lastName').value.trim();
   const email        = document.getElementById('email').value.trim();
   const phone        = document.getElementById('phone').value.trim();
-  const company      = document.getElementById('company').value.trim();
-  const certification = document.getElementById('certification').value;
-  const referredBy    = document.getElementById('referredBy').value.trim();
+  const employer     = document.getElementById('employer').value.trim();
+  const adjusterType = document.getElementById('adjusterType').value;
+  const referredBy   = document.getElementById('referredBy').value.trim();
 
   const submitBtn = document.getElementById('submitBtn');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Setting up your account...';
 
   try {
-    const uniqueCode = generateRefCode(firstName, lastName);
-
     // RLS: "Public can register as partner" allows anon insert where user_id IS NULL
+    // unique_code / recruit_code are NOT sent — BEFORE INSERT triggers generate both.
     const { data, error } = await sb
       .from('referral_agents')
       .insert({
-        agent_type:       'home_inspector',
+        agent_type:       'adjuster',
         first_name:       firstName,
         last_name:        lastName,
         email,
         phone,
-        company:          company,         // schema column is 'company' (not 'company_name')
-        unique_code:      uniqueCode,
-        metadata:         { certification: certification || null },
+        company:          employer,          // schema column is 'company' (not 'employer')
+        metadata:         { adjuster_type: adjusterType || null },
         referred_by_note: referredBy || null,
         recruited_by_id:  recruitContext.recruiterId || null,
         recruited_at:     recruitContext.recruiterId ? new Date().toISOString() : null,
         // user_id intentionally NULL — linked post-magic-link in auth.js
         // commission totals maintained by DB trigger — do NOT set manually
       })
-      .select('id, unique_code')
+      .select('id, unique_code, recruit_code')
       .single();
 
     if (error) throw new Error(error.message);
 
-    // Use DB-returned unique_code (trigger may have changed it if there was a collision)
-    const finalCode = data?.unique_code || uniqueCode;
+    // Codes are trigger-generated — read them back from the insert response.
+    const finalCode = data?.unique_code;
+    const recruitCodeOut = data?.recruit_code;
 
     // Use ref.html?code= URL pattern (consistent with the rest of the system)
     const refLink = `${CONFIG.SITE_URL}/ref.html?code=${finalCode}`;
+    const recruitLink = recruitCodeOut ? `${CONFIG.SITE_URL}/recruit.html?code=${recruitCodeOut}` : '';
     const fullName = `${firstName} ${lastName}`;
 
     // Store data for post-auth user_id linking
@@ -1044,29 +1085,32 @@ async function handleSignup(e) {
       email: email,
       unique_code: finalCode,
     }));
-    localStorage.setItem('cs_auth_role', 'home_inspector');
+    localStorage.setItem('cs_auth_role', 'adjuster');
 
     // Recruit code has now been consumed — clear it so a future signup on
     // this device doesn't accidentally attribute to the same recruiter.
     localStorage.removeItem('cs_recruit_code');
 
-    // Send magic link so partner can access their dashboard
+    // Send magic link so partner can access their dashboard.
+    // 'adjuster' is not in auth.js's hardcoded partnerRoles allowlist, so the
+    // redirect page is forced explicitly rather than relying on role-based routing.
     if (window.Auth) {
-      await Auth.sendMagicLink(email, 'home_inspector');
+      await Auth.sendMagicLink(email, 'adjuster', '/partner-dashboard.html');
     }
 
     // Show toolkit, hide form
     document.getElementById('partnerForm').style.display = 'none';
     document.getElementById('toolkitWrapper').style.display = 'block';
     document.getElementById('refLinkDisplay').textContent = refLink;
+    document.getElementById('recruitLinkDisplay').textContent = recruitLink || 'Available once your account finishes setting up.';
 
     // Populate templates
-    populateTemplates(refLink, fullName, company);
+    populateTemplates(refLink, fullName, employer);
 
     // GA4 conversion event — partner funnel
     if (typeof gtag === 'function') {
       gtag('event', 'partner_signup', {
-        partner_type: 'home_inspector',
+        partner_type: 'adjuster',
         source: new URLSearchParams(location.search).get('utm_source') || 'direct',
       });
     }
@@ -1080,34 +1124,34 @@ async function handleSignup(e) {
 }
 
 /**
- * Populate the text, email, and report templates with real data
+ * Populate the text, email, and file note templates with real data
  */
-function populateTemplates(refLink, fullName, company) {
+function populateTemplates(refLink, fullName, employer) {
   document.getElementById('textTemplate').textContent =
-`Hi [Client name], this is ${fullName} from ${company}. I mentioned Otter Quotes during your inspection — they'll get you competing contractor bids on the repairs I found, so you can compare your options and sign a contract without the runaround. Here's my referral link: ${refLink}`;
+`Hi [Homeowner name], this is ${fullName} from ${employer}. Otter Quotes can get you competing contractor bids on the repairs from your file, so you can compare your options and sign a contract without the runaround. It's a separate step from your claim &mdash; here's the link: ${refLink}`;
 
   document.getElementById('emailTemplate').textContent =
-`Subject: Next Steps for Your Home Inspection Repairs
+`Subject: A Resource for Your Repair Contractors
 
-Hi [Client name],
+Hi [Homeowner name],
 
-During the inspection at [property address], I identified items that need contractor attention. I wanted to send you a resource that makes the repair process straightforward.
+While documenting the damage at [property address], I wanted to send you a resource that makes finding a contractor straightforward.
 
-Otter Quotes gives contractors everything they need to bid accurately on your project, so you get bids on exactly what you need — not ballpark numbers from a quick walk-around. No high-pressure sales pitches. No being ghosted after a site visit. Just clear, apples-to-apples bids from local contractors — with their licensing, insurance, and review information gathered in one place so you can compare with confidence — and a simple contract signing process. It's free for homeowners.
+Otter Quotes gives contractors everything they need to bid accurately on your project, so you get bids on exactly what you need — not ballpark numbers from a quick walk-around. No high-pressure sales pitches. No being ghosted after a site visit. Just clear, apples-to-apples bids from local contractors — with their licensing, insurance, and review information gathered in one place so you can compare with confidence — and a simple contract signing process. It's free for homeowners, and it's entirely separate from how your claim is handled.
 
 Get started here: ${refLink}
 
 Best,
 ${fullName}
-${company}`;
+${employer}`;
 
   document.getElementById('reportTemplate').textContent =
-`RECOMMENDED NEXT STEPS
+`CONTRACTOR RESOURCE NOTE
 
-For the items noted above that require contractor work, I recommend getting competing bids before committing to any single contractor. Otter Quotes is a platform that gives contractors professional measurements and documentation so they can provide accurate bids — not estimates based on a quick look. The result: clear, comparable bids and a straightforward contract signing process. Free for homeowners.
+For the items noted above that require contractor work, I recommend getting competing bids before committing to any single contractor. Otter Quotes is a platform that gives contractors professional measurements and documentation so they can provide accurate bids — not estimates based on a quick look. The result: clear, comparable bids and a straightforward contract signing process. Free for homeowners. This is separate from claim handling.
 
 Get started: ${refLink}
-Referred by ${fullName}, ${company}`;
+Shared by ${fullName}, ${employer}`;
 }
 
 /**
@@ -1120,6 +1164,9 @@ function copyItem(type) {
   if (type === 'link') {
     text = document.getElementById('refLinkDisplay').textContent;
     btnSelector = '[onclick="copyItem(\'link\')"]';
+  } else if (type === 'recruit') {
+    text = document.getElementById('recruitLinkDisplay').textContent;
+    btnSelector = '[onclick="copyItem(\'recruit\')"]';
   } else if (type === 'text') {
     text = document.getElementById('textTemplate').textContent;
     btnSelector = '[onclick="copyItem(\'text\')"]';
@@ -1137,7 +1184,7 @@ function copyItem(type) {
     const btn = document.querySelector(btnSelector);
     if (btn) {
       const orig = btn.textContent;
-      btn.textContent = '\u2713 Copied!';
+      btn.textContent = '✓ Copied!';
       setTimeout(() => { btn.textContent = orig; }, 2000);
     }
   }).catch(() => {});
@@ -1148,7 +1195,5 @@ function toggleFaq(btn) {
 }
     </script>
 
-<!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-inspector.html" style="color:var(--amber);">Homeowner referral landing page</a></p>
 </body>
 </html>
