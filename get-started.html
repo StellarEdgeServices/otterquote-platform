@@ -368,6 +368,8 @@
           <div class="referral-options">
             <button type="button" class="referral-chip" data-value="insurance_agent">Insurance Agent</button>
             <button type="button" class="referral-chip" data-value="realtor">Realtor</button>
+            <button type="button" class="referral-chip" data-value="home_inspector">Home Inspector</button>
+            <button type="button" class="referral-chip" data-value="adjuster">Adjuster</button>
             <button type="button" class="referral-chip" data-value="friend">Friend/Family</button>
             <button type="button" class="referral-chip" data-value="web">Found Online</button>
           </div>
@@ -485,7 +487,7 @@
       document.getElementById('referral-source').value = chip.dataset.value;
 
       const nameRow = document.getElementById('referral-name-row');
-      if (['insurance_agent', 'realtor'].includes(chip.dataset.value)) {
+      if (['insurance_agent', 'realtor', 'home_inspector', 'adjuster'].includes(chip.dataset.value)) {
         nameRow.classList.add('visible');
       } else {
         nameRow.classList.remove('visible');

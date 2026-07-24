@@ -503,6 +503,8 @@
                 'insurance_agent': ['badge-type-ins',  'Insurance'],
                 'home_inspector':  ['badge-type-insp', 'Inspector'],
                 'customer':        ['badge-type-cust', 'Customer'],
+                'adjuster':        ['badge-type-ins',  'Adjuster'],
+                'other':           ['badge-type-cust', 'Other'],
             };
             const [cls, label] = map[type] || ['badge-not-filed', type || '—'];
             return `<span class="badge ${cls}">${label}</span>`;

@@ -17,6 +17,66 @@ const Nav = {
     return path.includes('contractor');
   },
 
+  /** "For Partners" dropdown links (#567) — non-contractor header only. */
+  _partnerLinks: [
+    { href: '/partner-re.html',         label: 'Real Estate Agents' },
+    { href: '/partner-insurance.html',  label: 'Insurance Agents' },
+    { href: '/partner-adjusters.html',  label: 'Adjusters' },
+    { href: '/partner-inspectors.html', label: 'Home Inspectors' },
+    { href: '/refer-a-friend.html',     label: 'Refer a Friend' },
+    { href: '/partner-other.html',      label: 'Other Industries' },
+  ],
+
+  _partnersDropdownHTML() {
+    return `
+      <div class="nav-dropdown" id="nav-partners-dropdown">
+        <button type="button" class="nav-link nav-dropdown-toggle" id="nav-partners-toggle"
+                aria-haspopup="true" aria-expanded="false">
+          For Partners <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-dropdown-menu" role="menu" aria-label="For Partners">
+          ${this._partnerLinks.map(l => `
+            <a href="${l.href}" class="nav-dropdown-item" role="menuitem">${l.label}</a>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  },
+
+  _wirePartnersDropdown() {
+    const dropdown = document.getElementById('nav-partners-dropdown');
+    if (!dropdown || dropdown.dataset.wired === 'true') return;
+    dropdown.dataset.wired = 'true';
+    const toggle = dropdown.querySelector('.nav-dropdown-toggle');
+    const setOpen = (open) => {
+      dropdown.classList.toggle('open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    // Click toggles — the mobile/hamburger expandable behavior, and the
+    // keyboard/touch fallback on desktop.
+    toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      setOpen(!dropdown.classList.contains('open'));
+    });
+    // Hover open/close only on devices that actually hover — on touch,
+    // mouseenter firing before click would immediately re-close the menu.
+    const hoverable = window.matchMedia('(hover: hover) and (pointer: fine)');
+    if (hoverable.matches) {
+      dropdown.addEventListener('mouseenter', () => setOpen(true));
+      dropdown.addEventListener('mouseleave', () => setOpen(false));
+    }
+    dropdown.addEventListener('focusin', () => setOpen(true));
+    dropdown.addEventListener('focusout', (e) => {
+      if (!dropdown.contains(e.relatedTarget)) setOpen(false);
+    });
+    dropdown.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { setOpen(false); toggle.focus(); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target)) setOpen(false);
+    });
+  },
+
   /** Render the site header */
   renderHeader(options = {}) {
     const { active = '', showAuth = true } = options;
@@ -49,6 +109,7 @@ const Nav = {
           ${links.map(l => `
             <a href="${l.href}" class="nav-link ${active === l.id ? 'active' : ''}">${l.label}</a>
           `).join('')}
+          ${!isContractor ? this._partnersDropdownHTML() : ''}
           ${showAuth ? '<div class="nav-mobile-auth" id="nav-mobile-auth-slot"></div>' : ''}
           ${isContractor && !showAuth ? `
             <a href="#" class="nav-link nav-mobile-cta-secondary" onclick="Auth.signOut(); return false;">Log Out</a>
@@ -74,6 +135,11 @@ const Nav = {
         hamburger.classList.toggle('open');
         navLinks.classList.toggle('open');
       });
+    }
+
+    // "For Partners" dropdown behavior (#567) — non-contractor header only
+    if (!isContractor) {
+      this._wirePartnersDropdown();
     }
 
     // Auth state
@@ -133,6 +199,21 @@ const Nav = {
           container.insertAdjacentHTML('beforeend', extras);
         }
       }
+    }
+
+    // #567: keep the "For Partners" dropdown consistent with the corrected
+    // role — contractors never see it; non-contractors always do.
+    const existingDropdown = document.getElementById('nav-partners-dropdown');
+    if (isContractorByRole) {
+      if (existingDropdown) existingDropdown.remove();
+    } else if (!existingDropdown && container) {
+      const mobileAuthSlot = container.querySelector('#nav-mobile-auth-slot');
+      if (mobileAuthSlot) {
+        mobileAuthSlot.insertAdjacentHTML('beforebegin', this._partnersDropdownHTML());
+      } else {
+        container.insertAdjacentHTML('beforeend', this._partnersDropdownHTML());
+      }
+      this._wirePartnersDropdown();
     }
 
     // Update logo href
@@ -447,6 +528,9 @@ const Nav = {
             <h4 class="footer-heading">Partners</h4>
             <a href="/partner-re.html">Real Estate Agents</a>
             <a href="/partner-insurance.html">Insurance Agents</a>
+            <a href="/partner-inspectors.html">Home Inspectors</a>
+            <a href="/partner-adjusters.html">Adjusters</a>
+            <a href="/partner-other.html">Other Industries</a>
             <a href="/partner-dashboard.html">Partner Dashboard</a>
             <a href="/refer-a-friend.html">Refer a Friend</a>
           </div>

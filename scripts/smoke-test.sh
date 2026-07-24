@@ -75,6 +75,49 @@ else
   PASS=$((PASS + 1))
 fi
 
+# -- Test 5: partner-adjusters.html live + D-266 disclaimer (#567) --
+echo ""
+echo "Test 5: partner-adjusters.html (200 + D-266 disclaimer)..."
+BODY_FILE=$(mktemp)
+HTTP_STATUS=$(curl -s -o "$BODY_FILE" -w "%{http_code}" --max-time 15 "$BASE_URL/partner-adjusters.html")
+if [ "$HTTP_STATUS" = "200" ] && grep -q "governing licensing agency" "$BODY_FILE"; then
+  echo "  â PASS â HTTP 200 + disclaimer present"
+  PASS=$((PASS + 1))
+else
+  echo "  â FAIL â HTTP $HTTP_STATUS or disclaimer missing"
+  FAIL=$((FAIL + 1))
+fi
+rm -f "$BODY_FILE"
+
+# -- Test 6: partner-other.html live + D-266 disclaimer (#567) ------
+echo ""
+echo "Test 6: partner-other.html (200 + D-266 disclaimer)..."
+BODY_FILE=$(mktemp)
+HTTP_STATUS=$(curl -s -o "$BODY_FILE" -w "%{http_code}" --max-time 15 "$BASE_URL/partner-other.html")
+if [ "$HTTP_STATUS" = "200" ] && grep -q "governing licensing agency" "$BODY_FILE"; then
+  echo "  â PASS â HTTP 200 + disclaimer present"
+  PASS=$((PASS + 1))
+else
+  echo "  â FAIL â HTTP $HTTP_STATUS or disclaimer missing"
+  FAIL=$((FAIL + 1))
+fi
+rm -f "$BODY_FILE"
+
+# -- Test 7: partner-insurance.html D-266 disclaimer (#567) ---------
+echo ""
+echo "Test 7: partner-insurance.html (D-266 disclaimer)..."
+BODY_FILE=$(mktemp)
+HTTP_STATUS=$(curl -s -o "$BODY_FILE" -w "%{http_code}" --max-time 15 "$BASE_URL/partner-insurance.html")
+if [ "$HTTP_STATUS" = "200" ] && grep -q "governing licensing agency" "$BODY_FILE"; then
+  echo "  â PASS â HTTP 200 + disclaimer present"
+  PASS=$((PASS + 1))
+else
+  echo "  â FAIL â HTTP $HTTP_STATUS or disclaimer missing"
+  FAIL=$((FAIL + 1))
+fi
+rm -f "$BODY_FILE"
+
+
 # ── Summary ───────────────────────────────────────────────────────
 echo ""
 echo "================================================"

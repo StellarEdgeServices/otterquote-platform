@@ -201,7 +201,7 @@ window.Auth = {
     // Redirect URL depends on role — auth callback page handles final routing.
     // New users go to trade-selector (intake). Returning users should pass
     // redirectTo='/dashboard.html' to bypass the intake flow.
-    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector'];
+    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
     // D-225 fix May 13: new contractors must land on /contractor-pre-approval.html,
     // not /contractor-dashboard.html. The pre-approval page reads cs_contractor_signup
     // from localStorage, creates the contractors row, and routes returning/active
@@ -752,6 +752,10 @@ Log in to the admin panel to review and approve this contractor.`;
           .update({ status: 'registered', homeowner_email: user.email })
           .eq('id', referralId)
           .eq('status', 'clicked');
+        // #567: keep the id under a claim-scoped key so the claim writer
+        // (trade-selector) can stamp claims.referral_id, then clear the
+        // advance-scoped keys so this block never re-runs.
+        localStorage.setItem('oq_referral_id_for_claim', referralId);
         localStorage.removeItem('oq_referral_id');
         sessionStorage.removeItem('oq_referral_id');
       } catch (err) {

@@ -20,9 +20,13 @@
  *   Find payout_approvals where:
  *     status = 'pending_approval'
  *     AND auto_approve_at < NOW()
+ *   Gates (both fail-safe — lookup error = hold, row stays pending_approval):
+ *     1. W-9 (D-211 Phase 18 Unit 3): verified W-9 + payments unblocked.
+ *     2. Completion (D-139, #567): linked claim has completion_date set.
  *   Auto-approve: set status = 'auto_approved', approved_at = NOW().
- *   Set referrals.commission_paid_at = NOW() on associated referrals.
- *   Send Dustin a summary email of what auto-approved.
+ *   Set referrals.commission_paid_at = NOW() and referrals.status =
+ *   'commission_paid' (fires update_referral_stats) on associated referrals.
+ *   Send Dustin a summary email of what auto-approved and what was held.
  *
  * JOB 3 — Catch-up notifications:
  *   Find payout_approvals where:
@@ -218,6 +222,7 @@ serve(async (req: Request) => {
     pendingReminderCount: 0,
     autoApproved:         0,
     heldPendingW9:        0,
+    heldPendingCompletion: 0,
     catchupNotified:      0,
     errors:               [] as string[],
     ranAt:                new Date().toISOString(),
@@ -353,6 +358,7 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
       const approvedAt = new Date().toISOString();
       const approvedRows: typeof autoApproveRows = [];
       const heldRows:     typeof autoApproveRows = [];
+      const heldCompletionRows: typeof autoApproveRows = [];
 
       for (const row of autoApproveRows) {
         try {
@@ -382,6 +388,40 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
             continue;
           }
 
+          // ── Completion gate (D-139, #567) ──────────────────────────────────
+          // Commissions release only after the job is actually complete.
+          // Resolve payout → referral → claim → completion_date. Fail-safe like
+          // the W-9 gate: no referral / no claim / lookup error = HOLD.
+          let completionOk = false;
+          if (row.referral_id) {
+            const { data: refRow, error: refErr } = await supabase
+              .from("referrals")
+              .select("claim_id")
+              .eq("id", row.referral_id)
+              .single();
+            if (refErr) {
+              results.errors.push(`Auto-approve completion gate: referral lookup failed for ${row.referral_id}: ${refErr.message}`);
+            } else if (refRow?.claim_id) {
+              const { data: claimRow, error: claimErr } = await supabase
+                .from("claims")
+                .select("completion_date")
+                .eq("id", refRow.claim_id)
+                .single();
+              if (claimErr) {
+                results.errors.push(`Auto-approve completion gate: claim lookup failed for ${refRow.claim_id}: ${claimErr.message}`);
+              } else if (claimRow?.completion_date != null) {
+                completionOk = true;
+              }
+            }
+          }
+
+          if (!completionOk) {
+            results.heldPendingCompletion++;
+            heldCompletionRows.push(row);
+            console.log(`[${FUNCTION_NAME}] HELD auto-approve ${row.id} — job not complete (referral ${row.referral_id ?? "none"})`);
+            continue;
+          }
+
           // Update payout_approvals
           const { error: updateError } = await supabase
             .from("payout_approvals")
@@ -405,6 +445,18 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
             if (referralError) {
               results.errors.push(`Auto-approve: referral update failed for ${row.referral_id}: ${referralError.message}`);
             }
+
+            // D-139 (#567): advance the referral to commission_paid so the
+            // update_referral_stats trigger fires — nothing else ever sets it.
+            const { error: statusError } = await supabase
+              .from("referrals")
+              .update({ status: "commission_paid" })
+              .eq("id", row.referral_id)
+              .neq("status", "commission_paid");
+
+            if (statusError) {
+              results.errors.push(`Auto-approve: referral status update failed for ${row.referral_id}: ${statusError.message}`);
+            }
           }
 
           results.autoApproved++;
@@ -414,10 +466,12 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
         }
       }
 
-      // Send Dustin a summary of what auto-approved AND what was held pending W-9.
-      if (approvedRows.length > 0 || heldRows.length > 0) {
+      // Send Dustin a summary of what auto-approved AND what was held pending
+      // W-9 or job completion.
+      if (approvedRows.length > 0 || heldRows.length > 0 || heldCompletionRows.length > 0) {
         const autoTotal = approvedRows.reduce((sum, r) => sum + Number(r.amount), 0);
         const heldTotal = heldRows.reduce((sum, r) => sum + Number(r.amount), 0);
+        const heldCompletionTotal = heldCompletionRows.reduce((sum, r) => sum + Number(r.amount), 0);
 
         const rowHtml = (r: typeof autoApproveRows[number], amountColor: string) => `
 <tr>

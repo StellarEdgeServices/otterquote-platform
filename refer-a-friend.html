@@ -801,7 +801,7 @@
               <span class="faq-icon">▼</span>
             </button>
             <div class="faq-answer">
-              <p>You'll receive payment within 14 days after the referred job is completed and the homeowner's contractor has been paid. We'll send payment via bank transfer or check, whichever you prefer.</p>
+              <p>Commissions are paid after job completion and approval — typically within 14 days of completion. We'll send payment via bank transfer or check, whichever you prefer.</p>
             </div>
           </div>
           <div class="faq-item">
@@ -845,7 +845,7 @@
       <!-- D-180: Commission Approval Disclosure -->
       <section class="refer-section">
         <p style="color: var(--slate); font-size: 0.85rem; line-height: 1.6; text-align: center; margin: 0;">
-          Commission payments are subject to Otter Quotes' approval process and are typically completed within five business days of the qualifying job event.
+          Commission payments are subject to Otter Quotes' approval process. Commissions are paid after job completion and approval — typically within 14 days of completion.
         </p>
       </section>
 
@@ -870,8 +870,9 @@
 
   <script>
     // ── Global State ──
-    // sb (Supabase instance) is declared globally in js/config.js as `var sb`;
-    // assigned below. Do not redeclare with let/const — causes a SyntaxError.
+    // sb (Supabase instance) is created globally by js/config.js — the bottom
+    // include runs after the supabase UMD script and initializes it. Do not
+    // redeclare or reassign it here (#567: CONFIG.SUPABASE_KEY never existed).
     let currentUser = null;
     let userReferralCode = null;
     let photoBefore = null;
@@ -879,13 +880,6 @@
 
     // ── Initialize ──
     async function init() {
-      // Initialize Supabase
-      sb = window.supabase.createClient(
-        CONFIG.SUPABASE_URL,
-        CONFIG.SUPABASE_KEY,
-        { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } } // #488: adapter, not default storage
-      );
-
       // Require authentication
       const user = await Auth.requireAuth();
       if (!user) return; // Redirect handled by Auth.requireAuth()
@@ -941,47 +935,57 @@
     async function fetchOrCreateReferralCode() {
       if (!currentUser) return;
 
-      // Check if user has a referral entry
+      // Check if user has a referral entry. Column is unique_code — there is
+      // no `code` column; codes come from a BEFORE INSERT trigger.
       const { data, error } = await sb
         .from('referral_agents')
-        .select('code, payments_blocked, w9_notification_sent_at, w9_submitted_at')
+        .select('unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at')
         .eq('user_id', currentUser.id)
         .eq('agent_type', 'customer')
-        .single();
+        .maybeSingle();
 
       if (data) {
-        userReferralCode = data.code;
+        userReferralCode = data.unique_code;
         currentAgent = data;
       } else {
-        // Create new referral entry with generated code
-        const code = generateCode();
+        // Create the agent row. first_name / last_name / email are NOT NULL —
+        // pull from the profile, fall back to auth metadata, then the email
+        // prefix. unique_code is trigger-generated: never supply it.
+        let email = currentUser.email || '';
+        let fullName = (currentUser.user_metadata && currentUser.user_metadata.full_name) || '';
+        const { data: profile } = await sb
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+        if (profile && profile.full_name) fullName = profile.full_name;
+        if (profile && profile.email) email = profile.email;
+
+        const emailPrefix = (email.split('@')[0] || 'Customer');
+        const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
+        const firstName = nameParts[0] || emailPrefix;
+        const lastName  = nameParts.length > 1 ? nameParts.slice(1).join(' ') : emailPrefix;
+
         const { data: newData, error: insertError } = await sb
           .from('referral_agents')
           .insert([{
             user_id: currentUser.id,
-            code: code,
-            agent_type: 'customer'
+            agent_type: 'customer',
+            first_name: firstName,
+            last_name: lastName,
+            email: email
           }])
-          .select('code')
+          .select('unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at')
           .single();
 
         if (newData) {
-          userReferralCode = newData.code;
+          userReferralCode = newData.unique_code;
+          currentAgent = newData;
         } else {
           console.error('Failed to create referral code:', insertError);
           userReferralCode = 'error';
         }
       }
-    }
-
-    function generateCode() {
-      // Generate a short, memorable code
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let code = '';
-      for (let i = 0; i < 8; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return code;
     }
 
     function displayReferralLink() {
@@ -1211,10 +1215,24 @@ Best regards`;
     async function loadReferrals() {
       if (!currentUser || !sb) return;
 
+      // Two-step (#567): referrals has no referrer_id column — resolve our own
+      // agent row first, then match referrals.referral_agent_id.
+      const { data: agentRow, error: agentError } = await sb
+        .from('referral_agents')
+        .select('id')
+        .eq('user_id', currentUser.id)
+        .eq('agent_type', 'customer')
+        .maybeSingle();
+
+      if (agentError || !agentRow) {
+        if (agentError) console.error('Failed to resolve referral agent:', agentError);
+        return;
+      }
+
       const { data: referrals, error } = await sb
         .from('referrals')
         .select('*')
-        .eq('referrer_id', currentUser.id)
+        .eq('referral_agent_id', agentRow.id)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -1232,24 +1250,67 @@ Best regards`;
       }
     }
 
+    // All 7 referrals.status enum values → friendly labels + badge classes.
+    const REFERRAL_STATUS_LABELS = {
+      clicked:         'Clicked',
+      registered:      'Signed Up',
+      claim_submitted: 'Project Submitted',
+      bid_received:    'Bids In',
+      contract_signed: 'Contract Signed',
+      job_completed:   'Job Completed',
+      commission_paid: 'Commission Paid',
+    };
+    const REFERRAL_STATUS_CLASSES = {
+      clicked:         'status-clicked',
+      registered:      'status-registered',
+      claim_submitted: 'status-submitted',
+      bid_received:    'status-in-progress',
+      contract_signed: 'status-in-progress',
+      job_completed:   'status-completed',
+      commission_paid: 'status-paid',
+    };
+
     function populateReferralsTable(referrals) {
       const tbody = document.getElementById('referrals-tbody') || document.getElementById('referrals-table-body');
       if (!tbody) return;
-      tbody.innerHTML = referrals.map(r => {
+      tbody.innerHTML = referrals.map((r, i) => {
+        // homeowner_name / homeowner_email are nullable — fall back to a
+        // positional label. Cells match the headers: Name | Date | Status | Commission.
+        const name = r.homeowner_name || r.homeowner_email || ('Referral #' + (i + 1));
         const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-        const status = r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : 'Pending';
-        const statusColor = r.status === 'completed' ? '#10B981' : r.status === 'signed' ? '#F59E0B' : '#94A3B8';
-        return `<tr><td>${r.referee_email || '—'}</td><td style="color:${statusColor};font-weight:600;">${status}</td><td>${date}</td></tr>`;
+        const label = REFERRAL_STATUS_LABELS[r.status] || 'Pending';
+        const cls = REFERRAL_STATUS_CLASSES[r.status] || 'status-clicked';
+        const commission = (r.status === 'job_completed' || r.status === 'commission_paid') ? '$200' : '—';
+        return '<tr><td>' + escapeHtml(name) + '</td><td>' + date + '</td>' +
+               '<td><span class="status-badge ' + cls + '">' + label + '</span></td>' +
+               '<td>' + commission + '</td></tr>';
       }).join('');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     function calculateSummary(referrals) {
       const total = referrals.length;
-      const completed = referrals.filter(r => r.status === 'completed').length;
-      const earned = completed * 50;
+      // D-139 (#567): $200 per completed referral. 'job_completed' has accrued
+      // but not yet paid out; 'commission_paid' is paid.
+      const paid = referrals.filter(r => r.status === 'commission_paid').length;
+      const completedUnpaid = referrals.filter(r => r.status === 'job_completed').length;
+      const completed = paid + completedUnpaid;
+      const earnedEl  = document.getElementById('total-earned');
+      const pendingEl = document.getElementById('total-pending');
+      if (earnedEl)  earnedEl.textContent  = '$' + (paid * 200).toLocaleString('en-US');
+      if (pendingEl) pendingEl.textContent = '$' + (completedUnpaid * 200).toLocaleString('en-US');
       const el = document.getElementById('referral-summary');
       if (el) {
-        el.textContent = total + ' referral' + (total !== 1 ? 's' : '') + ' · ' + completed + ' completed · $' + earned + ' earned';
+        el.textContent = total + ' referral' + (total !== 1 ? 's' : '') + ' · ' + completed + ' completed · $' + (paid * 200).toLocaleString('en-US') + ' earned';
       }
     }
 

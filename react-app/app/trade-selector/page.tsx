@@ -489,6 +489,23 @@ export default function TradeSelectorPage() {
           const partnerIdParam = sessionStorage.getItem('oq_partner_id') || null;
           const referralAgentId = await resolveReferralAgentId(partnerIdParam);
 
+          // #567: ref.html click-chain carry-forward — mirrors the static
+          // trade-selector. localStorage survives the magic-link redirect, and
+          // auth re-keys the id to oq_referral_id_for_claim after advancing.
+          const chainReferralId =
+            sessionStorage.getItem('oq_referral_id') ||
+            localStorage.getItem('oq_referral_id') ||
+            localStorage.getItem('oq_referral_id_for_claim') ||
+            null;
+          const chainReferralAgentId =
+            sessionStorage.getItem('oq_referral_agent_id') ||
+            localStorage.getItem('oq_referral_agent_id') ||
+            null;
+          const chainReferralCode =
+            sessionStorage.getItem('oq_referral_code') ||
+            localStorage.getItem('oq_referral_code') ||
+            null;
+
           // Fetch existing claim
           const { data: existingClaim } = await supabase
             .from('claims')
@@ -514,6 +531,11 @@ export default function TradeSelectorPage() {
             updated_at: new Date().toISOString(),
             ...(referralSource && { referral_source: referralSource }),
             ...(referralAgentId && { referral_agent_id: referralAgentId }),
+            // #567: ref.html click-chain attribution — the only writer of
+            // claims.referral_id (the commission trigger's key column).
+            ...(chainReferralId && { referral_id: chainReferralId }),
+            ...(!referralAgentId && chainReferralAgentId && { referral_agent_id: chainReferralAgentId }),
+            ...(chainReferralCode && { referral_code: chainReferralCode }),
           };
 
           if (existingClaim) {
@@ -527,6 +549,21 @@ export default function TradeSelectorPage() {
               ...claimPayload,
               created_at: new Date().toISOString(),
             });
+          }
+
+          // #567: advance the referral to claim_submitted (non-fatal). The RLS
+          // update policy only admits rows still in 'clicked' — rows already
+          // advanced to 'registered' will no-op here.
+          if (chainReferralId) {
+            try {
+              await supabase
+                .from('referrals')
+                .update({ status: 'claim_submitted' })
+                .eq('id', chainReferralId)
+                .in('status', ['clicked', 'registered']);
+            } catch (advanceErr) {
+              console.warn('[trade-selector] referral advance failed (non-fatal):', advanceErr);
+            }
           }
         } catch (claimErr) {
           console.warn('[trade-selector] claim upsert failed:', claimErr);

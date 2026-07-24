@@ -1090,7 +1090,9 @@ Let me know if you have any questions!
                 're_agent': 'RE Agent',
                 'insurance_agent': 'Insurance Agent',
                 'home_inspector': 'Home Inspector',
-                'customer': 'Partner'
+                'customer': 'Partner',
+                'adjuster': 'Adjuster',
+                'other': 'Partner'
             }[partnerType] || 'Partner';
             document.getElementById('partnerBadge').textContent = badgeText;
 
@@ -1254,7 +1256,7 @@ Let me know if you have any questions!
                     allReferrals = referrals;
 
                     // D-180: Load payout approval status for these referrals so the
-                    // dashboard can show "Pending — typically 5 days" or "Under Review"
+                    // dashboard can show "Pending approval" or "Under Review"
                     // badges on commission rows. Only fetch for referrals that have a
                     // commission_amount set (job_completed or later status).
                     const referralIds = referrals
@@ -1411,7 +1413,9 @@ Let me know if you have any questions!
                 're_agent':        'RE Agent',
                 'insurance_agent': 'Insurance Agent',
                 'home_inspector':  'Home Inspector',
-                'customer':        'Customer'
+                'customer':        'Customer',
+                'adjuster':        'Adjuster',
+                'other':           'Other'
             };
 
             tbody.innerHTML = allRecruits.map(recruit => {
@@ -1549,13 +1553,13 @@ Let me know if you have any questions!
 
                 // D-180: Show payout approval status badge alongside commission amount.
                 // Status meanings for partner display (deliberately not showing rejection_reason):
-                //   pending_approval → amber "Pending — typically 5 days"
+                //   pending_approval → amber "Pending approval" (canonical timing copy in title, #567)
                 //   rejected         → red "Under Review — our team will be in touch"
                 //   approved / auto_approved / pre_approved → no badge (commission showing normally)
                 const payoutStatus = payoutStatusByReferral[ref.id] || null;
                 let payoutBadge = '';
                 if (payoutStatus === 'pending_approval') {
-                    payoutBadge = '<span class="payout-badge payout-badge-pending" title="Your commission is pending approval — typically within 5 business days">Pending — typically 5 days</span>';
+                    payoutBadge = '<span class="payout-badge payout-badge-pending" title="Commissions are paid after job completion and approval — typically within 14 days of completion.">Pending approval</span>';
                 } else if (payoutStatus === 'rejected') {
                     payoutBadge = '<span class="payout-badge payout-badge-rejected" title="Your commission is under review — our team will be in touch">Under Review — our team will be in touch</span>';
                 }
