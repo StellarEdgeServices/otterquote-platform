@@ -525,7 +525,7 @@
       </div>
       <div class="value-card">
         <h3>Simple, Transparent Terms</h3>
-        <p>A straightforward referral arrangement with clear terms. Eligibility is yours to confirm &mdash; check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
+        <p>A straightforward referral arrangement with clear terms. Eligibility is yours to confirm.</p>
       </div>
     </div>
   </section>
@@ -785,16 +785,9 @@ async function detectRecruitCode() {
 }
 
 /**
- * Generate a short unique referral code (8 chars, URL-safe)
- */
-function generateRefCode(firstName, lastName) {
-  const base = (firstName.slice(0, 3) + lastName.slice(0, 3)).toLowerCase().replace(/[^a-z]/g, '');
-  const rand = Math.random().toString(36).slice(2, 6);
-  return base + rand;
-}
-
-/**
  * Handle form submission
+ * #571: referral codes are server-generated only — the client-side
+ * generateRefCode helper is gone; register_partner returns the codes.
  */
 async function handleSignup(e) {
   e.preventDefault();
@@ -811,32 +804,39 @@ async function handleSignup(e) {
   submitBtn.textContent = 'Setting up your account...';
 
   try {
-    const uniqueCode = generateRefCode(firstName, lastName);
-
-    // RLS: "Public can register as partner" allows anon insert where user_id IS NULL
+    // #571 / v95: server-side register_partner RPC. referral_agents has no
+    // anon SELECT policy, so a direct .insert().select() can never read the
+    // trigger-generated code back. The SECURITY DEFINER RPC inserts (user_id
+    // NULL — linked post-magic-link in auth.js), resolves the recruit code
+    // server-side (D-143), and returns {id, unique_code, recruit_code}.
     const { data, error } = await sb
-      .from('referral_agents')
-      .insert({
-        agent_type:       'home_inspector',
-        first_name:       firstName,
-        last_name:        lastName,
-        email,
-        phone,
-        company:          company,
-        unique_code:      uniqueCode,
-        metadata:         { certification: certification || null },
-        recruited_by_id:  recruitContext.recruiterId || null,
-        recruited_at:     recruitContext.recruiterId ? new Date().toISOString() : null,
-        // user_id intentionally NULL — linked post-magic-link in auth.js
-        // commission totals maintained by DB trigger — do NOT set manually
-      })
-      .select('id, unique_code')
-      .single();
+      .rpc('register_partner', {
+        p_agent_type:   'home_inspector',
+        p_first_name:   firstName,
+        p_last_name:    lastName,
+        p_email:        email,
+        p_phone:        phone,
+        p_company:      company,
+        p_recruit_code: recruitContext.recruitCode || null,
+        p_metadata:     { certification: certification || null },
+      });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      if ((error.message || '').includes('partner_exists')) {
+        // Already registered — send a fresh login link and say so.
+        if (window.Auth) {
+          try { await Auth.sendMagicLink(email, 'home_inspector'); } catch (e) { /* non-fatal */ }
+        }
+        alert("You're already a partner — check your email for your login link.");
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Get My Referral Link';
+        return;
+      }
+      throw new Error(error.message);
+    }
 
-    // Use DB-returned unique_code (trigger may have changed it if there was a collision)
-    const finalCode = data?.unique_code || uniqueCode;
+    // Codes are server-generated — read the code back from the RPC response.
+    const finalCode = data?.unique_code;
 
     // Use ref.html?code= URL pattern (consistent with the rest of the system)
     const refLink = `${CONFIG.SITE_URL}/ref.html?code=${finalCode}`;

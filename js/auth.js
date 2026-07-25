@@ -744,14 +744,17 @@ Log in to the admin panel to review and approve this contractor.`;
     }
 
     // Advance referral status to 'registered' if homeowner arrived via referral link
+    // #571: v95 SECURITY DEFINER RPC — the direct UPDATE always no-opped
+    // against RLS (authenticated has no SELECT policy on referrals). The RPC
+    // also stamps homeowner_email server-side from the verified JWT.
     const referralId = localStorage.getItem('oq_referral_id') || sessionStorage.getItem('oq_referral_id');
     if (referralId && sb) {
       try {
-        await sb
-          .from('referrals')
-          .update({ status: 'registered', homeowner_email: user.email })
-          .eq('id', referralId)
-          .eq('status', 'clicked');
+        const { error: advanceError } = await sb
+          .rpc('advance_referral_registered', { p_referral_id: referralId });
+        if (advanceError) {
+          console.error('Error advancing referral status:', advanceError);
+        }
         // #567: keep the id under a claim-scoped key so the claim writer
         // (trade-selector) can stamp claims.referral_id, then clear the
         // advance-scoped keys so this block never re-runs.

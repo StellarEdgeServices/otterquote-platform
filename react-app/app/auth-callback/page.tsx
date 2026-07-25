@@ -77,6 +77,41 @@ export default function AuthCallbackPage() {
         return;
       }
 
+      // #571: advance referral clicked→registered via the v95 SECURITY
+      // DEFINER RPC (mirrors js/auth.js handleAuthCallback — a direct UPDATE
+      // no-ops against RLS), then re-key the id so the claim writer
+      // (trade-selector) can stamp claims.referral_id. Non-fatal: never
+      // block sign-in routing on referral bookkeeping.
+      try {
+        const referralId =
+          (typeof localStorage !== 'undefined' &&
+            localStorage.getItem('oq_referral_id')) ||
+          (typeof sessionStorage !== 'undefined' &&
+            sessionStorage.getItem('oq_referral_id')) ||
+          null;
+        if (referralId) {
+          const { error: advanceError } = await supabase.rpc(
+            'advance_referral_registered',
+            { p_referral_id: referralId }
+          );
+          if (advanceError) {
+            console.warn(
+              '[auth-callback] referral advance failed (non-fatal):',
+              advanceError
+            );
+          }
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('oq_referral_id_for_claim', referralId);
+            localStorage.removeItem('oq_referral_id');
+          }
+          if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.removeItem('oq_referral_id');
+          }
+        }
+      } catch {
+        // Non-fatal — see above
+      }
+
       const intent =
         typeof localStorage !== 'undefined'
           ? localStorage.getItem('cs_auth_role')

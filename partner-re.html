@@ -1279,14 +1279,16 @@
     submitBtn.disabled = true;
 
     try {
-      // Generate a referral code (short unique code)
-      const refCode = 'ref_' + Math.random().toString(36).substring(2, 10).toUpperCase();
+      // #571: referral codes are server-generated only (register_partner RPC).
+      // A neutral random prefix keeps headshot uploads collision-free — it is
+      // NOT a referral code and never touches unique_code.
+      const photoPrefix = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 
       // Upload headshot if provided
       let headshot_url = null;
       if (headshotFile) {
         try {
-          const fileName = `${refCode}_${headshotFile.name}`;
+          const fileName = `${photoPrefix}_${headshotFile.name}`;
           const { data: uploadData, error: uploadError } = await sb.storage
             .from('partner-photos')
             .upload(fileName, headshotFile, { upsert: false });
@@ -1314,33 +1316,40 @@
           created_at: new Date().toISOString(),
         });
 
-      // Insert into referral_agents table
-      // RLS: "Public can register as partner" policy allows anon insert where user_id IS NULL
+      // #571 / v95: server-side register_partner RPC. referral_agents has no
+      // anon SELECT policy, so a direct .insert().select() can never read the
+      // trigger-generated code back. The SECURITY DEFINER RPC inserts
+      // (user_id NULL — linked after magic-link click by auth.js), resolves
+      // the recruit code server-side (D-143), and returns
+      // {id, unique_code, recruit_code}.
       const { data: agentData, error: agentError } = await sb
-        .from('referral_agents')
-        .insert({
-          agent_type:       're_agent',
-          first_name:       firstName,
-          last_name:        lastName,
-          email:            email,
-          phone:            phone,
-          company:          brokerage,     // schema column is 'company', not 'brokerage'
-          service_area:     serviceArea,
-          website:          website || null,
-          photo_url:        headshot_url || null,  // schema column is 'photo_url'
-          unique_code:      refCode,       // pre-generated; trigger only fires when null
-          referred_by_note: referredBy || null,
-          recruited_by_id:  recruitContext.recruiterId || null,
-          recruited_at:     recruitContext.recruiterId ? new Date().toISOString() : null,
-          // user_id intentionally NULL — linked after magic-link click by auth.js
-        })
-        .select('id, unique_code')
-        .single();
+        .rpc('register_partner', {
+          p_agent_type:       're_agent',
+          p_first_name:       firstName,
+          p_last_name:        lastName,
+          p_email:            email,
+          p_phone:            phone,
+          p_company:          brokerage,     // schema column is 'company', not 'brokerage'
+          p_website:          website || null,
+          p_service_area:     serviceArea,
+          p_referred_by_note: referredBy || null,
+          p_recruit_code:     recruitContext.recruitCode || null,
+          p_photo_url:        headshot_url || null,  // schema column is 'photo_url'
+        });
 
-      if (agentError) throw agentError;
+      if (agentError) {
+        if ((agentError.message || '').includes('partner_exists')) {
+          // Already registered — send a fresh login link and say so.
+          try { await Auth.sendMagicLink(email, 're_agent'); } catch (e) { /* non-fatal */ }
+          errorEl.textContent = "You're already a partner — check your email for your login link.";
+          errorEl.style.display = 'block';
+          return;
+        }
+        throw agentError;
+      }
 
-      // Use the DB-returned unique_code (may differ if trigger ran)
-      const finalCode = agentData?.unique_code || refCode;
+      // Codes are server-generated — read the code back from the RPC response.
+      const finalCode = agentData?.unique_code;
       const finalLink = `https://otterquote.com/ref.html?code=${finalCode}`;
 
       // Store minimal data for post-auth linking (auth.js handleAuthCallback reads this)

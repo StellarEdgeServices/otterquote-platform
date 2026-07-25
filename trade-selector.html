@@ -1428,20 +1428,10 @@
                 });
             }
 
-            // #567: advance the referral to claim_submitted (non-fatal). The RLS
-            // update policy only admits rows still in 'clicked' — rows auth.js
-            // already advanced to 'registered' will no-op here.
-            if (chainReferralId) {
-              try {
-                await sb
-                  .from('referrals')
-                  .update({ status: 'claim_submitted' })
-                  .eq('id', chainReferralId)
-                  .in('status', ['clicked', 'registered']);
-              } catch (advanceErr) {
-                console.warn('Referral claim_submitted advance failed (non-fatal):', advanceErr);
-              }
-            }
+            // #571: the claim_submitted advance now lives in the database —
+            // trg_claims_advance_referral fires on the claims.referral_id
+            // write above. The old client-side UPDATE always no-opped
+            // against RLS and has been removed.
           } catch (supabaseError) {
             console.warn('Supabase save failed:', supabaseError);
             // Continue regardless of Supabase error

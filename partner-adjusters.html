@@ -1048,30 +1048,40 @@ async function handleSignup(e) {
   submitBtn.textContent = 'Setting up your account...';
 
   try {
-    // RLS: "Public can register as partner" allows anon insert where user_id IS NULL
-    // unique_code / recruit_code are NOT sent — BEFORE INSERT triggers generate both.
+    // #571 / v95: server-side register_partner RPC. referral_agents has no
+    // anon SELECT policy, so a direct .insert().select() can never read the
+    // trigger-generated codes back (42501 killed this signup entirely). The
+    // SECURITY DEFINER RPC inserts (user_id NULL — linked post-magic-link in
+    // auth.js), resolves the recruit code server-side (D-143), and returns
+    // {id, unique_code, recruit_code}.
     const { data, error } = await sb
-      .from('referral_agents')
-      .insert({
-        agent_type:       'adjuster',
-        first_name:       firstName,
-        last_name:        lastName,
-        email,
-        phone,
-        company:          employer,          // schema column is 'company' (not 'employer')
-        metadata:         { adjuster_type: adjusterType || null },
-        referred_by_note: referredBy || null,
-        recruited_by_id:  recruitContext.recruiterId || null,
-        recruited_at:     recruitContext.recruiterId ? new Date().toISOString() : null,
-        // user_id intentionally NULL — linked post-magic-link in auth.js
-        // commission totals maintained by DB trigger — do NOT set manually
-      })
-      .select('id, unique_code, recruit_code')
-      .single();
+      .rpc('register_partner', {
+        p_agent_type:       'adjuster',
+        p_first_name:       firstName,
+        p_last_name:        lastName,
+        p_email:            email,
+        p_phone:            phone,
+        p_company:          employer,          // schema column is 'company' (not 'employer')
+        p_referred_by_note: referredBy || null,
+        p_recruit_code:     recruitContext.recruitCode || null,
+        p_metadata:         { adjuster_type: adjusterType || null },
+      });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      if ((error.message || '').includes('partner_exists')) {
+        // Already registered — send a fresh login link and say so.
+        if (window.Auth) {
+          try { await Auth.sendMagicLink(email, 'adjuster', '/partner-dashboard.html'); } catch (e) { /* non-fatal */ }
+        }
+        alert("You're already a partner — check your email for your login link.");
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Generate My Referral Link';
+        return;
+      }
+      throw new Error(error.message);
+    }
 
-    // Codes are trigger-generated — read them back from the insert response.
+    // Codes are trigger-generated — read them back from the RPC response.
     const finalCode = data?.unique_code;
     const recruitCodeOut = data?.recruit_code;
 
