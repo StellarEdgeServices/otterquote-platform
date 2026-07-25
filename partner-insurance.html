@@ -1276,39 +1276,39 @@
                     throw new Error('Auth module not loaded');
                 }
 
-                // 1. Generate referral code client-side (8-char alphanumeric)
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                let refCode = '';
-                for (let i = 0; i < 8; i++) {
-                    refCode += chars[Math.floor(Math.random() * chars.length)];
+                // #571 / v95: server-side register_partner RPC. referral_agents
+                // has no anon SELECT policy, so a direct .insert().select() can
+                // never read the trigger-generated code back. The SECURITY
+                // DEFINER RPC inserts (user_id NULL — linked after magic-link
+                // click), resolves the recruit code server-side (D-143), and
+                // returns {id, unique_code, recruit_code}. Client-side code
+                // generation is gone — codes are server-generated only.
+                const { data: agentData, error: agentError } = await sb
+                    .rpc('register_partner', {
+                        p_agent_type:       'insurance_agent',
+                        p_first_name:       data.firstName,
+                        p_last_name:        data.lastName,
+                        p_email:            data.email,
+                        p_phone:            data.phone,
+                        p_company:          data.agencyName,
+                        p_website:          data.websiteUrl || null,
+                        p_service_area:     data.serviceArea,
+                        p_referred_by_note: data.referredBy,
+                        p_recruit_code:     recruitContext.recruitCode || null,
+                        p_metadata:         { license_number: data.licenseNumber || null },
+                    });
+
+                if (agentError) {
+                    if ((agentError.message || '').includes('partner_exists')) {
+                        // Already registered — send a fresh login link and say so.
+                        try { await Auth.sendMagicLink(data.email, 'insurance_agent'); } catch (err) { /* non-fatal */ }
+                        alert("You're already a partner — check your email for your login link.");
+                        return;
+                    }
+                    throw agentError;
                 }
 
-                // 2. Insert into referral_agents
-                // RLS: "Public can register as partner" allows anon insert where user_id IS NULL
-                const { data: agentData, error: agentError } = await sb
-                    .from('referral_agents')
-                    .insert({
-                        agent_type:       'insurance_agent',
-                        first_name:       data.firstName,
-                        last_name:        data.lastName,
-                        email:            data.email,
-                        phone:            data.phone,
-                        company:          data.agencyName,
-                        service_area:     data.serviceArea,
-                        website:          data.websiteUrl || null,
-                        unique_code:      refCode,
-                        metadata:         { license_number: data.licenseNumber || null },
-                        referred_by_note: data.referredBy,
-                        recruited_by_id:  recruitContext.recruiterId || null,
-                        recruited_at:     recruitContext.recruiterId ? new Date().toISOString() : null,
-                        // user_id intentionally NULL — linked after magic-link click
-                    })
-                    .select('id, unique_code')
-                    .single();
-
-                if (agentError) throw agentError;
-
-                const finalCode = agentData?.unique_code || refCode;
+                const finalCode = agentData?.unique_code;
                 const finalLink = `https://otterquote.com/ref.html?code=${finalCode}`;
 
                 // 3. Store data for post-auth linking

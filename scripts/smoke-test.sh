@@ -118,6 +118,36 @@ fi
 rm -f "$BODY_FILE"
 
 
+# -- Test 8: referral RPC reachable — track_referral_click (#571) ---
+# Anon POST with an unknown code must return HTTP 200 with a null body:
+# the v95 SECURITY DEFINER function is reachable and granted to anon, and
+# an unknown code resolves to null. 404 = function missing, 401/42501 =
+# grants broken.
+echo ""
+echo "Test 8: track_referral_click RPC reachable (anon)..."
+ANON_KEY=$(curl -s --max-time 15 "$BASE_URL/js/config.js" | grep -oE "sb_publishable_[A-Za-z0-9_-]+" | head -1)
+if [ -z "$ANON_KEY" ]; then
+  echo "  ❌ FAIL — could not extract anon key from $BASE_URL/js/config.js"
+  FAIL=$((FAIL + 1))
+else
+  BODY_FILE=$(mktemp)
+  HTTP_STATUS=$(curl -s -o "$BODY_FILE" -w "%{http_code}" --max-time 15 \
+    -X POST "$SUPABASE_URL/rest/v1/rpc/track_referral_click" \
+    -H "apikey: $ANON_KEY" \
+    -H "Authorization: Bearer $ANON_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"p_code":"SMOKE-NO-SUCH-CODE"}')
+  RPC_BODY=$(cat "$BODY_FILE")
+  rm -f "$BODY_FILE"
+  if [ "$HTTP_STATUS" = "200" ] && { [ "$RPC_BODY" = "null" ] || [ -z "$RPC_BODY" ]; }; then
+    echo "  ✅ PASS — HTTP 200, unknown code → null"
+    PASS=$((PASS + 1))
+  else
+    echo "  ❌ FAIL — HTTP $HTTP_STATUS, body: $RPC_BODY (expected 200 + null)"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
 # ── Summary ───────────────────────────────────────────────────────
 echo ""
 echo "================================================"

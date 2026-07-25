@@ -551,20 +551,10 @@ export default function TradeSelectorPage() {
             });
           }
 
-          // #567: advance the referral to claim_submitted (non-fatal). The RLS
-          // update policy only admits rows still in 'clicked' — rows already
-          // advanced to 'registered' will no-op here.
-          if (chainReferralId) {
-            try {
-              await supabase
-                .from('referrals')
-                .update({ status: 'claim_submitted' })
-                .eq('id', chainReferralId)
-                .in('status', ['clicked', 'registered']);
-            } catch (advanceErr) {
-              console.warn('[trade-selector] referral advance failed (non-fatal):', advanceErr);
-            }
-          }
+          // #571: the claim_submitted advance now lives in the database —
+          // trg_claims_advance_referral fires on the claims.referral_id
+          // write above. The old client-side UPDATE always no-opped
+          // against RLS and has been removed.
         } catch (claimErr) {
           console.warn('[trade-selector] claim upsert failed:', claimErr);
         }
