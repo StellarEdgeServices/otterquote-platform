@@ -48,6 +48,14 @@ jobs:
           fi
           echo "All js/ files passed syntax check."
 
+      - name: Setup Deno (notify-contractors unit tests)
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: notify-contractors fan-out symmetry unit tests (#564 regression, notification direction)
+        run: deno test supabase/functions/notify-contractors/test-exclusion.test.ts
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

@@ -4,7 +4,7 @@
 import {
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { isExcludedTestContractor } from "./test-exclusion.ts";
+import { isExcludedTestContractor, selectFanOutContractors } from "./test-exclusion.ts";
 
 Deno.test("real contractor is kept", () => {
   assertEquals(
@@ -42,4 +42,37 @@ Deno.test("similar-but-different domains are kept", () => {
 Deno.test("null/missing fields are kept (fail-open for real rows)", () => {
   assertEquals(isExcludedTestContractor({}), false);
   assertEquals(isExcludedTestContractor({ is_test: null, email: null }), false);
+});
+
+// ─── #564 symmetric fan-out selection ────────────────────────────────────────
+// Regression spec, notification direction (CEO decision comment 2026-07-13):
+// test claims → test contractors only; real claims → non-test contractors
+// only (v69 behavior preserved).
+
+const REAL = { is_test: false, email: "martinezsonsconstruction2000@gmail.com" };
+const FLAGGED = { is_test: true, email: "pfw-walk-roofing@otterquote-internal.test" };
+const FLAGGED_REAL_EMAIL = { is_test: true, email: "real-looking@gmail.com" };
+const INTERNAL_UNFLAGGED = { is_test: false, email: "test-contractor@otterquote-internal.test" };
+const POOL = [REAL, FLAGGED, FLAGGED_REAL_EMAIL, INTERNAL_UNFLAGGED];
+
+Deno.test("#564: real claim keeps the v69 selection — only real contractors", () => {
+  assertEquals(selectFanOutContractors(POOL, false), [REAL]);
+});
+
+Deno.test("#564: test claim selects is_test=true contractors only", () => {
+  assertEquals(selectFanOutContractors(POOL, true), [FLAGGED, FLAGGED_REAL_EMAIL]);
+});
+
+Deno.test("#564: test claim does NOT select internal-email rows without the flag (v96 RLS parity — they can't see the claim)", () => {
+  assertEquals(selectFanOutContractors([INTERNAL_UNFLAGGED], true), []);
+});
+
+Deno.test("#564: real contractor never receives a test claim; test contractor never receives a real claim", () => {
+  assertEquals(selectFanOutContractors([REAL], true), []);
+  assertEquals(selectFanOutContractors([FLAGGED], false), []);
+});
+
+Deno.test("#564: empty pool is safe in both directions", () => {
+  assertEquals(selectFanOutContractors([], true), []);
+  assertEquals(selectFanOutContractors([], false), []);
 });
