@@ -37,7 +37,15 @@ import {
 // Spec-scoped real-side contractor (S2). Internal-domain email keeps the
 // #543 fan-out exclusion; is_test=false makes RLS treat it as real.
 const REAL_SIDE_EMAIL = 'real-side-564@otterquote-internal.test';
-const SEED_ADDRESS_MARKER = '100 E Test St';
+
+// Opportunity cards NEVER render street addresses (pre-bid privacy — cards
+// show "Project in {city}, {state} {zip}"), and the page dedupes same-address
+// claims to a single card. So the visibility marker is the seed-branded
+// homeowner note, which cards DO render and which survives dedup — every
+// seeded E2E claim carries a note starting with this string.
+// (Learned from PR #581 CI run 30271628202: asserting the seed street
+// address can never pass, and its absence passes vacuously.)
+const SEED_NOTE_MARKER = 'E2E TEST CLAIM';
 
 /** Magic-link login + session-persisted wait. Mirrors contractor-journey.spec.ts. */
 async function loginViaMagicLink(
@@ -183,8 +191,10 @@ test.describe('Flow S — #564 test-world symmetry', () => {
     await loginViaMagicLink(page, state.contractorEmail, state.baseUrl);
     await openOpportunities(page);
 
-    // The seeded test claim (is_test=true, roofing released, IN) must render.
-    await expect(page.locator('body')).toContainText(SEED_ADDRESS_MARKER, { timeout: 15_000 });
+    // At least one seeded test claim (is_test=true, biddable, IN) must
+    // render for the is_test contractor — the exact visibility PFW run
+    // pfw-1783974479 Stage 7 proved impossible pre-v96.
+    await expect(page.locator('body')).toContainText(SEED_NOTE_MARKER, { timeout: 15_000 });
   });
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -194,6 +204,10 @@ test.describe('Flow S — #564 test-world symmetry', () => {
 
     // No seed-corpus / E2E claim may render for a real-flagged contractor —
     // the #564 secondary finding ("fake opportunities") must stay dead.
-    await expect(page.locator('body')).not.toContainText(SEED_ADDRESS_MARKER);
+    // Cards render homeowner notes and "ID: <uuid>", so both markers are
+    // load-bearing (unlike street addresses, which cards never show).
+    await expect(page.locator('body')).not.toContainText(SEED_NOTE_MARKER);
+    await expect(page.locator('body')).not.toContainText(`ID: ${state.testClaimId}`);
+    await expect(page.locator('body')).not.toContainText(`ID: ${state.testRetailClaimId}`);
   });
 });
