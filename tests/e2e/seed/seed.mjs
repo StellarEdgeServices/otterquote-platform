@@ -329,6 +329,7 @@ async function seed() {
     .insert({
       user_id: homeownerUserId,
       status: 'bidding',
+      is_test: true, // #564: E2E claims are born test-world — visible/notifiable to test contractors only
       property_address: '100 E Test St, Zionsville, IN 46077',
       property_state: 'IN',
       homeowner_name: 'Test Homeowner',
@@ -372,6 +373,7 @@ async function seed() {
     .insert({
       user_id: homeownerUserId,
       status: 'bidding',
+      is_test: true, // #564: E2E claims are born test-world — visible/notifiable to test contractors only
       property_address: '100 E Test St, Zionsville, IN 46077',
       property_state: 'IN',
       homeowner_name: 'Test Homeowner',

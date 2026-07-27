@@ -18,3 +18,23 @@ export function isExcludedTestContractor(c: TestExcludableContractor): boolean {
   const email = (c.email ?? "").trim().toLowerCase();
   return email.endsWith("@otterquote-internal.test");
 }
+
+// #564 — symmetric test-world fan-out selection for new_opportunity.
+//
+// Real claims (claimIsTest = false): notify real contractors only — the #543
+// exclusion predicate above, unchanged (v69 behavior preserved).
+// Test claims (claimIsTest = true): notify test contractors ONLY, defined
+// strictly as contractors.is_test = true — mirroring the v96 RLS carve-out.
+// An internal-email row WITHOUT the flag cannot SEE a test claim under v96,
+// so it must not be notified of one either (it receives nothing at all).
+//
+// Approved: #564 CEO decision comment 2026-07-13 (Option A, fan-out symmetry).
+export function selectFanOutContractors<T extends TestExcludableContractor>(
+  contractors: T[],
+  claimIsTest: boolean,
+): T[] {
+  if (claimIsTest) {
+    return contractors.filter((c) => c.is_test === true);
+  }
+  return contractors.filter((c) => !isExcludedTestContractor(c));
+}
