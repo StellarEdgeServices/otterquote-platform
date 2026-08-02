@@ -163,7 +163,7 @@ serve(async (req) => {
   }
 
   try {
-    // ── Auth check ────────────────────────────────────────────────────────────
+    // ── Auth check ───────────────────────────────────────────────────────────
     // This function is called by a PostgreSQL trigger via pg_net using the
     // service role key. Verify the bearer token is the service role key.
     const authHeader = req.headers.get("Authorization") || "";
@@ -178,7 +178,7 @@ serve(async (req) => {
       );
     }
 
-    // ── Parse payload ─────────────────────────────────────────────────────────
+    // ── Parse payload ────────────────────────────────────────────────────────
     const body = await req.json().catch(() => null);
     const agentId = body?.agent_id as string | undefined;
 
@@ -189,7 +189,7 @@ serve(async (req) => {
       );
     }
 
-    // ── Load agent details ────────────────────────────────────────────────────
+    // ── Load agent details ───────────────────────────────────────────────────
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const sb = createClient(supabaseUrl, serviceRoleKey);
 
