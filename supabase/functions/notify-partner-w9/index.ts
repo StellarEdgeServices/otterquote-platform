@@ -237,7 +237,7 @@ serve(async (req) => {
     const formData = new URLSearchParams();
     formData.append("from",    `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`);
     formData.append("to",      agent.email);
-    formData.append("subject", "Action required \\u2014 submit your W-9 to receive your Otter Quotes referral payment");
+    formData.append("subject", "Action required — submit your W-9 to receive your Otter Quotes referral payment");
     formData.append("text",    plainText);
     formData.append("html",    htmlBody);
 
