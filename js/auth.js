@@ -303,11 +303,19 @@ window.Auth = {
 
     if (!user) {
       sessionStorage.setItem('cs_redirect', window.location.pathname);
-      // Send to the correct login page based on the page they tried to visit
-      const isContractorPage = window.location.pathname.includes('contractor');
+      // Send to the correct login page based on the page they tried to visit.
+      // #598: partner pages previously fell through to /get-started.html, which
+      // meta-refreshes to the PRODUCTION React homeowner onboarding — so an
+      // expired partner session landed in the homeowner signup form, on
+      // production, with no way back. Route partners to their own login gate.
+      const path = window.location.pathname;
+      const isContractorPage = path.includes('contractor');
+      const isPartnerPage = /(^|\/)(partner-|ref-|recruit|refer-a-friend)/.test(path);
       window.location.href = isContractorPage
         ? '/contractor-login.html'
-        : '/get-started.html';
+        : isPartnerPage
+          ? '/partner-login.html'
+          : '/get-started.html';
       return null;
     }
     // Enforce role if specified — prevent homeowners on contractor pages and vice versa
@@ -481,27 +489,41 @@ window.Auth = {
       role = 'homeowner';
     }
 
-    // Handle partner (referral agent) signup data
-    // After clicking magic link, link the referral_agents record to this auth user.
-    const partnerSignupRaw = localStorage.getItem('cs_partner_signup') || sessionStorage.getItem('cs_partner_signup');
-    if (partnerSignupRaw && sb) {
+    // Handle partner (referral agent) account linkage.
+    //
+    // #594 / v97: link referral_agents.user_id to this auth user via the
+    // claim_partner_account() SECURITY DEFINER RPC.
+    //
+    // This USED to be a client-side `.update().eq('email').is('user_id', null)`
+    // gated on a `cs_partner_signup` localStorage breadcrumb. Both halves were
+    // wrong:
+    //   1. The update silently matched 0 rows — PostgreSQL applies SELECT
+    //      policies to an UPDATE whose WHERE reads columns, and no SELECT
+    //      policy on referral_agents exposes a `user_id IS NULL` row to a
+    //      non-admin authenticated user. The "Authenticated can claim
+    //      unclaimed partner record" policy is unreachable. (Same silent
+    //      no-op class as #571.)
+    //   2. Gating on localStorage meant a magic link opened on a different
+    //      device than signup skipped the attempt entirely.
+    //
+    // The RPC derives BOTH identity and email from the JWT — no client-supplied
+    // parameters — so calling it unconditionally is safe: a caller can only
+    // ever claim a row matching their own verified email. Unauthenticated or
+    // non-partner callers get {claimed:false} and nothing happens.
+    if (sb) {
       try {
-        const partnerData = JSON.parse(partnerSignupRaw);
-        // Update the referral_agents record (user_id IS NULL, email matches) with this user's id
-        // The RLS policy "Authenticated can claim unclaimed partner record" allows this.
-        const { error: linkError } = await sb
-          .from('referral_agents')
-          .update({ user_id: user.id })
-          .eq('email', partnerData.email)
-          .is('user_id', null);
-        if (linkError) {
-          console.error('Error linking partner user_id:', linkError);
+        const { data: claim, error: claimError } = await sb.rpc('claim_partner_account');
+        if (claimError) {
+          console.error('Error claiming partner account:', claimError);
+        } else if (claim && claim.claimed) {
+          console.log('Partner account linked:', claim.agent_id);
         }
-        localStorage.removeItem('cs_partner_signup');
-        sessionStorage.removeItem('cs_partner_signup');
       } catch (err) {
-        console.error('Error handling partner signup callback:', err);
+        console.error('Error handling partner account claim:', err);
       }
+      // Breadcrumb is no longer load-bearing; clear it so it can't go stale.
+      localStorage.removeItem('cs_partner_signup');
+      sessionStorage.removeItem('cs_partner_signup');
     }
 
     // Handle homeowner signup data (check localStorage first, fall back to sessionStorage)
