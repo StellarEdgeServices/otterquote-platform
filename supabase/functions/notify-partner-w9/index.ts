@@ -195,7 +195,12 @@ serve(async (req) => {
 
     const { data: agent, error: agentErr } = await sb
       .from("referral_agents")
-      .select("id, name, email, payments_blocked, w9_notification_sent_at")
+      // #596: this selected a `name` column that does not exist on
+      // referral_agents (the schema has first_name / last_name). PostgREST
+      // rejects the whole select, so this function returned 404 "Agent not
+      // found" for EVERY call. It went unnoticed because the function has had
+      // no live caller since the v49 trigger logic was rewritten.
+      .select("id, first_name, last_name, email, payments_blocked, w9_notification_sent_at")
       .eq("id", agentId)
       .single();
 
@@ -223,8 +228,8 @@ serve(async (req) => {
       throw new Error("Mailgun credentials not configured");
     }
 
-    // Extract first name from full name (e.g. "Jane Smith" → "Jane")
-    const firstName = (agent.name || "").split(" ")[0].trim();
+    // #596: read first_name directly — referral_agents stores the name split.
+    const firstName = (agent.first_name || "").trim();
 
     const htmlBody = w9RequestEmailHtml(firstName);
     const plainText = `Hi ${firstName || "there"},\n\nYour referral generated a commission payment, but we need a completed W-9 before we can release it.\n\nPlease log in to your partner dashboard to upload your W-9:\n${PARTNER_DASHBOARD_URL}\n\nQuestions? Email support@otterquote.com or call (844) 875-3412.\n\nOtter Quotes Team`;
@@ -232,7 +237,7 @@ serve(async (req) => {
     const formData = new URLSearchParams();
     formData.append("from",    `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`);
     formData.append("to",      agent.email);
-    formData.append("subject", "Action required \u2014 submit your W-9 to receive your Otter Quotes referral payment");
+    formData.append("subject", "Action required — submit your W-9 to receive your Otter Quotes referral payment");
     formData.append("text",    plainText);
     formData.append("html",    htmlBody);
 
