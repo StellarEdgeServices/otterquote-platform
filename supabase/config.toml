@@ -194,3 +194,16 @@ verify_jwt = false
 
 [functions.get-payout-completion-status]
 verify_jwt = false
+
+# ── #588 (2026-08-03): frozen Scope of Work pipeline pins ──────────────────────
+# parse-hover-measurements: was deployed verify_jwt=false (PR #517) but unpinned.
+# Auth in-handler: service-role bearer OR user JWT that owns the claim (upload-
+# time invocation from dashboard.html). Pin so a stray deploy cannot flip it.
+# hover-webhook: Hover cannot send a JWT; authenticity is the D-211 shared-secret
+# token gate in-handler. Pin false for the same reason.
+
+[functions.parse-hover-measurements]
+verify_jwt = false
+
+[functions.hover-webhook]
+verify_jwt = false
