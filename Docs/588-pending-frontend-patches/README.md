@@ -12,6 +12,11 @@ were pushed as real content. All six patches below apply cleanly onto `main`
     for p in Docs/588-pending-frontend-patches/*.patch.b64; do
       base64 -d "$p" | git apply - || echo "FAILED: $p"
     done
+    for p in Docs/588-pending-frontend-patches/*.patch.gz.b64; do
+      base64 -d "$p" | gunzip | git apply - || echo "FAILED: $p"
+    done
+    cat Docs/588-pending-frontend-patches/cde.part*.txt | base64 -d | gunzip | git apply - \
+      || echo "FAILED: create-docusign-envelope (chunked payload)"
     git add -A
     git commit -m "feat(588): apply patch payloads (EF pipeline + frontend)"
     git rm -r Docs/588-pending-frontend-patches
@@ -21,13 +26,13 @@ Contents:
 - `parse-hover-measurements.patch.b64` — user-JWT-with-claim-ownership auth path
   (parse-loss-sheet pattern); freeze Exhibit A Section 1 after parse; fail-loud
   platform_alerts_log inserts on every parse miss / freeze failure.
-- `hover-webhook.patch.b64` — Hover Complete storage-path bug fix: normalize the
+- `hover-webhook.patch.gz.b64` (gzip+base64) — Hover Complete storage-path bug fix: normalize the
   API measurements.json into claims.hover_measurements; measurements_filename now
   points at the real get-hover-pdf cache path instead of a phantom .json name;
   freeze scope on completion; fail-loud alerts on fetch/store failures.
 - `get-hover-pdf.patch.b64` — cache-first serving (#484 item 2) + cache write on
   the direct-stream path.
-- `create-docusign-envelope.patch.b64` — Exhibit A Section 1 rendered VERBATIM
+- `cde.part00..03.txt` (create-docusign-envelope patch, gzip+base64, 4 chunks — concatenate in order) — Exhibit A Section 1 rendered VERBATIM
   from scope_records (catalog v1.0, pure measured quantities); contractor
   declared_waste_pct prints install-plan quantities alongside frozen measured
   values; hard gate: retail roofing envelope creation ABORTS (fail-loud) when no
