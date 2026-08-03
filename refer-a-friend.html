@@ -559,7 +559,14 @@
     .share-card:nth-child(3) { animation-delay: 0.2s; }
     .share-card:nth-child(4) { animation-delay: 0.3s; }
     .share-card:nth-child(5) { animation-delay: 0.4s; }
-  </style>
+  
+/* #589: D-266 disclaimer sits on a light surface here — was 2.71:1. */
+.referral-fee-disclaimer { color: #5A6B7B !important; }
+
+/* #589 contrast pass. NOTE: this page mixes light and dark panels, so colours
+   are set per-surface — do NOT blanket-restyle p/h3 here. */
+.referrals-header h3 { color: var(--white); }   /* sits on a navy panel */
+</style>
 </head>
 <body>
   <!-- Header -->
@@ -713,7 +720,7 @@
               <div style="display: inline-block; padding: var(--sp-4); background: white; border-radius: var(--radius-sm);">
                 <img src="/img/otter-logo.svg" alt="Otter Quotes" style="width: 20px; height: 20px; margin-right: var(--sp-2); display: inline;">
                 <strong style="color: var(--navy);">I trust Otter Quotes</strong>
-                <p style="font-size: 0.75rem; color: var(--slate); margin: 4px 0 0;">Get your free quote</p>
+                <p style="font-size: 0.75rem; color: #5A6B7B; margin: 4px 0 0;">Get your free quote</p>
               </div>
             </div>
             <div class="badge-html" id="badge-html-code"></div>
@@ -836,15 +843,15 @@
 
       <!-- 1099-MISC Tax Reporting Notice (86e0zj7je &mdash; disclosure version 1099-misc-v1-2026-04) -->
       <section class="refer-section">
-        <div style="background: rgba(11, 25, 41, 0.6); border: 1px solid rgba(224, 123, 0, 0.2); border-radius: var(--radius-md); padding: var(--sp-8);">
-          <p style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--amber); margin-bottom: var(--sp-3);">Tax Reporting Notice</p>
-          <p style="color: var(--slate); font-size: 0.9rem; line-height: 1.7; margin: 0;">Your $200 referral bonus is taxable income. If you receive $600 or more in referral bonuses from Otter Quotes in a calendar year, we are required by federal law to file a Form 1099-MISC with the IRS reporting those payments, and to provide you a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.</p>
+        <div style="background: #FFFFFF; border: 1px solid rgba(224, 123, 0, 0.2); border-radius: var(--radius-md); padding: var(--sp-8);">
+          <p style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--amber-2); margin-bottom: var(--sp-3);">Tax Reporting Notice</p>
+          <p style="color: #5A6B7B; font-size: 0.9rem; line-height: 1.7; margin: 0;">Your $200 referral bonus is taxable income. If you receive $600 or more in referral bonuses from Otter Quotes in a calendar year, we are required by federal law to file a Form 1099-MISC with the IRS reporting those payments, and to provide you a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.</p>
         </div>
       </section>
 
       <!-- D-180: Commission Approval Disclosure -->
       <section class="refer-section">
-        <p style="color: var(--slate); font-size: 0.85rem; line-height: 1.6; text-align: center; margin: 0;">
+        <p style="color: #5A6B7B; font-size: 0.85rem; line-height: 1.6; text-align: center; margin: 0;">
           Commission payments are subject to Otter Quotes' approval process. Commissions are paid after job completion and approval — typically within 14 days of completion.
         </p>
       </section>

@@ -70,7 +70,7 @@
 }
 
 .ref-badge-text strong {
-  color: var(--white);
+  color: var(--navy);
   display: block;
 }
 
@@ -84,13 +84,13 @@
 
 .hero-section h1 {
   margin-bottom: var(--sp-4);
-  color: var(--white);
+  color: var(--navy);
 }
 
 .hero-subtitle {
   font-size: 1.1rem;
   line-height: 1.7;
-  color: var(--slate);
+  color: #5A6B7B;
   margin-bottom: var(--sp-8);
   max-width: 680px;
   margin-left: auto;
@@ -135,7 +135,7 @@
 }
 
 .damage-banner strong {
-  color: var(--white);
+  color: var(--navy);
 }
 
 /* ── No-Runaround Section ── */
@@ -500,6 +500,9 @@
     text-align: center;
   }
 }
+
+/* #589: banner sits on the light body surface — inherited --slate was 2.71:1. */
+.damage-banner p { color: #5A6B7B; }
 </style>
 </head>
 
