@@ -18,6 +18,14 @@
     <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
     <title>Partner Dashboard &mdash; Otter Quotes</title>
 
+    <!-- PWA (Partner App v1) -->
+    <link rel="manifest" href="/partner-app.webmanifest">
+    <meta name="theme-color" content="#0D1B2E">
+    <link rel="apple-touch-icon" href="/img/app/apple-touch-icon-partner.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="OQ Partners">
+
     <!-- GA4 -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
     <script>
@@ -757,6 +765,8 @@
                 <div class="referral-link-display">
                     <div class="referral-link-url" id="referralLink">https://otterquote.com/r/agent123</div>
                     <button class="copy-btn" id="copyLinkBtn">Copy Link</button>
+                    <button class="copy-btn" id="shareLinkBtn">Share</button>
+                    <button class="copy-btn" id="qrLinkBtn">QR</button>
                 </div>
                 <p class="link-hint referral-fee-disclaimer">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
             </div>
@@ -766,8 +776,19 @@
                 <div class="referral-link-display">
                     <div class="referral-link-url" id="recruitLink">otterquote.com/recruit.html?code=&mdash;</div>
                     <button class="copy-btn" id="copyRecruitLinkBtn">Copy Link</button>
+                    <button class="copy-btn" id="shareRecruitBtn">Share</button>
+                    <button class="copy-btn" id="qrRecruitBtn">QR</button>
                 </div>
                 <p class="link-hint">Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job.</p>
+            </div>
+
+            <div class="referral-link-section" id="appInstallBanner" style="display: none;">
+                <div class="referral-link-label">&#128241; Otter Quotes Partner App</div>
+                <p class="link-hint" style="margin-top: 0;">Put your referral tools one tap away &mdash; install the free partner app on your phone.</p>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+                    <button class="copy-btn" id="installAppBtn">Install the App</button>
+                    <a href="/partner-app.html" style="font-size: 0.85rem; color: var(--amber-2); font-weight: 600;">How to install</a>
+                </div>
             </div>
         </div>
 
@@ -999,6 +1020,16 @@ Let me know if you have any questions!
             </div>
         </div>
     </main>
+
+    <div id="qrModal" style="display: none; position: fixed; inset: 0; background: rgba(13, 27, 46, 0.72); z-index: 1000; align-items: center; justify-content: center; padding: 24px;">
+        <div style="background: #FFFFFF; border-radius: 16px; padding: 28px; max-width: 360px; width: 100%; text-align: center; position: relative;">
+            <button id="qrModalClose" aria-label="Close" style="position: absolute; top: 10px; right: 14px; background: none; border: none; font-size: 1.5rem; color: #5A6B7B; cursor: pointer;">&times;</button>
+            <div id="qrModalTitle" style="font-family: 'Rubik', sans-serif; font-weight: 700; font-size: 1.05rem; color: #0D1B2E; margin-bottom: 16px;">Scan to open your link</div>
+            <div id="qrModalCode" style="display: inline-block;"></div>
+            <div id="qrModalUrl" style="font-family: monospace; font-size: 0.75rem; color: #5A6B7B; word-break: break-all; margin-top: 12px;"></div>
+            <p style="font-family: 'Rubik', sans-serif; font-size: 0.8rem; color: #5A6B7B; margin-top: 12px;">Have your client scan this with their phone camera.</p>
+        </div>
+    </div>
 
     <footer id="site-footer"></footer>
 
@@ -1623,13 +1654,162 @@ Let me know if you have any questions!`;
             const referralLink = document.getElementById('referralLink').textContent;
 
             if (widgetStyle === 'button') {
-                return `<a href="${referralLink}" style="display: inline-block; padding: 12px 24px; background-color: #E07B00; color: #00D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600; font-family: Rubik, sans-serif; font-size: 0.9rem;">Get a Free Contractor Quote</a>`;
+                return `<a href="${referralLink}" style="display: inline-block; padding: 12px 24px; background-color: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600; font-family: Rubik, sans-serif; font-size: 0.9rem;">Get a Free Contractor Quote</a>`;
             } else {
                 return `<div style="padding: 20px; background: #0D1B2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; max-width: 320px;"><div style="font-size: 1rem; font-weight: 700; color: #FFFFFF; margin-bottom: 8px;">Get a Free Quote</div><div style="font-size: 0.875rem; color: #94A3B8; margin-bottom: 16px;">Connect with qualified contractors and get quotes instantly</div><a href="${referralLink}" style="display: inline-block; padding: 10px 20px; background-color: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600;">Get Started</a></div>`;
             }
         }
 
         document.addEventListener('DOMContentLoaded', init);
+    </script>
+
+    <!-- Partner App v1: share / QR / install / service worker -->
+    <script>
+        (function () {
+            var deferredPrompt = null;
+
+            function gaEvent(name, params) {
+                if (typeof gtag === 'function') { gtag('event', name, params || {}); }
+            }
+
+            function toast(msg) {
+                var t = document.createElement('div');
+                t.textContent = msg;
+                t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0D1B2E;color:#FFFFFF;padding:12px 20px;border-radius:8px;font-family:Rubik,sans-serif;font-size:0.9rem;z-index:1100;box-shadow:0 6px 20px rgba(0,0,0,0.25);';
+                document.body.appendChild(t);
+                setTimeout(function () { t.remove(); }, 2600);
+            }
+
+            function linkFrom(id) {
+                var el = document.getElementById(id);
+                var text = el ? (el.textContent || '').trim() : '';
+                if (!text || text.indexOf('agent123') !== -1 || text.indexOf('being generated') !== -1 || text === '\u2014' || text.indexOf('code=\u2014') !== -1) { return null; }
+                if (!/^https?:\/\//i.test(text)) { text = 'https://' + text; }
+                return text;
+            }
+
+            var MESSAGES = {
+                referral: function (link) {
+                    return 'Hi! I recommend Otter Quotes \u2014 a quick, free way to get competing bids from qualified contractors. Check it out: ' + link;
+                },
+                recruit: function (link) {
+                    return 'I partner with Otter Quotes \u2014 I share a link, they handle everything for the homeowner, and I earn a referral fee when jobs complete. They\u2019re adding partners: ' + link;
+                }
+            };
+
+            function doShare(kind, elId) {
+                var link = linkFrom(elId);
+                if (!link) { toast('Your link is still loading \u2014 try again in a moment.'); return; }
+                var msg = MESSAGES[kind](link);
+                gaEvent('partner_share_click', { link_type: kind });
+                if (navigator.share) {
+                    navigator.share({ title: 'Otter Quotes', text: msg }).catch(function () { /* user cancelled */ });
+                } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(msg).then(function () {
+                        toast('Message copied \u2014 paste it into a text or email.');
+                    });
+                } else {
+                    toast('Copy your link above and share it anywhere.');
+                }
+            }
+
+            var qrLibLoading = false;
+            function withQrLib(cb) {
+                if (typeof qrcode === 'function') { return cb(); }
+                if (!qrLibLoading) {
+                    qrLibLoading = true;
+                    var s = document.createElement('script');
+                    s.src = 'js/vendor/qrcode-generator.js';
+                    document.body.appendChild(s);
+                }
+                var tries = 0;
+                (function poll() {
+                    if (typeof qrcode === 'function') { return cb(); }
+                    if (++tries > 40) { toast('Could not load the QR generator.'); return; }
+                    setTimeout(poll, 150);
+                })();
+            }
+
+            function showQr(kind, elId) {
+                var link = linkFrom(elId);
+                if (!link) { toast('Your link is still loading \u2014 try again in a moment.'); return; }
+                gaEvent('partner_qr_click', { link_type: kind });
+                withQrLib(function () {
+                    try {
+                        var qr = qrcode(0, 'M');
+                        qr.addData(link);
+                        qr.make();
+                        document.getElementById('qrModalCode').innerHTML = qr.createSvgTag({ cellSize: 5, margin: 2 });
+                        document.getElementById('qrModalUrl').textContent = link;
+                        document.getElementById('qrModalTitle').textContent = kind === 'recruit' ? 'Scan to open your recruit link' : 'Scan to open your referral link';
+                        var m = document.getElementById('qrModal');
+                        m.style.display = 'flex';
+                    } catch (err) { toast('Could not build the QR code.'); }
+                });
+            }
+
+            function bind(id, fn) {
+                var el = document.getElementById(id);
+                if (el) { el.addEventListener('click', fn); }
+            }
+
+            bind('shareLinkBtn', function () { doShare('referral', 'referralLink'); });
+            bind('shareRecruitBtn', function () { doShare('recruit', 'recruitLink'); });
+            bind('qrLinkBtn', function () { showQr('referral', 'referralLink'); });
+            bind('qrRecruitBtn', function () { showQr('recruit', 'recruitLink'); });
+            bind('qrModalClose', function () { document.getElementById('qrModal').style.display = 'none'; });
+            var qrModal = document.getElementById('qrModal');
+            if (qrModal) {
+                qrModal.addEventListener('click', function (e) {
+                    if (e.target === qrModal) { qrModal.style.display = 'none'; }
+                });
+            }
+
+            // Install banner
+            function isStandalone() {
+                return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+            }
+            var banner = document.getElementById('appInstallBanner');
+            if (banner && !isStandalone()) { banner.style.display = 'block'; }
+
+            window.addEventListener('beforeinstallprompt', function (e) {
+                e.preventDefault();
+                deferredPrompt = e;
+            });
+            window.addEventListener('appinstalled', function () {
+                gaEvent('app_installed', { page: 'partner-dashboard' });
+                if (banner) { banner.style.display = 'none'; }
+            });
+            bind('installAppBtn', function () {
+                gaEvent('app_install_click', { page: 'partner-dashboard' });
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then(function () { deferredPrompt = null; });
+                } else {
+                    window.location.href = '/partner-app.html';
+                }
+            });
+
+            // App-shortcut deep links (?action=refer-homeowner|refer-partner)
+            var action = new URLSearchParams(window.location.search).get('action');
+            if (action === 'refer-homeowner' || action === 'refer-partner') {
+                var kind = action === 'refer-partner' ? 'recruit' : 'referral';
+                var elId = kind === 'recruit' ? 'recruitLink' : 'referralLink';
+                var waited = 0;
+                (function waitForLink() {
+                    if (linkFrom(elId)) { showQr(kind, elId); return; }
+                    if ((waited += 300) > 8000) { return; }
+                    setTimeout(waitForLink, 300);
+                })();
+            }
+
+            // Service worker (partner surface only)
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function () {
+                    navigator.serviceWorker.register('/partner-sw.js').catch(function () { /* non-fatal */ });
+                });
+            }
+        })();
     </script>
 </body>
 </html>
