@@ -67,7 +67,7 @@
   border-radius: var(--radius-full);
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--amber);
+  color: var(--amber-2);
   letter-spacing: 0.04em;
   margin-bottom: var(--sp-6);
   text-transform: uppercase;
@@ -76,12 +76,12 @@
 .hero h1 {
   font-size: clamp(2.2rem, 5vw, 3.5rem);
   margin-bottom: var(--sp-4);
-  color: var(--white);
+  color: var(--navy);
 }
 
 .hero .subtitle {
   font-size: 1.1rem;
-  color: var(--slate);
+  color: #5A6B7B;
   line-height: 1.8;
   margin-bottom: var(--sp-8);
   max-width: 680px;
@@ -581,6 +581,9 @@
     align-items: center;
   }
 }
+
+/* #589: secondary link on a light surface — amber #E07B00 is 2.85:1 there. */
+.container > p > a, a.light-surface-link { color: var(--amber-2, #A85C00); }
 </style>
 </head>
 
@@ -1137,7 +1140,7 @@ function copyItem(type) {
     const btn = document.querySelector(btnSelector);
     if (btn) {
       const orig = btn.textContent;
-      btn.textContent = '\u2713 Copied!';
+      btn.textContent = '✓ Copied!';
       setTimeout(() => { btn.textContent = orig; }, 2000);
     }
   }).catch(() => {});
@@ -1149,6 +1152,6 @@ function toggleFaq(btn) {
     </script>
 
 <!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-inspector.html" style="color:var(--amber);">Homeowner referral landing page</a></p>
+<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-inspector.html" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
 </body>
 </html>
