@@ -1,0 +1,32 @@
+{
+  "name": "Otter Quotes Partners",
+  "short_name": "OQ Partners",
+  "description": "Refer homeowners, grow your partner network, and track your referrals and payouts with Otter Quotes.",
+  "id": "/partner-app",
+  "start_url": "/partner-dashboard.html?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0D1B2E",
+  "theme_color": "#0D1B2E",
+  "icons": [
+    { "src": "/img/app/partner-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/img/app/partner-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/img/app/partner-icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/img/app/partner-icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Refer a Homeowner",
+      "short_name": "Refer Homeowner",
+      "url": "/partner-dashboard.html?source=pwa&action=refer-homeowner",
+      "icons": [{ "src": "/img/app/partner-icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Refer a Partner",
+      "short_name": "Refer Partner",
+      "url": "/partner-dashboard.html?source=pwa&action=refer-partner",
+      "icons": [{ "src": "/img/app/partner-icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

@@ -25,6 +25,7 @@ const Nav = {
     { href: '/partner-inspectors.html', label: 'Home Inspectors' },
     { href: '/refer-a-friend.html',     label: 'Refer a Friend' },
     { href: '/partner-other.html',      label: 'Other Industries' },
+    { href: '/partner-app.html',        label: '\ud83d\udcf1 Partner App' },
   ],
 
   _partnersDropdownHTML() {
