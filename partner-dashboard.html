@@ -766,6 +766,7 @@
                     <div class="referral-link-url" id="referralLink">https://otterquote.com/r/agent123</div>
                     <button class="copy-btn" id="copyLinkBtn">Copy Link</button>
                     <button class="copy-btn" id="shareLinkBtn">Share</button>
+                    <button class="copy-btn" id="emailLinkBtn">Email</button>
                     <button class="copy-btn" id="qrLinkBtn">QR</button>
                 </div>
                 <p class="link-hint referral-fee-disclaimer">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
@@ -777,6 +778,7 @@
                     <div class="referral-link-url" id="recruitLink">otterquote.com/recruit.html?code=&mdash;</div>
                     <button class="copy-btn" id="copyRecruitLinkBtn">Copy Link</button>
                     <button class="copy-btn" id="shareRecruitBtn">Share</button>
+                    <button class="copy-btn" id="emailRecruitBtn">Email</button>
                     <button class="copy-btn" id="qrRecruitBtn">QR</button>
                 </div>
                 <p class="link-hint">Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job.</p>
@@ -1712,6 +1714,48 @@ Let me know if you have any questions!`;
                     toast('Copy your link above and share it anywhere.');
                 }
             }
+
+            // Prepopulated referral emails — sent from the partner's own mail
+            // account via mailto:. Copy is CEO-reviewable (2026-08-03 draft);
+            // the partner's email signature provides the sign-off.
+            var EMAILS = {
+                referral: {
+                    subject: 'My recommendation for your project',
+                    body: function (link) {
+                        return 'Hi,\r\n\r\n' +
+                            'As promised \u2014 here\u2019s the service I recommend for getting contractor bids: Otter Quotes.\r\n\r\n' +
+                            'It\u2019s free for you. Tell them about your project once, and qualified local contractors compete for the job with real, comparable bids. They handle measurements, paperwork, and contract signing end to end.\r\n\r\n' +
+                            'Here\u2019s my personal link to get started:\r\n' + link + '\r\n\r\n' +
+                            'What to expect:\r\n' +
+                            '1. Create your free account (about 2 minutes)\r\n' +
+                            '2. Answer a few questions about your project\r\n' +
+                            '3. Compare bids and choose your contractor \u2014 no obligation\r\n\r\n' +
+                            'Questions? Reply to this email and I\u2019m happy to help.\r\n\r\n';
+                    }
+                },
+                recruit: {
+                    subject: 'A referral program worth a look \u2014 Otter Quotes',
+                    body: function (link) {
+                        return 'Hi,\r\n\r\n' +
+                            'I\u2019ve been referring clients to Otter Quotes. Homeowners get competing contractor bids, and Otter Quotes handles everything end to end \u2014 measurements, bidding, and contracts \u2014 so I\u2019m not putting my name on any one contractor.\r\n\r\n' +
+                            'Partners earn a referral fee when referred jobs complete, and there\u2019s an added bonus when partners you bring in close referrals of their own.\r\n\r\n' +
+                            'Here\u2019s my personal link to join \u2014 it\u2019s free and takes about a minute:\r\n' + link + '\r\n\r\n' +
+                            'Happy to share how it\u2019s been working for me.\r\n\r\n';
+                    }
+                }
+            };
+
+            function doEmail(kind, elId) {
+                var link = linkFrom(elId);
+                if (!link) { toast('Your link is still loading \u2014 try again in a moment.'); return; }
+                gaEvent('partner_email_click', { link_type: kind });
+                var t = EMAILS[kind];
+                window.location.href = 'mailto:?subject=' + encodeURIComponent(t.subject) +
+                    '&body=' + encodeURIComponent(t.body(link));
+            }
+
+            bind('emailLinkBtn', function () { doEmail('referral', 'referralLink'); });
+            bind('emailRecruitBtn', function () { doEmail('recruit', 'recruitLink'); });
 
             var qrLibLoading = false;
             function withQrLib(cb) {
