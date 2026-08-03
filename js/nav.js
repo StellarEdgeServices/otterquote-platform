@@ -91,12 +91,14 @@ const Nav = {
       { href: '/contractor-profile.html',        label: 'Profile',       id: 'profile' },
       { href: '/contractor-settings.html',       label: 'Settings',      id: 'settings' },
       { href: '/contractor-auto-bids.html',      label: 'Auto Bids',     id: 'auto-bids' },
+      { href: '/tools.html',                     label: 'Tools',         id: 'tools' },
       { href: '/contractor-how-it-works.html',   label: 'How It Works',  id: 'how-it-works' },
       { href: '/contractor-faq.html',            label: 'FAQ',           id: 'faq' },
     ] : [
-      { href: '/index.html',        label: 'Home',         id: 'home' },
-      { href: '/how-it-works.html',  label: 'How It Works', id: 'how-it-works' },
-      { href: '/faq.html',           label: 'FAQ',          id: 'faq' },
+      { href: '/index.html',         label: 'Home',              id: 'home' },
+      { href: '/how-it-works.html',  label: 'How It Works',      id: 'how-it-works' },
+      { href: '/faq.html',           label: 'FAQ',               id: 'faq' },
+      { href: '/tools.html',         label: 'Contractor Tools',  id: 'tools' },
     ];
 
     nav.innerHTML = `
@@ -166,17 +168,19 @@ const Nav = {
       { href: '/contractor-profile.html',       label: 'Profile' },
       { href: '/contractor-settings.html',      label: 'Settings' },
       { href: '/contractor-auto-bids.html',     label: 'Auto Bids' },
+      { href: '/tools.html',                    label: 'Tools' },
       { href: '/contractor-how-it-works.html',  label: 'How It Works' },
       { href: '/contractor-faq.html',           label: 'FAQ' },
     ] : [
-      { href: '/index.html',       label: 'Home' },
+      { href: '/index.html',        label: 'Home' },
       { href: '/how-it-works.html', label: 'How It Works' },
       { href: '/faq.html',          label: 'FAQ' },
+      { href: '/tools.html',        label: 'Contractor Tools' },
     ];
 
-    // Rebuild nav links in-place to handle both role expansions (3→6) and
-    // contractions (6→3). Simply patching existing anchors leaves orphaned
-    // links when switching from contractor (6 links) to homeowner (3 links).
+    // Rebuild nav links in-place to handle both role expansions and
+    // contractions. Simply patching existing anchors leaves orphaned
+    // links when switching from contractor to homeowner.
     const container = document.getElementById('nav-links');
     if (container) {
       const anchors = Array.from(container.querySelectorAll(
@@ -504,6 +508,7 @@ const Nav = {
               <a href="/contractor-how-it-works.html">How It Works</a>
               <a href="/contractor-faq.html">FAQ</a>
               <a href="/contractor-opportunities.html">Browse Opportunities</a>
+              <a href="/tools.html">Contractor Tools</a>
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               <a href="/faq.html">FAQ</a>
@@ -520,6 +525,8 @@ const Nav = {
             ` : `
               <a href="/contractor-login.html">Contractor Login</a>
               <a href="/contractor-join.html">Join Our Network</a>
+              <a href="/tools.html">Contractor Tools</a>
+              <a href="/tools-crm.html">Free CRM</a>
               <a href="/contractor-agreement.html">Partner Agreement</a>
             `}
           </div>

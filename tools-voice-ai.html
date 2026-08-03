@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>AI Voice Tools for Contractors &mdash; Call-Back Manager | Otter Quotes</title>
+<meta name="description" content="An AI voice agent that answers your call-back line, captures the problem and photos, drafts the parts list for your tech, routes the day, and texts homeowners their arrival window. Early access now open.">
+<link rel="canonical" href="https://otterquote.com/tools-voice-ai.html">
+<meta property="og:title" content="AI Voice Tools for Contractors &mdash; Call-Back Manager &middot; Otter Quotes">
+<meta property="og:description" content="An AI voice agent that answers your call-back line, captures the problem, drafts the parts list, routes the day, and keeps homeowners updated. Early access now open.">
+<meta property="og:url" content="https://otterquote.com/tools-voice-ai.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="AI Voice Tools for Contractors &middot; Otter Quotes">
+<meta name="twitter:description" content="An AI voice agent that answers your call-back line and runs the day around it. Early access now open.">
+<meta name="twitter:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: var(--navy);
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.12) 0%, transparent 65%);
+}
+.hero-badge {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-5);
+  background: rgba(224,123,0,0.1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--amber);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-6);
+}
+.page-hero h1 { margin-bottom: var(--sp-4); color: var(--white); }
+.page-hero p.hero-sub { max-width: 660px; margin: 0 auto var(--sp-8); font-size: 1.1rem; color: var(--slate); line-height: 1.8; }
+.hero-cta-group { display: flex; gap: var(--sp-4); justify-content: center; flex-wrap: wrap; }
+
+.section-header { text-align: center; margin-bottom: var(--sp-12); }
+.section-header h2 { color: var(--white); margin-bottom: var(--sp-3); }
+.section-header p { color: var(--slate); max-width: 640px; margin: 0 auto; font-size: 1rem; line-height: 1.75; }
+
+.problem-box {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--sp-8);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--radius-lg);
+}
+.problem-box p { color: var(--slate); font-size: 1rem; line-height: 1.85; margin-bottom: var(--sp-4); }
+.problem-box p:last-child { margin-bottom: 0; }
+.problem-box strong { color: var(--white); }
+
+.flow-list { max-width: 760px; margin: 0 auto; }
+.flow-item {
+  display: flex;
+  gap: var(--sp-6);
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-5);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--duration) var(--ease);
+}
+.flow-item:hover { border-color: rgba(224,123,0,0.22); }
+.flow-num {
+  width: 44px; height: 44px; flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--amber-glow);
+  border: 2px solid var(--amber);
+  color: var(--amber);
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.flow-body h3 { font-size: 1.05rem; color: var(--white); margin-bottom: var(--sp-2); }
+.flow-body p { font-size: 0.93rem; color: var(--slate); line-height: 1.75; margin: 0; }
+
+.guardrails { padding: var(--sp-14) 0; background: var(--navy); border-top: 1px solid rgba(255,255,255,0.06); }
+.guardrail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.guardrail-card {
+  padding: var(--sp-6);
+  background: rgba(224,123,0,0.04);
+  border: 1px solid rgba(224,123,0,0.14);
+  border-radius: var(--radius-md);
+}
+.guardrail-card h3 { font-size: 1rem; color: var(--amber); margin-bottom: var(--sp-3); }
+.guardrail-card p { font-size: 0.9rem; color: var(--slate); line-height: 1.7; margin: 0; }
+
+/* Waitlist form */
+.form-section { padding: var(--sp-16) 0; background: var(--navy-2); border-top: 1px solid rgba(255,255,255,0.06); }
+.form-container { max-width: 520px; margin: 0 auto; }
+.form-container h2 { text-align: center; color: var(--white); margin-bottom: var(--sp-2); font-size: 1.8rem; }
+.form-subtitle { text-align: center; color: var(--slate); margin-bottom: var(--sp-8); font-size: 0.95rem; line-height: 1.7; }
+.oq-form { display: flex; flex-direction: column; gap: var(--sp-5); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+.form-group { display: flex; flex-direction: column; gap: var(--sp-2); }
+.form-group label { font-size: 0.85rem; font-weight: 600; color: var(--white); }
+.form-group input, .form-group select, .form-group textarea {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.05);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  transition: all var(--duration) var(--ease);
+}
+.form-group textarea { resize: vertical; min-height: 90px; }
+.form-group input::placeholder, .form-group textarea::placeholder { color: rgba(255,255,255,0.4); }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 0 0 3px rgba(224,123,0,0.1);
+}
+.form-group select option { background: var(--navy); color: var(--white); }
+.optional-label { font-weight: 400; color: var(--slate); font-size: 0.8rem; }
+.form-submit {
+  padding: var(--sp-4) var(--sp-6);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all var(--duration) var(--ease);
+  margin-top: var(--sp-2);
+}
+.form-submit:hover:not(:disabled) { background: var(--amber-2); transform: translateY(-2px); }
+.form-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.form-note { text-align: center; font-size: 0.8rem; color: var(--slate); line-height: 1.65; margin-top: var(--sp-2); }
+.form-error { color: #f87171; font-size: 0.85rem; display: none; text-align: center; }
+.form-success {
+  display: none;
+  text-align: center;
+  padding: var(--sp-10) var(--sp-6);
+  background: rgba(16,185,129,0.07);
+  border: 1px solid rgba(16,185,129,0.35);
+  border-radius: var(--radius-lg);
+}
+.form-success h3 { color: #34D399; margin-bottom: var(--sp-3); font-size: 1.3rem; }
+.form-success p { color: var(--slate); font-size: 0.95rem; line-height: 1.75; margin: 0; }
+.hp-field { position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; }
+
+@media (max-width: 768px) {
+  .form-row { grid-template-columns: 1fr; }
+  .hero-cta-group { flex-direction: column; align-items: center; }
+  .flow-item { flex-direction: column; gap: var(--sp-4); }
+}
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active="tools"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <div class="hero-badge">Early Access &mdash; Limited Pilot</div>
+    <h1>AI Voice Tools</h1>
+    <p class="hero-sub">Virtual assistants built for contractors &mdash; software that picks up the phone, takes down the details, and moves the work forward while your crew stays on the roof. The first one handles the job nobody wants: call-backs.</p>
+    <div class="hero-cta-group">
+      <a href="#waitlist" class="btn btn-primary btn-lg">Get Early Access</a>
+      <a href="#how" class="btn btn-secondary btn-lg">See How It Works</a>
+    </div>
+  </div>
+</section>
+
+<section class="section" style="background: var(--navy-2);">
+  <div class="container">
+    <div class="section-header">
+      <h2>The Call-Back Manager</h2>
+      <p>Every roofing company has the same leak in the bucket. The work is done, the invoice is paid, and then the phone rings.</p>
+    </div>
+    <div class="problem-box">
+      <p>A homeowner calls about a drip, a loose piece of trim, a shingle in the yard after a storm. Somebody has to answer, figure out what's actually wrong, guess at what parts the tech needs, get it on the schedule, and then field the follow-up call three days later asking when somebody's coming.</p>
+      <p><strong>None of that work makes you money.</strong> It's handled between other jobs, from a truck, by whoever picks up &mdash; and it's usually the thing that turns a happy customer into a bad review.</p>
+      <p>The Call-Back Manager takes the whole loop.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how" style="background: var(--navy);">
+  <div class="container">
+    <div class="section-header">
+      <h2>What actually happens</h2>
+    </div>
+    <div class="flow-list">
+
+      <div class="flow-item">
+        <div class="flow-num">1</div>
+        <div class="flow-body">
+          <h3>It answers the call</h3>
+          <p>An AI voice agent picks up your call-back line &mdash; first ring, any hour. It talks the homeowner through what's going on, where on the house, when it started, and how urgent it is, then writes it up as a ticket.</p>
+        </div>
+      </div>
+
+      <div class="flow-item">
+        <div class="flow-num">2</div>
+        <div class="flow-body">
+          <h3>It gets you photos</h3>
+          <p>Before the call ends, the homeowner gets a text with a link to send pictures. You see the problem before anyone drives out &mdash; which is the difference between one trip and three.</p>
+        </div>
+      </div>
+
+      <div class="flow-item">
+        <div class="flow-num">3</div>
+        <div class="flow-body">
+          <h3>It drafts the parts list</h3>
+          <p>From the description and the photos, it puts together a suggested materials list so your tech loads the truck once. Your tech reviews and confirms it &mdash; the software never orders anything or commits you to a repair on its own.</p>
+        </div>
+      </div>
+
+      <div class="flow-item">
+        <div class="flow-num">4</div>
+        <div class="flow-body">
+          <h3>It plans the route</h3>
+          <p>When there are several stops in a day, it sequences them to cut drive time. Fewer miles, more call-backs cleared per day, less windshield time for a tech you're paying by the hour.</p>
+        </div>
+      </div>
+
+      <div class="flow-item">
+        <div class="flow-num">5</div>
+        <div class="flow-body">
+          <h3>It keeps the homeowner in the loop</h3>
+          <p>Each morning, everyone on the day's list gets a text with their arrival window. That single message kills most of the "when is somebody coming?" calls before they happen.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="guardrails">
+  <div class="container">
+    <div class="section-header">
+      <h2>Where we draw the line</h2>
+      <p>AI on the phone with your customers is a real risk if you do it carelessly. Here's what we commit to.</p>
+    </div>
+    <div class="guardrail-grid">
+      <div class="guardrail-card">
+        <h3>A person always confirms the repair</h3>
+        <p>The parts list and the diagnosis are drafts for your tech, never instructions to the homeowner. Nothing gets ordered, promised, or scheduled as a repair without one of your people signing off.</p>
+      </div>
+      <div class="guardrail-card">
+        <h3>It hands off when it should</h3>
+        <p>Angry customer, safety issue, anything outside a routine call-back &mdash; it stops trying to handle it and gets a human involved. An AI that won't let go of a bad call costs you the customer.</p>
+      </div>
+      <div class="guardrail-card">
+        <h3>Texting by default, not calling</h3>
+        <p>Updates go out by text unless you ask otherwise. It's what homeowners prefer, and it keeps the cost of running this honest instead of padded with voice minutes.</p>
+      </div>
+      <div class="guardrail-card">
+        <h3>Your own number, properly registered</h3>
+        <p>The line runs on a number provisioned and compliance-registered for this purpose &mdash; not bolted onto a shared line. Your call-backs stay yours.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Waitlist -->
+<section class="form-section" id="waitlist">
+  <div class="container">
+    <div class="form-container">
+      <h2>Get early access</h2>
+      <p class="form-subtitle">We're running this with a small group of contractors first so we get it right before we open it up. Tell us about your call-back volume and we'll be in touch as spots open. Pricing is set after the pilot &mdash; nobody in the group gets surprised with a number after the fact.</p>
+
+      <form class="oq-form" id="waitlistForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" required autocomplete="given-name" placeholder="Mike">
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" required autocomplete="family-name" placeholder="Reynolds">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="company">Company Name</label>
+          <input type="text" id="company" required autocomplete="organization" placeholder="Reynolds Roofing">
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" required autocomplete="email" placeholder="mike@reynoldsroofing.com">
+        </div>
+
+        <div class="form-group">
+          <label for="phone">Phone</label>
+          <input type="tel" id="phone" required autocomplete="tel" placeholder="(555) 123-4567">
+        </div>
+
+        <div class="form-group">
+          <label for="volume">Roughly how many call-backs a week?</label>
+          <select id="volume" required>
+            <option value="">Select one</option>
+            <option value="0-5">Fewer than 5</option>
+            <option value="5-15">5 to 15</option>
+            <option value="15-30">15 to 30</option>
+            <option value="30+">More than 30</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="notes">Anything else we should know? <span class="optional-label">(optional)</span></label>
+          <textarea id="notes" placeholder="How you handle call-backs today, what you'd want this to do, what you'd never let software touch."></textarea>
+        </div>
+
+        <div class="hp-field">
+          <label for="website">Website</label>
+          <input type="text" id="website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <p class="form-error" id="formError"></p>
+
+        <button type="submit" class="form-submit" id="submitBtn">Request Early Access</button>
+
+        <p class="form-note">We'll only use this to talk to you about the pilot. No list, no drip campaign.</p>
+      </form>
+
+      <div class="form-success" id="formSuccess">
+        <h3>You're on the list</h3>
+        <p>We'll reach out as pilot spots open up. If you want to talk sooner, call <a href="tel:+18448753412" style="color:var(--amber);">(844) 875-3412</a> and ask for Dustin.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var form = document.getElementById('waitlistForm');
+  if (form) form.addEventListener('submit', handleWaitlist);
+});
+
+async function handleWaitlist(e) {
+  e.preventDefault();
+
+  var errEl = document.getElementById('formError');
+  var btn   = document.getElementById('submitBtn');
+  errEl.style.display = 'none';
+
+  // Honeypot — bots fill hidden fields, people don't.
+  if (document.getElementById('website').value) return;
+
+  var firstName = document.getElementById('firstName').value.trim();
+  var lastName  = document.getElementById('lastName').value.trim();
+  var company   = document.getElementById('company').value.trim();
+  var email     = document.getElementById('email').value.trim();
+  var phone     = document.getElementById('phone').value.trim();
+  var volume    = document.getElementById('volume').value;
+  var notes     = document.getElementById('notes').value.trim();
+
+  if (!firstName || !lastName || !company || !email || !phone || !volume) {
+    errEl.textContent = 'Please fill in every field except the notes.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  var message =
+    'AI Voice Tools — early access request\n\n' +
+    'Name:     ' + firstName + ' ' + lastName + '\n' +
+    'Company:  ' + company + '\n' +
+    'Email:    ' + email + '\n' +
+    'Phone:    ' + phone + '\n' +
+    'Volume:   ' + volume + ' call-backs/week\n\n' +
+    'Notes:\n' + (notes || '(none)') + '\n\n' +
+    '---\nSubmitted from ' + window.location.href;
+
+  try {
+    var SUPABASE_URL  = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)  || '';
+    var SUPABASE_ANON = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) || '';
+
+    var res = await fetch(SUPABASE_URL + '/functions/v1/send-support-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON,
+        'Authorization': 'Bearer ' + SUPABASE_ANON
+      },
+      body: JSON.stringify({
+        from_name:  firstName + ' ' + lastName + ' (' + company + ')',
+        from_email: email,
+        subject:    'Early Access — AI Voice Tools — ' + company,
+        message:    message
+      })
+    });
+
+    if (!res.ok) throw new Error('Send failed');
+
+    document.getElementById('waitlistForm').style.display = 'none';
+    document.getElementById('formSuccess').style.display = 'block';
+
+    if (typeof gtag === 'function') {
+      gtag('event', 'tool_waitlist_signup', { tool: 'voice_ai', volume: volume });
+    }
+  } catch (err) {
+    errEl.textContent = 'Something went wrong. Please email info@otterquote.com or call (844) 875-3412.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Request Early Access';
+  }
+}
+</script>
+</body>
+</html>
