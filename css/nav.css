@@ -30,7 +30,7 @@
 }
 
 .nav-logo-icon { font-size: 1.5rem; }
-.nav-logo-text { font-family: var(--font-heading); }
+.nav-logo-text { font-family: var(--font-heading); color: var(--white); }
 
 .nav-links {
   display: flex;
@@ -142,7 +142,7 @@
 
 .footer-tagline {
   font-size: 0.9rem;
-  color: var(--gray);
+  color: #94A3B8;
   line-height: 1.6;
 }
 
@@ -163,7 +163,7 @@
 }
 
 .footer-col a {
-  color: var(--gray);
+  color: #94A3B8;
   font-size: 0.9rem;
   text-decoration: none;
   transition: color var(--duration) var(--ease);
@@ -178,7 +178,7 @@
 
 .footer-bottom p {
   font-size: 0.8rem;
-  color: var(--gray);
+  color: #94A3B8;
   text-align: center;
 }
 

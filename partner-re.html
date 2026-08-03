@@ -62,12 +62,12 @@
 .hero h1 {
   font-size: clamp(2.2rem, 5vw, 3.5rem);
   margin-bottom: var(--sp-4);
-  color: var(--white);
+  color: var(--navy);
 }
 
 .hero .subtitle {
   font-size: 1.1rem;
-  color: var(--slate);
+  color: #5A6B7B;
   line-height: 1.8;
   margin-bottom: var(--sp-8);
   max-width: 700px;
@@ -730,6 +730,9 @@
     padding: var(--sp-6);
   }
 }
+
+/* #589: D-266 disclaimer sits on the dark signup panel here — was 3.64:1. */
+.referral-fee-disclaimer { color: #94A3B8 !important; }
 </style>
 </head>
 <body>
@@ -1002,8 +1005,8 @@
           Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
         </p>
 
-        <p class="text-sm text-center" style="color: var(--gray); margin-top: var(--sp-4); font-size: 0.85rem;">
-          Already a partner? <a href="login.html" style="color: var(--amber); font-weight: 600;">Sign in to your dashboard</a>
+        <p class="text-sm text-center" style="color: #94A3B8; margin-top: var(--sp-4); font-size: 0.85rem;">
+          Already a partner? <a href="partner-login.html" style="color: var(--amber); font-weight: 600;">Sign in to your dashboard</a>
         </p>
       </form>
 
@@ -1392,7 +1395,7 @@
     const link = referralCode.textContent;
     navigator.clipboard.writeText(link).then(() => {
       const originalText = copyBtn.textContent;
-      copyBtn.textContent = '\u2713 Copied!';
+      copyBtn.textContent = '✓ Copied!';
       setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
     }).catch(() => {});
   });
@@ -1400,6 +1403,6 @@
 </script>
 
 <!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-re.html" style="color:var(--amber);">Homeowner referral landing page</a></p>
+<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-re.html" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
 </body>
 </html>
