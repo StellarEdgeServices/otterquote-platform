@@ -56,7 +56,7 @@
 }
 
 .pl-wrap .subtitle {
-  color: var(--slate, #475569);
+  color: #5A6B7B;
   margin-bottom: var(--sp-8);
   line-height: 1.6;
 }
@@ -94,10 +94,17 @@
   border-top: 1px solid var(--border, #E2E8F0);
   text-align: center;
   font-size: 0.95rem;
-  color: var(--slate, #475569);
+  color: #5A6B7B;
 }
 
-.pl-signup-cta a { color: var(--amber, #D97706); font-weight: 600; }
+.pl-signup-cta a { color: var(--amber-2, #A85C00); font-weight: 600; }
+/* #589 contrast: this page's card sits on a light surface, so the
+   design-system's dark-theme label/link colours are unreadable here. */
+.pl-card .form-label,
+.pl-card .form-hint,
+.pl-card p { color: #5A6B7B; }
+.pl-wrap a { color: var(--amber-2, #A85C00); }
+
 </style>
 </head>
 <body>
