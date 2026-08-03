@@ -1038,23 +1038,37 @@ Let me know if you have any questions!
                         .single();
 
                     if (partnerError || !partner) {
-                        // user_id not linked yet — try looking up by email (just clicked magic link)
-                        const { data: partnerByEmail } = await sb
+                        // user_id not linked yet (first visit after clicking the
+                        // magic link). Claim the record via the v97 RPC, then
+                        // re-read it.
+                        //
+                        // #594: this used to SELECT the unclaimed row by email and
+                        // then UPDATE it. That could never work — referral_agents
+                        // has no SELECT policy exposing a `user_id IS NULL` row to
+                        // a non-admin authenticated user, so the SELECT returned
+                        // nothing and this branch always fell through to the
+                        // redirect below. Every partner was bounced to the signup
+                        // page, where register_partner raised partner_exists — an
+                        // unrecoverable loop. claim_partner_account() is SECURITY
+                        // DEFINER and derives identity + email from the JWT.
+                        const { data: claim, error: claimError } =
+                            await sb.rpc('claim_partner_account');
+
+                        if (claimError) {
+                            console.error('Partner account claim failed:', claimError);
+                        }
+
+                        const { data: claimedPartner } = await sb
                             .from('referral_agents')
                             .select('*')
-                            .eq('email', currentUser.email)
-                            .is('user_id', null)
+                            .eq('user_id', currentUser.id)
                             .single();
 
-                        if (partnerByEmail) {
-                            // Link the record now
-                            await sb
-                                .from('referral_agents')
-                                .update({ user_id: currentUser.id })
-                                .eq('id', partnerByEmail.id);
-                            currentPartner = { ...partnerByEmail, user_id: currentUser.id };
+                        if (claimedPartner) {
+                            currentPartner = claimedPartner;
                         } else {
-                            // No partner record at all — redirect to signup chooser
+                            // Genuinely no partner record for this account —
+                            // redirect to the signup chooser.
                             window.location.href = '/partner-re.html';
                             return;
                         }
