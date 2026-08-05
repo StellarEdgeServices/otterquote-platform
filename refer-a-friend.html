@@ -902,14 +902,22 @@
       // Show W-9 blocked banner if applicable (D-172)
       renderW9Banner();
 
-      // Display referral link
-      displayReferralLink();
+      if (userReferralCode) {
+        // Display referral link
+        displayReferralLink();
 
-      // Generate QR code
-      generateQRCode();
+        // Generate QR code
+        generateQRCode();
 
-      // Populate share messages
-      populateShareMessages();
+        // Populate share messages
+        populateShareMessages();
+      } else {
+        // 2026-08-05: referral code generation failed (RLS-blocked insert —
+        // see fetchOrCreateReferralCode()). Show an honest error state
+        // instead of building a broken /ref/error link from a hardcoded
+        // fallback string.
+        renderReferralCodeError();
+      }
 
       // Load referrals if dashboard needed
       await loadReferrals();
@@ -989,19 +997,90 @@
           userReferralCode = newData.unique_code;
           currentAgent = newData;
         } else {
+          // KNOWN ISSUE (root-caused 2026-08-05, partner-pages-batch): this
+          // direct client .insert().select().single() is blocked by RLS on
+          // referral_agents — the same 42501-class failure the anon
+          // partner-signup pages hit before the #571 register_partner()
+          // SECURITY DEFINER RPC was introduced for them. The D-211
+          // (2026-06-13) security sprint locked down anon/authenticated
+          // SELECT (and the INSERT...RETURNING read-back it requires) on
+          // referral_agents; every other referral_agents writer
+          // (partner-re/-insurance/-adjusters/-inspectors/-other.html) was
+          // migrated to register_partner(); this customer-code path never
+          // was. Proposed fix: extend register_partner() to accept
+          // p_agent_type: 'customer' (or add a dedicated
+          // get_or_create_customer_referral_code() RPC keyed off auth.uid())
+          // — a DB/RPC change requiring separate Tier 3 approval, not
+          // deployed in this frontend-only batch. Until that ships, do NOT
+          // fabricate a fake code — leave userReferralCode unset so the UI
+          // shows an honest error instead of a broken /ref/error link.
           console.error('Failed to create referral code:', insertError);
-          userReferralCode = 'error';
+          if (window.Sentry && typeof Sentry.captureException === 'function') {
+            Sentry.captureException(
+              insertError instanceof Error
+                ? insertError
+                : new Error('referral_agents insert failed: ' + ((insertError && insertError.message) || 'unknown error')),
+              { tags: { feature: 'refer-a-friend', agent_type: 'customer' } }
+            );
+          }
+          userReferralCode = null;
+          currentAgent = null;
         }
       }
     }
 
+    // Single source of truth for the referral URL — returns null when no
+    // valid code exists so callers can fail safe instead of building a
+    // broken /ref/<falsy> link.
+    function getReferralUrl() {
+      return userReferralCode ? `${CONFIG.SITE_URL}/ref/${userReferralCode}` : null;
+    }
+
+    // Honest failure state shown when referral-code generation fails (see
+    // fetchOrCreateReferralCode()) — replaces the old behavior of silently
+    // displaying/sharing a fabricated https://otterquote.com/ref/error link.
+    function renderReferralCodeError() {
+      const linkEl = document.getElementById('referral-link-display');
+      if (linkEl) {
+        linkEl.textContent = "We couldn't generate your referral link right now. Please refresh the page — if this keeps happening, contact support@otterquote.com.";
+        linkEl.style.color = 'var(--red)';
+        linkEl.style.fontFamily = 'var(--font-body)';
+        linkEl.style.fontSize = '0.95rem';
+      }
+
+      ['copy-link-btn', 'share-link-btn', 'sms-btn', 'email-btn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+          btn.disabled = true;
+          btn.style.opacity = '0.5';
+          btn.style.cursor = 'not-allowed';
+        }
+      });
+
+      document.querySelectorAll('.share-grid .btn-primary').forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+      });
+
+      const qrSection = document.querySelector('.referral-link-qr');
+      if (qrSection) qrSection.style.display = 'none';
+
+      ['sms-message-display', 'nextdoor-message', 'email-body-display', 'badge-html-code'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = 'Unavailable — your referral link could not be generated.';
+      });
+    }
+
     function displayReferralLink() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) return;
       document.getElementById('referral-link-display').textContent = referralUrl;
     }
 
     function generateQRCode() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) return;
       const qrContainer = document.getElementById('qr-code');
       qrContainer.innerHTML = ''; // Clear existing
       new QRCode(qrContainer, {
@@ -1015,7 +1094,8 @@
     }
 
     function populateShareMessages() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) return;
 
       // Facebook message
       window.facebookShareMessage = 'I just got my roof replaced through Otter Quotes — multiple contractors competed for the job and I got a great deal. Check it out if you need any exterior work done!';
@@ -1079,7 +1159,11 @@ Best regards`;
     }
 
     function shareReferralLink() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) {
+        alert("Your referral link isn't ready yet. Please refresh the page, or contact support@otterquote.com if this continues.");
+        return;
+      }
       gtag('event', 'referral_share', { method: 'native_share', referral_code: userReferralCode });
       if (navigator.share) {
         navigator.share({
@@ -1093,7 +1177,11 @@ Best regards`;
     }
 
     function shareFacebook() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) {
+        alert("Your referral link isn't ready yet. Please refresh the page, or contact support@otterquote.com if this continues.");
+        return;
+      }
       gtag('event', 'referral_share', { method: 'facebook', referral_code: userReferralCode });
       const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralUrl)}&quote=${encodeURIComponent(window.facebookShareMessage)}`;
       window.open(fbUrl, 'facebook-share', 'width=600,height=400');
@@ -1112,8 +1200,11 @@ Best regards`;
     }
 
     function sendEmail() {
+      if (!getReferralUrl()) {
+        alert("Your referral link isn't ready yet. Please refresh the page, or contact support@otterquote.com if this continues.");
+        return;
+      }
       gtag('event', 'referral_share', { method: 'email', referral_code: userReferralCode });
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
       const mailtoLink = `mailto:?subject=${encodeURIComponent(window.emailSubject)}&body=${encodeURIComponent(window.emailBody)}`;
       window.location.href = mailtoLink;
     }
@@ -1145,6 +1236,11 @@ Best regards`;
     }
 
     function generateShareCard() {
+      if (!getReferralUrl()) {
+        alert("Your referral link isn't ready yet, so we can't build your share card. Please refresh the page, or contact support@otterquote.com if this continues.");
+        return;
+      }
+
       const canvas = document.getElementById('preview-canvas');
       const ctx = canvas.getContext('2d');
       const width = 800;
