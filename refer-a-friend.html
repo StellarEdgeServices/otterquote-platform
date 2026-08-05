@@ -912,10 +912,10 @@
         // Populate share messages
         populateShareMessages();
       } else {
-        // 2026-08-05: referral code generation failed (RLS-blocked insert —
-        // see fetchOrCreateReferralCode()). Show an honest error state
-        // instead of building a broken /ref/error link from a hardcoded
-        // fallback string.
+        // 2026-08-05: get_or_create_customer_referral_code() RPC (v100)
+        // returned no code — see fetchOrCreateReferralCode(). Show an
+        // honest error state instead of building a broken /ref/error
+        // link from a hardcoded fallback string.
         renderReferralCodeError();
       }
 
@@ -950,82 +950,39 @@
     async function fetchOrCreateReferralCode() {
       if (!currentUser) return;
 
-      // Check if user has a referral entry. Column is unique_code — there is
-      // no `code` column; codes come from a BEFORE INSERT trigger.
-      const { data, error } = await sb
-        .from('referral_agents')
-        .select('unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at')
-        .eq('user_id', currentUser.id)
-        .eq('agent_type', 'customer')
-        .maybeSingle();
+      // v100 (2026-08-05): get_or_create_customer_referral_code() —
+      // SECURITY DEFINER RPC keyed on auth.uid() only (no client-supplied
+      // identity). Replaces the direct client .insert([...]).select().single()
+      // that used to run here, which was blocked by the same RLS
+      // write-then-read gap the #571 register_partner() RPC fixed for the
+      // anon partner-signup pages (referral_agents was locked down in the
+      // D-211 2026-06-13 security sprint; this customer-code path was the
+      // one writer that never got migrated off the raw client call — see
+      // PR #624). The RPC is idempotent: it returns the caller's existing
+      // active customer code if one exists, otherwise creates the
+      // referral_agents row (unique_code is trigger-generated — never
+      // supply it client-side) and returns the same shape either way.
+      const { data, error } = await sb.rpc('get_or_create_customer_referral_code');
 
-      if (data) {
+      if (data && data.unique_code) {
         userReferralCode = data.unique_code;
-        currentAgent = data;
+        currentAgent = data; // { unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at, created }
       } else {
-        // Create the agent row. first_name / last_name / email are NOT NULL —
-        // pull from the profile, fall back to auth metadata, then the email
-        // prefix. unique_code is trigger-generated: never supply it.
-        let email = currentUser.email || '';
-        let fullName = (currentUser.user_metadata && currentUser.user_metadata.full_name) || '';
-        const { data: profile } = await sb
-          .from('profiles')
-          .select('full_name, email')
-          .eq('id', currentUser.id)
-          .maybeSingle();
-        if (profile && profile.full_name) fullName = profile.full_name;
-        if (profile && profile.email) email = profile.email;
-
-        const emailPrefix = (email.split('@')[0] || 'Customer');
-        const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
-        const firstName = nameParts[0] || emailPrefix;
-        const lastName  = nameParts.length > 1 ? nameParts.slice(1).join(' ') : emailPrefix;
-
-        const { data: newData, error: insertError } = await sb
-          .from('referral_agents')
-          .insert([{
-            user_id: currentUser.id,
-            agent_type: 'customer',
-            first_name: firstName,
-            last_name: lastName,
-            email: email
-          }])
-          .select('unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at')
-          .single();
-
-        if (newData) {
-          userReferralCode = newData.unique_code;
-          currentAgent = newData;
-        } else {
-          // KNOWN ISSUE (root-caused 2026-08-05, partner-pages-batch): this
-          // direct client .insert().select().single() is blocked by RLS on
-          // referral_agents — the same 42501-class failure the anon
-          // partner-signup pages hit before the #571 register_partner()
-          // SECURITY DEFINER RPC was introduced for them. The D-211
-          // (2026-06-13) security sprint locked down anon/authenticated
-          // SELECT (and the INSERT...RETURNING read-back it requires) on
-          // referral_agents; every other referral_agents writer
-          // (partner-re/-insurance/-adjusters/-inspectors/-other.html) was
-          // migrated to register_partner(); this customer-code path never
-          // was. Proposed fix: extend register_partner() to accept
-          // p_agent_type: 'customer' (or add a dedicated
-          // get_or_create_customer_referral_code() RPC keyed off auth.uid())
-          // — a DB/RPC change requiring separate Tier 3 approval, not
-          // deployed in this frontend-only batch. Until that ships, do NOT
-          // fabricate a fake code — leave userReferralCode unset so the UI
-          // shows an honest error instead of a broken /ref/error link.
-          console.error('Failed to create referral code:', insertError);
-          if (window.Sentry && typeof Sentry.captureException === 'function') {
-            Sentry.captureException(
-              insertError instanceof Error
-                ? insertError
-                : new Error('referral_agents insert failed: ' + ((insertError && insertError.message) || 'unknown error')),
-              { tags: { feature: 'refer-a-friend', agent_type: 'customer' } }
-            );
-          }
-          userReferralCode = null;
-          currentAgent = null;
+        // Genuine failure (RPC error, expired session, no verified email,
+        // etc.) — do NOT fabricate a fake code. Leave userReferralCode
+        // unset so the UI shows an honest error instead of a broken
+        // /ref/error link (see renderReferralCodeError()).
+        console.error('Failed to fetch or create referral code:', error);
+        if (window.Sentry && typeof Sentry.captureException === 'function') {
+          Sentry.captureException(
+            error instanceof Error
+              ? error
+              : new Error('get_or_create_customer_referral_code RPC failed: ' + ((error && error.message) || 'unknown error')),
+            { tags: { feature: 'refer-a-friend', agent_type: 'customer' } }
+          );
         }
+        userReferralCode = null;
+        currentAgent = null;
       }
     }
 
