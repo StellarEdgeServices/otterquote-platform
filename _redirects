@@ -7,6 +7,11 @@ https://jade-alpaca-b82b5e.netlify.app/* https://otterquote.com/:splat 301!
 # Redirect published short URL to contractor signup (YouTube channel description uses /contractor)
 /contractor /contractor-join 301
 
-/ref/:code  /ref.html?code=:code  200
+# Referral short links — must be a redirect (not a 200 rewrite): a rewrite
+# leaves the browser's visible URL at /ref/:code with no query string, so
+# ref.html's client-side `URLSearchParams(location.search).get('code')`
+# never sees the code and bounces to /index.html. A 301 lands the browser on
+# the query-string form ref.html already parses correctly. (2026-08-05)
+/ref/:code  /ref.html?code=:code  301
 https://stellaredgeservices.com/* /stellar-edge.html 200
 https://www.stellaredgeservices.com/* /stellar-edge.html 200
