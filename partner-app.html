@@ -292,7 +292,7 @@
                     <li>Open this page in Safari</li>
                     <li>Tap the <strong>Share</strong> button</li>
                     <li>Scroll and tap <strong>Add to Home Screen</strong></li>
-                    <li>Tap <strong>Add</strong> &mdash; the OQ Partners icon appears on your home screen</li>
+                    <li>Tap <strong>Add</strong> &mdash; the OQ Partners icon appears on your home screen and opens straight to your Partner Dashboard</li>
                 </ol>
             </div>
             <div class="howto-card" id="howtoAndroid">
@@ -389,8 +389,24 @@
             }
 
             if (isStandalone()) {
-                if (installBtn) { installBtn.style.display = 'none'; }
-                if (installNote) { installNote.textContent = 'You\u2019re using the app \u2014 nice. Head to your dashboard to start referring.'; }
+                window.location.replace('/partner-dashboard.html?source=pwa');
+                return;
+            }
+
+            // #632: signed-in partners land straight on their dashboard when they
+            // open this page in a regular browser tab too - mirrors the loop-guard
+            // in partner-login.html. ?stay=1 opts out; anon/homeowner/contractor
+            // visitors and referral/recruit attribution are untouched.
+            if (new URLSearchParams(window.location.search).get('stay') !== '1' &&
+                (document.referrer || '').indexOf('/partner-dashboard.html') === -1) {
+                var partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+                Auth.getUser().then(function (user) {
+                    if (!user) return;
+                    Auth.getRole().then(function (role) {
+                        if (partnerRoles.indexOf(role) === -1) return;
+                        window.location.replace('/partner-dashboard.html');
+                    });
+                });
             }
 
             // QR code — renders once the deferred vendor lib is ready.
