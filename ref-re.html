@@ -461,7 +461,7 @@
 <body>
 
 <!-- ── Header ── -->
-<header id="header"></header>
+<header id="site-header" data-active=""></header>
 
 <!-- ── Main Content ── -->
 <main>
@@ -624,7 +624,7 @@
 </main>
 
 <!-- ── Footer ── -->
-<footer class="footer" id="footer"></footer>
+<footer class="footer" id="site-footer"></footer>
 
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
@@ -640,11 +640,6 @@
 let referralAgentData = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Initialize header/footer
-  if (typeof initNav === 'function') {
-    initNav();
-  }
-
   // Get referral code from URL
   const params = new URLSearchParams(window.location.search);
   const refCode = params.get('ref');
