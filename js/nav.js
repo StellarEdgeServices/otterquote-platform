@@ -17,6 +17,18 @@ const Nav = {
     return path.includes('contractor');
   },
 
+  /**
+   * Detect if current page is a partner entry/portal page. Matches only
+   * filenames starting with "partner-" — ref-*.html, recruit.html,
+   * refer-a-friend.html, and inspector-landing.html serve homeowner/mixed
+   * audiences and must keep the default nav.
+   */
+  _isPartnerPage() {
+    const path = window.location.pathname;
+    const file = path.substring(path.lastIndexOf('/') + 1);
+    return file.startsWith('partner-');
+  },
+
   /** "For Partners" dropdown links (#567) — non-contractor header only. */
   _partnerLinks: [
     { href: '/partner-re.html',         label: 'Real Estate Agents' },
@@ -25,7 +37,7 @@ const Nav = {
     { href: '/partner-inspectors.html', label: 'Home Inspectors' },
     { href: '/refer-a-friend.html',     label: 'Refer a Friend' },
     { href: '/partner-other.html',      label: 'Other Industries' },
-    { href: '/partner-app.html',        label: '\ud83d\udcf1 Partner App' },
+    { href: '/partner-app.html',        label: '📱 Partner App' },
   ],
 
   _partnersDropdownHTML() {
@@ -85,6 +97,7 @@ const Nav = {
     if (!nav) return;
 
     const isContractor = this._isContractorPage();
+    const isPartner = this._isPartnerPage();
 
     const links = isContractor ? [
       { href: '/contractor-dashboard.html',      label: 'Home',          id: 'home' },
@@ -95,6 +108,11 @@ const Nav = {
       { href: '/tools.html',                     label: 'Tools',         id: 'tools' },
       { href: '/contractor-how-it-works.html',   label: 'How It Works',  id: 'how-it-works' },
       { href: '/contractor-faq.html',            label: 'FAQ',           id: 'faq' },
+    ] : isPartner ? [
+      { href: '/index.html',              label: 'Home',              id: 'home' },
+      { href: '/partner-dashboard.html',  label: 'Partner Dashboard', id: 'partner-dashboard' },
+      { href: '/partner-app.html',        label: 'Get the App',       id: 'partner-app' },
+      { href: '/faq.html',                label: 'FAQ',               id: 'faq' },
     ] : [
       { href: '/index.html',         label: 'Home',              id: 'home' },
       { href: '/how-it-works.html',  label: 'How It Works',      id: 'how-it-works' },
@@ -261,12 +279,18 @@ const Nav = {
       // (e.g. homeowner on contractor-about.html, or contractor on a homeowner page)
       this._updateNavLinksForRole(role);
 
+      // Partner roles mirror the list auth.js uses for magic-link routing.
+      const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
       const dashboardUrl = role === 'contractor'
         ? '/contractor-dashboard.html'
-        : '/dashboard.html';
+        : partnerRoles.includes(role)
+          ? '/partner-dashboard.html'
+          : '/dashboard.html';
       const dashboardLabel = role === 'contractor'
         ? 'Contractor Portal'
-        : 'My Dashboard';
+        : partnerRoles.includes(role)
+          ? 'Partner Dashboard'
+          : 'My Dashboard';
       desktopHTML = `
         <a href="${dashboardUrl}" class="btn btn-sm btn-primary">${dashboardLabel}</a>
         <button class="btn btn-sm btn-ghost" onclick="Auth.signOut()">Sign Out</button>
