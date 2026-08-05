@@ -1,4 +1,0 @@
-single:—end
-double:—end
-emoji_single:📱end
-emoji_double:📱end
