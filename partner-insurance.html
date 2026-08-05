@@ -107,6 +107,14 @@
             font-weight: 700;
             margin-bottom: 24px;
             line-height: 1.2;
+            /* #2026-08-05: design-system.css sets a global "h1,h2,...{color:#0D1B2E}"
+               rule (dark navy, meant for light backgrounds). An explicit rule on the
+               element always wins over an inherited value, so relying on the parent
+               .hero's `color: var(--white)` to cascade down here silently lost —
+               the heading rendered navy-on-navy against the dark hero gradient below
+               and was effectively invisible. Set explicitly to match every other
+               heading on this page's dark sections. */
+            color: var(--white);
         }
 
         .hero p {
