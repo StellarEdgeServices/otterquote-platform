@@ -1,1 +1,497 @@
-PLACEHOLDER
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>AI Receptionist &amp; Phone Agents for Contractors &mdash; OQ Voice AI (Early Access)</title>
+<meta name="description" content="OQ Voice AI is a set of five AI phone agents built for roofing contractors &mdash; callback, inbound calls, cold leads, collections, and file management. Early access is open now; no pricing set yet.">
+<link rel="canonical" href="https://otterquote.com/oq-voice-ai.html">
+<meta property="og:title" content="OQ Voice AI &mdash; AI Phone Agents for Contractors (Early Access)">
+<meta property="og:description" content="Five AI phone agents built for roofing contractors: callback manager, inbound call manager, cold lead manager, collections manager, and file manager. Early access open now.">
+<meta property="og:url" content="https://otterquote.com/oq-voice-ai.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="OQ Voice AI &mdash; AI Phone Agents for Contractors">
+<meta name="twitter:description" content="Five AI phone agents for roofing contractors, launching in early access now.">
+<meta name="twitter:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "OQ Voice AI",
+  "serviceType": "AI Phone Agent for Contractors",
+  "description": "A set of five AI phone agents for roofing and exterior contractors: a callback manager, inbound call manager, cold lead manager, collections manager, and file manager. Currently in early access.",
+  "provider": { "@type": "Organization", "name": "Otter Quotes", "url": "https://otterquote.com" },
+  "areaServed": "US",
+  "audience": { "@type": "Audience", "audienceType": "Roofing and exterior contractors" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is OQ Voice AI live yet?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Not broadly. OQ Voice AI is in early access — we're onboarding a small group of contractors first so we can get it right before opening it up further. The Callback Manager is furthest along and is currently piloting with a small group; the other four managers are launching into early access now." }
+    },
+    {
+      "@type": "Question",
+      "name": "What are the five managers?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The Callback Manager, Inbound Call Manager, Cold Lead Manager, Collections Manager, and File Manager — five AI phone agents, each built to handle a specific type of call or task that otherwise pulls your crew off the roof." }
+    },
+    {
+      "@type": "Question",
+      "name": "What does OQ Voice AI cost?",
+      "acceptedAnswer": { "@type": "Answer", "text": "We haven't set pricing yet. Pricing is finalized after the early access pilot, and nobody in the pilot group will be surprised with a number after the fact." }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I get access?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Fill out the early access form on this page with a bit about your business and which manager interests you most. We'll reach out as pilot spots open." }
+    }
+  ]
+}
+</script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: var(--navy);
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.12) 0%, transparent 65%);
+}
+.hero-badge {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-5);
+  background: rgba(224,123,0,0.1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--amber);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-6);
+}
+.page-hero h1 { margin-bottom: var(--sp-4); color: var(--white); }
+.page-hero p.hero-sub { max-width: 680px; margin: 0 auto var(--sp-8); font-size: 1.1rem; color: var(--slate); line-height: 1.8; }
+.hero-cta-group { display: flex; gap: var(--sp-4); justify-content: center; flex-wrap: wrap; }
+
+.section-header { text-align: center; margin-bottom: var(--sp-12); }
+.section-header h2 { color: var(--white); margin-bottom: var(--sp-3); }
+.section-header p { color: var(--slate); max-width: 640px; margin: 0 auto; font-size: 1rem; line-height: 1.75; }
+
+.problem-box {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--sp-8);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--radius-lg);
+}
+.problem-box p { color: var(--slate); font-size: 1rem; line-height: 1.85; margin-bottom: var(--sp-4); }
+.problem-box p:last-child { margin-bottom: 0; }
+.problem-box strong { color: var(--white); }
+
+.manager-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.manager-card {
+  padding: var(--sp-7);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--duration) var(--ease);
+}
+.manager-card:hover { border-color: rgba(224,123,0,0.28); }
+.manager-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+  background: rgba(224,123,0,0.08);
+  border: 1px solid rgba(224,123,0,0.25);
+  border-radius: var(--radius-full);
+  padding: 0.22rem 0.65rem;
+  margin-bottom: var(--sp-3);
+}
+.manager-card h3 { font-size: 1.1rem; color: var(--white); margin-bottom: var(--sp-3); }
+.manager-card p { font-size: 0.92rem; color: var(--slate); line-height: 1.75; }
+
+.guardrails { padding: var(--sp-14) 0; background: var(--navy); border-top: 1px solid rgba(255,255,255,0.06); }
+.guardrail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.guardrail-card {
+  padding: var(--sp-6);
+  background: rgba(224,123,0,0.04);
+  border: 1px solid rgba(224,123,0,0.14);
+  border-radius: var(--radius-md);
+}
+.guardrail-card h3 { font-size: 1rem; color: var(--amber); margin-bottom: var(--sp-3); }
+.guardrail-card p { font-size: 0.9rem; color: var(--slate); line-height: 1.7; margin: 0; }
+
+/* Early access form */
+.form-section { padding: var(--sp-16) 0; background: var(--navy-2); border-top: 1px solid rgba(255,255,255,0.06); }
+.form-container { max-width: 520px; margin: 0 auto; }
+.form-container h2 { text-align: center; color: var(--white); margin-bottom: var(--sp-2); font-size: 1.8rem; }
+.form-subtitle { text-align: center; color: var(--slate); margin-bottom: var(--sp-8); font-size: 0.95rem; line-height: 1.7; }
+.oq-form { display: flex; flex-direction: column; gap: var(--sp-5); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+.form-group { display: flex; flex-direction: column; gap: var(--sp-2); }
+.form-group label { font-size: 0.85rem; font-weight: 600; color: var(--white); }
+.form-group input, .form-group select, .form-group textarea {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.05);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  transition: all var(--duration) var(--ease);
+}
+.form-group textarea { resize: vertical; min-height: 90px; }
+.form-group input::placeholder, .form-group textarea::placeholder { color: rgba(255,255,255,0.4); }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 0 0 3px rgba(224,123,0,0.1);
+}
+.form-group select option { background: var(--navy); color: var(--white); }
+.optional-label { font-weight: 400; color: var(--slate); font-size: 0.8rem; }
+.form-submit {
+  padding: var(--sp-4) var(--sp-6);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all var(--duration) var(--ease);
+  margin-top: var(--sp-2);
+}
+.form-submit:hover:not(:disabled) { background: var(--amber-2); transform: translateY(-2px); }
+.form-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.form-note { text-align: center; font-size: 0.8rem; color: var(--slate); line-height: 1.65; margin-top: var(--sp-2); }
+.form-error { color: #f87171; font-size: 0.85rem; display: none; text-align: center; }
+.form-success {
+  display: none;
+  text-align: center;
+  padding: var(--sp-10) var(--sp-6);
+  background: rgba(16,185,129,0.07);
+  border: 1px solid rgba(16,185,129,0.35);
+  border-radius: var(--radius-lg);
+}
+.form-success h3 { color: #34D399; margin-bottom: var(--sp-3); font-size: 1.3rem; }
+.form-success p { color: var(--slate); font-size: 0.95rem; line-height: 1.75; margin: 0; }
+.hp-field { position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; }
+
+@media (max-width: 768px) {
+  .form-row { grid-template-columns: 1fr; }
+  .hero-cta-group { flex-direction: column; align-items: center; }
+}
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active="tools"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <div class="hero-badge">Early Access &mdash; Not Yet Live</div>
+    <h1>AI Phone Agents Built for Contractors</h1>
+    <p class="hero-sub">An AI receptionist for contractors who can't get to every call, every time: five AI phone agents launching into early access &mdash; covering call-backs, inbound calls and missed-call text-back, cold leads, collections calls, and file requests. Nothing here is live for customers yet; this is the sign-up page for the pilot.</p>
+    <div class="hero-cta-group">
+      <a href="#early-access" class="btn btn-primary btn-lg">Request Early Access</a>
+      <a href="#managers" class="btn btn-secondary btn-lg">See the Five Managers</a>
+    </div>
+  </div>
+</section>
+
+<section class="section" style="background: var(--navy-2);">
+  <div class="container">
+    <div class="section-header">
+      <h2>The phone is where roofing leads go to die</h2>
+    </div>
+    <div class="problem-box">
+      <p>A homeowner calls after a storm and nobody picks up. A lead from three weeks ago never got a follow-up. An invoice sits unpaid because nobody had time to make the call. Every missed call or dropped follow-up is a job that goes to whoever answered the phone next &mdash; usually a competitor.</p>
+      <p><strong>OQ Voice AI is our answer to that problem</strong>: a set of AI phone agents, each built around one specific job your team doesn't have time for. We're opening early access to five of them now.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="managers" style="background: var(--navy);">
+  <div class="container">
+    <div class="section-header">
+      <h2>Five managers, launching in early access</h2>
+      <p>Each one is built around a single job that otherwise pulls someone off a roof or off a truck to handle.</p>
+    </div>
+    <div class="manager-grid">
+
+      <div class="manager-card">
+        <span class="manager-tag">Piloting Now</span>
+        <h3>Callback Manager</h3>
+        <p>Built to answer your call-back line, capture the problem and photos, draft a parts list for your tech to confirm, and text homeowners their arrival window. This is the manager furthest along &mdash; it's currently running with a small pilot group. <a href="/tools-voice-ai.html" style="color:var(--amber);">See the full details &rarr;</a></p>
+      </div>
+
+      <div class="manager-card">
+        <span class="manager-tag">Early Access</span>
+        <h3>Inbound Call Manager</h3>
+        <p>Built to pick up general inbound calls when your team can't, and to text back missed calls automatically so a homeowner never wonders if you got the message. An AI receptionist for the calls that would otherwise go to voicemail.</p>
+      </div>
+
+      <div class="manager-card">
+        <span class="manager-tag">Early Access</span>
+        <h3>Cold Lead Manager</h3>
+        <p>Built to work back through leads that went quiet &mdash; the estimate nobody followed up on, the inquiry from two months ago &mdash; and get a real answer: still interested, not right now, or move on.</p>
+      </div>
+
+      <div class="manager-card">
+        <span class="manager-tag">Early Access</span>
+        <h3>Collections Manager</h3>
+        <p>Built to handle the awkward call about an unpaid invoice, so it happens consistently instead of "whenever someone gets around to it," without a member of your team having to make an uncomfortable call.</p>
+      </div>
+
+      <div class="manager-card">
+        <span class="manager-tag">Early Access</span>
+        <h3>File Manager</h3>
+        <p>Built to field requests for documents &mdash; a copy of an invoice, a warranty, a completion certificate &mdash; and get the right file to the right person without someone digging through folders.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="guardrails">
+  <div class="container">
+    <div class="section-header">
+      <h2>Where we plan to draw the line</h2>
+      <p>Putting AI on the phone with your customers is a real risk if it's done carelessly. Here's what we're building toward for every manager in this pilot.</p>
+    </div>
+    <div class="guardrail-grid">
+      <div class="guardrail-card">
+        <h3>A person always confirms the work</h3>
+        <p>Diagnoses and parts lists are drafts for your team, never instructions to a homeowner. Nothing gets ordered, promised, or scheduled without one of your people signing off.</p>
+      </div>
+      <div class="guardrail-card">
+        <h3>It hands off when it should</h3>
+        <p>An angry customer, a safety issue, anything outside the routine call &mdash; it's built to stop and get a human involved rather than push through.</p>
+      </div>
+      <div class="guardrail-card">
+        <h3>No pricing surprises</h3>
+        <p>Pricing isn't set until the pilot wraps, and pilot members will know the number before anything is billed &mdash; not after.</p>
+      </div>
+      <div class="guardrail-card">
+        <h3>Honest about where we are</h3>
+        <p>Only the Callback Manager has an active pilot running today. The other four managers on this page are early-access sign-ups, not live products yet.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Early Access Form -->
+<section class="form-section" id="early-access">
+  <div class="container">
+    <div class="form-container">
+      <h2>Request early access</h2>
+      <p class="form-subtitle">We're opening this up to a small group of contractors first. Tell us a bit about your business and which manager you'd want first, and we'll reach out as pilot spots open. Pricing isn't set yet &mdash; nobody here gets billed a surprise number later.</p>
+
+      <form class="oq-form" id="voiceEarlyAccessForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" required autocomplete="given-name" placeholder="Mike">
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" required autocomplete="family-name" placeholder="Reynolds">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="company">Company Name</label>
+          <input type="text" id="company" required autocomplete="organization" placeholder="Reynolds Roofing">
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" required autocomplete="email" placeholder="mike@reynoldsroofing.com">
+        </div>
+
+        <div class="form-group">
+          <label for="phone">Phone</label>
+          <input type="tel" id="phone" required autocomplete="tel" placeholder="(555) 123-4567">
+        </div>
+
+        <div class="form-group">
+          <label for="manager">Which manager interests you most?</label>
+          <select id="manager" required>
+            <option value="">Select one</option>
+            <option value="Callback Manager">Callback Manager</option>
+            <option value="Inbound Call Manager">Inbound Call Manager</option>
+            <option value="Cold Lead Manager">Cold Lead Manager</option>
+            <option value="Collections Manager">Collections Manager</option>
+            <option value="File Manager">File Manager</option>
+            <option value="Not sure / all of them">Not sure / all of them</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="notes">Anything else we should know? <span class="optional-label">(optional)</span></label>
+          <textarea id="notes" placeholder="Roughly how many calls you handle a week, what you'd want this to do, what you'd never let software touch."></textarea>
+        </div>
+
+        <div class="hp-field">
+          <label for="website">Website</label>
+          <input type="text" id="website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <p class="form-error" id="formError"></p>
+
+        <button type="submit" class="form-submit" id="submitBtn">Request Early Access</button>
+
+        <p class="form-note">We'll only use this to talk to you about early access. No list, no drip campaign.</p>
+      </form>
+
+      <div class="form-success" id="formSuccess">
+        <h3>You're on the list</h3>
+        <p>We'll reach out as pilot spots open up. If you want to talk sooner, call <a href="tel:+18448753412" style="color:var(--amber);">(844) 875-3412</a> and ask for Dustin.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var form = document.getElementById('voiceEarlyAccessForm');
+  if (form) form.addEventListener('submit', handleVoiceEarlyAccess);
+});
+
+async function handleVoiceEarlyAccess(e) {
+  e.preventDefault();
+
+  var errEl = document.getElementById('formError');
+  var btn   = document.getElementById('submitBtn');
+  errEl.style.display = 'none';
+
+  // Honeypot — bots fill hidden fields, people don't.
+  if (document.getElementById('website').value) return;
+
+  var firstName = document.getElementById('firstName').value.trim();
+  var lastName  = document.getElementById('lastName').value.trim();
+  var company   = document.getElementById('company').value.trim();
+  var email     = document.getElementById('email').value.trim();
+  var phone     = document.getElementById('phone').value.trim();
+  var manager   = document.getElementById('manager').value;
+  var notes     = document.getElementById('notes').value.trim();
+
+  if (!firstName || !lastName || !company || !email || !phone || !manager) {
+    errEl.textContent = 'Please fill in every field except the notes.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  var message =
+    'OQ Voice AI — early access request\n\n' +
+    'Name:     ' + firstName + ' ' + lastName + '\n' +
+    'Company:  ' + company + '\n' +
+    'Email:    ' + email + '\n' +
+    'Phone:    ' + phone + '\n' +
+    'Manager of interest: ' + manager + '\n\n' +
+    'Notes:\n' + (notes || '(none)') + '\n\n' +
+    '---\nSubmitted from ' + window.location.href;
+
+  try {
+    var SUPABASE_URL  = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)  || '';
+    var SUPABASE_ANON = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) || '';
+
+    var res = await fetch(SUPABASE_URL + '/functions/v1/send-support-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON,
+        'Authorization': 'Bearer ' + SUPABASE_ANON
+      },
+      body: JSON.stringify({
+        from_name:  firstName + ' ' + lastName + ' (' + company + ')',
+        from_email: email,
+        subject:    'OQ VOICE EARLY ACCESS — ' + company,
+        message:    message
+      })
+    });
+
+    if (!res.ok) throw new Error('Send failed');
+
+    document.getElementById('voiceEarlyAccessForm').style.display = 'none';
+    document.getElementById('formSuccess').style.display = 'block';
+
+    if (typeof gtag === 'function') {
+      gtag('event', 'voice_ai_early_access_signup', { manager: manager, source_page: 'oq-voice-ai' });
+    }
+  } catch (err) {
+    errEl.textContent = 'Something went wrong. Please email info@otterquote.com or call (844) 875-3412.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Request Early Access';
+  }
+}
+</script>
+</body>
+</html>
