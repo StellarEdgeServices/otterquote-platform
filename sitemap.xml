@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- ci-trigger-test: verifying Actions fires on a real (non-empty) commit diff, 2026-08-06 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://otterquote.com/</loc>
