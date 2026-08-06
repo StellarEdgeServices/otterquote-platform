@@ -32,7 +32,7 @@ Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable 
   - D-175 brand claims or tone-altering copy
   - D-168 marketing claim thresholds
   - DocuSign templates or generated PDFs
-- [ ] **No use of prohibited terminology.** Verified no "leads," "ClaimShield" (as product name), or "Otter Quotes" (two words) in changed files.
+- [ ] **No use of prohibited terminology.** Verified no "leads," no "ClaimShield" (as a product name), and no "OtterQuote" (one word) in **user-facing copy** — the display name is "Otter Quotes," two words, per D-175. `OtterQuote` remains valid in internal identifiers, repo names, and code comments.
 
 ### Large File Safety
 - [ ] **No banned-file edits via Cowork Edit tool.** If any of the following files were modified, confirmed that Python/bash patch was used — NOT the Cowork Edit tool:
