@@ -1,13 +1,13 @@
 /**
- * Unit + parity tests for the Refer-a-Friend pure logic (D-211 Phase 13).
+ * Unit + parity tests for the Refer-a-Friend pure logic (D-211 Phase 13,
+ * re-ported #576).
  *
- * Pins refer-a-friend.html @ main behavior, WITH the two documented bugs folded:
- *   - BUG 1 (column-order): referralRowCells() yields all four header columns
- *     [Friend's Name | Date Referred | Status | Commission] (the static body row
- *     dropped Commission and transposed Status/Date).
- *   - BUG 2 ($50 vs $200): summarizeReferrals().earned = completed * $200.
- * Plus: referral link/code, the W-9 banner gate, the homeowner launch gate, the
- * share-message builders, and the VERBATIM Tier-3 tax/legal copy (byte-for-byte).
+ * Pins refer-a-friend.html @ main current behavior: the two-step referrals
+ * lookup (referral_agents.id -> referrals.referral_agent_id, #567), the full
+ * 7-value status enum + paid/pending commission split (D-139), and the
+ * get_or_create_customer_referral_code() RPC shape (v100/#624) — plus the
+ * W-9 banner gate, the homeowner launch gate, the share-message builders, and
+ * the VERBATIM Tier-3 tax/legal copy (byte-for-byte).
  *
  * No network / supabase calls — every helper is side-effect-free.
  */
@@ -17,10 +17,8 @@ import {
   type CustomerReferral,
   PUBLIC_SITE_URL,
   REFERRAL_COMMISSION_USD,
-  REFERRAL_CODE_CHARS,
   COMING_SOON_REDIRECT,
   referralUrl,
-  generateReferralCode,
   referralFriendName,
   referralDate,
   referralStatusLabel,
@@ -62,22 +60,16 @@ describe('referral link + code', () => {
     expect(referralUrl('ABC123', 'https://staging.otterquote.com')).toBe('https://staging.otterquote.com/ref/ABC123');
     expect(PUBLIC_SITE_URL).toBe('https://otterquote.com');
   });
-  it('generateReferralCode is 8 chars from the A–Z0–9 alphabet', () => {
-    expect(generateReferralCode(() => 0)).toBe('AAAAAAAA');
-    const code = generateReferralCode(() => 0.5);
-    expect(code).toHaveLength(8);
-    expect(code).toMatch(/^[A-Z0-9]{8}$/);
-    expect(REFERRAL_CODE_CHARS).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789');
-  });
 });
 
 // ============================================================
-// Referrals table — BUG 1 (column-order / missing Commission)
+// Referrals table — full 7-status enum + all four header columns
 // ============================================================
-describe('referral table cells — BUG-1 fix (four columns, header order)', () => {
-  it('referralFriendName: referee_email || "—"', () => {
-    expect(referralFriendName({ referee_email: 'jane@x.com' })).toBe('jane@x.com');
-    expect(referralFriendName({ referee_email: null })).toBe('—');
+describe('referral table cells (four columns, header order, #576)', () => {
+  it('referralFriendName: homeowner_name || homeowner_email || positional fallback', () => {
+    expect(referralFriendName({ homeowner_name: 'Jane Doe', homeowner_email: 'jane@x.com' }, 0)).toBe('Jane Doe');
+    expect(referralFriendName({ homeowner_name: null, homeowner_email: 'jane@x.com' }, 0)).toBe('jane@x.com');
+    expect(referralFriendName({ homeowner_name: null, homeowner_email: null }, 2)).toBe('Referral #3');
   });
   it('referralDate: en-US short date; null → "—"', () => {
     expect(referralDate(null)).toBe('—');
@@ -85,55 +77,69 @@ describe('referral table cells — BUG-1 fix (four columns, header order)', () =
       new Date('2026-03-04T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
     );
   });
-  it('referralStatusLabel capitalizes; empty → "Pending"', () => {
-    expect(referralStatusLabel('completed')).toBe('Completed');
-    expect(referralStatusLabel('signed')).toBe('Signed');
+  it('referralStatusLabel covers all 7 statuses; unrecognized/empty → "Pending"', () => {
+    expect(referralStatusLabel('clicked')).toBe('Clicked');
+    expect(referralStatusLabel('registered')).toBe('Signed Up');
+    expect(referralStatusLabel('claim_submitted')).toBe('Project Submitted');
+    expect(referralStatusLabel('bid_received')).toBe('Bids In');
+    expect(referralStatusLabel('contract_signed')).toBe('Contract Signed');
+    expect(referralStatusLabel('job_completed')).toBe('Job Completed');
+    expect(referralStatusLabel('commission_paid')).toBe('Commission Paid');
     expect(referralStatusLabel(null)).toBe('Pending');
     expect(referralStatusLabel('')).toBe('Pending');
+    expect(referralStatusLabel('some_unknown_value')).toBe('Pending');
   });
-  it('referralStatusClass reproduces the static 3-way color logic', () => {
-    expect(referralStatusClass('completed')).toBe('status-completed');
-    expect(referralStatusClass('signed')).toBe('status-in-progress');
+  it('referralStatusClass covers all 7 statuses; unrecognized/empty → status-clicked', () => {
     expect(referralStatusClass('clicked')).toBe('status-clicked');
+    expect(referralStatusClass('registered')).toBe('status-registered');
+    expect(referralStatusClass('claim_submitted')).toBe('status-submitted');
+    expect(referralStatusClass('bid_received')).toBe('status-in-progress');
+    expect(referralStatusClass('contract_signed')).toBe('status-in-progress');
+    expect(referralStatusClass('job_completed')).toBe('status-completed');
+    expect(referralStatusClass('commission_paid')).toBe('status-paid');
     expect(referralStatusClass(null)).toBe('status-clicked');
   });
-  it('referralCommissionCell: completed → $200, else "—" (the OMITTED column)', () => {
-    expect(referralCommissionCell('completed')).toBe('$200');
-    expect(referralCommissionCell('signed')).toBe('—');
+  it('referralCommissionCell: job_completed or commission_paid → $200, else "—"', () => {
+    expect(referralCommissionCell('job_completed')).toBe('$200');
+    expect(referralCommissionCell('commission_paid')).toBe('$200');
+    expect(referralCommissionCell('bid_received')).toBe('—');
     expect(referralCommissionCell(null)).toBe('—');
   });
   it('referralRowCells yields ALL FOUR header columns in order', () => {
-    const cells = referralRowCells(mkRef({ referee_email: 'a@b.com', created_at: '2026-03-04T00:00:00Z', status: 'completed' }));
-    expect(cells.friend).toBe('a@b.com');
+    const cells = referralRowCells(
+      mkRef({ homeowner_name: 'Jane Doe', created_at: '2026-03-04T00:00:00Z', status: 'commission_paid' }),
+      0,
+    );
+    expect(cells.friend).toBe('Jane Doe');
     expect(cells.date).toBe(referralDate('2026-03-04T00:00:00Z'));
-    expect(cells.statusLabel).toBe('Completed');
-    expect(cells.statusClass).toBe('status-completed');
-    expect(cells.commission).toBe('$200'); // ← the column the static row dropped
+    expect(cells.statusLabel).toBe('Commission Paid');
+    expect(cells.statusClass).toBe('status-paid');
+    expect(cells.commission).toBe('$200');
   });
 });
 
 // ============================================================
-// Summary — BUG 2 ($50 → $200)
+// Summary — D-139 paid/pending split (#567)
 // ============================================================
-describe('summarizeReferrals — BUG-2 fix ($200, not $50)', () => {
+describe('summarizeReferrals — paid/pending split', () => {
   const refs: CustomerReferral[] = [
-    mkRef({ status: 'completed' }),
-    mkRef({ status: 'completed' }),
-    mkRef({ status: 'completed' }),
-    mkRef({ status: 'signed' }),
+    mkRef({ status: 'commission_paid' }),
+    mkRef({ status: 'commission_paid' }),
+    mkRef({ status: 'job_completed' }),
+    mkRef({ status: 'bid_received' }),
     mkRef({ status: 'clicked' }),
   ];
-  it('earned = completed × $200 (NOT × $50)', () => {
+  it('earned counts paid only; pending counts job_completed (not yet paid) separately', () => {
     const s = summarizeReferrals(refs);
     expect(s.total).toBe(5);
-    expect(s.completed).toBe(3);
-    expect(s.earned).toBe(600); // 3 × $200 — the old bug produced 150
-    expect(s.earned).not.toBe(150);
+    expect(s.completed).toBe(3); // 2 paid + 1 completedUnpaid
+    expect(s.earned).toBe(400); // 2 × $200 paid
+    expect(s.pending).toBe(200); // 1 × $200 job_completed, not yet paid
     expect(REFERRAL_COMMISSION_USD).toBe(200);
   });
-  it('referralSummaryLine format is byte-for-byte the static (· separators)', () => {
-    expect(referralSummaryLine({ total: 5, completed: 3, earned: 600 })).toBe('5 referrals · 3 completed · $600 earned');
-    expect(referralSummaryLine({ total: 1, completed: 0, earned: 0 })).toBe('1 referral · 0 completed · $0 earned');
+  it('referralSummaryLine format is byte-for-byte the static (· separators, earned = paid only)', () => {
+    expect(referralSummaryLine({ total: 5, completed: 3, earned: 400, pending: 200 })).toBe('5 referrals · 3 completed · $400 earned');
+    expect(referralSummaryLine({ total: 1, completed: 0, earned: 0, pending: 0 })).toBe('1 referral · 0 completed · $0 earned');
   });
 });
 

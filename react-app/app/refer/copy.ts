@@ -27,6 +27,12 @@ export const LOGIN_ROUTE = '/login';
 /** D-172 banner deep-link — the STATIC partner dashboard W-9 upload anchor. */
 export const W9_UPLOAD_LINK = '/partner-dashboard.html#w9Upload';
 
+/** #576/renderReferralCodeError() verbatim: shown when the
+ *  get_or_create_customer_referral_code() RPC fails — never fabricate a fake
+ *  code / broken /ref/<falsy> link instead. */
+export const REFERRAL_CODE_ERROR_TEXT =
+  "We couldn't generate your referral link right now. Please refresh the page — if this keeps happening, contact support@otterquote.com.";
+
 // ── Hero ──────────────────────────────────────────────────────────────────────
 export const HERO = {
   heading: 'Love Your Project Results? Share the Love — and Earn $200',
