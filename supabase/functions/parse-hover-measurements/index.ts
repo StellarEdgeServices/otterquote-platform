@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
 import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.11.0";
+import { freezeScopeForClaim } from "../_shared/roofing-scope.ts";
 
 // ============================================================================
 // parse-hover-measurements
@@ -14,8 +15,15 @@ import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.11.0";
 //   5. Writes a normalized JSONB blob to claims.hover_measurements.
 //
 // Contract:
-//   - Auth: Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY> (server-to-server;
-//     invoked by create-docusign-envelope). No user-JWT path.
+//   - Auth (#588 Phase 1): service-role bearer (server-to-server; invoked by
+//     create-docusign-envelope / hover-webhook) OR a user JWT whose auth.uid()
+//     owns the claim (invoked by dashboard.html at measurement-upload time —
+//     the parse-loss-sheet pattern).
+//   - #588 Phase 1 (decision #1/#4): after persisting measurements, freezes
+//     Exhibit A Section 1 into scope_records (generate-once; never recomputed).
+//   - Fail-loud (#588 Phase 1): parse misses on a claim that HAS a stored
+//     report, and any freeze failure, insert a platform_alerts_log row —
+//     silent console-only failure is no longer acceptable in this pipeline.
 //   - Returns { ok:true, measurements } on success.
 //   - Returns 200 { ok:false, error } on a "soft" miss (no measurements_filename,
 //     download failure, unreadable PDF, or ROOF SUMMARY not found) — nothing to
@@ -156,11 +164,11 @@ serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // ===== AUTH: service-role bearer only =====
+  // ===== AUTH: service-role bearer OR claim-owner user JWT (#588 Phase 1) =====
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const authHeader = req.headers.get("Authorization") || "";
   const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!serviceRoleKey || bearer !== serviceRoleKey) {
+  if (!serviceRoleKey || !bearer) {
     return jsonResponse(401, { ok: false, error: "Unauthorized" }, corsHeaders);
   }
 
@@ -181,6 +189,39 @@ serve(async (req: Request) => {
     return jsonResponse(500, { ok: false, error: "SUPABASE_URL not configured" }, corsHeaders);
   }
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  if (bearer !== serviceRoleKey) {
+    // User-JWT path (dashboard upload-time invocation): the token must resolve
+    // to a user who OWNS this claim. Anything else is rejected.
+    const { data: userData, error: authErr } = await supabase.auth.getUser(bearer);
+    const caller = userData?.user;
+    if (authErr || !caller) {
+      return jsonResponse(401, { ok: false, error: "Unauthorized" }, corsHeaders);
+    }
+    const { data: claimOwnerRow, error: ownErr } = await supabase
+      .from("claims")
+      .select("user_id")
+      .eq("id", claimId)
+      .maybeSingle();
+    if (ownErr || !claimOwnerRow || claimOwnerRow.user_id !== caller.id) {
+      return jsonResponse(403, { ok: false, error: "Forbidden" }, corsHeaders);
+    }
+  }
+
+  // Fail-loud helper (#588 Phase 1): a parse failure on a claim that has a
+  // stored report is an operational event, not a console line.
+  async function alertParseMiss(message: string): Promise<void> {
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "measurement_parse_failure",
+        function_name: "parse-hover-measurements",
+        message: `claim ${claimId}: ${message}`,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error("parse-hover-measurements: alert insert failed:", alertErr);
+    }
+  }
 
   try {
     // 1. Read the stored Hover report path off the claim.
@@ -206,17 +247,15 @@ serve(async (req: Request) => {
         .from("claim-documents")
         .download(String(filename));
       if (dlErr || !blob) {
-        return jsonResponse(200, {
-          ok: false,
-          error: `Download failed for claim-documents/${filename}: ${dlErr?.message ?? "no data"}`,
-        }, corsHeaders);
+        const msg = `Download failed for claim-documents/${filename}: ${dlErr?.message ?? "no data"}`;
+        await alertParseMiss(msg);
+        return jsonResponse(200, { ok: false, error: msg }, corsHeaders);
       }
       pdfBytes = new Uint8Array(await blob.arrayBuffer());
     } catch (dlEx) {
-      return jsonResponse(200, {
-        ok: false,
-        error: `Download exception: ${dlEx instanceof Error ? dlEx.message : String(dlEx)}`,
-      }, corsHeaders);
+      const msg = `Download exception: ${dlEx instanceof Error ? dlEx.message : String(dlEx)}`;
+      await alertParseMiss(msg);
+      return jsonResponse(200, { ok: false, error: msg }, corsHeaders);
     }
 
     // 3. Extract all-page text via unpdf. An unreadable/corrupt PDF is a soft
@@ -228,10 +267,9 @@ serve(async (req: Request) => {
       const t = (extracted as { text?: unknown })?.text;
       fullText = Array.isArray(t) ? t.join("\n") : String(t ?? "");
     } catch (exErr) {
-      return jsonResponse(200, {
-        ok: false,
-        error: `PDF text extraction failed: ${exErr instanceof Error ? exErr.message : String(exErr)}`,
-      }, corsHeaders);
+      const msg = `PDF text extraction failed: ${exErr instanceof Error ? exErr.message : String(exErr)}`;
+      await alertParseMiss(msg);
+      return jsonResponse(200, { ok: false, error: msg }, corsHeaders);
     }
 
     // 4. Parse the ROOF SUMMARY.
@@ -243,6 +281,9 @@ serve(async (req: Request) => {
       parsed.step_flashing_lf != null || parsed.flashing_lf != null || parsed.predominant_pitch != null;
     if (!anyValue) {
       // Soft miss — ROOF SUMMARY not found / not parseable in this document.
+      // Loud anyway: a stored report we cannot read blocks the frozen-scope
+      // release gate for this claim (#588 decision #8).
+      await alertParseMiss(`ROOF SUMMARY not found in PDF (${filename})`);
       return jsonResponse(200, { ok: false, error: "ROOF SUMMARY not found in PDF" }, corsHeaders);
     }
 
@@ -268,10 +309,31 @@ serve(async (req: Request) => {
       .eq("id", claimId);
     if (upErr) {
       // Hard failure — DB write error.
+      await alertParseMiss(`claims update failed: ${upErr.message}`);
       return jsonResponse(500, { ok: false, error: `claims update failed: ${upErr.message}` }, corsHeaders);
     }
 
-    return jsonResponse(200, { ok: true, measurements }, corsHeaders);
+    // 6. Freeze Exhibit A Section 1 (#588 Phase 2, decisions #1/#4): generated
+    //    once at parse time from pure measured values; if an active frozen
+    //    scope already exists this is a no-op. Freeze failure is HARD + loud —
+    //    the release gate depends on this record existing.
+    let scopeRecord: Record<string, unknown> | null = null;
+    try {
+      const frozen = await freezeScopeForClaim(supabase, claimId, measurements, "pdf_parse");
+      scopeRecord = frozen.record;
+      console.log(`parse-hover-measurements: scope ${frozen.created ? "frozen" : "already frozen"} for claim ${claimId} (hash ${String(frozen.record.content_hash).slice(0, 12)}…)`);
+    } catch (freezeErr) {
+      const msg = `scope freeze failed: ${freezeErr instanceof Error ? freezeErr.message : String(freezeErr)}`;
+      await alertParseMiss(msg);
+      return jsonResponse(500, { ok: false, error: msg }, corsHeaders);
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      measurements,
+      scope_frozen: true,
+      scope_content_hash: scopeRecord?.content_hash ?? null,
+    }, corsHeaders);
   } catch (err) {
     // Unexpected hard failure.
     console.error("parse-hover-measurements error:", err);

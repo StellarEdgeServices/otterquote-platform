@@ -22,8 +22,25 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { freezeScopeForClaim, mapHoverApiMeasurements } from "../_shared/roofing-scope.ts";
 
 const HOVER_API_BASE = "https://hover.to";
+
+// Fail-loud helper (#588 Phase 1): the paid $150 Hover path failing to produce
+// usable measurements is an operational incident, not a console line.
+// deno-lint-ignore no-explicit-any
+async function alertMeasurementFailure(supabase: any, message: string): Promise<void> {
+  try {
+    await supabase.from("platform_alerts_log").insert({
+      alert_type: "hover_measurement_failure",
+      function_name: "hover-webhook",
+      message,
+      sent_at: new Date().toISOString(),
+    });
+  } catch (alertErr) {
+    console.error("hover-webhook: alert insert failed:", alertErr);
+  }
+}
 
 serve(async (req) => {
   // Hover webhooks are POST requests
@@ -176,20 +193,61 @@ serve(async (req) => {
               })
               .eq("id", order.id);
 
-            // Also update the claim so Hover data is available AND the dashboard
-            // submit gate opens — #481: a paid, completed Hover order must set
-            // has_measurements (the cash-claim Submit-for-Bids hard gate).
+            // ── #588 Phase 1: storage-path bug fix ──
+            // The old code wrote measurements_filename =
+            // `hover_${job_id}_measurements.json` — a name that corresponds to
+            // NO storage object, so parse-hover-measurements could never
+            // download it and the paid $150 Hover path produced no parsed
+            // output. Reconciled with #484: the only real storage location for
+            // a Hover PDF is get-hover-pdf's cache path
+            // `claim-documents/{claim_id}/hover_measurements_{job_id}.pdf`
+            // (written on first on-demand fetch; get-hover-pdf is now
+            // cache-first). We point measurements_filename at that canonical
+            // path — and, since the API JSON in hand already carries the real
+            // measurements, normalize it straight into claims.hover_measurements
+            // so no PDF parse is needed on this path at all.
+            const normalized = mapHoverApiMeasurements(measurements);
             await supabase
               .from("claims")
               .update({
                 has_measurements: true,
-                measurements_filename: `hover_${job_id}_measurements.json`,
+                measurements_filename: `${order.claim_id}/hover_measurements_${job_id}.pdf`,
+                ...(normalized ? {
+                  hover_measurements: {
+                    source: "hover_api",
+                    parsed_at: new Date().toISOString(),
+                    ...normalized,
+                  },
+                } : {}),
               })
               .eq("id", order.claim_id);
 
             console.log(
-              `Measurements stored for hover_order ${order.id}, claim ${order.claim_id}`
+              `Measurements stored for hover_order ${order.id}, claim ${order.claim_id} (normalized: ${!!normalized})`
             );
+
+            if (!normalized) {
+              await alertMeasurementFailure(
+                supabase,
+                `claim ${order.claim_id} / hover job ${job_id}: measurements.json fetched but no recognizable roof fields — claims.hover_measurements NOT populated; frozen scope cannot generate.`
+              );
+            } else {
+              // ── #588 Phase 2 (decision #1): freeze Exhibit A Section 1 at
+              // report-parse time. Generate-once; no-op if already frozen.
+              try {
+                const frozen = await freezeScopeForClaim(
+                  supabase, order.claim_id,
+                  { source: "hover_api", ...normalized },
+                  "hover_api"
+                );
+                console.log(`hover-webhook: scope ${frozen.created ? "frozen" : "already frozen"} for claim ${order.claim_id}`);
+              } catch (freezeErr) {
+                await alertMeasurementFailure(
+                  supabase,
+                  `claim ${order.claim_id}: scope freeze failed after Hover completion: ${freezeErr instanceof Error ? freezeErr.message : String(freezeErr)}`
+                );
+              }
+            }
 
             // Create a notification for the homeowner
             const { data: claim } = await supabase
@@ -246,10 +304,11 @@ serve(async (req) => {
               }
             }
           } else {
-            console.error(
-              "Failed to fetch measurements:",
-              measurementsResponse.status,
-              await measurementsResponse.text()
+            const respText = await measurementsResponse.text();
+            console.error("Failed to fetch measurements:", measurementsResponse.status, respText);
+            await alertMeasurementFailure(
+              supabase,
+              `claim ${order.claim_id} / hover job ${job_id}: measurements fetch returned HTTP ${measurementsResponse.status} — paid Hover order completed with NO measurements attached.`
             );
           }
 
@@ -259,8 +318,14 @@ serve(async (req) => {
           // with a valid Bearer token from hover_tokens. Build a dedicated on-demand fetch endpoint.
         }
       } catch (measurementError) {
+        // Still non-fatal to the webhook response (Hover must get a 200), but
+        // no longer silent (#588 Phase 1 fail-loud): a paid order completing
+        // without measurements blocks the claim's entire downstream funnel.
         console.error("Error fetching measurements:", measurementError);
-        // Non-fatal — the order is still marked complete
+        await alertMeasurementFailure(
+          supabase,
+          `claim ${order.claim_id} / hover job ${job_id}: measurement fetch/store threw: ${measurementError instanceof Error ? measurementError.message : String(measurementError)}`
+        );
       }
     }
 

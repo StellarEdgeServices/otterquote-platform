@@ -2934,6 +2934,26 @@
                 console.warn('[uploadFile] parse-loss-sheet failed (non-fatal):', parseErr);
               }
             }
+
+            // #588 Phase 1: parse measurements AT UPLOAD TIME (decision #1 —
+            // the scope of work generates once, when the report parses; the
+            // old flow deferred parsing to contract-signing time). The EF also
+            // freezes Exhibit A Section 1. Failure here is surfaced to the
+            // homeowner (fail-loud), but the upload itself stands.
+            if (type === 'measurements' && uploadedStoragePath) {
+              try {
+                const { data: parseData, error: parseInvokeErr } = await sb.functions.invoke('parse-hover-measurements', {
+                  body: { claim_id: currentClaim.id }
+                });
+                if (parseInvokeErr || !parseData?.ok) {
+                  console.warn('[uploadFile] parse-hover-measurements miss:', parseInvokeErr || parseData?.error);
+                  showError('Your file was uploaded, but we could not automatically read the measurements in it. If this is not a Hover measurement report PDF, please upload one — measurements are required before contractors can bid.');
+                }
+              } catch (mParseErr) {
+                console.warn('[uploadFile] parse-hover-measurements failed:', mParseErr);
+                showError('Your file was uploaded, but we could not automatically read the measurements in it. Please try again or upload a Hover measurement report PDF.');
+              }
+            }
           }
 
           // Update local claim state
@@ -2981,6 +3001,46 @@
           // invisible to every contractor. D-165: release each non-siding
           // trade at submit; siding stays gated on the D-164 Hover design
           // completion webhook.
+          // ── #588 decision #8: HARD release gate ──
+          // No retail roofing job reaches contractors until the frozen
+          // Exhibit A Section 1 scope exists. If it is missing, try one lazy
+          // parse+freeze (covers claims whose measurements predate this gate),
+          // then block if still absent. Server-side backstop lives in
+          // create-docusign-envelope.
+          const needsFrozenScope =
+            !CONFIG.DEMO_MODE && sb && currentClaim.id &&
+            currentClaim.funding_type === 'cash' &&
+            (Array.isArray(currentClaim.trades) ? currentClaim.trades : [])
+              .some(function (t) { return String(t).toLowerCase().includes('roof'); });
+          if (needsFrozenScope) {
+            const scopeExists = async function () {
+              const { data: sr, error: srErr } = await sb
+                .from('scope_records')
+                .select('id')
+                .eq('claim_id', currentClaim.id)
+                .eq('trade', 'roofing')
+                .is('superseded_at', null)
+                .limit(1);
+              if (srErr) { console.warn('[submitForBids] scope_records check failed:', srErr); return false; }
+              return Array.isArray(sr) && sr.length > 0;
+            };
+            let frozen = await scopeExists();
+            if (!frozen) {
+              try {
+                await sb.functions.invoke('parse-hover-measurements', { body: { claim_id: currentClaim.id } });
+              } catch (lazyErr) {
+                console.warn('[submitForBids] lazy parse failed:', lazyErr);
+              }
+              frozen = await scopeExists();
+            }
+            if (!frozen) {
+              btn.disabled = false;
+              btn.textContent = 'Submit for Bids';
+              showError('We could not generate the scope of work from your measurement report, so your project cannot be released to contractors yet. Please upload a Hover measurement report PDF, or contact support if this keeps happening.');
+              return;
+            }
+          }
+
           const submitUpdate = { status: 'active', ready_for_bids: true };
           const releasableTrades = ['roofing', 'gutters', 'windows'];
           (Array.isArray(currentClaim.trades) ? currentClaim.trades : []).forEach(function (t) {

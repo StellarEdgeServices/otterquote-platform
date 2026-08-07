@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
+import { freezeScopeForClaim, installQty } from "../_shared/roofing-scope.ts";
 // deno-lint-ignore no-explicit-any
 async function getHomeownerName(supabase, claimId) {
   const empty = {
@@ -475,6 +476,42 @@ function generateComplianceAddendumPdf(contractorName, homeownerName, contractDa
   const pdfBytes = new TextEncoder().encode(pdfContent);
   return base64EncodeBinary(pdfBytes);
 }
+// ========== FROZEN SCOPE (Exhibit A Section 1 — #588) ==========
+// The frozen scope is the AUTHORITATIVE Section 1: generated once at
+// report-parse time, stored in scope_records with a content hash, rendered
+// VERBATIM here (locked decision #4 — never recomputed at contract time).
+// deno-lint-ignore no-explicit-any
+async function fetchFrozenScope(supabase, claimId) {
+  const { data, error } = await supabase
+    .from("scope_records")
+    .select("id, scope_json, content_hash, version, catalog_version, generated_at")
+    .eq("claim_id", claimId)
+    .eq("trade", "roofing")
+    .is("superseded_at", null)
+    .maybeSingle();
+  if (error) {
+    console.error(`fetchFrozenScope(${claimId}) failed:`, error.message);
+    return null;
+  }
+  return data ?? null;
+}
+
+// Fail-loud (#588 Phase 1): contract-layer scope failures are operational
+// incidents — recorded in platform_alerts_log, never swallowed.
+// deno-lint-ignore no-explicit-any
+async function alertScopeFailure(supabase, message) {
+  try {
+    await supabase.from("platform_alerts_log").insert({
+      alert_type: "frozen_scope_gate_failure",
+      function_name: FUNCTION_NAME,
+      message,
+      sent_at: new Date().toISOString(),
+    });
+  } catch (alertErr) {
+    console.error("alertScopeFailure insert failed:", alertErr);
+  }
+}
+
 // ========== HOVER MEASUREMENTS FETCH ==========
 async function fetchHoverMeasurements(supabase, claimId) {
   const toNum = (v) => {
@@ -564,7 +601,7 @@ async function fetchHoverMeasurements(supabase, claimId) {
 
 // ========== RETAIL SCOPE OF WORK PDF ==========
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, frozenScope, declaredWastePct } = params;
   const va = valueAdds || {};
   const pc = projectConfirmation || null;
   // ---- Page geometry ----
@@ -724,7 +761,7 @@ function generateRetailScopeOfWorkPdf(params) {
   const hasRoofMeasurements = !!(m && (m.roofAreaSf != null || m.squares != null || m.ridgeHipLf != null ||
     m.valleyLf != null || m.rakeLf != null || m.eaveLf != null || m.dripEdgeLf != null ||
     m.stepFlashingLf != null || m.flashingLf != null));
-  if (hasRoofing && hasRoofMeasurements) {
+  if (hasRoofing && (hasRoofMeasurements || frozenScope)) {
     ensure(34);
     addText(LEFT_X, y, 12, "F2", "MEASUREMENT SUMMARY (from Hover)");
     y -= 16;
@@ -750,45 +787,69 @@ function generateRetailScopeOfWorkPdf(params) {
     y -= 6;
     hLine(y);
     y -= 16;
-    // ---- LINE-ITEM SCOPE table (quantities only; no unit prices) ----
-    addText(LEFT_X, y, 12, "F2", "LINE-ITEM SCOPE");
+    // ---- LINE-ITEM SCOPE — Exhibit A Section 1 (FROZEN, #588) ----
+    // Rendered VERBATIM from the frozen scope_records row (locked decision
+    // #4). Quantities are PURE MEASURED values — no waste multipliers
+    // (catalog v1.0 amendment #1). The contractor's declared waste % (a bid
+    // parameter) computes the install-plan quantity, printed ALONGSIDE the
+    // frozen measured quantity on SQ-material rows.
+    const fs = frozenScope?.scope_json ?? null;
+    const fsRows = Array.isArray(fs?.rows) ? fs.rows : [];
+    addText(LEFT_X, y, 12, "F2", "LINE-ITEM SCOPE - EXHIBIT A SECTION 1");
     y -= 8;
-    addText(LEFT_X, y, 8, "F1", "Quantities derived from Hover aerial measurements. Field-verified items confirmed on site. No unit pricing shown.");
-    y -= 14;
-    const colNum = 50, colItem = 66, colQty = 246, colUnit = 286, colBasis = 330, colNotes = 448;
-    const itemMaxChars = 44, notesMaxChars = 28;
+    if (fs) {
+      addText(LEFT_X, y, 8, "F1", `Frozen minimum scope. Catalog ${fs.catalog_version || "?"} | Record hash ${String(frozenScope.content_hash || "").slice(0, 16)} | v${frozenScope.version ?? 1}`);
+      y -= 10;
+      addText(LEFT_X, y, 8, "F1", "Quantities are exact measured values from the measurement report (no waste applied). Contractors price this scope as-is;");
+      y -= 10;
+      addText(LEFT_X, y, 8, "F1", "additional line items appear in Section 3. No line may be altered or removed. No unit pricing shown.");
+      y -= 14;
+    } else {
+      addText(LEFT_X, y, 8, "F1", "Quantities derived from aerial measurements. Field-verified items confirmed on site. No unit pricing shown.");
+      y -= 14;
+    }
+    const colNum = 50, colItem = 66, colQty = 240, colUnit = 296, colBasis = 330, colNotes = 448;
+    const itemMaxChars = 42, notesMaxChars = 28;
     const drawTableHeader = () => {
       ensure(18);
       addText(colNum, y, 8, "F2", "#");
       addText(colItem, y, 8, "F2", "Work Item");
-      addText(colQty, y, 8, "F2", "Qty");
+      addText(colQty, y, 8, "F2", "Measured");
       addText(colUnit, y, 8, "F2", "Unit");
-      addText(colBasis, y, 8, "F2", "Hover Basis");
+      addText(colBasis, y, 8, "F2", "Install Plan");
       addText(colNotes, y, 8, "F2", "Notes");
       y -= 3;
       hLine(y);
       y -= 11;
     };
-    const qtyStr = (val) => (val == null ? "per bid" : String(val));
-    const areaWaste = (sq != null) ? Math.ceil(sq * 1.1) : null; // area items + 10% waste (SQ)
-    const iceWater = (vv != null && ev != null) ? (vv + ev) : null;   // valleys + eaves
-    const starter = (ev != null && rk != null) ? (ev + rk) : null;    // eaves + rakes
-    const deckingTxt = (deckingPricePerSheet != null) ? `${fmt$(deckingPricePerSheet)}/sheet` : "per bid";
-    const redeckTxt = (fullRedeckPrice != null) ? fmt$(fullRedeckPrice) : "per bid";
-    const rows = [
-      { num: 1, item: "Tear off & dispose existing roofing (all layers)", qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Haul-off included" },
-      { num: 2, item: `Architectural laminate shingles - ${bidBrand || "per bid"}`, qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Per mfr. spec" },
-      { num: 3, item: "Synthetic underlayment", qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Full coverage" },
-      { num: 4, item: "Ice & water shield - valleys + eaves", qty: qtyStr(iceWater), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"} + eaves ${ev != null ? ev : "?"}`, notes: "Code / leak-prone areas" },
-      { num: 5, item: "Starter course", qty: qtyStr(starter), unit: "LF", basis: `Eaves ${ev != null ? ev : "?"} + rakes ${rk != null ? rk : "?"}`, notes: "Eaves & rakes" },
-      { num: 6, item: "Hip & ridge cap shingles", qty: qtyStr(rh), unit: "LF", basis: `Ridges/Hips ${rh != null ? rh : "?"}`, notes: "Matching profile" },
-      { num: 7, item: "Drip edge", qty: qtyStr(drip), unit: "LF", basis: `Perimeter ${drip != null ? drip : "?"}`, notes: "Eaves & rakes" },
-      { num: 8, item: "Closed-cut valley", qty: qtyStr(vv), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"}`, notes: "Per mfr." },
-      { num: 9, item: "Step flashing (roof-to-wall)", qty: qtyStr(st), unit: "LF", basis: `Step flashing ${st != null ? st : "?"}`, notes: "Replace" },
-      { num: 10, item: "Headwall / apron flashing", qty: qtyStr(fl), unit: "LF", basis: `Flashing ${fl != null ? fl : "?"}`, notes: "Replace" },
-      { num: 11, item: "Pipe boots / penetration flashings", qty: "field", unit: "EA", basis: "Field-verified", notes: "Count confirmed on site" },
-      { num: 12, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
-      { num: 13, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: `${deckingTxt}; full re-deck ${redeckTxt}` },
+    const qtyStr = (val) => (val == null ? "per field count" : String(val));
+    // Map frozen rows into render rows. The install-plan cell prints the
+    // contractor's waste-adjusted quantity for SQ-material rows only.
+    const rows = fsRows.length ? fsRows.map((fr) => {
+      let install = "-";
+      if (fr.sq_material && fr.measured_qty != null) {
+        install = declaredWastePct != null
+          ? `${installQty(Number(fr.measured_qty), declaredWastePct)} ${fr.unit} @ ${declaredWastePct}%`
+          : "per declared waste";
+      }
+      const item = fr.row_id === "field_shingles" && bidBrand
+        ? `${fr.item} - ${bidBrand}`
+        : fr.item;
+      return { num: fr.num, item, qty: qtyStr(fr.measured_qty), unit: fr.unit || "", basis: install, notes: fr.notes || "" };
+    }) : [
+      // Legacy fallback (no frozen scope — non-roofing or pre-#588 claims):
+      // measured-only rows, no synthesized composites, no waste arithmetic.
+      { num: 1, item: "Tear off & dispose existing roofing (all layers)", qty: qtyStr(sq), unit: "SQ", basis: "-", notes: "Haul-off included" },
+      { num: 2, item: `Architectural laminate shingles - ${bidBrand || "per bid"}`, qty: qtyStr(sq), unit: "SQ", basis: "-", notes: "Per mfr. spec" },
+      { num: 3, item: "Synthetic underlayment", qty: qtyStr(sq), unit: "SQ", basis: "-", notes: "Full coverage" },
+      { num: 4, item: "Ice & water shield - valleys", qty: qtyStr(vv), unit: "LF", basis: "-", notes: "Valleys" },
+      { num: 5, item: "Starter course - eaves", qty: qtyStr(ev), unit: "LF", basis: "-", notes: "Eaves" },
+      { num: 6, item: "Hip & ridge cap shingles", qty: qtyStr(rh), unit: "LF", basis: "-", notes: "Matching profile" },
+      { num: 7, item: "Drip edge", qty: qtyStr(drip), unit: "LF", basis: "-", notes: "Eaves & rakes" },
+      { num: 8, item: "Closed-cut valley", qty: qtyStr(vv), unit: "LF", basis: "-", notes: "Per mfr." },
+      { num: 9, item: "Step flashing (roof-to-wall)", qty: qtyStr(st), unit: "LF", basis: "-", notes: "Replace" },
+      { num: 10, item: "Headwall / apron flashing", qty: qtyStr(fl), unit: "LF", basis: "-", notes: "Replace" },
+      { num: 11, item: "Pipe boots / penetration flashings", qty: "field", unit: "EA", basis: "-", notes: "Count confirmed on site" },
     ];
     drawTableHeader();
     const lineH = 10;
@@ -810,6 +871,32 @@ function generateRetailScopeOfWorkPdf(params) {
       y = topY - rowH;
     }
     y -= 4;
+    // Waste declaration line — prints BOTH quantities in words (amendment #1).
+    if (fs) {
+      const sqMeasured = fs.measurements?.squares;
+      if (declaredWastePct != null && sqMeasured != null) {
+        ensure(12);
+        addText(LEFT_X, y, 8, "F1", `Measured: ${sqMeasured} SQ (frozen) - Contractor install plan: ${installQty(Number(sqMeasured), declaredWastePct)} SQ @ ${declaredWastePct}% declared waste. Waste applies to SQ-material rows only.`);
+        y -= 12;
+      } else if (declaredWastePct == null) {
+        ensure(12);
+        addText(LEFT_X, y, 8, "F1", "No waste percentage declared on this bid. Frozen measured quantities govern; material overage is the contractor's responsibility.");
+        y -= 12;
+      }
+      // Decking allowance note (kept from prior scope rendering — priced
+      // allowance, not a catalog quantity row).
+      const deckingTxt = (deckingPricePerSheet != null) ? `${fmt$(deckingPricePerSheet)}/sheet` : "per bid";
+      const redeckTxt = (fullRedeckPrice != null) ? fmt$(fullRedeckPrice) : "per bid";
+      ensure(12);
+      addText(LEFT_X, y, 8, "F1", `Decking replacement allowance: ${deckingTxt}; full re-deck ${redeckTxt}. As required, confirmed on tear-off.`);
+      y -= 12;
+      // Catalog note rows (N-series), rendered verbatim from the frozen
+      // record. Placeholder markers ("[N...") are never printed.
+      const disclosures = (Array.isArray(fs.disclosures) ? fs.disclosures : []).filter((d) => typeof d === "string" && d.trim() && !d.trim().startsWith("[N"));
+      for (const d of disclosures) {
+        y = addWrappedText(LEFT_X, y, 8, "F1", d, 500);
+      }
+    }
     hLine(y);
     y -= 16;
   }
@@ -1486,49 +1573,87 @@ async function handleContractorSign(supabase, requestBody, tokenInfo, corsHeader
   const isRetail = fundingType !== "insurance";
   let scopeOfWorkBase64 = null;
   if (isRetail) {
+    const sowTrades0 = (Array.isArray(claimData?.trades) && claimData.trades.length) ? claimData.trades : [trade];
+    const hasRoofingTrade = sowTrades0.some((t) => String(t).toLowerCase().includes("roof"));
     try {
-      // If the Hover report has not yet been parsed into claims.hover_measurements
-      // but a source report PDF is on file, invoke parse-hover-measurements first
-      // so the line-item Scope of Work is built from real measurements. Non-fatal:
-      // any failure just means the SOW falls back to whatever fetchHoverMeasurements
-      // can find (or renders without the Hover measurement block).
-      if (!claimData?.hover_measurements && claimData?.measurements_filename) {
-        try {
-          const parseUrl = `${Deno.env.get("SUPABASE_URL") ?? "https://yeszghaspzwwstvsrioa.supabase.co"}/functions/v1/parse-hover-measurements`;
-          const parseResp = await fetch(parseUrl, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              claim_id
-            })
-          });
-          if (parseResp.ok) {
-            const parseJson = await parseResp.json().catch(() => null);
-            console.log(`parse-hover-measurements(claim ${claim_id}): ok=${parseJson?.ok ?? "?"}`);
-          } else {
-            console.warn(`parse-hover-measurements returned HTTP ${parseResp.status} for claim ${claim_id}`);
+      // ── #588: resolve the FROZEN Exhibit A Section 1 (roofing retail) ──
+      // Order: (a) existing scope_records row; (b) lazy freeze from
+      // claims.hover_measurements (claims that parsed before the freeze
+      // shipped); (c) invoke parse-hover-measurements (parses + freezes) when
+      // only the source PDF exists. If none of these produce a frozen scope,
+      // the contract DOES NOT go out — locked decision #8's hard gate at the
+      // contract layer, replacing the old silent continue-without-SOW.
+      let frozenScope = null;
+      if (hasRoofingTrade) {
+        frozenScope = await fetchFrozenScope(supabase, claim_id);
+        if (!frozenScope && claimData?.hover_measurements) {
+          try {
+            const lazy = await freezeScopeForClaim(
+              supabase, claim_id, claimData.hover_measurements,
+              String(claimData.hover_measurements?.source ?? "pdf_parse")
+            );
+            frozenScope = lazy.record;
+            console.log(`Lazy-froze scope for claim ${claim_id} at contract time`);
+          } catch (lazyErr) {
+            console.error("Lazy scope freeze failed:", lazyErr);
           }
-        } catch (parseErr) {
-          console.warn("parse-hover-measurements invocation failed (non-fatal):", parseErr);
+        }
+        if (!frozenScope && claimData?.measurements_filename) {
+          try {
+            const parseUrl = `${Deno.env.get("SUPABASE_URL") ?? "https://yeszghaspzwwstvsrioa.supabase.co"}/functions/v1/parse-hover-measurements`;
+            const parseResp = await fetch(parseUrl, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({ claim_id })
+            });
+            const parseJson = await parseResp.json().catch(() => null);
+            console.log(`parse-hover-measurements(claim ${claim_id}): HTTP ${parseResp.status}, ok=${parseJson?.ok ?? "?"}`);
+          } catch (parseErr) {
+            console.warn("parse-hover-measurements invocation failed:", parseErr);
+          }
+          frozenScope = await fetchFrozenScope(supabase, claim_id);
+        }
+        if (!frozenScope) {
+          const gateMsg = `claim ${claim_id}: retail roofing contract BLOCKED — no frozen Exhibit A Section 1 scope record and none could be generated (hover_measurements: ${claimData?.hover_measurements ? "present" : "absent"}, measurements_filename: ${claimData?.measurements_filename ?? "none"}).`;
+          await alertScopeFailure(supabase, gateMsg);
+          throw new Error("SCOPE_NOT_FROZEN: A frozen Scope of Work is required before this contract can be generated. Measurements must be uploaded and parsed first.");
         }
       }
-      // fetchHoverMeasurements re-reads claims.hover_measurements fresh, so it
-      // picks up whatever parse-hover-measurements just wrote.
-      const measurements = await fetchHoverMeasurements(supabase, claim_id);
+      // Measurement summary renders VERBATIM from the frozen record for
+      // roofing (decision #4); non-roofing retail keeps the legacy live fetch.
+      let measurements = null;
+      if (frozenScope?.scope_json?.measurements) {
+        const fm = frozenScope.scope_json.measurements;
+        measurements = {
+          roofSqFt: fm.roof_area_sf, wallSqFt: null,
+          perimeterFt: fm.drip_edge_perimeter_lf, pitch: fm.predominant_pitch,
+          squares: fm.squares, roofAreaSf: fm.roof_area_sf,
+          ridgeHipLf: fm.ridge_hip_lf, valleyLf: fm.valley_lf,
+          rakeLf: fm.rake_lf, eaveLf: fm.eave_lf,
+          dripEdgeLf: fm.drip_edge_perimeter_lf,
+          stepFlashingLf: fm.step_flashing_lf, flashingLf: fm.flashing_lf,
+          predominantPitch: fm.predominant_pitch
+        };
+      } else {
+        measurements = await fetchHoverMeasurements(supabase, claim_id);
+      }
       // Retail bid facts (brand, estimated start date) live in the
       // quotes.scope_summary JSON STRING — quotes has no brand /
       // estimated_start_date / amount columns. Parse it defensively. The contract
       // price is quotes.total_price; trades come from claims.trades.
       let bidBrand = null;
       let estimatedStartDate = null;
+      let declaredWastePct = null; // #588: contractor waste % is a BID parameter
       if (bidData?.scope_summary) {
         try {
           const parsedScope = typeof bidData.scope_summary === "string" ? JSON.parse(bidData.scope_summary) : bidData.scope_summary;
           bidBrand = parsedScope?.brand ?? null;
           estimatedStartDate = parsedScope?.estimated_start_date ?? null;
+          const w = Number(parsedScope?.declared_waste_pct);
+          declaredWastePct = Number.isFinite(w) && w >= 0 && w <= 35 ? w : null;
         } catch (scopeErr) {
           console.warn("Failed to parse quotes.scope_summary JSON (non-fatal):", scopeErr);
         }
@@ -1553,12 +1678,19 @@ async function handleContractorSign(supabase, requestBody, tokenInfo, corsHeader
         homeownerNotes: claimData?.homeowner_notes ?? null,
         projectConfirmation: claimData?.project_confirmation ?? null,
         measurements,
-        contractDate
+        contractDate,
+        frozenScope,        // #588: rendered verbatim as Section 1
+        declaredWastePct    // #588: bid parameter — install-plan quantities
       });
-      console.log(`Retail Scope of Work PDF generated for claim ${claim_id}`);
+      console.log(`Retail Scope of Work PDF generated for claim ${claim_id} (frozen scope: ${frozenScope ? String(frozenScope.content_hash).slice(0, 12) : "n/a"})`);
     } catch (sowErr) {
-      console.error("Retail SOW PDF generation failed (non-fatal, continuing without SOW):", sowErr);
-      scopeOfWorkBase64 = null;
+      // #588 Phase 1 fail-loud: a retail contract must not silently go out
+      // without its Scope of Work. Surface + abort (was: continue without SOW).
+      console.error("Retail SOW generation failed — ABORTING envelope:", sowErr);
+      if (!(sowErr instanceof Error && sowErr.message.startsWith("SCOPE_NOT_FROZEN"))) {
+        await alertScopeFailure(supabase, `claim ${claim_id}: retail SOW generation threw: ${sowErr instanceof Error ? sowErr.message : String(sowErr)}`);
+      }
+      throw sowErr;
     }
   }
   const { accessToken, accountId, baseUri } = tokenInfo;

@@ -151,6 +151,47 @@ serve(async (req) => {
       );
     }
 
+    // ── Cache-first (#484 item 2 / #588 Phase 1) ───────────────────
+    // A previously fetched copy lives at the canonical cache path. Serve it
+    // before re-hitting the Hover API — this is what would have kept the
+    // button alive during the 2026-07-07 platform-wide Hover outage, and it
+    // is the same path hover-webhook now records on claims.measurements_filename.
+    const cachePath = `${claim_id}/hover_measurements_${order.hover_job_id}.pdf`;
+    try {
+      const { data: cachedBlob } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .download(cachePath);
+      if (cachedBlob) {
+        console.log(`Serving cached Hover PDF from ${STORAGE_BUCKET}/${cachePath}`);
+        if (format === "url") {
+          const { data: signedData, error: signError } = await supabase.storage
+            .from(STORAGE_BUCKET)
+            .createSignedUrl(cachePath, 600);
+          if (!signError && signedData?.signedUrl) {
+            return new Response(
+              JSON.stringify({ success: true, url: signedData.signedUrl, expires_in: 600, job_id: order.hover_job_id, claim_id, cached: true }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          // Signing failure on a cached object: fall through to the API path.
+        } else {
+          const cachedBytes = await cachedBlob.arrayBuffer();
+          return new Response(cachedBytes, {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/pdf",
+              "Content-Disposition": `inline; filename="hover_measurements_${order.hover_job_id}.pdf"`,
+              "Content-Length": cachedBytes.byteLength.toString(),
+            },
+          });
+        }
+      }
+    } catch (cacheErr) {
+      // Cache miss/error is expected on first fetch — fall through to the API.
+      console.log(`No cached Hover PDF at ${cachePath} (${cacheErr instanceof Error ? cacheErr.message : "miss"}); fetching from Hover API`);
+    }
+
     // ── Get valid Hover access token ───────────────────────────────
     const accessToken = await getValidAccessToken(supabase);
     if (!accessToken) {
@@ -233,7 +274,16 @@ serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } else {
-      // Stream PDF directly
+      // Stream PDF directly — and populate the cache first (best-effort) so
+      // the next request is served cache-first regardless of format (#484).
+      try {
+        await supabase.storage.from(STORAGE_BUCKET).upload(cachePath, pdfBytes, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+      } catch (cacheWriteErr) {
+        console.warn("Cache write failed (non-fatal):", cacheWriteErr);
+      }
       return new Response(pdfBytes, {
         status: 200,
         headers: {

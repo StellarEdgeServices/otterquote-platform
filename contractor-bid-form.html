@@ -1503,6 +1503,16 @@
           <input type="text" id="brandProduct" name="brandProduct" placeholder="e.g., GAF Timberline HDZ" required>
         </div>
 
+        <!-- #588 catalog v1.0: contractor-declared waste % (bid parameter).
+             Scope of Work quantities are frozen PURE MEASURED values; your
+             declared waste computes the install quantity shown alongside them
+             on Exhibit A (e.g. "Measured: 33.4 SQ - Install plan: 36.7 SQ @ 10%"). -->
+        <div class="form-group" id="declaredWasteGroup">
+          <label for="declaredWastePct">Declared Waste % (roofing materials)</label>
+          <input type="number" id="declaredWastePct" name="declaredWastePct" step="0.5" min="0" max="35" placeholder="e.g., 10">
+          <p style="font-size:0.8rem;color:#6B7280;margin-top:var(--sp-2);">The Scope of Work lists exact measured quantities. Your waste percentage is applied to shingle and underlayment quantities to show your install plan on the contract.</p>
+        </div>
+
         <div class="form-group">
           <label for="startDate">Estimated Start Date *</label>
           <input type="date" id="startDate" name="startDate" required>
@@ -3690,6 +3700,7 @@
       }
       setVal('brandProduct', scope.brand || '');
       setVal('startDate', scope.estimated_start_date || '');
+      setVal('declaredWastePct', scope.declared_waste_pct != null ? scope.declared_waste_pct : ''); // #588
       setVal('completionTime', scope.estimated_completion_time || '');
       setVal('deckingPricePerSheet', quote.decking_price_per_sheet || '');
       setVal('fullRedeckPrice', quote.full_redeck_price || '');
@@ -5177,6 +5188,12 @@
             brand: formData.get('brandProduct') || null,
             estimated_start_date: formData.get('startDate') || null,
             estimated_completion_time: formData.get('completionTime') || null,
+            // #588 catalog v1.0 amendment #1: contractor-declared waste % is a
+            // BID parameter — never part of the frozen measured scope.
+            declared_waste_pct: (function () {
+              const w = parseFloat(document.getElementById('declaredWastePct')?.value);
+              return (Number.isFinite(w) && w >= 0 && w <= 35) ? w : null;
+            })(),
           });
 
           if (!currentContractor) {
