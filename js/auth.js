@@ -152,7 +152,7 @@ window.Auth = {
         var sub = sb.auth.onAuthStateChange(function (event, session) {
           if (session) {
             finish(session);
-          } else if (event === 'INITIAL_SESSION' && !hasAuthInUrl && !hasStoredSession) {
+          } else if (event === 'INITIAL_SESSION' && !hasAuthInUrl && !session) {
             finish(null);
           }
         });
