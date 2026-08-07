@@ -11,16 +11,21 @@
 //      The freeze/hash covers measured values only.
 //   2. NO code-determination logic anywhere. Ice & water (eaves) is an
 //      options-layer contractor-declared row in ALL states (risk-accepted).
-//   3. 14 base rows (ridge vent always base; permit is a quantity row).
+//   3. 13 base rows (ridge vent always base; permit is a quantity row).
+//      Starter strip is NOT a base row — it is a contractor-declared
+//      options-layer row at BOTH eaves and rakes (Call B, resolved
+//      2026-08-07 / D-273; corrects this file's original 14-row draft,
+//      which had eaves-starter as base and rakes-starter as an option).
 //   4. Chimney work removed from base — contractor Section 3 territory.
 //
 // Locked decisions #1/#4 (2026-07-30): scope is measurement-derived, generated
 // once when the report parses; Section 1 is FROZEN — structured JSON + content
 // hash, never recomputed, rendered verbatim everywhere it appears.
 //
-// [SPEC-VERIFY] Items below marked SPEC-VERIFY are transcription points that
-// must be checked against the LOCKED catalog file before Tier 3B deploy (this
-// session ran remote, without access to the workspace copy):
+// Transcribed and verified against the workspace LOCKED catalog file
+// (roofing-sow-line-item-catalog-v1.0-LOCKED-2026-07-31.md, incl. its
+// 2026-08-07 Call B correction) by the local Code session that applied
+// this PR's pending patch payloads:
 //   - Note rows N1–N4 verbatim text (DISCLOSURE_PLACEHOLDERS below).
 //   - Ridge-vent measured basis (combined ridges/hips is used here — Hover does
 //     not split ridge from hip; flagged in the row note).
@@ -57,14 +62,14 @@ export interface ScopeRow {
   qty_source: "measured" | "project_confirmation" | "fixed";
 }
 
-// N1–N4 note rows from the LOCKED catalog file. [SPEC-VERIFY] The verbatim
-// text lives in the workspace copy; these render as scope notes and are part
-// of the frozen record, so they MUST be filled in before first deploy.
+// N1–N4 note rows, transcribed verbatim from the LOCKED catalog file's
+// "Standard note rows" section. These render as scope notes and are part of
+// the frozen record.
 export const DISCLOSURE_PLACEHOLDERS: string[] = [
-  "[N1 — transcribe verbatim from roofing-sow-line-item-catalog-v1.0-LOCKED-2026-07-31.md]",
-  "[N2 — transcribe verbatim from catalog v1.0]",
-  "[N3 — transcribe verbatim from catalog v1.0]",
-  "[N4 — transcribe verbatim from catalog v1.0]",
+  "Roof decking inspected at tear-off; replacement of rotten/damaged decking handled as a change order under the contract's change-order provision.",
+  "Predominant pitch shown in the measurement summary header (informational).",
+  "The measurements contained in this Statement of Work were provided to Contractor on behalf of Customer. Both parties have relied upon the accuracy of this information in negotiating the terms of this Agreement. Prior to starting the work set forth in this agreement, either party shall have the right to perform his or her own measurements to verify the measurements contained herein. If any measurement in this statement of work is off by more than 10%, either party shall have the right to: (1) negotiate a change order to adjust the compensation due under the Agreement; (2) cancel the Agreement; or (3) proceed under the terms set forth in the Agreement.",
+  "Second-layer tear-off remains a D-163 contingency field, not a scope row.",
 ];
 
 const num = (v: unknown): number | null => {
@@ -114,35 +119,32 @@ export function buildBaseRows(m: MeasuredInputs): ScopeRow[] {
     { row_id: "drip_edge", num: 4, item: "Drip edge",
       measured_qty: m.drip_edge_perimeter_lf, unit: "LF", basis: "Measured perimeter",
       notes: "Eaves & rakes", sq_material: false, qty_source: "measured" },
-    { row_id: "starter_eaves", num: 5, item: "Starter course - eaves",
-      measured_qty: m.eave_lf, unit: "LF", basis: "Measured eaves",
-      notes: "Rake starter is a contractor-declared option", sq_material: false, qty_source: "measured" },
-    { row_id: "field_shingles", num: 6, item: "Architectural laminate field shingles",
+    { row_id: "field_shingles", num: 5, item: "Architectural laminate field shingles",
       measured_qty: m.squares, unit: "SQ", basis: "Measured roof area",
       notes: "Brand per bid; install qty per declared waste", sq_material: true, qty_source: "measured" },
-    { row_id: "hip_ridge_standard", num: 7, item: "Hip & ridge cap shingles (standard profile)",
+    { row_id: "hip_ridge_standard", num: 6, item: "Hip & ridge cap shingles (standard profile)",
       measured_qty: m.ridge_hip_lf, unit: "LF", basis: "Measured ridges/hips",
       notes: "High-profile cap is a contractor-declared option", sq_material: false, qty_source: "measured" },
-    { row_id: "valley_closed_cut", num: 8, item: "Closed-cut valley treatment (default)",
+    { row_id: "valley_closed_cut", num: 7, item: "Closed-cut valley treatment (default)",
       measured_qty: m.valley_lf, unit: "LF", basis: "Measured valleys",
       notes: "Open-metal W-valley is a contractor-declared option", sq_material: false, qty_source: "measured" },
-    { row_id: "step_flashing", num: 9, item: "Step flashing (roof-to-wall)",
+    { row_id: "step_flashing", num: 8, item: "Step flashing (roof-to-wall)",
       measured_qty: m.step_flashing_lf, unit: "LF", basis: "Measured step flashing",
       notes: "Replace", sq_material: false, qty_source: "measured" },
-    { row_id: "headwall_flashing", num: 10, item: "Headwall / apron flashing",
+    { row_id: "headwall_flashing", num: 9, item: "Headwall / apron flashing",
       measured_qty: m.flashing_lf, unit: "LF", basis: "Measured flashing",
       notes: "Replace", sq_material: false, qty_source: "measured" },
-    { row_id: "pipe_boots", num: 11, item: "Pipe boots / penetration flashings",
+    { row_id: "pipe_boots", num: 10, item: "Pipe boots / penetration flashings",
       measured_qty: null, unit: "EA", basis: "Project-confirmation count",
       notes: "Count confirmed at project confirmation", sq_material: false, qty_source: "project_confirmation" },
-    { row_id: "ridge_vent", num: 12, item: "Ridge vent",
+    { row_id: "ridge_vent", num: 11, item: "Ridge vent",
       measured_qty: m.ridge_hip_lf, unit: "LF", basis: "Measured ridges/hips (combined)",
       notes: "Hover reports ridges+hips combined; vented ridge length field-verified", // [SPEC-VERIFY] basis
       sq_material: false, qty_source: "measured" },
-    { row_id: "permit", num: 13, item: "Building permit",
+    { row_id: "permit", num: 12, item: "Building permit",
       measured_qty: 1, unit: "EA", basis: "Fixed",
       notes: "Quantity row; jurisdiction fees per bid", sq_material: false, qty_source: "fixed" },
-    { row_id: "cleanup_haul_off", num: 14, item: "Site cleanup, magnetic sweep & haul-off",
+    { row_id: "cleanup_haul_off", num: 13, item: "Site cleanup, magnetic sweep & haul-off",
       measured_qty: 1, unit: "LS", basis: "Fixed",
       notes: "Includes debris disposal", sq_material: false, qty_source: "fixed" },
   ];
