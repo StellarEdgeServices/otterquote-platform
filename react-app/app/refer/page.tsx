@@ -23,9 +23,14 @@
  *   first and bounces to /partner-re.html). Force-fitting that resolver here
  *   would change behavior — so it is intentionally NOT used.
  *
- * Two documented bugs are FOLDED (see utils.ts): the column-order render bug
- * (Commission column restored, header order honored) and the $50-vs-$200
- * commission mismatch (summary now uses the $200 bonus stated everywhere).
+ * #576: previously stale-schema broken — selected/inserted a phantom
+ * referral_agents.code column, queried a phantom referrals.referrer_id, and
+ * client-generated codes. Re-ported to match the current static page: code
+ * fetch/create goes through the get_or_create_customer_referral_code() RPC
+ * (v100/#624; unique_code is trigger-generated, never client-supplied), and
+ * referrals resolve via the two-step referral_agents.id -> referrals.
+ * referral_agent_id path (#567). See utils.ts for the full 7-status model and
+ * the D-139 paid/pending commission split this now carries.
  *
  * §XSS: every DB/user value renders as JSX text (no innerHTML /
  * dangerouslySetInnerHTML). The email-signature badge HTML is shown as TEXT in a
@@ -45,7 +50,6 @@ import {
   REFERRAL_AGENT_TYPE,
   COMING_SOON_REDIRECT,
   referralUrl,
-  generateReferralCode,
   referralRowCells,
   summarizeReferrals,
   referralSummaryLine,
@@ -62,6 +66,7 @@ import {
 import {
   LOGIN_ROUTE,
   W9_UPLOAD_LINK,
+  REFERRAL_CODE_ERROR_TEXT,
   HERO,
   REFERRAL_LINK_LABEL,
   QR_HEADING,
@@ -137,34 +142,47 @@ export default function ReferAFriendPage() {
 
     void (async () => {
       try {
-        const { data } = await supabase
-          .from('referral_agents')
-          .select('code, payments_blocked, w9_notification_sent_at, w9_submitted_at')
-          .eq('user_id', user.id)
-          .eq('agent_type', REFERRAL_AGENT_TYPE)
-          .single();
+        // v100/#624: get_or_create_customer_referral_code() SECURITY DEFINER
+        // RPC, keyed on auth.uid() only. Replaces the direct client
+        // .insert().select().single() that the D-211 2026-06-13 RLS lockdown
+        // made non-functional (same write-then-read gap #571's register_partner
+        // fixed for the partner-signup pages). Idempotent get-or-create;
+        // unique_code is trigger-generated and never supplied here.
+        const { data, error } = await supabase.rpc('get_or_create_customer_referral_code');
 
-        if (data) {
+        if (data && (data as CustomerReferralAgent).unique_code) {
           const a = data as CustomerReferralAgent;
-          setCode(a.code ?? null);
+          setCode(a.unique_code ?? null);
           setAgent(a);
         } else {
-          const newCode = generateReferralCode();
-          const { data: created } = await supabase
-            .from('referral_agents')
-            .insert([{ user_id: user.id, code: newCode, agent_type: REFERRAL_AGENT_TYPE }])
-            .select('code')
-            .single();
-          const createdCode = (created as { code?: string } | null)?.code;
-          setCode(createdCode || 'error');
+          // Genuine failure (RPC error, expired session, no verified email,
+          // etc.) — do NOT fabricate a fake code; render an honest error
+          // instead of a broken /ref/<falsy> link.
+          console.error('Error fetching/creating referral code:', error);
+          setCode(null);
+          setAgent(null);
         }
 
-        const { data: refs } = await supabase
-          .from('referrals')
-          .select('*')
-          .eq('referrer_id', user.id)
-          .order('created_at', { ascending: false });
-        setReferrals((refs || []) as CustomerReferral[]);
+        // Two-step (#567): referrals has no referrer_id column — resolve our
+        // own agent row first, then match referrals.referral_agent_id.
+        const { data: agentRow, error: agentError } = await supabase
+          .from('referral_agents')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('agent_type', REFERRAL_AGENT_TYPE)
+          .maybeSingle();
+
+        if (agentError) {
+          console.error('Failed to resolve referral agent:', agentError);
+        } else if (agentRow) {
+          const { data: refs, error: refsError } = await supabase
+            .from('referrals')
+            .select('*')
+            .eq('referral_agent_id', (agentRow as { id: string }).id)
+            .order('created_at', { ascending: false });
+          if (refsError) console.error('Failed to load referrals:', refsError);
+          setReferrals((refs || []) as CustomerReferral[]);
+        }
       } catch (err) {
         console.error('Error loading refer-a-friend data:', err);
       } finally {
@@ -175,13 +193,24 @@ export default function ReferAFriendPage() {
 
   if (gated) return null;
 
-  if (!settled || !user || !ready || !code) {
+  if (!settled || !user || !ready) {
     return (
       <div className="orf-root">
         <style>{STYLES}</style>
         <main className="orf-loading" role="status" aria-live="polite">
           <div className="orf-spin" />
           <p>Loading…</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!code) {
+    return (
+      <div className="orf-root">
+        <style>{STYLES}</style>
+        <main className="orf-loading" role="alert">
+          <p>{REFERRAL_CODE_ERROR_TEXT}</p>
         </main>
       </div>
     );
@@ -658,17 +687,14 @@ function ReferralsDashboard({ referrals }: { referrals: CustomerReferral[] }) {
       <div className="referrals-header">
         <h3>{REFERRALS.heading}</h3>
         <p className="referral-summary">{referralSummaryLine(summary)}</p>
-        {/* Static parity: these two boxes are hardcoded $0 on the static page
-            (its calculateSummary() never updates them). Preserved verbatim — a
-            separate fix is out of scope for the two folded bugs. */}
         <div className="referrals-summary">
           <div className="summary-item">
             <span className="summary-label">{REFERRALS.totalEarnedLabel}</span>
-            <span className="summary-value">$0</span>
+            <span className="summary-value">${summary.earned.toLocaleString('en-US')}</span>
           </div>
           <div className="summary-item">
             <span className="summary-label">{REFERRALS.pendingLabel}</span>
-            <span className="summary-value">$0</span>
+            <span className="summary-value">${summary.pending.toLocaleString('en-US')}</span>
           </div>
         </div>
       </div>
@@ -683,7 +709,7 @@ function ReferralsDashboard({ referrals }: { referrals: CustomerReferral[] }) {
         </thead>
         <tbody>
           {referrals.map((r, i) => {
-            const cells = referralRowCells(r);
+            const cells = referralRowCells(r, i);
             return (
               <tr key={r.id ?? i}>
                 <td>{cells.friend}</td>
@@ -858,9 +884,12 @@ const STYLES = `
   .referrals-table td { padding: var(--sp-4); border-bottom:1px solid rgba(255,255,255,0.06); color: var(--white); }
   .referrals-table tbody tr:hover { background: rgba(224,123,0,0.05); }
   .status-badge { display:inline-block; padding:4px 12px; border-radius: var(--radius-full); font-size:0.75rem; font-weight:600; text-transform:uppercase; }
-  .status-clicked { background: rgba(148,163,184,0.25); color: var(--slate); }
+  .status-clicked { background: var(--blue-light); color:#1E40AF; }
+  .status-registered { background: var(--blue-light); color:#1E40AF; }
+  .status-submitted { background: var(--amber-light); color:#92400E; }
   .status-in-progress { background: var(--amber-light); color:#92400E; }
   .status-completed { background: var(--green-light); color:#065F46; }
+  .status-paid { background: var(--green-light); color:#065F46; }
   .empty-referrals { text-align:center; padding: var(--sp-12); color: var(--slate); }
   .empty-referrals p { margin:0; }
 
