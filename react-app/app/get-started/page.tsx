@@ -6,10 +6,17 @@
  *
  * Auth flow:
  *   - If user is already logged in, redirect to appropriate dashboard.
- *   - New users: collect profile data → fire HubSpot (non-blocking) →
- *     leads insert (non-fatal) → write localStorage → signInWithOtp.
+ *   - New users: collect profile data → leads insert (non-fatal) →
+ *     write localStorage (cs_signup) → signInWithOtp.
+ *   - HubSpot contact creation (D-189) no longer fires from this page —
+ *     the user has no session/JWT yet at this point, and create-hubspot-contact's
+ *     homeowner mode requires one (D-211 CODE-3 hardening, 86e1xdaxe #1), so the
+ *     pre-auth call always 401'd (#405). The cs_signup payload written below is
+ *     read post-auth by the auth-callback page, which fires the HubSpot call
+ *     once a valid session JWT exists.
  *
- * References: D-189 (HubSpot), D-211 (React surface) [D-207 Google OAuth removed pre-launch]
+ * References: D-189 (HubSpot), D-211 (React surface), #405 (post-auth HubSpot move)
+ *   [D-207 Google OAuth removed pre-launch]
  */
 
 'use client';
@@ -22,8 +29,6 @@ import { formatPhoneValue, isValidEmail } from './utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const AUTH_CALLBACK_URL = 'https://app.otterquote.com/auth-callback';
 const DASHBOARD_URL = 'https://otterquote.com/dashboard.html';
 const CONTRACTOR_DASHBOARD_URL = 'https://otterquote.com/contractor-dashboard.html';
@@ -37,27 +42,6 @@ function gtag(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).gtag) {
     (window as any).gtag(...args);
   }
-}
-
-// ─── HubSpot — D-189 non-blocking fire ───────────────────────────────────────
-
-function fireHubSpotContact(data: {
-  email: string;
-  firstname: string;
-  lastname: string;
-  phone: string;
-  address: string;
-}) {
-  fetch(`${SUPABASE_URL}/functions/v1/create-hubspot-contact`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify(data),
-  }).catch(() => {
-    // Intentionally fire-and-forget — D-189
-  });
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -124,14 +108,11 @@ export default function GetStartedPage() {
     try {
       const emailTrimmed = email.trim();
 
-      // D-189: Fire HubSpot contact — non-blocking, best-effort
-      fireHubSpotContact({
-        email: emailTrimmed,
-        firstname: firstName.trim(),
-        lastname: lastName.trim(),
-        phone: phone.trim(),
-        address: address.trim(),
-      });
+      // D-189/#405: HubSpot contact creation moved post-auth — see auth-callback
+      // page. Firing it here (pre-auth) 401'd because create-hubspot-contact's
+      // homeowner mode requires a valid user JWT that doesn't exist until the
+      // magic link is clicked. The cs_signup payload written below (step 3)
+      // carries the same fields forward for that post-auth call.
 
       // 1. Insert into leads table (non-fatal, fire-and-forget — no await)
       supabase.from('leads').insert({
