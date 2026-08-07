@@ -552,6 +552,8 @@ const Nav = {
               <a href="/contractor-join.html">Join Our Network</a>
               <a href="/tools.html">Contractor Tools</a>
               <a href="/tools-crm.html">Free CRM</a>
+              <a href="/oq-crm.html">OQ CRM</a>
+              <a href="/oq-voice-ai.html">OQ Voice AI (Early Access)</a>
               <a href="/contractor-agreement.html">Partner Agreement</a>
             `}
           </div>
