@@ -68,3 +68,17 @@
 [[edge_functions]]
   path = "/admin-*.html"
   function = "admin-auth-gate"
+
+# Referral short-link query passthrough — #630 (2026-08-06)
+# /ref/:code must always redirect to /ref.html?code=:code, but Netlify's
+# declarative redirect engine only auto-forwards the incoming query string
+# when the "to" target has no query string of its own — so utm_* (and any
+# other) params on the short link were silently dropped by the plain
+# _redirects rule. Named `query = {...}` matching can't cover an open-ended
+# param set either (every key + exact combination would need enumerating).
+# Netlify's own guidance for open-ended query forwarding is an Edge
+# Function, so /ref/* is handled there instead of a declarative rule.
+# Source: netlify/edge-functions/ref-redirect.ts
+[[edge_functions]]
+  path = "/ref/*"
+  function = "ref-redirect"
