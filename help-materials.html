@@ -1005,14 +1005,12 @@
 
             // Demo mode: if no user and DEMO_MODE is true, just continue rendering
             if (!currentUser && CONFIG.DEMO_MODE) {
-                renderNav();
                 checkUrlParams();
                 return;
             }
 
             if (!currentUser) return;
 
-            renderNav();
             checkUrlParams();
         });
 
