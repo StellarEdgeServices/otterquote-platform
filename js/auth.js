@@ -45,6 +45,35 @@ function _writeLiveSessionToStorage(session) {
   } catch (e) { /* non-fatal */ }
 }
 
+/**
+ * Attach real user identity to Sentry error events (issue #408).
+ * Previously every dashboard/contractor page shipped errors as fully
+ * anonymous events (Sentry.init() with no setUser call anywhere), so
+ * production incidents had no way to tell how many distinct users were
+ * affected or reproduce with a specific account. Uses only fields the
+ * Supabase auth session already exposes — no new identity data is
+ * invented or collected.
+ * Safe to call on every page: no-ops if the Sentry loader snippet hasn't
+ * attached window.Sentry yet (e.g. ad-blockers) or if user is falsy.
+ */
+function _identifySentryUser(user) {
+  try {
+    if (user && window.Sentry && typeof window.Sentry.setUser === 'function') {
+      window.Sentry.setUser({ id: user.id, email: user.email });
+    }
+  } catch (e) { /* non-fatal — never let telemetry wiring break auth */ }
+}
+
+/** Clear Sentry identity on sign-out so subsequent anonymous errors (e.g. on the
+ * logged-out landing page) aren't misattributed to the just-signed-out user. */
+function _clearSentryUser() {
+  try {
+    if (window.Sentry && typeof window.Sentry.setUser === 'function') {
+      window.Sentry.setUser(null);
+    }
+  } catch (e) { /* non-fatal */ }
+}
+
 window.Auth = {
   /** Get current session - robust race-free implementation.
    *
@@ -243,6 +272,7 @@ window.Auth = {
   async signOut() {
     if (!sb) return;
     _clearStaleAuthCookies(); // parent-domain cookies (unchanged)
+    _clearSentryUser();
     try {
       // scope:'local' avoids a network revoke that can throw and strand the
       // host-only sb_at cookie + skip the redirect (86e20pdta — mirrors React).
@@ -318,6 +348,11 @@ window.Auth = {
           : '/get-started.html';
       return null;
     }
+
+    // Successful auth resolution — identify the user in Sentry so error
+    // events carry real user context instead of being anonymous (#408).
+    _identifySentryUser(user);
+
     // Enforce role if specified — prevent homeowners on contractor pages and vice versa
     if (requiredRole) {
       const role = await this.getRole();
@@ -887,6 +922,8 @@ Log in to the admin panel to review and approve this contractor.`;
             const role = await Auth.getRole();
             const isAdmin = await Auth._getIsAdmin(user);
             this._setSingleAuthCookie(session);
+            // Successful auth resolution — identify the user in Sentry (#408).
+            _identifySentryUser(user);
             resolve({ user, role, isAdmin });
           } catch (err) {
             reject(err);
