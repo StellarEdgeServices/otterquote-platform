@@ -15,6 +15,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { otterquoteCookieStorage, OTTERQUOTE_AUTH_STORAGE_KEY, readValidCookieSession } from '../lib/cookie-storage';
@@ -158,6 +159,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // A competing resolver may have won during the awaits above.
         if (resolved.current) return;
         setSbAtCookie(session);
+        // Successful auth resolution — identify the user in Sentry so error
+        // events carry real user context instead of being anonymous (#408).
+        Sentry.setUser({ id: sessionUser.id, email: sessionUser.email });
         setState({
           user: sessionUser as unknown as AuthUser,
           role,
@@ -208,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         setSbAtCookie(null);
+        Sentry.setUser(null);
         setState({ user: null, role: null, isAdmin: false, loading: false, settled: true });
       }
       resolved.current = true;
@@ -223,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (event === 'SIGNED_OUT') {
           setSbAtCookie(null);
+          Sentry.setUser(null);
           setState({ user: null, role: null, isAdmin: false, loading: false, settled: true });
           resolved.current = true;
           return;
