@@ -14,12 +14,59 @@
  *
  * Error handling: expired / invalid links show a friendly retry UI
  * that sends users back to /get-started.
+ *
+ * #405: HubSpot contact creation (D-189) also happens here, post-auth, for the
+ * homeowner path. get-started/page.tsx used to fire create-hubspot-contact
+ * before the magic link was clicked, when no session JWT existed yet — the
+ * function's homeowner mode requires one (D-211 CODE-3 hardening, 86e1xdaxe #1),
+ * so that pre-auth call always 401'd. The session is live by the time we reach
+ * routeSession() below, so supabase.functions.invoke attaches a valid JWT
+ * automatically (same pattern as contractor/pre-approval's HubSpot sync).
  */
 
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+
+// ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
+
+/** Same payload shape create-hubspot-contact's homeowner mode always expected. */
+function buildHomeownerHubspotBody(email: string, signup: Record<string, unknown>) {
+  return {
+    email,
+    firstname: (signup.first_name as string) || '',
+    lastname: (signup.last_name as string) || '',
+    phone: (signup.phone as string) || '',
+    address: (signup.address as string) || '',
+  };
+}
+
+/**
+ * Fire-and-forget HubSpot contact sync for the homeowner sign-up flow.
+ * Reads the cs_signup payload get-started/page.tsx wrote to localStorage pre-auth.
+ * Never overwrites a contractor's HubSpot record — skips if cs_signup is absent
+ * or was tagged for the contractor role (mirrors js/auth.js's same guard).
+ */
+function fireHomeownerHubspotContact(email: string | null | undefined) {
+  if (!email) return;
+  let signup: Record<string, unknown> = {};
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('cs_signup') : null;
+    if (!raw) return;
+    signup = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (signup.role === 'contractor') return;
+
+  supabase.functions
+    .invoke('create-hubspot-contact', { body: buildHomeownerHubspotBody(email, signup) })
+    .catch(() => {
+      // Intentionally fire-and-forget — D-189
+    });
+}
 
 // ─── Destinations ─────────────────────────────────────────────────────────────
 const CONTRACTOR_DASHBOARD_URL = 'https://otterquote.com/contractor-dashboard.html';
@@ -68,7 +115,7 @@ export default function AuthCallbackPage() {
 
     let handled = false;
 
-    async function routeSession(session: { user: { id: string } } | null) {
+    async function routeSession(session: Session | null) {
       if (handled) return;
       handled = true;
 
@@ -153,6 +200,10 @@ export default function AuthCallbackPage() {
         window.location.href = CONTRACTOR_SIGNUP_URL;
         return;
       }
+
+      // Homeowner path confirmed (not a contractor record, no contractor intent) —
+      // safe to fire the post-auth HubSpot sync now that a session JWT exists (#405).
+      fireHomeownerHubspotContact(session.user.email);
 
       // Homeowner: returning (has claim) → dashboard, new → trade-selector
       try {
