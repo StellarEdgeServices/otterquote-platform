@@ -522,12 +522,11 @@
         </div>
     </div>
 
+    <script src="js/config.js"></script>
     <script>
-        const SUPABASE_URL = 'https://yeszghaspzwwstvsrioa.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inllc3pnaGFzcHp3d3dzdHZzcmlvYSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzEwNTczMjAwLCJleHAiOjE4Njc2OTU4MDB9.ePuEczJVk8VNlMTRZQOtVDKcLZXNhDfRr84WZBwG4dQ';
         const ADMIN_EMAIL = 'dustinstohler1@gmail.com';
 
-        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
+        const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
         let allFees = [];
         let currentEditingId = null;
