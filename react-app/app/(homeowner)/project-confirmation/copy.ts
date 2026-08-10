@@ -25,8 +25,9 @@
  *     the injected value is wired in PR 2/2.
  *   • The Rotten Sheathing disclosure ports the literal "[Contractor]" token AS-IS — it is
  *     NOT resolved here (per brief).
- *   • "All four are required" in disclosuresIntro is INACCURATE (there are up to six acks)
- *     but is ported VERBATIM — the wording fix is ticketed separately, NOT this PR.
+ *   • gh-418 (2026-08-10): disclosuresIntro's "All four are required" was inaccurate (the
+ *     required-ack set is dynamic, 3-6 depending on trades/insurance) and has been
+ *     corrected to drop the count. Not a TIER-3 LEGAL string, no sign-off gate applies.
  *   • Indiana / current-source copy is preserved exactly. D-247 multi-state abstraction is
  *     a SEPARATE gated change and is NOT applied here.
  *
@@ -67,8 +68,10 @@ export const CONFIRM_COPY = {
 
   // ── Disclosures section header + intro (project-confirmation.html:1393, 1395) ──
   disclosuresSectionTitle: '✏️ Disclosures & Acknowledgments',
-  // VERBATIM including the inaccurate "All four" (ticketed separately — do NOT fix here).
-  disclosuresIntro: 'Please initial each item below. All four are required before you can submit.',
+  // gh-418 fix: dropped the inaccurate "All four" count (the required-ack set is dynamic,
+  // 3-6 depending on trades/insurance — see buildAckIds()). Not a TIER-3 LEGAL disclosure
+  // string, just UI instruction copy, so no Dustin sign-off gate applies to this one.
+  disclosuresIntro: 'Please initial each item below before you can submit.',
 
   // ── TIER-3 LEGAL — Non-Recoverable Depreciation (project-confirmation.html:1403) ──
   // Stored SPLIT around the #depreciationAmtDisplay injection point ("$___" default).
