@@ -6,25 +6,16 @@
  * touches the DOM, Supabase, or the create-docusign-envelope call; it collects raw form
  * values + claim/quote state and hands them to these helpers.
  *
- * FAITHFUL-PORT NOTE — two divergent trade-detection schemes are preserved AS-IS:
- *
- *   1. detectTrades() mirrors the page's section show/hide logic
- *      (project-confirmation.html:2315-2322): CASE-INSENSITIVE (.toLowerCase()), treats an
- *      empty/absent selected_trades as roofing, and counts the singular "gutter" toward
- *      gutters.
- *
- *   2. buildAckIds() and buildPayload() mirror the page's inline detection
- *      (project-confirmation.html:1840-1850, 1868-1872): CASE-SENSITIVE (raw
- *      Array.prototype.includes on state.selectedTrades) and do NOT count "gutter"
- *      singular.
- *
- *   The static keeps state.selectedTrades RAW (not lowercased — line 2316), so a claim
- *   whose selected_trades carries mixed casing (e.g. ['Roofing']) gets the bad-decking ack
- *   SHOWN (detectTrades, case-insensitive) but NOT REQUIRED (buildAckIds, case-sensitive).
- *   This inconsistency is REPRODUCED here deliberately to keep behavior identical; the
- *   canonical lowercase inputs ('roofing','siding','gutters','downspouts') behave the same
- *   under both. The casing-unification is flagged in the PR-1 handoff and ticketed
- *   separately — do NOT "fix" it in this port.
+ * gh-418 FIX (2026-08-10): the static had two divergent trade-detection schemes —
+ * detectTrades() (section show/hide) was CASE-INSENSITIVE while buildAckIds() /
+ * buildPayload() (required-ack set + submitted payload) were CASE-SENSITIVE on the raw
+ * trades. A claim whose selected_trades carried mixed casing (e.g. ['Roofing']) would
+ * SHOW the bad-decking acknowledgment but NOT REQUIRE it — a homeowner could submit
+ * without checking a disclosure the form displayed as mandatory. This was reproduced
+ * faithfully in the PR-1 port and ticketed separately for cleanup (#418); buildAckIds()
+ * and buildPayload() now match trades case-insensitively, same as detectTrades(), closing
+ * the gap. Canonical lowercase inputs ('roofing','siding','gutters','downspouts') are
+ * unaffected.
  */
 
 // ── Trade detection (section show/hide) — project-confirmation.html:2315-2322 ──
@@ -79,16 +70,16 @@ export function isInsuranceClaim(
 
 /**
  * The dynamic required-ack id list. Always includes the three universal acks; adds
- * trade/claim-specific acks. CASE-SENSITIVE on the raw trades (state.selectedTrades), per
- * the static — see the module-level faithful-port note. `isInsurance` is
- * `state.isInsuranceClaim` (typically from isInsuranceClaim()).
+ * trade/claim-specific acks. CASE-INSENSITIVE on trades (gh-418 fix — matches
+ * detectTrades()). `isInsurance` is `state.isInsuranceClaim` (typically from
+ * isInsuranceClaim()).
  *
  * Ordering matches the static (project-confirmation.html:1845-1848): trade/claim acks
  * first, universal acks last.
  */
 export function buildAckIds(selectedTrades: string[], isInsurance: boolean): string[] {
   const ids: string[] = [];
-  const trades = selectedTrades;
+  const trades = selectedTrades.map((t) => String(t).toLowerCase());
   const hasRoofing = trades.length === 0 || trades.includes('roofing');
   const hasSiding = trades.includes('siding');
   if (hasRoofing) ids.push('ackBadDecking');
@@ -241,15 +232,17 @@ function parseIntOr(value: string | null | undefined, fallback: number): number 
 /**
  * Build the `project_confirmation` JSONB payload. Pure 1:1 port of buildPayload()
  * (project-confirmation.html:1868-1961): same field set, same defaults (|| '', || 'None',
- * || 'Unexpected'), same parseInt coercions, and the same CASE-SENSITIVE conditional
- * siding/gutters blocks (trades.includes(...) on raw trades). `submittedAt` and the
+ * || 'Unexpected'), same parseInt coercions. Conditional siding/gutters blocks are
+ * CASE-INSENSITIVE on trades (gh-418 fix — matches detectTrades() / buildAckIds()).
+ * `activeTrades` still echoes the raw trades verbatim (unchanged). `submittedAt` and the
  * structures/skylights arrays are injected (the static reads them from the DOM / Date) so
  * this function stays pure.
  */
 export function buildPayload(input: BuildPayloadInput): Record<string, unknown> {
   const { trades, form, autoFill } = input;
-  const hasSiding = trades.includes('siding');
-  const hasGutters = trades.includes('gutters') || trades.includes('downspouts');
+  const lcTrades = trades.map((t) => String(t).toLowerCase());
+  const hasSiding = lcTrades.includes('siding');
+  const hasGutters = lcTrades.includes('gutters') || lcTrades.includes('downspouts');
 
   return {
     // Which trades are confirmed in this submission
