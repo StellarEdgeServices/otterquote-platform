@@ -30,10 +30,28 @@ import { config as loadEnv } from 'dotenv';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(__dirname, '..', '.env.test') });
 
+// @supabase/supabase-js eagerly resolves a WebSocket constructor for its
+// Realtime client at construction time, even when no channel is ever opened.
+// On Node < 22 (no native WebSocket global) and with the `ws` package removed
+// (#658, CVE-2026-48779), that resolution throws before this script can run
+// at all. This script never calls `.channel()`/`.subscribe()`, so a stub
+// that is constructed-but-never-invoked satisfies the eager check without
+// reintroducing `ws`.
+class NoRealtimeTransportStub {
+  constructor() {
+    throw new Error(
+      'Realtime transport unavailable: this client never opens a realtime channel.'
+    );
+  }
+}
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
+  {
+    auth: { autoRefreshToken: false, persistSession: false },
+    realtime: { transport: NoRealtimeTransportStub },
+  }
 );
 
 const STATE_FILE = resolve(__dirname, '..', '.test-state.json');
