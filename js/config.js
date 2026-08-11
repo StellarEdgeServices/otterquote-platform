@@ -45,7 +45,17 @@ var CONFIG = {
 
   // ── Site Info ──
   SITE_NAME: 'Otter Quotes',
-  SITE_URL:  'https://otterquote.com',
+  // #562: staging (netlify branch deploys) must redirect magic-link/OAuth
+  // callbacks back to itself, not to production — otherwise a session
+  // started on staging completes on otterquote.com with no cookie to
+  // follow it (staging cookies are netlify-host-scoped, D-212 domain
+  // cookies are never set there). Production keeps the literal constant
+  // unchanged. Database stays shared (SUPABASE_URL untouched) — see #696
+  // for that separate, larger decision.
+  SITE_URL: (typeof window !== 'undefined' && window.location.hostname.includes('staging'))
+    ? window.location.origin
+    : 'https://otterquote.com',
+  IS_STAGING: (typeof window !== 'undefined' && window.location.hostname.includes('staging')),
   SUPPORT_EMAIL: 'support@otterquote.com',
 
   // ── Demo Mode ──
