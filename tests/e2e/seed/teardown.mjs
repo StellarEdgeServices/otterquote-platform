@@ -6,7 +6,10 @@
  *
  * What it deletes:
  *   - All quotes (bids) submitted by the test contractor on the test claim
- *   - All claims belonging to the test homeowner
+ *   - The claims this run seeded (testClaimId + testRetailClaimId from
+ *     .test-state.json) — NOT every claim the test homeowner has ever
+ *     owned (int-teardown-scope: narrowed after PR #695's teardown run
+ *     swept ~200 accumulated claims out of production in one pass)
  *
  * What it DOES NOT delete:
  *   - Test auth users (homeowner + contractor) — these persist across runs
@@ -69,23 +72,16 @@ async function teardown() {
   const state = JSON.parse(readFileSync(STATE_FILE, 'utf-8'));
   let hadFailure = false;
 
-  // ── Fetch claim ids owned by the test homeowner up front ─────────────────
-  // Every downstream delete below targets these ids directly, instead of
-  // assuming only the current run's testClaimId exists — teardown deletes
-  // ALL claims for this user, so it must clear ALL of their FK children too.
-  let claimIds = [];
-  if (state.homeownerUserId) {
-    const { data: claimRows, error: fetchErr } = await supabase
-      .from('claims')
-      .select('id')
-      .eq('user_id', state.homeownerUserId);
-    if (fetchErr) {
-      console.error('  ❌ Failed to fetch claim ids for cleanup:', fetchErr.message);
-      hadFailure = true;
-    } else {
-      claimIds = (claimRows ?? []).map((r) => r.id);
-    }
-  }
+  // ── Claim ids seeded by THIS run ──────────────────────────────────────────
+  // int-teardown-scope: previously this fetched every claim owned by
+  // state.homeownerUserId, which deletes every claim that account has ever
+  // owned — not just what this run seeded. That's how PR #695's own CI run
+  // swept ~200 accumulated claims and 143 fee_acceptances out of production
+  // in one pass (nothing anyone wanted was lost, but a Tier 1 merge should
+  // not be able to reach a Tier 3B-shaped action). Narrowed to exactly the
+  // ids seed.mjs recorded for this run: the insurance claim (testClaimId)
+  // and the retail siding design-gate claim (testRetailClaimId).
+  const claimIds = [state.testClaimId, state.testRetailClaimId].filter(Boolean);
 
   // ── Delete every row with a NO ACTION FK to claims (#694) ────────────────
   // Postgres rejects claims.delete() while ANY of these still reference the
@@ -153,16 +149,16 @@ async function teardown() {
   }
 
   // ── Delete test claims ───────────────────────────────────────────────────
-  if (state.homeownerUserId) {
+  if (claimIds.length > 0) {
     const { error: clErr, count } = await supabase
       .from('claims')
       .delete({ count: 'exact' })
-      .eq('user_id', state.homeownerUserId);
+      .in('id', claimIds);
 
     if (clErr) {
       console.error('  ❌ Claim cleanup failed:', clErr.message);
       hadFailure = true;
-    } else if (claimIds.length > 0 && (count ?? 0) === 0) {
+    } else if ((count ?? 0) === 0) {
       // The exact failure mode that hid #694 for 34 days: rows were seeded
       // (claimIds is non-empty) but the delete removed zero of them. A
       // green teardown that deletes nothing must fail loudly, not warn.
