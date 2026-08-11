@@ -189,9 +189,7 @@ export function useContractorLicenses(bids: BidRow[]): ContractorLicensesResult 
 
     (async () => {
       const { data, error } = await supabase
-        .from('contractor_licenses_public')
-        .select('contractor_id, jurisdiction_level, municipality, license_number, expiration_date, verification_url')
-        .in('contractor_id', idKey.split(','));
+        .rpc('get_contractor_licenses_public', { p_contractor_ids: idKey.split(',') });
       if (!mounted) return;
       if (error || !data) {
         if (error) console.error('[bids] contractor_licenses_public lookup failed:', error.message);
