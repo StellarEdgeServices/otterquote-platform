@@ -653,9 +653,7 @@
           // rows for active/approved contractors; render falls back to the
           // "License not provided" state (lawful per D-217) when empty.
           const { data: licRows, error: licErr } = await sb
-            .from('contractor_licenses_public')
-            .select('contractor_id, jurisdiction_level, municipality, license_number, expiration_date, verification_url')
-            .in('contractor_id', contractorIds);
+            .rpc('get_contractor_licenses_public', { p_contractor_ids: contractorIds });
           if (licErr) {
             console.error('[bids] contractor_licenses_public lookup failed:', licErr.message);
           } else if (licRows) {
