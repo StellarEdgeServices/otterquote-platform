@@ -16,6 +16,23 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STATE_FILE = resolve(__dirname, '..', '.test-state.json');
 
+/**
+ * @supabase/supabase-js eagerly resolves a WebSocket constructor for its
+ * Realtime client at construction time, even when no channel is ever opened.
+ * On Node < 22 (no native WebSocket global) and with the `ws` package removed
+ * (#658, CVE-2026-48779), that resolution throws before this client can be
+ * used at all. This client never calls `.channel()`/`.subscribe()`, so a
+ * stub that is constructed-but-never-invoked satisfies the eager check
+ * without reintroducing `ws`.
+ */
+class NoRealtimeTransportStub {
+  constructor() {
+    throw new Error(
+      'Realtime transport unavailable: this client never opens a realtime channel.'
+    );
+  }
+}
+
 /** Creates a Supabase client with service-role privileges. */
 export function createAdminClient() {
   const url = process.env.SUPABASE_URL;
@@ -27,6 +44,7 @@ export function createAdminClient() {
   }
   return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
+    realtime: { transport: NoRealtimeTransportStub as never },
   });
 }
 

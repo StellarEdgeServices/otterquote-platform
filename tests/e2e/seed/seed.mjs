@@ -43,8 +43,24 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
   process.exit(1);
 }
 
+// @supabase/supabase-js eagerly resolves a WebSocket constructor for its
+// Realtime client at construction time, even when no channel is ever opened.
+// On Node < 22 (no native WebSocket global) and with the `ws` package removed
+// (#658, CVE-2026-48779), that resolution throws before this script can run
+// at all. This script never calls `.channel()`/`.subscribe()`, so a stub
+// that is constructed-but-never-invoked satisfies the eager check without
+// reintroducing `ws`.
+class NoRealtimeTransportStub {
+  constructor() {
+    throw new Error(
+      'Realtime transport unavailable: this client never opens a realtime channel.'
+    );
+  }
+}
+
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
+  realtime: { transport: NoRealtimeTransportStub },
 });
 
 const HOMEOWNER_EMAIL = 'test-homeowner@otterquote-internal.test';

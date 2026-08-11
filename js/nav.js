@@ -599,8 +599,24 @@ const Nav = {
   }
 };
 
+// #562: staging banner — this environment shares the production database
+// (see #696 for the unresolved separation decision), and app-subdomain /
+// OAuth handoffs still land on production, so anyone testing here needs a
+// standing visual reminder rather than discovering it mid-flow.
+function _renderStagingBanner() {
+  if (typeof CONFIG === 'undefined' || !CONFIG.IS_STAGING) return;
+  const bar = document.createElement('div');
+  bar.setAttribute('role', 'status');
+  bar.style.cssText = 'position:sticky;top:0;z-index:9999;background:#B45309;color:#fff;' +
+    'font:600 0.8rem/1.4 var(--font-body, sans-serif);text-align:center;padding:6px 12px;';
+  bar.textContent = 'STAGING — shares the production database. App-subdomain and OAuth sign-in redirects still land on production.';
+  document.body.insertBefore(bar, document.body.firstChild);
+}
+
 // Auto-initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  _renderStagingBanner();
+
   // Look for data attributes on header/footer elements
   const header = document.getElementById('site-header');
   if (header) {
