@@ -24,7 +24,7 @@ interface Contractor {
   email: string | null;
   notification_emails: string[] | null;
   contact_name: string | null;
-  service_counties: string[];
+  service_counties: string[] | null;
   auto_bid_value_adds: Record<string, unknown> | null;
   default_auto_renew: boolean;
   address_state: string | null;
@@ -107,8 +107,7 @@ serve(async (req: Request) => {
       .select('id, user_id, email, notification_emails, contact_name, service_counties, auto_bid_value_adds, default_auto_renew, address_state')
       .eq('auto_bid_enabled', true)
       .eq('status', 'active')
-      .contains('trades', ['roofing'])
-      .not('service_counties', 'is', null);
+      .contains('trades', ['roofing']);
 
     if (contractorsError) {
       throw new Error(`Contractors query failed: ${contractorsError.message}`);
@@ -142,12 +141,17 @@ serve(async (req: Request) => {
         // Dedup: skip if contractor already has any roofing quote for this claim
         if (alreadyBid.has(contractor.id)) continue;
 
-        // Service area match: any county in claim's state
+        // Service area match: any county in claim's state.
         // Claims carry property_state; contractors store "STATE:County" in service_counties.
         // State-level match is used until claims gain a property_county field (D-093).
-        const inServiceArea = contractor.service_counties.some(
-          (county) => county.startsWith(`${claim.property_state}:`)
-        );
+        // Null/empty service_counties (e.g. #466 states-grid onboarding) falls through to
+        // "include" — same conservative fallback as notify-contractors' county filter.
+        const inServiceArea =
+          !contractor.service_counties || contractor.service_counties.length === 0
+            ? true
+            : contractor.service_counties.some(
+                (county) => county.startsWith(`${claim.property_state}:`)
+              );
         if (!inServiceArea) continue;
 
         try {
