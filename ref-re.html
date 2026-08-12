@@ -653,7 +653,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Look up agent in Supabase
     try {
       const { data, error } = await sb
-        .from('referral_agents_public')
+        .rpc('get_referral_agents_public')
         .select('*')
         .eq('unique_code', refCode)
         .single();
