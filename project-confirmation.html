@@ -1997,7 +1997,6 @@
       setInput('ventBox',    data.ventBox != null ? String(data.ventBox) : null);
       setInput('ventRidge',  data.ventRidge != null ? String(data.ventRidge) : null);
       setInput('ventOther',  data.ventOther);
-
       setSelect('satelliteDish', data.satelliteDish);
 
       setSelect('badDecking',       data.badDecking);
@@ -2194,7 +2193,7 @@
 
         // ── Load contractor ──
         const { data: contractorData, error: contractorError } = await sb
-          .from('contractors_public')
+          .rpc('get_contractors_public')
           .select('id, company_name, years_in_business, owner_photo_url')
           .eq('id', state.contractorId)
           .single();
