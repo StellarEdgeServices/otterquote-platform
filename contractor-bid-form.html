@@ -4141,7 +4141,11 @@
       }
       // Homeowner-uploaded measurement file — independent of Hover PDF / hover_orders state.
       // gh-484: contractors previously had no way to open this even when has_measurements was true.
-      if (currentClaim.measurements_filename) {
+      // gh-484 follow-up: hover-webhook stamps a synthesized `hover_{job}_measurements.json`
+      // sentinel on claims (see supabase/functions/hover-webhook/index.ts) that names no storage
+      // object — the real Hover artifact is a PDF served by the Hover button below. Rendering off
+      // a bare truthiness check therefore offers a link that can only fail. Guard on the sentinel.
+      if (currentClaim.measurements_filename && !isHoverMeasurementsSentinel(currentClaim.measurements_filename)) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormMeasurementsPdf()">&#x1F4D0; View Measurements</button>');
       }
       // Always offer Hover PDF — function handles gracefully if no Hover job exists
@@ -4173,8 +4177,16 @@
       }
     }
 
+    // gh-484: `hover_{job}_measurements.json` is written by hover-webhook as a completion marker,
+    // not as a storage path. Nothing is ever uploaded under that name, so any signed-URL request
+    // for it 400s. Uploaded measurement files are UID-first paths (`{uid}/{claim}/…`).
+    function isHoverMeasurementsSentinel(filename) {
+      return /^hover_\d+_measurements\.json$/i.test(filename || '');
+    }
+
     async function openBidFormMeasurementsPdf() {
       if (!sb || !currentClaim?.measurements_filename) return;
+      if (isHoverMeasurementsSentinel(currentClaim.measurements_filename)) return;
       try {
         const { data, error } = await sb.storage
           .from('claim-documents')
