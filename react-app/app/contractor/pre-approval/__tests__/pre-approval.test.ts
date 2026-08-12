@@ -167,10 +167,10 @@ describe('multi-license capture (D-218)', () => {
   });
 
   it('buildLicenseInsert maps jurisdiction->municipality + D-218 columns', () => {
-    const row = buildLicenseInsert('c1', { jurisdiction: 'Hamilton County', licenseNumber: 'RC9', expiryDate: '2027-02-02', jurisdictionLevel: 'county', verificationUrl: 'https://verify' }, 'licenses/u1/9-x.pdf');
+    const row = buildLicenseInsert('c1', { jurisdiction: 'Hamilton County', licenseNumber: 'RC9', expiryDate: '2027-02-02', jurisdictionLevel: 'county', verificationUrl: 'https://verify' }, 'u1/licenses/9-x.pdf');
     expect(row).toEqual({
       contractor_id: 'c1', municipality: 'Hamilton County', license_number: 'RC9',
-      license_document_url: 'licenses/u1/9-x.pdf', expiration_date: '2027-02-02',
+      license_document_url: 'u1/licenses/9-x.pdf', expiration_date: '2027-02-02',
       jurisdiction_level: 'county', verification_url: 'https://verify',
     });
     // optional fields collapse to null
@@ -189,7 +189,7 @@ describe('storage paths', () => {
   it('docPath / wce1Path / licenseDocPath formats', () => {
     expect(docPath('u1', 'coi.pdf', 100)).toBe('u1/100-coi.pdf');
     expect(wce1Path('u1', 'cert.pdf', 100)).toBe('u1/wce1_cert_100_cert.pdf');
-    expect(licenseDocPath('u1', 'lic.pdf', 100)).toBe('licenses/u1/100-lic.pdf');
+    expect(licenseDocPath('u1', 'lic.pdf', 100)).toBe('u1/licenses/100-lic.pdf');
   });
 });
 
@@ -370,7 +370,7 @@ describe('verbatim Tier-3 legal copy', () => {
   it('partner agreement: 5% fee disclosure + sign-via-DocuSign', () => {
     const p = PRE_APPROVAL_COPY.step3.partnerAgreement;
     expect(p.heading).toBe('Contractor Partner Agreement');
-    expect(p.bodyPost).toContain('platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs');
+    expect(p.bodyPost).toContain('platform fee is 5% of your accepted bid amount for all job types');
     expect(p.checkLabel).toContain('platform fee structure');
   });
 

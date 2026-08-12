@@ -15,6 +15,7 @@
   });
 </script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=get-started&persona=homeowner');}})()</script>
 <meta charset="UTF-8">
@@ -368,6 +369,8 @@
           <div class="referral-options">
             <button type="button" class="referral-chip" data-value="insurance_agent">Insurance Agent</button>
             <button type="button" class="referral-chip" data-value="realtor">Realtor</button>
+            <button type="button" class="referral-chip" data-value="home_inspector">Home Inspector</button>
+            <button type="button" class="referral-chip" data-value="adjuster">Adjuster</button>
             <button type="button" class="referral-chip" data-value="friend">Friend/Family</button>
             <button type="button" class="referral-chip" data-value="web">Found Online</button>
           </div>
@@ -464,7 +467,6 @@
   </div>
 </div>
 
-<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
@@ -485,7 +487,7 @@
       document.getElementById('referral-source').value = chip.dataset.value;
 
       const nameRow = document.getElementById('referral-name-row');
-      if (['insurance_agent', 'realtor'].includes(chip.dataset.value)) {
+      if (['insurance_agent', 'realtor', 'home_inspector', 'adjuster'].includes(chip.dataset.value)) {
         nameRow.classList.add('visible');
       } else {
         nameRow.classList.remove('visible');

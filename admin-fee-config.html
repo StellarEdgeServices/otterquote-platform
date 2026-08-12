@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platform Fee Configuration - OtterQuote Admin</title>
+    <title>Platform Fee Configuration - Otter Quotes Admin</title>
     <script src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js" crossorigin="anonymous"></script>
 <script>
   Sentry.onLoad(function() {
@@ -394,6 +394,14 @@
             }
         }
     </style>
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+</script>
 </head>
 <body>
     <header>
@@ -514,12 +522,11 @@
         </div>
     </div>
 
+    <script src="js/config.js"></script>
     <script>
-        const SUPABASE_URL = 'https://yeszghaspzwwstvsrioa.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inllc3pnaGFzcHp3d3dzdHZzcmlvYSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzEwNTczMjAwLCJleHAiOjE4Njc2OTU4MDB9.ePuEczJVk8VNlMTRZQOtVDKcLZXNhDfRr84WZBwG4dQ';
         const ADMIN_EMAIL = 'dustinstohler1@gmail.com';
 
-        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
+        const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
         let allFees = [];
         let currentEditingId = null;

@@ -16,9 +16,11 @@ import {
   formatWarranty,
   getScopeSummary,
   isLowestPrice,
+  licenseChip,
   netToContractor,
+  statusChip,
 } from '../utils';
-import type { BidRow, BidsClaim, ContractorProfile } from '../types';
+import type { BidRow, BidsClaim, ContractorProfile, PublicLicense } from '../types';
 
 const JOB_TYPE: Record<string, { label: string; color: string }> = {
   insurance_rcv: { label: 'RCV', color: 'var(--blue, #2563EB)' },
@@ -41,8 +43,12 @@ interface BidCardProps {
   bids: BidRow[];
   claim: BidsClaim | null;
   contractor: ContractorProfile;
+  /** contractor_licenses_public rows for this contractor (#534, D-218). */
+  licenses?: PublicLicense[];
   onSelect: (bid: BidRow) => void;
   onRenew: (bid: BidRow) => void;
+  /** Opens the credential-education popup for this contractor (#534). */
+  onCredentials?: (contractorId: string) => void;
   renewalState?: 'idle' | 'sending' | 'sent';
   now?: Date;
 }
@@ -52,8 +58,10 @@ export function BidCard({
   bids,
   claim,
   contractor,
+  licenses = [],
   onSelect,
   onRenew,
+  onCredentials,
   renewalState = 'idle',
   now,
 }: BidCardProps) {
@@ -66,6 +74,10 @@ export function BidCard({
   const ss = getScopeSummary(bid);
   const net = netToContractor(bid);
   const companyName = contractor.company_name || 'Contractor';
+  // #534 credential chips — keyed to artifact state, never `verified` (D-104).
+  const lic = licenseChip(contractor, licenses);
+  const st = statusChip(contractor);
+  const openCredentials = () => onCredentials?.(contractor.id);
 
   return (
     <div className={'oqb-card' + (lowest ? ' lowest' : '') + (isExpired ? ' expired' : '')}>
@@ -89,7 +101,14 @@ export function BidCard({
           <div className="oqb-meta">
             {contractor.years_in_business ? <span>{contractor.years_in_business} years in business</span> : null}
             {contractor.rating ? <span>★ {contractor.rating}</span> : null}
-            {contractor.verified ? <span className="oqb-verified">✓ Licensed</span> : null}
+          </div>
+          <div className="oqb-chips">
+            <button type="button" className={`oqb-chip ${lic.kind}`} onClick={openCredentials}>
+              {lic.label}
+            </button>
+            <button type="button" className={`oqb-chip ${st.kind}`} onClick={openCredentials}>
+              {st.label}
+            </button>
           </div>
         </div>
       </div>

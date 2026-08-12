@@ -4,11 +4,14 @@
  *
  *  1. TIER-3 verbatim copy: the disclosure / legal blocks are asserted BYTE-FOR-BYTE
  *     against project-confirmation.html (the live homeowner reference). Any reword of
- *     ./copy.ts trips this — the intended Tier-3 tripwire. The "[Contractor]" token and the
- *     inaccurate "All four" wording are asserted AS-IS (both ticketed separately).
+ *     ./copy.ts trips this — the intended Tier-3 tripwire. The "[Contractor]" token is
+ *     asserted AS-IS (ticketed separately). gh-418 (2026-08-10): the inaccurate "All four"
+ *     wording was corrected in both copy.ts and project-confirmation.html — no longer
+ *     asserted verbatim against the old text.
  *  2. Pure helpers (./utils): trade detection, insurance gating, the dynamic required-ack
- *     set (incl. the preserved case-sensitivity quirk), the submit gate's hidden/absent-ack
- *     behavior, and the project_confirmation payload shape + conditional blocks.
+ *     set (case-insensitive on trades since gh-418 — see utils.ts), the submit gate's
+ *     hidden/absent-ack behavior, and the project_confirmation payload shape + conditional
+ *     blocks.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -41,7 +44,7 @@ const STATIC = {
   rottenSheathingAckLabel:
     'I have read and understand the Rotten Sheathing Disclosure above. (Initial)',
   disclosuresSectionTitle: '✏️ Disclosures & Acknowledgments',
-  disclosuresIntro: 'Please initial each item below. All four are required before you can submit.',
+  disclosuresIntro: 'Please initial each item below before you can submit.',
   // Reconstituted from the split around #depreciationAmtDisplay ($___ default).
   depreciationDisclosureFull:
     'NON-RECOVERABLE DEPRECIATION: My insurance claim shows non-recoverable depreciation in the amount of $___. I understand that this is money my insurance company will not be paying to me, but I will still be responsible for paying my contractor the full Replacement Cost Value (RCV) of my project.',
@@ -68,9 +71,9 @@ describe('TIER-3 verbatim homeowner disclosure copy (byte-for-byte)', () => {
     expect(CONFIRM_COPY.headerTitle).toBe(STATIC.headerTitle);
     expect(CONFIRM_COPY.headerSubtitle).toBe(STATIC.headerSubtitle);
     expect(CONFIRM_COPY.disclosuresSectionTitle).toBe(STATIC.disclosuresSectionTitle);
-    // "All four" is inaccurate but locked verbatim (ticketed separately).
+    // gh-418: intro no longer claims a fixed count of required acks (it's dynamic, 3-6).
     expect(CONFIRM_COPY.disclosuresIntro).toBe(STATIC.disclosuresIntro);
-    expect(CONFIRM_COPY.disclosuresIntro).toContain('All four');
+    expect(CONFIRM_COPY.disclosuresIntro).not.toContain('All four');
   });
 
   it('Bad Decking disclosure + ack + sublabel match exactly', () => {
@@ -195,10 +198,10 @@ describe('buildAckIds (dynamic required-ack set)', () => {
     expect(buildAckIds(['downspouts'], false)).toEqual(UNIVERSAL);
   });
 
-  it('PRESERVED QUIRK: case-sensitive — mixed-case "Roofing" does NOT require bad-decking', () => {
-    // detectTrades() would SHOW the ack (case-insensitive); buildAckIds does NOT require it
-    // (case-sensitive on raw trades). This divergence is intentional — see utils.ts note.
-    expect(buildAckIds(['Roofing'], false)).toEqual(UNIVERSAL);
+  it('gh-418 FIX: case-insensitive — mixed-case "Roofing" DOES require bad-decking', () => {
+    // Previously buildAckIds was case-sensitive while detectTrades was not, so a mixed-case
+    // trade would SHOW the ack but not REQUIRE it. Both are now case-insensitive and agree.
+    expect(buildAckIds(['Roofing'], false)).toEqual(['ackBadDecking', ...UNIVERSAL]);
     expect(detectTrades(['Roofing']).hasRoofing).toBe(true);
   });
 });
@@ -320,12 +323,16 @@ describe('buildPayload (project_confirmation JSONB)', () => {
     expect(buildPayload(baseInput({ trades: ['downspouts'] }))).toHaveProperty('splashBlocks', '');
   });
 
-  it('PRESERVED QUIRK: case-sensitive — "Siding"/"Gutters" do NOT emit their conditional blocks', () => {
-    const p = buildPayload(baseInput({ trades: ['Siding', 'Gutters'] }));
-    expect(p).not.toHaveProperty('rottenSheathing');
-    expect(p).not.toHaveProperty('gutterSize');
-    // ...yet activeTrades echoes the raw trades verbatim.
-    expect(p.activeTrades).toEqual(['Siding', 'Gutters']);
+  it('gh-418 FIX: case-insensitive — "Siding"/"Gutters" DO emit their conditional blocks', () => {
+    const p = baseInput({
+      trades: ['Siding', 'Gutters'],
+      form: { rottenSheathing: 'Expected', rottenSheathingSqFt: '5', ackRottenSheathing: true },
+    });
+    const result = buildPayload(p);
+    expect(result).toHaveProperty('rottenSheathing', 'Expected');
+    expect(result).toHaveProperty('gutterSize', '');
+    // activeTrades still echoes the raw trades verbatim (unchanged).
+    expect(result.activeTrades).toEqual(['Siding', 'Gutters']);
   });
 
   it('_autoFill: string sources default to "", depreciation/decking pass through (null when absent)', () => {

@@ -55,6 +55,27 @@ export const BIDS_STYLES = `
   .oqb-meta { display: flex; gap: 0.6rem; flex-wrap: wrap; color: var(--slate, #94a3b8); font-size: 0.8rem; margin-top: 2px; }
   .oqb-verified { color: var(--green, #16A34A); }
 
+  /* #534 credential chips — "not provided" is a lawful state (D-217): neutral gray, no warning */
+  .oqb-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 6px; }
+  .oqb-chip { font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: none; cursor: pointer; font-family: inherit; }
+  .oqb-chip.on-file { background: rgba(22,163,74,0.18); color: #6EE7B7; }
+  .oqb-chip.neutral { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.75); }
+  .oqb-chip:hover { filter: brightness(1.2); }
+
+  /* #534 credential-education popup */
+  .oqb-edu-card { background: var(--navy, #0B1929); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 1.5rem; max-width: 560px; width: 100%; max-height: 85vh; overflow-y: auto; }
+  .oqb-edu-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; }
+  .oqb-edu-close { background: none; border: none; color: var(--slate, #94a3b8); font-size: 1.5rem; line-height: 1; cursor: pointer; padding: 0 4px; }
+  .oqb-edu-close:hover { color: #fff; }
+  .oqb-edu-body p { color: var(--slate, #cbd5e1); font-size: 0.9rem; line-height: 1.65; margin-bottom: 0.9rem; }
+  .oqb-edu-body p strong { color: #fff; }
+  .oqb-edu-licenses { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.9rem; margin-top: 0.35rem; }
+  .oqb-edu-licenses h4 { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate, #94a3b8); margin-bottom: 0.6rem; }
+  .oqb-edu-license-row { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 0.55rem 0.8rem; margin-bottom: 0.45rem; font-size: 0.85rem; display: flex; flex-direction: column; gap: 2px; }
+  .oqb-lic-meta { font-size: 0.76rem; color: var(--slate, #94a3b8); }
+  .oqb-edu-license-row a { color: var(--amber, #E07B00); text-decoration: none; font-size: 0.78rem; }
+  .oqb-edu-license-row a:hover { text-decoration: underline; }
+
   .oqb-expiry-warning { background: rgba(217,119,6,0.12); color: #f5b85b; border-radius: 8px; padding: 0.55rem 0.7rem; font-size: 0.8rem; margin-bottom: 0.85rem; }
   .oqb-expiry-notice { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 0.55rem 0.7rem; font-size: 0.8rem; margin-bottom: 0.85rem; position: relative; }
   .oqb-expiry-info { margin-left: 6px; width: 18px; height: 18px; border-radius: 50%; border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer; font-size: 0.7rem; line-height: 1; }

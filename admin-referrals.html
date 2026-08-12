@@ -295,6 +295,14 @@
             .table-wrapper { overflow-x: auto; }
         }
     </style>
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+</script>
 </head>
 <body>
     <header id="site-header" data-active="admin" data-auth="false"></header>
@@ -382,6 +390,54 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Referrals (#599) — the referral records themselves, not just partners -->
+            <h2 style="margin:2.5rem 0 0.25rem;font-size:1.25rem;">Referrals</h2>
+            <p style="margin:0 0 1rem;color:var(--slate,#64748B);font-size:0.875rem;">
+                Every referral record and where it sits in the funnel.
+                Read via <code>admin_list_referrals()</code> &mdash; <code>referrals</code> has no admin
+                SELECT policy, so a direct client read returns nothing.
+            </p>
+
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <div class="summary-card-label">Total Referrals</div>
+                    <div class="summary-card-value" id="refTotalCount">—</div>
+                </div>
+                <div class="summary-card" style="border-left:4px solid #93c5fd;">
+                    <div class="summary-card-label" style="color:#1d4ed8;">In Funnel</div>
+                    <div class="summary-card-value" id="refInFunnelCount" style="color:#2563eb;">—</div>
+                </div>
+                <div class="summary-card" style="border-left:4px solid #86efac;">
+                    <div class="summary-card-label" style="color:#166534;">Commission Earned</div>
+                    <div class="summary-card-value" id="refEarnedCount" style="color:#15803d;">—</div>
+                </div>
+                <div class="summary-card" style="border-left:4px solid #fcd34d;">
+                    <div class="summary-card-label" style="color:#92400e;">No Claim Linked</div>
+                    <div class="summary-card-value" id="refNoClaimCount" style="color:#d97706;">—</div>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="partners-table">
+                    <thead>
+                        <tr>
+                            <th>Created</th>
+                            <th>Partner</th>
+                            <th>Code</th>
+                            <th>Homeowner</th>
+                            <th>Landing Page</th>
+                            <th>Status</th>
+                            <th>Job Value</th>
+                            <th>Commission</th>
+                            <th>Claim</th>
+                        </tr>
+                    </thead>
+                    <tbody id="referralsTableBody">
+                        <tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--slate);">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </main>
 
@@ -414,6 +470,7 @@
                 }
                 document.getElementById('adminContainer').style.display = 'block';
                 await loadPartners();
+                await loadReferrals();
             } catch (err) {
                 console.error('init error:', err);
                 showUnauthorized();
@@ -495,6 +552,8 @@
                 'insurance_agent': ['badge-type-ins',  'Insurance'],
                 'home_inspector':  ['badge-type-insp', 'Inspector'],
                 'customer':        ['badge-type-cust', 'Customer'],
+                'adjuster':        ['badge-type-ins',  'Adjuster'],
+                'other':           ['badge-type-cust', 'Other'],
             };
             const [cls, label] = map[type] || ['badge-not-filed', type || '—'];
             return `<span class="badge ${cls}">${label}</span>`;
@@ -551,6 +610,81 @@
             }
 
             return btns || '<span style="color:var(--slate);font-size:0.8rem;">—</span>';
+        }
+
+        // ── Referrals (#599) ────────────────────────────────────────────────
+        // admin-referrals.html never read the referrals table — there was no
+        // admin view of referral attribution anywhere on the platform. It
+        // cannot be read directly: referrals has no admin SELECT policy, so a
+        // client-side query returns 0 rows silently. v98's admin_list_referrals()
+        // is SECURITY DEFINER and self-gates on is_admin_email().
+        async function loadReferrals() {
+            const tbody = document.getElementById('referralsTableBody');
+
+            const { data, error } = await sb.rpc('admin_list_referrals');
+
+            if (error) {
+                console.error('loadReferrals error:', error);
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:#dc2626;">Could not load referrals: ${error.message}</td></tr>`;
+                return;
+            }
+
+            const rows = data || [];
+
+            const money = v => (v === null || v === undefined)
+                ? '—'
+                : '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const TERMINAL = ['commission_paid', 'job_completed'];
+            document.getElementById('refTotalCount').textContent    = rows.length;
+            document.getElementById('refInFunnelCount').textContent  = rows.filter(r => !TERMINAL.includes(r.status)).length;
+            document.getElementById('refEarnedCount').textContent    = rows.filter(r => Number(r.commission_amount || 0) > 0).length;
+            document.getElementById('refNoClaimCount').textContent   = rows.filter(r => !r.claim_id).length;
+
+            if (!rows.length) {
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--slate);">No referrals recorded yet.</td></tr>`;
+                return;
+            }
+
+            const STATUS_COLORS = {
+                clicked:         '#64748B',
+                registered:      '#2563EB',
+                claim_submitted: '#7C3AED',
+                contract_signed: '#D97706',
+                job_completed:   '#15803D',
+                commission_paid: '#15803D',
+            };
+
+            tbody.innerHTML = rows.map(r => {
+                const commission = Number(r.commission_amount || 0)
+                                 + Number(r.recruit_commission_amount || 0);
+                // A referral with no linked claim can never accrue a commission —
+                // apply_referral_commission() resolves via claims.referral_id.
+                const claimCell = r.claim_id
+                    ? (r.claim_completion_date
+                        ? `<span style="color:#15803d;">Completed ${new Date(r.claim_completion_date).toLocaleDateString()}</span>`
+                        : `<span style="color:#2563eb;">Linked</span>`)
+                    : `<span style="color:#d97706;font-weight:600;" title="No claim linked — this referral cannot accrue a commission">None</span>`;
+
+                return `
+                    <tr>
+                        <td>${new Date(r.created_at).toLocaleDateString()}</td>
+                        <td>${escapeHtml(r.partner_name || '—')}<div style="font-size:0.75rem;color:var(--slate);">${escapeHtml(r.partner_email || '')}</div></td>
+                        <td><code>${escapeHtml(r.partner_code || '—')}</code></td>
+                        <td>${escapeHtml(r.homeowner_email || '—')}</td>
+                        <td>${escapeHtml(r.landing_page || '—')}</td>
+                        <td><span style="color:${STATUS_COLORS[r.status] || '#64748B'};font-weight:600;">${escapeHtml(r.status || '—')}</span></td>
+                        <td>${money(r.job_value)}</td>
+                        <td>${commission > 0 ? money(commission) : '—'}</td>
+                        <td>${claimCell}</td>
+                    </tr>`;
+            }).join('');
+        }
+
+        function escapeHtml(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
         }
 
         async function viewW9(storagePath) {

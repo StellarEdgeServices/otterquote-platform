@@ -97,6 +97,24 @@
     .bid-badge.verified { background: var(--green-light); color: #065F46; }
     .bid-badge.info { background: var(--blue-light); color: #1E40AF; }
     .bid-badge.warning { background: var(--amber-light); color: #92400E; }
+    /* #534: "not provided" is a lawful state (D-217) — neutral gray, no warning icon */
+    .bid-badge.neutral { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.75); }
+    button.bid-badge { border: none; cursor: pointer; font-family: inherit; }
+    button.bid-badge:hover { filter: brightness(1.2); }
+
+    /* Credential education popup (#534) */
+    .edu-card { max-width: 560px; text-align: left; max-height: 85vh; overflow-y: auto; }
+    .edu-card h3 { text-align: left; margin-bottom: var(--sp-4); }
+    .edu-close { background: none; border: none; color: var(--slate); font-size: 1.5rem; line-height: 1; cursor: pointer; padding: 0 4px; }
+    .edu-close:hover { color: var(--white); }
+    .edu-body p { text-align: left; color: var(--slate); line-height: 1.7; font-size: 0.92rem; margin-bottom: var(--sp-4); }
+    .edu-body p strong { color: var(--white); }
+    .edu-license-detail { border-top: 1px solid rgba(255,255,255,0.1); padding-top: var(--sp-4); margin-top: var(--sp-2); text-align: left; }
+    .edu-license-detail h4 { font-family: var(--font-body); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate); margin-bottom: var(--sp-3); }
+    .edu-license-row { background: rgba(255,255,255,0.04); border-radius: var(--radius-sm); padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-2); font-size: 0.88rem; color: rgba(255,255,255,0.85); display: flex; flex-direction: column; gap: 2px; }
+    .edu-license-row .lic-meta { font-size: 0.78rem; color: var(--slate); }
+    .edu-license-row a { color: var(--amber); text-decoration: none; font-size: 0.8rem; }
+    .edu-license-row a:hover { text-decoration: underline; }
 
     /* Bid Message */
     .bid-message { background: rgba(255,255,255,0.03); border-radius: var(--radius-sm); padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-6); font-size: 0.9rem; color: rgba(255,255,255,0.85); line-height: 1.6; font-style: italic; border-left: 3px solid var(--amber); }
@@ -503,6 +521,25 @@
     </div>
   </div>
 
+  <!-- Credential Education Popup (#534 — GC-locked copy 2026-07-13, verbatim; D-210/D-217/D-218, D-104-safe.
+       Any copy change requires new GC sign-off. -->
+  <div id="credentialEducationModal" class="modal-overlay" onclick="if(event.target===this)closeCredentialEducation()">
+    <div class="modal-card edu-card" role="dialog" aria-modal="true" aria-labelledby="eduTitle">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3);">
+        <h3 id="eduTitle">About contractor credentials</h3>
+        <button class="edu-close" onclick="closeCredentialEducation()" aria-label="Close">&times;</button>
+      </div>
+      <div class="edu-body">
+        <p><strong>What's on file.</strong> Before a contractor can bid on Otter Quotes, they provide a Certificate of Insurance for Commercial General Liability coverage, plus either a workers' compensation certificate of insurance or a state-issued workers' comp exemption certificate. These documents are on file with Otter Quotes.</p>
+        <p><strong>Licensing.</strong> Requirements vary by state, county, and city — and some work doesn't require a license at all. Otter Quotes displays exactly what each contractor has provided: license details where uploaded, or "License: Not provided by contractor" where not. Otter Quotes does not determine whether a license is required for your project.</p>
+        <p><strong>Permits and bonds.</strong> Permits are approvals from your local building department that certain projects require — your contractor typically obtains them, but confirming what your project needs is part of hiring. Surety bonds are a financial guarantee some jurisdictions require contractors to carry as part of local licensing.</p>
+        <p><strong>Your role.</strong> Otter Quotes shows you what contractors have uploaded. Verifying whether those documents meet your local requirements is your responsibility. To check what your area requires, contact your state licensing board and your county or city building department.</p>
+        <p>Otter Quotes does not independently verify these documents with issuing agencies, and listing on Otter Quotes is not an endorsement of any contractor. The choice of contractor is always yours.</p>
+      </div>
+      <div id="eduLicenseDetail" class="edu-license-detail"></div>
+    </div>
+  </div>
+
   <footer id="site-footer"></footer>
 
   <script src="js/cookie-storage.js"></script>
@@ -519,6 +556,7 @@
     let currentClaim = null;
     let bids = [];
     let contractors = {};  // keyed by contractor_id
+    let licensesByContractor = {};  // #534: contractor_licenses_public rows keyed by contractor_id (D-218)
     let currentView = 'grid';
 
     // ── Init ──
@@ -590,6 +628,7 @@
             .select(`
               id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
               service_area_description, service_counties, license_number, verified,
+              status, license_doc_state,
               google_reviews_url, rating, review_count, bbb_url, angi_url, yelp_url,
               specialties, why_choose_us, num_employees, trades, website_url
             `)
@@ -604,6 +643,23 @@
               const row = byId[bid.contractor_id] || null;
               bid.contractors = row;                       // preserve existing shape
               if (row) contractors[bid.contractor_id] = row;
+              // #534: pending contractors are filtered out of contractors_public —
+              // a bid whose contractor is missing here should be unreachable (GC note).
+              if (!row) console.warn('[bids] contractor profile not in contractors_public (not active/approved?) for contractor', bid.contractor_id);
+            });
+          }
+
+          // #534: homeowner-safe license drill-down (D-218). The view only returns
+          // rows for active/approved contractors; render falls back to the
+          // "License not provided" state (lawful per D-217) when empty.
+          const { data: licRows, error: licErr } = await sb
+            .rpc('get_contractor_licenses_public', { p_contractor_ids: contractorIds });
+          if (licErr) {
+            console.error('[bids] contractor_licenses_public lookup failed:', licErr.message);
+          } else if (licRows) {
+            licensesByContractor = {};
+            licRows.forEach(row => {
+              (licensesByContractor[row.contractor_id] = licensesByContractor[row.contractor_id] || []).push(row);
             });
           }
         }
@@ -1268,7 +1324,8 @@
             ${renderPerTradeBreakdown(bid)}
 
             <div class="bid-badges">
-              ${c.verified ? '<span class="bid-badge verified">✓ Licensed</span>' : ''}
+              ${licenseChipHtml(c)}
+              ${statusChipHtml(c)}
               ${c.specialties ? parseCerts(c.specialties).map(cert => `<span class="bid-badge info">${esc(cert)}</span>`).join('') : ''}
             </div>
 
@@ -1598,10 +1655,10 @@
         <div class="profile-avatar">${avatarHTML}</div>
         <div class="profile-hero-info">
           <h2>${esc(c.company_name)}</h2>
-          <p>${c.about_us ? esc(c.about_us) : `${c.company_name} is a licensed contractor serving ${esc(c.service_area_description || 'the local area')}.`}</p>
+          <p>${c.about_us ? esc(c.about_us) : `${c.company_name} is a contractor serving ${esc(c.service_area_description || 'the local area')}.`}</p>
           <div class="profile-hero-badges">
             ${c.years_in_business ? `<span class="badge badge-amber">${c.years_in_business} Years in Business</span>` : ''}
-            ${c.verified ? '<span class="badge badge-green">✓ Verified</span>' : ''}
+            ${statusChipHtml(c)}
           </div>
         </div>
       `;
@@ -1652,7 +1709,7 @@
           </div>
           <div class="info-item">
             <span class="info-item-label">License #</span>
-            <span class="info-item-value">${esc(c.license_number || 'On file')}</span>
+            <span class="info-item-value">${esc(c.license_number || 'Not provided')}</span>
           </div>
         </div>
         ${c.why_choose_us ? `<h4 style="font-family:var(--font-body);font-size:1rem;font-weight:600;margin-bottom:var(--sp-3);">Why Choose Us</h4><div class="why-choose">${esc(c.why_choose_us)}</div>` : ''}
@@ -1726,14 +1783,23 @@
         ` : '<p style="color:var(--slate);">No certifications listed.</p>'}
       `;
 
-      // License & Insurance
+      // License & Credentials (#534 — chips keyed to artifact state, D-217/D-218;
+      // "Verification" wording dropped everywhere per the GC badge decision)
+      const profileLics = licensesByContractor[contractorId] || [];
+      const profileHasLicDoc = profileLics.length > 0 || c.license_doc_state === 'uploaded';
       document.getElementById('profileLicense').innerHTML = `
-        <h3>License & Verification</h3>
+        <h3>License & Credentials</h3>
         <div style="display:flex;flex-direction:column;gap:var(--sp-3);">
-          <div class="team-item">
-            <span class="bid-badge ${c.verified ? 'verified' : 'warning'}">${c.verified ? '✓ Verified Contractor' : '⚠ Pending Verification'}</span>
-            ${c.license_number ? `<span style="color:var(--slate);font-size:0.85rem;margin-left:var(--sp-2);">#${esc(c.license_number)}</span>` : ''}
+          <div class="team-item" style="display:flex;gap:var(--sp-2);flex-wrap:wrap;">
+            ${licenseChipHtml(c)}
+            ${statusChipHtml(c)}
           </div>
+          ${profileLics.length
+            ? profileLics.map(eduLicenseRowHtml).join('')
+            : (profileHasLicDoc
+                ? (c.license_number ? `<div class="team-item" style="font-size:0.88rem;color:var(--slate);">License #<strong style="color:var(--white);">${esc(c.license_number)}</strong></div>` : '')
+                : `<div class="team-item" style="font-size:0.88rem;color:var(--slate);">License: Not provided by contractor.</div>`)}
+          <button class="btn btn-sm btn-ghost" style="align-self:flex-start;" onclick="openCredentialEducation('${contractorId}')">What do these credentials mean?</button>
         </div>
       `;
 
@@ -1754,6 +1820,62 @@
       document.getElementById('profileView').classList.remove('active');
       document.getElementById('comparisonView').style.display = 'block';
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // ── #534 Credential chips + education popup ──
+    // GC-approved badge wording (2026-07-13, recorded on #534): chips key off
+    // actual artifact state — contractor_licenses_public rows + the derived
+    // license_doc_state — never the ambiguous `verified` flag (D-104/D-210/D-217/D-218).
+
+    // License chip. "Not provided" is a lawful state per D-217: neutral gray, no ⚠.
+    function licenseChipHtml(c) {
+      const lics = licensesByContractor[c.id] || [];
+      const hasDoc = lics.length > 0 || c.license_doc_state === 'uploaded';
+      const label = hasDoc
+        ? (lics.length > 1 ? `✓ ${lics.length} licenses on file` : '✓ License on file')
+        : 'License not provided';
+      return `<button type="button" class="bid-badge ${hasDoc ? 'verified' : 'neutral'}" onclick="openCredentialEducation('${c.id || ''}')">${label}</button>`;
+    }
+
+    // Status chip, keyed to the D-210 three-artifact gate. contractors_public only
+    // returns active/approved rows, so the pending state should be unreachable on
+    // this surface — log if it ever renders (GC note on #534).
+    function statusChipHtml(c) {
+      const ok = c.status === 'active' || c.status === 'approved';
+      if (!ok) console.warn('[bids] contractor rendered without active/approved status — "Application under review" chip shown, which should be unreachable on bids:', c.id, c.status);
+      const label = ok ? '✓ Documents on file' : 'Application under review';
+      return `<button type="button" class="bid-badge ${ok ? 'verified' : 'neutral'}" onclick="openCredentialEducation('${c.id || ''}')">${label}</button>`;
+    }
+
+    function eduLicenseRowHtml(lic) {
+      const jur = [lic.jurisdiction_level, lic.municipality].filter(Boolean).map(esc).join(' — ');
+      return `<div class="edu-license-row">
+        <span>${lic.license_number ? 'License #' + esc(lic.license_number) : 'License on file'}</span>
+        ${jur ? `<span class="lic-meta">${jur}</span>` : ''}
+        ${lic.expiration_date ? `<span class="lic-meta">Expires ${formatDate(lic.expiration_date)}</span>` : ''}
+        ${lic.verification_url ? `<a href="${esc(lic.verification_url)}" target="_blank" rel="noopener">Verify with issuing agency →</a>` : ''}
+      </div>`;
+    }
+
+    window.openCredentialEducation = function(contractorId) {
+      const c = contractors[contractorId] || {};
+      const lics = licensesByContractor[contractorId] || [];
+      const hasDoc = lics.length > 0 || c.license_doc_state === 'uploaded';
+      let detail = `<h4>${c.company_name ? esc(c.company_name) : 'This contractor'} — licensing</h4>`;
+      if (lics.length) {
+        detail += lics.map(eduLicenseRowHtml).join('');
+      } else if (hasDoc) {
+        detail += `<div class="edu-license-row"><span>License on file</span>${c.license_number ? `<span class="lic-meta">License #${esc(c.license_number)}</span>` : ''}</div>`;
+      } else {
+        detail += `<div class="edu-license-row"><span>License: Not provided by contractor.</span></div>`;
+      }
+      document.getElementById('eduLicenseDetail').innerHTML = detail;
+      document.getElementById('credentialEducationModal').classList.add('active');
+      if (typeof gtag === 'function') gtag('event', 'view_credential_education', { contractor_id: contractorId || '' });
+    };
+
+    window.closeCredentialEducation = function() {
+      document.getElementById('credentialEducationModal').classList.remove('active');
     };
 
     // ── Select Contractor ──
@@ -2390,7 +2512,7 @@
         init();
       }).catch(err => {
         console.error('Auth.ready() failed:', err);
-        window.location.href = '/sign-in.html';
+        window.location.href = '/login.html';
       });
     } else {
       document.addEventListener('DOMContentLoaded', init);

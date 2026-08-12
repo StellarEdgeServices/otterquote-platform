@@ -17,6 +17,79 @@ const Nav = {
     return path.includes('contractor');
   },
 
+  /**
+   * Detect if current page is a partner entry/portal page. Matches only
+   * filenames starting with "partner-" — ref-*.html, recruit.html,
+   * refer-a-friend.html, and inspector-landing.html serve homeowner/mixed
+   * audiences and must keep the default nav.
+   */
+  _isPartnerPage() {
+    const path = window.location.pathname;
+    const file = path.substring(path.lastIndexOf('/') + 1);
+    return file.startsWith('partner-');
+  },
+
+  /** "For Partners" dropdown links (#567) — non-contractor header only. */
+  _partnerLinks: [
+    { href: '/partner-re.html',         label: 'Real Estate Agents' },
+    { href: '/partner-insurance.html',  label: 'Insurance Agents' },
+    { href: '/partner-adjusters.html',  label: 'Adjusters' },
+    { href: '/partner-inspectors.html', label: 'Home Inspectors' },
+    { href: '/refer-a-friend.html',     label: 'Refer a Friend' },
+    { href: '/partner-other.html',      label: 'Other Industries' },
+    { href: '/partner-app.html',        label: '📱 Partner App' },
+  ],
+
+  _partnersDropdownHTML() {
+    return `
+      <div class="nav-dropdown" id="nav-partners-dropdown">
+        <button type="button" class="nav-link nav-dropdown-toggle" id="nav-partners-toggle"
+                aria-haspopup="true" aria-expanded="false">
+          For Partners <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-dropdown-menu" role="menu" aria-label="For Partners">
+          ${this._partnerLinks.map(l => `
+            <a href="${l.href}" class="nav-dropdown-item" role="menuitem">${l.label}</a>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  },
+
+  _wirePartnersDropdown() {
+    const dropdown = document.getElementById('nav-partners-dropdown');
+    if (!dropdown || dropdown.dataset.wired === 'true') return;
+    dropdown.dataset.wired = 'true';
+    const toggle = dropdown.querySelector('.nav-dropdown-toggle');
+    const setOpen = (open) => {
+      dropdown.classList.toggle('open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    // Click toggles — the mobile/hamburger expandable behavior, and the
+    // keyboard/touch fallback on desktop.
+    toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      setOpen(!dropdown.classList.contains('open'));
+    });
+    // Hover open/close only on devices that actually hover — on touch,
+    // mouseenter firing before click would immediately re-close the menu.
+    const hoverable = window.matchMedia('(hover: hover) and (pointer: fine)');
+    if (hoverable.matches) {
+      dropdown.addEventListener('mouseenter', () => setOpen(true));
+      dropdown.addEventListener('mouseleave', () => setOpen(false));
+    }
+    dropdown.addEventListener('focusin', () => setOpen(true));
+    dropdown.addEventListener('focusout', (e) => {
+      if (!dropdown.contains(e.relatedTarget)) setOpen(false);
+    });
+    dropdown.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { setOpen(false); toggle.focus(); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target)) setOpen(false);
+    });
+  },
+
   /** Render the site header */
   renderHeader(options = {}) {
     const { active = '', showAuth = true } = options;
@@ -24,6 +97,7 @@ const Nav = {
     if (!nav) return;
 
     const isContractor = this._isContractorPage();
+    const isPartner = this._isPartnerPage();
 
     const links = isContractor ? [
       { href: '/contractor-dashboard.html',      label: 'Home',          id: 'home' },
@@ -31,12 +105,19 @@ const Nav = {
       { href: '/contractor-profile.html',        label: 'Profile',       id: 'profile' },
       { href: '/contractor-settings.html',       label: 'Settings',      id: 'settings' },
       { href: '/contractor-auto-bids.html',      label: 'Auto Bids',     id: 'auto-bids' },
+      { href: '/tools.html',                     label: 'Tools',         id: 'tools' },
       { href: '/contractor-how-it-works.html',   label: 'How It Works',  id: 'how-it-works' },
       { href: '/contractor-faq.html',            label: 'FAQ',           id: 'faq' },
+    ] : isPartner ? [
+      { href: '/index.html',              label: 'Home',              id: 'home' },
+      { href: '/partner-dashboard.html',  label: 'Partner Dashboard', id: 'partner-dashboard' },
+      { href: '/partner-app.html',        label: 'Get the App',       id: 'partner-app' },
+      { href: '/faq.html',                label: 'FAQ',               id: 'faq' },
     ] : [
-      { href: '/index.html',        label: 'Home',         id: 'home' },
-      { href: '/how-it-works.html',  label: 'How It Works', id: 'how-it-works' },
-      { href: '/faq.html',           label: 'FAQ',          id: 'faq' },
+      { href: '/index.html',         label: 'Home',              id: 'home' },
+      { href: '/how-it-works.html',  label: 'How It Works',      id: 'how-it-works' },
+      { href: '/faq.html',           label: 'FAQ',               id: 'faq' },
+      { href: '/tools.html',         label: 'Contractor Tools',  id: 'tools' },
     ];
 
     nav.innerHTML = `
@@ -49,6 +130,7 @@ const Nav = {
           ${links.map(l => `
             <a href="${l.href}" class="nav-link ${active === l.id ? 'active' : ''}">${l.label}</a>
           `).join('')}
+          ${!isContractor ? this._partnersDropdownHTML() : ''}
           ${showAuth ? '<div class="nav-mobile-auth" id="nav-mobile-auth-slot"></div>' : ''}
           ${isContractor && !showAuth ? `
             <a href="#" class="nav-link nav-mobile-cta-secondary" onclick="Auth.signOut(); return false;">Log Out</a>
@@ -76,6 +158,11 @@ const Nav = {
       });
     }
 
+    // "For Partners" dropdown behavior (#567) — non-contractor header only
+    if (!isContractor) {
+      this._wirePartnersDropdown();
+    }
+
     // Auth state
     if (showAuth) {
       this._renderAuthSlot();
@@ -100,17 +187,19 @@ const Nav = {
       { href: '/contractor-profile.html',       label: 'Profile' },
       { href: '/contractor-settings.html',      label: 'Settings' },
       { href: '/contractor-auto-bids.html',     label: 'Auto Bids' },
+      { href: '/tools.html',                    label: 'Tools' },
       { href: '/contractor-how-it-works.html',  label: 'How It Works' },
       { href: '/contractor-faq.html',           label: 'FAQ' },
     ] : [
-      { href: '/index.html',       label: 'Home' },
+      { href: '/index.html',        label: 'Home' },
       { href: '/how-it-works.html', label: 'How It Works' },
       { href: '/faq.html',          label: 'FAQ' },
+      { href: '/tools.html',        label: 'Contractor Tools' },
     ];
 
-    // Rebuild nav links in-place to handle both role expansions (3→6) and
-    // contractions (6→3). Simply patching existing anchors leaves orphaned
-    // links when switching from contractor (6 links) to homeowner (3 links).
+    // Rebuild nav links in-place to handle both role expansions and
+    // contractions. Simply patching existing anchors leaves orphaned
+    // links when switching from contractor to homeowner.
     const container = document.getElementById('nav-links');
     if (container) {
       const anchors = Array.from(container.querySelectorAll(
@@ -133,6 +222,21 @@ const Nav = {
           container.insertAdjacentHTML('beforeend', extras);
         }
       }
+    }
+
+    // #567: keep the "For Partners" dropdown consistent with the corrected
+    // role — contractors never see it; non-contractors always do.
+    const existingDropdown = document.getElementById('nav-partners-dropdown');
+    if (isContractorByRole) {
+      if (existingDropdown) existingDropdown.remove();
+    } else if (!existingDropdown && container) {
+      const mobileAuthSlot = container.querySelector('#nav-mobile-auth-slot');
+      if (mobileAuthSlot) {
+        mobileAuthSlot.insertAdjacentHTML('beforebegin', this._partnersDropdownHTML());
+      } else {
+        container.insertAdjacentHTML('beforeend', this._partnersDropdownHTML());
+      }
+      this._wirePartnersDropdown();
     }
 
     // Update logo href
@@ -175,12 +279,18 @@ const Nav = {
       // (e.g. homeowner on contractor-about.html, or contractor on a homeowner page)
       this._updateNavLinksForRole(role);
 
+      // Partner roles mirror the list auth.js uses for magic-link routing.
+      const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
       const dashboardUrl = role === 'contractor'
         ? '/contractor-dashboard.html'
-        : '/dashboard.html';
+        : partnerRoles.includes(role)
+          ? '/partner-dashboard.html'
+          : '/dashboard.html';
       const dashboardLabel = role === 'contractor'
         ? 'Contractor Portal'
-        : 'My Dashboard';
+        : partnerRoles.includes(role)
+          ? 'Partner Dashboard'
+          : 'My Dashboard';
       desktopHTML = `
         <a href="${dashboardUrl}" class="btn btn-sm btn-primary">${dashboardLabel}</a>
         <button class="btn btn-sm btn-ghost" onclick="Auth.signOut()">Sign Out</button>
@@ -423,6 +533,7 @@ const Nav = {
               <a href="/contractor-how-it-works.html">How It Works</a>
               <a href="/contractor-faq.html">FAQ</a>
               <a href="/contractor-opportunities.html">Browse Opportunities</a>
+              <a href="/tools.html">Contractor Tools</a>
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               <a href="/faq.html">FAQ</a>
@@ -439,6 +550,10 @@ const Nav = {
             ` : `
               <a href="/contractor-login.html">Contractor Login</a>
               <a href="/contractor-join.html">Join Our Network</a>
+              <a href="/tools.html">Contractor Tools</a>
+              <a href="/tools-crm.html">Free CRM</a>
+              <a href="/oq-crm.html">OQ CRM</a>
+              <a href="/oq-voice-ai.html">OQ Voice AI (Early Access)</a>
               <a href="/contractor-agreement.html">Partner Agreement</a>
             `}
           </div>
@@ -447,6 +562,9 @@ const Nav = {
             <h4 class="footer-heading">Partners</h4>
             <a href="/partner-re.html">Real Estate Agents</a>
             <a href="/partner-insurance.html">Insurance Agents</a>
+            <a href="/partner-inspectors.html">Home Inspectors</a>
+            <a href="/partner-adjusters.html">Adjusters</a>
+            <a href="/partner-other.html">Other Industries</a>
             <a href="/partner-dashboard.html">Partner Dashboard</a>
             <a href="/refer-a-friend.html">Refer a Friend</a>
           </div>
@@ -481,8 +599,24 @@ const Nav = {
   }
 };
 
+// #562: staging banner — this environment shares the production database
+// (see #696 for the unresolved separation decision), and app-subdomain /
+// OAuth handoffs still land on production, so anyone testing here needs a
+// standing visual reminder rather than discovering it mid-flow.
+function _renderStagingBanner() {
+  if (typeof CONFIG === 'undefined' || !CONFIG.IS_STAGING) return;
+  const bar = document.createElement('div');
+  bar.setAttribute('role', 'status');
+  bar.style.cssText = 'position:sticky;top:0;z-index:9999;background:#B45309;color:#fff;' +
+    'font:600 0.8rem/1.4 var(--font-body, sans-serif);text-align:center;padding:6px 12px;';
+  bar.textContent = 'STAGING — shares the production database. App-subdomain and OAuth sign-in redirects still land on production.';
+  document.body.insertBefore(bar, document.body.firstChild);
+}
+
 // Auto-initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  _renderStagingBanner();
+
   // Look for data attributes on header/footer elements
   const header = document.getElementById('site-header');
   if (header) {

@@ -207,7 +207,7 @@ function ExplainerSection({ setSection }: { setSection: (s: TriageSection) => vo
       <div className="he-explainer-section">
         <h3>Why Contractors Need It</h3>
         <p>
-          When your contractor submits a bid through OtterQuote, they&apos;re pricing their work
+          When your contractor submits a bid through Otter Quotes, they&apos;re pricing their work
           against your insurance estimate. The estimate is the blueprint — it tells them exactly
           what your insurance approved, so their bid can match (or supplement) the covered scope.
         </p>

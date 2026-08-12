@@ -24,6 +24,56 @@ function _clearStaleAuthCookies() {
   } catch (e) { /* non-fatal */ }
 }
 
+/**
+ * Persist the live session back through the storage adapter after the
+ * mismatch path cleared the shared cookies. The two-cookie set is shared by
+ * both identities: clearing the stale identity also deletes the live user's
+ * freshly-written tokens, and since #488 made cookies canonical the
+ * localStorage copy no longer resurrects them (getItem purges it instead).
+ * Without this re-write, the mismatch path silently signs the live user out
+ * (E2E AR-5/COI-1 board red, 2026-07-08).
+ */
+function _writeLiveSessionToStorage(session) {
+  try {
+    if (!session || !session.access_token || !session.refresh_token) return;
+    if (window.OtterQuoteCookieStorage) {
+      window.OtterQuoteCookieStorage.setItem(
+        window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth',
+        JSON.stringify(session)
+      );
+    }
+  } catch (e) { /* non-fatal */ }
+}
+
+/**
+ * Attach real user identity to Sentry error events (issue #408).
+ * Previously every dashboard/contractor page shipped errors as fully
+ * anonymous events (Sentry.init() with no setUser call anywhere), so
+ * production incidents had no way to tell how many distinct users were
+ * affected or reproduce with a specific account. Uses only fields the
+ * Supabase auth session already exposes — no new identity data is
+ * invented or collected.
+ * Safe to call on every page: no-ops if the Sentry loader snippet hasn't
+ * attached window.Sentry yet (e.g. ad-blockers) or if user is falsy.
+ */
+function _identifySentryUser(user) {
+  try {
+    if (user && window.Sentry && typeof window.Sentry.setUser === 'function') {
+      window.Sentry.setUser({ id: user.id, email: user.email });
+    }
+  } catch (e) { /* non-fatal — never let telemetry wiring break auth */ }
+}
+
+/** Clear Sentry identity on sign-out so subsequent anonymous errors (e.g. on the
+ * logged-out landing page) aren't misattributed to the just-signed-out user. */
+function _clearSentryUser() {
+  try {
+    if (window.Sentry && typeof window.Sentry.setUser === 'function') {
+      window.Sentry.setUser(null);
+    }
+  } catch (e) { /* non-fatal */ }
+}
+
 window.Auth = {
   /** Get current session - robust race-free implementation.
    *
@@ -91,6 +141,7 @@ window.Auth = {
                             ' live uid=' + liveSession.user.id + '. Clearing stale cookies.'
                           );
                           _clearStaleAuthCookies();
+                          _writeLiveSessionToStorage(liveSession);
                           return liveSession;
                         }
                         // IDs match — fast-path is consistent with live session
@@ -130,7 +181,7 @@ window.Auth = {
         var sub = sb.auth.onAuthStateChange(function (event, session) {
           if (session) {
             finish(session);
-          } else if (event === 'INITIAL_SESSION' && !hasAuthInUrl && !hasStoredSession) {
+          } else if (event === 'INITIAL_SESSION' && !hasAuthInUrl && !session) {
             finish(null);
           }
         });
@@ -179,7 +230,7 @@ window.Auth = {
     // Redirect URL depends on role — auth callback page handles final routing.
     // New users go to trade-selector (intake). Returning users should pass
     // redirectTo='/dashboard.html' to bypass the intake flow.
-    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector'];
+    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
     // D-225 fix May 13: new contractors must land on /contractor-pre-approval.html,
     // not /contractor-dashboard.html. The pre-approval page reads cs_contractor_signup
     // from localStorage, creates the contractors row, and routes returning/active
@@ -221,6 +272,7 @@ window.Auth = {
   async signOut() {
     if (!sb) return;
     _clearStaleAuthCookies(); // parent-domain cookies (unchanged)
+    _clearSentryUser();
     try {
       // scope:'local' avoids a network revoke that can throw and strand the
       // host-only sb_at cookie + skip the redirect (86e20pdta — mirrors React).
@@ -281,13 +333,26 @@ window.Auth = {
 
     if (!user) {
       sessionStorage.setItem('cs_redirect', window.location.pathname);
-      // Send to the correct login page based on the page they tried to visit
-      const isContractorPage = window.location.pathname.includes('contractor');
+      // Send to the correct login page based on the page they tried to visit.
+      // #598: partner pages previously fell through to /get-started.html, which
+      // meta-refreshes to the PRODUCTION React homeowner onboarding — so an
+      // expired partner session landed in the homeowner signup form, on
+      // production, with no way back. Route partners to their own login gate.
+      const path = window.location.pathname;
+      const isContractorPage = path.includes('contractor');
+      const isPartnerPage = /(^|\/)(partner-|ref-|recruit|refer-a-friend)/.test(path);
       window.location.href = isContractorPage
         ? '/contractor-login.html'
-        : '/get-started.html';
+        : isPartnerPage
+          ? '/partner-login.html'
+          : '/get-started.html';
       return null;
     }
+
+    // Successful auth resolution — identify the user in Sentry so error
+    // events carry real user context instead of being anonymous (#408).
+    _identifySentryUser(user);
+
     // Enforce role if specified — prevent homeowners on contractor pages and vice versa
     if (requiredRole) {
       const role = await this.getRole();
@@ -459,27 +524,41 @@ window.Auth = {
       role = 'homeowner';
     }
 
-    // Handle partner (referral agent) signup data
-    // After clicking magic link, link the referral_agents record to this auth user.
-    const partnerSignupRaw = localStorage.getItem('cs_partner_signup') || sessionStorage.getItem('cs_partner_signup');
-    if (partnerSignupRaw && sb) {
+    // Handle partner (referral agent) account linkage.
+    //
+    // #594 / v97: link referral_agents.user_id to this auth user via the
+    // claim_partner_account() SECURITY DEFINER RPC.
+    //
+    // This USED to be a client-side `.update().eq('email').is('user_id', null)`
+    // gated on a `cs_partner_signup` localStorage breadcrumb. Both halves were
+    // wrong:
+    //   1. The update silently matched 0 rows — PostgreSQL applies SELECT
+    //      policies to an UPDATE whose WHERE reads columns, and no SELECT
+    //      policy on referral_agents exposes a `user_id IS NULL` row to a
+    //      non-admin authenticated user. The "Authenticated can claim
+    //      unclaimed partner record" policy is unreachable. (Same silent
+    //      no-op class as #571.)
+    //   2. Gating on localStorage meant a magic link opened on a different
+    //      device than signup skipped the attempt entirely.
+    //
+    // The RPC derives BOTH identity and email from the JWT — no client-supplied
+    // parameters — so calling it unconditionally is safe: a caller can only
+    // ever claim a row matching their own verified email. Unauthenticated or
+    // non-partner callers get {claimed:false} and nothing happens.
+    if (sb) {
       try {
-        const partnerData = JSON.parse(partnerSignupRaw);
-        // Update the referral_agents record (user_id IS NULL, email matches) with this user's id
-        // The RLS policy "Authenticated can claim unclaimed partner record" allows this.
-        const { error: linkError } = await sb
-          .from('referral_agents')
-          .update({ user_id: user.id })
-          .eq('email', partnerData.email)
-          .is('user_id', null);
-        if (linkError) {
-          console.error('Error linking partner user_id:', linkError);
+        const { data: claim, error: claimError } = await sb.rpc('claim_partner_account');
+        if (claimError) {
+          console.error('Error claiming partner account:', claimError);
+        } else if (claim && claim.claimed) {
+          console.log('Partner account linked:', claim.agent_id);
         }
-        localStorage.removeItem('cs_partner_signup');
-        sessionStorage.removeItem('cs_partner_signup');
       } catch (err) {
-        console.error('Error handling partner signup callback:', err);
+        console.error('Error handling partner account claim:', err);
       }
+      // Breadcrumb is no longer load-bearing; clear it so it can't go stale.
+      localStorage.removeItem('cs_partner_signup');
+      sessionStorage.removeItem('cs_partner_signup');
     }
 
     // Handle homeowner signup data (check localStorage first, fall back to sessionStorage)
@@ -722,14 +801,21 @@ Log in to the admin panel to review and approve this contractor.`;
     }
 
     // Advance referral status to 'registered' if homeowner arrived via referral link
+    // #571: v95 SECURITY DEFINER RPC — the direct UPDATE always no-opped
+    // against RLS (authenticated has no SELECT policy on referrals). The RPC
+    // also stamps homeowner_email server-side from the verified JWT.
     const referralId = localStorage.getItem('oq_referral_id') || sessionStorage.getItem('oq_referral_id');
     if (referralId && sb) {
       try {
-        await sb
-          .from('referrals')
-          .update({ status: 'registered', homeowner_email: user.email })
-          .eq('id', referralId)
-          .eq('status', 'clicked');
+        const { error: advanceError } = await sb
+          .rpc('advance_referral_registered', { p_referral_id: referralId });
+        if (advanceError) {
+          console.error('Error advancing referral status:', advanceError);
+        }
+        // #567: keep the id under a claim-scoped key so the claim writer
+        // (trade-selector) can stamp claims.referral_id, then clear the
+        // advance-scoped keys so this block never re-runs.
+        localStorage.setItem('oq_referral_id_for_claim', referralId);
         localStorage.removeItem('oq_referral_id');
         sessionStorage.removeItem('oq_referral_id');
       } catch (err) {
@@ -836,6 +922,8 @@ Log in to the admin panel to review and approve this contractor.`;
             const role = await Auth.getRole();
             const isAdmin = await Auth._getIsAdmin(user);
             this._setSingleAuthCookie(session);
+            // Successful auth resolution — identify the user in Sentry (#408).
+            _identifySentryUser(user);
             resolve({ user, role, isAdmin });
           } catch (err) {
             reject(err);

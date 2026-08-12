@@ -7,6 +7,16 @@ https://jade-alpaca-b82b5e.netlify.app/* https://otterquote.com/:splat 301!
 # Redirect published short URL to contractor signup (YouTube channel description uses /contractor)
 /contractor /contractor-join 301
 
-/ref/:code  /ref.html?code=:code  200
+# Referral short links (/ref/:code) — handled by the ref-redirect Netlify Edge
+# Function (netlify/edge-functions/ref-redirect.ts), NOT a rule in this file.
+# History: a 200 rewrite here left the browser's visible URL at /ref/:code
+# with no query string, so ref.html's client-side
+# `URLSearchParams(location.search).get('code')` never saw the code and
+# bounced to /index.html — fixed by switching to a 301 (2026-08-05). That
+# plain 301 rule then dropped extra query params (utm_source, etc.) on the
+# short link, because Netlify's redirect engine only auto-forwards the
+# incoming query string when the "to" target has no query string of its
+# own, and our target must always carry ?code= (#630, 2026-08-06). The edge
+# function forwards every incoming param; see netlify.toml [[edge_functions]].
 https://stellaredgeservices.com/* /stellar-edge.html 200
 https://www.stellaredgeservices.com/* /stellar-edge.html 200

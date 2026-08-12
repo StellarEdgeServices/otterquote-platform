@@ -14,6 +14,7 @@
   });
 </script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=ref-re&persona=homeowner');}})()</script>
 <meta charset="UTF-8">
@@ -73,7 +74,7 @@
 }
 
 .ref-badge-text strong {
-  color: var(--white);
+  color: var(--navy);
   display: block;
 }
 
@@ -87,13 +88,13 @@
 
 .hero-section h1 {
   margin-bottom: var(--sp-4);
-  color: var(--white);
+  color: var(--navy);
 }
 
 .hero-subtitle {
   font-size: 1.1rem;
   line-height: 1.7;
-  color: var(--slate);
+  color: #5A6B7B;
   margin-bottom: var(--sp-8);
   max-width: 700px;
   margin-left: auto;
@@ -461,7 +462,7 @@
 <body>
 
 <!-- ── Header ── -->
-<header id="header"></header>
+<header id="site-header" data-active=""></header>
 
 <!-- ── Main Content ── -->
 <main>
@@ -624,9 +625,8 @@
 </main>
 
 <!-- ── Footer ── -->
-<footer class="footer" id="footer"></footer>
+<footer class="footer" id="site-footer"></footer>
 
-<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
@@ -640,11 +640,6 @@
 let referralAgentData = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Initialize header/footer
-  if (typeof initNav === 'function') {
-    initNav();
-  }
-
   // Get referral code from URL
   const params = new URLSearchParams(window.location.search);
   const refCode = params.get('ref');
@@ -671,12 +666,43 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('Error fetching referral agent:', err);
     }
 
-    // Record 'clicked' event in referrals table
+    // Record 'clicked' event server-side (#571 / v95 RPC, ported here by #595).
+    //
+    // This page previously did `sb.from('referrals').insert({...})` with the
+    // partner's code buried in metadata and referral_agent_id left NULL. The
+    // "Public can insert referral clicks" policy has WITH CHECK (true), so the
+    // row landed — orphaned, with no error surfaced. Nothing downstream
+    // resolves metadata.referral_code back to an agent, and
+    // apply_referral_commission() walks claims.referral_id ->
+    // referrals.referral_agent_id, so an orphaned row can never pay a
+    // commission at any job value. track_referral_click() resolves the code to
+    // the agent server-side and returns the referral id.
     try {
-      await sb.from('referrals').insert({
-        landing_page: 'ref-re',
-        metadata:     { referral_code: refCode, event_type: 'clicked', user_agent: navigator.userAgent },
-      });
+      const { data: referralId, error: clickError } = await sb
+        .rpc('track_referral_click', {
+          p_code:         refCode,
+          p_landing_page: window.location.href,
+          p_utm_source:   params.get('utm_source')   || null,
+          p_utm_medium:   params.get('utm_medium')   || null,
+          p_utm_campaign: params.get('utm_campaign') || null,
+        });
+
+      if (clickError || !referralId) {
+        // Non-fatal: click tracking must never block the visitor.
+        console.warn('Click tracking RPC failed:', clickError);
+      } else {
+        // Persist so the intake funnel can stamp the claim with attribution.
+        // localStorage as well as sessionStorage — this has to survive the
+        // magic-link round trip. Mirrors ref.html.
+        sessionStorage.setItem('oq_referral_id', referralId);
+        sessionStorage.setItem('oq_referral_code', refCode);
+        localStorage.setItem('oq_referral_id', referralId);
+        localStorage.setItem('oq_referral_code', refCode);
+        if (referralAgentData && referralAgentData.id) {
+          sessionStorage.setItem('oq_referral_agent_id', referralAgentData.id);
+          localStorage.setItem('oq_referral_agent_id', referralAgentData.id);
+        }
+      }
     } catch (err) {
       console.error('Error recording referral click:', err);
     }
@@ -764,17 +790,16 @@ async function handleFormSubmit(e) {
     };
     localStorage.setItem('pending_profile', JSON.stringify(profileData));
 
-    // 3. Record the signup event
-    try {
-      await sb.from('referrals').insert({
-        homeowner_email: email,
-        landing_page:    'ref-re',
-        metadata:        { referral_code: referralCode, event_type: 'signup', user_agent: navigator.userAgent },
-      });
-    } catch (err) {
-      console.error('Error recording signup event:', err);
-      // Non-blocking, don't fail the form
-    }
+    // 3. Signup event — NOT recorded here.
+    //
+    // #595: this used to insert a SECOND referrals row (also orphaned, also
+    // with referral_agent_id NULL), duplicating the click row. The correct
+    // path is the one ref.html uses: track_referral_click() created the row on
+    // arrival and we stored its id in oq_referral_id above; js/auth.js calls
+    // advance_referral_registered(oq_referral_id) after the magic link is
+    // clicked, which advances clicked -> registered AND stamps
+    // homeowner_email server-side from the verified JWT. Writing it here from
+    // the client would be both redundant and unverified.
 
     // Show success message
     submitBtn.textContent = '✓ Check your email';

@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { resolveOwnerPhotoUrl } from './actions';
-import type { BidRow, BidNotification, BidsClaim, ContractorProfile } from './types';
+import type { BidRow, BidNotification, BidsClaim, ContractorProfile, PublicLicense } from './types';
 
 // ── Claim resolution (bids.html:554-567) ─────────────────────────────────────
 
@@ -89,7 +89,7 @@ const CONTRACTOR_COLUMNS =
   'id, user_id, company_name, contact_name, owner_photo_url, about_us, years_in_business, ' +
   'service_area_description, service_counties, license_number, verified, google_reviews_url, ' +
   'rating, review_count, bbb_url, angi_url, yelp_url, specialties, why_choose_us, num_employees, ' +
-  'trades, website_url';
+  'trades, website_url, status, license_path';
 
 export interface ContractorsResult {
   contractors: Record<string, ContractorProfile>;
@@ -153,6 +153,63 @@ export function useBidContractors(bids: BidRow[]): ContractorsResult {
   }, [idKey]);
 
   return { contractors, loading };
+}
+
+// ── #534 license drill-down (contractor_licenses_public, v93 view) ───────────
+
+export interface ContractorLicensesResult {
+  /** contractor_licenses_public rows keyed by contractor_id (D-218). */
+  licenses: Record<string, PublicLicense[]>;
+  loading: boolean;
+}
+
+/**
+ * Homeowner-safe license rows for every bidding contractor. The v93 view only
+ * returns rows for active/approved contractors; missing/empty falls back to the
+ * "License not provided" chip state (lawful per D-217), so errors are non-fatal.
+ */
+export function useContractorLicenses(bids: BidRow[]): ContractorLicensesResult {
+  const [licenses, setLicenses] = useState<Record<string, PublicLicense[]>>({});
+  const [loading, setLoading] = useState(true);
+
+  const idKey = useMemo(() => {
+    const ids = Array.from(new Set(bids.map((b) => b.contractor_id).filter(Boolean)));
+    ids.sort();
+    return ids.join(',');
+  }, [bids]);
+
+  useEffect(() => {
+    if (!idKey) {
+      setLicenses({});
+      setLoading(false);
+      return;
+    }
+    let mounted = true;
+    setLoading(true);
+
+    (async () => {
+      const { data, error } = await supabase
+        .rpc('get_contractor_licenses_public', { p_contractor_ids: idKey.split(',') });
+      if (!mounted) return;
+      if (error || !data) {
+        if (error) console.error('[bids] contractor_licenses_public lookup failed:', error.message);
+        setLoading(false);
+        return;
+      }
+      const map: Record<string, PublicLicense[]> = {};
+      for (const row of data as PublicLicense[]) {
+        (map[row.contractor_id] = map[row.contractor_id] || []).push(row);
+      }
+      setLicenses(map);
+      setLoading(false);
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [idKey]);
+
+  return { licenses, loading };
 }
 
 // ── Bid-updated notifications banner (bids.html:607-656) ─────────────────────

@@ -14,15 +14,16 @@
   });
 </script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=partner-re&persona=partner');}})()</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<title>Become a Real Estate Partner &mdash; Otter Quotes</title>
+<title>Become a Real Estate Partner — Otter Quotes</title>
 <meta name="description" content="Sign up as an Otter Quotes real estate partner and earn $200 per completed job. Get your unique referral link and start earning in minutes.">
 <link rel="canonical" href="https://otterquote.com/partner-re.html">
-<meta property="og:title" content="Become a Real Estate Partner &mdash; Otter Quotes">
+<meta property="og:title" content="Become a Real Estate Partner — Otter Quotes">
 <meta property="og:description" content="Sign up as an Otter Quotes real estate partner and earn $200 per completed job. Get your unique referral link and start earning in minutes.">
 <meta property="og:url" content="https://otterquote.com/partner-re.html">
 <meta property="og:type" content="website">
@@ -62,12 +63,12 @@
 .hero h1 {
   font-size: clamp(2.2rem, 5vw, 3.5rem);
   margin-bottom: var(--sp-4);
-  color: var(--white);
+  color: var(--navy);
 }
 
 .hero .subtitle {
   font-size: 1.1rem;
-  color: var(--slate);
+  color: #5A6B7B;
   line-height: 1.8;
   margin-bottom: var(--sp-8);
   max-width: 700px;
@@ -730,6 +731,9 @@
     padding: var(--sp-6);
   }
 }
+
+/* #589: D-266 disclaimer sits on the dark signup panel here — was 3.64:1. */
+.referral-fee-disclaimer { color: #94A3B8 !important; }
 </style>
 </head>
 <body>
@@ -739,9 +743,9 @@
 <!-- Hero Section -->
 <section class="hero">
   <div class="hero-content">
-    <h1>Stop Burning Your Contractor Contacts on Tire-Kickers</h1>
-    <p class="subtitle">When your clients need contractor quotes for a real estate transaction, Otter Quotes gets them real bids from competing contractors &mdash; without wasting anyone's time. The secret? Your client invests in professional measurements upfront, so contractors know they're serious.</p>
-    <button class="btn btn-primary btn-lg" id="hero-cta">Become a Partner &mdash; It's Free</button>
+    <h1>GET PAID FASTER</h1>
+    <p class="subtitle">Help your clients get repair bids from the comfort of their home. They get multiple quotes quickly and easily. Repairs get done faster, better, and cheaper. And you get more time to think about how you are going to spend that commission check.</p>
+    <button class="btn btn-primary btn-lg" id="hero-cta">Become a Partner — It's Free</button>
   </div>
 </section>
 
@@ -785,7 +789,7 @@
     <div class="prop-card">
       <div class="prop-icon">⚡</div>
       <h3>Faster Closings</h3>
-      <p>Inspection reveals roof damage? Your client has a professional quote within 48 hours &mdash; no waiting weeks for contractor callbacks.</p>
+      <p>Inspection reveals roof damage? Your client has a professional quote within 48 hours — no waiting weeks for contractor callbacks.</p>
     </div>
     <div class="prop-card">
       <div class="prop-icon">😊</div>
@@ -812,7 +816,7 @@
     <div class="commission-detail">
       <div class="detail-check">✓</div>
       <div class="detail-text">
-        <strong>$200 per completed job over $10,000 &mdash; referral commission</strong>
+        <strong>$200 per completed job over $10,000 — referral commission</strong>
         <p>Earned when your referral's job is complete and payment is processed.</p>
       </div>
     </div>
@@ -820,8 +824,8 @@
     <div class="commission-detail">
       <div class="detail-check">✓</div>
       <div class="detail-text">
-        <strong>+ $50 per completed job &mdash; recruit bonus</strong>
-        <p>For every job over $10,000 that completes from a referral sent by an agent you personally recruited to Otter Quotes. One level only &mdash; simple, transparent, no MLM.</p>
+        <strong>+ $50 per completed job — recruit bonus</strong>
+        <p>For every job over $10,000 that completes from a referral sent by an agent you personally recruited to Otter Quotes. One level only — simple, transparent, no MLM.</p>
       </div>
     </div>
 
@@ -829,7 +833,7 @@
       <div class="detail-check">✓</div>
       <div class="detail-text">
         <strong>Paid after job completion</strong>
-        <p>Commissions are paid out within 10 business days of project completion.</p>
+        <p>Commissions are paid after job completion and approval — typically within 14 days of completion.</p>
       </div>
     </div>
 
@@ -837,7 +841,7 @@
       <div class="detail-check">✓</div>
       <div class="detail-text">
         <strong>Jobs under $10K: Your value is faster closings & better service</strong>
-        <p>Not every client needs to earn commission &mdash; but they all get faster, better-managed projects.</p>
+        <p>Not every client needs to earn commission — but they all get faster, better-managed projects.</p>
       </div>
     </div>
 
@@ -850,7 +854,7 @@
     </div>
     <p style="margin-top: 1.25rem; font-size: 0.85rem; color: var(--slate); opacity: 0.8;">A completed IRS Form W-9 is required before your first commission payment is issued.</p>
     <!-- D-180: Approval process disclosure -->
-    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--slate); opacity: 0.8;">Commission payments are subject to Otter Quotes' approval process and are typically completed within five business days of the qualifying job event.</p>
+    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--slate); opacity: 0.8;">Commissions are paid after job completion and approval — typically within 14 days of completion.</p>
   </div>
 </section>
 
@@ -941,7 +945,7 @@
         <div class="form-group">
           <label class="form-label" for="email">Email</label>
           <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com">
-          <span class="form-hint">We'll send you a secure login link &mdash; no password needed.</span>
+          <span class="form-hint">We'll send you a secure login link — no password needed.</span>
         </div>
 
         <!-- Phone -->
@@ -1002,8 +1006,8 @@
           Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
         </p>
 
-        <p class="text-sm text-center" style="color: var(--gray); margin-top: var(--sp-4); font-size: 0.85rem;">
-          Already a partner? <a href="login.html" style="color: var(--amber); font-weight: 600;">Sign in to your dashboard</a>
+        <p class="text-sm text-center" style="color: #94A3B8; margin-top: var(--sp-4); font-size: 0.85rem;">
+          Already a partner? <a href="partner-login.html" style="color: var(--amber); font-weight: 600;">Sign in to your dashboard</a>
         </p>
       </form>
 
@@ -1037,7 +1041,7 @@
         <div class="benefit-icon">💰</div>
         <div class="benefit-text">
           <h4>Competing bids at zero cost</h4>
-          <p>Your clients get multiple quotes &mdash; contractors bid against each other for their business.</p>
+          <p>Your clients get multiple quotes — contractors bid against each other for their business.</p>
         </div>
       </div>
 
@@ -1045,7 +1049,7 @@
         <div class="benefit-icon">📸</div>
         <div class="benefit-text">
           <h4>Professional Hover measurements</h4>
-          <p>Every project starts with accurate, professional aerial measurements &mdash; no guesswork.</p>
+          <p>Every project starts with accurate, professional aerial measurements — no guesswork.</p>
         </div>
       </div>
 
@@ -1061,7 +1065,7 @@
         <div class="benefit-icon">⏱️</div>
         <div class="benefit-text">
           <h4>Takes 2 minutes to sign up</h4>
-          <p>Share your link &mdash; your clients can start the bidding process in minutes.</p>
+          <p>Share your link — your clients can start the bidding process in minutes.</p>
         </div>
       </div>
     </div>
@@ -1111,7 +1115,7 @@
         <span class="faq-toggle">▼</span>
       </div>
       <div class="faq-answer">
-        <p>Your partner dashboard shows every referral, their status (measurement in progress, bidding active, job awarded, completed), and your earned commissions in real-time. You'll also get email notifications when key milestones happen &mdash; job completion, commission earned, etc.</p>
+        <p>Your partner dashboard shows every referral, their status (measurement in progress, bidding active, job awarded, completed), and your earned commissions in real-time. You'll also get email notifications when key milestones happen — job completion, commission earned, etc.</p>
       </div>
     </div>
 
@@ -1131,15 +1135,27 @@
         <span class="faq-toggle">▼</span>
       </div>
       <div class="faq-answer">
-        <p>When you bring another agent to Otter Quotes using your recruit link, you earn $50 for every job over $10,000 that their referrals complete. It's one level only &mdash; you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on your partner dashboard.</p>
+        <p>When you bring another agent to Otter Quotes using your recruit link, you earn $50 for every job over $10,000 that their referrals complete. It's one level only — you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on your partner dashboard.</p>
       </div>
     </div>
   </div>
 </section>
 
+
+<!-- Partner App promo (PWA v1, 2026-08-03) -->
+<section aria-label="Otter Quotes Partner App" style="max-width: 1100px; margin: 0 auto; padding: 48px 24px;">
+  <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap; background: #0D1B2E; border-radius: 16px; padding: 32px; border: 1px solid rgba(224, 123, 0, 0.35);">
+    <img src="/img/app/partner-icon-192.png" alt="Otter Quotes Partner App icon" width="72" height="72" style="border-radius: 16px; flex-shrink: 0;">
+    <div style="flex: 1; min-width: 220px;">
+      <div style="font-family: 'Rubik', sans-serif; font-weight: 700; font-size: 1.25rem; color: #FFFFFF; margin-bottom: 6px;">Get the Otter Quotes Partner App</div>
+      <div style="font-family: 'Rubik', sans-serif; font-size: 0.95rem; color: #94A3B8;">Refer homeowners, grow your partner network, and track your referrals — right from your phone. Free, installs in seconds.</div>
+    </div>
+    <a href="/partner-app.html" style="font-family: 'Rubik', sans-serif; display: inline-block; padding: 14px 28px; background: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 8px; font-weight: 600; flex-shrink: 0;">Get the App</a>
+  </div>
+</section>
+
 <footer id="site-footer"></footer>
 
-<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
@@ -1213,6 +1229,22 @@
   // because this <script> tag sits at the end of the body.
   detectRecruitCode();
 
+  // #632: signed-in partners land straight on their dashboard instead of
+  // re-seeing the signup form - same loop-guard shape as partner-login.html.
+  // ?stay=1 opts out; anon/homeowner/contractor visitors and referral/recruit
+  // attribution for anon visitors are untouched (load-time only, so it never
+  // interrupts the in-session post-signup success block above).
+  (async function redirectSignedInPartner() {
+    if (new URLSearchParams(window.location.search).get('stay') === '1') return;
+    if ((document.referrer || '').includes('/partner-dashboard.html')) return;
+    const user = await Auth.getUser();
+    if (!user) return;
+    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+    const role = await Auth.getRole();
+    if (!partnerRoles.includes(role)) return;
+    window.location.replace('/partner-dashboard.html');
+  })();
+
   // Phone formatting
   const phoneInput = document.getElementById('phone');
   phoneInput.addEventListener('input', () => {
@@ -1279,14 +1311,16 @@
     submitBtn.disabled = true;
 
     try {
-      // Generate a referral code (short unique code)
-      const refCode = 'ref_' + Math.random().toString(36).substring(2, 10).toUpperCase();
+      // #571: referral codes are server-generated only (register_partner RPC).
+      // A neutral random prefix keeps headshot uploads collision-free — it is
+      // NOT a referral code and never touches unique_code.
+      const photoPrefix = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 
       // Upload headshot if provided
       let headshot_url = null;
       if (headshotFile) {
         try {
-          const fileName = `${refCode}_${headshotFile.name}`;
+          const fileName = `${photoPrefix}_${headshotFile.name}`;
           const { data: uploadData, error: uploadError } = await sb.storage
             .from('partner-photos')
             .upload(fileName, headshotFile, { upsert: false });
@@ -1314,33 +1348,40 @@
           created_at: new Date().toISOString(),
         });
 
-      // Insert into referral_agents table
-      // RLS: "Public can register as partner" policy allows anon insert where user_id IS NULL
+      // #571 / v95: server-side register_partner RPC. referral_agents has no
+      // anon SELECT policy, so a direct .insert().select() can never read the
+      // trigger-generated code back. The SECURITY DEFINER RPC inserts
+      // (user_id NULL — linked after magic-link click by auth.js), resolves
+      // the recruit code server-side (D-143), and returns
+      // {id, unique_code, recruit_code}.
       const { data: agentData, error: agentError } = await sb
-        .from('referral_agents')
-        .insert({
-          agent_type:       're_agent',
-          first_name:       firstName,
-          last_name:        lastName,
-          email:            email,
-          phone:            phone,
-          company:          brokerage,     // schema column is 'company', not 'brokerage'
-          service_area:     serviceArea,
-          website:          website || null,
-          photo_url:        headshot_url || null,  // schema column is 'photo_url'
-          unique_code:      refCode,       // pre-generated; trigger only fires when null
-          referred_by_note: referredBy || null,
-          recruited_by_id:  recruitContext.recruiterId || null,
-          recruited_at:     recruitContext.recruiterId ? new Date().toISOString() : null,
-          // user_id intentionally NULL — linked after magic-link click by auth.js
-        })
-        .select('id, unique_code')
-        .single();
+        .rpc('register_partner', {
+          p_agent_type:       're_agent',
+          p_first_name:       firstName,
+          p_last_name:        lastName,
+          p_email:            email,
+          p_phone:            phone,
+          p_company:          brokerage,     // schema column is 'company', not 'brokerage'
+          p_website:          website || null,
+          p_service_area:     serviceArea,
+          p_referred_by_note: referredBy || null,
+          p_recruit_code:     recruitContext.recruitCode || null,
+          p_photo_url:        headshot_url || null,  // schema column is 'photo_url'
+        });
 
-      if (agentError) throw agentError;
+      if (agentError) {
+        if ((agentError.message || '').includes('partner_exists')) {
+          // Already registered — send a fresh login link and say so.
+          try { await Auth.sendMagicLink(email, 're_agent'); } catch (e) { /* non-fatal */ }
+          errorEl.textContent = "You're already a partner — check your email for your login link.";
+          errorEl.style.display = 'block';
+          return;
+        }
+        throw agentError;
+      }
 
-      // Use the DB-returned unique_code (may differ if trigger ran)
-      const finalCode = agentData?.unique_code || refCode;
+      // Codes are server-generated — read the code back from the RPC response.
+      const finalCode = agentData?.unique_code;
       const finalLink = `https://otterquote.com/ref.html?code=${finalCode}`;
 
       // Store minimal data for post-auth linking (auth.js handleAuthCallback reads this)
@@ -1383,14 +1424,19 @@
     const link = referralCode.textContent;
     navigator.clipboard.writeText(link).then(() => {
       const originalText = copyBtn.textContent;
-      copyBtn.textContent = '\u2713 Copied!';
+      copyBtn.textContent = '✓ Copied!';
       setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
     }).catch(() => {});
   });
+
+  // Go to Partner Dashboard (post-signup)
+  if (dashboardBtn) {
+    dashboardBtn.addEventListener('click', () => { window.location.href = '/partner-dashboard.html'; });
+  }
 })();
 </script>
 
 <!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-re.html" style="color:var(--amber);">Homeowner referral landing page</a></p>
+<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-re.html" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
 </body>
 </html>

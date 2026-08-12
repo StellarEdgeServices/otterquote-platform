@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+    });
+  });
+</script>
+<!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=partner-adjusters&persona=partner');}})()</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Become an Insurance Adjuster Partner — Otter Quotes</title>
+<meta name="description" content="You see the damage first. Give homeowners a clear next step and earn $200 per completed job. Otter Quotes is not a public adjuster and never touches your claim handling.">
+<link rel="canonical" href="https://otterquote.com/partner-adjusters.html">
+<meta property="og:title" content="Become an Insurance Adjuster Partner — Otter Quotes">
+<meta property="og:description" content="You see the damage first. Give homeowners a clear next step and earn $200 per completed job. Otter Quotes is not a public adjuster and never touches your claim handling.">
+<meta property="og:url" content="https://otterquote.com/partner-adjusters.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+/* ── Hero Section ── */
+.hero {
+  padding: var(--sp-20) var(--sp-8);
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.hero-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hero-badge {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-5);
+  background: rgba(224, 123, 0, 0.1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--amber);
+  letter-spacing: 0.04em;
+  margin-bottom: var(--sp-6);
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+  margin-bottom: var(--sp-4);
+  color: var(--white);
+}
+
+.hero .subtitle {
+  font-size: 1.1rem;
+  color: #5A6B7B;
+  line-height: 1.8;
+  margin-bottom: var(--sp-6);
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-notice {
+  max-width: 680px;
+  margin: 0 auto var(--sp-8);
+  padding: var(--sp-4) var(--sp-5);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  color: var(--navy);
+  line-height: 1.6;
+}
+
+.hero-cta-group {
+  display: flex;
+  gap: var(--sp-4);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.cta-disclaimer {
+  max-width: 680px;
+  margin: var(--sp-4) auto 0;
+  font-size: 0.8rem;
+  color: var(--slate);
+  line-height: 1.6;
+}
+
+/* ── How It Works Section ── */
+.how-it-works {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+}
+
+.section-header {
+  text-align: center;
+  margin-bottom: var(--sp-12);
+}
+
+.section-header h2 {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.section-header p {
+  font-size: 1.05rem;
+  color: var(--slate);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-8);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.step-card {
+  padding: var(--sp-8);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-lg);
+  transition: all var(--duration) var(--ease);
+}
+
+.step-card:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(224, 123, 0, 0.2);
+}
+
+.step-number {
+  width: 48px;
+  height: 48px;
+  background: var(--amber-glow);
+  border: 2px solid var(--amber);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--amber);
+  margin-bottom: var(--sp-4);
+}
+
+.step-card h3 {
+  font-size: 1.15rem;
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.step-card p {
+  font-size: 0.95rem;
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+/* ── Value Props ── */
+.value-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.value-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.value-card {
+  padding: var(--sp-6);
+  background: rgba(224, 123, 0, 0.04);
+  border: 1px solid rgba(224, 123, 0, 0.12);
+  border-radius: var(--radius-md);
+}
+
+.value-card h3 {
+  font-size: 1.05rem;
+  color: var(--amber);
+  margin-bottom: var(--sp-3);
+}
+
+.value-card p {
+  font-size: 0.9rem;
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+/* ── Commission Callout ── */
+.commission-section {
+  padding: var(--sp-14) var(--sp-8);
+  background: var(--navy);
+  text-align: center;
+}
+
+.commission-box {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--sp-10) var(--sp-8);
+  background: var(--amber-glow);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-lg);
+}
+
+.commission-amount {
+  font-size: clamp(3rem, 7vw, 5rem);
+  font-weight: 900;
+  color: var(--amber);
+  font-family: var(--font-heading);
+  line-height: 1;
+  margin-bottom: var(--sp-3);
+}
+
+.commission-label {
+  font-size: 1.1rem;
+  color: var(--white);
+  font-weight: 600;
+  margin-bottom: var(--sp-4);
+}
+
+.commission-note {
+  font-size: 0.85rem;
+  color: var(--slate);
+  line-height: 1.6;
+}
+
+/* ── Signup Form Section ── */
+.form-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.form-container {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.form-container h2 {
+  text-align: center;
+  margin-bottom: var(--sp-2);
+  color: var(--white);
+  font-size: 1.9rem;
+}
+
+.form-subtitle {
+  text-align: center;
+  color: var(--slate);
+  margin-bottom: var(--sp-8);
+  font-size: 0.95rem;
+}
+
+.partner-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.form-group input, .form-group select {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  transition: all var(--duration) var(--ease);
+}
+
+.form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.form-group input:focus, .form-group select:focus {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
+}
+
+.form-group select option {
+  background: var(--navy);
+  color: var(--white);
+}
+
+.optional-label {
+  font-weight: 400;
+  color: var(--slate);
+  font-size: 0.8rem;
+}
+
+.form-submit {
+  padding: var(--sp-4) var(--sp-6);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  font-family: var(--font-body);
+  margin-top: var(--sp-2);
+}
+
+.form-submit:hover:not(:disabled) {
+  background: var(--amber-2);
+  transform: translateY(-2px);
+}
+
+.form-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-note {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--slate);
+  margin-top: var(--sp-2);
+  line-height: 1.6;
+}
+
+/* ── Partner Toolkit (post-signup) ── */
+.toolkit-wrapper {
+  display: none;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.toolkit-header {
+  text-align: center;
+  margin-bottom: var(--sp-8);
+}
+
+.toolkit-header h3 {
+  color: var(--amber);
+  font-size: 1.75rem;
+  margin-bottom: var(--sp-3);
+}
+
+.toolkit-header p {
+  color: var(--slate);
+  font-size: 0.95rem;
+}
+
+.toolkit-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-5);
+}
+
+.toolkit-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.toolkit-card-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.toolkit-card h4 {
+  color: var(--white);
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.toolkit-hint {
+  font-size: 0.82rem;
+  color: var(--slate);
+  margin-bottom: var(--sp-3);
+  line-height: 1.5;
+}
+
+.ref-link-display {
+  padding: var(--sp-3) var(--sp-4);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--white);
+  word-break: break-all;
+  margin-bottom: var(--sp-3);
+}
+
+.template-box {
+  padding: var(--sp-4);
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--slate);
+  white-space: pre-wrap;
+  line-height: 1.7;
+  margin-bottom: var(--sp-3);
+  font-family: var(--font-body);
+}
+
+.copy-btn {
+  padding: var(--sp-2) var(--sp-4);
+  background: transparent;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  color: var(--amber);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all var(--duration) var(--ease);
+}
+
+.copy-btn:hover {
+  background: var(--amber-glow);
+}
+
+.toolkit-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+.stat-box {
+  background: rgba(224, 123, 0, 0.06);
+  border: 1px solid rgba(224, 123, 0, 0.15);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  text-align: center;
+}
+
+.stat-number {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--amber);
+  font-family: var(--font-heading);
+  line-height: 1;
+  margin-bottom: var(--sp-2);
+}
+
+.stat-label {
+  font-size: 0.78rem;
+  color: var(--slate);
+  line-height: 1.4;
+}
+
+/* ── FAQ Section ── */
+.faq-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.faq-container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.faq-section h2 {
+  text-align: center;
+  margin-bottom: var(--sp-10);
+  color: var(--white);
+}
+
+.faq-item {
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--sp-5);
+  overflow: hidden;
+}
+
+.faq-header {
+  padding: var(--sp-4) var(--sp-5);
+  background: rgba(224, 123, 0, 0.05);
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--white);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background var(--duration) var(--ease);
+  font-family: var(--font-body);
+}
+
+.faq-header:hover {
+  background: rgba(224, 123, 0, 0.1);
+}
+
+.faq-toggle {
+  font-size: 1.1rem;
+  color: var(--amber);
+  transition: transform var(--duration) var(--ease);
+  display: inline-block;
+  flex-shrink: 0;
+  margin-left: var(--sp-4);
+}
+
+.faq-item.open .faq-toggle {
+  transform: rotate(180deg);
+}
+
+.faq-content {
+  display: none;
+  padding: var(--sp-4) var(--sp-5);
+  color: var(--slate);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  background: rgba(255,255,255,0.02);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.faq-item.open .faq-content {
+  display: block;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .hero {
+    padding: var(--sp-12) var(--sp-5);
+  }
+
+  .steps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .value-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-cta-group {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ── Header ── -->
+<header id="site-header" data-active=""></header>
+
+<main>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">Insurance Adjuster Partner Program</div>
+      <h1>You See the Damage First. Give Homeowners a Clear Next Step.</h1>
+      <p class="subtitle">
+        Every homeowner asks the same question once you've documented the damage: "who should fix this?" Otter Quotes is a neutral next step — the homeowner gathers competing bids from licensed, insured local contractors on their own terms. It's not a recommendation of any one contractor, and it's completely separate from how the claim itself is handled.
+      </p>
+      <div class="hero-notice">
+        Otter Quotes is not a public adjuster and does not negotiate or advise on insurance claims.
+      </div>
+      <div class="hero-cta-group">
+        <a href="#signup" class="btn btn-primary">Get My Referral Link</a>
+        <a href="#how-it-works" class="btn btn-secondary">See How It Works</a>
+      </div>
+      <p class="cta-disclaimer referral-fee-disclaimer">
+        Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── How It Works ── -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="section-header">
+      <h2>Simple as Four Steps</h2>
+      <p>Set it up once. Earn on every job that closes.</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-number">1</div>
+        <h3>Sign Up in 60 Seconds</h3>
+        <p>Enter your name, contact info, and employer. We generate your unique referral link instantly — no approval process, no waiting.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">2</div>
+        <h3>Share Your Link When You Document Damage</h3>
+        <p>Hand it to the homeowner on-site, text it, or include it in your file notes. Takes five seconds. Works alongside any claim, regardless of how it's ultimately settled.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">3</div>
+        <h3>Otter Quotes Handles the Contractor Side</h3>
+        <p>The homeowner gets matched with local contractors who bid competitively. We make your research easy by gathering licensing, insurance, and review information all in one place. They compare bids, choose their contractor, and sign a contract — all through the platform.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">4</div>
+        <h3>You Earn $200</h3>
+        <p>When a job over $10,000 completes, you get paid. No chasing checks — we track every referral and pay automatically. Bonus: if you recruit another adjuster to Otter Quotes, you earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Why Adjusters Use This ── -->
+  <section class="value-section">
+    <div class="section-header">
+      <h2>Why It Works for Adjusters</h2>
+    </div>
+    <div class="value-grid">
+      <div class="value-card">
+        <h3>Homeowners Trust What You Documented</h3>
+        <p>You confirmed the damage. They trust your file. That's the highest-intent moment in the entire process — the homeowner isn't browsing, they have a real repair that needs to happen.</p>
+      </div>
+      <div class="value-card">
+        <h3>A Better Experience Than Searching Alone</h3>
+        <p>Otter Quotes gives contractors everything they need to bid accurately — measurements, material specs, documentation. Homeowners get bids on exactly what they need. No high-pressure sales pitches, no being ghosted after a site visit. Just apples-to-apples bids and a simple signing process.</p>
+      </div>
+      <div class="value-card">
+        <h3>Works Alongside Any Claim Path</h3>
+        <p>Whether the homeowner is working through a covered claim or paying out of pocket, Otter Quotes handles both. You send one link and let the platform take it from there.</p>
+      </div>
+      <div class="value-card">
+        <h3>Zero Effect on Your Claim Handling</h3>
+        <p>Sharing your referral link never touches how you scope, evaluate, or settle the claim. Otter Quotes only steps in after coverage and claim decisions are made — it helps the homeowner find a contractor, nothing more.</p>
+      </div>
+      <div class="value-card">
+        <h3>You Don't Have to Manage Anything</h3>
+        <p>No contractor coordination. No follow-up. No chasing homeowners. You share the link and Otter Quotes does the work. Your dashboard shows your referral status in real time.</p>
+      </div>
+      <div class="value-card">
+        <h3>Homeowners Are in Good Hands</h3>
+        <p>We make your research easy by gathering licensing, insurance, and review information all in one place, so homeowners can compare with confidence. They review multiple bids with a signed contract before any work starts.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Commission Callout ── -->
+  <section class="commission-section">
+    <div class="commission-box">
+      <div class="commission-amount">$200</div>
+      <div class="commission-label">Per Completed Job Over $10,000</div>
+      <div class="commission-secondary" style="margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid rgba(224,123,0,0.25); font-size: 1.75rem; font-weight: 800; color: var(--amber); font-family: var(--font-heading); line-height: 1.1;">+ $50</div>
+      <div class="commission-label" style="margin-top: var(--sp-2);">For Every Job From a Partner You Recruit</div>
+      <p class="commission-note" style="margin-top: var(--sp-5);">
+        Know another adjuster who'd benefit? Share your recruit link and earn $50 every time their referral completes a job over $10K. One level — simple, transparent, no MLM.
+      </p>
+      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">A completed IRS Form W-9 is required before your first commission payment is issued.</p>
+      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">Commissions are paid after job completion and approval — typically within 14 days of completion.</p>
+    </div>
+  </section>
+
+  <!-- ── Signup Form ── -->
+  <section class="form-section" id="signup">
+    <div class="form-container">
+      <h2>Get Your Referral Link</h2>
+      <p class="form-subtitle">Takes less than a minute. Free to join.</p>
+
+      <!-- Signup Form -->
+      <form class="partner-form" id="partnerForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" name="firstName" required placeholder="John">
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" name="lastName" required placeholder="Doe">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required placeholder="john@adjustingco.com">
+        </div>
+
+        <div class="form-group">
+          <label for="phone">Phone</label>
+          <input type="tel" id="phone" name="phone" required placeholder="(555) 123-4567">
+        </div>
+
+        <div class="form-group">
+          <label for="employer">Employer / Adjusting Firm</label>
+          <input type="text" id="employer" name="employer" required placeholder="ABC Claims Adjusting">
+        </div>
+
+        <div class="form-group">
+          <label for="adjusterType">
+            Adjuster Type <span class="optional-label">(optional)</span>
+          </label>
+          <select id="adjusterType" name="adjusterType">
+            <option value="">Select if applicable</option>
+            <option value="independent">Independent Adjuster</option>
+            <option value="staff">Staff / Company Adjuster</option>
+            <option value="cat">CAT (Catastrophe) Adjuster</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="referredBy">
+            Who Told You About Us? <span class="optional-label">(optional)</span>
+          </label>
+          <input type="text" id="referredBy" name="referredBy" placeholder="Name or company of the person who recommended Otter Quotes">
+        </div>
+
+        <button type="submit" class="form-submit" id="submitBtn">
+          Generate My Referral Link
+        </button>
+
+        <p class="form-note">
+          By signing up, you agree to our <a href="/terms.html" style="color:var(--amber)">Terms of Service</a>. Referral commission ($200) and recruit bonus ($50) paid on jobs over $10,000 that complete through the platform.
+        </p>
+
+        <p class="form-note referral-fee-disclaimer">
+          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+        </p>
+      </form>
+
+      <!-- Partner Toolkit (shown after successful signup) -->
+      <div class="toolkit-wrapper" id="toolkitWrapper">
+
+        <div class="toolkit-header">
+          <h3>You're In — Here's Your Toolkit</h3>
+          <p>Five ways to put your link to work. Use whichever fits your workflow.</p>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="toolkit-stats">
+          <div class="stat-box">
+            <div class="stat-number" id="statReferrals">0</div>
+            <div class="stat-label">Referrals Sent</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number" id="statJobs">0</div>
+            <div class="stat-label">Jobs Completed</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number" id="statEarned">$0</div>
+            <div class="stat-label">Commissions Earned</div>
+          </div>
+        </div>
+
+        <!-- 1. Your Link -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">🔗</span>
+            <h4>Your Referral Link</h4>
+          </div>
+          <p class="toolkit-hint">Every homeowner you send through this link is tracked back to you.</p>
+          <div class="ref-link-display" id="refLinkDisplay"></div>
+          <button class="copy-btn" onclick="copyItem('link')">Copy Link</button>
+        </div>
+
+        <!-- 2. Your Recruit Link -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">🤝</span>
+            <h4>Your Recruit Link</h4>
+          </div>
+          <p class="toolkit-hint">Share this with other adjusters. You earn $50 every time one of their referrals completes a job over $10K.</p>
+          <div class="ref-link-display" id="recruitLinkDisplay"></div>
+          <button class="copy-btn" onclick="copyItem('recruit')">Copy Recruit Link</button>
+        </div>
+
+        <!-- 3. Text Message -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">💬</span>
+            <h4>Text Message Template</h4>
+          </div>
+          <p class="toolkit-hint">Edit the name, then paste into any text thread with the homeowner. Works on iPhone and Android.</p>
+          <div class="template-box" id="textTemplate"></div>
+          <button class="copy-btn" onclick="copyItem('text')">Copy Text Message</button>
+        </div>
+
+        <!-- 4. Email Template -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">📧</span>
+            <h4>Email Template</h4>
+          </div>
+          <p class="toolkit-hint">Copy this, paste into a new email, fill in the bracketed fields, and send. Takes 30 seconds.</p>
+          <div class="template-box" id="emailTemplate"></div>
+          <button class="copy-btn" onclick="copyItem('email')">Copy Email</button>
+        </div>
+
+        <!-- 5. File Note Insert -->
+        <div class="toolkit-card">
+          <div class="toolkit-card-header">
+            <span class="toolkit-card-icon">📋</span>
+            <h4>File Note Insert</h4>
+          </div>
+          <p class="toolkit-hint">Paste this into your file notes or the "Contractor Resources" section of your report so it appears automatically.</p>
+          <div class="template-box" id="reportTemplate"></div>
+          <button class="copy-btn" onclick="copyItem('report')">Copy File Note</button>
+        </div>
+
+        <!-- Go to Dashboard -->
+        <div class="toolkit-card" style="text-align:center;">
+          <a href="/partner-dashboard.html" class="btn btn-primary">Go to Partner Dashboard</a>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FAQ ── -->
+  <section class="faq-section">
+    <div class="faq-container">
+      <h2>Questions</h2>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>What happens after I send a homeowner my link?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          The homeowner lands on a page that explains the Otter Quotes process and walks them through getting competing contractor bids. They enter their info, and Otter Quotes handles everything from there — matching them with local contractors (whose licensing, insurance, and review information is gathered in one place so they can compare with confidence), collecting bids, and getting a contract signed.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Does referring a homeowner affect how I handle their claim?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          No. Referring a homeowner to Otter Quotes has zero effect on how you scope, evaluate, or settle their claim. Otter Quotes is not a public adjuster and does not negotiate or advise on insurance claims — it only helps the homeowner find a contractor after coverage and claim decisions have already been made independently.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Do I need to do any follow-up?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          No. Once you share the link, Otter Quotes takes it from there. You can check your partner dashboard to see the status of any referral, but you don't need to manage anything.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>When do I get paid?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Commissions are paid after job completion and approval — typically within 14 days of completion. A job "completes" when the contractor finishes the work and the final payment clears. If someone you recruited to Otter Quotes sends a referral that completes, you also earn a $50 recruit bonus — paid on the same schedule.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>What types of jobs qualify?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Any exterior repair or replacement job over $10,000 that completes through Otter Quotes — roofing, siding, gutters, windows. Covered claims and out-of-pocket (retail) jobs both qualify. Jobs under $10,000 don't earn a cash commission, but we still handle the homeowner professionally.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Am I allowed to accept a referral fee?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          This is a straightforward referral arrangement — you refer a homeowner to a contractor bidding platform, and you may earn a commission when they complete a job through it. Otter Quotes does not influence your claim work in any way. Whether you're permitted to accept a referral fee depends on your employer's policies and your state's adjuster licensing rules, so check both before you participate.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Does the homeowner pay anything?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          Otter Quotes is 100% free for homeowners. They get a better outcome (competing bids, a signed contract, deductible protection) at no cost to them.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>What's the recruit bonus?</span>
+          <span class="faq-toggle">▼</span>
+        </button>
+        <div class="faq-content">
+          When you bring another adjuster to Otter Quotes using your recruit link, you earn $50 for every job over $10,000 that their referrals complete. It's one level only — you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on this page after you sign up, and on your partner dashboard.
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- Partner App promo (PWA v1, 2026-08-03) -->
+<section aria-label="Otter Quotes Partner App" style="max-width: 1100px; margin: 0 auto; padding: 48px 24px;">
+  <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap; background: #0D1B2E; border-radius: 16px; padding: 32px; border: 1px solid rgba(224, 123, 0, 0.35);">
+    <img src="/img/app/partner-icon-192.png" alt="Otter Quotes Partner App icon" width="72" height="72" style="border-radius: 16px; flex-shrink: 0;">
+    <div style="flex: 1; min-width: 220px;">
+      <div style="font-family: 'Rubik', sans-serif; font-weight: 700; font-size: 1.25rem; color: #FFFFFF; margin-bottom: 6px;">Get the Otter Quotes Partner App</div>
+      <div style="font-family: 'Rubik', sans-serif; font-size: 0.95rem; color: #94A3B8;">Refer homeowners, grow your partner network, and track your referrals — right from your phone. Free, installs in seconds.</div>
+    </div>
+    <a href="/partner-app.html" style="font-family: 'Rubik', sans-serif; display: inline-block; padding: 14px 28px; background: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 8px; font-weight: 600; flex-shrink: 0;">Get the App</a>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer class="footer" id="site-footer"></footer>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+/**
+ * Partner Adjusters Page
+ * Handles signup form submission: creates a record in referral_agents,
+ * and displays the partner's referral + recruit links.
+ *
+ * IMPORTANT: unique_code and recruit_code are generated server-side by
+ * BEFORE INSERT triggers on referral_agents. This client intentionally
+ * does NOT generate or send either value — it reads them back from the
+ * insert response instead.
+ */
+
+// Module-scoped recruit context. Populated by detectRecruitCode() on DOM ready
+// and consumed by handleSignup() when the user submits the form.
+let recruitContext = { recruitCode: null, recruiterId: null };
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('partnerForm').addEventListener('submit', handleSignup);
+  detectRecruitCode();
+});
+
+// #632: signed-in partners land straight on their dashboard instead of
+// re-seeing the signup form - same loop-guard shape as partner-login.html.
+// ?stay=1 opts out; anon/homeowner/contractor visitors and referral/recruit
+// attribution for anon visitors are untouched (load-time only, so it never
+// interrupts the in-session post-signup toolkit block).
+(async function redirectSignedInPartner() {
+  if (new URLSearchParams(window.location.search).get('stay') === '1') return;
+  if ((document.referrer || '').includes('/partner-dashboard.html')) return;
+  const user = await Auth.getUser();
+  if (!user) return;
+  const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+  const role = await Auth.getRole();
+  if (!partnerRoles.includes(role)) return;
+  window.location.replace('/partner-dashboard.html');
+})();
+
+/**
+ * Detect whether this visitor arrived via a recruit link.
+ * Checks localStorage (set by recruit.html) first, then falls back to the
+ * ?recruit= URL param. If a valid active recruiter is found, pre-fills and
+ * locks the "Who Told You About Us?" field.
+ */
+async function detectRecruitCode() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const recruitCode = localStorage.getItem('cs_recruit_code') || urlParams.get('recruit');
+  if (!recruitCode) return;
+
+  try {
+    // Public read allowed by existing RLS on referral_agents, via the public view
+    const { data: recruiter, error } = await sb
+      .from('referral_agents_public')
+      .select('id, first_name, last_name, company')
+      .eq('recruit_code', recruitCode)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Recruit code lookup failed:', error.message);
+      return;
+    }
+    if (!recruiter) {
+      // Unknown or inactive code — leave field unlocked so the user can type freely
+      return;
+    }
+
+    recruitContext = { recruitCode, recruiterId: recruiter.id };
+
+    const referredByInput = document.getElementById('referredBy');
+    if (referredByInput) {
+      const displayName = `${recruiter.first_name || ''} ${recruiter.last_name || ''}`.trim()
+        || recruiter.company
+        || 'Otter Quotes Partner';
+      referredByInput.value = displayName;
+      referredByInput.readOnly = true;
+      referredByInput.style.background = 'rgba(224, 123, 0, 0.08)';
+      referredByInput.style.borderColor = 'var(--amber)';
+      referredByInput.style.color = 'var(--amber)';
+      referredByInput.style.cursor = 'not-allowed';
+      referredByInput.title = 'You arrived via a recruit link — this field is locked.';
+    }
+  } catch (err) {
+    console.warn('Recruit code lookup threw:', err);
+  }
+}
+
+/**
+ * Handle form submission
+ */
+async function handleSignup(e) {
+  e.preventDefault();
+
+  const firstName    = document.getElementById('firstName').value.trim();
+  const lastName     = document.getElementById('lastName').value.trim();
+  const email        = document.getElementById('email').value.trim();
+  const phone        = document.getElementById('phone').value.trim();
+  const employer     = document.getElementById('employer').value.trim();
+  const adjusterType = document.getElementById('adjusterType').value;
+  const referredBy   = document.getElementById('referredBy').value.trim();
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Setting up your account...';
+
+  try {
+    // #571 / v95: server-side register_partner RPC. referral_agents has no
+    // anon SELECT policy, so a direct .insert().select() can never read the
+    // trigger-generated codes back (42501 killed this signup entirely). The
+    // SECURITY DEFINER RPC inserts (user_id NULL — linked post-magic-link in
+    // auth.js), resolves the recruit code server-side (D-143), and returns
+    // {id, unique_code, recruit_code}.
+    const { data, error } = await sb
+      .rpc('register_partner', {
+        p_agent_type:       'adjuster',
+        p_first_name:       firstName,
+        p_last_name:        lastName,
+        p_email:            email,
+        p_phone:            phone,
+        p_company:          employer,          // schema column is 'company' (not 'employer')
+        p_referred_by_note: referredBy || null,
+        p_recruit_code:     recruitContext.recruitCode || null,
+        p_metadata:         { adjuster_type: adjusterType || null },
+      });
+
+    if (error) {
+      if ((error.message || '').includes('partner_exists')) {
+        // Already registered — send a fresh login link and say so.
+        if (window.Auth) {
+          try { await Auth.sendMagicLink(email, 'adjuster', '/partner-dashboard.html'); } catch (e) { /* non-fatal */ }
+        }
+        alert("You're already a partner — check your email for your login link.");
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Generate My Referral Link';
+        return;
+      }
+      throw new Error(error.message);
+    }
+
+    // Codes are trigger-generated — read them back from the RPC response.
+    const finalCode = data?.unique_code;
+    const recruitCodeOut = data?.recruit_code;
+
+    // Use ref.html?code= URL pattern (consistent with the rest of the system)
+    const refLink = `${CONFIG.SITE_URL}/ref.html?code=${finalCode}`;
+    const recruitLink = recruitCodeOut ? `${CONFIG.SITE_URL}/recruit.html?code=${recruitCodeOut}` : '';
+    const fullName = `${firstName} ${lastName}`;
+
+    // Store data for post-auth user_id linking
+    localStorage.setItem('cs_partner_signup', JSON.stringify({
+      email: email,
+      unique_code: finalCode,
+    }));
+    localStorage.setItem('cs_auth_role', 'adjuster');
+
+    // Recruit code has now been consumed — clear it so a future signup on
+    // this device doesn't accidentally attribute to the same recruiter.
+    localStorage.removeItem('cs_recruit_code');
+
+    // Send magic link so partner can access their dashboard.
+    // 'adjuster' is not in auth.js's hardcoded partnerRoles allowlist, so the
+    // redirect page is forced explicitly rather than relying on role-based routing.
+    if (window.Auth) {
+      await Auth.sendMagicLink(email, 'adjuster', '/partner-dashboard.html');
+    }
+
+    // Show toolkit, hide form
+    document.getElementById('partnerForm').style.display = 'none';
+    document.getElementById('toolkitWrapper').style.display = 'block';
+    document.getElementById('refLinkDisplay').textContent = refLink;
+    document.getElementById('recruitLinkDisplay').textContent = recruitLink || 'Available once your account finishes setting up.';
+
+    // Populate templates
+    populateTemplates(refLink, fullName, employer);
+
+    // GA4 conversion event — partner funnel
+    if (typeof gtag === 'function') {
+      gtag('event', 'partner_signup', {
+        partner_type: 'adjuster',
+        source: new URLSearchParams(location.search).get('utm_source') || 'direct',
+      });
+    }
+
+  } catch (err) {
+    console.error('Signup error:', err);
+    alert(`Something went wrong: ${err.message}. Please try again or email us at support@otterquote.com`);
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Generate My Referral Link';
+  }
+}
+
+/**
+ * Populate the text, email, and file note templates with real data
+ */
+function populateTemplates(refLink, fullName, employer) {
+  document.getElementById('textTemplate').textContent =
+`Hi [Homeowner name], this is ${fullName} from ${employer}. Otter Quotes can get you competing contractor bids on the repairs from your file, so you can compare your options and sign a contract without the runaround. It's a separate step from your claim — here's the link: ${refLink}`;
+
+  document.getElementById('emailTemplate').textContent =
+`Subject: A Resource for Your Repair Contractors
+
+Hi [Homeowner name],
+
+While documenting the damage at [property address], I wanted to send you a resource that makes finding a contractor straightforward.
+
+Otter Quotes gives contractors everything they need to bid accurately on your project, so you get bids on exactly what you need — not ballpark numbers from a quick walk-around. No high-pressure sales pitches. No being ghosted after a site visit. Just clear, apples-to-apples bids from local contractors — with their licensing, insurance, and review information gathered in one place so you can compare with confidence — and a simple contract signing process. It's free for homeowners, and it's entirely separate from how your claim is handled.
+
+Get started here: ${refLink}
+
+Best,
+${fullName}
+${employer}`;
+
+  document.getElementById('reportTemplate').textContent =
+`CONTRACTOR RESOURCE NOTE
+
+For the items noted above that require contractor work, I recommend getting competing bids before committing to any single contractor. Otter Quotes is a platform that gives contractors professional measurements and documentation so they can provide accurate bids — not estimates based on a quick look. The result: clear, comparable bids and a straightforward contract signing process. Free for homeowners. This is separate from claim handling.
+
+Get started: ${refLink}
+Shared by ${fullName}, ${employer}`;
+}
+
+/**
+ * Copy a specific item to clipboard
+ */
+function copyItem(type) {
+  let text = '';
+  let btnSelector = '';
+
+  if (type === 'link') {
+    text = document.getElementById('refLinkDisplay').textContent;
+    btnSelector = '[onclick="copyItem(\'link\')"]';
+  } else if (type === 'recruit') {
+    text = document.getElementById('recruitLinkDisplay').textContent;
+    btnSelector = '[onclick="copyItem(\'recruit\')"]';
+  } else if (type === 'text') {
+    text = document.getElementById('textTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'text\')"]';
+  } else if (type === 'email') {
+    text = document.getElementById('emailTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'email\')"]';
+  } else if (type === 'report') {
+    text = document.getElementById('reportTemplate').textContent;
+    btnSelector = '[onclick="copyItem(\'report\')"]';
+  }
+
+  if (!text) return;
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector(btnSelector);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 2000);
+    }
+  }).catch(() => {});
+}
+function toggleFaq(btn) {
+  const item = btn.closest('.faq-item');
+  item.classList.toggle('open');
+}
+    </script>
+
+</body>
+</html>

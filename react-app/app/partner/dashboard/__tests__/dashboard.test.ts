@@ -56,6 +56,7 @@ import {
   LOGIN_ROUTE,
   PARTNER_SIGNUP_REDIRECT,
   RECRUIT_LINK_PENDING,
+  REFERRAL_FEE_DISCLAIMER,
 } from '../copy';
 
 function mkPartner(over: Partial<PartnerRecord> = {}): PartnerRecord {
@@ -337,6 +338,11 @@ describe('submit-partner-w9 EF contract (UNCHANGED)', () => {
 // VERBATIM Tier-3 legal / IRS / payout copy (byte-for-byte)
 // ============================================================
 describe('verbatim Tier-3 W-9 / IRS / payout copy', () => {
+  it('D-266 referral-fee legality disclaimer (byte-for-byte, Dustin-dictated)', () => {
+    expect(REFERRAL_FEE_DISCLAIMER).toBe(
+      'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.',
+    );
+  });
   it('the IRS $600 W-9 disclosure (action-required body)', () => {
     expect(W9_COPY.actionRequired.body).toBe(
       'Commission payments are held until we have a completed IRS Form W-9 on file. This is required by the IRS for any partner receiving $600 or more in referral payments per year.',

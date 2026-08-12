@@ -20,15 +20,31 @@
  *   Find payout_approvals where:
  *     status = 'pending_approval'
  *     AND auto_approve_at < NOW()
+ *   Gates (both fail-safe — lookup error = hold, row stays pending_approval):
+ *     1. W-9 (D-211 Phase 18 Unit 3): verified W-9 + payments unblocked.
+ *     2. Completion (D-139, #567): linked claim has completion_date set.
  *   Auto-approve: set status = 'auto_approved', approved_at = NOW().
- *   Set referrals.commission_paid_at = NOW() on associated referrals.
- *   Send Dustin a summary email of what auto-approved.
+ *   Set referrals.commission_paid_at = NOW() and referrals.status =
+ *   'commission_paid' (fires update_referral_stats) on associated referrals.
+ *   Send Dustin a summary email of what auto-approved and what was held.
+ *   Send the PARTNER a confirmation email for each row approved (#597 — this
+ *   path previously notified nobody but Dustin, while the manual
+ *   approve-payout path did email the partner; auto-approve is the default
+ *   settle path, so the default outcome was silence).
  *
  * JOB 3 — Catch-up notifications:
  *   Find payout_approvals where:
  *     status = 'pending_approval'
  *     AND notification_sent_at IS NULL
  *   Call notify-payout-pending for each (in case pg_net failed on creation).
+ *
+ * JOB 4 — W-9 requests (#596):
+ *   Find partners who have a pending_approval accrual AND payments_blocked
+ *   AND w9_notification_sent_at IS NULL. Call notify-partner-w9 for each and
+ *   stamp w9_notification_sent_at only on a confirmed send.
+ *   Restores the notification v49 designed into apply_referral_commission()
+ *   and a later rewrite dropped, without touching the payment trigger. Also
+ *   catches accruals that predate the fix.
  *
  * ── Auth ─────────────────────────────────────────────────────────────────────
  *   verify_jwt = false (see supabase/config.toml). Access is gated by CRON_SECRET
@@ -218,7 +234,10 @@ serve(async (req: Request) => {
     pendingReminderCount: 0,
     autoApproved:         0,
     heldPendingW9:        0,
+    heldPendingCompletion: 0,
     catchupNotified:      0,
+    partnerApprovalEmails: 0,   // #597
+    w9RequestsSent:       0,    // #596
     errors:               [] as string[],
     ranAt:                new Date().toISOString(),
     elapsedMs:            0,
@@ -353,6 +372,7 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
       const approvedAt = new Date().toISOString();
       const approvedRows: typeof autoApproveRows = [];
       const heldRows:     typeof autoApproveRows = [];
+      const heldCompletionRows: typeof autoApproveRows = [];
 
       for (const row of autoApproveRows) {
         try {
@@ -362,16 +382,20 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
           // and unblocked payments. Fail-safe: missing partner_id / agent row /
           // lookup error SKIPS — the row stays pending_approval, no commission_paid_at.
           let gateOk = false;
+          // #597: also carry the partner's email/name so the approval can be
+          // confirmed TO THE PARTNER, not just summarised to Dustin.
+          let gateAgent: { email?: string | null; first_name?: string | null } | null = null;
           if (row.partner_id) {
             const { data: agent, error: agentError } = await supabase
               .from("referral_agents")
-              .select("payments_blocked, w9_verified_at")
+              .select("payments_blocked, w9_verified_at, email, first_name")
               .eq("id", row.partner_id)
               .single();
             if (agentError) {
               results.errors.push(`Auto-approve gate: agent lookup failed for ${row.partner_id}: ${agentError.message}`);
             } else if (agent && agent.payments_blocked === false && agent.w9_verified_at != null) {
               gateOk = true;
+              gateAgent = agent;
             }
           }
 
@@ -379,6 +403,40 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
             results.heldPendingW9++;
             heldRows.push(row);
             console.log(`[${FUNCTION_NAME}] HELD auto-approve ${row.id} — partner ${row.partner_id ?? "none"} not W-9-verified`);
+            continue;
+          }
+
+          // ── Completion gate (D-139, #567) ──────────────────────────────────
+          // Commissions release only after the job is actually complete.
+          // Resolve payout → referral → claim → completion_date. Fail-safe like
+          // the W-9 gate: no referral / no claim / lookup error = HOLD.
+          let completionOk = false;
+          if (row.referral_id) {
+            const { data: refRow, error: refErr } = await supabase
+              .from("referrals")
+              .select("claim_id")
+              .eq("id", row.referral_id)
+              .single();
+            if (refErr) {
+              results.errors.push(`Auto-approve completion gate: referral lookup failed for ${row.referral_id}: ${refErr.message}`);
+            } else if (refRow?.claim_id) {
+              const { data: claimRow, error: claimErr } = await supabase
+                .from("claims")
+                .select("completion_date")
+                .eq("id", refRow.claim_id)
+                .single();
+              if (claimErr) {
+                results.errors.push(`Auto-approve completion gate: claim lookup failed for ${refRow.claim_id}: ${claimErr.message}`);
+              } else if (claimRow?.completion_date != null) {
+                completionOk = true;
+              }
+            }
+          }
+
+          if (!completionOk) {
+            results.heldPendingCompletion++;
+            heldCompletionRows.push(row);
+            console.log(`[${FUNCTION_NAME}] HELD auto-approve ${row.id} — job not complete (referral ${row.referral_id ?? "none"})`);
             continue;
           }
 
@@ -405,19 +463,84 @@ ${ctaButton("Review All Pending Approvals →", ADMIN_PAYOUTS_URL)}
             if (referralError) {
               results.errors.push(`Auto-approve: referral update failed for ${row.referral_id}: ${referralError.message}`);
             }
+
+            // D-139 (#567): advance the referral to commission_paid so the
+            // update_referral_stats trigger fires — nothing else ever sets it.
+            const { error: statusError } = await supabase
+              .from("referrals")
+              .update({ status: "commission_paid" })
+              .eq("id", row.referral_id)
+              .neq("status", "commission_paid");
+
+            if (statusError) {
+              results.errors.push(`Auto-approve: referral status update failed for ${row.referral_id}: ${statusError.message}`);
+            }
           }
 
           results.autoApproved++;
           approvedRows.push(row);
+
+          // ── Partner confirmation email (#597) ──────────────────────────────
+          // approve-payout (the manual path) emails the partner; this path did
+          // not. Auto-approve is the DEFAULT settle path under D-180, so the
+          // default outcome was a partner being paid with no notification at
+          // all, while the exceptional outcome (Dustin clicks Approve first)
+          // was the one that told them. Non-fatal: an email failure must never
+          // undo an approval that already committed.
+          const partnerEmail = gateAgent?.email || null;
+          if (partnerEmail) {
+            try {
+              const greeting = gateAgent?.first_name ? `Hi ${gateAgent.first_name},` : "Hi,";
+              const amountStr = formatCurrency(row.amount);
+              const kind = row.payout_type === "commission_recruit"
+                ? "recruit bonus"
+                : "referral commission";
+
+              const partnerHtml = `
+<h2 style="font-size:1.5rem;font-weight:700;color:#0B1929;margin:0 0 8px;">Your ${kind} is approved</h2>
+<p style="margin:0 0 16px;color:#334155;">${greeting}</p>
+<p style="margin:0 0 16px;color:#334155;">
+  Your ${kind} of <strong>${amountStr}</strong> has been approved and is queued for payment.
+  No action is needed from you.
+</p>
+<p style="margin:0 0 16px;color:#334155;">
+  You can see all of your referrals and their status on your
+  <a href="https://otterquote.com/partner-dashboard.html" style="color:#0EA5E9;">partner dashboard</a>.
+</p>`;
+
+              const partnerText = [
+                `${greeting}`,
+                ``,
+                `Your ${kind} of ${amountStr} has been approved and is queued for payment. No action is needed from you.`,
+                ``,
+                `See your referrals: https://otterquote.com/partner-dashboard.html`,
+              ].join("\n");
+
+              const sent = await sendMailgunEmail(
+                mailgunApiKey, mailgunDomain, partnerEmail,
+                `Otter Quotes <notifications@${mailgunDomain}>`,
+                `Your ${kind} of ${amountStr} is approved`,
+                partnerText, buildEmail(partnerHtml)
+              );
+              if (sent) results.partnerApprovalEmails++;
+              else results.errors.push(`Partner approval email FAILED for ${row.id}`);
+            } catch (err) {
+              results.errors.push(`Partner approval email threw for ${row.id}: ${String(err)}`);
+            }
+          } else {
+            console.log(`[${FUNCTION_NAME}] Auto-approved ${row.id} — no partner email on file, notification skipped`);
+          }
         } catch (err) {
           results.errors.push(`Auto-approve row ${row.id} threw: ${String(err)}`);
         }
       }
 
-      // Send Dustin a summary of what auto-approved AND what was held pending W-9.
-      if (approvedRows.length > 0 || heldRows.length > 0) {
+      // Send Dustin a summary of what auto-approved AND what was held pending
+      // W-9 or job completion.
+      if (approvedRows.length > 0 || heldRows.length > 0 || heldCompletionRows.length > 0) {
         const autoTotal = approvedRows.reduce((sum, r) => sum + Number(r.amount), 0);
         const heldTotal = heldRows.reduce((sum, r) => sum + Number(r.amount), 0);
+        const heldCompletionTotal = heldCompletionRows.reduce((sum, r) => sum + Number(r.amount), 0);
 
         const rowHtml = (r: typeof autoApproveRows[number], amountColor: string) => `
 <tr>
@@ -523,6 +646,87 @@ ${ctaButton("View Full History →", ADMIN_PAYOUTS_URL)}
           }
         } catch (err) {
           results.errors.push(`Catch-up notify threw for ${row.id}: ${String(err)}`);
+        }
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // JOB 4 — W-9 request for partners with a held accrual (#596)
+    // ════════════════════════════════════════════════════════════════════════
+    //
+    // v49 designed apply_referral_commission() to check payments_blocked and,
+    // when true, fire the one-time W-9 request email via notify-partner-w9
+    // (pg_net). A later rewrite (the #567 / D-139 audit pass) dropped BOTH the
+    // check and the pg_net call. notify-partner-w9 has had no live caller
+    // since — grep the repo and the only hits are the superseded v49 SQL and
+    // the function's own source.
+    //
+    // The money gate survived (JOB 2 holds anything without a verified W-9), so
+    // nothing was ever paid out incorrectly. What broke is the communication:
+    // a partner earns a commission, it accrues, it is held forever, and they
+    // are never told why. This job restores the notification without touching
+    // the payment trigger — deliberately the lower-risk of the two options, and
+    // it also catches accruals that predate the fix.
+    //
+    // Idempotency: referral_agents.w9_notification_sent_at (added in v49,
+    // unused until now). One request per partner, ever.
+    const { data: heldAccruals, error: heldErr } = await supabase
+      .from("payout_approvals")
+      .select("partner_id")
+      .eq("status", "pending_approval")
+      .not("partner_id", "is", null);
+
+    if (heldErr) {
+      results.errors.push(`W-9 request query error: ${heldErr.message}`);
+    } else if (heldAccruals && heldAccruals.length > 0) {
+      const partnerIds = [...new Set(heldAccruals.map((r) => r.partner_id))];
+
+      const { data: needW9, error: needErr } = await supabase
+        .from("referral_agents")
+        .select("id")
+        .in("id", partnerIds)
+        .eq("payments_blocked", true)
+        .is("w9_notification_sent_at", null)
+        .limit(20); // cap per run, same rationale as JOB 3
+
+      if (needErr) {
+        results.errors.push(`W-9 request agent query error: ${needErr.message}`);
+      } else if (needW9 && needW9.length > 0) {
+        for (const agent of needW9) {
+          try {
+            const res = await fetch(
+              `${supabaseUrl}/functions/v1/notify-partner-w9`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${serviceRoleKey}`,
+                },
+                body: JSON.stringify({ agent_id: agent.id }),
+              }
+            );
+
+            if (!res.ok) {
+              const errText = await res.text();
+              results.errors.push(`W-9 request failed for agent ${agent.id}: ${errText}`);
+              continue;
+            }
+
+            // Stamp only after a confirmed send, so a transient failure retries
+            // tomorrow rather than silently burning the one-time notification.
+            const { error: stampErr } = await supabase
+              .from("referral_agents")
+              .update({ w9_notification_sent_at: new Date().toISOString() })
+              .eq("id", agent.id)
+              .is("w9_notification_sent_at", null);
+
+            if (stampErr) {
+              results.errors.push(`W-9 request stamp failed for agent ${agent.id}: ${stampErr.message}`);
+            }
+            results.w9RequestsSent++;
+          } catch (err) {
+            results.errors.push(`W-9 request threw for agent ${agent.id}: ${String(err)}`);
+          }
         }
       }
     }

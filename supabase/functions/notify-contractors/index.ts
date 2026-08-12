@@ -6,6 +6,9 @@
  *   1. new_opportunity (default) — called when a homeowner submits for bidding.
  *      Notifies all matching active contractors via email + SMS.
  *      Rate-limited: 10/day, 30/month (D-030). Capped at 6 contractors per opportunity.
+ *      #564 test-world symmetry: real claims fan out to real contractors only
+ *      (#543 exclusion, v69 behavior); is_test=true claims fan out to
+ *      is_test=true contractors ONLY — mirroring the v96 claims RLS carve-out.
  *
  *   2. contract_signed — called from docusign-webhook when envelope status = completed.
  *      Looks up the winning contractor for the claim and sends a targeted
@@ -27,6 +30,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { selectFanOutContractors } from "./test-exclusion.ts";
 
 const FUNCTION_NAME = "notify-contractors";
 const DASHBOARD_URL = "https://otterquote.com/contractor-dashboard.html";
@@ -173,7 +177,7 @@ function newOpportunityEmailHtml(
     </table>
 
     <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
-    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">A contract-ready project is available in your service area. The winning contractor receives a fully executed contract, Hover aerial measurements, and the homeowner&rsquo;s contact information &mdash; everything you need to schedule and start work.</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">A new opportunity is available in your service area. The winning contractor receives a fully executed contract, Hover aerial measurements, and the homeowner&rsquo;s contact information &mdash; everything you need to schedule and start work.</p>
 
     ${ctaButton("View Opportunity &rarr;", OPPORTUNITIES_URL)}
 
@@ -1010,6 +1014,7 @@ async function notifyContractorsForSingleTrade(
   claim_zip: string,
   claim_county: string | undefined,
   job_type: string,
+  claimIsTest: boolean,
   supabase: ReturnType<typeof createClient>,
   mailgunApiKey: string,
   mailgunDomain: string,
@@ -1019,7 +1024,7 @@ async function notifyContractorsForSingleTrade(
   // Fetch all active contractors (no DB-level limit — we filter and cap below)
   const { data: contractors, error: contractorsError } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, trades, service_counties")
+    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, trades, service_counties, is_test")
     .eq("status", "active");
 
   if (contractorsError) {
@@ -1028,10 +1033,24 @@ async function notifyContractorsForSingleTrade(
   }
   if (!contractors || contractors.length === 0) return [];
 
+  // Filter 0 — #543/#564 symmetric test-world separation:
+  //   real claims → real contractors only (is_test / internal-email rows
+  //   excluded — #543 predicate, v69 behavior preserved);
+  //   test claims → is_test=true contractors ONLY (walk/E2E traffic stays
+  //   inside the test world, mirroring the v96 claims RLS carve-out).
+  const eligibleContractors = selectFanOutContractors(contractors as any[], claimIsTest);
+  if (eligibleContractors.length < contractors.length) {
+    console.log(
+      `notify-contractors [${trade}]: ${claimIsTest ? "test claim — " : ""}` +
+      `${contractors.length - eligibleContractors.length} contractor(s) outside the claim's test-world filtered out (#564)`
+    );
+  }
+  if (eligibleContractors.length === 0) return [];
+
   const tradeLower = trade.toLowerCase();
 
   // Filter 1 — trade match: contractor must list this trade (or have no trades set = conservative include)
-  let matched = contractors.filter((c: any) => {
+  let matched = eligibleContractors.filter((c: any) => {
     if (!c.trades || c.trades.length === 0) return true;
     return c.trades.some((t: string) => t.toLowerCase() === tradeLower);
   });
@@ -1186,6 +1205,25 @@ async function handleNewOpportunity(
     );
   }
 
+  // #564 — the claim's test-world flag drives symmetric fan-out selection:
+  // real claims notify real contractors only (#543, v69 behavior); test
+  // claims notify is_test=true contractors only. Fetched server-side so
+  // callers can't spoof it.
+  const { data: testFlagRow, error: testFlagErr } = await supabase
+    .from("claims")
+    .select("is_test")
+    .eq("id", claim_id)
+    .single();
+
+  if (testFlagErr || !testFlagRow) {
+    console.error("handleNewOpportunity: claim not found for is_test lookup", claim_id, testFlagErr?.message);
+    return new Response(
+      JSON.stringify({ error: "Claim not found", detail: testFlagErr?.message }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+  const claimIsTest = testFlagRow.is_test === true;
+
   // Fix 2026-07-08 (PFW run pfw-1783551078): dashboard.html submitForBids() sends only
   // { claim_id }, so the strict field check 400'd every dashboard-submitted claim and
   // contractors never received new-opportunity notifications. Derive the location from
@@ -1304,6 +1342,7 @@ async function handleNewOpportunity(
       claim_id, claim_city, claim_state, claim_zip,
       claim_county,
       job_type || "",
+      claimIsTest,
       supabase, mailgunApiKey, mailgunDomain, supabaseUrl, supabaseKey
     );
     allNotified.push(...tradeResults);

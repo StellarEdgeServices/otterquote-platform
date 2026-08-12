@@ -1392,7 +1392,7 @@
               <div class="section-header">
                 <h2>&#x270F;&#xFE0F; Disclosures &amp; Acknowledgments</h2>
               </div>
-              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-6);">Please initial each item below. All four are required before you can submit.</p>
+              <p style="color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-6);">Please initial each item below before you can submit.</p>
               <div class="ack-group">
 
                 <!-- Non-recoverable depreciation -->
@@ -1839,7 +1839,7 @@
 
     function buildAckIds() {
       const ids = [];
-      const trades = state.selectedTrades;
+      const trades = state.selectedTrades.map(t => String(t).toLowerCase());
       const hasRoofing = trades.length === 0 || trades.includes('roofing');
       const hasSiding  = trades.includes('siding');
       if (hasRoofing)            ids.push('ackBadDecking');
@@ -1867,9 +1867,10 @@
     // ── Build Payload ──────────────────────────────────────────────────────────
     function buildPayload() {
       const trades = state.selectedTrades;
-      const hasRoofing = trades.length === 0 || trades.includes('roofing');
-      const hasSiding  = trades.includes('siding');
-      const hasGutters = trades.includes('gutters') || trades.includes('downspouts');
+      const lcTrades = trades.map(t => String(t).toLowerCase());
+      const hasRoofing = lcTrades.length === 0 || lcTrades.includes('roofing');
+      const hasSiding  = lcTrades.includes('siding');
+      const hasGutters = lcTrades.includes('gutters') || lcTrades.includes('downspouts');
 
       return {
         // Which trades are confirmed in this submission

@@ -294,7 +294,7 @@ function ActionButtons({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TradeSelectorPage() {
-  const { user, loading: authLoading } = useAuthReady();
+  const { user, settled } = useAuthReady();
 
   // Wizard state
   const [wizardState, setWizardState] = useState<WizardState>({
@@ -314,7 +314,7 @@ export default function TradeSelectorPage() {
 
   // Auth guard + returning-user guard
   useEffect(() => {
-    if (authLoading) return;
+    if (!settled) return;
 
     if (!user) {
       window.location.href = GET_STARTED_URL;
@@ -349,7 +349,7 @@ export default function TradeSelectorPage() {
       if (ref) sessionStorage.setItem('oq_referral_source', ref.trim().toLowerCase());
       if (partnerId) sessionStorage.setItem('oq_partner_id', partnerId.trim());
     }
-  }, [authLoading, user]);
+  }, [settled, user]);
 
   // ── Step sequence ──
   const stepSequence: string[] = wizardState.fundingType === 'insurance'
@@ -489,6 +489,23 @@ export default function TradeSelectorPage() {
           const partnerIdParam = sessionStorage.getItem('oq_partner_id') || null;
           const referralAgentId = await resolveReferralAgentId(partnerIdParam);
 
+          // #567: ref.html click-chain carry-forward — mirrors the static
+          // trade-selector. localStorage survives the magic-link redirect, and
+          // auth re-keys the id to oq_referral_id_for_claim after advancing.
+          const chainReferralId =
+            sessionStorage.getItem('oq_referral_id') ||
+            localStorage.getItem('oq_referral_id') ||
+            localStorage.getItem('oq_referral_id_for_claim') ||
+            null;
+          const chainReferralAgentId =
+            sessionStorage.getItem('oq_referral_agent_id') ||
+            localStorage.getItem('oq_referral_agent_id') ||
+            null;
+          const chainReferralCode =
+            sessionStorage.getItem('oq_referral_code') ||
+            localStorage.getItem('oq_referral_code') ||
+            null;
+
           // Fetch existing claim
           const { data: existingClaim } = await supabase
             .from('claims')
@@ -514,6 +531,11 @@ export default function TradeSelectorPage() {
             updated_at: new Date().toISOString(),
             ...(referralSource && { referral_source: referralSource }),
             ...(referralAgentId && { referral_agent_id: referralAgentId }),
+            // #567: ref.html click-chain attribution — the only writer of
+            // claims.referral_id (the commission trigger's key column).
+            ...(chainReferralId && { referral_id: chainReferralId }),
+            ...(!referralAgentId && chainReferralAgentId && { referral_agent_id: chainReferralAgentId }),
+            ...(chainReferralCode && { referral_code: chainReferralCode }),
           };
 
           if (existingClaim) {
@@ -528,6 +550,11 @@ export default function TradeSelectorPage() {
               created_at: new Date().toISOString(),
             });
           }
+
+          // #571: the claim_submitted advance now lives in the database —
+          // trg_claims_advance_referral fires on the claims.referral_id
+          // write above. The old client-side UPDATE always no-opped
+          // against RLS and has been removed.
         } catch (claimErr) {
           console.warn('[trade-selector] claim upsert failed:', claimErr);
         }
@@ -562,7 +589,7 @@ export default function TradeSelectorPage() {
   };
 
   // ── Loading state ──
-  if (authLoading) {
+  if (!settled) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
         <div style={{ textAlign: 'center' }}>

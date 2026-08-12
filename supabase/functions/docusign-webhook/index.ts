@@ -14,6 +14,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parsePayload } from "./payload-parser.ts";
+import { evaluateAcknowledgment, fetchEnvelopeSignersWithTabs } from "./ack-verify.ts";
 
 // ── 86e1tz17j: best-effort Sentry reporter for swallowed audit-write failures ──
 // Inlined (not imported from _shared) because the EF body-deploy path does not
@@ -478,6 +479,117 @@ serve(async (req) => {
       // Envelope fully signed by all parties
       await sendGA4Event("envelope_signed", { envelope_id: envelopeId, claim_id: claim.id });
       if (isContract) {
+        // ========== D-269 ACKNOWLEDGMENT BACKSTOP (#550) ==========
+        // Tab-level enforcement is the D-123 signHere swap in
+        // create-docusign-envelope; this is the completion-side backstop.
+        // Invariant (CEO decision D-269, 2026-07-13): no silently-accepted
+        // contract without the otterquote_acknowledgment tab satisfied — a
+        // defective envelope must NOT reach the clean contract_signed/charge
+        // path below.
+        try {
+          const ackPayloadSigners: unknown[] =
+            payload.data?.envelopeSummary?.recipients?.signers ||
+            payload.recipients?.signers ||
+            [];
+          let ackEval = evaluateAcknowledgment(ackPayloadSigners);
+          if (ackEval.state === "indeterminate") {
+            // Connect payloads normally omit tab data — query the eSignature
+            // API for the authoritative recipients+tabs state.
+            ackEval = evaluateAcknowledgment(await fetchEnvelopeSignersWithTabs(envelopeId));
+            if (ackEval.state === "indeterminate") {
+              // The API answered but returned no tab data at all — treat as
+              // missing: acknowledgment cannot be demonstrated.
+              ackEval = { state: "defect", via: "tab_missing", detail: ackEval.detail };
+            }
+          }
+
+          if (ackEval.state === "defect") {
+            console.error(
+              `[D-269] acknowledgment defect on completed envelope ${envelopeId} (claim ${claim.id}): ${ackEval.detail}`
+            );
+            // (1) Ops alert — existing incident convention.
+            try {
+              await supabase.from("platform_alerts_log").insert({
+                alert_type: "ack_defect_on_completed",
+                function_name: "docusign-webhook",
+                message:
+                  `D-269: envelope ${envelopeId} completed WITHOUT a satisfied otterquote_acknowledgment ` +
+                  `tab (claim ${claim.id}; ${ackEval.detail}). Clean completion halted — contract_signed ` +
+                  `not set, no fee charge. Manual review: void/resend the envelope or record GC disposition.`,
+              });
+            } catch (alertErr) {
+              await reportToSentry(alertErr, {
+                fn: "docusign-webhook",
+                op: "platform_alerts_log.insert",
+                extra: { alert_type: "ack_defect_on_completed", claim_id: claim.id },
+              });
+            }
+            // (2) Sentry — the defect itself, not just insert failures.
+            await reportToSentry(
+              new Error(`D-269 acknowledgment defect: envelope ${envelopeId} (${ackEval.detail})`),
+              { fn: "docusign-webhook", op: "ack-backstop", extra: { envelope_id: envelopeId, claim_id: claim.id } }
+            );
+            // (3) Claim-keyed defect record (idempotent marker — same
+            // notifications convention as countersign_nudge_pending; the
+            // activity_log NOT-NULL/CHECK constraints reject webhook-context
+            // inserts, per 86e1tz17j).
+            try {
+              const { data: existingDefect } = await supabase
+                .from("notifications")
+                .select("id")
+                .eq("notification_type", "ack_defect_pending")
+                .like("message_preview", `envelope=${envelopeId};%`)
+                .limit(1)
+                .maybeSingle();
+              if (!existingDefect) {
+                await supabase.from("notifications").insert({
+                  claim_id: claim.id,
+                  channel: "system",
+                  notification_type: "ack_defect_pending",
+                  recipient: "ops",
+                  message_preview: `envelope=${envelopeId};via=${ackEval.via};detail=${ackEval.detail}`,
+                });
+              }
+            } catch (recErr) {
+              await reportToSentry(recErr, {
+                fn: "docusign-webhook",
+                op: "notifications.insert",
+                extra: { notification_type: "ack_defect_pending", claim_id: claim.id },
+              });
+            }
+            // Halt: 200 so Connect does not retry forever — the defect is
+            // recorded and alerted; remediation is manual by design.
+            return new Response(
+              JSON.stringify({ received: true, defect: "otterquote_acknowledgment", claim_id: claim.id }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          console.log(`[D-269] acknowledgment verified for envelope ${envelopeId} (via ${ackEval.via})`);
+        } catch (ackErr) {
+          // Verification INFRASTRUCTURE failure (DocuSign auth/API). Loud but
+          // fail-open: D-123 already enforced the tab at signing time, and
+          // halting completion on an API blip would strand legitimately
+          // signed contracts (payment never charged, claim never marked).
+          console.error("[D-269] acknowledgment verification errored (proceeding, alerted):", ackErr);
+          try {
+            await supabase.from("platform_alerts_log").insert({
+              alert_type: "ack_verify_error",
+              function_name: "docusign-webhook",
+              message:
+                `D-269: could not verify otterquote_acknowledgment for envelope ${envelopeId} ` +
+                `(claim ${claim.id}): ${ackErr instanceof Error ? ackErr.message : String(ackErr)}. ` +
+                `Completion proceeded on D-123 tab-level enforcement; verify the tab manually.`,
+            });
+          } catch (alertErr) {
+            console.error("platform_alerts_log insert failed:", alertErr);
+          }
+          await reportToSentry(ackErr, {
+            fn: "docusign-webhook",
+            op: "ack-backstop-verify",
+            extra: { envelope_id: envelopeId, claim_id: claim.id },
+          });
+        }
+
         // ========== HANDLE PAYMENT CHARGING (D-127) ==========
         // Contract signed → charge contractor → release to contractor (if payment succeeds)
         // This is the critical D-127 flow: payment AFTER signing, not at selection
@@ -578,7 +690,7 @@ serve(async (req) => {
                 body: JSON.stringify({
                   amount: feeAmount,
                   currency: "usd",
-                  description: `OtterQuote platform fee (${platformFeePercent}%) for claim ${claim.id}`,
+                  description: `Otter Quotes platform fee (${platformFeePercent}%) for claim ${claim.id}`,
                   metadata: {
                     claim_id: claim.id,
                     contractor_id: quote.contractor_id,

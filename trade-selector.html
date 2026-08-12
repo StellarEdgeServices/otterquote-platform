@@ -1379,6 +1379,22 @@
             const partnerIdParam = sessionStorage.getItem('oq_partner_id') || null;
             const referralAgentId = await resolveReferralAgentId(partnerIdParam);
 
+            // #567: ref.html click-chain carry-forward. localStorage survives the
+            // magic-link redirect (sessionStorage may not), and auth.js re-keys
+            // the id to oq_referral_id_for_claim after advancing the referral.
+            // Without these, nothing ever writes claims.referral_id and the
+            // commission trigger can never fire for real referrals.
+            const chainReferralId = sessionStorage.getItem('oq_referral_id')
+              || localStorage.getItem('oq_referral_id')
+              || localStorage.getItem('oq_referral_id_for_claim')
+              || null;
+            const chainReferralAgentId = sessionStorage.getItem('oq_referral_agent_id')
+              || localStorage.getItem('oq_referral_agent_id')
+              || null;
+            const chainReferralCode = sessionStorage.getItem('oq_referral_code')
+              || localStorage.getItem('oq_referral_code')
+              || null;
+
             const claimData = {
               funding_type: state.fundingType,
               policy_type: state.policyType,
@@ -1389,7 +1405,12 @@
               updated_at: new Date().toISOString(),
               // Referral attribution — null if no ?ref= or ?partner_id= was present
               ...(referralSource && { referral_source: referralSource }),
-              ...(referralAgentId && { referral_agent_id: referralAgentId })
+              ...(referralAgentId && { referral_agent_id: referralAgentId }),
+              // #567: ref.html click-chain attribution — the only writer of
+              // claims.referral_id (the commission trigger's key column).
+              ...(chainReferralId && { referral_id: chainReferralId }),
+              ...(!referralAgentId && chainReferralAgentId && { referral_agent_id: chainReferralAgentId }),
+              ...(chainReferralCode && { referral_code: chainReferralCode })
             };
 
             if (existingClaim) {
@@ -1406,6 +1427,11 @@
                   created_at: new Date().toISOString()
                 });
             }
+
+            // #571: the claim_submitted advance now lives in the database —
+            // trg_claims_advance_referral fires on the claims.referral_id
+            // write above. The old client-side UPDATE always no-opped
+            // against RLS and has been removed.
           } catch (supabaseError) {
             console.warn('Supabase save failed:', supabaseError);
             // Continue regardless of Supabase error

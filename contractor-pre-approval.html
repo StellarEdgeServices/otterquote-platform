@@ -116,6 +116,14 @@
 
         @media (max-width:600px) { .wizard-card { padding: var(--sp-6); } main { padding: var(--sp-8) var(--sp-4); } }
     </style>
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+</script>
 </head>
 <body>
     <header id="site-header" data-auth="false"></header>
@@ -360,7 +368,7 @@
                     <!-- Partner Agreement -->
                     <div class="info-box">
                         <strong>Contractor Partner Agreement</strong>
-                        <p style="margin-top: var(--sp-2);">By joining Otter Quotes, you agree to the terms of the <a href='/contractor-agreement' style='color:var(--amber); font-weight:600;' target='_blank'>Otter Quotes Contractor Partner Agreement</a>. You will also be asked to sign it via DocuSign when your first project is matched. The platform fee is 5% of the insurance estimate (RCV) for insurance jobs and 5% of your bid for retail/cash jobs.</p>
+                        <p style="margin-top: var(--sp-2);">By joining Otter Quotes, you agree to the terms of the <a href='/contractor-agreement' style='color:var(--amber); font-weight:600;' target='_blank'>Otter Quotes Contractor Partner Agreement</a>. You will also be asked to sign it via DocuSign when your first project is matched. The platform fee is 5% of your accepted bid amount for all job types.</p>
                     </div>
                     <div class="check-group" style="margin-bottom: var(--sp-8);">
                         <input type="checkbox" id="agreeToPartnerAgreement" required>
@@ -1003,7 +1011,11 @@
                 for (const entry of licenseState.entries) {
                     let doc_url = null;
                     if (entry.file) {
-                        const path = `licenses/${user_id}/${Date.now()}-${entry.file.name}`;
+                        // UID-first path (D-220 convention): contractor-documents RLS requires
+                        // foldername[1] === auth.uid(). The old `licenses/${user_id}/...` prefix
+                        // put the literal 'licenses' in segment 1, so every license upload was
+                        // RLS-rejected and silently swallowed (doc_url saved null) - 86e1nyc60.
+                        const path = `${user_id}/licenses/${Date.now()}-${entry.file.name}`;
                         const licUploadResult = await withTimeout(
                             sb.storage.from('contractor-documents').upload(path, entry.file, { upsert: true }),
                             30000, 'License doc upload'
@@ -1011,8 +1023,12 @@
                         if (!licUploadResult.error) {
                             doc_url = path;
                             if (typeof gtag === 'function') gtag('event', 'artifact_uploaded', { artifact_type: 'license' });
+                        } else {
+                            // non-fatal by design: the row is still saved with doc_url = null so the
+                            // application isn't blocked - but never silently (86e1nyc60 lesson).
+                            console.warn('[pre-approval] license doc upload failed - saving row with doc_url = null:',
+                                licUploadResult.error?.message || licUploadResult.error);
                         }
-                        // non-fatal: if upload fails, save row with doc_url = null
                     }
                     const { error: insErr } = await withTimeout(
                         sb.from('contractor_licenses').insert({

@@ -30,7 +30,7 @@
 }
 
 .nav-logo-icon { font-size: 1.5rem; }
-.nav-logo-text { font-family: var(--font-heading); }
+.nav-logo-text { font-family: var(--font-heading); color: var(--white); }
 
 .nav-links {
   display: flex;
@@ -142,7 +142,7 @@
 
 .footer-tagline {
   font-size: 0.9rem;
-  color: var(--gray);
+  color: #94A3B8;
   line-height: 1.6;
 }
 
@@ -163,7 +163,7 @@
 }
 
 .footer-col a {
-  color: var(--gray);
+  color: #94A3B8;
   font-size: 0.9rem;
   text-decoration: none;
   transition: color var(--duration) var(--ease);
@@ -178,7 +178,7 @@
 
 .footer-bottom p {
   font-size: 0.8rem;
-  color: var(--gray);
+  color: #94A3B8;
   text-align: center;
 }
 
@@ -277,4 +277,78 @@
 #site-header.scrolled {
   box-shadow: 0 4px 24px rgba(0,0,0,0.4);
   border-bottom-color: rgba(224,123,0,0.1);
+}
+
+/* =====================================================
+   FOR PARTNERS DROPDOWN - #567 (July 2026)
+   ===================================================== */
+
+.nav-dropdown {
+  position: relative;
+}
+
+.nav-dropdown-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-dropdown-caret {
+  font-size: 0.7em;
+  transition: transform 0.2s var(--ease);
+}
+
+.nav-dropdown.open .nav-dropdown-caret { transform: rotate(180deg); }
+
+.nav-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.25);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: var(--sp-2);
+  z-index: 200;
+}
+
+.nav-dropdown.open .nav-dropdown-menu { display: block; }
+
+.nav-dropdown-item {
+  display: block;
+  color: var(--slate);
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: all var(--duration) var(--ease);
+}
+
+.nav-dropdown-item:hover,
+.nav-dropdown-item:focus {
+  color: var(--amber);
+  background: rgba(224, 123, 0, 0.08);
+}
+
+/* Mobile (hamburger) - expandable section, not a floating menu */
+@media (max-width: 768px) {
+  .nav-dropdown { width: 100%; }
+  .nav-dropdown-toggle { width: 100%; justify-content: space-between; }
+  .nav-dropdown-menu {
+    position: static;
+    min-width: 0;
+    border: none;
+    border-left: 2px solid rgba(224, 123, 0, 0.25);
+    border-radius: 0;
+    box-shadow: none;
+    margin-left: var(--sp-3);
+    padding: 0 0 0 var(--sp-2);
+  }
 }

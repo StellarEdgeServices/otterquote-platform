@@ -91,6 +91,16 @@ export const PAYOUT_COPY = {
   },
 } as const;
 
+// ── D-266 funnel-legality disclaimer ──────────────────────────────────────────────────
+/**
+ * D-266 — MANDATORY referral-fee legality disclaimer (VERBATIM, Dustin-dictated,
+ * final — no paraphrase, no shortening). Ported byte-for-byte from the static
+ * partner-dashboard.html referral-link block. Required on every partner funnel
+ * surface. Any wording change is Tier-3 → STOP and gate to Dustin.
+ */
+export const REFERRAL_FEE_DISCLAIMER =
+  'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.';
+
 // ── Recruit-link hint (payout disclosure) ─────────────────────────────────────
 export const RECRUIT_LINK_HINT =
   'Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job.';

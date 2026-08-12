@@ -303,6 +303,14 @@
             .payout-table td:nth-child(6) { display: none; }
         }
     </style>
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+</script>
 </head>
 <body>
 
@@ -371,6 +379,7 @@
                     <th>Trigger</th>
                     <th>Created</th>
                     <th>Auto-Approves</th>
+                    <th>Job</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
@@ -435,6 +444,34 @@
             if (error) throw error;
 
             allPayouts = data || [];
+
+            // D-139 completion badges (#567): payout → referral → claim →
+            // completion_date runs behind get-payout-completion-status (claims/
+            // referrals carry no admin RLS read path, so the join cannot run on
+            // the anon client). Failure = badges default to In progress, and
+            // approvals then route through the incomplete-job override dialog.
+            try {
+                const { data: { session } } = await sb.auth.getSession();
+                const res = await fetch(
+                    `${CONFIG.SUPABASE_URL}/functions/v1/get-payout-completion-status`,
+                    {
+                        method:  'POST',
+                        headers: {
+                            'Content-Type':  'application/json',
+                            'Authorization': `Bearer ${session.access_token}`,
+                            'apikey': CONFIG.SUPABASE_ANON,
+                        },
+                        body: JSON.stringify({ payout_approval_ids: allPayouts.map(p => p.id) }),
+                    }
+                );
+                const json = await res.json();
+                if (!res.ok || !json.ok) throw new Error(json.error || 'completion status fetch failed');
+                for (const p of allPayouts) p._job_complete = json.statuses?.[p.id] === true;
+            } catch (completionErr) {
+                console.error('Completion status lookup failed (badges default to In progress):', completionErr);
+                for (const p of allPayouts) p._job_complete = false;
+            }
+
             updateSummaryCards();
             renderTable();
         } catch (err) {
@@ -519,6 +556,9 @@
                 ? new Date(p.auto_approve_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                 : '—';
             const trigger = (p.trigger_event || '—').substring(0, 60);
+            const jobBadge = p._job_complete === true
+                ? '<span class="badge badge-approved">Job complete ✓</span>'
+                : '<span class="badge badge-pending">In progress ⏳</span>';
 
             const actionHtml = p.status === 'pending_approval'
                 ? `<button class="action-btn btn-approve" onclick="handleApprove('${p.id}', this)">Approve</button>
@@ -543,6 +583,7 @@
                 <td style="font-size:0.8rem;color:#64748B;">${escapeHtml(trigger)}</td>
                 <td>${created}</td>
                 <td>${autoOn}</td>
+                <td>${jobBadge}</td>
                 <td>${statusBadge}</td>
                 <td>${actionHtml}</td>
             </tr>`;
@@ -551,6 +592,20 @@
 
     // ── Approve ───────────────────────────────────────────────────────────────
     async function handleApprove(approvalId, btn) {
+        // D-139 (#567): warn before releasing a commission whose job is not
+        // marked complete — the EF holds it unless override_incomplete is sent.
+        const approvalRow = allPayouts.find(p => p.id === approvalId);
+        let overrideIncomplete = false;
+        if (!approvalRow || approvalRow._job_complete !== true) {
+            const proceed = confirm(
+                '⚠️ The job linked to this commission is NOT marked complete.\n\n' +
+                'D-139: commissions are paid after job completion. Approving now releases the payout early.\n\n' +
+                'Approve anyway?'
+            );
+            if (!proceed) return;
+            overrideIncomplete = true;
+        }
+
         btn.disabled = true;
         btn.textContent = 'Approving…';
 
@@ -567,7 +622,7 @@
                         'Authorization': `Bearer ${session.access_token}`,
                         'apikey': CONFIG.SUPABASE_ANON,
                     },
-                    body: JSON.stringify({ payout_approval_id: approvalId }),
+                    body: JSON.stringify({ payout_approval_id: approvalId, override_incomplete: overrideIncomplete }),
                 }
             );
             const json = await res.json();

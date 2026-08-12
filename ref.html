@@ -95,6 +95,14 @@
             display: none;
         }
     </style>
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+</script>
 </head>
 <body>
     <div class="referral-container">
@@ -164,31 +172,33 @@
                     return;
                 }
 
-                // 4. Insert a 'clicked' referral record
-                //    (public INSERT policy is in place via v16 migration)
-                const { data: referralRow, error: insertError } = await sb
-                    .from('referrals')
-                    .insert({
-                        referral_agent_id: agent.id,
-                        status: 'clicked',
-                        landing_page: window.location.href,
-                        utm_source: params.get('utm_source') || null,
-                        utm_medium: params.get('utm_medium') || null,
-                        utm_campaign: params.get('utm_campaign') || null,
-                    })
-                    .select('id')
-                    .single();
+                // 4. Record the click server-side (#571 / v95 RPC).
+                //    referrals has no anon SELECT policy, so a direct
+                //    .insert().select() can never read the row back — the
+                //    SECURITY DEFINER RPC inserts and returns the id instead.
+                const { data: referralId, error: clickError } = await sb
+                    .rpc('track_referral_click', {
+                        p_code: code,
+                        p_landing_page: window.location.href,
+                        p_utm_source: params.get('utm_source') || null,
+                        p_utm_medium: params.get('utm_medium') || null,
+                        p_utm_campaign: params.get('utm_campaign') || null,
+                    });
 
-                if (insertError) {
+                if (clickError || !referralId) {
                     // Non-fatal: click tracking failure shouldn't block the user
-                    console.warn('Click tracking insert failed:', insertError);
-                } else if (referralRow) {
+                    console.warn('Click tracking RPC failed:', clickError);
+                } else {
                     // 5a. Store referral IDs so get-started.html can attach them
                     sessionStorage.setItem('oq_referral_agent_id', agent.id);
-                    sessionStorage.setItem('oq_referral_id', referralRow.id);
+                    sessionStorage.setItem('oq_referral_id', referralId);
                     sessionStorage.setItem('oq_referral_code', code);
                     // Also persist to localStorage so it survives magic-link redirect
-                    localStorage.setItem('oq_referral_id', referralRow.id);
+                    localStorage.setItem('oq_referral_id', referralId);
+                    // #567: agent id + code too — the claim writer needs all three
+                    // to stamp claims.referral_id / referral_agent_id / referral_code.
+                    localStorage.setItem('oq_referral_agent_id', agent.id);
+                    localStorage.setItem('oq_referral_code', code);
                 }
 
                 // 5b. Store agent display info for personalization on landing pages
@@ -212,6 +222,13 @@
                         redirectUrl = '/ref-inspector.html';
                         break;
                     case 'customer':
+                        redirectUrl = '/ref-re.html';
+                        break;
+                    case 'adjuster':
+                        // Adjuster-referred homeowners arrive in claim context (#567)
+                        redirectUrl = '/ref-insurance.html';
+                        break;
+                    case 'other':
                         redirectUrl = '/ref-re.html';
                         break;
                     default:

@@ -620,6 +620,14 @@
             }
         }
     </style>
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+</script>
 </head>
 <body>
     <header id="site-header" data-active="admin" data-auth="false"></header>
@@ -806,26 +814,16 @@
     <script src="js/cookie-storage.js"></script>
 
     <script src="js/config.js"></script>
+    <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
     <script>
         let currentFilter = 'pending_approval';
         let contractors = [];
         let currentUser = null;
-        sb = null;
-
-        // Initialize Supabase client
-        function initSupabase() {
-            if (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON) {
-                const { createClient } = window.supabase;
-                sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
-            }
-        }
 
         // Check authorization and initialize
         async function init() {
-            initSupabase();
-
             try {
                 // Wait for Auth module to be ready before checking user
                 // (fixes magic link timing issue: ClickUp 86e0zr91f)
@@ -873,7 +871,6 @@
         }
 
         async function loadContractors() {
-            if (!sb) return;
 
             try {
                 const { data, error } = await sb
@@ -1225,7 +1222,6 @@
         }
 
         async function markLicenseVerified(contractorId) {
-            if (!sb) return;
 
             try {
                 const response = await sb.functions.invoke('admin-contractor-action', {
@@ -1275,7 +1271,6 @@
                 return;
             }
 
-            if (!sb) return;
 
             try {
                 const c = contractors.find(x => x.id === contractorId);
@@ -1306,7 +1301,6 @@
         }
 
         async function markInsuranceVerified(contractorId) {
-            if (!sb) return;
 
             try {
                 const response = await sb.functions.invoke('admin-contractor-action', {
@@ -1336,7 +1330,6 @@
             const notes = document.getElementById(`notes-${contractorId}`).value;
             const statusDiv = document.getElementById(`notes-status-${contractorId}`);
 
-            if (!sb) return;
 
             try {
                 const response = await sb.functions.invoke('admin-contractor-action', {
@@ -1380,7 +1373,6 @@
         async function submitApprove() {
             const contractorId = document.getElementById('approveConfirmModal').dataset.contractorId;
 
-            if (!sb) return;
 
             try {
                 // D-210: Gate approval on contractor_has_required_docs()
@@ -1431,7 +1423,6 @@
                 return;
             }
 
-            if (!sb) return;
 
             try {
                 const response = await sb.functions.invoke('admin-contractor-action', {
@@ -1491,7 +1482,6 @@
         }
 
         async function loadCronHealth() {
-            if (!sb) return;
             const content = document.getElementById('cronHealthContent');
             content.innerHTML = '<span style="color:#94a3b8">Loading\u2026</span>';
 
@@ -1651,7 +1641,6 @@
 
         // Trigger platform-health-check Edge Function manually
         async function runHealthCheckNow() {
-            if (!sb) return;
             const btn = document.getElementById('runHealthCheckBtn');
             btn.textContent = '\u23f3 Running\u2026';
             btn.disabled = true;
@@ -1676,7 +1665,6 @@
 
         // Acknowledge an alert (sets acknowledged_at via SECURITY DEFINER RPC)
         async function acknowledgeAlert(alertId) {
-            if (!sb) return;
             try {
                 const { error } = await sb.rpc('acknowledge_alert', { p_id: alertId });
                 if (error) throw error;
@@ -1758,7 +1746,6 @@
         }
 
         async function loadWaitlistStats() {
-            if (!sb) return;
             const content = document.getElementById('waitlistContent');
             content.innerHTML = '<span style="color:#94a3b8">Loading\u2026</span>';
 

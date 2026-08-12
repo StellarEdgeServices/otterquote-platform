@@ -6,10 +6,14 @@
  * Approves a pending commission. Admin-only (JWT must be dustinstohler1@gmail.com).
  * On approval:
  *   1. Sets payout_approvals.status = 'approved', approved_at = NOW(), approved_by = 'admin'
- *   2. Sets referrals.commission_paid_at = NOW() on the associated referral
+ *   2. Sets referrals.commission_paid_at = NOW() and referrals.status =
+ *      'commission_paid' (fires update_referral_stats) on the associated referral
  *   3. Sends a Mailgun confirmation email to the partner
  *
- * Input: POST { payout_approval_id: string }
+ * Input: POST { payout_approval_id: string, override_incomplete?: boolean }
+ *   override_incomplete — admin explicitly releases a commission whose linked
+ *   job is not yet complete (D-139, #567). admin-payouts.html shows a warning
+ *   dialog before sending it.
  * Output: { ok: true, approval_id: string }
  *
  * Auth: Requires valid Supabase JWT with email = dustinstohler1@gmail.com.
@@ -215,6 +219,7 @@ serve(async (req: Request) => {
     }
 
     const payoutApprovalId = (body.payout_approval_id as string || "").trim();
+    const overrideIncomplete = body.override_incomplete === true;
     if (!payoutApprovalId) {
       return new Response(JSON.stringify({ ok: false, error: "payout_approval_id is required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -283,6 +288,48 @@ serve(async (req: Request) => {
       );
     }
 
+    // ── Completion gate (D-139, #567) ────────────────────────────────────────
+    // Commissions are payable after job completion. Resolve referral → claim →
+    // completion_date. An incomplete (or unverifiable) job HOLDS unless the
+    // admin explicitly passed override_incomplete: true — admin-payouts.html
+    // shows a warning dialog before sending it. Fail-safe: lookup error with
+    // no override = hold.
+    if (!overrideIncomplete) {
+      let jobComplete = false;
+      let completionCheckError: string | null = null;
+
+      if (approval.referral_id) {
+        const { data: refRow, error: refErr } = await supabase
+          .from("referrals")
+          .select("claim_id")
+          .eq("id", approval.referral_id)
+          .single();
+        if (refErr) {
+          completionCheckError = `referral lookup failed: ${refErr.message}`;
+        } else if (refRow?.claim_id) {
+          const { data: claimRow, error: claimErr } = await supabase
+            .from("claims")
+            .select("completion_date")
+            .eq("id", refRow.claim_id)
+            .single();
+          if (claimErr) {
+            completionCheckError = `claim lookup failed: ${claimErr.message}`;
+          } else if (claimRow?.completion_date != null) {
+            jobComplete = true;
+          }
+        }
+      }
+
+      if (!jobComplete) {
+        console.log(`[${FUNCTION_NAME}] HELD ${payoutApprovalId} — job not complete (referral ${approval.referral_id ?? "none"}${completionCheckError ? `; ${completionCheckError}` : ""})`);
+        return heldResponse(
+          completionCheckError
+            ? "Held — could not verify job completion; resolve the lookup error or approve with the incomplete-job override"
+            : "Held — job not marked complete (D-139: commissions pay after completion); approve with the incomplete-job override to release early"
+        );
+      }
+    }
+
     const now = new Date().toISOString();
 
     // ── Update payout_approvals ──────────────────────────────────────────────
@@ -325,6 +372,19 @@ serve(async (req: Request) => {
 
       if (referralError) {
         console.error(`[${FUNCTION_NAME}] Failed to update referral commission_paid_at:`, referralError.message);
+        // Non-fatal — approval row already updated; log and continue.
+      }
+
+      // D-139 (#567): advance the referral to commission_paid so the
+      // update_referral_stats trigger fires — nothing else ever sets it.
+      const { error: statusError } = await supabase
+        .from("referrals")
+        .update({ status: "commission_paid" })
+        .eq("id", approval.referral_id)
+        .neq("status", "commission_paid");
+
+      if (statusError) {
+        console.error(`[${FUNCTION_NAME}] Failed to update referral status:`, statusError.message);
         // Non-fatal — approval row already updated; log and continue.
       }
     }

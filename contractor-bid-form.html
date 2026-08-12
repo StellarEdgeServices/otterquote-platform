@@ -2264,7 +2264,7 @@
       </div>
 
       <div class="fee-info">
-        <div>ℹ A flat 5% platform fee applies to all projects upon contract signing.</div>
+        <div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.</div>
       </div>
     </div>
 
@@ -2320,9 +2320,10 @@
       <div id="feeDisclosureSection" style="background:#FEF3C7;border:2px solid #D97706;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-6);">
         <div style="font-weight:700;color:#92400E;margin-bottom:var(--sp-3);font-size:1rem;">Platform Fee Disclosure</div>
         <p id="feeDisclosureText" style="color:#78350F;font-size:0.95rem;line-height:1.6;margin:0 0 var(--sp-4);">
-          By submitting this bid, you agree to pay Otter Quotes a platform fee of <span id="feePercentDisplay">5</span>% 
-          (<span id="feeDollarDisplay">$0.00</span>) upon contract execution. This fee is deducted from your bid amount 
-          before disbursement. You will receive <span id="netAmountDisplay">$0.00</span> upon completion.
+          <strong>Platform fee for this job: <span id="feeDollarDisplay">$0.00</span> (<span id="feePercentDisplay">5</span>% of your bid).</strong>
+          By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract
+          is signed. The fee is due upon contract execution and will be charged to your card on file. Submitting this bid
+          constitutes your acceptance of this fee.
         </p>
         <label style="display:flex;align-items:flex-start;gap:var(--sp-3);cursor:pointer;user-select:none;">
           <input type="checkbox" id="feeAcceptanceCheckbox" style="width:20px;height:20px;margin-top:2px;accent-color:#D97706;cursor:pointer;">
@@ -4138,6 +4139,15 @@
       if (currentClaim.estimate_filename) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormEstimatePdf()">&#x1F4C4; View Loss Sheet</button>');
       }
+      // Homeowner-uploaded measurement file — independent of Hover PDF / hover_orders state.
+      // gh-484: contractors previously had no way to open this even when has_measurements was true.
+      // gh-484 follow-up: hover-webhook stamps a synthesized `hover_{job}_measurements.json`
+      // sentinel on claims (see supabase/functions/hover-webhook/index.ts) that names no storage
+      // object — the real Hover artifact is a PDF served by the Hover button below. Rendering off
+      // a bare truthiness check therefore offers a link that can only fail. Guard on the sentinel.
+      if (currentClaim.measurements_filename && !isHoverMeasurementsSentinel(currentClaim.measurements_filename)) {
+        parts.push('<button class="doc-link-btn-form" onclick="openBidFormMeasurementsPdf()">&#x1F4D0; View Measurements</button>');
+      }
       // Always offer Hover PDF — function handles gracefully if no Hover job exists
       if (currentClaim.id && !CONFIG.DEMO_MODE) {
         parts.push('<button class="doc-link-btn-form" id="bidFormHoverBtn" onclick="openBidFormHoverPdf()">&#x1F4CF; View Hover PDF</button>');
@@ -4164,6 +4174,28 @@
       } catch (err) {
         console.error('Failed to open loss sheet:', err);
         alert('Unable to open the loss sheet. Please try again.');
+      }
+    }
+
+    // gh-484: `hover_{job}_measurements.json` is written by hover-webhook as a completion marker,
+    // not as a storage path. Nothing is ever uploaded under that name, so any signed-URL request
+    // for it 400s. Uploaded measurement files are UID-first paths (`{uid}/{claim}/…`).
+    function isHoverMeasurementsSentinel(filename) {
+      return /^hover_\d+_measurements\.json$/i.test(filename || '');
+    }
+
+    async function openBidFormMeasurementsPdf() {
+      if (!sb || !currentClaim?.measurements_filename) return;
+      if (isHoverMeasurementsSentinel(currentClaim.measurements_filename)) return;
+      try {
+        const { data, error } = await sb.storage
+          .from('claim-documents')
+          .createSignedUrl(currentClaim.measurements_filename, 3600);
+        if (error || !data?.signedUrl) throw error || new Error('No URL');
+        window.open(data.signedUrl, '_blank');
+      } catch (err) {
+        console.error('Failed to open measurements file:', err);
+        alert('Unable to open the measurements file. Please try again.');
       }
     }
 
@@ -4393,7 +4425,7 @@
       const feeInfoEl = document.querySelector('.fee-info');
       if (feeInfoEl) {
         // #487: uniform note — the fee basis is the bid amount for every job type.
-        feeInfoEl.innerHTML = '<div>ℹ A flat 5% platform fee applies to all projects upon contract signing.</div>';
+        feeInfoEl.innerHTML = '<div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.</div>';
       }
     }
 
@@ -5000,7 +5032,6 @@
       document.getElementById('feePercentCheckbox').textContent = feePct.toFixed(2);
       document.getElementById('feeDollarDisplay').textContent = feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
       document.getElementById('feeDollarCheckbox').textContent = feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-      document.getElementById('netAmountDisplay').textContent = netAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
       // Store for submission
       window._feeAmount = feeAmount;
@@ -5054,10 +5085,9 @@
     function generateExactFeeText() {
       const feePct = window._feePct || _platformFeePct;
       const feeAmount = window._feeAmount || 0;
-      const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
-      const netAmount = bidAmount - feeAmount;
 
-      return `By submitting this bid, you agree to pay Otter Quotes a platform fee of ${feePct.toFixed(2)}% (${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}) upon contract execution. This fee is deducted from your bid amount before disbursement. You will receive ${netAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} upon completion. I understand and agree to the platform fee of ${feePct.toFixed(2)}% (${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })})`;
+      // GC-approved verbatim (#547 item 1A, D-215 — "irrevocable" deliberately absent).
+      return `Platform fee for this job: ${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} (${feePct.toFixed(2)}% of your bid). By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed. The fee is due upon contract execution and will be charged to your card on file. Submitting this bid constitutes your acceptance of this fee.`;
     }
 
     bidForm.addEventListener('submit', async (e) => {

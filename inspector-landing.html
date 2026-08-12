@@ -17,10 +17,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<title>Otter Quotes for Home Inspectors &mdash; Get Paid for Referrals</title>
+<title>Otter Quotes for Home Inspectors — Get Paid for Referrals</title>
 <meta name="description" content="When you find damage, Otter Quotes is your answer. Give your clients competing contractor bids and earn $200 per completed job over $10K. A straightforward referral arrangement with clear terms.">
 <link rel="canonical" href="https://otterquote.com/inspector-landing.html">
-<meta property="og:title" content="Otter Quotes for Home Inspectors &mdash; Get Paid for Referrals">
+<meta property="og:title" content="Otter Quotes for Home Inspectors — Get Paid for Referrals">
 <meta property="og:description" content="When you find damage, Otter Quotes is your answer. Give your clients competing contractor bids and earn $200 per completed job.">
 <meta property="og:url" content="https://otterquote.com/inspector-landing.html">
 <meta property="og:type" content="website">
@@ -487,7 +487,7 @@
 <body>
 
 <!-- ── Header ── -->
-<header id="header"></header>
+<header id="site-header" data-active=""></header>
 
 <main>
 
@@ -507,7 +507,7 @@
   <section class="credibility-section">
     <div class="credibility-box">
       <p>
-        Built by <span class="credibility-highlight">Dustin Stohler</span>, who grew Stay Dry Roofing from <span class="credibility-highlight">$0 to $10M</span> here in Indianapolis. He saw the problem from the contractor side &mdash; now he's fixing it.
+        Built by <span class="credibility-highlight">Dustin Stohler</span>, who grew Stay Dry Roofing from <span class="credibility-highlight">$0 to $10M</span> here in Indianapolis. He saw the problem from the contractor side — now he's fixing it.
       </p>
     </div>
   </section>
@@ -517,7 +517,7 @@
     <div class="value-grid">
       <div class="value-card">
         <h3>Your Clients Get Real Options</h3>
-        <p>Competing bids from local contractors &mdash; not one contractor's pitch. Their licensing, insurance, and review information is gathered in one place so your clients can compare with confidence.</p>
+        <p>Competing bids from local contractors — not one contractor's pitch. Their licensing, insurance, and review information is gathered in one place so your clients can compare with confidence.</p>
       </div>
       <div class="value-card">
         <h3>You Earn Real Money</h3>
@@ -525,7 +525,7 @@
       </div>
       <div class="value-card">
         <h3>Simple, Transparent Terms</h3>
-        <p>A straightforward referral arrangement with clear terms. Eligibility is yours to confirm &mdash; check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
+        <p>A straightforward referral arrangement with clear terms. Eligibility is yours to confirm.</p>
       </div>
     </div>
   </section>
@@ -540,7 +540,7 @@
       <div class="toolkit-item">
         <div class="toolkit-item-icon">🔗</div>
         <h3>Referral Link</h3>
-        <p>Unique URL with your code &mdash; every client you send is tracked back to you.</p>
+        <p>Unique URL with your code — every client you send is tracked back to you.</p>
       </div>
       <div class="toolkit-item">
         <div class="toolkit-item-icon">📋</div>
@@ -625,7 +625,7 @@
       <div class="toolkit-wrapper" id="toolkitWrapper">
 
         <div class="toolkit-header">
-          <h3>You're In &mdash; Here's Your Toolkit</h3>
+          <h3>You're In — Here's Your Toolkit</h3>
           <p>Four ways to put your link to work. Use whichever fits your workflow.</p>
         </div>
 
@@ -689,6 +689,11 @@
           <button class="copy-btn" onclick="copyItem('report')">Copy Report Text</button>
         </div>
 
+        <!-- Go to Dashboard -->
+        <div class="toolkit-card" style="text-align:center;">
+          <a href="/partner-dashboard.html" class="btn btn-primary">Go to Partner Dashboard</a>
+        </div>
+
       </div>
     </div>
   </section>
@@ -696,7 +701,7 @@
 </main>
 
 <!-- ── Footer ── -->
-<footer class="footer" id="footer"></footer>
+<footer class="footer" id="site-footer"></footer>
 
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
@@ -716,7 +721,6 @@
 let recruitContext = { recruitCode: null, recruiterId: null };
 
 document.addEventListener('DOMContentLoaded', () => {
-  if (typeof initNav === 'function') initNav();
   document.getElementById('partnerForm').addEventListener('submit', handleSignup);
   detectRecruitCode();
 
@@ -785,16 +789,9 @@ async function detectRecruitCode() {
 }
 
 /**
- * Generate a short unique referral code (8 chars, URL-safe)
- */
-function generateRefCode(firstName, lastName) {
-  const base = (firstName.slice(0, 3) + lastName.slice(0, 3)).toLowerCase().replace(/[^a-z]/g, '');
-  const rand = Math.random().toString(36).slice(2, 6);
-  return base + rand;
-}
-
-/**
  * Handle form submission
+ * #571: referral codes are server-generated only — the client-side
+ * generateRefCode helper is gone; register_partner returns the codes.
  */
 async function handleSignup(e) {
   e.preventDefault();
@@ -811,32 +808,39 @@ async function handleSignup(e) {
   submitBtn.textContent = 'Setting up your account...';
 
   try {
-    const uniqueCode = generateRefCode(firstName, lastName);
-
-    // RLS: "Public can register as partner" allows anon insert where user_id IS NULL
+    // #571 / v95: server-side register_partner RPC. referral_agents has no
+    // anon SELECT policy, so a direct .insert().select() can never read the
+    // trigger-generated code back. The SECURITY DEFINER RPC inserts (user_id
+    // NULL — linked post-magic-link in auth.js), resolves the recruit code
+    // server-side (D-143), and returns {id, unique_code, recruit_code}.
     const { data, error } = await sb
-      .from('referral_agents')
-      .insert({
-        agent_type:       'home_inspector',
-        first_name:       firstName,
-        last_name:        lastName,
-        email,
-        phone,
-        company:          company,
-        unique_code:      uniqueCode,
-        metadata:         { certification: certification || null },
-        recruited_by_id:  recruitContext.recruiterId || null,
-        recruited_at:     recruitContext.recruiterId ? new Date().toISOString() : null,
-        // user_id intentionally NULL — linked post-magic-link in auth.js
-        // commission totals maintained by DB trigger — do NOT set manually
-      })
-      .select('id, unique_code')
-      .single();
+      .rpc('register_partner', {
+        p_agent_type:   'home_inspector',
+        p_first_name:   firstName,
+        p_last_name:    lastName,
+        p_email:        email,
+        p_phone:        phone,
+        p_company:      company,
+        p_recruit_code: recruitContext.recruitCode || null,
+        p_metadata:     { certification: certification || null },
+      });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      if ((error.message || '').includes('partner_exists')) {
+        // Already registered — send a fresh login link and say so.
+        if (window.Auth) {
+          try { await Auth.sendMagicLink(email, 'home_inspector'); } catch (e) { /* non-fatal */ }
+        }
+        alert("You're already a partner — check your email for your login link.");
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Get My Referral Link';
+        return;
+      }
+      throw new Error(error.message);
+    }
 
-    // Use DB-returned unique_code (trigger may have changed it if there was a collision)
-    const finalCode = data?.unique_code || uniqueCode;
+    // Codes are server-generated — read the code back from the RPC response.
+    const finalCode = data?.unique_code;
 
     // Use ref.html?code= URL pattern (consistent with the rest of the system)
     const refLink = `${CONFIG.SITE_URL}/ref.html?code=${finalCode}`;

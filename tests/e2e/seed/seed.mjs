@@ -43,8 +43,24 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
   process.exit(1);
 }
 
+// @supabase/supabase-js eagerly resolves a WebSocket constructor for its
+// Realtime client at construction time, even when no channel is ever opened.
+// On Node < 22 (no native WebSocket global) and with the `ws` package removed
+// (#658, CVE-2026-48779), that resolution throws before this script can run
+// at all. This script never calls `.channel()`/`.subscribe()`, so a stub
+// that is constructed-but-never-invoked satisfies the eager check without
+// reintroducing `ws`.
+class NoRealtimeTransportStub {
+  constructor() {
+    throw new Error(
+      'Realtime transport unavailable: this client never opens a realtime channel.'
+    );
+  }
+}
+
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
+  realtime: { transport: NoRealtimeTransportStub },
 });
 
 const HOMEOWNER_EMAIL = 'test-homeowner@otterquote-internal.test';
@@ -162,6 +178,7 @@ async function seed() {
   const contractorPayload = {
     user_id: contractorUserId,
     status: 'active', // bypass admin approval gate — test account only
+    is_test: true, // #543: excluded from homeowner-facing matching (notify-contractors)
     company_name: 'Test Roofing Co (E2E)',
     contact_name: 'Test Contractor',
     email: CONTRACTOR_EMAIL,
@@ -254,6 +271,7 @@ async function seed() {
   const d210Payload = {
     user_id: d210ContractorUserId,
     status: 'pending_approval',
+    is_test: true, // #543: excluded from homeowner-facing matching (notify-contractors)
     company_name: 'Test D210 Roofing Co (E2E)',
     contact_name: 'Test D210 Contractor',
     email: D210_CONTRACTOR_EMAIL,
@@ -327,6 +345,7 @@ async function seed() {
     .insert({
       user_id: homeownerUserId,
       status: 'bidding',
+      is_test: true, // #564: E2E claims are born test-world — visible/notifiable to test contractors only
       property_address: '100 E Test St, Zionsville, IN 46077',
       property_state: 'IN',
       homeowner_name: 'Test Homeowner',
@@ -370,6 +389,7 @@ async function seed() {
     .insert({
       user_id: homeownerUserId,
       status: 'bidding',
+      is_test: true, // #564: E2E claims are born test-world — visible/notifiable to test contractors only
       property_address: '100 E Test St, Zionsville, IN 46077',
       property_state: 'IN',
       homeowner_name: 'Test Homeowner',
