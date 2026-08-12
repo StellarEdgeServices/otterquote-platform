@@ -23,6 +23,27 @@
  *    This prevents transient failures from accumulating noise in the alerts table.
  *    Important: ef_failure_alert (2nd-strike) entries are NOT auto-acknowledged.
  *
+ * 5. Public-path probe hardening (added Aug 2026 — GitHub #551, per R-097 Bridge
+ *    ruling posted on the issue 2026-08-10):
+ *    - Phase 3 public-path probes now retry once (~5s delay) in-run before
+ *      recording a failure, so a single transient timeout/error from one
+ *      vantage point does not get recorded as a failed tick at all.
+ *    - Phase 2 (cron staleness / error-status) now applies the same 2-strikes
+ *      pending-gate pattern used by Phase 1 EF pings (mirrored, not shared
+ *      code — see hasPendingCronFailure/logPendingCronFailure/
+ *      autoAckPendingCronFailures): a single stale/error tick is suppressed,
+ *      two consecutive ticks (~15 min apart) page. Per the Bridge ruling, the
+ *      2-strikes gate is intentionally NOT applied to the Phase 3 probes
+ *      themselves (an availability probe should not delay a real outage
+ *      signal by a full cron cycle) — Phase 3 uses the in-run retry instead.
+ *    - Execution order changed to Phase 1 -> Phase 3 -> Phase 2 so Phase 2's
+ *      staleness read sees the freshly-written Phase 3 result for the same
+ *      tick, instead of re-alerting on rows Phase 3 is about to flip back to
+ *      success seconds later.
+ *    - Alert email bodies now include both UTC and US/Eastern timestamps
+ *      (a UTC-only timestamp previously caused a human to misread a 9pm ET
+ *      event as "~1am ET" — see #527).
+ *
  * Scheduled: every 15 minutes via pg_cron (schedule: "* /15 * * * *")
  * Auth: no JWT required — invoked by pg_cron service-role bearer.
  *
@@ -102,6 +123,34 @@ function jsonResponse(body: unknown, status: number, corsHeaders: Record<string,
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+/**
+ * Format a timestamp as both UTC and US/Eastern for alert email bodies (#551).
+ * A UTC-only timestamp previously caused a human to misread a 9pm ET event
+ * ("2026-07-12T01:00:00Z") as "~1am ET" instead of correctly matching it to
+ * 9:00 PM ET the prior evening. Always show both so no conversion is required.
+ */
+function formatDualTimestamp(date: Date): string {
+  const utc = date.toISOString();
+  let et: string;
+  try {
+    et = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZoneName: "short",
+    }).format(date);
+  } catch (err) {
+    console.warn("[platform-health-check] ET timestamp formatting failed:", err);
+    et = "unavailable";
+  }
+  return `${utc} UTC (${et})`;
 }
 
 /**
@@ -279,6 +328,77 @@ async function autoAckPendingFailures(
   }
 }
 
+/**
+ * 2-strikes gate for cron-staleness / cron-error checks (added Aug 2026 —
+ * GitHub #551, per R-097 Bridge ruling posted 2026-08-10 on the issue).
+ * Mirrors hasPendingFailure/logPendingFailure/autoAckPendingFailures above
+ * (Phase 1's ef_failure_pending pattern), replicated rather than shared so
+ * a bug in one phase's gate can't affect the other. Uses its own alert_type
+ * ("cron_failure_pending") and the same TWO_STRIKES_WINDOW_MS window.
+ *
+ * IMPORTANT: this gate applies to Phase 2 (staleness/error-status checks on
+ * cron_health rows) ONLY. Per the Bridge ruling, it must NOT be applied to
+ * Phase 3's public-path availability probes themselves — an availability
+ * probe delaying a real outage signal by a full cron cycle to avoid a false
+ * page is the wrong trade; Phase 3 uses an in-run retry instead (see
+ * probePublicPath below). The 2-strikes trade is correct for staleness
+ * checks on a fixed cron cadence, where a single missed tick is far more
+ * likely to be noise than an outage.
+ */
+async function hasPendingCronFailure(
+  supabase: ReturnType<typeof createClient>,
+  jobName: string,
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - TWO_STRIKES_WINDOW_MS).toISOString();
+  const { data } = await supabase
+    .from("platform_alerts_log")
+    .select("id")
+    .eq("function_name", jobName)
+    .eq("alert_type", "cron_failure_pending")
+    .gte("sent_at", cutoff)
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
+async function logPendingCronFailure(
+  supabase: ReturnType<typeof createClient>,
+  jobName: string,
+  errorText: string,
+): Promise<void> {
+  try {
+    await supabase.from("platform_alerts_log").insert({
+      alert_type:    "cron_failure_pending",
+      function_name: jobName,
+      message:       `1st-strike cron failure suppressed (2-strikes gate): ${errorText}`,
+      sent_at:       new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("[platform-health-check] Failed to log pending cron failure:", err);
+  }
+}
+
+async function autoAckPendingCronFailures(
+  supabase: ReturnType<typeof createClient>,
+  jobName: string,
+): Promise<void> {
+  try {
+    const { error: ackError } = await supabase
+      .from("platform_alerts_log")
+      .update({ acknowledged_at: new Date().toISOString() })
+      .eq("function_name", jobName)
+      .eq("alert_type", "cron_failure_pending")
+      .is("acknowledged_at", null);
+
+    if (ackError) {
+      console.error(`[auto-ack-cron] error for ${jobName}:`, ackError.message);
+    } else {
+      console.log(`[auto-ack-cron] acknowledged pending 1st-strike entries for ${jobName}`);
+    }
+  } catch (err) {
+    console.error(`[auto-ack-cron] exception for ${jobName}:`, err);
+  }
+}
+
 // =============================================================================
 // PHASE 1 — Edge Function health pings
 // =============================================================================
@@ -385,7 +505,7 @@ async function runEdgeFunctionPings(
           `Status: ${result.status}`,
           result.httpStatus ? `HTTP Status: ${result.httpStatus}` : null,
           result.error ? `Error: ${result.error}` : null,
-          `Checked at: ${new Date().toISOString()}`,
+          `Checked at: ${formatDualTimestamp(new Date())}`,
           "",
           "Two consecutive failures across two cron runs (~15 min apart) — first failure was suppressed by the 2-strikes gate; this is the second.",
           "",
@@ -452,18 +572,31 @@ async function runStalenessCheck(
     const lastError  = row.last_error;
     const ageMs      = lastRunAt ? now - new Date(lastRunAt).getTime() : Infinity;
 
-    // Immediate alert if last run errored
+    // Immediate alert if last run errored — gated by 2-strikes (#551)
     if (lastStatus === "error") {
       results.push({ jobName, status: "error_status", lastRunAt, ageMs });
 
-      const subject = `OtterQuote Health Alert — cron job "${jobName}" last run failed`;
+      const isSecondStrike = await hasPendingCronFailure(supabase, jobName);
+      if (!isSecondStrike) {
+        // 1st-strike: log pending row, suppress email. The next cron tick
+        // (~15 min) will either find this pending row and escalate, or skip
+        // because the job recovered.
+        await logPendingCronFailure(supabase, jobName, lastError ?? "last run status = error");
+        console.log(
+          `[platform-health-check] 1st-strike cron error (suppressed) for ${jobName}: ${lastError ?? "unknown error"}`,
+        );
+        continue;
+      }
+
+      const subject = `OtterQuote Health Alert — cron job "${jobName}" last run failed (2 consecutive failures)`;
       const message = [
         `Cron Job: ${jobName}`,
         `Last Run: ${lastRunAt}`,
         `Status: ERROR`,
         lastError ? `Error: ${lastError}` : null,
-        `Checked at: ${new Date().toISOString()}`,
+        `Checked at: ${formatDualTimestamp(new Date())}`,
         "",
+        "Two consecutive failed runs across two cron ticks (~15 min apart) — first failure was suppressed by the 2-strikes gate; this is the second.",
         "This is an automated alert from OtterQuote platform monitoring.",
         "Resolve this alert at: https://otterquote.com/admin-contractors.html",
       ].filter(Boolean).join("\n");
@@ -476,7 +609,7 @@ async function runStalenessCheck(
       continue;
     }
 
-    // Alert if stale
+    // Alert if stale — gated by 2-strikes (#551)
     if (ageMs > thresholdMs) {
       // WRITER-GAP DIAGNOSTIC: if a self-reporting job (one not written by this function's
       // Phase 1 or Phase 3) is stale, the most likely cause is that the job's EF no longer
@@ -493,14 +626,26 @@ async function runStalenessCheck(
         ? `${Math.round(thresholdMs / 3600000)} hours`
         : `${Math.round(thresholdMs / 60000)} minutes`;
 
-      const subject = `OtterQuote Health Alert — cron job "${jobName}" is stale`;
+      const isSecondStrike = await hasPendingCronFailure(supabase, jobName);
+      if (!isSecondStrike) {
+        await logPendingCronFailure(
+          supabase, jobName,
+          `stale — age ${Math.round(ageMs / 60000)}min (threshold ${thresholdHuman})`,
+        );
+        console.log(
+          `[platform-health-check] 1st-strike stale (suppressed) for ${jobName}: age ${Math.round(ageMs / 60000)}min`,
+        );
+        continue;
+      }
+
+      const subject = `OtterQuote Health Alert — cron job "${jobName}" is stale (2 consecutive ticks)`;
       const message = [
         `Cron Job: ${jobName}`,
         `Last Run: ${lastRunAt ?? "never"}`,
         `Age: ${Math.round(ageMs / 60000)} minutes (threshold: ${thresholdHuman})`,
-        `Checked at: ${new Date().toISOString()}`,
+        `Checked at: ${formatDualTimestamp(new Date())}`,
         "",
-        "This cron job has not run within its expected window.",
+        "This cron job has not run within its expected window across two consecutive checks (~15 min apart) — first miss was suppressed by the 2-strikes gate; this is the second.",
         "This is an automated alert from OtterQuote platform monitoring.",
         "Resolve this alert at: https://otterquote.com/admin-contractors.html",
       ].join("\n");
@@ -513,6 +658,8 @@ async function runStalenessCheck(
       continue;
     }
 
+    // Recovered / healthy — auto-acknowledge any pending 1st-strike entries (#551)
+    await autoAckPendingCronFailures(supabase, jobName);
     results.push({ jobName, status: "ok", lastRunAt, ageMs });
   }
 
@@ -539,6 +686,14 @@ const PUBLIC_PATHS: Array<{ url: string; jobName: string; expectedBody: string }
 
 const PUBLIC_PATH_TIMEOUT_MS = 10000; // 10s — external fetch, more generous than internal EF ping
 
+// In-run retry (added Aug 2026 — GitHub #551, per R-097 Bridge ruling 2026-08-10):
+// a lone 10s timeout/error from one vantage point must not page. Rather than a
+// cross-tick 2-strikes gate (which the Bridge ruling reserved for Phase 2
+// staleness checks — an availability probe should not delay a real-outage
+// signal by a full ~15min cron cycle), Phase 3 retries once in-run after a
+// short delay before recording a failure at all.
+const PUBLIC_PATH_RETRY_DELAY_MS = 5000; // 5s
+
 interface PublicPathResult {
   path:    string;
   jobName: string;
@@ -546,7 +701,11 @@ interface PublicPathResult {
   error?:  string;
 }
 
-async function probePublicPath(
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function attemptPublicPathFetch(
   url: string,
   jobName: string,
   expectedBody: string,
@@ -585,6 +744,32 @@ async function probePublicPath(
   }
 }
 
+/**
+ * Probe a public path, retrying once (after a short delay) before recording
+ * a failure. This is the in-run alternative to a 2-strikes gate for Phase 3
+ * (#551) — a single transient blip from this vantage point (e.g. the
+ * 2026-07-12 #527 incident, where BetterStack's independent checks and the
+ * probes immediately before/after this one all stayed green) is absorbed
+ * here instead of firing an alert or even being recorded as an error tick.
+ */
+async function probePublicPath(
+  url: string,
+  jobName: string,
+  expectedBody: string,
+): Promise<PublicPathResult> {
+  const first = await attemptPublicPathFetch(url, jobName, expectedBody);
+  if (first.status === "ok") {
+    return first;
+  }
+
+  console.log(
+    `[platform-health-check] ${jobName} failed first attempt (${first.error ?? first.status}); ` +
+    `retrying once after ${PUBLIC_PATH_RETRY_DELAY_MS}ms before recording a failure.`,
+  );
+  await sleep(PUBLIC_PATH_RETRY_DELAY_MS);
+  return attemptPublicPathFetch(url, jobName, expectedBody);
+}
+
 async function runPublicPathProbes(
   supabase: ReturnType<typeof createClient>,
   mailgunApiKey: string,
@@ -617,8 +802,9 @@ async function runPublicPathProbes(
         `Job: ${result.jobName}`,
         `Status: ${result.status}`,
         result.error ? `Error: ${result.error}` : null,
-        `Checked at: ${new Date().toISOString()}`,
+        `Checked at: ${formatDualTimestamp(new Date())}`,
         "",
+        "This failure survived one in-run retry (~5s later) before being recorded.",
         "The OtterQuote public site may be unreachable or serving incorrect content.",
         "This is an automated alert from OtterQuote platform monitoring.",
         "Resolve this alert at: https://otterquote.com/admin-contractors.html",
@@ -667,11 +853,17 @@ serve(async (req) => {
     supabaseUrl, serviceKey, supabase, mailgunApiKey, mailgunDomain,
   );
 
+  // ── Phase 3: Public path probes ─────────────────────────────────────────────
+  // Runs BEFORE Phase 2 (#551): Phase 2's staleness/error-status check reads
+  // cron_health, which Phase 3 also writes for the public-path-* job names.
+  // Running Phase 3 first means Phase 2 sees this tick's fresh result instead
+  // of re-alerting on a stale/error row that Phase 3 is about to flip back to
+  // success seconds later (the root cause of #527 reading as a "15-minute
+  // outage" when it was a single failed probe cycle).
+  const phase3 = await runPublicPathProbes(supabase, mailgunApiKey, mailgunDomain);
+
   // ── Phase 2: Cron job staleness ────────────────────────────────────────────
   const phase2 = await runStalenessCheck(supabase, mailgunApiKey, mailgunDomain);
-
-  // ── Phase 3: Public path probes ─────────────────────────────────────────────
-  const phase3 = await runPublicPathProbes(supabase, mailgunApiKey, mailgunDomain);
 
   const elapsed = Date.now() - startedAt;
 
