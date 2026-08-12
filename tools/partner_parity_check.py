@@ -25,6 +25,16 @@ reading every page's actual markup rather than assumed.
     partner-dashboard.html (it is the redirect destination).
   - Get-the-App promo block + post-signup dashboard-access block: the 5
     vertical signup pages ONLY.
+
+Known open gap (gh-634, 2026-08-11 adversarial review): partner-login.html
+DOES contain signed-in-partner redirect logic (Auth.getUser -> redirect to
+/partner-dashboard.html), but via a document.referrer loop-guard instead of
+the ?stay=1 escape the other 6 redirecting pages use -- so it has no way to
+deliberately stay on that page while signed in. That is a real, product-level
+inconsistency, not a guard defect: partner-login.html is out of scope for
+this tool to fix (read-only against partner HTML pages, gh-634 AC), so the
+signed_in_redirect check below still excludes it rather than failing main.
+Tracked for follow-up rather than silently resolved by the exclusion list.
 """
 import re
 import sys
