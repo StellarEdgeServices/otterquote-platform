@@ -751,7 +751,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Look up the inspector in referral_agents
     try {
       const { data, error } = await sb
-        .from('referral_agents_public')
+        .rpc('get_referral_agents_public')
         .select('*')
         .eq('unique_code', refCode)
         .eq('agent_type', 'home_inspector')
