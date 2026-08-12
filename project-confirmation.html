@@ -2194,7 +2194,7 @@
 
         // ── Load contractor ──
         const { data: contractorData, error: contractorError } = await sb
-          .from('contractors_public')
+          .rpc('get_contractors_public')
           .select('id, company_name, years_in_business, owner_photo_url')
           .eq('id', state.contractorId)
           .single();

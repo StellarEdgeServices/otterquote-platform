@@ -156,7 +156,7 @@ export function useProjectConfirmationData(
 
         // 6. Load contractor (static 2195-2201)
         const { data: contractorData, error: contractorError } = await supabase
-          .from('contractors_public')
+          .rpc('get_contractors_public')
           .select('id, company_name, years_in_business, logo_url')
           .eq('id', contractorId)
           .single();

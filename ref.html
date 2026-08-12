@@ -160,7 +160,7 @@
 
                 // 3. Look up the agent by unique_code (public read policy allows this)
                 const { data: agent, error: agentError } = await sb
-                    .from('referral_agents_public')
+                    .rpc('get_referral_agents_public')
                     .select('id, agent_type, first_name, last_name, company, photo_url, status')
                     .eq('unique_code', code)
                     .eq('status', 'active')

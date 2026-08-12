@@ -625,7 +625,7 @@
         const contractorIds = [...new Set(data.map(b => b.contractor_id).filter(Boolean))];
         if (contractorIds.length) {
           const { data: pub, error: pubErr } = await sb
-            .from('contractors_public')
+            .rpc('get_contractors_public')
             .select(`
               id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
               service_area_description, service_counties, license_number, verified,

@@ -1282,7 +1282,7 @@
       try {
         // Try unique_code match first (the value partners share in URLs)
         let { data } = await sb
-          .from('referral_agents_public')
+          .rpc('get_referral_agents_public')
           .select('id')
           .eq('unique_code', partnerIdParam.toUpperCase())
           .eq('status', 'active')
@@ -1294,7 +1294,7 @@
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (uuidPattern.test(partnerIdParam)) {
           const { data: byId } = await sb
-            .from('referral_agents_public')
+            .rpc('get_referral_agents_public')
             .select('id')
             .eq('id', partnerIdParam)
             .eq('status', 'active')

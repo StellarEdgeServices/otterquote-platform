@@ -498,7 +498,7 @@
     // ── Data Loaders ──
     async function loadContractor() {
       const { data, error } = await sb
-        .from('contractors_public')
+        .rpc('get_contractors_public')
         .select(`
           id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
           service_area_description, service_counties, license_number, verified,
@@ -528,7 +528,7 @@
       let videoPath = null;
       try {
         const { data, error } = await sb
-          .from('contractors_public')
+          .rpc('get_contractors_public')
           .select('intro_video_path')
           .eq('id', contractorId)
           .maybeSingle();
