@@ -1,5 +1,5 @@
 -- ============================================================================
--- v105 — Drop dead `skip_hover_in_test` key from platform_settings RLS allow-list
+-- v107 — Drop dead `skip_hover_in_test` key from platform_settings RLS allow-list
 -- (GitHub #702, carved out of #484 AC 3)
 -- ============================================================================
 --
@@ -23,7 +23,7 @@
 --   approval before this is applied — per #702 AC and migration-author
 --   standing rule. DO NOT APPLY TO PRODUCTION FROM A CODE-LANE SESSION.
 --
--- Rollback: 20260811183825_v105_rollback_drop_skip_hover_in_test_allowlist.sql
+-- Rollback: 20260811183825_v107_rollback_drop_skip_hover_in_test_allowlist.sql
 --   (restores the four-key allow-list verbatim, including skip_hover_in_test).
 -- ============================================================================
 

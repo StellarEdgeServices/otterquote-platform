@@ -1,5 +1,5 @@
 -- ============================================================================
--- v105 ROLLBACK — restore `skip_hover_in_test` to the platform_settings
+-- v107 ROLLBACK — restore `skip_hover_in_test` to the platform_settings
 -- RLS allow-list (GitHub #702)
 -- ============================================================================
 
