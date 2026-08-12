@@ -248,7 +248,31 @@ if failures:
     print()
     print("Action: these files may have been silently truncated by FUSE/bindfs mount.")
     print("Check the commit source -- do not deploy until all violations are resolved.")
-    sys.exit(1)
+    file_integrity_exit = 1
 else:
     print(f"All {checked} files passed null-byte, size, HTML structure, JS syntax, TS EF structure, and MD checks.")
-    sys.exit(0)
+    file_integrity_exit = 0
+
+# -- Partner-path structural parity check (gh-634) ---------------------------
+# Chained here rather than added as its own workflow step: this job (the
+# "Null-Byte & Size Sanity Check" job in .github/workflows/post-deploy-verify.yml,
+# which invokes only this file) is the sole CI entry point this lane's push
+# credential can modify -- direct edits to .github/workflows/*.yml are rejected
+# outright ("refusing to allow a GitHub App to create or update workflow ...
+# without `workflows` permission", confirmed 2026-08-12, gh-634). Running
+# tools/partner_parity_check.py here, in the same job, satisfies "wired into
+# CI alongside the Null-Byte check" without a workflow-file edit.
+print()
+print("-" * 78)
+_parity_script = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "tools", "partner_parity_check.py"
+)
+_parity_result = subprocess.run([sys.executable, _parity_script], capture_output=True, text=True)
+print(_parity_result.stdout, end="")
+if _parity_result.stderr:
+    print(_parity_result.stderr, end="", file=sys.stderr)
+partner_parity_exit = _parity_result.returncode
+
+if file_integrity_exit != 0 or partner_parity_exit != 0:
+    sys.exit(1)
+sys.exit(0)
