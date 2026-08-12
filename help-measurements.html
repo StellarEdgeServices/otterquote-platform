@@ -748,6 +748,7 @@
 
     <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
     <script src="js/services.js"></script>
@@ -803,7 +804,7 @@
         });
 
         async function loadClaimData() {
-            if (!sb || !currentUser) return;
+            if (!currentUser) return;
             const { data } = await sb
                 .from('claims')
                 .select('*')
@@ -843,7 +844,7 @@
         }
 
         async function checkExistingEstimateRequest() {
-            if (!sb || !currentClaim) return;
+            if (!currentClaim) return;
             // Check if we already sent an estimate request with "also request measurements"
             const { data } = await sb
                 .from('adjuster_email_requests')
