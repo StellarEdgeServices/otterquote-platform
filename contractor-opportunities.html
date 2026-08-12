@@ -278,6 +278,7 @@
 
     <script src="js/cookie-storage.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
 
@@ -834,7 +835,6 @@
         }
 
         async function openEstimatePdf(claimId) {
-            if (!sb) { alert('Not connected. Please refresh and try again.'); return; }
             const docInfo = oppDocMap[claimId];
             if (!docInfo?.estimateFilename) return;
             const btn = document.getElementById('loss-' + claimId);
@@ -854,7 +854,6 @@
         }
 
         async function openHoverPdf(claimId) {
-            if (!sb) { alert('Not connected. Please refresh and try again.'); return; }
             const btn = document.getElementById('hover-' + claimId);
             if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
             try {
