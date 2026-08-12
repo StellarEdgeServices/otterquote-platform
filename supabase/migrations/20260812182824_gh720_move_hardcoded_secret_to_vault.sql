@@ -1,16 +1,15 @@
--- gh-720: hardcoded sb_secret_ key in two SECURITY DEFINER trigger functions, world-readable
--- via pg_proc.prosrc to anon/authenticated. Applied to production 2026-08-12 with no repo
--- file (captured retroactively here, introspection-generated per the #385 baseline method —
--- no pg_dump access from this session either).
+-- gh720_move_hardcoded_secret_to_vault
 --
--- gh-720's own AC suggested rewriting to current_setting('app.service_role_key', true), matching
--- apply_referral_commission / notify_admin_new_contractor. That setting is NOT configured on
--- this database (see #752) and would have silently no-opped both webhooks. The rotation thread
--- caught this and used the Vault pattern instead, proven live by the 10 pg_cron jobs migrated
--- in gh-688 (PR #731): vault.decrypted_secrets['cron_service_role_key'].
+-- Applied directly to production (project yeszghaspzwwstvsrioa) via
+-- apply_migration on 2026-08-12; this file reproduces that applied change
+-- for version control (GitHub #770 follow-up to #720).
 --
--- Body text below is introspected verbatim from production (pg_get_functiondef) to guarantee
--- byte-for-byte parity with what is actually live — not retyped from memory.
+-- Rewrites the two SECURITY DEFINER trigger functions that previously read
+-- a hardcoded service-role secret literal to instead read it from
+-- vault.decrypted_secrets['cron_service_role_key']. Idempotent
+-- (CREATE OR REPLACE) — matches the live function bodies byte-for-byte as
+-- of 2026-08-12; running this against the already-migrated database is a
+-- no-op, not a re-application of a destructive change.
 
 CREATE OR REPLACE FUNCTION public.notify_feature_request_webhook()
  RETURNS trigger
@@ -38,7 +37,8 @@ BEGIN
 
   RETURN NEW;
 END;
-$function$;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.notify_hover_rebate()
  RETURNS trigger
@@ -61,4 +61,5 @@ BEGIN
   END;
   RETURN NEW;
 END;
-$function$;
+$function$
+;
