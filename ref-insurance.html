@@ -715,7 +715,7 @@
     // Try to look up agent from referral_agents table
     try {
       const { data, error } = await sb
-        .from('referral_agents_public')
+        .rpc('get_referral_agents_public')
         .select('*')
         .eq('referral_code', ref)
         .single();
