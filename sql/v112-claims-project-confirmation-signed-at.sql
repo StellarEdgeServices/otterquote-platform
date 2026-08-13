@@ -1,4 +1,4 @@
--- v111 — D-274 (#631) / carried forward from closed #421: claims.project_confirmation_envelope_id
+-- v112 — D-274 (#631) / carried forward from closed #421: claims.project_confirmation_envelope_id
 -- has existed since the baseline schema but nothing ever wrote a completion timestamp for it.
 -- The DocuSign webhook's claim lookup only matched on docusign_envelope_id and
 -- color_confirmation_envelope_id — a completed project_confirmation envelope could

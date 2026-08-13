@@ -1,4 +1,4 @@
--- Rollback for v110_retire_check_docusign_usage_cron.
+-- Rollback for v111_retire_check_docusign_usage_cron.
 --
 -- Re-registers the check-docusign-usage pg_cron job with the exact
 -- schedule and command captured live from project yeszghaspzwwstvsrioa on
