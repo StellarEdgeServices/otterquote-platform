@@ -934,6 +934,7 @@
   <!-- Configuration and Auth -->
   <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -1278,7 +1279,7 @@
     // Look up a referral agent by unique_code or UUID and return their id.
     // Returns null if not found or on any error.
     async function resolveReferralAgentId(partnerIdParam) {
-      if (!partnerIdParam || !sb) return null;
+      if (!partnerIdParam) return null;
       try {
         // Try unique_code match first (the value partners share in URLs)
         let { data } = await sb
