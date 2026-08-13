@@ -1,0 +1,32 @@
+-- v110 — D-274 (#631): retire the check-docusign-usage pg_cron job.
+--
+-- DRAFT ONLY — NOT APPLIED BY THIS SESSION. Per the D-274 build brief, the
+-- BoldSign production cutover is Tier 3B and requires a 24-hour CEO-board
+-- risk brief before anything ships live. This file is prepared so the
+-- reviewer/CEO has the exact statement ready at cutover time; it is
+-- deliberately left un-applied (not run via apply_migration) by the Code
+-- session that authored it.
+--
+-- Why retire rather than rewrite: check-docusign-usage polls DocuSign's
+-- account API for billingPeriodEnvelopesSent and alerts at 75% of a
+-- hardcoded 40/month plan cap. BoldSign has no equivalent API — confirmed
+-- against the live OpenAPI spec (api.boldsign.com/swagger/v1/swagger.json)
+-- and developer docs: no usage/quota/remaining-envelope endpoint exists.
+-- Plan caps are enforced server-side and are not queryable. There is
+-- nothing to port this function's core logic to; see the D-274 build
+-- report on issue #631 for the full disposition rationale.
+--
+-- Live job confirmed via `select * from cron.job` on project
+-- yeszghaspzwwstvsrioa, 2026-08-13:
+--   jobid=9, jobname='check-docusign-usage', schedule='0 12 * * *', active=true
+--   command: net.http_post to .../functions/v1/check-docusign-usage
+--
+-- The supabase/functions/check-docusign-usage/ directory has already been
+-- removed from the repo in this same PR. Applying this migration WITHOUT
+-- also having deployed a build that no longer routes here is safe either
+-- way (the cron job will simply start getting 404s from the deleted
+-- function until this is applied) — but the intended order is: merge this
+-- PR (including the function deletion) FIRST, THEN apply this migration
+-- shortly after, so the dead cron job stops firing.
+
+select cron.unschedule('check-docusign-usage');

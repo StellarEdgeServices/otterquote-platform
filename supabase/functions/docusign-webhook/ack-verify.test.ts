@@ -1,103 +1,70 @@
-// Deno unit tests for the D-269 (#550) acknowledgment backstop evaluation.
+// Deno unit tests for the BoldSign D-269 acknowledgment backstop.
 // Run: deno test supabase/functions/docusign-webhook/ack-verify.test.ts
 //
-// Regression contract (issue #550 AC): an unchecked/unsigned
-// otterquote_acknowledgment must NOT evaluate as satisfied — the webhook
-// halts the clean contract_signed/charge path on any "defect" verdict.
+// [D-274 / #631] Replaces the DocuSign signHere/checkbox tab tests with tests
+// against BoldSign's formFields shape (GET /v1/document/properties).
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { ACK_TAB_LABEL, evaluateAcknowledgment } from "./ack-verify.ts";
+import { evaluateAcknowledgment, ACK_FIELD_ID } from "./ack-verify.ts";
 
-const signer = (tabs?: Record<string, unknown>) => ({
-  clientUserId: "homeowner_1",
-  status: "completed",
-  ...(tabs ? { tabs } : {}),
-});
-
-Deno.test("signHere ack signed → satisfied (D-123 current envelopes)", () => {
-  const ev = evaluateAcknowledgment([
-    signer({ signHereTabs: [{ tabLabel: ACK_TAB_LABEL, status: "signed" }] }),
+Deno.test("satisfied — field present with truthy value", () => {
+  const result = evaluateAcknowledgment([
+    { clientUserId: "homeowner_1", formFields: [{ id: ACK_FIELD_ID, value: "signed" }] },
   ]);
-  assertEquals(ev.state, "satisfied");
-  assertEquals((ev as { via: string }).via, "signhere");
+  assertEquals(result.state, "satisfied");
 });
 
-Deno.test("signHere ack NOT signed → defect (the D-269 invariant)", () => {
-  const ev = evaluateAcknowledgment([
-    signer({ signHereTabs: [{ tabLabel: ACK_TAB_LABEL, status: "active" }] }),
+Deno.test("satisfied — field present with status indicating completion, empty value", () => {
+  const result = evaluateAcknowledgment([
+    { clientUserId: "homeowner_1", formFields: [{ id: ACK_FIELD_ID, value: null, status: "Completed" }] },
   ]);
-  assertEquals(ev.state, "defect");
-  assertEquals((ev as { via: string }).via, "signhere");
+  assertEquals(result.state, "satisfied");
 });
 
-Deno.test("signHere ack with absent status → defect, not satisfied", () => {
-  const ev = evaluateAcknowledgment([
-    signer({ signHereTabs: [{ tabLabel: ACK_TAB_LABEL }] }),
+Deno.test("defect — field present but neither value nor status indicates completion", () => {
+  const result = evaluateAcknowledgment([
+    { clientUserId: "homeowner_1", formFields: [{ id: ACK_FIELD_ID, value: null, status: "NotCompleted" }] },
   ]);
-  assertEquals(ev.state, "defect");
+  assertEquals(result.state, "defect");
+  if (result.state === "defect") assertEquals(result.via, "field");
 });
 
-Deno.test("anchor stamped the tab twice — one unsigned → defect (all must be signed)", () => {
-  const ev = evaluateAcknowledgment([
-    signer({
-      signHereTabs: [
-        { tabLabel: ACK_TAB_LABEL, status: "signed" },
-        { tabLabel: ACK_TAB_LABEL, status: "active" },
-      ],
-    }),
+Deno.test("defect (field_missing) — formFields data present but no matching id anywhere", () => {
+  const result = evaluateAcknowledgment([
+    { clientUserId: "homeowner_1", formFields: [{ id: "some_other_field", value: "x" }] },
+    { clientUserId: "contractor_1", formFields: [{ id: "another_field", value: "y" }] },
   ]);
-  assertEquals(ev.state, "defect");
+  assertEquals(result.state, "defect");
+  if (result.state === "defect") assertEquals(result.via, "field_missing");
 });
 
-Deno.test("legacy checkbox ack selected=true → satisfied (pre-D-123 envelopes)", () => {
-  const ev = evaluateAcknowledgment([
-    signer({ checkboxTabs: [{ tabLabel: ACK_TAB_LABEL, selected: "true" }] }),
+Deno.test("indeterminate — no signer carries any formFields data", () => {
+  const result = evaluateAcknowledgment([
+    { clientUserId: "homeowner_1" },
+    { clientUserId: "contractor_1", formFields: [] },
   ]);
-  assertEquals(ev.state, "satisfied");
-  assertEquals((ev as { via: string }).via, "checkbox");
+  assertEquals(result.state, "indeterminate");
 });
 
-Deno.test("legacy checkbox ack selected=false → defect (the 2026-05-20 incident shape)", () => {
-  const ev = evaluateAcknowledgment([
-    signer({ checkboxTabs: [{ tabLabel: ACK_TAB_LABEL, selected: "false" }] }),
+Deno.test("indeterminate — empty signers array", () => {
+  const result = evaluateAcknowledgment([]);
+  assertEquals(result.state, "indeterminate");
+});
+
+Deno.test("satisfied — field found on a non-first signer", () => {
+  const result = evaluateAcknowledgment([
+    { clientUserId: "contractor_1", formFields: [{ id: "contract_price", value: "$1,000" }] },
+    { clientUserId: "homeowner_1", formFields: [{ id: ACK_FIELD_ID, value: "signed" }] },
   ]);
-  assertEquals(ev.state, "defect");
-  assertEquals((ev as { via: string }).via, "checkbox");
+  assertEquals(result.state, "satisfied");
 });
 
-Deno.test("tab data present but no ack tab anywhere → defect (tab_missing)", () => {
-  const ev = evaluateAcknowledgment([
-    signer({ signHereTabs: [{ tabLabel: "cancellation_acknowledgment_signature", status: "signed" }] }),
-    { clientUserId: "contractor_1", tabs: { signHereTabs: [] } },
+Deno.test("defect — multiple matching-id entries, one unsatisfied", () => {
+  // Should not realistically happen (FieldID is documented as required-unique
+  // by BoldSign) but the evaluator must not silently ignore a second entry.
+  const result = evaluateAcknowledgment([
+    { clientUserId: "homeowner_1", formFields: [{ id: ACK_FIELD_ID, value: "signed" }] },
+    { clientUserId: "contractor_1", formFields: [{ id: ACK_FIELD_ID, value: null }] },
   ]);
-  assertEquals(ev.state, "defect");
-  assertEquals((ev as { via: string }).via, "tab_missing");
-});
-
-Deno.test("no tab data on any signer → indeterminate (caller queries the API)", () => {
-  const ev = evaluateAcknowledgment([signer(), { clientUserId: "contractor_1" }]);
-  assertEquals(ev.state, "indeterminate");
-});
-
-Deno.test("empty/absent signers → indeterminate", () => {
-  assertEquals(evaluateAcknowledgment([]).state, "indeterminate");
-  assertEquals(evaluateAcknowledgment(undefined as unknown as unknown[]).state, "indeterminate");
-});
-
-Deno.test("ack on a different signer still counts (signer-agnostic scan)", () => {
-  const ev = evaluateAcknowledgment([
-    { clientUserId: "contractor_1", tabs: { signHereTabs: [] } },
-    signer({ signHereTabs: [{ tabLabel: ACK_TAB_LABEL, status: "signed" }] }),
-  ]);
-  assertEquals(ev.state, "satisfied");
-});
-
-Deno.test("mixed: unrelated checkbox checked but ack signHere unsigned → defect", () => {
-  const ev = evaluateAcknowledgment([
-    signer({
-      checkboxTabs: [{ tabLabel: "some_other_box", selected: "true" }],
-      signHereTabs: [{ tabLabel: ACK_TAB_LABEL, status: "declined" }],
-    }),
-  ]);
-  assertEquals(ev.state, "defect");
+  assertEquals(result.state, "defect");
 });

@@ -1,20 +1,47 @@
 /**
  * OtterQuote Edge Function: docusign-webhook
- * Receives DocuSign Connect webhook notifications when envelope status changes.
- * Updates claims table on signing completion, decline, or void.
+ *
+ * [D-274 / #631, 2026-08-13] Re-platformed from DocuSign Connect to BoldSign.
+ * File path/name intentionally UNCHANGED for this PR (keeps the webhook URL
+ * stable; a follow-up rename to a vendor-neutral name is recommended at
+ * cutover, not bundled with this functional swap — see the D-274 build
+ * report on issue #631). Everything downstream of "the envelope/document is
+ * complete" — payment charging, dunning, D-269 acknowledgment backstop,
+ * D-149 counter-sign nudges, D-215 invoice fan-out, homeowner/contractor
+ * notifications — is UNCHANGED business logic. Only the vendor-specific
+ * edges changed: signature verification, payload parsing, and the
+ * authoritative-state API fallback (ack-verify.ts).
+ *
+ * Receives BoldSign webhook notifications when a document's signing status
+ * changes. Updates claims table on signing completion, decline, or revoke.
  *
  * Environment variables:
- *   DOCUSIGN_CONNECT_HMAC_KEY — shared secret for HMAC-SHA256 signature verification
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY — auto-provided by Supabase
+ *   BOLDSIGN_WEBHOOK_HMAC_SECRET — per-webhook signing secret from the BoldSign
+ *     dashboard (Webhooks -> this webhook -> "Reveal"). NOT account-wide; each
+ *     webhook endpoint you register in BoldSign has its own secret.
+ *   BOLDSIGN_API — BoldSign API key (X-API-KEY), used only for the ack-verify
+ *     authoritative-state fallback call (GET /v1/document/properties).
+ *   SUPABASE_URL — auto-provided by Supabase.
+ *   EF_OPERATOR_TOKEN — dedicated shared secret for the server-to-server call to
+ *     create-invoice (see the [D-274] comment block below the imports).
  *
- * DocuSign Connect sends JSON payloads to this endpoint. The webhook URL is:
+ * Credential pattern: this function reads the Supabase service-role-equivalent
+ * value via SUPABASE_SECRET_KEYS (JSON.parse(...)['default']) per the D-274
+ * mandatory key pattern, NOT the legacy auto-injected SUPABASE_SERVICE_ROLE_KEY
+ * — see getServiceRoleKey() below. Falls back to the legacy var only if
+ * SUPABASE_SECRET_KEYS is not yet populated in this environment (defensive;
+ * should not trigger once the parallel key-rotation workstream lands here).
+ *
+ * BoldSign sends JSON payloads to this endpoint. The webhook URL is:
  *   https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/docusign-webhook
+ * (This URL must be registered as a BoldSign webhook manually in the BoldSign
+ * dashboard — see the D-274 build report for the exact cutover checklist.)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parsePayload } from "./payload-parser.ts";
-import { evaluateAcknowledgment, fetchEnvelopeSignersWithTabs } from "./ack-verify.ts";
+import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
 
 // ── 86e1tz17j: best-effort Sentry reporter for swallowed audit-write failures ──
 // Inlined (not imported from _shared) because the EF body-deploy path does not
@@ -73,9 +100,31 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-docusign-signature-1",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-boldsign-signature",
     "Vary": "Origin",
   };
+}
+
+// [D-274 / #631] Service-role-equivalent credential via the new secret-key
+// rotation pattern, NOT the legacy auto-injected SUPABASE_SERVICE_ROLE_KEY.
+// Falls back to the legacy var if SUPABASE_SECRET_KEYS is not yet populated
+// in this environment — defensive only; should not trigger once the parallel
+// key-migration workstream lands on this project. Every function touched by
+// this build uses this same helper (duplicated per-function, matching this
+// repo's existing "inline, don't import _shared" convention — the EF
+// body-deploy path does not resolve _shared imports, see
+// create-docusign-envelope's inlined getHomeownerName for precedent).
+function getServiceRoleKey(): string {
+  const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.default) return parsed.default as string;
+    } catch (_e) {
+      console.warn("[docusign-webhook] SUPABASE_SECRET_KEYS present but not valid JSON — falling back to legacy key");
+    }
+  }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 }
 
 // ========== GA4 MEASUREMENT PROTOCOL ==========
@@ -99,6 +148,53 @@ async function sendGA4Event(eventName: string, params: Record<string, unknown> =
 }
 
 // ========== HMAC VERIFICATION ==========
+// [D-274 / #631] BoldSign's webhook signature scheme (confirmed against
+// developers.boldsign.com/webhooks/verify-webhook-events/) differs from
+// DocuSign Connect's on every axis: header name, message construction, and
+// encoding.
+//   Header:  X-BoldSign-Signature: t=<unix_epoch>, s0=<hex_hmac_sha256>
+//            (optionally also s1=<...> during BoldSign-side key rotation —
+//            accept a match against ANY sN value present, same posture
+//            Stripe/similar webhook schemes use for rotation windows)
+//   Message: "{timestamp}.{raw_request_body}"  — NOT the raw body alone.
+//   Digest:  HMAC-SHA256, HEX-encoded — NOT base64 (DocuSign's scheme).
+//   Secret:  per-webhook, provisioned in the BoldSign dashboard on that
+//            webhook's overview page (Reveal button) — NOT an account-wide
+//            secret. BOLDSIGN_WEBHOOK_HMAC_SECRET must be the secret for
+//            THIS specific webhook registration.
+// The doc's own implementation note: verification must use the RAW request
+// body — any JSON re-serialization invalidates the signature. This function
+// is called with `rawBody` (the unparsed req.text() result) for exactly that
+// reason, mirroring the DocuSign implementation's same care.
+function parseSignatureHeader(header: string): { timestamp: string | null; digests: string[] } {
+  const parts = header.split(",").map((p) => p.trim());
+  let timestamp: string | null = null;
+  const digests: string[] = [];
+  for (const part of parts) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1).trim();
+    if (key === "t") timestamp = value;
+    else if (/^s\d+$/.test(key)) digests.push(value);
+  }
+  return { timestamp, digests };
+}
+
+function hexEncode(bytes: Uint8Array): string {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
+}
+
 async function verifyHmacSignature(
   payload: string,
   signatureHeader: string | null,
@@ -111,6 +207,13 @@ async function verifyHmacSignature(
     return !hmacKey; // Allow if no key configured, reject if key exists but no signature
   }
 
+  const { timestamp, digests } = parseSignatureHeader(signatureHeader);
+  if (!timestamp || digests.length === 0) {
+    console.warn("X-BoldSign-Signature header did not parse (expected 't=...,s0=...')");
+    return false;
+  }
+
+  const message = `${timestamp}.${payload}`;
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -119,18 +222,10 @@ async function verifyHmacSignature(
     false,
     ["sign"]
   );
+  const signatureBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
+  const computedSignature = hexEncode(new Uint8Array(signatureBuffer));
 
-  const signatureBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(payload)
-  );
-
-  const computedSignature = btoa(
-    String.fromCharCode(...new Uint8Array(signatureBuffer))
-  );
-
-  return computedSignature === signatureHeader;
+  return digests.some((d) => constantTimeEqual(computedSignature, d));
 }
 
 // ========== MAIN HANDLER ==========
@@ -150,7 +245,7 @@ serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseKey = getServiceRoleKey();
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
@@ -158,18 +253,19 @@ serve(async (req) => {
     const rawBody = await req.text();
 
     // Verify HMAC signature if configured
-    const hmacKey = Deno.env.get("DOCUSIGN_CONNECT_HMAC_KEY") || "";
-    const signatureHeader = req.headers.get("x-docusign-signature-1");
+    const hmacKey = Deno.env.get("BOLDSIGN_WEBHOOK_HMAC_SECRET") || "";
+    const signatureHeader = req.headers.get("x-boldsign-signature");
 
-    // U15-3: HMAC fail-CLOSED behind a flag. When DOCUSIGN_REQUIRE_SIGNATURE === 'true',
-    // a valid signature is MANDATORY regardless of key presence — reject (401) if the
-    // HMAC key is unset, the x-docusign-signature-1 header is missing, OR verification
-    // fails. When the flag is unset/'false' (default), behavior is byte-for-byte the
-    // prior fail-OPEN logic (verify only when a key is configured), so this PR is safe
-    // to merge/deploy before the secret is confirmed; flipping to fail-closed is then a
-    // pure config change. The verifyHmacSignature crypto/algorithm is unchanged.
+    // U15-3 (carried forward): HMAC fail-CLOSED behind a flag. When
+    // BOLDSIGN_REQUIRE_SIGNATURE === 'true', a valid signature is MANDATORY
+    // regardless of key presence — reject (401) if the HMAC key is unset, the
+    // x-boldsign-signature header is missing, OR verification fails. When the
+    // flag is unset/'false' (default), behavior is fail-OPEN (verify only when
+    // a key is configured), so this PR is safe to merge/deploy before the
+    // secret is confirmed; flipping to fail-closed is then a pure config
+    // change. Renamed from DOCUSIGN_REQUIRE_SIGNATURE — same semantics.
     const requireSignature =
-      Deno.env.get("DOCUSIGN_REQUIRE_SIGNATURE") === "true";
+      Deno.env.get("BOLDSIGN_REQUIRE_SIGNATURE") === "true";
 
     if (requireSignature) {
       const isValid =
@@ -201,14 +297,17 @@ serve(async (req) => {
     // Parse the payload
     const payload = JSON.parse(rawBody);
 
-    // DocuSign Connect sends envelope status in three shapes depending on config:
-    //   (a) rich:  data.envelopeSummary present (Include Data ON)
-    //   (b) flat:  top-level envelopeId
-    //   (c) lean:  data.envelopeId only, no envelopeSummary (Include Data OFF) — the
-    //              Phase 18 fee-path defense; v53 dropped this as "Unrecognized" and
-    //              never reached the charge code.
-    // parsePayload (./payload-parser.ts) is a pure, unit-tested helper that handles
-    // all three; field-derivation behavior for (a)/(b) is unchanged from v53.
+    // [D-274 / #631] BoldSign sends a single documented payload shape
+    // (event/context/data, data.documentId, data.status, data.signerDetails[])
+    // — see payload-parser.ts's header comment for the confirmed shape and
+    // the status-vocabulary mapping (BoldSign's "Revoked"/"Expired" -> this
+    // codebase's "voided"). parsePayload (./payload-parser.ts) is a pure,
+    // unit-tested helper; historical note preserved for context: the
+    // DocuSign-era version of this function had three payload variants
+    // (rich/flat/lean) and a real production bug (Phase 18, "0 fees ever")
+    // from the lean variant being dropped as unrecognized — BoldSign has no
+    // known lean/metadata-only variant, but parsePayload stays defensive
+    // (recognized:false on any malformed input) on the same principle.
     const parsed = parsePayload(payload);
     if (!parsed.recognized) {
       console.warn("Unrecognized payload format:", JSON.stringify(payload).slice(0, 500));
@@ -238,17 +337,25 @@ serve(async (req) => {
     console.log(`Webhook received: envelope=${envelopeId}, status=${status}, event=${event}`);
 
     // ========== FIND THE CLAIM ==========
-    // Look up claim by docusign_envelope_id or color_confirmation_envelope_id
+    // [D-274 / #631, carried forward from closed #421 as an explicit acceptance
+    // criterion] Look up claim by docusign_envelope_id, color_confirmation_envelope_id,
+    // OR project_confirmation_envelope_id. The prior implementation omitted the third
+    // column — a completed project_confirmation envelope could never be found here at
+    // all, so its signature was silently never persisted. This is the fix.
     const { data: claim, error: claimError } = await supabase
       .from("claims")
-      .select("id, status, docusign_envelope_id, color_confirmation_envelope_id, contract_signed_at")
-      .or(`docusign_envelope_id.eq.${envelopeId},color_confirmation_envelope_id.eq.${envelopeId}`)
+      .select(
+        "id, status, docusign_envelope_id, color_confirmation_envelope_id, project_confirmation_envelope_id, contract_signed_at"
+      )
+      .or(
+        `docusign_envelope_id.eq.${envelopeId},color_confirmation_envelope_id.eq.${envelopeId},project_confirmation_envelope_id.eq.${envelopeId}`
+      )
       .limit(1)
       .single();
 
     if (claimError || !claim) {
       console.warn(`No claim found for envelope ${envelopeId}:`, claimError?.message);
-      // Return 200 anyway — DocuSign will retry on non-2xx
+      // Return 200 anyway — BoldSign will retry on non-2xx
       return new Response(
         JSON.stringify({ received: true, warning: "No matching claim found" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -257,21 +364,38 @@ serve(async (req) => {
 
     const isContract = claim.docusign_envelope_id === envelopeId;
     const isColorConfirmation = claim.color_confirmation_envelope_id === envelopeId;
+    const isProjectConfirmation = claim.project_confirmation_envelope_id === envelopeId;
 
-    console.log(`Matched claim ${claim.id} (${isContract ? "contract" : "color_confirmation"})`);
+    console.log(
+      `Matched claim ${claim.id} (${
+        isContract ? "contract" : isColorConfirmation ? "color_confirmation" : "project_confirmation"
+      })`
+    );
+
+    // ========== SIGNER STATUS (D-274 / #631) ==========
+    // BoldSign's webhook payload DOES carry per-signer status directly
+    // (data.signerDetails — confirmed against developers.boldsign.com's
+    // sample-event-data page, unlike the shorter event-metadata page which
+    // only shows the bare `event` block). payload-parser.ts's `parsed.signerDetails`
+    // is that array, normalized to { clientUserId, status: lowercase,
+    // signedDateTime: null, email } so the `s.clientUserId === "contractor_1"` /
+    // `"homeowner_1"` matching further down is UNCHANGED from the DocuSign
+    // implementation — create-docusign-envelope sets signers[].id to exactly
+    // those two strings at send time (see handleContractorSign), the same
+    // convention DocuSign's clientUserId used. No live API call needed for
+    // this coarse status (unlike the D-269 ack backstop below, which DOES need
+    // one — BoldSign's webhook payload never includes per-field formFields
+    // data, only signer-level status).
+    const signerStatusList: any[] = parsed.signerDetails;
 
     // ========== CONTRACTOR SIGNING TRACKING ==========
-    // On every contract envelope event, scan the signers array. If the contractor
+    // On every contract envelope event, check signer status. If the contractor
     // signer (clientUserId: "contractor_1") has completed, write contractor_signed_at
     // to the matching quote. Covers both intermediate events (contractor signed,
-    // homeowner pending) and the final completed event (all signed — signedDateTime
-    // is still present per signer in the payload). Idempotent via IS NULL guard.
+    // homeowner pending) and the final completed event (all signed). Idempotent
+    // via IS NULL guard.
     if (isContract) {
-      const allSigners: any[] = (
-        payload.data?.envelopeSummary?.recipients?.signers ||
-        payload.recipients?.signers ||
-        []
-      );
+      const allSigners: any[] = signerStatusList;
       const contractorSigner = allSigners.find(
         (s: any) => s.clientUserId === "contractor_1" && s.status === "completed"
       );
@@ -312,18 +436,14 @@ serve(async (req) => {
     // State marker: a `notifications` row (channel 'system',
     // notification_type 'countersign_nudge_pending') is inserted BEFORE the
     // send. It is (a) the idempotency guard for this immediate nudge across
-    // repeated Connect events, and (b) the work queue drained by the scheduled
+    // repeated webhook events, and (b) the work queue drained by the scheduled
     // counter-sig-reminders EF for the 2-hour business-hours cadence.
     // activity_log is deliberately NOT used: its live schema has NOT NULL
     // user_id + title and an event_type CHECK, which reject webhook-context
     // inserts (86e1tz17j audit-write class).
     if (isContract && status !== "completed" && status !== "declined" && status !== "voided") {
       try {
-        const nudgeSigners: any[] = (
-          payload.data?.envelopeSummary?.recipients?.signers ||
-          payload.recipients?.signers ||
-          []
-        );
+        const nudgeSigners: any[] = signerStatusList;
         const homeownerCompleted = nudgeSigners.find(
           (s: any) => s.clientUserId === "homeowner_1" && s.status === "completed"
         );
@@ -333,7 +453,7 @@ serve(async (req) => {
 
         if (homeownerCompleted && !contractorCompleted) {
           // Idempotency: at most one pending-marker (and one immediate nudge)
-          // per envelope, no matter how many Connect events repeat this state.
+          // per envelope, no matter how many webhook events repeat this state.
           const { data: existingMarker } = await supabase
             .from("notifications")
             .select("id")
@@ -373,7 +493,7 @@ serve(async (req) => {
                   homeownerCompleted.signedDateTime || new Date().toISOString();
 
                 // Marker FIRST (claim the send) so a crash after Mailgun cannot
-                // produce duplicate immediate nudges on the next Connect event.
+                // produce duplicate immediate nudges on the next webhook event.
                 const { error: markerErr } = await supabase.from("notifications").insert({
                   claim_id: claim.id,
                   channel: "system",
@@ -480,27 +600,25 @@ serve(async (req) => {
       await sendGA4Event("envelope_signed", { envelope_id: envelopeId, claim_id: claim.id });
       if (isContract) {
         // ========== D-269 ACKNOWLEDGMENT BACKSTOP (#550) ==========
-        // Tab-level enforcement is the D-123 signHere swap in
-        // create-docusign-envelope; this is the completion-side backstop.
-        // Invariant (CEO decision D-269, 2026-07-13): no silently-accepted
-        // contract without the otterquote_acknowledgment tab satisfied — a
-        // defective envelope must NOT reach the clean contract_signed/charge
-        // path below.
+        // Field-level enforcement is the inline sign-type Text Tag on the
+        // generated compliance addendum (D-274 equivalent of the D-123
+        // signHere swap in create-docusign-envelope); this is the
+        // completion-side backstop. Invariant (CEO decision D-269,
+        // 2026-07-13): no silently-accepted contract without the
+        // otterquote_acknowledgment field satisfied — a defective envelope
+        // must NOT reach the clean contract_signed/charge path below.
+        //
+        // [D-274 / #631] Unlike the DocuSign version, there is no
+        // "payload sometimes has tab data" fast path to try first —
+        // BoldSign's webhook payload never includes per-field formFields
+        // (confirmed, see payload-parser.ts header comment). This always
+        // calls the authoritative API.
         try {
-          const ackPayloadSigners: unknown[] =
-            payload.data?.envelopeSummary?.recipients?.signers ||
-            payload.recipients?.signers ||
-            [];
-          let ackEval = evaluateAcknowledgment(ackPayloadSigners);
+          let ackEval = evaluateAcknowledgment(await fetchDocumentSignerStatus(envelopeId));
           if (ackEval.state === "indeterminate") {
-            // Connect payloads normally omit tab data — query the eSignature
-            // API for the authoritative recipients+tabs state.
-            ackEval = evaluateAcknowledgment(await fetchEnvelopeSignersWithTabs(envelopeId));
-            if (ackEval.state === "indeterminate") {
-              // The API answered but returned no tab data at all — treat as
-              // missing: acknowledgment cannot be demonstrated.
-              ackEval = { state: "defect", via: "tab_missing", detail: ackEval.detail };
-            }
+            // The API answered but returned no field data at all — treat as
+            // missing: acknowledgment cannot be demonstrated.
+            ackEval = { state: "defect", via: "field_missing", detail: ackEval.detail };
           }
 
           if (ackEval.state === "defect") {
@@ -514,7 +632,7 @@ serve(async (req) => {
                 function_name: "docusign-webhook",
                 message:
                   `D-269: envelope ${envelopeId} completed WITHOUT a satisfied otterquote_acknowledgment ` +
-                  `tab (claim ${claim.id}; ${ackEval.detail}). Clean completion halted — contract_signed ` +
+                  `field (claim ${claim.id}; ${ackEval.detail}). Clean completion halted — contract_signed ` +
                   `not set, no fee charge. Manual review: void/resend the envelope or record GC disposition.`,
               });
             } catch (alertErr) {
@@ -566,10 +684,11 @@ serve(async (req) => {
           }
           console.log(`[D-269] acknowledgment verified for envelope ${envelopeId} (via ${ackEval.via})`);
         } catch (ackErr) {
-          // Verification INFRASTRUCTURE failure (DocuSign auth/API). Loud but
-          // fail-open: D-123 already enforced the tab at signing time, and
-          // halting completion on an API blip would strand legitimately
-          // signed contracts (payment never charged, claim never marked).
+          // Verification INFRASTRUCTURE failure (BoldSign auth/API). Loud but
+          // fail-open: the inline sign-type field already enforced the
+          // requirement at signing time, and halting completion on an API
+          // blip would strand legitimately signed contracts (payment never
+          // charged, claim never marked).
           console.error("[D-269] acknowledgment verification errored (proceeding, alerted):", ackErr);
           try {
             await supabase.from("platform_alerts_log").insert({
@@ -578,7 +697,7 @@ serve(async (req) => {
               message:
                 `D-269: could not verify otterquote_acknowledgment for envelope ${envelopeId} ` +
                 `(claim ${claim.id}): ${ackErr instanceof Error ? ackErr.message : String(ackErr)}. ` +
-                `Completion proceeded on D-123 tab-level enforcement; verify the tab manually.`,
+                `Completion proceeded on the field's signing-time requirement; verify manually.`,
             });
           } catch (alertErr) {
             console.error("platform_alerts_log insert failed:", alertErr);
@@ -864,7 +983,7 @@ serve(async (req) => {
             // NO alert — a signed claim stalled silently (the default today: 0/6 contractors
             // have a card). Record a distinct alert + activity_log row so the stall is visible.
             // Both writes are best-effort (own try/catch -> Sentry) so an audit-write failure
-            // cannot itself re-silence the webhook. We still return 200 — no DocuSign retry-storm.
+            // cannot itself re-silence the webhook. We still return 200 — no BoldSign retry-storm.
             try {
               await supabase.from("platform_alerts_log").insert({
                 alert_type: "signed_unbilled_no_method",
@@ -902,7 +1021,7 @@ serve(async (req) => {
             }
 
             // #480: the claim IS marked signed below (signing is a fact) while
-            // platform_fee_charged stays false; return 200 (no DocuSign retry-storm).
+            // platform_fee_charged stays false; return 200 (no BoldSign retry-storm).
             // The distinct state ('no_method' on the quote, when reached) + the alert
             // above keep the unbilled stall visible.
             try {
@@ -939,6 +1058,16 @@ serve(async (req) => {
       } else if (isColorConfirmation) {
         updateData.color_confirmed_at =
           completedDateTime || new Date().toISOString();
+      } else if (isProjectConfirmation) {
+        // [D-274 / #631 — the #421 acceptance-criterion fix] Persist the
+        // completed project_confirmation signature. claims.project_confirmation_signed_at
+        // is new (migration v111) — if it hasn't been applied yet in a given
+        // environment this update will error on the unknown column; caught and
+        // logged below (Object.keys(updateData).length > 0 branch already wraps
+        // the .update() call in error handling that returns 200 regardless, so
+        // this cannot break the webhook response even before the migration lands).
+        updateData.project_confirmation_signed_at =
+          completedDateTime || new Date().toISOString();
       }
     } else if (status === "declined") {
       // A signer declined
@@ -967,7 +1096,7 @@ serve(async (req) => {
 
       if (updateError) {
         console.error(`Failed to update claim ${claim.id}:`, updateError);
-        // Still return 200 to avoid DocuSign retries
+        // Still return 200 to avoid BoldSign retries
       } else {
         console.log(`Updated claim ${claim.id}:`, JSON.stringify(updateData));
       }
@@ -1106,7 +1235,7 @@ serve(async (req) => {
         //   (1) email contractor a platform-fee invoice via Mailgun
         //   (2) write activity_log row 'invoice_created' (UETA Layer 3 evidence)
         // Service-role bearer matches the notify-contractors call pattern above.
-        // Non-fatal on failure — webhook still returns 200 so DocuSign does not retry.
+        // Non-fatal on failure — webhook still returns 200 so BoldSign does not retry.
         // Idempotency: outer guard `if (!claim.contract_signed_at)` already ensures
         // this path runs at most once per envelope completion.
         try {
@@ -1145,6 +1274,17 @@ serve(async (req) => {
               completedDateTime ||
               new Date().toISOString();
 
+            // [D-274 / #631] Operator-token gate — see create-invoice/index.ts's
+            // matching block for the full rationale. This is the ONE call this
+            // build converts off "the credential being a valid JWT"; the other
+            // three service-role-bearer calls in this file (create-payment-intent,
+            // process-dunning, notify-contractors below) are left UNCHANGED and
+            // flagged in the D-274 build report as the same pattern, not yet
+            // converted — scoped this way because the brief named create-invoice
+            // specifically. X-Operator-Token is sent in ADDITION to the
+            // Authorization header (unchanged) so this call keeps working even
+            // before EF_OPERATOR_TOKEN is provisioned in every environment.
+            const operatorToken = Deno.env.get("EF_OPERATOR_TOKEN") || "";
             const invoiceResponse = await fetch(
               `${supabaseUrl}/functions/v1/create-invoice`,
               {
@@ -1152,6 +1292,7 @@ serve(async (req) => {
                 headers: {
                   "Content-Type": "application/json",
                   Authorization: `Bearer ${supabaseKey}`,
+                  ...(operatorToken ? { "X-Operator-Token": operatorToken } : {}),
                 },
                 body: JSON.stringify({
                   quote_id: paidQuote.id,
@@ -1181,7 +1322,10 @@ serve(async (req) => {
       await supabase.from("notifications").insert({
         claim_id: claim.id,
         channel: "webhook",
-        notification_type: `docusign_${status}`,
+        // [D-274 / #631] Renamed from `docusign_${status}` — no other code
+        // path in this repo queries the old prefix (verified via repo-wide
+        // grep before renaming), so this is a safe rename, not a compat break.
+        notification_type: `boldsign_${status}`,
         recipient: recipientEmail || "unknown",
         message_preview: `Envelope ${envelopeId} status: ${status}`,
       });
@@ -1204,7 +1348,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("docusign-webhook error:", error);
 
-    // Always return 200 to prevent DocuSign from retrying on parse errors
+    // Always return 200 to prevent BoldSign from retrying on parse errors
     return new Response(
       JSON.stringify({
         received: true,
