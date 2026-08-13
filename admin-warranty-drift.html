@@ -129,6 +129,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
 <script src="js/auth.js"></script>
 
 <div id="nav-placeholder"></div>
@@ -253,7 +254,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 </div>
 
 <script>
-var sb;
 var _initFired = false;
 var currentFilter = 'pending_review';
 var pendingRejectDriftId = null;
@@ -262,9 +262,6 @@ var pendingApproveEditOptionId = null;
 var currentUserToken = null;
 
 // ── Auth Guard ────────────────────────────────────────────────────────────────
-sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
-
-if (!sb) return;
 sb.auth.onAuthStateChange(async function(event, session) {
   if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
     _initFired = true;
