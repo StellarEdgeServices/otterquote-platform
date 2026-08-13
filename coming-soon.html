@@ -183,6 +183,7 @@
 
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
 <script src="js/nav.js"></script>
 
 <script>
@@ -219,11 +220,6 @@
     // Non-blocking: insert into coming_soon_waitlist
     (function () {
       try {
-        if (typeof sb === 'undefined' || !sb) {
-          // Supabase not ready; surface success silently (form is submitted intent)
-          showSuccess();
-          return;
-        }
         sb.from('coming_soon_waitlist')
           .upsert(
             { email: email, persona: persona, source_page: sourcePage || null },
