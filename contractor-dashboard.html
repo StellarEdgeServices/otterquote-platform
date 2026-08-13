@@ -987,6 +987,7 @@
     <script>window._oq_has_auth_in_url = window.location.hash.includes('access_token') || window.location.search.includes('code=');</script>
     <script src="js/cookie-storage.js"></script>
     <script src="js/config.js"></script>
+    <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
 
@@ -1072,7 +1073,7 @@
 
             if (button) {
                 button.addEventListener('click', async () => {
-                    if (!currentContractor || !checkbox || !checkbox.checked || !sb) return;
+                    if (!currentContractor || !checkbox || !checkbox.checked) return;
 
                     try {
                         const today = new Date().toISOString().split('T')[0];
@@ -1122,7 +1123,7 @@
 
             if (button) {
                 button.addEventListener('click', async () => {
-                    if (!currentContractor || !checkbox || !checkbox.checked || !sb) return;
+                    if (!currentContractor || !checkbox || !checkbox.checked) return;
 
                     button.disabled = true;
                     button.textContent = 'Saving…';
@@ -1629,7 +1630,7 @@
         let activeDunningRecord = null;
 
         async function checkDunningStatus() {
-            if (!currentContractor || !sb) return;
+            if (!currentContractor) return;
 
             try {
                 const { data: failures, error } = await sb
@@ -1663,7 +1664,7 @@
         }
 
         async function retryDunningPayment() {
-            if (!activeDunningRecord || !sb) return;
+            if (!activeDunningRecord) return;
             const btn = document.getElementById('dunningRetryBtn');
             if (btn) { btn.disabled = true; btn.textContent = 'Retrying…'; }
             try {
@@ -1686,7 +1687,6 @@
         // before the PKCE exchange completes on Google OAuth / magic link callbacks.
         document.addEventListener('DOMContentLoaded', () => {
             let _initFired = false;
-            if (!sb) return;
             sb.auth.onAuthStateChange(async (event, session) => {
                 if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
                     // Auth callback landing: skip null INITIAL_SESSION, wait for SIGNED_IN.
@@ -1770,7 +1770,7 @@
 
             // Confirm: POST to mark-job-complete Edge Function
             confirmBtn.addEventListener('click', async () => {
-                if (!pendingClaimId || !sb || !currentUser) return;
+                if (!pendingClaimId || !currentUser) return;
 
                 confirmBtn.disabled = true;
                 confirmBtn.textContent = 'Marking complete…';
@@ -1873,7 +1873,7 @@
                 if (file.type !== 'application/pdf') { showError('Only PDF files are accepted.'); return; }
                 if (file.size > 25 * 1024 * 1024) { showError('File must be under 25 MB.'); return; }
                 if (!quoteId) { showError('Quote ID missing — please refresh and try again.'); return; }
-                if (!sb || !currentUser) { showError('Session expired — please refresh the page.'); return; }
+                if (!currentUser) { showError('Session expired — please refresh the page.'); return; }
 
                 uploadBtn.disabled = true;
                 uploadBtn.textContent = 'Uploading…';
@@ -2164,7 +2164,6 @@
 
   // Start on auth state change
   let initFired = false;
-  if (!sb) return;
   sb.auth.onAuthStateChange((event, session) => {
     if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && !initFired) {
       initFired = true;
@@ -2308,7 +2307,6 @@
   }
 
   let _initFired = false;
-  if (!sb) return;
   sb.auth.onAuthStateChange((event, session) => {
     if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && !_initFired) {
       _initFired = true;
