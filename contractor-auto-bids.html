@@ -585,23 +585,17 @@
   <!-- Config + Auth -->
   <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
   <script>
     // ── Globals ──
-    // sb is declared globally as `var sb` in js/config.js (early-load on gated pages);
-    // assign here rather than redeclare — a `let sb` shadows/collides with the existing
-    // global and throws "Identifier 'sb' has already been declared" (Sentry JAVASCRIPT-W, 86e1m8jcf).
-    sb = null;
     let currentUser = null;
     let contractorRecord = null;
 
     // ── Supabase init ──
     document.addEventListener('DOMContentLoaded', async () => {
-      if (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON) {
-        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // #488: adapter, not default storage
-      }
       await initAutoBids();
     });
 
@@ -801,7 +795,7 @@
       button.textContent = 'Saving...';
       button.disabled = true;
 
-      if (!contractorRecord || !sb) {
+      if (!contractorRecord) {
         button.textContent = 'Error — Not Connected';
         button.style.backgroundColor = '#EF4444';
         button.style.color = '#FFFFFF';

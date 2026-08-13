@@ -11,8 +11,18 @@
  * That guarantee is what lets the old null-checks be deleted rather than
  * consolidated: there is no longer a window where `sb` can be read before
  * it's set.
+ *
+ * Idempotency guard (GitHub #448, gh-448 A3 ruling): if window.sb already
+ * exists, reuse it and skip creating a second client. A second
+ * createClient() call on a page that already has one is the exact class of
+ * race that caused a prior magic-link/OAuth getSession() hang (D-208
+ * sister fix) -- this guard makes that invariant enforceable by code
+ * instead of by a warning comment on individual pages.
  */
 (function () {
+  if (window.sb) {
+    return;
+  }
   var factory = window.supabase && window.supabase.createClient;
   if (!factory || typeof CONFIG === 'undefined' || !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) {
     // Same failure shape as the old per-page guards: leave window.sb unset
