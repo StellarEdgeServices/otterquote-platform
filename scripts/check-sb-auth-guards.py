@@ -10,6 +10,16 @@ nearest 5 non-blank preceding lines. The Supabase JS UMD CDN can fail to load
 fires — without a guard, the `.auth` access throws an uncaught TypeError that
 breaks the page.
 
+Pages migrated to the shared `js/supabase-client.js` init (GitHub #448) are
+exempt from the local-guard requirement: that module runs synchronously
+before any later inline script and is itself responsible for the CDN-failure
+case (gh-448 A3 ruling — it leaves `window.sb` unset on load failure so a
+misconfigured/CDN-down page fails loudly rather than silently). Requiring a
+second, page-local guard on top of that would just reintroduce the duplicated
+per-page pattern gh-448 was migrating away from. A page qualifies for the
+exemption only if the shared-init `<script>` tag appears before the
+onAuthStateChange call in document order — script tags execute in sequence.
+
 This script fails CI on NEW violations. Known pre-existing violations are
 allowlisted by file path only (not line number, to survive unrelated edits) and
 are tracked in a follow-up ClickUp task — see ALLOWLIST_NOTE below.
@@ -24,6 +34,7 @@ import pathlib, re, sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 TRIGGER_RE = re.compile(r"\bsb\.auth\.onAuthStateChange\s*\(")
 GUARD_RE = re.compile(r"if\s*\(\s*!\s*sb\s*\)|if\s*\(\s*sb\s*\)|if\s*\(\s*typeof\s+sb\s*===?\s*['\"]undefined['\"]")
+SHARED_INIT_RE = re.compile(r'<script\s+src\s*=\s*["\']js/supabase-client\.js["\']')
 LOOKBACK = 5
 
 # Files known to have unguarded onAuthStateChange calls as of 2026-05-21.
@@ -38,9 +49,19 @@ ALLOWLIST: set[str] = set()
 def find_unguarded(path: pathlib.Path) -> list[tuple[int, str]]:
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
+
+    shared_init_line = next(
+        (i for i, line in enumerate(lines) if SHARED_INIT_RE.search(line)), None
+    )
+
     violations: list[tuple[int, str]] = []
     for i, line in enumerate(lines):
         if not TRIGGER_RE.search(line):
+            continue
+        if shared_init_line is not None and shared_init_line < i:
+            # Shared js/supabase-client.js init runs before this call in
+            # document order — it owns the CDN-failure case (gh-448 A3
+            # ruling), so a page-local guard is no longer required here.
             continue
         prior_non_blank: list[str] = []
         j = i - 1
