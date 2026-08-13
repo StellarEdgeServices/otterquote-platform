@@ -1,2 +1,1 @@
-test A: — end
-test B: \\u2014 end
+test C: text === '—' end
