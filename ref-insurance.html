@@ -727,7 +727,7 @@
 
         // Found agent — personalize
         document.getElementById('agent-name').textContent = data.first_name || 'Your Agent';
-        document.getElementById('agent-company').textContent = data.company_name || 'Your Insurance Company';
+        document.getElementById('agent-company').textContent = data.company || 'Your Insurance Company';
 
         // Show photo if available
         if (data.photo_url) {

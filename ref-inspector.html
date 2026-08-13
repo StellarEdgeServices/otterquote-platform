@@ -826,8 +826,8 @@ function personalizeHero(agentData) {
 
   html += '<div class="ref-badge-text">';
   html += `<strong>Referred by ${agentData.first_name || 'Your Inspector'}${agentData.last_name ? ' ' + agentData.last_name : ''}</strong>`;
-  if (agentData.company_name) {
-    html += `<span>${agentData.company_name}</span>`;
+  if (agentData.company) {
+    html += `<span>${agentData.company}</span>`;
   }
   html += '</div>';
 

@@ -728,8 +728,8 @@ function personalizeHero(agentData) {
   }
 
   html += `<strong>${agentData.first_name || 'Your Agent'}</strong>`;
-  if (agentData.company_name) {
-    html += `<span>${agentData.company_name}</span>`;
+  if (agentData.company) {
+    html += `<span>${agentData.company}</span>`;
   }
   html += '</div>';
 
