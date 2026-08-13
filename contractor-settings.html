@@ -1686,6 +1686,7 @@
   <!-- Scripts -->
   <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/contract-template-validation.js"></script>
   <script src="js/nav.js"></script>
@@ -1731,7 +1732,7 @@
 
     // Load saved payment methods from contractor_payment_methods table
     async function loadPaymentMethods() {
-      if (!contractorRecord || !sb) return;
+      if (!contractorRecord) return;
       try {
         const { data, error } = await sb
           .from('contractor_payment_methods')
@@ -1809,7 +1810,7 @@
 
     // Set a payment method as default
     window.setDefaultMethod = async function(methodId) {
-      if (!contractorRecord || !sb) return;
+      if (!contractorRecord) return;
       try {
         // Clear all defaults for this contractor
         await sb
@@ -1843,7 +1844,7 @@
 
     // Remove a payment method
     window.removePaymentMethod = async function(methodId) {
-      if (!contractorRecord || !sb) return;
+      if (!contractorRecord) return;
       const method = savedPaymentMethods.find(m => m.id === methodId);
       if (!method) return;
 
@@ -1913,7 +1914,7 @@
       // clicking an Add-payment-method button before initSettings() resolves the contractor
       // fetch throws "Cannot read properties of null (reading 'id')" at the create-setup-intent
       // call below (which is caught and shown to the user as a raw "Setup error: ..." string).
-      if (!contractorRecord || !sb) {
+      if (!contractorRecord) {
         alert('Your account is still loading. Please wait a moment and try again.');
         return;
       }
@@ -1995,7 +1996,7 @@
 
     // Confirm card SetupIntent
     window.confirmCardSetup = async function() {
-      if (!contractorRecord || !sb || !currentClientSecret) {
+      if (!contractorRecord || !currentClientSecret) {
         alert('Error: Payment setup not initialized. Please try again.');
         return;
       }
@@ -2090,7 +2091,7 @@
 
     // Confirm ACH (us_bank_account) SetupIntent
     window.confirmACHSetup = async function() {
-      if (!contractorRecord || !sb || !currentClientSecret) {
+      if (!contractorRecord || !currentClientSecret) {
         alert('Error: Payment setup not initialized. Please try again.');
         return;
       }
@@ -2472,7 +2473,7 @@
                 return;
             }
 
-            if (!contractorRecord || !sb) {
+            if (!contractorRecord) {
                 alert('Not connected to database.');
                 return;
             }
@@ -2603,7 +2604,7 @@
 
         async function saveFieldMappings() {
             if (!fieldMappingCurrentTrade || !fieldMappingCurrentFundingType) return;
-            if (!contractorRecord || !sb) {
+            if (!contractorRecord) {
                 alert('Not connected to database.');
                 return;
             }
@@ -3192,7 +3193,7 @@
       button.textContent = 'Saving...';
       button.disabled = true;
 
-      if (!contractorRecord || !sb) {
+      if (!contractorRecord) {
         button.textContent = 'Error &mdash; Not Connected';
         button.style.backgroundColor = '#EF4444';
         button.style.color = '#FFFFFF';
