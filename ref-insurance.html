@@ -703,7 +703,7 @@
   // ── Read and personalize from URL ──
   async function personalizeFromReferralCode() {
     const params = new URLSearchParams(window.location.search);
-    const ref = params.get('ref');
+    const ref = params.get('ref') || params.get('code');
 
     if (!ref) {
       // No referral code — show generic badge

@@ -1384,6 +1384,14 @@
       const finalCode = agentData?.unique_code;
       const finalLink = `https://otterquote.com/ref.html?code=${finalCode}`;
 
+      // #801: the SEO footer link is bare by default (no code — nothing to
+      // attribute for a first-time visitor). Once we have this partner's own
+      // code, carry it so a copied footer link still attributes correctly.
+      const seoRefLink = document.getElementById('seoRefLink');
+      if (seoRefLink && finalCode) {
+        seoRefLink.href = `/ref-re.html?code=${finalCode}`;
+      }
+
       // Store minimal data for post-auth linking (auth.js handleAuthCallback reads this)
       localStorage.setItem('cs_partner_signup', JSON.stringify({
         email: email,
@@ -1437,6 +1445,6 @@
 </script>
 
 <!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-re.html" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
+<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-re.html" id="seoRefLink" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
 </body>
 </html>
