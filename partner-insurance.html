@@ -1391,7 +1391,7 @@
 
             } catch (error) {
                 console.error('Error submitting application:', error);
-                alert('An error occurred. Please try again: ' + (error.message || 'Unknown error'));
+                alert('An error occurred. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL + ': ' + (error.message || 'Unknown error'));
             }
         });
 
