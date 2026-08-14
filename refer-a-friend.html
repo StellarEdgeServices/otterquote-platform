@@ -872,6 +872,7 @@
 
   <!-- Scripts -->
   <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -1273,7 +1274,7 @@ Best regards`;
     }
 
     async function loadReferrals() {
-      if (!currentUser || !sb) return;
+      if (!currentUser) return;
 
       // Two-step (#567): referrals has no referrer_id column — resolve our own
       // agent row first, then match referrals.referral_agent_id.

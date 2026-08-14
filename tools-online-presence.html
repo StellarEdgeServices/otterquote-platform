@@ -192,6 +192,7 @@
   color: var(--amber);
   font-weight: 700;
 }
+.price-trial { color: var(--amber); font-size: 0.82rem; font-weight: 600; text-align: center; margin: 0 0 var(--sp-3); }
 .btn-full { width: 100%; }
 .pricing-note { text-align: center; color: var(--slate); font-size: 0.85rem; max-width: 620px; margin: 0 auto; line-height: 1.75; }
 
@@ -373,7 +374,8 @@
           <li>Review monitoring + notification + AI-drafted reply for Google &mdash; you post it</li>
           <li>Basic monthly report: GBP views, calls, direction requests, and review trend</li>
         </ul>
-        <button type="button" class="btn btn-secondary btn-full price-cta" data-package="Good ($10/mo)" data-stripe-link="https://buy.stripe.com/5kQ7sD54ocog7T03mdaMU02">Get Started</button>
+        <p class="price-trial">7-day free trial &mdash; cancel anytime</p>
+        <button type="button" class="btn btn-secondary btn-full price-cta" data-package="Good ($10/mo)" data-plan="good">Start free trial</button>
       </div>
 
       <div class="price-card price-card-featured">
@@ -390,7 +392,8 @@
           <li>Directory-listing sync across the core four: Google, Facebook, Apple Maps, and Bing Places</li>
           <li>Facebook posting</li>
         </ul>
-        <button type="button" class="btn btn-primary btn-full price-cta" data-package="Better ($55/mo)" data-stripe-link="https://buy.stripe.com/aFaeV540kcogddk9KBaMU01">Get Started</button>
+        <p class="price-trial">7-day free trial &mdash; cancel anytime</p>
+        <button type="button" class="btn btn-primary btn-full price-cta" data-package="Better ($55/mo)" data-plan="better">Start free trial</button>
       </div>
 
       <div class="price-card">
@@ -406,7 +409,8 @@
           <li>Full aggregator directory sync</li>
           <li>Facebook + Instagram posting</li>
         </ul>
-        <button type="button" class="btn btn-secondary btn-full price-cta" data-package="Best ($125/mo)" data-stripe-link="https://buy.stripe.com/eVqaEP68s2NG6OWbSJaMU00">Get Started</button>
+        <p class="price-trial">7-day free trial &mdash; cancel anytime</p>
+        <button type="button" class="btn btn-secondary btn-full price-cta" data-package="Best ($125/mo)" data-plan="best">Start free trial</button>
       </div>
 
     </div>
@@ -477,6 +481,14 @@
 <script>
 var oqSelectedPackage = '';
 
+// Trusted checkout destinations, resolved by a fixed plan key -- never by trusting
+// a DOM attribute directly (gh-777: CodeQL js/client-side-unvalidated-url-redirection).
+var STRIPE_CHECKOUT_LINKS = {
+  good:   'https://buy.stripe.com/5kQ7sD54ocog7T03mdaMU02',
+  better: 'https://buy.stripe.com/aFaeV540kcogddk9KBaMU01',
+  best:   'https://buy.stripe.com/eVqaEP68s2NG6OWbSJaMU00'
+};
+
 document.addEventListener('DOMContentLoaded', function () {
   var overlay  = document.getElementById('signupOverlay');
   var closeBtn = document.getElementById('signupClose');
@@ -485,7 +497,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.querySelectorAll('.price-cta').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      var stripeLink = btn.getAttribute('data-stripe-link');
+      var stripeLink = STRIPE_CHECKOUT_LINKS[btn.getAttribute('data-plan')];
       if (stripeLink) {
         if (typeof gtag === 'function') {
           gtag('event', 'oqom_checkout_start', { tool: 'online_presence', package: btn.getAttribute('data-package') });

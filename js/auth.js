@@ -440,11 +440,54 @@ window.Auth = {
     const user = await this.getUser();
     if (!user) return;
 
-    // Check for a stored redirect path first
+    const currentFile = window.location.pathname.substring(
+      window.location.pathname.lastIndexOf('/') + 1
+    );
+    const onPartnerPage = currentFile.indexOf('partner-') === 0;
+
+    // gh-817: cs_redirect is saved by requireAuth() on ANY earlier unauthenticated
+    // page hit in this tab's session (e.g. a contractor page Dustin visited before
+    // the partner magic-link login) and this shortcut used to run BEFORE the #783
+    // partner-stay-put guard below — so a stale value could silently bounce a
+    // just-completed partner login to an unrelated page. Reproduces the reported
+    // symptom exactly: partner-dashboard.html renders, then a leftover
+    // cs_redirect='/contractor-dashboard.html' from an earlier same-session
+    // contractor-page visit fires this redirect. Discard the saved value instead
+    // of honoring it once we're on a partner-*.html page, unless the saved target
+    // is itself a partner page (legitimate deep-link-while-logged-out case).
     const savedRedirect = sessionStorage.getItem('cs_redirect');
     if (savedRedirect) {
       sessionStorage.removeItem('cs_redirect');
-      window.location.href = savedRedirect;
+      const savedFile = savedRedirect.substring(savedRedirect.lastIndexOf('/') + 1);
+      const staleCrossSurface = onPartnerPage && savedFile.indexOf('partner-') !== 0;
+      if (staleCrossSurface) {
+        console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — already on partner surface (' + currentFile + ')');
+      } else {
+        window.location.href = savedRedirect;
+        return;
+      }
+    }
+
+    // #643: never override the partner surface with role-based routing.
+    // The two destinations below (contractor-dashboard.html, or the
+    // homeowner dashboard.html/trade-selector.html pair) are the ONLY
+    // targets this function knows — it has no partner branch. sendMagicLink()
+    // already sent partner roles to /partner-dashboard.html via
+    // emailRedirectTo, which IS the explicit "which app" signal; this
+    // function used to discard that signal and re-derive a destination from
+    // getRole() alone. getRole() is contractor-table-first, so any dual-role
+    // account (contractor record + referral_agents record — e.g.
+    // dustinstohler1@gmail.com) was bounced straight to
+    // contractor-dashboard.html on first sign-in, and a partner-ONLY account
+    // (no contractor record) was bounced to trade-selector.html/dashboard.html
+    // instead — both wrong, because partner-dashboard.html was never a
+    // candidate. handleAuthCallback() (invoked from the SIGNED_IN listener
+    // partner-dashboard.html wires via onAuthStateChangeListener()) called
+    // straight into this function, which is what fired the bounce
+    // immediately after the magic-link redemption landed on the partner
+    // dashboard. Staying put when already on a partner-*.html page fixes
+    // both cases without touching contractor/homeowner routing.
+    if (onPartnerPage) {
       return;
     }
 

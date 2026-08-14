@@ -234,6 +234,13 @@
   // Already signed in? Send them to the dashboard — but never if they just
   // bounced FROM it, which would be the dashboard <-> login flip pattern
   // (same loop guard as contractor-login.html, May 4 2026).
+  //
+  // gh-737: deliberately NO ?stay=1 escape here, unlike the 6 other
+  // redirecting partner pages. Those are marketing/signup pages a signed-in
+  // partner might legitimately want to revisit (checking referral copy, QA).
+  // This is a bare magic-link form with no content of its own — there is no
+  // reason for a signed-in user to want to stay on it instead of going to
+  // their dashboard. Decision: intentional exception, not drift.
   Auth.getUser().then(user => {
     if (!user) return;
     const cameFromDashboard = (document.referrer || '').includes('/partner-dashboard.html');
