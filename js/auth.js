@@ -91,6 +91,16 @@ function _isPartnerSurfaceFile(pathname) {
   return PARTNER_SURFACE_FILE_RE.test(file);
 }
 
+/**
+ * gh-851: single source of truth for the partner agent_type values, mirroring
+ * the gh-807 fix for _isPartnerSurfaceFile() above. Previously redeclared
+ * identically at three call sites in this file (sendMagicLink, requireAuth,
+ * and now redirectToDashboard) plus once more in index.html's standalone
+ * bounce script (which cannot reference this file — it runs before any
+ * script tag, including this one, loads).
+ */
+var PARTNER_ROLES = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+
 window.Auth = {
   /** Get current session - robust race-free implementation.
    *
@@ -247,7 +257,6 @@ window.Auth = {
     // Redirect URL depends on role — auth callback page handles final routing.
     // New users go to trade-selector (intake). Returning users should pass
     // redirectTo='/dashboard.html' to bypass the intake flow.
-    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
     // D-225 fix May 13: new contractors must land on /contractor-pre-approval.html,
     // not /contractor-dashboard.html. The pre-approval page reads cs_contractor_signup
     // from localStorage, creates the contractors row, and routes returning/active
@@ -255,7 +264,7 @@ window.Auth = {
     // caused a bounce loop (dashboard requireAuth -> no record -> bounce back).
     const defaultRedirectPage = role === 'contractor'
       ? '/contractor-pre-approval.html'
-      : partnerRoles.includes(role)
+      : PARTNER_ROLES.includes(role)
         ? '/partner-dashboard.html'
         : '/auth-callback.html';
     const redirectPage = redirectTo || defaultRedirectPage;
@@ -382,10 +391,9 @@ window.Auth = {
         // requiredRole on a partner-*.html page (partner-dashboard.html
         // calls requireAuth() with no argument), so this branch is
         // defense-in-depth for any page that gains a role check later.
-        const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
         if (role === 'contractor') {
           window.location.href = '/contractor-dashboard.html';
-        } else if (partnerRoles.includes(role)) {
+        } else if (PARTNER_ROLES.includes(role)) {
           window.location.href = '/partner-dashboard.html';
         } else {
           window.location.href = '/dashboard.html';
@@ -556,6 +564,14 @@ window.Auth = {
     const role = await this.getRole();
     if (role === 'contractor') {
       window.location.href = '/contractor-dashboard.html';
+    } else if (PARTNER_ROLES.includes(role)) {
+      // gh-851: this function had no partner branch at all -- every partner
+      // agent_type fell into the homeowner-intake else below. Saved today
+      // only by the onPartnerPage early-return above; a live gap for any
+      // partner who reaches this function off a non-partner page. Not a
+      // #842 regression -- pre-#842 a partner resolved to 'homeowner' via
+      // getRole() and hit this same branch.
+      window.location.href = '/partner-dashboard.html';
     } else {
       // Check if homeowner already has a claim in Supabase — if so, skip trade selector
       try {
