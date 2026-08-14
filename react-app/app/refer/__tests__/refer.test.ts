@@ -218,7 +218,7 @@ describe('verbatim Tier-3 tax/legal copy', () => {
   });
   it('D-180 commission-approval disclosure', () => {
     expect(COMMISSION_APPROVAL_DISCLOSURE).toBe(
-      "Commission payments are subject to Otter Quotes' approval process and are typically completed within five business days of the qualifying job event.",
+      "Commission payments are subject to Otter Quotes' approval process and are paid after the qualifying job is complete and the payout has been approved.",
     );
   });
   it('D-172 W-9 banner copy', () => {
