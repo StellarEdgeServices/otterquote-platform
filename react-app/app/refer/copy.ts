@@ -130,8 +130,12 @@ export const TAX_NOTICE = {
 } as const;
 
 // ── D-180 Commission Approval Disclosure — ⚠️ Tier-3 VERBATIM ──
+// No stated timeline (gh-850 Survivor A, struck 2026-08-14 per Dustin's ~09:00 ET GO,
+// "strike the payout timing everywhere") — matches the formulation already live on
+// partner-re.html/partner-insurance.html/partner-inspectors.html (PR #812) and
+// partner-agreement.html §4.2: paid after completion and approval, no interval promised.
 export const COMMISSION_APPROVAL_DISCLOSURE =
-  "Commission payments are subject to Otter Quotes' approval process and are typically completed within five business days of the qualifying job event.";
+  "Commission payments are subject to Otter Quotes' approval process and are paid after the qualifying job is complete and the payout has been approved.";
 
 // ── D-172 W-9 banner — ⚠️ Tier-3 VERBATIM ──
 export const W9_BANNER = {

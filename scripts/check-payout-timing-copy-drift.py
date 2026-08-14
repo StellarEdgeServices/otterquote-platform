@@ -32,9 +32,13 @@ being a blunt instrument:
    behavior (process-payout-reminders' reminder/auto-approve thresholds --
    these describe what the code does, they are not promises made to a
    partner). Each entry states which category and why. Anything not on
-   the allowlist fails -- including known, tracked, not-yet-fixed debt
-   (react-app/app/refer/copy.ts's Tier-3 D-180 disclosure, gh-850 Survivor
-   A) so it stays visible instead of silently passing.
+   the allowlist fails.
+
+   gh-850 Survivor A (react-app/app/refer/copy.ts's Tier-3 D-180
+   disclosure) was carried here as known, tracked debt until Dustin's
+   ~09:00 ET 2026-08-14 GO to strike payout timing everywhere -- fixed the
+   same session (code-lane item 5), allowlist entry removed since the
+   duration claim no longer exists in the string.
 
 Exit codes:
   0 -- no unallowlisted commission/payout duration claims found
@@ -102,21 +106,6 @@ ALLOWLIST = [
         "Pending — typically 5 days",
         "approval-step timing",
         "Test pin of the copy.ts label string above.",
-    ),
-    (
-        "react-app/app/refer/copy.ts",
-        "typically completed within five business days of the qualifying job event",
-        "KNOWN DEBT -- gh-850 Survivor A",
-        "Tier-3 D-180 verbatim copy, pinned in refer.test.ts. Rewording "
-        "requires Dustin's decision (rides the Partner Referral Agreement "
-        "counsel review, #766) -- explicitly BLOCKED, not silently ignored. "
-        "Remove this entry the same PR that resolves #850's Survivor A.",
-    ),
-    (
-        "react-app/app/refer/__tests__/refer.test.ts",
-        "typically completed within five business days of the qualifying job event",
-        "KNOWN DEBT -- gh-850 Survivor A",
-        "Test pin of the copy.ts string above. Same block on editing.",
     ),
     (
         "supabase/functions/process-payout-reminders/index.ts",
