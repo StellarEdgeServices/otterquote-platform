@@ -32,6 +32,15 @@ jobs:
       - name: cookie-storage.js/config.js load-order check (Stage 5 prevention, #601)
         run: python3 scripts/check-script-load-order.py
 
+      - name: partner-sw.js VERSION-bump check (gh-831)
+        run: python3 scripts/check-partner-sw-version.py
+
+      - name: partner-surface single-source-of-truth check (gh-807)
+        run: python3 scripts/check-partner-surface-single-source.py
+
+      - name: payout-timing copy drift check (gh-832)
+        run: python3 scripts/check-payout-timing-copy-drift.py
+
       - name: Lint vanilla JS for syntax errors
         run: |
           echo "Running node --check on js/**/*.js ..."
@@ -68,6 +77,15 @@ jobs:
 
       - name: auth.js stale-session no-hang unit test (#602 regression)
         run: node tests/auth-stale-session-no-hang.mjs
+
+      - name: auth.js partner-role-resolution unit test (#817/#643 regression)
+        run: node tests/auth-partner-role-resolution.mjs
+
+      - name: index.html bounce routing-outcome unit test (#817 A1b regression)
+        run: node tests/auth-index-bounce-routing.mjs
+
+      - name: auth.js partner-surface single-source-of-truth unit test (#807 regression)
+        run: node tests/auth-partner-surface-single-source.mjs
 
       - name: Install E2E test dependencies
         working-directory: tests/e2e

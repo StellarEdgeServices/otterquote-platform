@@ -707,7 +707,7 @@
         Know another adjuster who'd benefit? Share your recruit link and earn $50 every time their referral completes a job over $10K. One level — simple, transparent, no MLM.
       </p>
       <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">A completed IRS Form W-9 is required before your first commission payment is issued.</p>
-      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">Commissions are paid after job completion and approval — typically within 14 days of completion.</p>
+      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">Commissions are paid after job completion and approval.</p>
     </div>
   </section>
 
@@ -907,7 +907,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          Commissions are paid after job completion and approval — typically within 14 days of completion. A job "completes" when the contractor finishes the work and the final payment clears. If someone you recruited to Otter Quotes sends a referral that completes, you also earn a $50 recruit bonus — paid on the same schedule.
+          Commissions are paid after job completion and approval. A job "completes" when the contractor finishes the work and the final payment clears. If someone you recruited to Otter Quotes sends a referral that completes, you also earn a $50 recruit bonus — paid on the same schedule.
         </div>
       </div>
 
@@ -990,10 +990,41 @@
 // and consumed by handleSignup() when the user submits the form.
 let recruitContext = { recruitCode: null, recruiterId: null };
 
+// gh-846: UTM context populated by captureUtmContext() and consumed by
+// handleSignup(). Persisted to localStorage so it survives a page bounce
+// mid signup — same pattern as cs_recruit_code above.
+let utmContext = { source: null, medium: null, campaign: null, content: null };
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('partnerForm').addEventListener('submit', handleSignup);
   detectRecruitCode();
+  captureUtmContext();
 });
+
+/**
+ * Capture utm_source/medium/campaign/content from the URL on first landing
+ * and persist them so they survive a bounce before the form is submitted.
+ * Falls back to a previously-stored value when this load has no UTM params
+ * of its own, so a later page in the flow doesn't clobber an earlier capture.
+ */
+function captureUtmContext() {
+  const params = new URLSearchParams(window.location.search);
+  const fresh = {
+    source:   params.get('utm_source'),
+    medium:   params.get('utm_medium'),
+    campaign: params.get('utm_campaign'),
+    content:  params.get('utm_content'),
+  };
+  if (fresh.source || fresh.medium || fresh.campaign || fresh.content) {
+    utmContext = fresh;
+    localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
+    return;
+  }
+  try {
+    const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+    if (stored) utmContext = stored;
+  } catch (e) { /* malformed stored value — ignore, keep default */ }
+}
 
 // #632: signed-in partners land straight on their dashboard instead of
 // re-seeing the signup form - same loop-guard shape as partner-login.html.
@@ -1096,6 +1127,10 @@ async function handleSignup(e) {
         p_referred_by_note: referredBy || null,
         p_recruit_code:     recruitContext.recruitCode || null,
         p_metadata:         { adjuster_type: adjusterType || null },
+        p_utm_source:       utmContext.source   || null,
+        p_utm_medium:       utmContext.medium   || null,
+        p_utm_campaign:     utmContext.campaign || null,
+        p_utm_content:      utmContext.content  || null,
       });
 
     if (error) {
@@ -1131,6 +1166,7 @@ async function handleSignup(e) {
     // Recruit code has now been consumed — clear it so a future signup on
     // this device doesn't accidentally attribute to the same recruiter.
     localStorage.removeItem('cs_recruit_code');
+    localStorage.removeItem('cs_utm_context');
 
     // Send magic link so partner can access their dashboard.
     // 'adjuster' is not in auth.js's hardcoded partnerRoles allowlist, so the
@@ -1148,11 +1184,16 @@ async function handleSignup(e) {
     // Populate templates
     populateTemplates(refLink, fullName, employer);
 
-    // GA4 conversion event — partner funnel
+    // GA4 conversion event — partner funnel. gh-846: previously read
+    // utm_source inline from the current URL (lost on a page bounce) and
+    // always dropped utm_content. Now sourced from the persisted utmContext.
     if (typeof gtag === 'function') {
       gtag('event', 'partner_signup', {
         partner_type: 'adjuster',
-        source: new URLSearchParams(location.search).get('utm_source') || 'direct',
+        source:   utmContext.source   || 'direct',
+        medium:   utmContext.medium   || undefined,
+        campaign: utmContext.campaign || undefined,
+        content:  utmContext.content  || undefined,
       });
     }
 

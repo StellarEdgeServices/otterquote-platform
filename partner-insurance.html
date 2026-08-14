@@ -947,7 +947,7 @@
                         <div class="feature-icon">✓</div>
                         <div>
                             <h4>Co-Branded Guide</h4>
-                            <p>"What to Do After Storm Damage" guide for policyholders.</p>
+                            <p>"What to Do After Storm Damage" guide for policyholders. <a href="/assets/partner-onepager-insurance.html" target="_blank" rel="noopener">View / print the guide &rarr;</a></p>
                         </div>
                     </div>
                     <div class="feature-item">
@@ -1206,6 +1206,37 @@
         // Recruit context populated by detectRecruitCode() and consumed on submit.
         let recruitContext = { recruitCode: null, recruiterId: null };
 
+        // gh-846: UTM context populated by captureUtmContext() and consumed
+        // on submit. Persisted to localStorage so it survives a page bounce
+        // mid signup — same pattern as cs_recruit_code above.
+        let utmContext = { source: null, medium: null, campaign: null, content: null };
+
+        /**
+         * Capture utm_source/medium/campaign/content from the URL on first
+         * landing and persist them so they survive a bounce before the form
+         * is submitted. Falls back to a previously-stored value when this
+         * load has no UTM params of its own, so a later page in the flow
+         * doesn't clobber an earlier capture.
+         */
+        function captureUtmContext() {
+            const params = new URLSearchParams(window.location.search);
+            const fresh = {
+                source:   params.get('utm_source'),
+                medium:   params.get('utm_medium'),
+                campaign: params.get('utm_campaign'),
+                content:  params.get('utm_content'),
+            };
+            if (fresh.source || fresh.medium || fresh.campaign || fresh.content) {
+                utmContext = fresh;
+                localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
+                return;
+            }
+            try {
+                const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+                if (stored) utmContext = stored;
+            } catch (e) { /* malformed stored value — ignore, keep default */ }
+        }
+
         /**
          * Detect whether this visitor arrived via a recruit link.
          * Checks localStorage (set by recruit.html) first, then falls back to
@@ -1253,6 +1284,7 @@
 
         // Kick off recruit detection on load
         detectRecruitCode();
+        captureUtmContext();
 
         // #632: signed-in partners land straight on their dashboard instead of
         // re-seeing the signup form - same loop-guard shape as partner-login.html.
@@ -1302,10 +1334,13 @@
                     document.getElementById('insuranceAgentForm').style.display = 'none';
                     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-                    // GA4 conversion event — partner funnel
+                    // GA4 conversion event — partner funnel (demo mode)
                     gtag('event', 'partner_signup', {
                         partner_type: 'insurance_agent',
-                        source: new URLSearchParams(location.search).get('utm_source') || 'direct',
+                        source:   utmContext.source   || 'direct',
+                        medium:   utmContext.medium   || undefined,
+                        campaign: utmContext.campaign || undefined,
+                        content:  utmContext.content  || undefined,
                     });
                     return;
                 }
@@ -1335,6 +1370,10 @@
                         p_referred_by_note: data.referredBy,
                         p_recruit_code:     recruitContext.recruitCode || null,
                         p_metadata:         { license_number: data.licenseNumber || null },
+                        p_utm_source:       utmContext.source   || null,
+                        p_utm_medium:       utmContext.medium   || null,
+                        p_utm_campaign:     utmContext.campaign || null,
+                        p_utm_content:      utmContext.content  || null,
                     });
 
                 if (agentError) {
@@ -1369,6 +1408,7 @@
                 // Recruit code consumed — clear so a future signup on this
                 // device doesn't accidentally attribute to the same recruiter.
                 localStorage.removeItem('cs_recruit_code');
+                localStorage.removeItem('cs_utm_context');
 
                 // 4. Send magic link → redirects to partner-dashboard.html
                 await Auth.sendMagicLink(data.email, 'insurance_agent');
@@ -1382,10 +1422,17 @@
                 document.getElementById('insuranceAgentForm').style.display = 'none';
                 window.scrollTo({ top: 0, behavior: 'smooth' });
 
-                // GA4 conversion event — partner funnel
+                // GA4 conversion event — partner funnel. gh-846: previously
+                // read utm_source inline from the current URL (lost on a
+                // page bounce) and always dropped utm_content. Now sourced
+                // from the persisted utmContext, same data that just went
+                // into register_partner().
                 gtag('event', 'partner_signup', {
                     partner_type: 'insurance_agent',
-                    source: new URLSearchParams(location.search).get('utm_source') || 'direct',
+                    source:   utmContext.source   || 'direct',
+                    medium:   utmContext.medium   || undefined,
+                    campaign: utmContext.campaign || undefined,
+                    content:  utmContext.content  || undefined,
                 });
 
             } catch (error) {

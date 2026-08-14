@@ -104,7 +104,7 @@ export const FAQ_HEADING = 'Frequently Asked Questions';
 export const FAQ = [
   {
     q: 'When do I get paid?',
-    a: "You'll receive payment within 14 days after the referred job is completed and the homeowner's contractor has been paid. We'll send payment via bank transfer or check, whichever you prefer.",
+    a: "You'll receive payment after the referred job is completed and the homeowner's contractor has been paid. We'll send payment via bank transfer or check, whichever you prefer.",
   },
   {
     q: 'Is there a limit to how many people I can refer?',
