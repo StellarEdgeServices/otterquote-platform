@@ -891,16 +891,16 @@ Let me know if you have any questions!
                 </div>
             </div>
 
-            <!-- Download One-Pager -->
+            <!-- One-Pager (gh-847: no PDF exists — these are print-ready HTML pages) -->
             <div class="action-card">
-                <h3 class="action-card-title">📄 Download One-Pager</h3>
+                <h3 class="action-card-title">📄 One-Pager</h3>
                 <div class="onepager-preview">
                     <div class="onepager-icon">📋</div>
-                    <div class="onepager-text">Partner Marketing Material<br><br>Share with your network</div>
+                    <div class="onepager-text" id="onepagerText">Partner Marketing Material<br><br>Share with your network</div>
                 </div>
 
                 <div class="btn-group">
-                    <a href="#" class="btn" id="downloadPdfBtn">Download PDF</a>
+                    <a href="#" class="btn" id="downloadPdfBtn" target="_blank" rel="noopener">View / Print One-Pager</a>
                 </div>
             </div>
         </div>
@@ -1165,6 +1165,31 @@ Let me know if you have any questions!
                 recruitLinkEl.textContent = 'Your recruit link is being generated. Refresh the page in a moment.';
                 copyRecruitBtn.disabled = true;
                 copyRecruitBtn.style.opacity = '0.5';
+            }
+
+            // One-pager (gh-847): only re_agent and insurance_agent have a built asset today.
+            // No PDF exists — these are print-ready HTML pages with their own print button.
+            const ONEPAGER_BY_TYPE = {
+                're_agent': '/assets/partner-onepager-re.html',
+                'insurance_agent': '/assets/partner-onepager-insurance.html'
+            };
+            const onepagerBtn = document.getElementById('downloadPdfBtn');
+            const onepagerText = document.getElementById('onepagerText');
+            const onepagerUrl = ONEPAGER_BY_TYPE[partnerType];
+            if (onepagerUrl) {
+                onepagerBtn.href = onepagerUrl;
+                onepagerBtn.textContent = 'View / Print One-Pager';
+                onepagerBtn.removeAttribute('aria-disabled');
+                onepagerBtn.style.opacity = '';
+                onepagerBtn.style.pointerEvents = '';
+                onepagerText.innerHTML = 'Partner Marketing Material<br><br>Share with your network';
+            } else {
+                onepagerBtn.href = '#';
+                onepagerBtn.textContent = 'Not Yet Available';
+                onepagerBtn.setAttribute('aria-disabled', 'true');
+                onepagerBtn.style.opacity = '0.5';
+                onepagerBtn.style.pointerEvents = 'none';
+                onepagerText.innerHTML = 'A one-pager for your partner type isn\'t built yet.<br><br>Check back soon.';
             }
 
             // Populate profile form (combined name field — split for display)
