@@ -635,7 +635,6 @@
       <div class="form-submit">
         <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">Get Started &mdash; It's Free</button>
         <span class="form-hint" style="display:block; text-align:center;">We'll send you a secure login link. No password needed.</span>
-        <span class="form-hint referral-fee-disclaimer" style="display:block; text-align:center;">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</span>
       </div>
 
       <!-- Hidden fields -->
@@ -679,7 +678,6 @@
 
 <footer id="site-footer"></footer>
 
-<script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 
@@ -719,7 +717,11 @@
       const { data, error } = await sb
         .rpc('get_referral_agents_public')
         .select('*')
-        .eq('referral_code', ref)
+        // gh-815: referral_agents has no referral_code column, only
+        // unique_code — matches ref-re.html / ref-inspector.html. The
+        // wrong column name made this PostgREST call 400 silently
+        // (swallowed by this try/catch), so the badge never rendered.
+        .eq('unique_code', ref)
         .single();
 
       if (!error && data) {
