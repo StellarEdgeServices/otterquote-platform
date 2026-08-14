@@ -1875,6 +1875,18 @@ Let me know if you have any questions!`;
 
             // Service worker (partner surface only)
             if ('serviceWorker' in navigator) {
+                // gh-831: without this, the FIRST reopen after a new worker
+                // activates still runs under the old controller -- the page's
+                // initial fetch of js/auth.js/nav.js races registration and
+                // wins, so a stale auth-critical asset can still be served
+                // once per install. Reload exactly once when a new worker
+                // takes control so that reopen always ends up on the fresh one.
+                var swRefreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', function () {
+                    if (swRefreshing) return;
+                    swRefreshing = true;
+                    window.location.reload();
+                });
                 window.addEventListener('load', function () {
                     navigator.serviceWorker.register('/partner-sw.js').catch(function () { /* non-fatal */ });
                 });
