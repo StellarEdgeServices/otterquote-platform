@@ -69,6 +69,9 @@ jobs:
       - name: auth.js stale-session no-hang unit test (#602 regression)
         run: node tests/auth-stale-session-no-hang.mjs
 
+      - name: auth.js partner-role-resolution unit test (#817/#643 regression)
+        run: node tests/auth-partner-role-resolution.mjs
+
       - name: Install E2E test dependencies
         working-directory: tests/e2e
         run: npm ci
