@@ -81,6 +81,9 @@ jobs:
       - name: auth.js partner-role-resolution unit test (#817/#643 regression)
         run: node tests/auth-partner-role-resolution.mjs
 
+      - name: index.html bounce routing-outcome unit test (#817 A1b regression)
+        run: node tests/auth-index-bounce-routing.mjs
+
       - name: auth.js partner-surface single-source-of-truth unit test (#807 regression)
         run: node tests/auth-partner-surface-single-source.mjs
 
