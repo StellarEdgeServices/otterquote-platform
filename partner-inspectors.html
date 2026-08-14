@@ -929,7 +929,6 @@
 <!-- ── Footer ── -->
 <footer class="footer" id="site-footer"></footer>
 
-<script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 
@@ -1074,6 +1073,14 @@ async function handleSignup(e) {
     const refLink = `${CONFIG.SITE_URL}/ref.html?code=${finalCode}`;
     const fullName = `${firstName} ${lastName}`;
 
+    // #801: the SEO footer link is bare by default (no code — nothing to
+    // attribute for a first-time visitor). Once we have this partner's own
+    // code, carry it so a copied footer link still attributes correctly.
+    const seoRefLink = document.getElementById('seoRefLink');
+    if (seoRefLink && finalCode) {
+      seoRefLink.href = `${CONFIG.SITE_URL}/ref-inspector.html?code=${finalCode}`;
+    }
+
     // Store data for post-auth user_id linking
     localStorage.setItem('cs_partner_signup', JSON.stringify({
       email: email,
@@ -1184,6 +1191,6 @@ function toggleFaq(btn) {
     </script>
 
 <!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-inspector.html" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
+<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-inspector.html" id="seoRefLink" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
 </body>
 </html>

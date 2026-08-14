@@ -440,12 +440,32 @@ window.Auth = {
     const user = await this.getUser();
     if (!user) return;
 
-    // Check for a stored redirect path first
+    const currentFile = window.location.pathname.substring(
+      window.location.pathname.lastIndexOf('/') + 1
+    );
+    const onPartnerPage = currentFile.indexOf('partner-') === 0;
+
+    // gh-817: cs_redirect is saved by requireAuth() on ANY earlier unauthenticated
+    // page hit in this tab's session (e.g. a contractor page Dustin visited before
+    // the partner magic-link login) and this shortcut used to run BEFORE the #783
+    // partner-stay-put guard below — so a stale value could silently bounce a
+    // just-completed partner login to an unrelated page. Reproduces the reported
+    // symptom exactly: partner-dashboard.html renders, then a leftover
+    // cs_redirect='/contractor-dashboard.html' from an earlier same-session
+    // contractor-page visit fires this redirect. Discard the saved value instead
+    // of honoring it once we're on a partner-*.html page, unless the saved target
+    // is itself a partner page (legitimate deep-link-while-logged-out case).
     const savedRedirect = sessionStorage.getItem('cs_redirect');
     if (savedRedirect) {
       sessionStorage.removeItem('cs_redirect');
-      window.location.href = savedRedirect;
-      return;
+      const savedFile = savedRedirect.substring(savedRedirect.lastIndexOf('/') + 1);
+      const staleCrossSurface = onPartnerPage && savedFile.indexOf('partner-') !== 0;
+      if (staleCrossSurface) {
+        console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — already on partner surface (' + currentFile + ')');
+      } else {
+        window.location.href = savedRedirect;
+        return;
+      }
     }
 
     // #643: never override the partner surface with role-based routing.
@@ -467,10 +487,7 @@ window.Auth = {
     // immediately after the magic-link redemption landed on the partner
     // dashboard. Staying put when already on a partner-*.html page fixes
     // both cases without touching contractor/homeowner routing.
-    const currentFile = window.location.pathname.substring(
-      window.location.pathname.lastIndexOf('/') + 1
-    );
-    if (currentFile.indexOf('partner-') === 0) {
+    if (onPartnerPage) {
       return;
     }
 
