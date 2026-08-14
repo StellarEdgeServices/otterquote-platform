@@ -1005,7 +1005,7 @@ async function detectRecruitCode() {
   try {
     // Public read allowed by existing RLS on referral_agents, via the public view
     const { data: recruiter, error } = await sb
-      .from('referral_agents_public')
+      .rpc('get_referral_agents_public')
       .select('id, first_name, last_name, company')
       .eq('recruit_code', recruitCode)
       .eq('status', 'active')

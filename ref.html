@@ -126,6 +126,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
 
     <script>
         /**
@@ -151,16 +152,9 @@
                     return;
                 }
 
-                // 2. Make sure global Supabase client is ready
-                if (!sb) {
-                    console.error('Supabase client not initialized');
-                    showError();
-                    return;
-                }
-
                 // 3. Look up the agent by unique_code (public read policy allows this)
                 const { data: agent, error: agentError } = await sb
-                    .from('referral_agents_public')
+                    .rpc('get_referral_agents_public')
                     .select('id, agent_type, first_name, last_name, company, photo_url, status')
                     .eq('unique_code', code)
                     .eq('status', 'active')

@@ -77,38 +77,90 @@ test.beforeAll(async () => {
   }
   bUserId = existingB!.id;
 
-  // Reset B's contractor row to a clean pre-approval state (onboarding_step=1).
-  // This ensures B lands on step 2 (documents) when loading the pre-approval page.
+  // Reset B's contractor row to a clean pre-approval state (onboarding_step=1),
+  // then re-create it. Everything from the insert onward is wrapped in a
+  // try/catch: if a later step in this hook throws (e.g. the storage
+  // pre-clean below), we still delete the row we just inserted before
+  // re-throwing. Without this, a mid-hook failure can leave an orphaned
+  // contractor row in production with no guarantee afterAll ever runs to
+  // clean it up (int-e2e-test-pollution / #689: this exact row — "Test COI
+  // Identity Co (E2E)" — was found live in prod with no is_test flag and no
+  // owner, ~9.5h after creation).
   await admin.from('contractors').delete().eq('user_id', bUserId);
-  const { error: insertErr } = await admin.from('contractors').insert({
-    user_id: bUserId,
-    email: B_EMAIL,
-    company_name: 'Test COI Identity Co (E2E)',
-    contact_name: 'Test B Contractor',
-    status: 'pending_approval',
-    onboarding_step: 1,
-    agreement_accepted_at: new Date().toISOString(),
-    agreement_version: 'v1-2026-04',
-  });
-  if (insertErr) throw new Error(`B contractor insert failed: ${insertErr.message}`);
+  try {
+    const { error: insertErr } = await admin.from('contractors').insert({
+      user_id: bUserId,
+      email: B_EMAIL,
+      company_name: 'Test COI Identity Co (E2E)',
+      contact_name: 'Test B Contractor',
+      status: 'pending_approval',
+      is_test: true, // #689: harness must stamp every row it creates, contractors included
+      onboarding_step: 1,
+      agreement_accepted_at: new Date().toISOString(),
+      agreement_version: 'v1-2026-04',
+    });
+    if (insertErr) throw new Error(`B contractor insert failed: ${insertErr.message}`);
 
-  // Pre-clean storage probe objects from prior runs
-  await admin.storage.from(BUCKET).remove([
-    `${bUserId}/${PROBE_FILENAME}`,
-    `${state.contractorUserId}/${PROBE_FILENAME}`,
-  ]);
+    // Pre-clean storage probe objects from prior runs
+    const { error: preCleanErr } = await admin.storage.from(BUCKET).remove([
+      `${bUserId}/${PROBE_FILENAME}`,
+      `${state.contractorUserId}/${PROBE_FILENAME}`,
+    ]);
+    if (preCleanErr) {
+      console.warn(`  ⚠️  Storage pre-clean warning: ${preCleanErr.message}`);
+    }
+  } catch (err) {
+    const { error: cleanupErr } = await admin.from('contractors').delete().eq('user_id', bUserId);
+    if (cleanupErr) {
+      console.error(
+        `  ❌ beforeAll failed AND orphan cleanup of B's contractor row also failed: ${cleanupErr.message}`
+      );
+    } else {
+      console.error(`  beforeAll failed after B's contractor row was created — row was cleaned up.`);
+    }
+    throw err;
+  }
 });
 
 test.afterAll(async () => {
+  if (!bUserId) {
+    console.log('  No B user id — beforeAll never reached user creation, nothing to tear down.');
+    return;
+  }
   const admin = createAdminClient();
-  // Storage cleanup
-  await admin.storage.from(BUCKET).remove([
+  let hadFailure = false;
+
+  // Storage cleanup — best-effort; log rather than swallow
+  const { error: storageErr } = await admin.storage.from(BUCKET).remove([
     `${bUserId}/${PROBE_FILENAME}`,
     `${state.contractorUserId}/${PROBE_FILENAME}`,
   ]);
-  // DB cleanup — contractor row then auth user (order matters for FK)
-  await admin.from('contractors').delete().eq('user_id', bUserId);
-  await admin.auth.admin.deleteUser(bUserId);
+  if (storageErr) {
+    console.warn(`  ⚠️  Storage cleanup warning: ${storageErr.message}`);
+  }
+
+  // DB cleanup — contractor row then auth user (order matters for FK).
+  // A failed cleanup must surface, not be silently swallowed — the exact
+  // failure mode that let #689's contractor pollution go unnoticed
+  // (PR #695 precedent).
+  const { error: contractorErr } = await admin.from('contractors').delete().eq('user_id', bUserId);
+  if (contractorErr) {
+    console.error(`  ❌ B contractor cleanup failed: ${contractorErr.message}`);
+    hadFailure = true;
+  }
+
+  const { error: userErr } = await admin.auth.admin.deleteUser(bUserId);
+  if (userErr) {
+    console.error(`  ❌ B auth user cleanup failed: ${userErr.message}`);
+    hadFailure = true;
+  }
+
+  if (hadFailure) {
+    throw new Error(
+      'COI-identity afterAll cleanup failed — see errors above. A silent, incomplete ' +
+        'cleanup is what let contractor rows accumulate in production (#689).'
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------

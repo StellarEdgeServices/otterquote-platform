@@ -448,6 +448,32 @@ window.Auth = {
       return;
     }
 
+    // #643: never override the partner surface with role-based routing.
+    // The two destinations below (contractor-dashboard.html, or the
+    // homeowner dashboard.html/trade-selector.html pair) are the ONLY
+    // targets this function knows — it has no partner branch. sendMagicLink()
+    // already sent partner roles to /partner-dashboard.html via
+    // emailRedirectTo, which IS the explicit "which app" signal; this
+    // function used to discard that signal and re-derive a destination from
+    // getRole() alone. getRole() is contractor-table-first, so any dual-role
+    // account (contractor record + referral_agents record — e.g.
+    // dustinstohler1@gmail.com) was bounced straight to
+    // contractor-dashboard.html on first sign-in, and a partner-ONLY account
+    // (no contractor record) was bounced to trade-selector.html/dashboard.html
+    // instead — both wrong, because partner-dashboard.html was never a
+    // candidate. handleAuthCallback() (invoked from the SIGNED_IN listener
+    // partner-dashboard.html wires via onAuthStateChangeListener()) called
+    // straight into this function, which is what fired the bounce
+    // immediately after the magic-link redemption landed on the partner
+    // dashboard. Staying put when already on a partner-*.html page fixes
+    // both cases without touching contractor/homeowner routing.
+    const currentFile = window.location.pathname.substring(
+      window.location.pathname.lastIndexOf('/') + 1
+    );
+    if (currentFile.indexOf('partner-') === 0) {
+      return;
+    }
+
     // Otherwise route by role
     const role = await this.getRole();
     if (role === 'contractor') {

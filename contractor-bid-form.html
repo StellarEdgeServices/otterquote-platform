@@ -2398,6 +2398,7 @@
   <!-- Scripts -->
   <script src="js/cookie-storage.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -4108,7 +4109,6 @@
     }
 
     async function previewContractTemplateBid() {
-      if (!sb) return;
       const cardEl = document.getElementById('contractTemplateCard');
       const filePath = cardEl?.dataset.templatePath;
       if (!filePath) return;
@@ -4141,7 +4141,11 @@
       }
       // Homeowner-uploaded measurement file — independent of Hover PDF / hover_orders state.
       // gh-484: contractors previously had no way to open this even when has_measurements was true.
-      if (currentClaim.measurements_filename) {
+      // gh-484 follow-up: hover-webhook stamps a synthesized `hover_{job}_measurements.json`
+      // sentinel on claims (see supabase/functions/hover-webhook/index.ts) that names no storage
+      // object — the real Hover artifact is a PDF served by the Hover button below. Rendering off
+      // a bare truthiness check therefore offers a link that can only fail. Guard on the sentinel.
+      if (currentClaim.measurements_filename && !isHoverMeasurementsSentinel(currentClaim.measurements_filename)) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormMeasurementsPdf()">&#x1F4D0; View Measurements</button>');
       }
       // Always offer Hover PDF — function handles gracefully if no Hover job exists
@@ -4160,7 +4164,7 @@
     }
 
     async function openBidFormEstimatePdf() {
-      if (!sb || !currentClaim?.estimate_filename) return;
+      if (!currentClaim?.estimate_filename) return;
       try {
         const { data, error } = await sb.storage
           .from('claim-documents')
@@ -4173,8 +4177,16 @@
       }
     }
 
+    // gh-484: `hover_{job}_measurements.json` is written by hover-webhook as a completion marker,
+    // not as a storage path. Nothing is ever uploaded under that name, so any signed-URL request
+    // for it 400s. Uploaded measurement files are UID-first paths (`{uid}/{claim}/…`).
+    function isHoverMeasurementsSentinel(filename) {
+      return /^hover_\d+_measurements\.json$/i.test(filename || '');
+    }
+
     async function openBidFormMeasurementsPdf() {
-      if (!sb || !currentClaim?.measurements_filename) return;
+      if (!currentClaim?.measurements_filename) return;
+      if (isHoverMeasurementsSentinel(currentClaim.measurements_filename)) return;
       try {
         const { data, error } = await sb.storage
           .from('claim-documents')
@@ -4188,7 +4200,7 @@
     }
 
     async function openBidFormHoverPdf() {
-      if (!sb || !currentClaim?.id) return;
+      if (!currentClaim?.id) return;
       const btn = document.getElementById('bidFormHoverBtn');
       if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
       try {
@@ -4445,7 +4457,6 @@
         }
       } catch (e) { /* ignore — sessionStorage may be unavailable */ }
 
-      if (typeof sb === 'undefined' || !sb) return [];
       try {
         const { data, error } = await sb
           .from('warranty_options')
@@ -4475,10 +4486,6 @@
 
     async function loadD204State() {
       if (__d204VerifiedCerts && (Date.now() - __d204StateLoadedAt < 5 * 60 * 1000)) return;
-      if (typeof sb === 'undefined' || !sb) {
-        __d204VerifiedCerts = new Set();
-        return;
-      }
       try {
         const { data: flagRow } = await sb
           .from('platform_settings')
@@ -4755,7 +4762,7 @@
 
     // ── D-199 client-side bid-time gate ──
     async function checkBidCanSubmitGate(contractorId, trade, fundingType) {
-      if (typeof sb === 'undefined' || !sb || !contractorId) {
+      if (!contractorId) {
         return { can_submit: false, reason: 'Cannot determine contractor identity. Please refresh and try again.', status: null };
       }
       try {
@@ -4916,7 +4923,7 @@
     }
 
     async function saveWarrantyAsTemplate(cardIdx) {
-      if (!currentContractor || !sb) {
+      if (!currentContractor) {
         alert('Cannot save template — contractor profile not loaded.');
         return;
       }
@@ -4970,7 +4977,7 @@
     async function fetchPlatformFeePercentage() {
       // Fetch fee percentage from platform_fee_config based on contractor state + trade
       try {
-        if (!sb || !currentContractor || !currentClaim) return _platformFeePct;
+        if (!currentContractor || !currentClaim) return _platformFeePct;
 
         const contractorState = (currentContractor.state || '').toUpperCase();
         const tradeType = (currentClaim.trades?.[0] || 'roofing').toLowerCase();
@@ -5642,10 +5649,6 @@
 
     // ── Initialize ──
     document.addEventListener('DOMContentLoaded', () => {
-      if (!sb && typeof supabase !== 'undefined') {
-        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // #488: adapter, not default storage
-      }
-
       // Wire up bid type UI
       initBidTypeUI();
 
@@ -5768,10 +5771,6 @@
       const detailEl = document.getElementById('rescindBidDetail');
 
       // Require auth
-      if (!sb) {
-        if (detailEl) detailEl.textContent = 'Session error — please log in and try again.';
-        return;
-      }
       const { data: { session } } = await sb.auth.getSession();
       if (!session) {
         if (detailEl) detailEl.innerHTML =
