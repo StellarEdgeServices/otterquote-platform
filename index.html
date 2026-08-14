@@ -41,6 +41,7 @@
       try { role = localStorage.getItem('cs_auth_role'); log('localStorage cs_auth_role=', role); } catch (e) {}
     }
 
+    var partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
     if (role === 'contractor') {
       try { localStorage.removeItem('cs_auth_role'); } catch (e) {}
       log('BOUNCING to /contractor-pre-approval.html');
@@ -48,8 +49,15 @@
     } else if (role === 'homeowner') {
       log('BOUNCING to /dashboard.html');
       window.location.replace('/dashboard.html' + search + hash);
+    } else if (partnerRoles.indexOf(role) !== -1) {
+      // gh-817/#643: Supabase Auth's redirect-URL allowlist can silently
+      // override emailRedirectTo to bare SITE_URL for a partner magic link
+      // (see #817 comment 5288476400) — this bounce is the only thing that
+      // still gets that user to partner-dashboard.html in that case.
+      log('BOUNCING to /partner-dashboard.html (role=' + role + ')');
+      window.location.replace('/partner-dashboard.html' + search + hash);
     } else {
-      log('not a contractor (role=' + role + '), letting homepage render');
+      log('not a recognized role (role=' + role + '), letting homepage render');
     }
   } catch (e) {
     try { console.warn('[bounce] fatal err:', e && e.message); } catch (_) {}

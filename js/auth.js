@@ -357,9 +357,19 @@ window.Auth = {
     if (requiredRole) {
       const role = await this.getRole();
       if (role && role !== requiredRole) {
-        // Redirect to the correct dashboard for this user's actual role
+        // Redirect to the correct dashboard for this user's actual role.
+        // gh-817/#643: getRole() can now return a partnerRoles value (see
+        // getRole() above) — route those to partner-dashboard.html instead
+        // of falling into the homeowner dashboard, the same structural gap
+        // that caused the partner P0. No current caller passes a
+        // requiredRole on a partner-*.html page (partner-dashboard.html
+        // calls requireAuth() with no argument), so this branch is
+        // defense-in-depth for any page that gains a role check later.
+        const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
         if (role === 'contractor') {
           window.location.href = '/contractor-dashboard.html';
+        } else if (partnerRoles.includes(role)) {
+          window.location.href = '/partner-dashboard.html';
         } else {
           window.location.href = '/dashboard.html';
         }
@@ -425,9 +435,37 @@ window.Auth = {
         // Network/JS exception — return null, not a wrong-role fallthrough
         return null;
       }
+
+      // gh-817/#643: getRole() never queried referral_agents, so a partner
+      // account fell straight through to profiles.role — which is
+      // 'homeowner' for every real partner-only account (verified live,
+      // 2026-08-14: every active referral_agents row with no contractors
+      // record carries profile_role='homeowner'). nav.js's _renderAuthSlot()
+      // has expected getRole() to return a partnerRoles value since #567 and
+      // has never actually received one. Contractor precedence above is
+      // unchanged — a dual-role account (contractor + referral_agents, e.g.
+      // dustinstohler1@gmail.com) still resolves to 'contractor' here;
+      // surface-aware callers (auth-callback.html's intent check,
+      // requireAuth()'s partner branch below) take precedence over this
+      // single-value getter when the user arrived via a partner surface.
+      try {
+        const { data: agent, error: agentError } = await sb
+          .from('referral_agents')
+          .select('agent_type')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .single();
+        if (agent && !agentError && agent.agent_type) {
+          return agent.agent_type;
+        }
+      } catch (e) {
+        // Network/JS exception — fall through to the profile check below,
+        // same handling as the contractor lookup above.
+      }
     }
 
-    // Fall back to profile role only when contractors table confirmed 0 rows (PGRST116)
+    // Fall back to profile role only when neither contractors nor
+    // referral_agents matched this user.
     const profile = await this.getProfile();
     return profile?.role || null;
   },
