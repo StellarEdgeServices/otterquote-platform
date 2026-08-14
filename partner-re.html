@@ -886,7 +886,7 @@
       <div class="feature-check">✓</div>
       <div class="feature-content">
         <h4>Co-branded one-pager for packets</h4>
-        <p>Include Otter Quotes in your buyer and seller packets with professional materials.</p>
+        <p>Include Otter Quotes in your buyer and seller packets with professional materials. <a href="/assets/partner-onepager-re.html" target="_blank" rel="noopener">View / print the one-pager &rarr;</a></p>
       </div>
     </div>
 
@@ -1174,6 +1174,37 @@
   // Recruit context populated by detectRecruitCode() and consumed on submit.
   let recruitContext = { recruitCode: null, recruiterId: null };
 
+  // gh-846: UTM context populated by captureUtmContext() and consumed on
+  // submit. Persisted to localStorage so it survives a page bounce mid
+  // signup — same pattern as cs_recruit_code above.
+  let utmContext = { source: null, medium: null, campaign: null, content: null };
+
+  /**
+   * Capture utm_source/medium/campaign/content from the URL on first landing
+   * and persist them so they survive a bounce (e.g. leaving to check email,
+   * or a multi-tab flow) before the form is actually submitted. Falls back
+   * to a previously-stored value when this load has no UTM params of its
+   * own, so a later page in the flow doesn't clobber an earlier capture.
+   */
+  function captureUtmContext() {
+    const params = new URLSearchParams(window.location.search);
+    const fresh = {
+      source:   params.get('utm_source'),
+      medium:   params.get('utm_medium'),
+      campaign: params.get('utm_campaign'),
+      content:  params.get('utm_content'),
+    };
+    if (fresh.source || fresh.medium || fresh.campaign || fresh.content) {
+      utmContext = fresh;
+      localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
+      return;
+    }
+    try {
+      const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+      if (stored) utmContext = stored;
+    } catch (e) { /* malformed stored value — ignore, keep default */ }
+  }
+
   // Smooth scroll to signup
   heroCta.addEventListener('click', () => {
     signupSection.scrollIntoView({ behavior: 'smooth' });
@@ -1227,6 +1258,7 @@
   // Kick off recruit detection immediately — the IIFE runs after DOMContentLoaded
   // because this <script> tag sits at the end of the body.
   detectRecruitCode();
+  captureUtmContext();
 
   // #632: signed-in partners land straight on their dashboard instead of
   // re-seeing the signup form - same loop-guard shape as partner-login.html.
@@ -1366,6 +1398,10 @@
           p_referred_by_note: referredBy || null,
           p_recruit_code:     recruitContext.recruitCode || null,
           p_photo_url:        headshot_url || null,  // schema column is 'photo_url'
+          p_utm_source:       utmContext.source   || null,
+          p_utm_medium:       utmContext.medium   || null,
+          p_utm_campaign:     utmContext.campaign || null,
+          p_utm_content:      utmContext.content  || null,
         });
 
       if (agentError) {
@@ -1401,6 +1437,7 @@
       // Recruit code consumed — clear so a future signup on this device
       // doesn't accidentally attribute to the same recruiter.
       localStorage.removeItem('cs_recruit_code');
+      localStorage.removeItem('cs_utm_context');
 
       // Send magic link → redirects to partner-dashboard.html
       await Auth.sendMagicLink(email, 're_agent');
@@ -1410,10 +1447,17 @@
       referralCode.textContent = finalLink;
       successMsg.classList.add('active');
 
-      // GA4 conversion event — partner funnel
+      // GA4 conversion event — partner funnel. gh-846: previously read
+      // utm_source inline from the current URL (lost on a page bounce) and
+      // always dropped utm_content — the one field that identifies which
+      // warm-outreach contact converted. Now sourced from the persisted
+      // utmContext, same data that just went into register_partner().
       gtag('event', 'partner_signup', {
         partner_type: 're_agent',
-        source: new URLSearchParams(location.search).get('utm_source') || 'direct',
+        source:   utmContext.source   || 'direct',
+        medium:   utmContext.medium   || undefined,
+        campaign: utmContext.campaign || undefined,
+        content:  utmContext.content  || undefined,
       });
 
     } catch (err) {
