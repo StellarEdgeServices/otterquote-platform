@@ -544,6 +544,7 @@
 
   <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
   <script src="js/services.js"></script>
@@ -590,7 +591,7 @@
     }
 
     async function loadClaimData() {
-      if (!sb || !currentUser) return;
+      if (!currentUser) return;
       // If claim_id is in URL, use it (still verify ownership via user_id)
       const urlParams = new URLSearchParams(window.location.search);
       const claimIdParam = urlParams.get('claim_id');
@@ -605,7 +606,7 @@
     }
 
     async function loadBids() {
-      if (!sb || !currentClaim) return;
+      if (!currentClaim) return;
       // #511: do NOT embed the `contractors` base table. Post-D-211 security sprint
       // its RLS scopes SELECT to own-record + admin, so a homeowner's embed resolves
       // to null with NO error — every bid card silently rendered as "Contractor" with
@@ -624,7 +625,7 @@
         const contractorIds = [...new Set(data.map(b => b.contractor_id).filter(Boolean))];
         if (contractorIds.length) {
           const { data: pub, error: pubErr } = await sb
-            .from('contractors_public')
+            .rpc('get_contractors_public')
             .select(`
               id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
               service_area_description, service_counties, license_number, verified,
@@ -653,9 +654,7 @@
           // rows for active/approved contractors; render falls back to the
           // "License not provided" state (lawful per D-217) when empty.
           const { data: licRows, error: licErr } = await sb
-            .from('contractor_licenses_public')
-            .select('contractor_id, jurisdiction_level, municipality, license_number, expiration_date, verification_url')
-            .in('contractor_id', contractorIds);
+            .rpc('get_contractor_licenses_public', { p_contractor_ids: contractorIds });
           if (licErr) {
             console.error('[bids] contractor_licenses_public lookup failed:', licErr.message);
           } else if (licRows) {
@@ -683,7 +682,7 @@
     let _bidUpdatedNotifIds = [];
 
     async function loadBidUpdatedNotifications() {
-      if (!sb || !currentUser || !currentClaim) return;
+      if (!currentUser || !currentClaim) return;
       try {
         const { data, error } = await sb
           .from('notifications')
@@ -721,7 +720,7 @@
       const banner = document.getElementById('bidUpdatedBanner');
       if (banner) banner.style.display = 'none';
 
-      if (!sb || _bidUpdatedNotifIds.length === 0) return;
+      if (_bidUpdatedNotifIds.length === 0) return;
       try {
         await sb
           .from('notifications')
@@ -1160,7 +1159,7 @@
     // owner_photo_url stores a bare storage path (contractor-documents bucket).
     // Legacy records may store a full public URL — regex extracts the path in that case.
     async function getSignedOwnerPhotoUrl(filePath) {
-      if (!filePath || !sb) return null;
+      if (!filePath) return null;
       try {
         const pathMatch = filePath.match(/contractor-documents\/(.+?)(\?|$)/);
         const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : filePath;

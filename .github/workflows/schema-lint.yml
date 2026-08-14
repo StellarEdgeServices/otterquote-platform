@@ -9,6 +9,9 @@ on:
       - 'supabase/functions/**'
       - 'sql/schema-snapshot.json'
       - 'scripts/schema-column-lint.py'
+      - 'supabase/migrations/**.sql'
+      - 'sql/**.sql'
+      - 'scripts/schema-secret-lint.py'
   pull_request:
     branches: [main]
 
@@ -35,3 +38,10 @@ jobs:
           python3 scripts/schema-column-lint.py \
             --root . \
             --schema sql/schema-snapshot.json
+
+      # FAIL-HARD MODE: guard added for gh-720/gh-770 (2026-08-12) after a
+      # hardcoded sb_secret_ key was found live in two SECURITY DEFINER
+      # function bodies, world-readable via pg_catalog to anon/authenticated.
+      - name: Run hardcoded-secret function-body linter
+        run: |
+          python3 scripts/schema-secret-lint.py --root .

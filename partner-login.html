@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Partner Login &mdash; Otter Quotes</title>
+<meta name="description" content="Log in to your Otter Quotes partner dashboard to track referrals, commissions, and your referral link.">
+<link rel="canonical" href="https://otterquote.com/partner-login.html">
+<meta name="robots" content="noindex, follow">
+<meta property="og:title" content="Partner Login &mdash; Otter Quotes">
+<meta property="og:description" content="Log in to your Otter Quotes partner dashboard to track referrals, commissions, and your referral link.">
+<meta property="og:url" content="https://otterquote.com/partner-login.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.pl-wrap {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: var(--sp-12) var(--sp-6) var(--sp-16);
+}
+
+.pl-wrap h1 {
+  font-size: 2rem;
+  margin-bottom: var(--sp-2);
+}
+
+.pl-wrap .subtitle {
+  color: #5A6B7B;
+  margin-bottom: var(--sp-8);
+  line-height: 1.6;
+}
+
+.pl-card {
+  background: var(--white, #fff);
+  border: 1px solid var(--border, #E2E8F0);
+  border-radius: 12px;
+  padding: var(--sp-8);
+}
+
+.magic-link-sent {
+  display: none;
+  text-align: center;
+}
+
+.magic-link-sent.active { display: block; }
+
+.magic-link-icon {
+  font-size: 2.5rem;
+  margin-bottom: var(--sp-3);
+}
+
+.magic-link-email {
+  font-weight: 600;
+  margin-top: var(--sp-2);
+  word-break: break-all;
+}
+
+.hidden { display: none !important; }
+
+.pl-signup-cta {
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--border, #E2E8F0);
+  text-align: center;
+  font-size: 0.95rem;
+  color: #5A6B7B;
+}
+
+.pl-signup-cta a { color: var(--amber-2, #A85C00); font-weight: 600; }
+/* #589 contrast: this page's card sits on a light surface, so the
+   design-system's dark-theme label/link colours are unreadable here. */
+.pl-card .form-label,
+.pl-card .form-hint,
+.pl-card p { color: #5A6B7B; }
+.pl-wrap a { color: var(--amber-2, #A85C00); }
+
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active=""></header>
+
+<div class="pl-wrap">
+  <h1>Partner Login</h1>
+  <p class="subtitle">
+    Sign in to your partner dashboard to see your referrals, your commission status, and your referral link.
+  </p>
+
+  <div class="pl-card">
+    <!-- Login Form -->
+    <form id="pl-form" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="email">Email</label>
+        <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="you@example.com">
+        <span class="form-hint">We'll send you a secure login link &mdash; no password needed.</span>
+      </div>
+
+      <div id="form-error" class="form-error" style="display:none;"></div>
+
+      <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">
+        Send Login Link
+      </button>
+    </form>
+
+    <!-- Magic Link Sent — D-244: canonical login-path copy, verbatim-locked.
+         Any deviation requires security review + Dustin sign-off. -->
+    <div class="magic-link-sent" id="magic-link-sent">
+      <div class="magic-link-icon">&#x2709;&#xFE0F;</div>
+      <h2>Check Your Email</h2>
+      <p>If an account exists, we sent a link.</p>
+      <div class="magic-link-email" id="sent-email"></div>
+      <p style="margin-top: var(--sp-4);">If you receive a link, it will expire in 1 hour.</p>
+      <p style="margin-top: var(--sp-6);"><a href="#" id="resend-link">Didn't get it? Send again</a></p>
+    </div>
+  </div>
+
+  <div class="pl-signup-cta" id="pl-signup-cta">
+    Not a partner yet? <a href="/partner-other.html">Join the referral program</a>
+  </div>
+
+  <div class="pl-signup-cta" style="margin-top: 8px;">
+    &#128241; <a href="/partner-app.html">Get the Partner App</a> &mdash; refer and track from your phone
+  </div>
+</div>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+(function () {
+  const form       = document.getElementById('pl-form');
+  const errorEl    = document.getElementById('form-error');
+  const submitBtn  = document.getElementById('submit-btn');
+  const sentEmail  = document.getElementById('sent-email');
+  const sentSection= document.getElementById('magic-link-sent');
+
+  // Partner magic links redirect to /partner-dashboard.html (see
+  // Auth.sendMagicLink's partnerRoles branch). 'other' is the generic partner
+  // role — the dashboard resolves the real agent_type from referral_agents,
+  // so the role passed here only needs to be *a* partner role for routing.
+  const PARTNER_ROLE = 'other';
+
+  async function send(email) {
+    localStorage.setItem('cs_auth_role', PARTNER_ROLE);
+    await Auth.sendMagicLink(email, PARTNER_ROLE);
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.style.display = 'none';
+
+    const email = document.getElementById('email').value.trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errorEl.textContent = 'Please enter a valid email address.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    submitBtn.classList.add('btn-loading');
+    submitBtn.disabled = true;
+
+    try {
+      await send(email);
+
+      form.classList.add('hidden');
+      document.getElementById('pl-signup-cta').classList.add('hidden');
+      sentEmail.textContent = email;
+      sentSection.classList.add('active');
+
+      gtag('event', 'login', {
+        method: 'magic_link',
+        role: 'partner',
+      });
+
+    } catch (err) {
+      console.error('Partner login error:', err);
+      errorEl.textContent = 'Something went wrong. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL;
+      errorEl.style.display = 'block';
+    } finally {
+      submitBtn.classList.remove('btn-loading');
+      submitBtn.disabled = false;
+    }
+  });
+
+  document.getElementById('resend-link').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = sentEmail.textContent;
+    if (email) {
+      try {
+        await send(email);
+        // D-244: canonical login-path copy, verbatim-locked.
+        alert('If an account exists, we sent a link.');
+      } catch (err) {
+        alert('Could not resend. Please try again in a moment.');
+      }
+    }
+  });
+
+  // Already signed in? Send them to the dashboard — but never if they just
+  // bounced FROM it, which would be the dashboard <-> login flip pattern
+  // (same loop guard as contractor-login.html, May 4 2026).
+  //
+  // gh-737: deliberately NO ?stay=1 escape here, unlike the 6 other
+  // redirecting partner pages. Those are marketing/signup pages a signed-in
+  // partner might legitimately want to revisit (checking referral copy, QA).
+  // This is a bare magic-link form with no content of its own — there is no
+  // reason for a signed-in user to want to stay on it instead of going to
+  // their dashboard. Decision: intentional exception, not drift.
+  Auth.getUser().then(user => {
+    if (!user) return;
+    const cameFromDashboard = (document.referrer || '').includes('/partner-dashboard.html');
+    if (cameFromDashboard) {
+      console.warn('[partner-login] Detected return-bounce from partner-dashboard; staying on login to break the loop.');
+      return;
+    }
+    window.location.href = '/partner-dashboard.html';
+  });
+})();
+</script>
+</body>
+</html>

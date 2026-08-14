@@ -14,6 +14,7 @@
   });
 </script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=ref-insurance&persona=homeowner');}})()</script>
 <meta charset="UTF-8">
@@ -537,7 +538,7 @@
     <div class="hiw-card">
       <div class="hiw-number">4</div>
       <h3>Compare, Choose & Relax</h3>
-      <p>Review bids side-by-side. Sign your contract electronically. Your contractor reaches out within 48 hours.</p>
+      <p>Review bids side-by-side. Sign your contract electronically. Your contractor reaches out promptly to get started.</p>
     </div>
   </div>
 </section>
@@ -634,7 +635,6 @@
       <div class="form-submit">
         <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">Get Started &mdash; It's Free</button>
         <span class="form-hint" style="display:block; text-align:center;">We'll send you a secure login link. No password needed.</span>
-        <span class="form-hint referral-fee-disclaimer" style="display:block; text-align:center;">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</span>
       </div>
 
       <!-- Hidden fields -->
@@ -678,8 +678,6 @@
 
 <footer id="site-footer"></footer>
 
-<script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 
@@ -703,7 +701,7 @@
   // ── Read and personalize from URL ──
   async function personalizeFromReferralCode() {
     const params = new URLSearchParams(window.location.search);
-    const ref = params.get('ref');
+    const ref = params.get('ref') || params.get('code');
 
     if (!ref) {
       // No referral code — show generic badge
@@ -712,18 +710,26 @@
 
     referralCodeInput.value = ref;
 
+    let referralAgentData = null;
+
     // Try to look up agent from referral_agents table
     try {
       const { data, error } = await sb
-        .from('referral_agents_public')
+        .rpc('get_referral_agents_public')
         .select('*')
-        .eq('referral_code', ref)
+        // gh-815: referral_agents has no referral_code column, only
+        // unique_code — matches ref-re.html / ref-inspector.html. The
+        // wrong column name made this PostgREST call 400 silently
+        // (swallowed by this try/catch), so the badge never rendered.
+        .eq('unique_code', ref)
         .single();
 
       if (!error && data) {
+        referralAgentData = data;
+
         // Found agent — personalize
         document.getElementById('agent-name').textContent = data.first_name || 'Your Agent';
-        document.getElementById('agent-company').textContent = data.company_name || 'Your Insurance Company';
+        document.getElementById('agent-company').textContent = data.company || 'Your Insurance Company';
 
         // Show photo if available
         if (data.photo_url) {
@@ -743,6 +749,43 @@
     } catch (err) {
       console.error('Error fetching referral agent:', err);
       // Silently fail — page works without agent personalization
+    }
+
+    // Record the click event server-side (#571 / v95 RPC, ported here by #800 —
+    // ref-insurance.html was missed when #595 ported this to ref-re.html and
+    // ref-inspector.html). Without this, no `referrals` row is ever created,
+    // so apply_referral_commission() — which walks claims.referral_id ->
+    // referrals.referral_agent_id — has no starting point and an
+    // insurance-agent referral can never pay a commission at any job value.
+    // track_referral_click() resolves the code to the agent server-side and
+    // returns the referral id.
+    try {
+      const { data: referralId, error: clickError } = await sb
+        .rpc('track_referral_click', {
+          p_code:         ref,
+          p_landing_page: window.location.href,
+          p_utm_source:   params.get('utm_source')   || null,
+          p_utm_medium:   params.get('utm_medium')   || null,
+          p_utm_campaign: params.get('utm_campaign') || null,
+        });
+
+      if (clickError || !referralId) {
+        // Non-fatal: click tracking must never block the visitor.
+        console.warn('Click tracking RPC failed:', clickError);
+      } else {
+        // Persist so the intake funnel can stamp the claim with attribution.
+        // localStorage as well as sessionStorage — mirrors ref-inspector.html.
+        sessionStorage.setItem('oq_referral_id', referralId);
+        sessionStorage.setItem('oq_referral_code', ref);
+        localStorage.setItem('oq_referral_id', referralId);
+        localStorage.setItem('oq_referral_code', ref);
+        if (referralAgentData && referralAgentData.id) {
+          sessionStorage.setItem('oq_referral_agent_id', referralAgentData.id);
+          localStorage.setItem('oq_referral_agent_id', referralAgentData.id);
+        }
+      }
+    } catch (err) {
+      console.error('Error recording referral click:', err);
     }
   }
 

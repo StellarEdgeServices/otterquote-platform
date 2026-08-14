@@ -748,6 +748,7 @@
 
     <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
     <script src="js/services.js"></script>
@@ -803,7 +804,7 @@
         });
 
         async function loadClaimData() {
-            if (!sb || !currentUser) return;
+            if (!currentUser) return;
             const { data } = await sb
                 .from('claims')
                 .select('*')
@@ -820,11 +821,30 @@
             if (currentClaim.adjuster_email) document.getElementById('adjusterEmail').value = currentClaim.adjuster_email;
             if (currentClaim.adjuster_phone) document.getElementById('adjusterPhone').value = currentClaim.adjuster_phone;
             updateEmailPreview();
-            validateForm();
+        }
+
+        // Build the adjuster-facing measurement-request preview shown in #emailPreview.
+        // Mirrors the message sendMeasurementEmail() has Services build server-side.
+        function updateEmailPreview() {
+            const preview = document.getElementById('emailPreview');
+            if (!preview) return;
+            const adjName = (document.getElementById('adjusterName')?.value || '').trim() || '[Adjuster Name]';
+            const homeownerName = currentProfile?.full_name
+                || `${currentProfile?.first_name || ''} ${currentProfile?.last_name || ''}`.trim()
+                || 'the homeowner';
+            const homeownerPhone = currentProfile?.phone || '';
+
+            let body = `Hi ${adjName},\n\n`;
+            body += `Could you please send along any property measurements you took during your inspection? This will help our contractor provide an accurate bid.\n\n`;
+            body += `You can reply directly to this email with the documents attached.\n\n`;
+            body += `Thank you,\n${homeownerName}`;
+            if (homeownerPhone) body += `\n${homeownerPhone}`;
+
+            preview.textContent = body;
         }
 
         async function checkExistingEstimateRequest() {
-            if (!sb || !currentClaim) return;
+            if (!currentClaim) return;
             // Check if we already sent an estimate request with "also request measurements"
             const { data } = await sb
                 .from('adjuster_email_requests')
@@ -1001,7 +1021,7 @@
             }
         }
 
-        // ── Show message ─────────────────────────────────────────────────────────
+        // ── Show message ────────────────────────────────────────────
         function showMessage(text, type) {
             const el = document.getElementById('statusMessage');
             if (!el) return;
@@ -1013,7 +1033,7 @@
             }
         }
 
-        // ── Setup listeners ──────────────────────────────────────────────────────
+        // ── Setup listeners ──────────────────────────────────────────
         function setupListeners() {
             const emailField = document.getElementById('adjusterEmail');
             const btn        = document.getElementById('sendMeasurementEmailBtn');
@@ -1021,6 +1041,7 @@
             function checkReady() {
                 const email = emailField.value.trim();
                 btn.disabled = !email || !email.includes('@');
+                updateEmailPreview();
             }
             emailField.addEventListener('input', checkReady);
             const nameField = document.getElementById('adjusterName');
@@ -1028,7 +1049,7 @@
             checkReady();
         }
 
-        // ── Cancel Hover payment form ─────────────────────────────────────────────
+        // ── Cancel Hover payment form ───────────────────────────────
         function cancelHoverPayment() {
             document.getElementById('hoverPaymentForm').style.display = 'none';
             const purchaseBtn = document.getElementById('purchaseHoverBtn');
@@ -1039,7 +1060,7 @@
             hoverPaymentIntentId  = null;
         }
 
-        // ── Send measurement email to adjuster ────────────────────────────────────
+        // ── Send measurement email to adjuster ────────────────────────────────
         async function sendMeasurementEmail() {
             const btn           = document.getElementById('sendMeasurementEmailBtn');
             const adjusterName  = (document.getElementById('adjusterName')?.value  || '').trim();

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+    });
+  });
+</script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>Get the Partner App &mdash; Otter Quotes</title>
+    <meta name="description" content="Install the free Otter Quotes Partner App: refer homeowners, grow your partner network, and track your referrals and payouts from your phone.">
+
+    <!-- PWA -->
+    <link rel="manifest" href="/partner-app.webmanifest">
+    <meta name="theme-color" content="#0D1B2E">
+    <link rel="apple-touch-icon" href="/img/app/apple-touch-icon-partner.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="OQ Partners">
+
+    <!-- GA4 -->
+    <script async crossorigin="anonymous" src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-D1Y1TLGEFY');
+    </script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+
+    <!-- Supabase JS -->
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Design System & Navigation -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <style>
+        main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: var(--sp-8) var(--sp-4) var(--sp-16);
+        }
+
+        .app-hero {
+            display: flex;
+            align-items: center;
+            gap: var(--sp-8);
+            flex-wrap: wrap;
+            background: var(--navy);
+            border: 1px solid rgba(224, 123, 0, 0.35);
+            border-radius: var(--radius-lg);
+            padding: var(--sp-10) var(--sp-8);
+            margin-bottom: var(--sp-10);
+        }
+
+        .app-hero-icon {
+            width: 108px;
+            height: 108px;
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+            flex-shrink: 0;
+        }
+
+        .app-hero h1 {
+            font-family: var(--font-heading);
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #FFFFFF;
+            line-height: 1.15;
+            margin-bottom: var(--sp-3);
+        }
+
+        .app-hero p {
+            font-family: var(--font-body);
+            font-size: 1.05rem;
+            color: #94A3B8;
+            max-width: 560px;
+        }
+
+        .app-hero .hero-body { flex: 1; min-width: 260px; }
+
+        .install-cta-row {
+            display: flex;
+            align-items: center;
+            gap: var(--sp-4);
+            flex-wrap: wrap;
+            margin-top: var(--sp-6);
+        }
+
+        .install-btn {
+            font-family: var(--font-body);
+            display: inline-block;
+            padding: 16px 32px;
+            background: var(--amber);
+            color: var(--navy);
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .install-btn:hover { background: var(--amber-light); }
+
+        .install-note {
+            font-family: var(--font-body);
+            font-size: 0.85rem;
+            color: #94A3B8;
+        }
+
+        .section-title {
+            font-family: var(--font-heading);
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: var(--sp-6);
+            text-align: center;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: var(--sp-5);
+            margin-bottom: var(--sp-12);
+        }
+
+        .feature-card {
+            background: var(--offwhite);
+            border: 1px solid var(--light);
+            border-radius: var(--radius-lg);
+            padding: var(--sp-6);
+        }
+
+        .feature-card .emoji { font-size: 1.8rem; margin-bottom: var(--sp-3); }
+
+        .feature-card h3 {
+            font-family: var(--font-heading);
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: var(--sp-2);
+        }
+
+        .feature-card p {
+            font-family: var(--font-body);
+            font-size: 0.92rem;
+            color: #5A6B7B;
+            line-height: 1.55;
+        }
+
+        .howto-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: var(--sp-5);
+            margin-bottom: var(--sp-12);
+        }
+
+        .howto-card {
+            background: #FFFFFF;
+            border: 1px solid var(--light);
+            border-radius: var(--radius-lg);
+            padding: var(--sp-6);
+        }
+
+        .howto-card.highlight { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
+
+        .howto-card h3 {
+            font-family: var(--font-heading);
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: var(--sp-3);
+        }
+
+        .howto-card ol {
+            font-family: var(--font-body);
+            font-size: 0.92rem;
+            color: #5A6B7B;
+            line-height: 1.7;
+            padding-left: var(--sp-5);
+        }
+
+        .qr-block {
+            text-align: center;
+            background: var(--offwhite);
+            border: 1px solid var(--light);
+            border-radius: var(--radius-lg);
+            padding: var(--sp-8);
+            margin-bottom: var(--sp-10);
+        }
+
+        .qr-block h3 {
+            font-family: var(--font-heading);
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: var(--sp-4);
+        }
+
+        #appQr { display: inline-block; background: #FFFFFF; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--light); }
+
+        .signup-cta {
+            font-family: var(--font-body);
+            text-align: center;
+            font-size: 0.95rem;
+            color: #5A6B7B;
+            margin-bottom: var(--sp-6);
+        }
+
+        .signup-cta a { color: var(--amber-2); font-weight: 600; }
+
+        .referral-fee-disclaimer {
+            font-family: var(--font-body);
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--gray);
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        @media (max-width: 640px) {
+            .app-hero { padding: var(--sp-6) var(--sp-5); }
+            .app-hero h1 { font-size: 1.6rem; }
+            .app-hero-icon { width: 84px; height: 84px; }
+        }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-auth="false"></header>
+
+    <main>
+        <!-- Hero -->
+        <div class="app-hero">
+            <img src="/img/app/partner-icon-192.png" alt="Otter Quotes Partner App icon" class="app-hero-icon" width="108" height="108">
+            <div class="hero-body">
+                <h1>The Otter Quotes Partner App</h1>
+                <p>Refer homeowners, grow your partner network, and track your referrals and payouts &mdash; right from your phone. Free, no app store needed, installs in seconds.</p>
+                <div class="install-cta-row">
+                    <button class="install-btn" id="installAppBtn">Install the App</button>
+                    <span class="install-note" id="installNote">Works on iPhone, Android, and desktop.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features -->
+        <h2 class="section-title">What you can do</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="emoji">&#127968;</div>
+                <h3>Refer Homeowners</h3>
+                <p>Share your personal referral link by text, email, or QR code in one tap. Your client gets competing contractor bids &mdash; you earn $200 on completed jobs over $10,000.</p>
+            </div>
+            <div class="feature-card">
+                <div class="emoji">&#129309;</div>
+                <h3>Refer Partners</h3>
+                <p>Know another agent, adjuster, or inspector? Share your recruit link. When partners you recruit close referrals, you earn $50 per completed job.</p>
+            </div>
+            <div class="feature-card">
+                <div class="emoji">&#128202;</div>
+                <h3>Track Referrals &amp; Payouts</h3>
+                <p>See every referral's status and your commission history in your partner dashboard &mdash; one tap from your home screen.</p>
+            </div>
+        </div>
+
+        <!-- Install instructions -->
+        <h2 class="section-title">How to install</h2>
+        <div class="howto-grid">
+            <div class="howto-card" id="howtoIos">
+                <h3>&#63743; iPhone &amp; iPad (Safari)</h3>
+                <ol>
+                    <li>Open this page in Safari</li>
+                    <li>Tap the <strong>Share</strong> button</li>
+                    <li>Scroll and tap <strong>Add to Home Screen</strong></li>
+                    <li>Tap <strong>Add</strong> &mdash; the OQ Partners icon appears on your home screen and opens straight to your Partner Dashboard</li>
+                </ol>
+            </div>
+            <div class="howto-card" id="howtoAndroid">
+                <h3>&#129302; Android (Chrome)</h3>
+                <ol>
+                    <li>Open this page in Chrome</li>
+                    <li>Tap <strong>Install the App</strong> above &mdash; or the <strong>&#8942;</strong> menu</li>
+                    <li>Choose <strong>Install app</strong> (or <strong>Add to Home screen</strong>)</li>
+                    <li>Confirm &mdash; the OQ Partners icon appears on your home screen</li>
+                </ol>
+            </div>
+            <div class="howto-card" id="howtoDesktop">
+                <h3>&#128187; Desktop (Chrome / Edge)</h3>
+                <ol>
+                    <li>Open this page in Chrome or Edge</li>
+                    <li>Click <strong>Install the App</strong> above &mdash; or the install icon in the address bar</li>
+                    <li>The app opens in its own window and pins like any program</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- QR -->
+        <div class="qr-block">
+            <h3>On your computer? Scan to open on your phone.</h3>
+            <div id="appQr"></div>
+        </div>
+
+        <p class="signup-cta">Not a partner yet? <a href="/partner-other.html">Join the referral program</a> &mdash; it takes about 60 seconds, and it&rsquo;s free.</p>
+
+        <p class="referral-fee-disclaimer">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <!-- Scripts -->
+    <script src="js/cookie-storage.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/vendor/qrcode-generator.js" defer></script>
+
+    <script>
+        (function () {
+            var deferredPrompt = null;
+            var installBtn = document.getElementById('installAppBtn');
+            var installNote = document.getElementById('installNote');
+
+            function gaEvent(name, params) {
+                if (typeof gtag === 'function') { gtag('event', name, params || {}); }
+            }
+
+            function isIos() {
+                return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            }
+
+            function isStandalone() {
+                return window.matchMedia('(display-mode: standalone)').matches ||
+                    window.navigator.standalone === true;
+            }
+
+            function highlight(id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.classList.add('highlight');
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+
+            window.addEventListener('beforeinstallprompt', function (e) {
+                e.preventDefault();
+                deferredPrompt = e;
+                gaEvent('app_install_prompt_available', { page: 'partner-app' });
+            });
+
+            window.addEventListener('appinstalled', function () {
+                gaEvent('app_installed', { page: 'partner-app' });
+                if (installNote) { installNote.textContent = 'Installed! Look for OQ Partners on your home screen.'; }
+            });
+
+            if (installBtn) {
+                installBtn.addEventListener('click', function () {
+                    gaEvent('app_install_click', { page: 'partner-app' });
+                    if (deferredPrompt) {
+                        deferredPrompt.prompt();
+                        deferredPrompt.userChoice.then(function () { deferredPrompt = null; });
+                    } else if (isIos()) {
+                        highlight('howtoIos');
+                    } else if (/android/i.test(navigator.userAgent)) {
+                        highlight('howtoAndroid');
+                    } else {
+                        highlight('howtoDesktop');
+                    }
+                });
+            }
+
+            if (isStandalone()) {
+                window.location.replace('/partner-dashboard.html?source=pwa');
+                return;
+            }
+
+            // #632: signed-in partners land straight on their dashboard when they
+            // open this page in a regular browser tab too - mirrors the loop-guard
+            // in partner-login.html. ?stay=1 opts out; anon/homeowner/contractor
+            // visitors and referral/recruit attribution are untouched.
+            if (new URLSearchParams(window.location.search).get('stay') !== '1' &&
+                (document.referrer || '').indexOf('/partner-dashboard.html') === -1) {
+                var partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+                Auth.getUser().then(function (user) {
+                    if (!user) return;
+                    Auth.getRole().then(function (role) {
+                        if (partnerRoles.indexOf(role) === -1) return;
+                        window.location.replace('/partner-dashboard.html');
+                    });
+                });
+            }
+
+            // QR code — renders once the deferred vendor lib is ready.
+            function renderQr() {
+                if (typeof qrcode !== 'function') { return setTimeout(renderQr, 200); }
+                try {
+                    var qr = qrcode(0, 'M');
+                    qr.addData('https://otterquote.com/partner-app.html');
+                    qr.make();
+                    var el = document.getElementById('appQr');
+                    if (el) { el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2 }); }
+                } catch (err) { /* non-fatal */ }
+            }
+            renderQr();
+
+            // Service worker registration (partner surface only).
+            if ('serviceWorker' in navigator) {
+                // gh-831: without this, the FIRST reopen after a new worker
+                // activates still runs under the old controller -- the page's
+                // initial fetch of js/auth.js/nav.js races registration and
+                // wins, so a stale auth-critical asset can still be served
+                // once per install. Reload exactly once when a new worker
+                // takes control so that reopen always ends up on the fresh one.
+                var swRefreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', function () {
+                    if (swRefreshing) return;
+                    swRefreshing = true;
+                    window.location.reload();
+                });
+                window.addEventListener('load', function () {
+                    navigator.serviceWorker.register('/partner-sw.js').catch(function () { /* non-fatal */ });
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

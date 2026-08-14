@@ -1,0 +1,38 @@
+name: Legal Surface Link Check
+
+# #806 — a mandatory consent/attestation checkbox pointed at a 404
+# (partner-agreement.html, #766) for an unknown period and nothing noticed.
+# This runs weekly against PRODUCTION (not just local files in CI — the
+# #766 failure was a deployed-state failure a local-file check would not
+# catch) and fails loudly + files a tracker issue on any broken link.
+
+on:
+  schedule:
+    # Mondays 09:00 UTC. Independent of whether anyone edited these files —
+    # the failure mode this detects is not an edit, it is silent drift
+    # between what a page links to and what's actually deployed.
+    - cron: '0 9 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  legal-surface-link-check:
+    name: Legal Surface Link Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run legal-surface link check against production
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/check-legal-surface-links.py --file-issue

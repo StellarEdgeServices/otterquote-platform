@@ -64,7 +64,7 @@ async function resolveReferralAgentId(partnerIdParam: string | null): Promise<st
   try {
     // Try unique_code match first
     const { data } = await supabase
-      .from('referral_agents_public')
+      .rpc('get_referral_agents_public')
       .select('id')
       .eq('unique_code', partnerIdParam.toUpperCase())
       .eq('status', 'active')
@@ -76,7 +76,7 @@ async function resolveReferralAgentId(partnerIdParam: string | null): Promise<st
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidPattern.test(partnerIdParam)) {
       const { data: byId } = await supabase
-        .from('referral_agents_public')
+        .rpc('get_referral_agents_public')
         .select('id')
         .eq('id', partnerIdParam)
         .eq('status', 'active')
@@ -294,7 +294,7 @@ function ActionButtons({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TradeSelectorPage() {
-  const { user, loading: authLoading } = useAuthReady();
+  const { user, settled } = useAuthReady();
 
   // Wizard state
   const [wizardState, setWizardState] = useState<WizardState>({
@@ -314,7 +314,7 @@ export default function TradeSelectorPage() {
 
   // Auth guard + returning-user guard
   useEffect(() => {
-    if (authLoading) return;
+    if (!settled) return;
 
     if (!user) {
       window.location.href = GET_STARTED_URL;
@@ -349,7 +349,7 @@ export default function TradeSelectorPage() {
       if (ref) sessionStorage.setItem('oq_referral_source', ref.trim().toLowerCase());
       if (partnerId) sessionStorage.setItem('oq_partner_id', partnerId.trim());
     }
-  }, [authLoading, user]);
+  }, [settled, user]);
 
   // ── Step sequence ──
   const stepSequence: string[] = wizardState.fundingType === 'insurance'
@@ -589,7 +589,7 @@ export default function TradeSelectorPage() {
   };
 
   // ── Loading state ──
-  if (authLoading) {
+  if (!settled) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
         <div style={{ textAlign: 'center' }}>

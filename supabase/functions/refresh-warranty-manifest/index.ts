@@ -156,7 +156,20 @@ Deno.serve(async (req: Request) => {
           `[refresh-warranty-manifest] Dedup: last successful run at ${recentRun.last_run_at}. ` +
             `Use {"force": true} to override.`
         );
-        await logCronHealth(sb, "skipped_dedup", null);
+        // #394 — cron_health.last_run_status has a CHECK constraint that only allows
+        // 'success' | 'error' (see sql/v50b-cron-health.sql). The previous call here used
+        // a bespoke "skipped_dedup" status, which violates that constraint; the RPC threw,
+        // was swallowed by logCronHealth's try/catch, and the row was never written. That is
+        // the root cause of the July 1 quarterly run leaving zero trace (it landed inside the
+        // 80-day dedup window off a manual run and hit this exact silent-failure path).
+        // A dedup skip is an expected, healthy no-op — not a failure — so we log it as
+        // "success" (the only non-error value the schema permits) and record the skip
+        // reason in last_error purely as an informational note.
+        await logCronHealth(
+          sb,
+          "success",
+          `skipped_dedup: within ${DEDUP_WINDOW_DAYS}-day window (last successful run ${recentRun.last_run_at})`
+        );
         return new Response(
           JSON.stringify({
             status: "skipped",

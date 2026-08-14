@@ -13,6 +13,8 @@
  *   - Test contractor auth user (email: test-contractor@otterquote-internal.test)
  *   - Test contractor profile row (is_test = true)
  *   - Test contractor business record in contractors table (status = active)
+ *   - Multi-role test account (contractors + active referral_agents row on
+ *     the same user, gh-817/#643 regression fixture)
  *   - Fresh test claim in bidding status with pre-populated mock data
  *
  * Idempotent: auth users and profiles are upserted (not re-created on repeat runs).
@@ -43,8 +45,24 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
   process.exit(1);
 }
 
+// @supabase/supabase-js eagerly resolves a WebSocket constructor for its
+// Realtime client at construction time, even when no channel is ever opened.
+// On Node < 22 (no native WebSocket global) and with the `ws` package removed
+// (#658, CVE-2026-48779), that resolution throws before this script can run
+// at all. This script never calls `.channel()`/`.subscribe()`, so a stub
+// that is constructed-but-never-invoked satisfies the eager check without
+// reintroducing `ws`.
+class NoRealtimeTransportStub {
+  constructor() {
+    throw new Error(
+      'Realtime transport unavailable: this client never opens a realtime channel.'
+    );
+  }
+}
+
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
+  realtime: { transport: NoRealtimeTransportStub },
 });
 
 const HOMEOWNER_EMAIL = 'test-homeowner@otterquote-internal.test';
@@ -317,6 +335,106 @@ async function seed() {
     console.log('  ✅ Orphaned D-210 contractor rows cleaned up');
   }
 
+  // ── 5e. Multi-role test account (gh-817/#643 regression fixture) ─────────
+  // Mirrors the real-world bug pattern exactly: one auth user holding BOTH a
+  // contractors row AND an active referral_agents row (the shape that broke
+  // partner-surface role resolution — see js/auth.js getRole()). Dedicated
+  // account, not reused from the single-role contractor/homeowner fixtures
+  // above, so a regression here can't be masked by state left over from
+  // another spec.
+  console.log('5e. Multi-role test account (contractor + referral_agents)...');
+  const MULTIROLE_EMAIL = 'test-multirole@otterquote-internal.test';
+  const multiRoleUserId = await findOrCreateUser(MULTIROLE_EMAIL, 'contractor');
+
+  const { error: mrProfErr } = await supabase.from('profiles').upsert(
+    {
+      id: multiRoleUserId,
+      full_name: 'Test Multirole',
+      email: MULTIROLE_EMAIL,
+      phone: '317-555-0300',
+      role: 'contractor',
+      is_test: true,
+    },
+    { onConflict: 'id' }
+  );
+  if (mrProfErr) throw new Error(`Multi-role profile upsert failed: ${mrProfErr.message}`);
+
+  const { data: existingMRC } = await supabase
+    .from('contractors')
+    .select('id')
+    .eq('user_id', multiRoleUserId)
+    .maybeSingle();
+
+  // pending_approval, not active — matches the real dual-role account
+  // (dustinstohler1@gmail.com) that surfaced this bug; the fix must not
+  // depend on contractor-approval status to resolve the partner branch.
+  const multiRoleContractorPayload = {
+    user_id: multiRoleUserId,
+    status: 'pending_approval',
+    is_test: true,
+    company_name: 'Test Multirole Roofing (E2E)',
+    contact_name: 'Test Multirole',
+    email: MULTIROLE_EMAIL,
+    phone: '317-555-0300',
+    trades: ['roofing'],
+    service_counties: ['IN:*'],
+    address_state: 'IN',
+  };
+
+  let multiRoleContractorId;
+  if (existingMRC) {
+    multiRoleContractorId = existingMRC.id;
+    const { error: mrcUpdErr } = await supabase
+      .from('contractors')
+      .update(multiRoleContractorPayload)
+      .eq('id', multiRoleContractorId);
+    if (mrcUpdErr) throw new Error(`Multi-role contractor update failed: ${mrcUpdErr.message}`);
+  } else {
+    const { data: newMRC, error: mrcInsErr } = await supabase
+      .from('contractors')
+      .insert(multiRoleContractorPayload)
+      .select('id')
+      .single();
+    if (mrcInsErr) throw new Error(`Multi-role contractor insert failed: ${mrcInsErr.message}`);
+    multiRoleContractorId = newMRC.id;
+  }
+
+  const { data: existingMRA } = await supabase
+    .from('referral_agents')
+    .select('id')
+    .eq('user_id', multiRoleUserId)
+    .maybeSingle();
+
+  const multiRoleAgentPayload = {
+    user_id: multiRoleUserId,
+    agent_type: 'home_inspector',
+    first_name: 'Test',
+    last_name: 'Multirole',
+    email: MULTIROLE_EMAIL,
+    status: 'active',
+    unique_code: 'e2etestmultirole',
+    is_test: true,
+  };
+
+  let multiRoleAgentId;
+  if (existingMRA) {
+    multiRoleAgentId = existingMRA.id;
+    const { error: mraUpdErr } = await supabase
+      .from('referral_agents')
+      .update(multiRoleAgentPayload)
+      .eq('id', multiRoleAgentId);
+    if (mraUpdErr) throw new Error(`Multi-role referral_agents update failed: ${mraUpdErr.message}`);
+  } else {
+    const { data: newMRA, error: mraInsErr } = await supabase
+      .from('referral_agents')
+      .insert(multiRoleAgentPayload)
+      .select('id')
+      .single();
+    if (mraInsErr) throw new Error(`Multi-role referral_agents insert failed: ${mraInsErr.message}`);
+    multiRoleAgentId = newMRA.id;
+  }
+  console.log(`  ✅ Multi-role test account ready: contractors.id ${multiRoleContractorId}, referral_agents.id ${multiRoleAgentId}`);
+
   // ── 6. Fresh test claim ──────────────────────────────────────────────────
   console.log('6. Test claim (delete old, create fresh)...');
   // hover_orders.claim_id has a FK to claims — must delete hover_orders first
@@ -508,6 +626,10 @@ async function seed() {
     contractorEmail: CONTRACTOR_EMAIL,
     d210ContractorId,
     d210ContractorEmail: D210_CONTRACTOR_EMAIL,
+    multiRoleUserId,
+    multiRoleEmail: MULTIROLE_EMAIL,
+    multiRoleContractorId,
+    multiRoleAgentId,
     testClaimId,
     testRetailClaimId,
     baseUrl: BASE_URL,
@@ -522,6 +644,7 @@ async function seed() {
   console.log(`  Homeowner:         ${HOMEOWNER_EMAIL}`);
   console.log(`  Contractor:        ${CONTRACTOR_EMAIL} → contractors.id ${contractorId}`);
   console.log(`  D210 Contractor:   ${D210_CONTRACTOR_EMAIL} → contractors.id ${d210ContractorId}`);
+  console.log(`  Multi-role:        ${MULTIROLE_EMAIL} → contractors.id ${multiRoleContractorId}, referral_agents.id ${multiRoleAgentId}`);
   console.log(`  Test claim (insurance): ${testClaimId}`);
   console.log(`  Test claim (retail siding): ${testRetailClaimId}`);
   console.log(`  State file: .test-state.json\n`);

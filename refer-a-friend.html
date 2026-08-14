@@ -14,6 +14,7 @@
   });
 </script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=refer-a-friend&persona=homeowner');}})()</script>
   <meta charset="UTF-8">
@@ -559,7 +560,14 @@
     .share-card:nth-child(3) { animation-delay: 0.2s; }
     .share-card:nth-child(4) { animation-delay: 0.3s; }
     .share-card:nth-child(5) { animation-delay: 0.4s; }
-  </style>
+  
+/* #589: D-266 disclaimer sits on a light surface here — was 2.71:1. */
+.referral-fee-disclaimer { color: #5A6B7B !important; }
+
+/* #589 contrast pass. NOTE: this page mixes light and dark panels, so colours
+   are set per-surface — do NOT blanket-restyle p/h3 here. */
+.referrals-header h3 { color: var(--white); }   /* sits on a navy panel */
+</style>
 </head>
 <body>
   <!-- Header -->
@@ -713,7 +721,7 @@
               <div style="display: inline-block; padding: var(--sp-4); background: white; border-radius: var(--radius-sm);">
                 <img src="/img/otter-logo.svg" alt="Otter Quotes" style="width: 20px; height: 20px; margin-right: var(--sp-2); display: inline;">
                 <strong style="color: var(--navy);">I trust Otter Quotes</strong>
-                <p style="font-size: 0.75rem; color: var(--slate); margin: 4px 0 0;">Get your free quote</p>
+                <p style="font-size: 0.75rem; color: #5A6B7B; margin: 4px 0 0;">Get your free quote</p>
               </div>
             </div>
             <div class="badge-html" id="badge-html-code"></div>
@@ -801,7 +809,7 @@
               <span class="faq-icon">▼</span>
             </button>
             <div class="faq-answer">
-              <p>Commissions are paid after job completion and approval — typically within 14 days of completion. We'll send payment via bank transfer or check, whichever you prefer.</p>
+              <p>Commissions are paid after job completion and approval. We'll send payment via bank transfer or check, whichever you prefer.</p>
             </div>
           </div>
           <div class="faq-item">
@@ -836,16 +844,16 @@
 
       <!-- 1099-MISC Tax Reporting Notice (86e0zj7je &mdash; disclosure version 1099-misc-v1-2026-04) -->
       <section class="refer-section">
-        <div style="background: rgba(11, 25, 41, 0.6); border: 1px solid rgba(224, 123, 0, 0.2); border-radius: var(--radius-md); padding: var(--sp-8);">
-          <p style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--amber); margin-bottom: var(--sp-3);">Tax Reporting Notice</p>
-          <p style="color: var(--slate); font-size: 0.9rem; line-height: 1.7; margin: 0;">Your $200 referral bonus is taxable income. If you receive $600 or more in referral bonuses from Otter Quotes in a calendar year, we are required by federal law to file a Form 1099-MISC with the IRS reporting those payments, and to provide you a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.</p>
+        <div style="background: #FFFFFF; border: 1px solid rgba(224, 123, 0, 0.2); border-radius: var(--radius-md); padding: var(--sp-8);">
+          <p style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--amber-2); margin-bottom: var(--sp-3);">Tax Reporting Notice</p>
+          <p style="color: #5A6B7B; font-size: 0.9rem; line-height: 1.7; margin: 0;">Your $200 referral bonus is taxable income. If you receive $600 or more in referral bonuses from Otter Quotes in a calendar year, we are required by federal law to file a Form 1099-MISC with the IRS reporting those payments, and to provide you a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.</p>
         </div>
       </section>
 
       <!-- D-180: Commission Approval Disclosure -->
       <section class="refer-section">
-        <p style="color: var(--slate); font-size: 0.85rem; line-height: 1.6; text-align: center; margin: 0;">
-          Commission payments are subject to Otter Quotes' approval process. Commissions are paid after job completion and approval — typically within 14 days of completion.
+        <p style="color: #5A6B7B; font-size: 0.85rem; line-height: 1.6; text-align: center; margin: 0;">
+          Commission payments are subject to Otter Quotes' approval process. Commissions are paid after job completion and approval.
         </p>
       </section>
 
@@ -863,8 +871,7 @@
   <footer id="site-footer"></footer>
 
   <!-- Scripts -->
-  <script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -895,14 +902,22 @@
       // Show W-9 blocked banner if applicable (D-172)
       renderW9Banner();
 
-      // Display referral link
-      displayReferralLink();
+      if (userReferralCode) {
+        // Display referral link
+        displayReferralLink();
 
-      // Generate QR code
-      generateQRCode();
+        // Generate QR code
+        generateQRCode();
 
-      // Populate share messages
-      populateShareMessages();
+        // Populate share messages
+        populateShareMessages();
+      } else {
+        // 2026-08-05: get_or_create_customer_referral_code() RPC (v100)
+        // returned no code — see fetchOrCreateReferralCode(). Show an
+        // honest error state instead of building a broken /ref/error
+        // link from a hardcoded fallback string.
+        renderReferralCodeError();
+      }
 
       // Load referrals if dashboard needed
       await loadReferrals();
@@ -935,66 +950,94 @@
     async function fetchOrCreateReferralCode() {
       if (!currentUser) return;
 
-      // Check if user has a referral entry. Column is unique_code — there is
-      // no `code` column; codes come from a BEFORE INSERT trigger.
-      const { data, error } = await sb
-        .from('referral_agents')
-        .select('unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at')
-        .eq('user_id', currentUser.id)
-        .eq('agent_type', 'customer')
-        .maybeSingle();
+      // v100 (2026-08-05): get_or_create_customer_referral_code() —
+      // SECURITY DEFINER RPC keyed on auth.uid() only (no client-supplied
+      // identity). Replaces the direct client .insert([...]).select().single()
+      // that used to run here, which was blocked by the same RLS
+      // write-then-read gap the #571 register_partner() RPC fixed for the
+      // anon partner-signup pages (referral_agents was locked down in the
+      // D-211 2026-06-13 security sprint; this customer-code path was the
+      // one writer that never got migrated off the raw client call — see
+      // PR #624). The RPC is idempotent: it returns the caller's existing
+      // active customer code if one exists, otherwise creates the
+      // referral_agents row (unique_code is trigger-generated — never
+      // supply it client-side) and returns the same shape either way.
+      const { data, error } = await sb.rpc('get_or_create_customer_referral_code');
 
-      if (data) {
+      if (data && data.unique_code) {
         userReferralCode = data.unique_code;
-        currentAgent = data;
+        currentAgent = data; // { unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at, created }
       } else {
-        // Create the agent row. first_name / last_name / email are NOT NULL —
-        // pull from the profile, fall back to auth metadata, then the email
-        // prefix. unique_code is trigger-generated: never supply it.
-        let email = currentUser.email || '';
-        let fullName = (currentUser.user_metadata && currentUser.user_metadata.full_name) || '';
-        const { data: profile } = await sb
-          .from('profiles')
-          .select('full_name, email')
-          .eq('id', currentUser.id)
-          .maybeSingle();
-        if (profile && profile.full_name) fullName = profile.full_name;
-        if (profile && profile.email) email = profile.email;
-
-        const emailPrefix = (email.split('@')[0] || 'Customer');
-        const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
-        const firstName = nameParts[0] || emailPrefix;
-        const lastName  = nameParts.length > 1 ? nameParts.slice(1).join(' ') : emailPrefix;
-
-        const { data: newData, error: insertError } = await sb
-          .from('referral_agents')
-          .insert([{
-            user_id: currentUser.id,
-            agent_type: 'customer',
-            first_name: firstName,
-            last_name: lastName,
-            email: email
-          }])
-          .select('unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at')
-          .single();
-
-        if (newData) {
-          userReferralCode = newData.unique_code;
-          currentAgent = newData;
-        } else {
-          console.error('Failed to create referral code:', insertError);
-          userReferralCode = 'error';
+        // Genuine failure (RPC error, expired session, no verified email,
+        // etc.) — do NOT fabricate a fake code. Leave userReferralCode
+        // unset so the UI shows an honest error instead of a broken
+        // /ref/error link (see renderReferralCodeError()).
+        console.error('Failed to fetch or create referral code:', error);
+        if (window.Sentry && typeof Sentry.captureException === 'function') {
+          Sentry.captureException(
+            error instanceof Error
+              ? error
+              : new Error('get_or_create_customer_referral_code RPC failed: ' + ((error && error.message) || 'unknown error')),
+            { tags: { feature: 'refer-a-friend', agent_type: 'customer' } }
+          );
         }
+        userReferralCode = null;
+        currentAgent = null;
       }
     }
 
+    // Single source of truth for the referral URL — returns null when no
+    // valid code exists so callers can fail safe instead of building a
+    // broken /ref/<falsy> link.
+    function getReferralUrl() {
+      return userReferralCode ? `${CONFIG.SITE_URL}/ref/${userReferralCode}` : null;
+    }
+
+    // Honest failure state shown when referral-code generation fails (see
+    // fetchOrCreateReferralCode()) — replaces the old behavior of silently
+    // displaying/sharing a fabricated https://otterquote.com/ref/error link.
+    function renderReferralCodeError() {
+      const linkEl = document.getElementById('referral-link-display');
+      if (linkEl) {
+        linkEl.textContent = "We couldn't generate your referral link right now. Please refresh the page — if this keeps happening, contact support@otterquote.com.";
+        linkEl.style.color = 'var(--red)';
+        linkEl.style.fontFamily = 'var(--font-body)';
+        linkEl.style.fontSize = '0.95rem';
+      }
+
+      ['copy-link-btn', 'share-link-btn', 'sms-btn', 'email-btn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+          btn.disabled = true;
+          btn.style.opacity = '0.5';
+          btn.style.cursor = 'not-allowed';
+        }
+      });
+
+      document.querySelectorAll('.share-grid .btn-primary').forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+      });
+
+      const qrSection = document.querySelector('.referral-link-qr');
+      if (qrSection) qrSection.style.display = 'none';
+
+      ['sms-message-display', 'nextdoor-message', 'email-body-display', 'badge-html-code'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = 'Unavailable — your referral link could not be generated.';
+      });
+    }
+
     function displayReferralLink() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) return;
       document.getElementById('referral-link-display').textContent = referralUrl;
     }
 
     function generateQRCode() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) return;
       const qrContainer = document.getElementById('qr-code');
       qrContainer.innerHTML = ''; // Clear existing
       new QRCode(qrContainer, {
@@ -1008,7 +1051,8 @@
     }
 
     function populateShareMessages() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) return;
 
       // Facebook message
       window.facebookShareMessage = 'I just got my roof replaced through Otter Quotes — multiple contractors competed for the job and I got a great deal. Check it out if you need any exterior work done!';
@@ -1072,7 +1116,11 @@ Best regards`;
     }
 
     function shareReferralLink() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) {
+        alert("Your referral link isn't ready yet. Please refresh the page, or contact support@otterquote.com if this continues.");
+        return;
+      }
       gtag('event', 'referral_share', { method: 'native_share', referral_code: userReferralCode });
       if (navigator.share) {
         navigator.share({
@@ -1086,7 +1134,11 @@ Best regards`;
     }
 
     function shareFacebook() {
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
+      const referralUrl = getReferralUrl();
+      if (!referralUrl) {
+        alert("Your referral link isn't ready yet. Please refresh the page, or contact support@otterquote.com if this continues.");
+        return;
+      }
       gtag('event', 'referral_share', { method: 'facebook', referral_code: userReferralCode });
       const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralUrl)}&quote=${encodeURIComponent(window.facebookShareMessage)}`;
       window.open(fbUrl, 'facebook-share', 'width=600,height=400');
@@ -1105,8 +1157,11 @@ Best regards`;
     }
 
     function sendEmail() {
+      if (!getReferralUrl()) {
+        alert("Your referral link isn't ready yet. Please refresh the page, or contact support@otterquote.com if this continues.");
+        return;
+      }
       gtag('event', 'referral_share', { method: 'email', referral_code: userReferralCode });
-      const referralUrl = `${CONFIG.SITE_URL}/ref/${userReferralCode}`;
       const mailtoLink = `mailto:?subject=${encodeURIComponent(window.emailSubject)}&body=${encodeURIComponent(window.emailBody)}`;
       window.location.href = mailtoLink;
     }
@@ -1138,6 +1193,11 @@ Best regards`;
     }
 
     function generateShareCard() {
+      if (!getReferralUrl()) {
+        alert("Your referral link isn't ready yet, so we can't build your share card. Please refresh the page, or contact support@otterquote.com if this continues.");
+        return;
+      }
+
       const canvas = document.getElementById('preview-canvas');
       const ctx = canvas.getContext('2d');
       const width = 800;
@@ -1213,7 +1273,7 @@ Best regards`;
     }
 
     async function loadReferrals() {
-      if (!currentUser || !sb) return;
+      if (!currentUser) return;
 
       // Two-step (#567): referrals has no referrer_id column — resolve our own
       // agent row first, then match referrals.referral_agent_id.

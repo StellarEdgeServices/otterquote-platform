@@ -428,6 +428,7 @@
 
   <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -496,9 +497,8 @@
 
     // ── Data Loaders ──
     async function loadContractor() {
-      if (!sb) return;
       const { data, error } = await sb
-        .from('contractors_public')
+        .rpc('get_contractors_public')
         .select(`
           id, company_name, contact_name, owner_photo_url, about_us, years_in_business,
           service_area_description, service_counties, license_number, verified,
@@ -513,7 +513,6 @@
     }
 
     async function loadLicenses() {
-      if (!sb) return;
       const { data } = await sb
         .from('contractor_licenses')
         .select('municipality, license_number, license_type')
@@ -525,11 +524,11 @@
     // Optional fetch — fails silently if intro_video_path column doesn't exist
     // (pre-v67 migration). Once column exists, surfaces video naturally.
     async function loadAndRenderIntroVideo() {
-      if (!sb || !contractorId) return;
+      if (!contractorId) return;
       let videoPath = null;
       try {
         const { data, error } = await sb
-          .from('contractors_public')
+          .rpc('get_contractors_public')
           .select('intro_video_path')
           .eq('id', contractorId)
           .maybeSingle();
@@ -559,7 +558,6 @@
     }
 
     async function loadCertifications() {
-      if (!sb) return;
       const { data } = await sb
         .from('contractor_certifications')
         .select('certification_name, issued_by, year_earned')
@@ -569,7 +567,7 @@
     }
 
     async function loadBid() {
-      if (!sb || !claimId) return;
+      if (!claimId) return;
       // Load the bid AND verify the claim belongs to this user
       const [bidResult, claimResult] = await Promise.all([
         sb.from('quotes')

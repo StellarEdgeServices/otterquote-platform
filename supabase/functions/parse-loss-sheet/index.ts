@@ -32,7 +32,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const FUNCTION_NAME = "parse-loss-sheet";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL = "claude-sonnet-4-6";
+const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL") ?? "claude-sonnet-4-6";
 
 // CORS tightened (Session 254): origin-allowlisted instead of wildcard.
 const ALLOWED_ORIGINS = [

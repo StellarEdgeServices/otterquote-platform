@@ -14,15 +14,16 @@
   });
 </script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=partner-adjusters&persona=partner');}})()</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<title>Become an Insurance Adjuster Partner &mdash; Otter Quotes</title>
+<title>Become an Insurance Adjuster Partner — Otter Quotes</title>
 <meta name="description" content="You see the damage first. Give homeowners a clear next step and earn $200 per completed job. Otter Quotes is not a public adjuster and never touches your claim handling.">
 <link rel="canonical" href="https://otterquote.com/partner-adjusters.html">
-<meta property="og:title" content="Become an Insurance Adjuster Partner &mdash; Otter Quotes">
+<meta property="og:title" content="Become an Insurance Adjuster Partner — Otter Quotes">
 <meta property="og:description" content="You see the damage first. Give homeowners a clear next step and earn $200 per completed job. Otter Quotes is not a public adjuster and never touches your claim handling.">
 <meta property="og:url" content="https://otterquote.com/partner-adjusters.html">
 <meta property="og:type" content="website">
@@ -81,7 +82,7 @@
 
 .hero .subtitle {
   font-size: 1.1rem;
-  color: var(--slate);
+  color: #5A6B7B;
   line-height: 1.8;
   margin-bottom: var(--sp-6);
   max-width: 680px;
@@ -97,7 +98,7 @@
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: var(--radius-md);
   font-size: 0.95rem;
-  color: var(--white);
+  color: var(--navy);
   line-height: 1.6;
 }
 
@@ -607,7 +608,7 @@
 <body>
 
 <!-- ── Header ── -->
-<header id="header"></header>
+<header id="site-header" data-active=""></header>
 
 <main>
 
@@ -617,7 +618,7 @@
       <div class="hero-badge">Insurance Adjuster Partner Program</div>
       <h1>You See the Damage First. Give Homeowners a Clear Next Step.</h1>
       <p class="subtitle">
-        Every homeowner asks the same question once you've documented the damage: "who should fix this?" Otter Quotes is a neutral next step &mdash; the homeowner gathers competing bids from licensed, insured local contractors on their own terms. It's not a recommendation of any one contractor, and it's completely separate from how the claim itself is handled.
+        Every homeowner asks the same question once you've documented the damage: "who should fix this?" Otter Quotes is a neutral next step — the homeowner gathers competing bids from licensed, insured local contractors on their own terms. It's not a recommendation of any one contractor, and it's completely separate from how the claim itself is handled.
       </p>
       <div class="hero-notice">
         Otter Quotes is not a public adjuster and does not negotiate or advise on insurance claims.
@@ -642,7 +643,7 @@
       <div class="step-card">
         <div class="step-number">1</div>
         <h3>Sign Up in 60 Seconds</h3>
-        <p>Enter your name, contact info, and employer. We generate your unique referral link instantly &mdash; no approval process, no waiting.</p>
+        <p>Enter your name, contact info, and employer. We generate your unique referral link instantly — no approval process, no waiting.</p>
       </div>
       <div class="step-card">
         <div class="step-number">2</div>
@@ -652,12 +653,12 @@
       <div class="step-card">
         <div class="step-number">3</div>
         <h3>Otter Quotes Handles the Contractor Side</h3>
-        <p>The homeowner gets matched with local contractors who bid competitively. We make your research easy by gathering licensing, insurance, and review information all in one place. They compare bids, choose their contractor, and sign a contract &mdash; all through the platform.</p>
+        <p>The homeowner gets matched with local contractors who bid competitively. We make your research easy by gathering licensing, insurance, and review information all in one place. They compare bids, choose their contractor, and sign a contract — all through the platform.</p>
       </div>
       <div class="step-card">
         <div class="step-number">4</div>
         <h3>You Earn $200</h3>
-        <p>When a job over $10,000 completes, you get paid. No chasing checks &mdash; we track every referral and pay automatically. Bonus: if you recruit another adjuster to Otter Quotes, you earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
+        <p>When a job over $10,000 completes, you get paid. No chasing checks — we track every referral and pay automatically. Bonus: if you recruit another adjuster to Otter Quotes, you earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
       </div>
     </div>
   </section>
@@ -670,11 +671,11 @@
     <div class="value-grid">
       <div class="value-card">
         <h3>Homeowners Trust What You Documented</h3>
-        <p>You confirmed the damage. They trust your file. That's the highest-intent moment in the entire process &mdash; the homeowner isn't browsing, they have a real repair that needs to happen.</p>
+        <p>You confirmed the damage. They trust your file. That's the highest-intent moment in the entire process — the homeowner isn't browsing, they have a real repair that needs to happen.</p>
       </div>
       <div class="value-card">
         <h3>A Better Experience Than Searching Alone</h3>
-        <p>Otter Quotes gives contractors everything they need to bid accurately &mdash; measurements, material specs, documentation. Homeowners get bids on exactly what they need. No high-pressure sales pitches, no being ghosted after a site visit. Just apples-to-apples bids and a simple signing process.</p>
+        <p>Otter Quotes gives contractors everything they need to bid accurately — measurements, material specs, documentation. Homeowners get bids on exactly what they need. No high-pressure sales pitches, no being ghosted after a site visit. Just apples-to-apples bids and a simple signing process.</p>
       </div>
       <div class="value-card">
         <h3>Works Alongside Any Claim Path</h3>
@@ -682,7 +683,7 @@
       </div>
       <div class="value-card">
         <h3>Zero Effect on Your Claim Handling</h3>
-        <p>Sharing your referral link never touches how you scope, evaluate, or settle the claim. Otter Quotes only steps in after coverage and claim decisions are made &mdash; it helps the homeowner find a contractor, nothing more.</p>
+        <p>Sharing your referral link never touches how you scope, evaluate, or settle the claim. Otter Quotes only steps in after coverage and claim decisions are made — it helps the homeowner find a contractor, nothing more.</p>
       </div>
       <div class="value-card">
         <h3>You Don't Have to Manage Anything</h3>
@@ -703,10 +704,10 @@
       <div class="commission-secondary" style="margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid rgba(224,123,0,0.25); font-size: 1.75rem; font-weight: 800; color: var(--amber); font-family: var(--font-heading); line-height: 1.1;">+ $50</div>
       <div class="commission-label" style="margin-top: var(--sp-2);">For Every Job From a Partner You Recruit</div>
       <p class="commission-note" style="margin-top: var(--sp-5);">
-        Know another adjuster who'd benefit? Share your recruit link and earn $50 every time their referral completes a job over $10K. One level &mdash; simple, transparent, no MLM.
+        Know another adjuster who'd benefit? Share your recruit link and earn $50 every time their referral completes a job over $10K. One level — simple, transparent, no MLM.
       </p>
       <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">A completed IRS Form W-9 is required before your first commission payment is issued.</p>
-      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">Commissions are paid after job completion and approval &mdash; typically within 14 days of completion.</p>
+      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">Commissions are paid after job completion and approval.</p>
     </div>
   </section>
 
@@ -781,7 +782,7 @@
       <div class="toolkit-wrapper" id="toolkitWrapper">
 
         <div class="toolkit-header">
-          <h3>You're In &mdash; Here's Your Toolkit</h3>
+          <h3>You're In — Here's Your Toolkit</h3>
           <p>Five ways to put your link to work. Use whichever fits your workflow.</p>
         </div>
 
@@ -856,6 +857,11 @@
           <button class="copy-btn" onclick="copyItem('report')">Copy File Note</button>
         </div>
 
+        <!-- Go to Dashboard -->
+        <div class="toolkit-card" style="text-align:center;">
+          <a href="/partner-dashboard.html" class="btn btn-primary">Go to Partner Dashboard</a>
+        </div>
+
       </div>
     </div>
   </section>
@@ -871,7 +877,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          The homeowner lands on a page that explains the Otter Quotes process and walks them through getting competing contractor bids. They enter their info, and Otter Quotes handles everything from there &mdash; matching them with local contractors (whose licensing, insurance, and review information is gathered in one place so they can compare with confidence), collecting bids, and getting a contract signed.
+          The homeowner lands on a page that explains the Otter Quotes process and walks them through getting competing contractor bids. They enter their info, and Otter Quotes handles everything from there — matching them with local contractors (whose licensing, insurance, and review information is gathered in one place so they can compare with confidence), collecting bids, and getting a contract signed.
         </div>
       </div>
 
@@ -881,7 +887,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          No. Referring a homeowner to Otter Quotes has zero effect on how you scope, evaluate, or settle their claim. Otter Quotes is not a public adjuster and does not negotiate or advise on insurance claims &mdash; it only helps the homeowner find a contractor after coverage and claim decisions have already been made independently.
+          No. Referring a homeowner to Otter Quotes has zero effect on how you scope, evaluate, or settle their claim. Otter Quotes is not a public adjuster and does not negotiate or advise on insurance claims — it only helps the homeowner find a contractor after coverage and claim decisions have already been made independently.
         </div>
       </div>
 
@@ -901,7 +907,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          Commissions are paid after job completion and approval &mdash; typically within 14 days of completion. A job "completes" when the contractor finishes the work and the final payment clears. If someone you recruited to Otter Quotes sends a referral that completes, you also earn a $50 recruit bonus &mdash; paid on the same schedule.
+          Commissions are paid after job completion and approval. A job "completes" when the contractor finishes the work and the final payment clears. If someone you recruited to Otter Quotes sends a referral that completes, you also earn a $50 recruit bonus — paid on the same schedule.
         </div>
       </div>
 
@@ -911,7 +917,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          Any exterior repair or replacement job over $10,000 that completes through Otter Quotes &mdash; roofing, siding, gutters, windows. Covered claims and out-of-pocket (retail) jobs both qualify. Jobs under $10,000 don't earn a cash commission, but we still handle the homeowner professionally.
+          Any exterior repair or replacement job over $10,000 that completes through Otter Quotes — roofing, siding, gutters, windows. Covered claims and out-of-pocket (retail) jobs both qualify. Jobs under $10,000 don't earn a cash commission, but we still handle the homeowner professionally.
         </div>
       </div>
 
@@ -921,7 +927,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          This is a straightforward referral arrangement &mdash; you refer a homeowner to a contractor bidding platform, and you may earn a commission when they complete a job through it. Otter Quotes does not influence your claim work in any way. Whether you're permitted to accept a referral fee depends on your employer's policies and your state's adjuster licensing rules, so check both before you participate.
+          This is a straightforward referral arrangement — you refer a homeowner to a contractor bidding platform, and you may earn a commission when they complete a job through it. Otter Quotes does not influence your claim work in any way. Whether you're permitted to accept a referral fee depends on your employer's policies and your state's adjuster licensing rules, so check both before you participate.
         </div>
       </div>
 
@@ -941,7 +947,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          When you bring another adjuster to Otter Quotes using your recruit link, you earn $50 for every job over $10,000 that their referrals complete. It's one level only &mdash; you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on this page after you sign up, and on your partner dashboard.
+          When you bring another adjuster to Otter Quotes using your recruit link, you earn $50 for every job over $10,000 that their referrals complete. It's one level only — you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on this page after you sign up, and on your partner dashboard.
         </div>
       </div>
 
@@ -950,11 +956,21 @@
 
 </main>
 
-<!-- ── Footer ── -->
-<footer class="footer" id="footer"></footer>
+<!-- Partner App promo (PWA v1, 2026-08-03) -->
+<section aria-label="Otter Quotes Partner App" style="max-width: 1100px; margin: 0 auto; padding: 48px 24px;">
+  <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap; background: #0D1B2E; border-radius: 16px; padding: 32px; border: 1px solid rgba(224, 123, 0, 0.35);">
+    <img src="/img/app/partner-icon-192.png" alt="Otter Quotes Partner App icon" width="72" height="72" style="border-radius: 16px; flex-shrink: 0;">
+    <div style="flex: 1; min-width: 220px;">
+      <div style="font-family: 'Rubik', sans-serif; font-weight: 700; font-size: 1.25rem; color: #FFFFFF; margin-bottom: 6px;">Get the Otter Quotes Partner App</div>
+      <div style="font-family: 'Rubik', sans-serif; font-size: 0.95rem; color: #94A3B8;">Refer homeowners, grow your partner network, and track your referrals — right from your phone. Free, installs in seconds.</div>
+    </div>
+    <a href="/partner-app.html" style="font-family: 'Rubik', sans-serif; display: inline-block; padding: 14px 28px; background: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 8px; font-weight: 600; flex-shrink: 0;">Get the App</a>
+  </div>
+</section>
 
-<script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
+<!-- ── Footer ── -->
+<footer class="footer" id="site-footer"></footer>
+
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 
@@ -974,11 +990,57 @@
 // and consumed by handleSignup() when the user submits the form.
 let recruitContext = { recruitCode: null, recruiterId: null };
 
+// gh-846: UTM context populated by captureUtmContext() and consumed by
+// handleSignup(). Persisted to localStorage so it survives a page bounce
+// mid signup — same pattern as cs_recruit_code above.
+let utmContext = { source: null, medium: null, campaign: null, content: null };
+
 document.addEventListener('DOMContentLoaded', () => {
-  if (typeof initNav === 'function') initNav();
   document.getElementById('partnerForm').addEventListener('submit', handleSignup);
   detectRecruitCode();
+  captureUtmContext();
 });
+
+/**
+ * Capture utm_source/medium/campaign/content from the URL on first landing
+ * and persist them so they survive a bounce before the form is submitted.
+ * Falls back to a previously-stored value when this load has no UTM params
+ * of its own, so a later page in the flow doesn't clobber an earlier capture.
+ */
+function captureUtmContext() {
+  const params = new URLSearchParams(window.location.search);
+  const fresh = {
+    source:   params.get('utm_source'),
+    medium:   params.get('utm_medium'),
+    campaign: params.get('utm_campaign'),
+    content:  params.get('utm_content'),
+  };
+  if (fresh.source || fresh.medium || fresh.campaign || fresh.content) {
+    utmContext = fresh;
+    localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
+    return;
+  }
+  try {
+    const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+    if (stored) utmContext = stored;
+  } catch (e) { /* malformed stored value — ignore, keep default */ }
+}
+
+// #632: signed-in partners land straight on their dashboard instead of
+// re-seeing the signup form - same loop-guard shape as partner-login.html.
+// ?stay=1 opts out; anon/homeowner/contractor visitors and referral/recruit
+// attribution for anon visitors are untouched (load-time only, so it never
+// interrupts the in-session post-signup toolkit block).
+(async function redirectSignedInPartner() {
+  if (new URLSearchParams(window.location.search).get('stay') === '1') return;
+  if ((document.referrer || '').includes('/partner-dashboard.html')) return;
+  const user = await Auth.getUser();
+  if (!user) return;
+  const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+  const role = await Auth.getRole();
+  if (!partnerRoles.includes(role)) return;
+  window.location.replace('/partner-dashboard.html');
+})();
 
 /**
  * Detect whether this visitor arrived via a recruit link.
@@ -994,7 +1056,7 @@ async function detectRecruitCode() {
   try {
     // Public read allowed by existing RLS on referral_agents, via the public view
     const { data: recruiter, error } = await sb
-      .from('referral_agents_public')
+      .rpc('get_referral_agents_public')
       .select('id, first_name, last_name, company')
       .eq('recruit_code', recruitCode)
       .eq('status', 'active')
@@ -1065,6 +1127,10 @@ async function handleSignup(e) {
         p_referred_by_note: referredBy || null,
         p_recruit_code:     recruitContext.recruitCode || null,
         p_metadata:         { adjuster_type: adjusterType || null },
+        p_utm_source:       utmContext.source   || null,
+        p_utm_medium:       utmContext.medium   || null,
+        p_utm_campaign:     utmContext.campaign || null,
+        p_utm_content:      utmContext.content  || null,
       });
 
     if (error) {
@@ -1100,6 +1166,7 @@ async function handleSignup(e) {
     // Recruit code has now been consumed — clear it so a future signup on
     // this device doesn't accidentally attribute to the same recruiter.
     localStorage.removeItem('cs_recruit_code');
+    localStorage.removeItem('cs_utm_context');
 
     // Send magic link so partner can access their dashboard.
     // 'adjuster' is not in auth.js's hardcoded partnerRoles allowlist, so the
@@ -1117,11 +1184,16 @@ async function handleSignup(e) {
     // Populate templates
     populateTemplates(refLink, fullName, employer);
 
-    // GA4 conversion event — partner funnel
+    // GA4 conversion event — partner funnel. gh-846: previously read
+    // utm_source inline from the current URL (lost on a page bounce) and
+    // always dropped utm_content. Now sourced from the persisted utmContext.
     if (typeof gtag === 'function') {
       gtag('event', 'partner_signup', {
         partner_type: 'adjuster',
-        source: new URLSearchParams(location.search).get('utm_source') || 'direct',
+        source:   utmContext.source   || 'direct',
+        medium:   utmContext.medium   || undefined,
+        campaign: utmContext.campaign || undefined,
+        content:  utmContext.content  || undefined,
       });
     }
 
@@ -1138,7 +1210,7 @@ async function handleSignup(e) {
  */
 function populateTemplates(refLink, fullName, employer) {
   document.getElementById('textTemplate').textContent =
-`Hi [Homeowner name], this is ${fullName} from ${employer}. Otter Quotes can get you competing contractor bids on the repairs from your file, so you can compare your options and sign a contract without the runaround. It's a separate step from your claim &mdash; here's the link: ${refLink}`;
+`Hi [Homeowner name], this is ${fullName} from ${employer}. Otter Quotes can get you competing contractor bids on the repairs from your file, so you can compare your options and sign a contract without the runaround. It's a separate step from your claim — here's the link: ${refLink}`;
 
   document.getElementById('emailTemplate').textContent =
 `Subject: A Resource for Your Repair Contractors

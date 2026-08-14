@@ -61,7 +61,7 @@ export function useRepairContractors(trade: Trade, enabled: boolean): Contractor
     (async () => {
       try {
         const { data, error: fetchErr } = await supabase
-          .from('contractors_public')
+          .rpc('get_contractors_public')
           .select('id, company_name, years_in_business, rating, service_counties')
           .eq('repairs_accepted', true)
           .contains('trades', [trade])

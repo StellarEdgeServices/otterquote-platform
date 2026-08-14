@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Free Roofing CRM for Contractors &mdash; OQ CRM | Otter Quotes</title>
+<meta name="description" content="OQ CRM is a genuinely free CRM built for roofing contractors &mdash; unlimited seats, no credit card required. Contacts, job pipeline, notes, and invoices, all free. A free alternative to paid CRMs like JobNimbus.">
+<link rel="canonical" href="https://otterquote.com/oq-crm.html">
+<meta property="og:title" content="OQ CRM &mdash; The Free CRM Built for Roofing Contractors">
+<meta property="og:description" content="Unlimited seats, no credit card. Contacts, job pipeline, notes, and invoices &mdash; a free CRM built for roofing and exterior contractors.">
+<meta property="og:url" content="https://otterquote.com/oq-crm.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="OQ CRM &mdash; The Free CRM Built for Roofing Contractors">
+<meta name="twitter:description" content="Unlimited seats, no credit card. Contacts, job pipeline, notes, and invoices &mdash; free.">
+<meta name="twitter:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "OQ CRM",
+  "alternateName": "Otter CRM",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web, iOS, Android",
+  "url": "https://otter-crm.netlify.app",
+  "description": "OQ CRM is a free CRM for roofing and exterior contractors. Contacts, job pipeline, notes, and invoices, with unlimited free seats and no credit card required.",
+  "publisher": { "@type": "Organization", "name": "Otter Quotes", "url": "https://otterquote.com" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is OQ CRM really free, or is this a limited trial?",
+      "acceptedAnswer": { "@type": "Answer", "text": "It's free, full stop — not a trial and not a freemium plan with the useful parts locked behind a paywall. There's no credit card required to sign up and no seat limit on your account." }
+    },
+    {
+      "@type": "Question",
+      "name": "Is OQ CRM a free alternative to JobNimbus?",
+      "acceptedAnswer": { "@type": "Answer", "text": "For a contractor choosing between a paid CRM subscription and a free one, yes — OQ CRM covers the core of what a growing crew needs: contacts, a job pipeline, notes, and invoices, at no cost. Larger shops leaning hard on supplier integrations or a full insurance-supplement workflow may still want a bigger platform; we're upfront about that." }
+    },
+    {
+      "@type": "Question",
+      "name": "What's actually included in OQ CRM?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Contacts, a job pipeline, notes on every job, and invoices — the core of running a roofing business from your phone. It also includes estimates, scheduling, and job photos." }
+    },
+    {
+      "@type": "Question",
+      "name": "How many people on my crew can use it?",
+      "acceptedAnswer": { "@type": "Answer", "text": "As many as you want. Every seat is free — add your foreman, your salesperson, whoever does your books. There's no per-user charge." }
+    },
+    {
+      "@type": "Question",
+      "name": "Do I have to work with Otter Quotes to use OQ CRM?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. OQ CRM is a standalone account. Sign up and use it whether or not you ever take a project through the Otter Quotes platform." }
+    }
+  ]
+}
+</script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: var(--navy);
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.12) 0%, transparent 65%);
+}
+.hero-badge {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-5);
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.5);
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #34D399;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-6);
+}
+.page-hero h1 { margin-bottom: var(--sp-4); color: var(--white); }
+.page-hero p.hero-sub { max-width: 660px; margin: 0 auto var(--sp-8); font-size: 1.1rem; color: var(--slate); line-height: 1.8; }
+.hero-cta-group { display: flex; gap: var(--sp-4); justify-content: center; flex-wrap: wrap; }
+.hero-trust {
+  margin-top: var(--sp-8);
+  display: flex;
+  gap: var(--sp-8);
+  justify-content: center;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--slate);
+}
+.hero-trust span::before { content: '\2713'; color: #34D399; font-weight: 700; margin-right: 0.4rem; }
+
+.section-header { text-align: center; margin-bottom: var(--sp-12); }
+.section-header h2 { color: var(--white); margin-bottom: var(--sp-3); }
+.section-header p { color: var(--slate); max-width: 640px; margin: 0 auto; font-size: 1rem; line-height: 1.75; }
+
+/* Compare table */
+.compare-wrap { max-width: 720px; margin: 0 auto; overflow-x: auto; }
+.compare-table { width: 100%; border-collapse: collapse; }
+.compare-table th, .compare-table td {
+  padding: var(--sp-4) var(--sp-5);
+  text-align: left;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  font-size: 0.92rem;
+}
+.compare-table thead th { color: var(--white); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.compare-table td:first-child, .compare-table th:first-child { color: var(--white); font-weight: 600; }
+.compare-table td { color: var(--slate); }
+.compare-table td.yes { color: #34D399; font-weight: 600; }
+.compare-check::before { content: '\2713 '; color: #34D399; }
+.compare-x::before { content: '\2013 '; color: var(--slate); }
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.feature-card {
+  padding: var(--sp-6);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-lg);
+}
+.feature-card h3 { font-size: 1.05rem; color: var(--white); margin-bottom: var(--sp-3); }
+.feature-card p { font-size: 0.92rem; color: var(--slate); line-height: 1.7; }
+
+.faq-section { padding: var(--sp-16) 0; background: var(--navy-2); border-top: 1px solid rgba(255,255,255,0.06); }
+.faq-container { max-width: 720px; margin: 0 auto; }
+.faq-item { border: 1px solid rgba(255,255,255,0.07); border-radius: var(--radius-md); margin-bottom: var(--sp-4); overflow: hidden; }
+.faq-header {
+  padding: var(--sp-4) var(--sp-5);
+  background: rgba(224,123,0,0.05);
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--white);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-body);
+  transition: background var(--duration) var(--ease);
+}
+.faq-header:hover { background: rgba(224,123,0,0.1); }
+.faq-toggle { color: var(--amber); flex-shrink: 0; margin-left: var(--sp-4); transition: transform var(--duration) var(--ease); display: inline-block; }
+.faq-item.open .faq-toggle { transform: rotate(180deg); }
+.faq-content {
+  display: none;
+  padding: var(--sp-4) var(--sp-5);
+  color: var(--slate);
+  font-size: 0.93rem;
+  line-height: 1.75;
+  background: rgba(255,255,255,0.02);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.faq-item.open .faq-content { display: block; }
+
+.cta-bottom {
+  text-align: center;
+  padding: var(--sp-16) 0 var(--sp-20);
+  background: var(--navy);
+  background-image: radial-gradient(ellipse at 50% 100%, rgba(224,123,0,0.1) 0%, transparent 60%);
+}
+.cta-bottom h2 { margin-bottom: var(--sp-4); color: var(--white); }
+.cta-bottom p { max-width: 520px; margin: 0 auto var(--sp-8); font-size: 1.05rem; color: var(--slate); }
+
+@media (max-width: 768px) {
+  .hero-cta-group { flex-direction: column; align-items: center; }
+  .hero-trust { gap: var(--sp-4); flex-direction: column; }
+  .compare-table { font-size: 0.85rem; }
+}
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active="tools"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <div class="hero-badge">Free Forever &middot; Unlimited Seats</div>
+    <h1>The Free CRM Built for Roofing Contractors</h1>
+    <p class="hero-sub">Looking for a free CRM for roofing contractors, or a free alternative to JobNimbus while you're getting your business off the ground? OQ CRM covers contacts, jobs, notes, and invoices &mdash; unlimited users, no credit card, free forever.</p>
+    <div class="hero-cta-group">
+      <a href="https://otter-crm.netlify.app" class="btn btn-primary btn-lg" target="_blank" rel="noopener" id="cta-hero-signup">Create Your Free Account</a>
+      <a href="/tools-crm.html" class="btn btn-secondary btn-lg">See Full Feature Tour</a>
+    </div>
+    <div class="hero-trust">
+      <span>No credit card</span>
+      <span>No seat fees</span>
+      <span>Free forever</span>
+    </div>
+  </div>
+</section>
+
+<section class="section" style="background: var(--navy-2);">
+  <div class="container">
+    <div class="section-header">
+      <h2>A free JobNimbus alternative for crews just starting out</h2>
+      <p>If you're comparing CRMs for roofing contractors and weighing whether a paid platform is worth it yet, here's the honest version of that comparison.</p>
+    </div>
+    <div class="compare-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr><th>&nbsp;</th><th>OQ CRM</th><th>Typical Paid Roofing CRM</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Monthly cost</td><td class="yes">$0, free forever</td><td>Monthly subscription</td></tr>
+          <tr><td>Per-seat fees</td><td class="yes">None &mdash; unlimited users</td><td>Often priced per user</td></tr>
+          <tr><td>Credit card to start</td><td class="yes">Not required</td><td>Usually required</td></tr>
+          <tr><td>Contacts &amp; job pipeline</td><td class="compare-check">&nbsp;</td><td class="compare-check">&nbsp;</td></tr>
+          <tr><td>Notes &amp; invoices</td><td class="compare-check">&nbsp;</td><td class="compare-check">&nbsp;</td></tr>
+          <tr><td>Deep supplier &amp; insurance-supplement integrations</td><td class="compare-x">&nbsp;</td><td class="compare-check">&nbsp;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="text-align:center;color:var(--slate);font-size:0.85rem;max-width:600px;margin:var(--sp-6) auto 0;">We're not going to pretend OQ CRM does everything the big incumbents do &mdash; if you need heavy supplier ordering or a full insurance-supplement workflow, those platforms still have their place. OQ CRM is built for the crew choosing between a paid CRM and a notebook.</p>
+  </div>
+</section>
+
+<section class="section" style="background: var(--navy);">
+  <div class="container">
+    <div class="section-header">
+      <h2>What you actually get</h2>
+      <p>No trial period, no locked features, no "contact sales" screen.</p>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>Contacts</h3>
+        <p>Every homeowner, adjuster, and supplier in one place, with job history attached so nothing gets lost in a text thread.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Job Pipeline</h3>
+        <p>An eight-stage board built around how roofing work actually moves, from first contact to job complete.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Notes</h3>
+        <p>Keep a running record on every job and every contact, so the next call doesn't start from zero.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Invoices</h3>
+        <p>Turn an approved estimate into an invoice, record payments against it, and always know what's outstanding.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq-section">
+  <div class="container">
+    <div class="faq-container">
+      <div class="section-header"><h2>Straight answers</h2></div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Is OQ CRM really free, or is this a limited trial?</span>
+          <span class="faq-toggle">&#9660;</span>
+        </button>
+        <div class="faq-content">It's free, full stop &mdash; not a trial and not a freemium plan with the useful parts locked behind a paywall. There's no credit card required to sign up and no seat limit on your account.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Is OQ CRM a free alternative to JobNimbus?</span>
+          <span class="faq-toggle">&#9660;</span>
+        </button>
+        <div class="faq-content">For a contractor choosing between a paid CRM subscription and a free one, yes &mdash; OQ CRM covers the core of what a growing crew needs: contacts, a job pipeline, notes, and invoices, at no cost. Larger shops leaning hard on supplier integrations or a full insurance-supplement workflow may still want a bigger platform, and we're upfront about that.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>What's actually included in OQ CRM?</span>
+          <span class="faq-toggle">&#9660;</span>
+        </button>
+        <div class="faq-content">Contacts, a job pipeline, notes on every job, and invoices &mdash; the core of running a roofing business from your phone. It also includes estimates, scheduling, and job photos. See the <a href="/tools-crm.html" style="color:var(--amber);">full feature tour</a> for details.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>How many people on my crew can use it?</span>
+          <span class="faq-toggle">&#9660;</span>
+        </button>
+        <div class="faq-content">As many as you want. Every seat is free &mdash; add your foreman, your salesperson, whoever does your books. There's no per-user charge.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-header" onclick="toggleFaq(this)">
+          <span>Do I have to work with Otter Quotes to use OQ CRM?</span>
+          <span class="faq-toggle">&#9660;</span>
+        </button>
+        <div class="faq-content">No. OQ CRM is a standalone account. Sign up and use it whether or not you ever take a project through the Otter Quotes platform.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="cta-bottom">
+  <div class="container">
+    <h2>Start running your jobs today</h2>
+    <p>Sign up, add your company, and put your first job on the board &mdash; free, with no card and no seat limit.</p>
+    <a href="https://otter-crm.netlify.app" class="btn btn-primary btn-lg" target="_blank" rel="noopener" id="cta-bottom-signup">Create Your Free Account</a>
+    <p style="margin-top:var(--sp-6);color:var(--slate);font-size:0.9rem;">
+      Also from Otter Quotes:
+      <a href="/oq-voice-ai.html" style="color:var(--amber);">OQ Voice AI</a> &middot;
+      <a href="/tools-online-presence.html" style="color:var(--amber);">Online Presence Manager</a>
+    </p>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+function toggleFaq(btn) {
+  var item = btn.closest('.faq-item');
+  if (item) item.classList.toggle('open');
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  ['cta-hero-signup', 'cta-bottom-signup'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', function () {
+      if (typeof gtag === 'function') {
+        gtag('event', 'crm_signup_click', { placement: id, source_page: 'oq-crm' });
+      }
+    });
+  });
+});
+</script>
+</body>
+</html>

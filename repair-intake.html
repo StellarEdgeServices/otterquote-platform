@@ -1314,7 +1314,7 @@
             try {
                 // Fetch contractors who have opted into repairs and serve this trade
                 const { data: contractors, error } = await sb
-                    .from('contractors_public')
+                    .rpc('get_contractors_public')
                     .select('id, company_name, years_in_business, rating, service_counties')
                     .eq('repairs_accepted', true)
                     .contains('trades', [trade])
