@@ -719,7 +719,11 @@
       const { data, error } = await sb
         .rpc('get_referral_agents_public')
         .select('*')
-        .eq('referral_code', ref)
+        // gh-815: referral_agents has no referral_code column, only
+        // unique_code — matches ref-re.html / ref-inspector.html. The
+        // wrong column name made this PostgREST call 400 silently
+        // (swallowed by this try/catch), so the badge never rendered.
+        .eq('unique_code', ref)
         .single();
 
       if (!error && data) {
