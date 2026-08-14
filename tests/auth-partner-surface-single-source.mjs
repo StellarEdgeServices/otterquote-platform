@@ -176,6 +176,25 @@ async function main() {
   }
   console.log('✓ PASS: redirectToDashboard() control — new homeowner (no claim) still routes to /trade-selector.html');
 
+  // ── redirectToDashboard(): gh-851 — partner-only account off a partner page ──
+  // Before the fix, this function had no partner branch at all: every
+  // partner agent_type fell into the else and routed to trade-selector/
+  // dashboard.html (homeowner intake). Only the onPartnerPage early-return
+  // above saved a partner who was already ON a partner page; this is the
+  // case that wasn't saved by that guard.
+  {
+    const sandbox = makeSandbox({
+      pathname: '/get-started.html', user: { id: 'u7' },
+      contractorRow: null, agentRow: { agent_type: 're_agent' }, profileRole: 'homeowner',
+    });
+    await sandbox.window.Auth.redirectToDashboard();
+    assert.equal(
+      sandbox._locationWrites[0], '/partner-dashboard.html',
+      `partner-only account reaching redirectToDashboard() off a non-partner page: expected /partner-dashboard.html, got ${JSON.stringify(sandbox._locationWrites)}`
+    );
+  }
+  console.log('✓ PASS: gh-851 — redirectToDashboard() now routes a partner-only account to /partner-dashboard.html even off a partner page');
+
   // ── cs_redirect widened check (AC #10) ──
   // A saved ref-* redirect must be HONORED on a partner-family page — it is
   // NOT stale-cross-surface under the widened (shared) definition, even
