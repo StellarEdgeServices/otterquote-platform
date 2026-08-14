@@ -3423,6 +3423,7 @@
 
   // Start on auth state change
   let initFired = false;
+  if (!sb) return;
   sb.auth.onAuthStateChange((event, session) => {
     if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && !initFired) {
       initFired = true;
@@ -3576,6 +3577,7 @@
   }
 
   let _initFired = false;
+  if (!sb) return;
   sb.auth.onAuthStateChange((event, session) => {
     if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && !_initFired) {
       _initFired = true;
