@@ -29,6 +29,9 @@ jobs:
       - name: sb.auth.onAuthStateChange guard check (Stage 5 prevention, 86e1fratf)
         run: python3 scripts/check-sb-auth-guards.py
 
+      - name: cookie-storage.js/config.js load-order check (Stage 5 prevention, #601)
+        run: python3 scripts/check-script-load-order.py
+
       - name: Lint vanilla JS for syntax errors
         run: |
           echo "Running node --check on js/**/*.js ..."
@@ -62,6 +65,9 @@ jobs:
           node-version: '20.x'
           cache: 'npm'
           cache-dependency-path: 'tests/e2e/package.json'
+
+      - name: auth.js stale-session no-hang unit test (#602 regression)
+        run: node tests/auth-stale-session-no-hang.mjs
 
       - name: Install E2E test dependencies
         working-directory: tests/e2e
