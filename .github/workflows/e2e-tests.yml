@@ -35,6 +35,9 @@ jobs:
       - name: partner-sw.js VERSION-bump check (gh-831)
         run: python3 scripts/check-partner-sw-version.py
 
+      - name: partner-surface single-source-of-truth check (gh-807)
+        run: python3 scripts/check-partner-surface-single-source.py
+
       - name: Lint vanilla JS for syntax errors
         run: |
           echo "Running node --check on js/**/*.js ..."
@@ -74,6 +77,9 @@ jobs:
 
       - name: auth.js partner-role-resolution unit test (#817/#643 regression)
         run: node tests/auth-partner-role-resolution.mjs
+
+      - name: auth.js partner-surface single-source-of-truth unit test (#807 regression)
+        run: node tests/auth-partner-surface-single-source.mjs
 
       - name: Install E2E test dependencies
         working-directory: tests/e2e

@@ -74,6 +74,23 @@ function _clearSentryUser() {
   } catch (e) { /* non-fatal */ }
 }
 
+/**
+ * gh-807: single source of truth for "is this a partner surface" page.
+ * Before this, requireAuth() tested the four-family regex against the full
+ * pathname while redirectToDashboard()'s #783 guard tested only
+ * `indexOf('partner-') === 0` against the trailing filename — so `ref-*`,
+ * `recruit*`, and `refer-a-friend*` pages were partner surfaces by
+ * requireAuth()'s own definition but NOT covered by redirectToDashboard()'s
+ * guard. Both now call this one function. It tests the trailing filename
+ * (not the full pathname) so a directory segment can never false-positive
+ * (e.g. a hypothetical /blog/refer-a-friend-story.html would not match).
+ */
+var PARTNER_SURFACE_FILE_RE = /^(partner-|ref-|recruit|refer-a-friend)/;
+function _isPartnerSurfaceFile(pathname) {
+  var file = pathname.substring(pathname.lastIndexOf('/') + 1);
+  return PARTNER_SURFACE_FILE_RE.test(file);
+}
+
 window.Auth = {
   /** Get current session - robust race-free implementation.
    *
@@ -340,7 +357,7 @@ window.Auth = {
       // production, with no way back. Route partners to their own login gate.
       const path = window.location.pathname;
       const isContractorPage = path.includes('contractor');
-      const isPartnerPage = /(^|\/)(partner-|ref-|recruit|refer-a-friend)/.test(path);
+      const isPartnerPage = _isPartnerSurfaceFile(path); // gh-807: shared with redirectToDashboard()
       window.location.href = isContractorPage
         ? '/contractor-login.html'
         : isPartnerPage
@@ -481,7 +498,12 @@ window.Auth = {
     const currentFile = window.location.pathname.substring(
       window.location.pathname.lastIndexOf('/') + 1
     );
-    const onPartnerPage = currentFile.indexOf('partner-') === 0;
+    // gh-807: was `currentFile.indexOf('partner-') === 0`, narrower than
+    // requireAuth()'s partner-surface definition — ref-*/recruit*/
+    // refer-a-friend* pages fell through to role-based routing below and
+    // could be bounced into the homeowner intake flow. Now shares the same
+    // definition as requireAuth() via _isPartnerSurfaceFile().
+    const onPartnerPage = _isPartnerSurfaceFile(window.location.pathname);
 
     // gh-817: cs_redirect is saved by requireAuth() on ANY earlier unauthenticated
     // page hit in this tab's session (e.g. a contractor page Dustin visited before
@@ -491,13 +513,14 @@ window.Auth = {
     // symptom exactly: partner-dashboard.html renders, then a leftover
     // cs_redirect='/contractor-dashboard.html' from an earlier same-session
     // contractor-page visit fires this redirect. Discard the saved value instead
-    // of honoring it once we're on a partner-*.html page, unless the saved target
-    // is itself a partner page (legitimate deep-link-while-logged-out case).
+    // of honoring it once we're on a partner surface, unless the saved target
+    // is itself a partner surface (legitimate deep-link-while-logged-out case).
+    // gh-807: both sides of this check now use the shared partner-surface
+    // definition (was `indexOf('partner-') === 0` on the saved target only).
     const savedRedirect = sessionStorage.getItem('cs_redirect');
     if (savedRedirect) {
       sessionStorage.removeItem('cs_redirect');
-      const savedFile = savedRedirect.substring(savedRedirect.lastIndexOf('/') + 1);
-      const staleCrossSurface = onPartnerPage && savedFile.indexOf('partner-') !== 0;
+      const staleCrossSurface = onPartnerPage && !_isPartnerSurfaceFile(savedRedirect);
       if (staleCrossSurface) {
         console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — already on partner surface (' + currentFile + ')');
       } else {
