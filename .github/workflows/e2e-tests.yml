@@ -32,6 +32,9 @@ jobs:
       - name: cookie-storage.js/config.js load-order check (Stage 5 prevention, #601)
         run: python3 scripts/check-script-load-order.py
 
+      - name: partner-sw.js VERSION-bump check (gh-831)
+        run: python3 scripts/check-partner-sw-version.py
+
       - name: Lint vanilla JS for syntax errors
         run: |
           echo "Running node --check on js/**/*.js ..."
