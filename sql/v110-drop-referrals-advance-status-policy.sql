@@ -1,0 +1,64 @@
+-- ============================================================================
+-- v110 — Drop the "Authenticated can advance referral status" RLS policy
+-- (GitHub #784 — SEC, referrals clicked→registered WITH CHECK residual)
+-- ============================================================================
+--
+-- PROBLEM
+--   v87 (2026-06-13) scoped a previously wide-open UPDATE policy to:
+--     USING (status = 'clicked') WITH CHECK (status = 'registered')
+--   but WITH CHECK only constrains the `status` column of the new row --
+--   every other column, including referral_agent_id, is unconstrained. Any
+--   authenticated user can UPDATE any referral currently in 'clicked'
+--   status and rewrite arbitrary columns in the same statement (e.g.
+--   re-pointing another agent's referral to their own referral_agent_id),
+--   as long as the final status is 'registered'. This sits on the
+--   commission path (#611).
+--
+-- WHY DROP INSTEAD OF PATCH
+--   v87's own rationale said the only real UPDATE path was js/auth.js
+--   advancing clicked -> registered after signup. That was true in June --
+--   it is no longer true. v95 (2026-07-25, GitHub #571) moved all client
+--   referral writes to SECURITY DEFINER RPCs; js/auth.js:811 now calls
+--   `advance_referral_registered(p_referral_id)` exclusively, which runs
+--   as the function owner (bypassing RLS entirely) and only ever writes
+--   `status` and `homeowner_email` -- never referral_agent_id or any other
+--   column. Repo-wide grep confirms zero remaining
+--   `.from('referrals').update(...)` call sites in client code (html,
+--   react-app, js/*).
+--
+--   That makes this policy dead code from the app's perspective: nothing
+--   legitimate depends on `authenticated` role having direct UPDATE
+--   access to this table. Dropping it removes the attack surface
+--   entirely rather than trying to enumerate every column that must stay
+--   constant in a WITH CHECK clause (fragile -- breaks silently the next
+--   time a column is added to referrals). This is AC option 1 from the
+--   issue ("move the transition into a SECURITY DEFINER function and
+--   drop the UPDATE policy") -- the function side already shipped in v95;
+--   this migration is the other half.
+--
+-- SCOPE
+--   Additive-safe in the sense that it only removes a policy grant --
+--   authenticated users lose the ability to UPDATE referrals directly,
+--   which per the analysis above is a capability nothing legitimate uses.
+--   Service role (Edge Functions) and the SECURITY DEFINER RPCs are
+--   unaffected -- neither goes through this policy.
+--
+-- TIER: 3B (RLS change, D-261). R-097 24h risk brief required before this
+--   ships. R-097 window opened 21:45 ET Aug 12 for this item's broader
+--   scope; per the Code lane's explicit boundary, DO NOT APPLY TO
+--   PRODUCTION FROM THIS SESSION -- draft PR only, deploy after the
+--   window absent objection or an explicit Dustin GO.
+--
+-- Verified on an isolated Supabase branch before proposing (negative
+-- test: authenticated non-owner attempting to advance a 'clicked' row now
+-- gets 0 rows affected / RLS-denied, per branch verification below).
+--
+-- Rollback: sql/v110-rollback-drop-referrals-advance-status-policy.sql
+--   (recreates the v87 policy verbatim).
+-- ============================================================================
+
+BEGIN;
+
+DROP POLICY IF EXISTS "Authenticated can advance referral status" ON public.referrals;
+
+COMMIT;
