@@ -1607,7 +1607,7 @@ Let me know if you have any questions!
                 const payoutStatus = payoutStatusByReferral[ref.id] || null;
                 let payoutBadge = '';
                 if (payoutStatus === 'pending_approval') {
-                    payoutBadge = '<span class="payout-badge payout-badge-pending" title="Commissions are paid after job completion and approval — typically within 14 days of completion.">Pending approval</span>';
+                    payoutBadge = '<span class="payout-badge payout-badge-pending" title="Commissions are paid after job completion and approval.">Pending approval</span>';
                 } else if (payoutStatus === 'rejected') {
                     payoutBadge = '<span class="payout-badge payout-badge-rejected" title="Your commission is under review — our team will be in touch">Under Review — our team will be in touch</span>';
                 }

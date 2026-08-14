@@ -38,6 +38,9 @@ jobs:
       - name: partner-surface single-source-of-truth check (gh-807)
         run: python3 scripts/check-partner-surface-single-source.py
 
+      - name: payout-timing copy drift check (gh-832)
+        run: python3 scripts/check-payout-timing-copy-drift.py
+
       - name: Lint vanilla JS for syntax errors
         run: |
           echo "Running node --check on js/**/*.js ..."
