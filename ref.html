@@ -126,6 +126,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
 
     <script>
         /**
@@ -148,13 +149,6 @@
                 if (!code) {
                     // No code &mdash; send to homepage
                     window.location.href = '/index.html';
-                    return;
-                }
-
-                // 2. Make sure global Supabase client is ready
-                if (!sb) {
-                    console.error('Supabase client not initialized');
-                    showError();
                     return;
                 }
 

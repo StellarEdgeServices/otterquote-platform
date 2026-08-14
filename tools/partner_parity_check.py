@@ -21,20 +21,19 @@ reading every page's actual markup rather than assumed.
     referral-fee arrangement). NOT partner-login.html.
   - signed-in-partner redirect snippet (?stay=1 escape): 6 of 8 (the 5
     vertical signup pages + partner-app.html). NOT partner-login.html
-    (adding it there is a product call, not this guard's job) and NOT
+    (gh-737: decided as an intentional exception, not drift -- it's a bare
+    magic-link form with no content a signed-in user would want to revisit,
+    unlike the marketing/signup pages the escape exists for) and NOT
     partner-dashboard.html (it is the redirect destination).
   - Get-the-App promo block + post-signup dashboard-access block: the 5
     vertical signup pages ONLY.
 
-Known open gap (gh-634, 2026-08-11 adversarial review): partner-login.html
-DOES contain signed-in-partner redirect logic (Auth.getUser -> redirect to
-/partner-dashboard.html), but via a document.referrer loop-guard instead of
-the ?stay=1 escape the other 6 redirecting pages use -- so it has no way to
-deliberately stay on that page while signed in. That is a real, product-level
-inconsistency, not a guard defect: partner-login.html is out of scope for
-this tool to fix (read-only against partner HTML pages, gh-634 AC), so the
-signed_in_redirect check below still excludes it rather than failing main.
-Tracked for follow-up rather than silently resolved by the exclusion list.
+gh-634's 2026-08-11 adversarial review flagged partner-login.html's missing
+?stay=1 escape as an open gap needing its own decision, tracked separately
+as gh-737 rather than resolved silently by this tool's exclusion list. gh-737
+settled it (see the signed_in_redirect entry above): intentional exception,
+not drift. partner-login.html's own redirect block carries a matching
+comment recording the same decision.
 """
 import re
 import sys

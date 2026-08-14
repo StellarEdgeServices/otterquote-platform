@@ -741,7 +741,7 @@ let referralAgentData = null;
 document.addEventListener('DOMContentLoaded', async () => {
   // Get referral code from URL
   const params = new URLSearchParams(window.location.search);
-  const refCode = params.get('ref');
+  const refCode = params.get('ref') || params.get('code');
 
   if (refCode) {
     document.getElementById('referralCode').value = refCode;
@@ -826,8 +826,8 @@ function personalizeHero(agentData) {
 
   html += '<div class="ref-badge-text">';
   html += `<strong>Referred by ${agentData.first_name || 'Your Inspector'}${agentData.last_name ? ' ' + agentData.last_name : ''}</strong>`;
-  if (agentData.company_name) {
-    html += `<span>${agentData.company_name}</span>`;
+  if (agentData.company) {
+    html += `<span>${agentData.company}</span>`;
   }
   html += '</div>';
 
