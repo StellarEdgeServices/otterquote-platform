@@ -263,8 +263,19 @@ export interface Opportunity {
   releasedTrades: ReleasedTrades;
   bidWindowExpiresAt: string | null;
   estimateFilename: string | null;
+  measurementsFilename: string | null;
   hasExpiredBid?: boolean;
   expiredQuoteId?: string;
+}
+
+// gh-484: hover-webhook (supabase/functions/hover-webhook/index.ts) stamps a synthesized
+// `hover_{job}_measurements.json` completion marker onto claims.measurements_filename —
+// that name is never an actual storage object (the real Hover artifact is served by the
+// separate get-hover-pdf function). Ported from contractor-bid-form.html's
+// isHoverMeasurementsSentinel() so this page doesn't offer a signed-URL link that can
+// only 400. Real homeowner-uploaded files are UID-first paths (`{uid}/{claim}/…`).
+export function isHoverMeasurementsSentinel(filename: string | null | undefined): boolean {
+  return /^hover_\d+_measurements\.json$/i.test(filename || '');
 }
 
 /** Map a raw `claims` row to an Opportunity. Ported from :523-573. */
@@ -323,6 +334,11 @@ export function mapClaimToOpportunity(
     releasedTrades,
     bidWindowExpiresAt: claim.bid_window_expires_at || null,
     estimateFilename: claim.estimate_filename || null,
+    // gh-484: only expose a real storage path — never the Hover completion sentinel.
+    measurementsFilename:
+      claim.measurements_filename && !isHoverMeasurementsSentinel(claim.measurements_filename)
+        ? claim.measurements_filename
+        : null,
   };
 }
 
