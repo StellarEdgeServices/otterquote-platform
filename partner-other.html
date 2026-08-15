@@ -365,6 +365,35 @@
   line-height: 1.6;
 }
 
+.form-checkbox-group {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0;
+}
+
+.form-checkbox {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin-top: 2px;
+  accent-color: var(--amber);
+  cursor: pointer;
+}
+
+.checkbox-label {
+  font-size: 0.9rem;
+  color: var(--slate);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.checkbox-label a {
+  color: var(--amber);
+  font-weight: 600;
+}
+
 /* ── Partner Toolkit (post-signup) ── */
 .toolkit-wrapper {
   display: none;
@@ -744,12 +773,19 @@
           <input type="text" id="referredBy" name="referredBy" placeholder="Name or company of the person who recommended Otter Quotes">
         </div>
 
+        <div class="form-checkbox-group">
+          <input type="checkbox" id="agreeToTerms" class="form-checkbox" required>
+          <label for="agreeToTerms" class="checkbox-label">
+            I agree to Otter Quotes's <a href="partner-agreement.html">Partner Terms</a>
+          </label>
+        </div>
+
         <button type="submit" class="form-submit" id="submitBtn">
           Generate My Referral Link
         </button>
 
         <p class="form-note">
-          By signing up, you agree to our <a href="/terms.html" style="color:var(--amber)">Terms of Service</a>. Referral commission ($200) and recruit bonus ($50) paid on jobs over $10,000 that complete through the platform.
+          Referral commission ($200) and recruit bonus ($50) paid on jobs over $10,000 that complete through the platform.
         </p>
 
         <p class="form-note referral-fee-disclaimer">
