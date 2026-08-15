@@ -27,6 +27,18 @@
  * unblock write ({ payments_blocked: false }) are byte-for-byte the static
  * queries — DIRECT table .update() calls, NOT Edge Functions. No commission
  * logic (apply_referral_commission) is touched.
+ *
+ * gh-865: this route had no `agent_type` correction path at all (only
+ * handleVerify / confirmUnblock existed) — a gap PR #891 disclosed but left
+ * unfixed on `admin-referrals.html` (the sibling static admin page, which got
+ * the Edit control). Added here to close that divergence: openAgentTypeEditor
+ * / handleChangeAgentType below mirror admin-referrals.html's
+ * openAgentTypeEditor()/changeAgentType() 1:1 — same direct
+ * `.update({ agent_type })` write, same RLS policy ("Admin can update
+ * referral agents", is_admin_email(), p18_admin_identity_allowlist.sql), same
+ * six-value referral_agents_agent_type_check option set. Whitelisted to this
+ * file only, so the label map + modal live inline here rather than in
+ * utils.ts (unlike verifyW9Payload/unblockPayload).
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -59,6 +71,18 @@ import {
   UNBLOCK_CONFIRM_TEXT,
 } from './utils';
 
+// gh-865: mirrors admin-referrals.html's AGENT_TYPE_LABELS in
+// openAgentTypeEditor() exactly — the six referral_agents_agent_type_check
+// values (sql/v0-base-schema.sql / baseline schema constraint).
+const AGENT_TYPE_LABELS: Record<string, string> = {
+  re_agent: 'Real Estate Agent',
+  insurance_agent: 'Insurance Agent',
+  home_inspector: 'Home Inspector',
+  customer: 'Customer',
+  adjuster: 'Insurance Adjuster',
+  other: 'Other',
+};
+
 export default function AdminReferralsPage() {
   return (
     <RequireAdmin tier="super">
@@ -76,6 +100,8 @@ function AdminReferralsContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<ReferralFilter>('all');
   const [unblockTarget, setUnblockTarget] = useState<ReferralAgent | null>(null);
+  const [editTypeTarget, setEditTypeTarget] = useState<ReferralAgent | null>(null);
+  const [editTypeValue, setEditTypeValue] = useState<string>('');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -158,6 +184,39 @@ function AdminReferralsContent() {
       return;
     }
     showToast('Partner manually unblocked ✅');
+    await loadPartners();
+  }
+
+  // ── Agent-type correction (gh-865, DIRECT table update — mirrors
+  //    admin-referrals.html openAgentTypeEditor()/changeAgentType()) ──────────
+  function openAgentTypeEditor(row: ReferralAgent) {
+    setEditTypeValue(row.agent_type || '');
+    setEditTypeTarget(row);
+  }
+  function closeAgentTypeEditor() {
+    setEditTypeTarget(null);
+  }
+  async function handleChangeAgentType() {
+    if (!editTypeTarget) return;
+    const id = editTypeTarget.id;
+    const currentType = editTypeTarget.agent_type || '';
+    const newType = editTypeValue;
+
+    closeAgentTypeEditor();
+    if (newType === currentType) return;
+
+    // Matches referral_agents_agent_type_check (baseline schema): re_agent,
+    // insurance_agent, home_inspector, customer, adjuster, other.
+    const { error } = await supabase
+      .from('referral_agents')
+      .update({ agent_type: newType })
+      .eq('id', id);
+
+    if (error) {
+      showToast('Error changing partner type: ' + error.message);
+      return;
+    }
+    showToast('Partner type updated ✅');
     await loadPartners();
   }
 
@@ -271,6 +330,7 @@ function AdminReferralsContent() {
                   partner={p}
                   onVerify={handleVerify}
                   onUnblock={openUnblock}
+                  onEditType={openAgentTypeEditor}
                 />
               ))
             )}
@@ -311,6 +371,54 @@ function AdminReferralsContent() {
           </div>
         </div>
       )}
+
+      {/* gh-865: agent-type correction modal — mirrors admin-referrals.html
+          openAgentTypeEditor(); same six-value option set, same direct
+          .update({ agent_type }) write on Save. */}
+      {editTypeTarget !== null && (
+        <div
+          className="oqr-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeAgentTypeEditor();
+          }}
+        >
+          <div className="oqr-modal">
+            <h3 className="oqr-modal-title">Change partner type</h3>
+            <p className="oqr-modal-text">
+              Corrects a mis-classified partner (e.g. a signup that landed on the wrong recruit
+              page). Writes directly to referral_agents.agent_type.
+            </p>
+            <select
+              className="oqr-type-select"
+              value={editTypeValue}
+              onChange={(e) => setEditTypeValue(e.target.value)}
+              autoFocus
+            >
+              {Object.entries(AGENT_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <div className="oqr-modal-buttons">
+              <button
+                type="button"
+                className="oqr-modal-btn oqr-modal-btn-secondary"
+                onClick={closeAgentTypeEditor}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="oqr-modal-btn oqr-modal-btn-primary"
+                onClick={handleChangeAgentType}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -320,10 +428,12 @@ function PartnerRow({
   partner,
   onVerify,
   onUnblock,
+  onEditType,
 }: {
   partner: ReferralAgent;
   onVerify: (id: string) => void;
   onUnblock: (row: ReferralAgent) => void;
+  onEditType: (row: ReferralAgent) => void;
 }) {
   const w9 = w9StatusBadge(partner);
   const type = typeBadge(partner.agent_type);
@@ -337,7 +447,15 @@ function PartnerRow({
       </td>
       <td>{partner.email || '—'}</td>
       <td>
-        <span className={`badge ${type.className}`}>{type.label}</span>
+        <span className={`badge ${type.className}`}>{type.label}</span>{' '}
+        <button
+          type="button"
+          className="btn-sm btn-sm-view"
+          onClick={() => onEditType(partner)}
+          title="gh-865: correct a mis-classified partner"
+        >
+          Edit
+        </button>
       </td>
       <td>{fmtDate(partner.created_at)}</td>
       <td>
@@ -623,6 +741,17 @@ const STYLES = `
     margin: 0 0 1rem 0;
   }
   .oqr-modal-text { margin-bottom: 1.5rem; color: #475569; line-height: 1.5; }
+  .oqr-type-select {
+    width: 100%;
+    padding: 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--light, #E2E8F0);
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+    background: var(--white, #FFFFFF);
+    color: #1F2937;
+    font-family: 'Rubik', sans-serif;
+  }
   .oqr-modal-buttons { display: flex; gap: 0.75rem; justify-content: flex-end; }
   .oqr-modal-btn {
     padding: 0.6rem 1.25rem;
