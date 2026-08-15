@@ -1369,7 +1369,13 @@
                 if (state.category === 'shingles') {
                     updateData.shingle_type = state.shingleType;
                     if (state.impactClass) {
-                        updateData.impact_class = state.impactClass;
+                        // gh-425: canonical stored form for claims.impact_class is
+                        // 'class-3'/'class-4' (Bridge ruling on #425, 2026-08-10).
+                        // The designer path copies material_catalog.impact_class
+                        // verbatim ('class3'/'class4'), so normalize at the DB write
+                        // boundary only — in-page state/display logic still uses the
+                        // catalog's verbatim value and is intentionally untouched.
+                        updateData.impact_class = state.impactClass.replace(/^class(\d)$/i, 'class-$1');
                     }
                     if (state.designerProduct) {
                         updateData.designer_product = state.designerProduct;
