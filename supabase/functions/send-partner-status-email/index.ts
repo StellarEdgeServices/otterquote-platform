@@ -12,23 +12,26 @@
  * 2026-08-15, not #868 — that issue governs the unrelated partner-composed
  * mailto: invite only).
  *
- * ── Trigger wiring — READ THIS BEFORE ASSUMING THIS FIRES AUTOMATICALLY ──
- * This function is NOT currently invoked by any trigger, cron, or webhook.
- * All 5 real state-transition events for a referral already have their
- * write path living OUTSIDE this issue's whitelist:
- *   - claim_submitted : DB trigger `claims_advance_referral()`      (migration)
- *   - contract_signed : DB trigger `apply_referral_commission()`    (migration)
- *   - job_completed   : `mark-job-complete/index.ts`                (other EF)
- *   - commission_paid : `approve-payout/index.ts`                   (other EF)
- *   - bid_received     has NO write path anywhere in the live schema today
- *     (see stage-2 detection below — inferred, not read from referrals.status)
- * Wiring any of those requires either a Tier-3 DB migration (forbidden here
- * — see migration-author) or editing files outside #856's whitelist
- * (partner-dashboard.html / react-app / mark-job-complete / approve-payout
- * are explicitly out of scope or owned by sibling subagents this session).
- * This function is therefore complete and independently callable/testable,
- * but wiring an automatic caller is a follow-up, flagged in the task report
- * as a `dependency` blocker.
+ * ── Trigger wiring ─────────────────────────────────────────────────────
+ * Wired from ONE call site: `mark-job-complete/index.ts` calls this
+ * function (no `stage` — catch-up mode) after it non-fatally advances the
+ * claim's referral to `job_completed`. Because catch-up mode sends every
+ * currently-eligible-and-unsent stage, that single call site also delivers
+ * any earlier stages (1 claim_submitted / 3 bid_accepted / 4 contract_signed)
+ * that were never sent, in addition to stage 5 itself.
+ *
+ * Still NOT wired — a partner will not get stage 1/3/4 progressively as
+ * they happen, only retroactively at job completion:
+ *   - claim_submitted : DB trigger `claims_advance_referral()`   (migration — Tier 3B, out of scope here)
+ *   - contract_signed : DB trigger `apply_referral_commission()` (migration — Tier 3B, out of scope here)
+ * `bid_received` has NO write path anywhere in the live schema today (see
+ * stage-2 detection below — inferred, not read from referrals.status) and
+ * is not expected to ever fire via any wiring.
+ * `commission_paid` (approve-payout/index.ts) deliberately has no wiring —
+ * #856 names only 5 stages and stage 5's copy already carries the payment
+ * message.
+ * Progressive (not just retroactive) delivery of stages 1/3/4 requires a
+ * migration and is flagged as a follow-up `dependency` in the task report.
  *
  * ── Contract ────────────────────────────────────────────────────────────
  * Input:  POST { referral_id: string, stage?: 1|2|3|4|5 }
