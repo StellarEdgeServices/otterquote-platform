@@ -59,6 +59,28 @@ jobs:
         working-directory: react-app
         run: npx tsc --noEmit
 
+  edge-function-tests:
+    name: Edge Function Tests (Deno)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: '2.8.3'
+
+      # Pure-unit lane (gh-422): discovers every *.test.ts under supabase/functions/.
+      # Runs with ZERO permission flags — no env, no secrets, no --allow-net — so any
+      # future test that needs a secret fails loudly here instead of silently gaining one.
+      # As of gh-422: 66 tests across 4 files (ack-verify 11, payload-parser 7,
+      # test-exclusion 11, templates 37 — incl. the #850/#856 duration-guard class tests).
+      - name: Edge Function unit tests (pure-unit, no secrets)
+        run: deno test supabase/functions/
+
   test:
     name: Run E2E Tests
     runs-on: ubuntu-latest
