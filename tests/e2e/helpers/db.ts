@@ -36,6 +36,21 @@ export async function verifyBidPersisted(
       `  ✅ Bid confirmed in DB: quote ${data![0].id}, ` +
         `price $${data![0].total_price}, status ${data![0].status}`
     );
+    // #689: the bid was inserted by the live app (contractor-bid-form), which
+    // does not stamp quotes.is_test — no DB trigger propagates it from claims
+    // either (verified against pg_trigger 2026-08-15). Stamp it here, the
+    // moment the harness learns the row exists, so no CI-created quote ever
+    // sits in production flagged as real. Scoped to the seeded test
+    // contractor + claim pair; teardown deletes the row minutes later.
+    const { error: stampErr } = await supabase
+      .from('quotes')
+      .update({ is_test: true })
+      .eq('id', data![0].id);
+    if (stampErr) {
+      console.warn(`  ⚠️ quotes.is_test stamp failed for ${data![0].id}: ${stampErr.message}`);
+    } else {
+      console.log(`  ✅ quotes.is_test stamped true on ${data![0].id}`);
+    }
   }
   return found;
 }

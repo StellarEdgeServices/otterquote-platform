@@ -63,6 +63,18 @@ jobs:
     name: Run E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # gh-689: every E2E run seeds/tears down ONE shared set of fixtures on the
+    # production Supabase project, so concurrent runs corrupt each other
+    # (proven twice on the issue: 08-11 run-timestamp reconciliation, and
+    # #703's claim-not-found failures on a SQL-only diff). Serialize all runs
+    # of this job repo-wide until real data isolation lands.
+    # GitHub semantics: at most 1 running + 1 pending per group; a newer
+    # queued run supersedes (cancels) the previously PENDING one. E2E is
+    # advisory, so a superseded run loses signal but blocks nothing — better
+    # than N concurrent runs producing N false reds against each other.
+    concurrency:
+      group: e2e-shared-prod-fixtures
+      cancel-in-progress: false
 
     steps:
       - name: Checkout code
