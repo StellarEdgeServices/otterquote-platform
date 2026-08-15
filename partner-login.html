@@ -105,6 +105,42 @@
 .pl-card p { color: #5A6B7B; }
 .pl-wrap a { color: var(--amber-2, #A85C00); }
 
+/* Google OAuth — D-207, gh-866: matches contractor-login.html/login.html */
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 20px;
+  border: 2px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+  color: #3c4043;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  margin-bottom: 0;
+}
+.btn-google:hover { background: #f8f9fa; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+.btn-google:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-google svg { flex-shrink: 0; }
+.oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+.oauth-divider::before, .oauth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
 </style>
 </head>
 <body>
@@ -118,12 +154,24 @@
   </p>
 
   <div class="pl-card">
+    <!-- Google OAuth — D-207, gh-866 -->
+    <button type="button" class="btn-google" id="google-btn">
+      <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+        <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      Sign in with Google
+    </button>
+    <div class="oauth-divider"><span>or continue with email</span></div>
+
     <!-- Login Form -->
     <form id="pl-form" novalidate>
       <div class="form-group">
         <label class="form-label" for="email">Email</label>
         <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="you@example.com">
-        <span class="form-hint">We'll send you a secure login link &mdash; no password needed.</span>
+        <span class="form-hint">We'll send a secure login link to this address.</span>
       </div>
 
       <div id="form-error" class="form-error" style="display:none;"></div>
@@ -178,6 +226,29 @@
     localStorage.setItem('cs_auth_role', PARTNER_ROLE);
     await Auth.sendMagicLink(email, PARTNER_ROLE);
   }
+
+  // Google OAuth handler — D-207, gh-866. cs_auth_role is the routing
+  // signal auth-callback.html actually keys off for partner roles: its
+  // _oqGetIntent() only special-cases ?intent=contractor/homeowner from the
+  // URL, so a partner intent value falls through to the localStorage read
+  // below, which lands on the partnerRoles check (PARTNER_ROLE='other' is
+  // in both js/auth.js PARTNER_ROLES and auth-callback.html's local copy)
+  // and routes to /partner-dashboard.html — same as the magic-link path.
+  document.getElementById('google-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('google-btn');
+    btn.disabled = true;
+    btn.innerHTML = 'Redirecting to Google…';
+    localStorage.setItem('cs_auth_role', PARTNER_ROLE);
+    try {
+      await Auth.signInWithGoogle('/auth-callback.html?intent=' + PARTNER_ROLE);
+    } catch (err) {
+      console.error('Google sign-in error:', err);
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg> Sign in with Google';
+      errorEl.textContent = 'Google sign-in failed. Please try again or use the email link below.';
+      errorEl.style.display = 'block';
+    }
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
