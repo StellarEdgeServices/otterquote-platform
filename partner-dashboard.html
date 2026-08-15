@@ -1151,7 +1151,7 @@ Let me know if you have any questions!
                     <th>Type</th>
                     <th>Signed Up</th>
                     <th>Their Referrals</th>
-                    <th title="Paid on completed jobs over $10,000. Smaller jobs earn no recruit bonus.">Your Earnings <span class="th-info" aria-hidden="true">ⓘ</span></th>
+                    <th title="Paid on completed jobs of $10,000 or more. Smaller jobs earn no recruit bonus.">Your Earnings <span class="th-info" aria-hidden="true">ⓘ</span></th>
                 </tr>
             </thead>
             <tbody id="recruitsTableBody">
@@ -1724,7 +1724,7 @@ Let me know if you have any questions!
                 allRecruits = recruits || [];
 
                 // For each recruit, sum their recruit_commission_amount (v36 column,
-                // populated by the DB trigger only on jobs > $10K per D-139). This
+                // populated by the DB trigger only on jobs of $10K or more per D-139). This
                 // makes per-row "Your Earnings" reconcile exactly with the
                 // authoritative "Recruit Earnings" stat card sourced from
                 // currentPartner.recruit_earnings. We intentionally do NOT compute

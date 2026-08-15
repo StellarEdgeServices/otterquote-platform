@@ -229,10 +229,10 @@ describe('verbatim Tier-3 tax/legal copy', () => {
   });
   it('the $200 / $10,000 representations are intact (hero, How-It-Works, FAQ)', () => {
     expect(HERO.heading).toBe('Love Your Project Results? Share the Love — and Earn $200');
-    expect(HERO.subtitle).toContain('completes a project over $10,000');
+    expect(HERO.subtitle).toContain('completes a project of $10,000 or more');
     expect(HERO.subtitle).toContain('you earn $200');
     expect(HOW_IT_WORKS[2].title).toBe('You Earn $200');
-    expect(HOW_IT_WORKS[2].text).toBe('When their job completes (over $10K), you earn $200 in commission.');
+    expect(HOW_IT_WORKS[2].text).toBe('When their job completes ($10K or more), you earn $200 in commission.');
     expect(FAQ[2].a).toContain("You won't receive a cash commission for jobs under $10K");
   });
   it('table headers match the static (four columns)', () => {
