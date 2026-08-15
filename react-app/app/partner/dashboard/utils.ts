@@ -89,7 +89,7 @@ export function agentDisplayName(p: Pick<PartnerRecord, 'first_name' | 'last_nam
  */
 export function partnerBadgeLabel(agentType: string | null | undefined): string {
   const map: Record<string, string> = {
-    re_agent: 'RE Agent',
+    re_agent: 'Real Estate Agent',
     insurance_agent: 'Insurance Agent',
     home_inspector: 'Home Inspector',
     customer: 'Partner',
@@ -311,7 +311,7 @@ export function partnersRecruitedSubtext(count: number): string {
 
 /** Recruit type labels. NOTE: `customer` → 'Customer' here (vs 'Partner' in the badge). */
 export const RECRUIT_TYPE_LABELS: Record<string, string> = {
-  re_agent: 'RE Agent',
+  re_agent: 'Real Estate Agent',
   insurance_agent: 'Insurance Agent',
   home_inspector: 'Home Inspector',
   customer: 'Customer',

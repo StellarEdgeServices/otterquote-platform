@@ -89,6 +89,13 @@
 
         .partner-badge {
             display: inline-block;
+            /* gh-863: fixed min-width/height so the loading placeholder and the
+               resolved label (up to "Real Estate Agent") occupy the same box —
+               no layout shift when the real agent_type arrives. */
+            min-width: 150px;
+            min-height: 1em;
+            box-sizing: content-box;
+            text-align: center;
             background: var(--amber);
             color: var(--navy);
             padding: var(--sp-2) var(--sp-4);
@@ -98,6 +105,30 @@
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+        }
+
+        /* gh-863: neutral placeholder shown until agent_type resolves — replaces
+           the old hardcoded "RE Agent" markup that flashed for every partner type. */
+        .partner-badge.partner-badge-loading {
+            background: rgba(224, 123, 0, 0.35);
+            color: transparent;
+            animation: partnerBadgePulse 1.4s ease-in-out infinite;
+        }
+
+        /* gh-863: explicit failure state when the partner fetch fails outright
+           (instead of silently showing a wrong/stale badge). Clickable to retry. */
+        .partner-badge.partner-badge-error {
+            background: #fee2e2;
+            color: #991b1b;
+            text-transform: none;
+            letter-spacing: normal;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        @keyframes partnerBadgePulse {
+            0%, 100% { opacity: 0.55; }
+            50% { opacity: 1; }
         }
 
         .referral-link-section {
@@ -756,7 +787,7 @@
             <div class="hero-top">
                 <div class="hero-left">
                     <h1 id="welcomeText">Welcome back, Agent Name</h1>
-                    <span class="partner-badge" id="partnerBadge">RE Agent</span>
+                    <span class="partner-badge partner-badge-loading" id="partnerBadge" aria-live="polite">&nbsp;</span>
                 </div>
             </div>
 
@@ -1118,11 +1149,31 @@ Let me know if you have any questions!
                     console.error('Error loading partner data:', err);
                     if (CONFIG.DEMO_MODE) {
                         loadDemoData();
+                    } else {
+                        // gh-863 AC4: an outright fetch failure must show an explicit
+                        // error/retry state, not a silently wrong (or blank) badge.
+                        setPartnerBadgeError();
                     }
                 }
             } else if (CONFIG.DEMO_MODE) {
                 loadDemoData();
             }
+        }
+
+        // gh-863 AC4: explicit, clickable error state for the partner badge when
+        // the partner-data fetch fails outright (distinct from the loading state).
+        function setPartnerBadgeError() {
+            const badge = document.getElementById('partnerBadge');
+            if (!badge) return;
+            badge.classList.remove('partner-badge-loading');
+            badge.classList.add('partner-badge-error');
+            badge.textContent = 'Unavailable — Retry';
+            badge.setAttribute('role', 'button');
+            badge.setAttribute('tabindex', '0');
+            badge.onclick = function () { window.location.reload(); };
+            badge.onkeydown = function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { window.location.reload(); }
+            };
         }
 
         function updateUI() {
@@ -1132,17 +1183,30 @@ Let me know if you have any questions!
             const agentName = [currentPartner.first_name, currentPartner.last_name].filter(Boolean).join(' ') || 'Agent';
             document.getElementById('welcomeText').textContent = `Welcome back, ${agentName}`;
 
-            // Update partner badge (schema column: agent_type)
-            const partnerType = currentPartner.agent_type || 're_agent';
+            // Update partner badge (schema column: agent_type).
+            // gh-863: do NOT default a missing/unknown agent_type to 're_agent' —
+            // that silently asserts a type that may be wrong. Leaving partnerType
+            // unset when agent_type is missing falls through the map below to the
+            // neutral 'Partner' label instead. (partnerType is also read further
+            // down for ONEPAGER_BY_TYPE, which already degrades gracefully on an
+            // unset/unknown key, so no fallback value is required by downstream
+            // logic.)
+            const partnerType = currentPartner.agent_type;
             const badgeText = {
-                're_agent': 'RE Agent',
+                're_agent': 'Real Estate Agent',
                 'insurance_agent': 'Insurance Agent',
                 'home_inspector': 'Home Inspector',
                 'customer': 'Partner',
                 'adjuster': 'Adjuster',
                 'other': 'Partner'
             }[partnerType] || 'Partner';
-            document.getElementById('partnerBadge').textContent = badgeText;
+            const partnerBadgeEl = document.getElementById('partnerBadge');
+            partnerBadgeEl.textContent = badgeText;
+            partnerBadgeEl.classList.remove('partner-badge-loading', 'partner-badge-error');
+            partnerBadgeEl.removeAttribute('role');
+            partnerBadgeEl.removeAttribute('tabindex');
+            partnerBadgeEl.onclick = null;
+            partnerBadgeEl.onkeydown = null;
 
             // Update referral link (schema column: unique_code)
             const uniqueCode = currentPartner.unique_code || currentPartner.id;
@@ -1483,7 +1547,7 @@ Let me know if you have any questions!
             table.style.display = '';
 
             const typeLabels = {
-                're_agent':        'RE Agent',
+                're_agent':        'Real Estate Agent',
                 'insurance_agent': 'Insurance Agent',
                 'home_inspector':  'Home Inspector',
                 'customer':        'Customer',
@@ -1688,7 +1752,92 @@ Let me know if you have any questions!`;
             }
         }
 
+        // gh-861 AC5/AC6: #profileForm had no submit handler, no `action`, and no
+        // `name` attrs on its inputs — clicking "Save Changes" performed a default
+        // GET navigation to the current URL, silently discarding every edit while
+        // looking like a normal page refresh. This wires a real save: prevent the
+        // default navigation, read the fields, UPDATE the signed-in partner's
+        // referral_agents row, and show an explicit success/error result.
+        // Deliberately scoped to ONLY this destructive control (Bridge scoping,
+        // gh-861) — the other 9 unbound controls on this page live in sections
+        // gh-881 will replace and are left as-is.
+        function initProfileForm() {
+            const form = document.getElementById('profileForm');
+            if (!form) return;
+
+            let statusEl = document.getElementById('profileSaveStatus');
+            if (!statusEl) {
+                statusEl = document.createElement('div');
+                statusEl.id = 'profileSaveStatus';
+                statusEl.setAttribute('role', 'status');
+                statusEl.style.marginTop = 'var(--sp-2)';
+                statusEl.style.fontSize = '0.85rem';
+                statusEl.style.gridColumn = '1 / -1';
+                form.appendChild(statusEl);
+            }
+
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                const saveBtn = form.querySelector('button[type="submit"]');
+                const originalText = saveBtn ? saveBtn.textContent : '';
+                if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+                statusEl.style.color = '';
+                statusEl.textContent = '';
+
+                const fullName = document.getElementById('profileName').value.trim();
+                const nameParts = fullName.split(/\s+/).filter(Boolean);
+                const updates = {
+                    first_name: nameParts[0] || '',
+                    last_name: nameParts.slice(1).join(' '),
+                    email: document.getElementById('profileEmail').value.trim(),
+                    phone: document.getElementById('profilePhone').value.trim(),
+                    company: document.getElementById('profileCompany').value.trim(),
+                    service_area: document.getElementById('profileServiceArea').value.trim(),
+                    website: document.getElementById('profileWebsite').value.trim(),
+                    bio: document.getElementById('profileBio').value.trim()
+                };
+
+                try {
+                    if (CONFIG.DEMO_MODE) {
+                        // Demo mode has no backing row — reflect the edit locally only.
+                        currentPartner = Object.assign({}, currentPartner, updates);
+                        updateUI();
+                        statusEl.style.color = '#15803d';
+                        statusEl.textContent = 'Saved (demo mode — not persisted).';
+                        return;
+                    }
+
+                    if (!currentUser || !sb) {
+                        throw new Error('Not signed in — please refresh and try again.');
+                    }
+
+                    const { data: updated, error } = await sb
+                        .from('referral_agents')
+                        .update(updates)
+                        .eq('user_id', currentUser.id)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    currentPartner = updated;
+                    updateUI();
+                    statusEl.style.color = '#15803d';
+                    statusEl.textContent = 'Saved.';
+                } catch (err) {
+                    console.error('Profile save error:', err);
+                    statusEl.style.color = '#dc2626';
+                    statusEl.textContent = 'Could not save your changes: ' +
+                        (err && err.message ? err.message : 'unknown error') + '. Please try again.';
+                } finally {
+                    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = originalText; }
+                }
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', initProfileForm);
     </script>
 
     <!-- Partner App v1: share / QR / install / service worker -->
