@@ -439,8 +439,29 @@ async function seed() {
   console.log('6. Test claim (delete old, create fresh)...');
   // hover_orders.claim_id has a FK to claims — must delete hover_orders first
   // or the claims DELETE silently fails and claims accumulate across runs.
-  await supabase.from('hover_orders').delete().eq('user_id', homeownerUserId);
-  await supabase.from('claims').delete().eq('user_id', homeownerUserId);
+  //
+  // #689: these pre-deletes previously discarded their errors entirely. A
+  // single claim with a NO ACTION FK child (e.g. fee_acceptances from an
+  // interrupted run) makes Postgres reject the WHOLE delete statement
+  // atomically — every historical claim then persists invisibly, which is
+  // exactly how 4 stragglers from 2026-08-11 survived 4 days of green runs.
+  // Warn loudly (non-fatal: a blocked historical straggler must not brick
+  // every CI run — run-scoped teardown owns this run's cleanup; stragglers
+  // get an R-109-gated manual sweep).
+  const { error: preHoErr } = await supabase
+    .from('hover_orders')
+    .delete()
+    .eq('user_id', homeownerUserId);
+  if (preHoErr) {
+    console.warn(`  ⚠️ Pre-seed hover_orders delete BLOCKED (rows will accumulate): ${preHoErr.message}`);
+  }
+  const { error: preClErr } = await supabase
+    .from('claims')
+    .delete()
+    .eq('user_id', homeownerUserId);
+  if (preClErr) {
+    console.warn(`  ⚠️ Pre-seed claims delete BLOCKED (stragglers persist, see #689): ${preClErr.message}`);
+  }
 
   const { data: claim, error: claimErr } = await supabase
     .from('claims')
@@ -483,8 +504,16 @@ async function seed() {
 
   // ── 6b. Fresh retail siding test claim (D-164 design gate) ─────────────
   console.log('6b. Retail siding test claim (design gate verification)...');
-  // Delete previous retail siding test claims
-  await supabase.from('claims').delete().eq('user_id', homeownerUserId).eq('job_type', 'retail');
+  // Delete previous retail siding test claims (#689: same loud-warn treatment
+  // as the step-6 pre-deletes — a FK-blocked delete must be visible in logs)
+  const { error: preRetailErr } = await supabase
+    .from('claims')
+    .delete()
+    .eq('user_id', homeownerUserId)
+    .eq('job_type', 'retail');
+  if (preRetailErr) {
+    console.warn(`  ⚠️ Pre-seed retail claims delete BLOCKED (stragglers persist, see #689): ${preRetailErr.message}`);
+  }
 
   const { data: retailClaim, error: retailClaimErr } = await supabase
     .from('claims')
