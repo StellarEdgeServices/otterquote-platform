@@ -26,9 +26,6 @@
     <meta property="og:site_name" content="Otter Quotes">
     <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
     <meta name="robots" content="noindex, follow">
-    <!-- COUNSEL REVIEW: noindex added because this is legal boilerplate, not a
-         marketing surface, consistent with how terms.html/privacy.html are
-         typically handled. Confirm this matches SEO team's convention before ship. -->
 
     <!-- GA4 -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
@@ -213,13 +210,6 @@
         </section>
 
         <div class="legal-content">
-            <!-- COUNSEL REVIEW: Effective date is a placeholder per task instructions.
-                 Dustin to set the actual effective date before ship. If this
-                 agreement is being posted for the first time (rather than
-                 replacing prior partner-facing terms), consider whether the
-                 effective date should be the ship date or should be backdated
-                 to each partner's original signup date — see the D-230
-                 re-attestation note in Section 17 and the review memo. -->
             <p><strong>Effective Date:</strong> August 14, 2026</p>
 
             <div class="disclaimer-box">
@@ -284,47 +274,15 @@
                 <h3>4.1 Single-Level Recruiting (D-140) and Forward-Only Accrual (D-142)</h3>
                 <p>The Recruit Bonus is <strong>single-level</strong>: Partner earns a Recruit Bonus only on referrals made by agents Partner personally, directly recruited into the Program. Partner does not earn any commission or bonus on referrals made by agents recruited by Partner&rsquo;s recruits, or on any further downstream recruiting chain. The Program is not a multi-level marketing structure, and no commission of any kind flows more than one level from the recruiting Partner to a directly-recruited agent.</p>
 
-                <!-- COUNSEL REVIEW: Added 2026-08-13 to implement D-142 (forward-only
-                     accrual), which the prior draft omitted. Confirm the drafted
-                     mechanics — particularly how "formally linked to a recruiter"
-                     is evidenced in the platform record — match how the system
-                     actually timestamps the recruit relationship. -->
                 <p>The Recruit Bonus is also <strong>forward-only</strong>: it accrues only on referrals an agent submits after that agent&rsquo;s recruitment relationship with Partner is formally established in Otter Quotes&rsquo; records. There is no retroactive credit. If an agent was already submitting referrals through the Program before being formally linked to Partner as the agent&rsquo;s recruiter, Partner does not earn a Recruit Bonus on any of that agent&rsquo;s referrals made before the recruitment link was established — only on referrals the agent makes afterward.</p>
 
                 <h3>4.2 Payment Timing</h3>
                 <p>Commissions and bonuses are paid after the underlying job is complete and the payout has been approved through Otter Quotes&rsquo; internal review process, and are always subject to the W-9 condition in Section 5. Otter Quotes may adjust the commission-approval process from time to time; doing so does not change the commission amounts or triggers stated in this Section 4 without a modification under Section 17.</p>
-                <!-- COUNSEL REVIEW — RESOLVED 2026-08-13 (Dustin, Bridge partner-path run): the prior text
-                     read "typically within fourteen (14) days of job completion." That promise was struck
-                     here at the same time PR #812 struck the identical sentence from partner-re.html,
-                     partner-insurance.html and partner-inspectors.html (merged same session). Decision:
-                     NO stated timeline. Contract and site copy now use the same formulation —
-                     "paid after job completion and approval." Rationale of record: the payout mechanism
-                     (GitHub #767) does not exist — payout_approvals has 0 rows, total_commission_paid is
-                     $0.00 across all 9 referral agents, w9_submitted_at is null on all 9, and no UI
-                     collects payout details — so any stated interval would be a promise we cannot keep.
-                     UPDATE 2026-08-14 (Bridge): the Inspector Partnership Terms toolkit HAS been
-                     conformed — it carried three 30-day statements, not one, plus a fourth in
-                     Phase1_Execution_Prompts.md which is the build spec that originated the number.
-                     All four now read "after the job is complete and the payout has been approved."
-                     Site-side residual tracked as GitHub #832: "typically within 14 days" is still
-                     live on partner-adjusters.html (710, 910), partner-other.html (695, 889) and
-                     refer-a-friend.html (812, 856) — PR #812's acceptance criteria named only three
-                     files and the closure was reported as a claim about the whole class. -->
 
             </section>
 
             <section>
                 <h2>5. W-9 Requirement — Condition Precedent to Payment</h2>
-                <!-- COUNSEL REVIEW — RESOLVED 2026-08-14 (D-284): D-284 requires this Section
-                     kept as an absolute condition precedent with no grace period, and confirms
-                     the W-9/payout-info collection trigger is first commission earned, not
-                     signup. Reviewed against both requirements: no edit needed. The condition-
-                     precedent language below already has zero exceptions (checked against
-                     GitHub #860's finding that no grace period exists in the deployed payout
-                     code either — both approve-payout and process-payout-reminders hold
-                     unconditionally on a missing W-9), and the notification sentence in the
-                     second paragraph already keys off "an earned commission," i.e. first
-                     commission earned, not account signup. -->
                 <div class="condition-box">
                     <h3>Condition Precedent</h3>
                     <p><strong>Submission of a complete and valid IRS Form W-9 is a condition precedent to any obligation of Otter Quotes to pay Partner any commission, bonus, or other sum under this Agreement.</strong> No commission or bonus described in Section 4 becomes due, owing, or payable to Partner — and Otter Quotes has no payment obligation of any kind to Partner — until Otter Quotes has received a complete, accurate, and valid Form W-9 from Partner. A referral or recruit event may cause a commission to be <em>earned</em> and recorded in Partner&rsquo;s account, but that recorded amount does not become a <em>payable</em> obligation of Otter Quotes unless and until this condition is satisfied. Otter Quotes will hold any earned-but-unpaid amount without interest until Partner submits a valid Form W-9.</p>
@@ -344,11 +302,6 @@
                     <h3>Mandatory Disclaimer</h3>
                     <p>Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
                 </div>
-                <!-- COUNSEL REVIEW: The paragraph above the box is the verbatim
-                     D-266 disclaimer, unmodified — required to appear character
-                     for character. AC #5 is satisfied by the box text alone;
-                     everything below expands on it but is NOT itself part of
-                     the verbatim requirement. -->
                 <p>The Program is open to Partners in any industry, including individuals who hold a professional license or are subject to an employer&rsquo;s outside-activity or referral-fee policy — for example, real estate agents, insurance agents and adjusters, home inspectors, attorneys, and other regulated professionals. <strong>Otter Quotes does not evaluate, gate, or vouch for any individual Partner&rsquo;s eligibility to accept referral compensation.</strong> Before accepting any commission under this Agreement, Partner represents and warrants that Partner has independently confirmed, by reviewing Partner&rsquo;s own employment agreement, brokerage or firm policies, and the rules of any licensing board, bar, or regulatory body with authority over Partner, that accepting referral fees of the kind described in this Agreement is lawful and permitted for Partner. Licensed professionals are solely responsible for their own regulatory compliance, including any disclosure, consent, or reporting obligations their license or employer imposes in connection with referral compensation. Nothing in this Agreement, and no act by Otter Quotes in accepting Partner into the Program, is a representation by Otter Quotes that Partner&rsquo;s participation is lawful for Partner&rsquo;s particular profession, employer, or state.</p>
             </section>
 
@@ -373,25 +326,11 @@
 
             <section>
                 <h2>10. Commission Reversal</h2>
-                <!-- COUNSEL REVIEW — RESOLVED 2026-08-14 (D-283): the prior text demanded cash
-                     repayment within thirty (30) days, invented by the drafter and not sourced
-                     from a decision. D-283 sets the posture as offset-only — no cash-repayment
-                     demand — extending D-145 to the referral-partner context. Note: D-283 is
-                     gated on an accrual-timing code fix (commission owed at job completion, not
-                     homeowner deposit) and on GitHub #651 (payout_approvals unwind correctness)
-                     before this Section is operationally real; see GitHub #860, item 9 on the
-                     2026-08-14 code-lane for the R-097 notice on that gating code change. -->
                 <p>If a job giving rise to a commission or bonus under Section 4 is later cancelled, refunded, or the underlying platform fee is reversed or charged back, the associated commission or bonus is reversed. If the reversed amount has not yet been paid to Partner, it is removed from Partner&rsquo;s account balance. If the reversed amount has already been paid to Partner, Otter Quotes will offset that amount against any future commission or bonus otherwise payable to Partner. Otter Quotes will not demand cash repayment from Partner for an already-paid, later-reversed amount; offset against future earnings under this Agreement is the sole remedy available to Otter Quotes under this Section.</p>
             </section>
 
             <section>
                 <h2>11. Term and Termination</h2>
-                <!-- COUNSEL REVIEW: added the new Section 15 (Disputes) to the survival list
-                     below when D-285's arbitration section was drafted, 2026-08-14 — mirrors
-                     CRM-015's own termination-survival language ("dispute resolution" added
-                     alongside ownership/disclaimers/liability/governing law). Not itself sourced
-                     from a numbered decision; a reasonable drafting consistency call, flagged
-                     per this document's existing convention rather than made silently. -->
                 <p>This Agreement begins on the date Partner accepts it under Section 1 and continues until terminated. <strong>Either party may terminate this Agreement, and Partner&rsquo;s participation in the Program, at any time, for any reason or no reason, with or without cause, by providing notice to the other party.</strong> Otter Quotes may deactivate Partner&rsquo;s referral and recruit links immediately upon termination. Termination does not affect commissions that were fully earned (including satisfaction of the Section 5 W-9 condition) and approved for payout before the termination date, and does not relieve Partner of obligations under Sections 6 (Tax Treatment), 8 (Prohibited Conduct, as to conduct before termination), 10 (Commission Reversal), 14 (Indemnification), 15 (Disputes: Individual Arbitration; No Class Actions), or any other provision that by its nature should survive termination.</p>
             </section>
 
@@ -407,34 +346,11 @@
 
             <section>
                 <h2>14. Indemnification</h2>
-                <!-- COUNSEL REVIEW: D-266's risk record is explicit that the
-                     partner-side disclaimer mitigates REFERRER-side exposure
-                     only and does NOT cure OtterQuote's own payer-side
-                     anti-rebating/anti-inducement exposure. An indemnification
-                     clause from Partner cannot cure that payer-side exposure
-                     either (a regulator's claim runs against OtterQuote
-                     regardless of a private indemnity between OtterQuote and
-                     Partner) — it only gives OtterQuote a contractual recovery
-                     path against Partner after the fact. Flagging so this
-                     clause isn't mistaken for a substitute for the outside-
-                     counsel review D-266 contemplates as a future revisit
-                     trigger. -->
                 <p>Partner agrees to indemnify, defend, and hold harmless Otter Quotes, its officers, directors, employees, and agents from any claim, damage, liability, cost, or expense (including reasonable attorneys&rsquo; fees) arising from or related to: (a) Partner&rsquo;s breach of this Agreement, including the representation in Section 7 that Partner has confirmed Partner&rsquo;s own eligibility to accept referral fees; (b) any violation by Partner of Section 8 (Prohibited Conduct); or (c) any claim by a third party (including a licensing or regulatory body, or Partner&rsquo;s employer) that Partner&rsquo;s acceptance of compensation under this Agreement violated Partner&rsquo;s own legal, professional, or contractual obligations.</p>
             </section>
 
             <section>
                 <h2>15. Disputes: Individual Arbitration; No Class Actions</h2>
-                <!-- COUNSEL REVIEW: D-285, added 2026-08-14. Sourced verbatim in structure and
-                     substance from CRM-015 (otter-crm PR #8, Dustin-approved), adapted for the
-                     Partner Referral Agreement's parties and existing Section 16 venue language
-                     rather than drafted new, per the instruction not to invent arbitration terms.
-                     The population today is small (partner count, per the review brief, is nine)
-                     and each individual claim is capped near $250 — the review brief flagged this
-                     as "your call, real one" rather than a clear recommendation; Dustin decided to
-                     add it now while it is free, rather than re-paper a larger partner base later.
-                     GC should confirm the AAA/FAA/Indiana-seat mechanics below still match CRM-015
-                     at ship time, since CRM-015 itself was in draft PR #8, not yet merged, when
-                     this section was sourced. -->
                 <p>Read this section carefully. It covers how we resolve disputes, and it means neither of us can bring a claim as part of a class, group, or representative action — unless you opt out as described below.</p>
                 <p><strong>Try to work it out first.</strong> Before starting arbitration or a lawsuit, send a written description of the problem to <a href="mailto:support@otterquote.com">support@otterquote.com</a> and give us 30 days to respond and try to resolve it. Most problems get solved this way.</p>
                 <p><strong>Individual arbitration.</strong> If that doesn&rsquo;t resolve it, any dispute arising out of or relating to this Agreement or Partner&rsquo;s participation in the Program — other than a small claims case or an injunction request, both described below — will be resolved by binding, individual arbitration rather than in court. Arbitration is conducted under the Federal Arbitration Act, administered by the American Arbitration Association under its Commercial Arbitration Rules, seated in Indiana (in person, by video, or on written submissions, as the arbitrator directs). The arbitrator&rsquo;s decision is final and can be entered as a judgment in any court with jurisdiction.</p>
@@ -451,30 +367,6 @@
 
             <section>
                 <h2>17. Modification of Agreement</h2>
-                <!-- COUNSEL REVIEW: AC #7 asks whether partners onboarded
-                     against the OLD checkbox (which pointed at terms.html,
-                     containing no partner terms at all) need to re-attest
-                     under D-230's re-attestation framework. D-230 as
-                     registered only covers the Contractor Partner Agreement
-                     (contractors table / cpa_version) — there is no equivalent
-                     versioning column, re-attestation gate, or admin surface
-                     for REFERRAL partners today. Determining (a) how many
-                     partners are affected and (b) whether re-attestation is
-                     required requires a Supabase query against referral_agents
-                     and is explicitly out of scope for this drafting pass —
-                     see the review memo for the recommendation and the specific
-                     open question for Dustin. This Section 16 describes go-
-                     forward modification mechanics only; it does not resolve
-                     the backward-looking re-attestation question. -->
-                <!-- COUNSEL REVIEW — RESOLVED 2026-08-14 (Code lane, code-lane.md item 2,
-                     thread rw-f22-20260814T181902-gs6h): per D-287, softened per review-brief
-                     conflict E. The prior text read "...consistent with the re-attestation
-                     approach used elsewhere on the Platform" — no such approach exists for
-                     referral partners (D-230's cpa_version/needs_cpa_reattestation gate is
-                     contractors-only), and D-287 confirms the population it would have applied
-                     to is zero (all 12 referral_agents rows are test/internal fixtures). Removed
-                     the false "consistent with" claim; the affirmative re-acknowledgment
-                     requirement itself is unchanged. -->
                 <p>Otter Quotes may modify this Agreement at any time. Otter Quotes will notify Partner of material changes by email or through Partner&rsquo;s dashboard at least 30 days before the change takes effect. For non-material changes, continued participation in the Program after the effective date of a change constitutes Partner&rsquo;s acceptance of the modified Agreement. For material changes — including any change to the commission structure in Section 4, the W-9 condition in Section 5, or the tax treatment in Section 6 — Otter Quotes will require Partner&rsquo;s affirmative re-acknowledgment before the change applies to Partner.</p>
             </section>
 
