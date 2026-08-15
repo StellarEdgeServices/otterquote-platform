@@ -276,7 +276,7 @@ describe('fmtDate', () => {
 
 describe('typeBadge', () => {
   it('maps the four known agent types', () => {
-    expect(typeBadge('re_agent')).toEqual({ label: 'RE Agent', className: 'badge-type-re' });
+    expect(typeBadge('re_agent')).toEqual({ label: 'Real Estate Agent', className: 'badge-type-re' });
     expect(typeBadge('insurance_agent')).toEqual({ label: 'Insurance', className: 'badge-type-ins' });
     expect(typeBadge('home_inspector')).toEqual({ label: 'Inspector', className: 'badge-type-insp' });
     expect(typeBadge('customer')).toEqual({ label: 'Customer', className: 'badge-type-cust' });

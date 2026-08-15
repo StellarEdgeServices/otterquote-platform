@@ -158,7 +158,7 @@ export function w9StatusBadge(p: ReferralAgent): BadgeDescriptor {
  */
 export function typeBadge(type: string | null | undefined): BadgeDescriptor {
   const map: Record<string, BadgeDescriptor> = {
-    re_agent: { label: 'RE Agent', className: 'badge-type-re' },
+    re_agent: { label: 'Real Estate Agent', className: 'badge-type-re' },
     insurance_agent: { label: 'Insurance', className: 'badge-type-ins' },
     home_inspector: { label: 'Inspector', className: 'badge-type-insp' },
     customer: { label: 'Customer', className: 'badge-type-cust' },
