@@ -42,11 +42,12 @@ export interface MaterialSelectionState {
   shingleType: ShingleType | null;
   metalType: MetalType | null;
   /**
-   * Preserve EXACTLY what each path writes — do NOT normalize (brief item 5):
+   * In-wizard state preserves EXACTLY what each path selects:
    *   Architectural path → 'none' | 'class-3' | 'class-4' (hyphenated)
    *   Designer path      → product.impact_class verbatim ('class3' | 'class4' | 'none')
-   * Downstream SOW / contractor-bid logic reads claims.impact_class and may
-   * depend on the stored string. Flagged as a candidate follow-up ticket.
+   * Display logic compares against these verbatim values. The DB write
+   * boundary (buildClaimMaterialUpdate → normalizeImpactClass) converts to
+   * the canonical hyphenated form before writing claims.impact_class (gh-425).
    */
   impactClass: string | null;
   metalMaterial: MetalMaterial | null;
@@ -58,7 +59,8 @@ export interface MaterialSelectionState {
 /**
  * The exact object written to the homeowner's current claim row on confirm —
  * shape matches the static submitSelection() (help-materials.html:1354-1371).
- * Values are PRESERVED verbatim from the selection (no normalization).
+ * impact_class is normalized to canonical 'none'/'class-3'/'class-4' at this
+ * boundary (gh-425); all other values are preserved verbatim.
  */
 export interface ClaimMaterialUpdate {
   material_category: string;
