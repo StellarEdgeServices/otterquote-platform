@@ -83,10 +83,10 @@ export const SIGN_COPY = {
 
   // ── Page chrome (non-legal) — mirrors the contractor copy.ts split. Not lock-tested. ──
   headerTitle: 'Contract Review & Signature',
-  headerSubtitle: "Review your contractor's agreement and sign electronically via DocuSign.",
+  headerSubtitle: "Review your contractor's agreement and sign electronically.",
   step2Title: 'Electronic Signature',
   step2Intro:
-    "Your contractor's contract has been pre-filled with your project details. Review and sign the document below using DocuSign.",
+    "Your contractor's contract has been pre-filled with your project details. Review and sign the document below.",
   loadingTitle: 'Preparing your contract...',
   loadingHint: 'This may take a few seconds.',
   errorTitle: 'Unable to load contract',
@@ -104,6 +104,6 @@ export const SIGN_COPY = {
     "There's no contract awaiting your signature for this project. A contract appears here once your selected contractor has signed.",
   alreadySignedTitle: 'You have already signed this contract',
   alreadySignedBody:
-    'Your signature is on file. DocuSign has emailed you a copy. Nothing more is needed from you.',
+    "Your signature is on file. We've emailed you a copy. Nothing more is needed from you.",
   noProjectError: 'No project specified. Open a contract to sign from your bids page.',
 } as const;

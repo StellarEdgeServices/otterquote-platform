@@ -4078,7 +4078,7 @@
               &#x1F517; Preview Template
             </button>
           </div>
-          <p class="contract-template-note">This template will be sent to you and the homeowner after selection for e-signature via DocuSign.</p>
+          <p class="contract-template-note">This template will be sent to you and the homeowner after selection for e-signature.</p>
         `;
       } else {
         bodyHtml = `
@@ -5917,7 +5917,7 @@
         });
 
         if (invokeError) {
-          throw new Error(invokeError.message || 'Failed to create DocuSign envelope');
+          throw new Error(invokeError.message || 'Failed to create signing envelope');
         }
 
         // Store envelope ID

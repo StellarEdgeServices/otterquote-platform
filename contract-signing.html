@@ -867,7 +867,7 @@
           <!-- Header -->
           <div class="contract-header">
             <h1>Contract Review & Signature</h1>
-            <p class="contract-header-subtitle">Review your contractor's agreement and sign electronically via DocuSign.</p>
+            <p class="contract-header-subtitle">Review your contractor's agreement and sign electronically.</p>
           </div>
 
           <!-- STEP 1: Review Contract -->
@@ -974,7 +974,7 @@
           <div class="step-section" data-step="2">
             <div class="contract-section">
               <h2 class="contract-section-title">Electronic Signature</h2>
-              <p style="color: var(--slate); margin-bottom: var(--sp-6);">Your contractor's contract has been pre-filled with your project details. Review and sign the document below using DocuSign.</p>
+              <p style="color: var(--slate); margin-bottom: var(--sp-6);">Your contractor's contract has been pre-filled with your project details. Review and sign the document below.</p>
 
               <!-- DocuSign Loading State -->
               <div id="docusignLoading" style="text-align: center; padding: var(--sp-10);">
@@ -1508,7 +1508,7 @@
         placeholder.innerHTML = `
           <div style="display: flex; flex-direction: column; align-items: center; gap: var(--sp-4);">
             <div style="font-size: 2rem;">&#x1F4DD;</div>
-            <p>${esc(state.contractor.company_name || 'Your contractor')}'s contract will be pre-filled with your project details and presented for electronic signature in the next step via DocuSign.</p>
+            <p>${esc(state.contractor.company_name || 'Your contractor')}'s contract will be pre-filled with your project details and presented for electronic signature in the next step.</p>
             <p style="font-size: 0.85rem;">Review the key terms below before proceeding.</p>
           </div>
         `;
@@ -1518,7 +1518,7 @@
         placeholder.innerHTML = `
           <div style="display: flex; flex-direction: column; align-items: center; gap: var(--sp-4);">
             <div style="font-size: 2rem;">&#x1F4C4;</div>
-            <p>Your contractor's contract will be presented for review and signature in the next step via DocuSign.</p>
+            <p>Your contractor's contract will be presented for review and signature in the next step.</p>
           </div>
         `;
       }
@@ -1622,7 +1622,7 @@
         });
 
         if (invokeError) {
-          throw new Error(invokeError.message || 'Failed to create DocuSign envelope');
+          throw new Error(invokeError.message || 'Failed to create signing envelope');
         }
 
         state.envelopeId = result.envelope_id;

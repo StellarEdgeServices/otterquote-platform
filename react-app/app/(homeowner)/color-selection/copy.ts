@@ -114,7 +114,7 @@ export const COLOR_COPY = {
   addendumHeading: 'Sign Color Addendum',
   addendumBody:
     'Almost done! Please sign the color addendum below to add your selected color to your contract.',
-  addendumIframeTitle: 'Color Addendum — DocuSign',
+  addendumIframeTitle: 'Color Addendum — E-Sign',
 
   // ── Addendum fallback (color-selection.html:1205) — "<strong>Color saved.</strong> …" ──
   // Base sentence; the phone / no-phone clause is appended via the builders below.

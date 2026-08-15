@@ -129,7 +129,7 @@ export const PROFILE_COPY = {
   contractTemplates: {
     title: 'Contract Templates',
     intro:
-      'Upload your contract template for each type of work. Otter Quotes will auto-populate your company details and get it signed by the homeowner. The contract is sent for e-signature via DocuSign.',
+      'Upload your contract template for each type of work. Otter Quotes will auto-populate your company details and get it signed by the homeowner. The contract is sent for e-signature.',
     autofillHeading: 'Auto-Fill Fields Detected',
     autofillIntro: 'Otter Quotes scans your contract for these labels and auto-fills the corresponding data:',
     autofillTip:
@@ -149,7 +149,7 @@ export const PROFILE_COPY = {
   pcTemplates: {
     title: 'Project Confirmation Templates',
     intro:
-      'Upload a project confirmation PDF template for each trade and funding type. After a homeowner signs the main contract, Otter Quotes selects the matching template and sends it to capture full scope details — structures, colors, materials, skylights, and work authorizations. Otter Quotes auto-fills homeowner name and property address before sending for e-signature via DocuSign.',
+      'Upload a project confirmation PDF template for each trade and funding type. After a homeowner signs the main contract, Otter Quotes selects the matching template and sends it to capture full scope details — structures, colors, materials, skylights, and work authorizations. Otter Quotes auto-fills homeowner name and property address before sending for e-signature.',
     warning:
       '⚠️ Templates are per-trade and per-funding type — your confirmation docs differ by trade and by insurance vs. retail, just like your contracts. Upload the right template into each slot you use.',
     loading: 'Loading templates…',
