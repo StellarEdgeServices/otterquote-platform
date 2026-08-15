@@ -410,8 +410,8 @@ serve(async (req: Request) => {
   Great news — your commission is approved!
 </h2>
 <p style="color:#374151;font-size:0.95rem;margin:0 0 24px;">
-  Hi ${partnerName}, your ${payoutType.toLowerCase()} of <strong>${amount}</strong> has been approved
-  and is now processing. You should expect to receive it within the next 1–3 business days.
+  Hi ${partnerName}, your ${payoutType.toLowerCase()} of <strong>${amount}</strong> has been approved.
+  Our team will follow up separately with next steps to get you paid.
 </p>
 
 <table width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -447,8 +447,8 @@ ${ctaButton("View Your Dashboard →", PARTNER_DASH_URL)}
       const bodyText = [
         `Hi ${partnerName},`,
         ``,
-        `Your ${payoutType.toLowerCase()} of ${amount} has been approved and is now processing.`,
-        `Expected arrival: 1–3 business days.`,
+        `Your ${payoutType.toLowerCase()} of ${amount} has been approved.`,
+        `Our team will follow up separately with next steps to get you paid.`,
         ``,
         `View your dashboard: ${PARTNER_DASH_URL}`,
       ].join("\n");

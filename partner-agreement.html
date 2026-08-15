@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+    });
+  });
+</script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>Partner Referral Agreement · Otter Quotes</title>
+    <meta name="description" content="The Otter Quotes Partner Referral Agreement — commission terms, W-9 and 1099-NEC tax requirements, and independent-contractor terms for Otter Quotes referral partners.">
+    <link rel="canonical" href="https://otterquote.com/partner-agreement.html">
+    <meta property="og:title" content="Partner Referral Agreement · Otter Quotes">
+    <meta property="og:description" content="The Otter Quotes Partner Referral Agreement — commission terms, W-9 and 1099-NEC tax requirements, and independent-contractor terms for Otter Quotes referral partners.">
+    <meta property="og:url" content="https://otterquote.com/partner-agreement.html">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Otter Quotes">
+    <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+    <meta name="robots" content="noindex, follow">
+
+    <!-- GA4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-D1Y1TLGEFY');
+    </script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Design System & Navigation CSS -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <!-- Page-specific styles (mirrors terms.html's .legal-content pattern) -->
+    <style>
+        .page-hero {
+            padding: var(--sp-16) 0 var(--sp-12);
+            text-align: center;
+            background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+        }
+
+        .page-hero h1 {
+            margin-bottom: var(--sp-4);
+        }
+
+        .page-hero p {
+            max-width: 600px;
+            margin: 0 auto;
+            font-size: 1.1rem;
+            color: var(--slate);
+        }
+
+        .legal-content {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0 var(--sp-4) var(--sp-16);
+        }
+
+        .legal-content section {
+            margin-bottom: var(--sp-8);
+        }
+
+        .legal-content h2 {
+            color: var(--amber);
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            margin-bottom: var(--sp-4);
+            margin-top: var(--sp-8);
+        }
+
+        .legal-content h3 {
+            color: var(--white);
+            font-size: 1.1rem;
+            margin-bottom: var(--sp-3);
+            margin-top: var(--sp-6);
+            font-weight: 600;
+        }
+
+        .legal-content p {
+            color: var(--light);
+            margin-bottom: var(--sp-4);
+            line-height: 1.7;
+        }
+
+        .legal-content ul,
+        .legal-content ol {
+            margin-left: var(--sp-8);
+            margin-bottom: var(--sp-4);
+            color: var(--light);
+        }
+
+        .legal-content li {
+            margin-bottom: var(--sp-2);
+        }
+
+        .legal-content strong {
+            color: var(--amber);
+        }
+
+        .legal-content a {
+            color: var(--amber);
+            text-decoration: none;
+        }
+
+        .legal-content a:hover {
+            text-decoration: underline;
+        }
+
+        .disclaimer-box {
+            background: rgba(224,123,0,0.08);
+            border-left: 4px solid var(--amber);
+            padding: var(--sp-6);
+            margin-bottom: var(--sp-8);
+            border-radius: var(--radius-sm);
+        }
+
+        .disclaimer-box h3 {
+            color: var(--amber);
+            margin-bottom: var(--sp-2);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .disclaimer-box p {
+            color: var(--slate);
+            font-size: 0.95rem;
+        }
+
+        .condition-box {
+            background: rgba(239, 68, 68, 0.08);
+            border-left: 4px solid #EF4444;
+            padding: var(--sp-6);
+            margin: var(--sp-6) 0;
+            border-radius: var(--radius-sm);
+        }
+
+        .condition-box h3 {
+            color: #F87171;
+            margin-bottom: var(--sp-2);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .condition-box p {
+            color: var(--light);
+            font-size: 0.95rem;
+        }
+
+        .commission-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: var(--sp-4) 0 var(--sp-6);
+        }
+
+        .commission-table th,
+        .commission-table td {
+            text-align: left;
+            padding: var(--sp-3) var(--sp-4);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--light);
+            font-size: 0.95rem;
+        }
+
+        .commission-table th {
+            background: rgba(224,123,0,0.1);
+            color: var(--amber);
+            font-weight: 600;
+        }
+
+        .contact-box {
+            background: rgba(224,123,0,0.05);
+            padding: var(--sp-6);
+            border-radius: var(--radius-sm);
+            margin: var(--sp-6) 0;
+        }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-auth="false"></header>
+
+    <main>
+        <section class="page-hero">
+            <h1>Partner Referral Agreement</h1>
+            <p>Terms governing your participation in the Otter Quotes Partner Referral Program</p>
+        </section>
+
+        <div class="legal-content">
+            <p><strong>Effective Date:</strong> August 14, 2026</p>
+
+            <div class="disclaimer-box">
+                <h3>Legal Disclaimer</h3>
+                <p>This Partner Referral Agreement contains important legal information, including tax reporting obligations, commission terms, and licensing responsibilities. We strongly recommend that you review it carefully and consult with an attorney, accountant, or your licensing body if you have any questions about your rights and obligations under this Agreement. By checking &quot;I agree to Partner Terms&quot; on any Otter Quotes partner signup form, you acknowledge that you have read, understood, and agree to be bound by all provisions of this Agreement.</p>
+            </div>
+
+            <section>
+                <h2>Parties and Definitions</h2>
+                <p>This Partner Referral Agreement (this &quot;Agreement&quot;) is entered into between <strong>Stellar Edge Services LLC</strong>, an Indiana limited liability company doing business as <strong>Otter Quotes</strong> (&quot;Otter Quotes,&quot; &quot;Company,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;), and the individual or entity that checks &quot;I agree to Partner Terms&quot; and completes registration as a referral partner through any Otter Quotes partner signup page (&quot;Partner,&quot; &quot;you,&quot; or &quot;your&quot;). This Agreement governs your participation in the Otter Quotes Partner Referral Program (the &quot;Program&quot;) and is separate from, and in addition to, the general <a href="terms.html">Otter Quotes Terms of Service</a>, which continue to govern your use of the Otter Quotes platform (the &quot;Platform&quot;) generally. Where this Agreement and the Terms of Service conflict on a matter specific to the Program, this Agreement controls.</p>
+            </section>
+
+            <section>
+                <h2>1. Acceptance of Agreement</h2>
+                <p>By checking the &quot;I agree to Partner Terms&quot; checkbox on any Otter Quotes partner signup form and submitting your registration, you affirmatively accept this Agreement in its entirety. If you do not agree with any part of this Agreement, do not check the box and do not register as a Partner. Otter Quotes reserves the right to modify this Agreement as described in Section 17.</p>
+            </section>
+
+            <section>
+                <h2>2. Independent Contractor Relationship; No Agency</h2>
+                <p>Partner participates in the Program strictly as an <strong>independent contractor</strong>. Nothing in this Agreement, and no course of dealing between Partner and Otter Quotes, creates an employment, agency, joint venture, partnership, or franchise relationship. Specifically:</p>
+                <ul>
+                    <li>Partner is not an employee of Otter Quotes for any purpose, including tax withholding, unemployment insurance, workers&rsquo; compensation, or employee benefits.</li>
+                    <li>Partner has no authority, express or implied, to act on behalf of Otter Quotes, to bind Otter Quotes to any contract or obligation, or to make any representation, warranty, or promise on Otter Quotes&rsquo; behalf.</li>
+                    <li>Otter Quotes does not direct or control the manner or means by which Partner shares referral links; Partner controls the time, place, and method of referral activity, subject to the restrictions in Section 8.</li>
+                    <li>Partner is solely responsible for Partner&rsquo;s own business expenses, equipment, and, per Section 6, taxes.</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>3. Scope of Referral Services</h2>
+                <p>Partner may share Partner&rsquo;s unique, Otter Quotes-generated tracked referral link with homeowners, prospective clients, and other contacts who may benefit from Otter Quotes&rsquo; contractor-bid-matching platform, and may share a separate recruit link to invite other individuals to become Otter Quotes referral partners. Referral activity under this Agreement is limited to:</p>
+                <ul>
+                    <li>Sharing Partner&rsquo;s tracked referral or recruit link through channels Partner already lawfully uses to communicate with Partner&rsquo;s own clients, contacts, or audience (e.g., email, text, social media, printed materials, Partner&rsquo;s own website);</li>
+                    <li>Directing homeowners and prospective contractors to the Platform to independently create an account, submit project information, and receive competing bids; and</li>
+                    <li>Directing prospective agents to Partner&rsquo;s recruit link to independently register as Otter Quotes partners.</li>
+                </ul>
+                <p><strong>Partner is not authorized to act, and shall not represent that Partner is acting, on Otter Quotes&rsquo; behalf.</strong> Partner may not initiate cold outreach — unsolicited calls, texts, emails, direct messages, or door-to-door contact to individuals with whom Partner does not already have an existing relationship — in Otter Quotes&rsquo; name or purporting to represent Otter Quotes. See Section 8 for further restrictions on Partner&rsquo;s conduct.</p>
+            </section>
+
+            <section>
+                <h2>4. Commission Structure</h2>
+                <p>Otter Quotes pays Partner commission under a two-tier structure:</p>
+                <table class="commission-table">
+                    <thead>
+                        <tr><th>Tier</th><th>Amount</th><th>Trigger</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Referral Commission</td>
+                            <td>$200</td>
+                            <td>A homeowner Partner referred via Partner&rsquo;s tracked referral link completes a job with a total project value of $10,000 or more (the &quot;$10,000 Floor&quot;), and the job is approved for payout under Otter Quotes&rsquo; standard commission-approval process.</td>
+                        </tr>
+                        <tr>
+                            <td>Recruit Bonus</td>
+                            <td>$50</td>
+                            <td>A referral sent by an agent Partner personally recruited to the Program completes a job with a total project value of $10,000 or more, and the job is approved for payout.</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p>No commission or bonus is earned on jobs with a total project value under $10,000. Commission is calculated on the completed job&rsquo;s total project value, not on the Otter Quotes platform fee charged to the contractor for that job.</p>
+
+                <h3>4.1 Single-Level Recruiting (D-140) and Forward-Only Accrual (D-142)</h3>
+                <p>The Recruit Bonus is <strong>single-level</strong>: Partner earns a Recruit Bonus only on referrals made by agents Partner personally, directly recruited into the Program. Partner does not earn any commission or bonus on referrals made by agents recruited by Partner&rsquo;s recruits, or on any further downstream recruiting chain. The Program is not a multi-level marketing structure, and no commission of any kind flows more than one level from the recruiting Partner to a directly-recruited agent.</p>
+
+                <p>The Recruit Bonus is also <strong>forward-only</strong>: it accrues only on referrals an agent submits after that agent&rsquo;s recruitment relationship with Partner is formally established in Otter Quotes&rsquo; records. There is no retroactive credit. If an agent was already submitting referrals through the Program before being formally linked to Partner as the agent&rsquo;s recruiter, Partner does not earn a Recruit Bonus on any of that agent&rsquo;s referrals made before the recruitment link was established — only on referrals the agent makes afterward.</p>
+
+                <h3>4.2 Payment Timing</h3>
+                <p>Commissions and bonuses are paid after the underlying job is complete and the payout has been approved through Otter Quotes&rsquo; internal review process, and are always subject to the W-9 condition in Section 5. Otter Quotes may adjust the commission-approval process from time to time; doing so does not change the commission amounts or triggers stated in this Section 4 without a modification under Section 17.</p>
+
+            </section>
+
+            <section>
+                <h2>5. W-9 Requirement — Condition Precedent to Payment</h2>
+                <div class="condition-box">
+                    <h3>Condition Precedent</h3>
+                    <p><strong>Submission of a complete and valid IRS Form W-9 is a condition precedent to any obligation of Otter Quotes to pay Partner any commission, bonus, or other sum under this Agreement.</strong> No commission or bonus described in Section 4 becomes due, owing, or payable to Partner — and Otter Quotes has no payment obligation of any kind to Partner — until Otter Quotes has received a complete, accurate, and valid Form W-9 from Partner. A referral or recruit event may cause a commission to be <em>earned</em> and recorded in Partner&rsquo;s account, but that recorded amount does not become a <em>payable</em> obligation of Otter Quotes unless and until this condition is satisfied. Otter Quotes will hold any earned-but-unpaid amount without interest until Partner submits a valid Form W-9.</p>
+                </div>
+                <p>Otter Quotes will notify Partner by email when Partner has an earned commission being held on account of a missing or incomplete Form W-9, and will provide Partner instructions for submitting the form securely through the Platform. Partner is responsible for ensuring the information on Partner&rsquo;s Form W-9 is accurate and current, and for promptly notifying Otter Quotes of any change (e.g., a change in legal name, business structure, or taxpayer identification number).</p>
+            </section>
+
+            <section>
+                <h2>6. Tax Treatment; 1099-NEC Reporting</h2>
+                <p>Partner is solely responsible for all federal, state, and local taxes arising from commissions and bonuses paid under this Agreement. Otter Quotes does not withhold income tax, Social Security, Medicare, or any other payroll tax from payments made to Partner, except as required by applicable backup withholding rules if Partner fails to provide a valid taxpayer identification number.</p>
+                <p>For each calendar year in which Otter Quotes pays Partner aggregate commissions and bonuses of $600 or more, Otter Quotes will report those payments to the Internal Revenue Service on Form 1099-NEC (or its successor form), consistent with Partner&rsquo;s independent-contractor status under Section 2. Otter Quotes will send Partner a copy of any Form 1099-NEC issued, using the address and taxpayer information on file from Partner&rsquo;s Form W-9. Partner should consult Partner&rsquo;s own tax advisor regarding the treatment of Program income.</p>
+            </section>
+
+            <section>
+                <h2>7. Licensing and Employment Compliance Disclaimer</h2>
+                <div class="disclaimer-box">
+                    <h3>Mandatory Disclaimer</h3>
+                    <p>Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
+                </div>
+                <p>The Program is open to Partners in any industry, including individuals who hold a professional license or are subject to an employer&rsquo;s outside-activity or referral-fee policy — for example, real estate agents, insurance agents and adjusters, home inspectors, attorneys, and other regulated professionals. <strong>Otter Quotes does not evaluate, gate, or vouch for any individual Partner&rsquo;s eligibility to accept referral compensation.</strong> Before accepting any commission under this Agreement, Partner represents and warrants that Partner has independently confirmed, by reviewing Partner&rsquo;s own employment agreement, brokerage or firm policies, and the rules of any licensing board, bar, or regulatory body with authority over Partner, that accepting referral fees of the kind described in this Agreement is lawful and permitted for Partner. Licensed professionals are solely responsible for their own regulatory compliance, including any disclosure, consent, or reporting obligations their license or employer imposes in connection with referral compensation. Nothing in this Agreement, and no act by Otter Quotes in accepting Partner into the Program, is a representation by Otter Quotes that Partner&rsquo;s participation is lawful for Partner&rsquo;s particular profession, employer, or state.</p>
+            </section>
+
+            <section>
+                <h2>8. No Solicitation of Homeowners on Otter Quotes&rsquo; Behalf; Prohibited Conduct</h2>
+                <p>In connection with the Program, Partner agrees not to:</p>
+                <ul>
+                    <li>Engage in cold outreach — unsolicited calls, texts, emails, direct messages, or in-person solicitation to individuals with whom Partner has no pre-existing relationship — while representing or implying that Partner is acting for or on behalf of Otter Quotes;</li>
+                    <li>Make any representation, claim, or promise on Otter Quotes&rsquo; behalf regarding pricing, fees, discounts, project timelines, contractor selection, bid outcomes, or any other aspect of the Platform that Otter Quotes has not published;</li>
+                    <li>Promise or guarantee any homeowner a specific commission split, fee waiver, discount, or other financial benefit as an inducement to use the Platform, whether from Otter Quotes or otherwise;</li>
+                    <li>Send unsolicited commercial communications in violation of applicable law, including the CAN-SPAM Act or the Telephone Consumer Protection Act;</li>
+                    <li>Use Otter Quotes&rsquo; name, logo, or brand assets in any manner not expressly authorized by Otter Quotes in writing; or</li>
+                    <li>Engage in any conduct that could reasonably create the impression that Partner is an employee, officer, or authorized agent of Otter Quotes.</li>
+                </ul>
+                <p>Violation of this Section is grounds for immediate termination under Section 11 and forfeiture of any commission attributable to the violating conduct.</p>
+            </section>
+
+            <section>
+                <h2>9. Referral Tracking and Attribution</h2>
+                <p>Commissions and bonuses are earned only on jobs that Otter Quotes&rsquo; tracking systems attribute to Partner&rsquo;s unique referral or recruit link. Otter Quotes&rsquo; tracking and attribution records are the sole basis for determining whether, and to whom, a referral is attributed, absent demonstrated system error. Partner is responsible for confirming that homeowners and recruited agents use Partner&rsquo;s correct, current link.</p>
+            </section>
+
+            <section>
+                <h2>10. Commission Reversal</h2>
+                <p>If a job giving rise to a commission or bonus under Section 4 is later cancelled, refunded, or the underlying platform fee is reversed or charged back, the associated commission or bonus is reversed. If the reversed amount has not yet been paid to Partner, it is removed from Partner&rsquo;s account balance. If the reversed amount has already been paid to Partner, Otter Quotes will offset that amount against any future commission or bonus otherwise payable to Partner. Otter Quotes will not demand cash repayment from Partner for an already-paid, later-reversed amount; offset against future earnings under this Agreement is the sole remedy available to Otter Quotes under this Section.</p>
+            </section>
+
+            <section>
+                <h2>11. Term and Termination</h2>
+                <p>This Agreement begins on the date Partner accepts it under Section 1 and continues until terminated. <strong>Either party may terminate this Agreement, and Partner&rsquo;s participation in the Program, at any time, for any reason or no reason, with or without cause, by providing notice to the other party.</strong> Otter Quotes may deactivate Partner&rsquo;s referral and recruit links immediately upon termination. Termination does not affect commissions that were fully earned (including satisfaction of the Section 5 W-9 condition) and approved for payout before the termination date, and does not relieve Partner of obligations under Sections 6 (Tax Treatment), 8 (Prohibited Conduct, as to conduct before termination), 10 (Commission Reversal), 14 (Indemnification), 15 (Disputes: Individual Arbitration; No Class Actions), or any other provision that by its nature should survive termination.</p>
+            </section>
+
+            <section>
+                <h2>12. Confidentiality of Referral Data</h2>
+                <p>Any personal information about a homeowner or recruited agent that Partner accesses in connection with the Program (for example, through Partner&rsquo;s dashboard) may be used only to support that individual&rsquo;s referral to Otter Quotes and may not be sold, shared with third parties, or used for any unrelated purpose. Partner will comply with applicable data privacy law in handling any such information. See the Otter Quotes <a href="privacy.html">Privacy Policy</a> for how Otter Quotes handles personal information generally.</p>
+            </section>
+
+            <section>
+                <h2>13. Disclaimer of Warranties; Limitation of Liability</h2>
+                <p>THE PROGRAM AND THE PLATFORM ARE PROVIDED &quot;AS IS&quot; WITHOUT WARRANTY OF ANY KIND. OTTER QUOTES DOES NOT GUARANTEE THAT ANY PARTICULAR REFERRAL WILL RESULT IN A COMPLETED JOB, A COMMISSION, OR ANY PARTICULAR LEVEL OF EARNINGS. TO THE MAXIMUM EXTENT PERMITTED BY LAW, OTTER QUOTES&rsquo; TOTAL LIABILITY TO PARTNER ARISING OUT OF OR RELATED TO THIS AGREEMENT OR THE PROGRAM SHALL NOT EXCEED THE TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.</p>
+            </section>
+
+            <section>
+                <h2>14. Indemnification</h2>
+                <p>Partner agrees to indemnify, defend, and hold harmless Otter Quotes, its officers, directors, employees, and agents from any claim, damage, liability, cost, or expense (including reasonable attorneys&rsquo; fees) arising from or related to: (a) Partner&rsquo;s breach of this Agreement, including the representation in Section 7 that Partner has confirmed Partner&rsquo;s own eligibility to accept referral fees; (b) any violation by Partner of Section 8 (Prohibited Conduct); or (c) any claim by a third party (including a licensing or regulatory body, or Partner&rsquo;s employer) that Partner&rsquo;s acceptance of compensation under this Agreement violated Partner&rsquo;s own legal, professional, or contractual obligations.</p>
+            </section>
+
+            <section>
+                <h2>15. Disputes: Individual Arbitration; No Class Actions</h2>
+                <p>Read this section carefully. It covers how we resolve disputes, and it means neither of us can bring a claim as part of a class, group, or representative action — unless you opt out as described below.</p>
+                <p><strong>Try to work it out first.</strong> Before starting arbitration or a lawsuit, send a written description of the problem to <a href="mailto:support@otterquote.com">support@otterquote.com</a> and give us 30 days to respond and try to resolve it. Most problems get solved this way.</p>
+                <p><strong>Individual arbitration.</strong> If that doesn&rsquo;t resolve it, any dispute arising out of or relating to this Agreement or Partner&rsquo;s participation in the Program — other than a small claims case or an injunction request, both described below — will be resolved by binding, individual arbitration rather than in court. Arbitration is conducted under the Federal Arbitration Act, administered by the American Arbitration Association under its Commercial Arbitration Rules, seated in Indiana (in person, by video, or on written submissions, as the arbitrator directs). The arbitrator&rsquo;s decision is final and can be entered as a judgment in any court with jurisdiction.</p>
+                <p><strong>No class actions.</strong> Claims must be brought individually, not as a plaintiff or class member in any class, consolidated, or representative action, and not on behalf of the general public. The arbitrator cannot combine more than one person&rsquo;s claims into one proceeding. If this no-class-action promise is found unenforceable as to a particular claim, that specific claim — and only that claim — will be decided in court instead of arbitration; every other claim still goes to individual arbitration under this Section.</p>
+                <p><strong>Carve-outs.</strong> Either of us may bring an individual claim in small claims court instead of arbitration, if it qualifies. Either of us may also go to court to seek an injunction to stop unauthorized access, misuse of data, or infringement, without first going through arbitration or the 30-day notice above.</p>
+                <p><strong>Partner can opt out.</strong> If Partner does not want this arbitration Section to apply, Partner must email <a href="mailto:support@otterquote.com">support@otterquote.com</a> within 30 days of the date Partner first accepts this Agreement under Section 1 — or, if Partner already had an Otter Quotes referral-partner account before this Section was added, within 30 days of the Effective Date above — with Partner&rsquo;s name, account email, and a clear statement that Partner is opting out of arbitration. If Partner opts out, disputes between the parties are resolved in court as described in Section 16 (Governing Law and Venue), and the rest of this Agreement still applies to Partner unchanged.</p>
+                <p>This Section is governed by the Federal Arbitration Act. If a court decides this entire Section cannot be enforced, disputes will instead be resolved in the courts described in Section 16 (Governing Law and Venue).</p>
+            </section>
+
+            <section>
+                <h2>16. Governing Law and Venue</h2>
+                <p>This Agreement is governed by and construed in accordance with the laws of the State of Indiana, without regard to its conflict-of-law principles. Most disputes are resolved through arbitration as described in Section 15; this Section covers small claims cases, injunctions, disputes with a Partner who has opted out of arbitration, and anything else arbitration does not reach. Any such legal action or proceeding shall be brought exclusively in the state or federal courts located in Marion County, Indiana, and Partner consents to personal jurisdiction and venue in such courts.</p>
+            </section>
+
+            <section>
+                <h2>17. Modification of Agreement</h2>
+                <p>Otter Quotes may modify this Agreement at any time. Otter Quotes will notify Partner of material changes by email or through Partner&rsquo;s dashboard at least 30 days before the change takes effect. For non-material changes, continued participation in the Program after the effective date of a change constitutes Partner&rsquo;s acceptance of the modified Agreement. For material changes — including any change to the commission structure in Section 4, the W-9 condition in Section 5, or the tax treatment in Section 6 — Otter Quotes will require Partner&rsquo;s affirmative re-acknowledgment before the change applies to Partner.</p>
+            </section>
+
+            <section>
+                <h2>18. Entire Agreement; Severability</h2>
+                <p>This Agreement, together with the Otter Quotes <a href="terms.html">Terms of Service</a> and <a href="privacy.html">Privacy Policy</a> to the extent not in conflict with this Agreement, constitutes the entire agreement between Partner and Otter Quotes regarding the Program and supersedes all prior discussions, understandings, or agreements regarding referral compensation. If any provision of this Agreement is found invalid or unenforceable, the remaining provisions remain in full force, and the invalid provision will be modified to the minimum extent necessary to make it enforceable.</p>
+            </section>
+
+            <section>
+                <h2>19. Contact Information</h2>
+                <p>If you have questions about this Partner Referral Agreement, please contact us:</p>
+                <div class="contact-box">
+                    <p><strong>Email:</strong> <a href="mailto:support@otterquote.com">support@otterquote.com</a></p>
+                    <p><strong>Address:</strong> Indiana, United States</p>
+                    <p><strong>Website:</strong> <a href="https://otterquote.com">otterquote.com</a></p>
+                </div>
+            </section>
+
+        </div><!-- /.legal-content -->
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+</body>
+</html>

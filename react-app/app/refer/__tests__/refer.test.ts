@@ -218,7 +218,7 @@ describe('verbatim Tier-3 tax/legal copy', () => {
   });
   it('D-180 commission-approval disclosure', () => {
     expect(COMMISSION_APPROVAL_DISCLOSURE).toBe(
-      "Commission payments are subject to Otter Quotes' approval process and are typically completed within five business days of the qualifying job event.",
+      "Commission payments are subject to Otter Quotes' approval process and are paid after the qualifying job is complete and the payout has been approved.",
     );
   });
   it('D-172 W-9 banner copy', () => {
@@ -229,10 +229,10 @@ describe('verbatim Tier-3 tax/legal copy', () => {
   });
   it('the $200 / $10,000 representations are intact (hero, How-It-Works, FAQ)', () => {
     expect(HERO.heading).toBe('Love Your Project Results? Share the Love — and Earn $200');
-    expect(HERO.subtitle).toContain('completes a project over $10,000');
+    expect(HERO.subtitle).toContain('completes a project of $10,000 or more');
     expect(HERO.subtitle).toContain('you earn $200');
     expect(HOW_IT_WORKS[2].title).toBe('You Earn $200');
-    expect(HOW_IT_WORKS[2].text).toBe('When their job completes (over $10K), you earn $200 in commission.');
+    expect(HOW_IT_WORKS[2].text).toBe('When their job completes ($10K or more), you earn $200 in commission.');
     expect(FAQ[2].a).toContain("You won't receive a cash commission for jobs under $10K");
   });
   it('table headers match the static (four columns)', () => {

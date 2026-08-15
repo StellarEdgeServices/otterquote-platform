@@ -18,27 +18,46 @@
     log('hash=', hash.substring(0,80), 'search=', search.substring(0,80), 'hasAuth=', hasAuth);
     if (!hasAuth) return;
 
-    // Primary: extract role from access_token JWT (user_metadata.role)
+    var partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+
+    // gh-817 A1b: user_metadata.role is a signup-time artifact (stamped once by
+    // contractor-join.html, never updated) and is stale for any account whose
+    // role changed since. cs_auth_role is stamped fresh by the surface the user
+    // is actually logging in from, so it wins -- but only when it names a
+    // partner role, to keep this scoped: absent/contractor/homeowner values
+    // fall through to the untouched precedence below (see #817 comment
+    // 5292800526).
     var role = null;
     try {
-      var params = new URLSearchParams(hash.charAt(0) === '#' ? hash.substring(1) : hash);
-      var token = params.get('access_token');
-      if (token) {
-        var parts = token.split('.');
-        if (parts.length === 3) {
-          var b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-          while (b64.length % 4) b64 += '=';
-          var payload = JSON.parse(atob(b64));
-          role = (payload.user_metadata && payload.user_metadata.role) ||
-                 (payload.app_metadata && payload.app_metadata.role) || null;
-          log('JWT user_metadata.role=', role, 'sub=', payload.sub);
-        }
+      var lsRoleEarly = localStorage.getItem('cs_auth_role');
+      if (partnerRoles.indexOf(lsRoleEarly) !== -1) {
+        role = lsRoleEarly;
+        log('cs_auth_role override (partner role)=', role);
       }
-    } catch (e) { log('JWT decode err:', e && e.message); }
+    } catch (e) {}
 
-    // Fallback: localStorage
     if (!role) {
-      try { role = localStorage.getItem('cs_auth_role'); log('localStorage cs_auth_role=', role); } catch (e) {}
+      // Primary: extract role from access_token JWT (user_metadata.role)
+      try {
+        var params = new URLSearchParams(hash.charAt(0) === '#' ? hash.substring(1) : hash);
+        var token = params.get('access_token');
+        if (token) {
+          var parts = token.split('.');
+          if (parts.length === 3) {
+            var b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) b64 += '=';
+            var payload = JSON.parse(atob(b64));
+            role = (payload.user_metadata && payload.user_metadata.role) ||
+                   (payload.app_metadata && payload.app_metadata.role) || null;
+            log('JWT user_metadata.role=', role, 'sub=', payload.sub);
+          }
+        }
+      } catch (e) { log('JWT decode err:', e && e.message); }
+
+      // Fallback: localStorage
+      if (!role) {
+        try { role = localStorage.getItem('cs_auth_role'); log('localStorage cs_auth_role=', role); } catch (e) {}
+      }
     }
 
     if (role === 'contractor') {
@@ -48,8 +67,15 @@
     } else if (role === 'homeowner') {
       log('BOUNCING to /dashboard.html');
       window.location.replace('/dashboard.html' + search + hash);
+    } else if (partnerRoles.indexOf(role) !== -1) {
+      // gh-817/#643: Supabase Auth's redirect-URL allowlist can silently
+      // override emailRedirectTo to bare SITE_URL for a partner magic link
+      // (see #817 comment 5288476400) — this bounce is the only thing that
+      // still gets that user to partner-dashboard.html in that case.
+      log('BOUNCING to /partner-dashboard.html (role=' + role + ')');
+      window.location.replace('/partner-dashboard.html' + search + hash);
     } else {
-      log('not a contractor (role=' + role + '), letting homepage render');
+      log('not a recognized role (role=' + role + '), letting homepage render');
     }
   } catch (e) {
     try { console.warn('[bounce] fatal err:', e && e.message); } catch (_) {}

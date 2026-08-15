@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Connect Your Accounts — OQ Online Services</title>
+<style>
+/* ============================================================
+   OQ ONLINE SERVICES — "Connect your accounts" onboarding wizard
+   Single-file prototype. No external requests, no localStorage.
+   ============================================================ */
+
+:root{
+  --navy:#0F2A43;
+  --navy-2:#153A5C;
+  --navy-soft:#eef3f7;
+  --teal:#0E9C97;
+  --teal-dark:#0B7C78;
+  --orange:#E8792C;
+  --orange-dark:#C7621D;
+  --ink:#16232E;
+  --sub:#5A6B78;
+  --line:#DDE5EB;
+  --ok:#1E8E5A;
+  --ok-bg:#E7F6EE;
+  --skip:#8A6D00;
+  --skip-bg:#FBF3D9;
+  --help:#B3401A;
+  --help-bg:#FCEAE1;
+  --card:#FFFFFF;
+  --radius:16px;
+  --shadow:0 4px 18px rgba(15,42,67,0.10);
+  --shadow-lg:0 12px 34px rgba(15,42,67,0.18);
+  font-size:17px;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:linear-gradient(180deg,var(--navy-soft) 0%, #f7fafb 320px);
+  color:var(--ink);
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+
+.app{
+  max-width:640px;
+  margin:0 auto;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+
+/* ---------- Header / brand ---------- */
+.topbar{
+  background:var(--navy);
+  color:#fff;
+  padding:18px 20px 16px;
+  position:sticky;
+  top:0;
+  z-index:20;
+  box-shadow:0 2px 10px rgba(0,0,0,0.12);
+}
+.wordmark{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:800;
+  font-size:1.05rem;
+  letter-spacing:.2px;
+}
+.wordmark .dot{
+  width:10px;height:10px;border-radius:50%;
+  background:var(--orange);
+  box-shadow:0 0 0 4px rgba(232,121,44,0.25);
+}
+.wordmark small{
+  display:block;
+  font-weight:500;
+  font-size:.72rem;
+  color:#B9CBDA;
+  letter-spacing:.4px;
+  margin-top:1px;
+}
+
+/* progress */
+.progress-wrap{margin-top:14px;}
+.progress-label{
+  display:flex;
+  justify-content:space-between;
+  font-size:.78rem;
+  color:#C7D8E4;
+  margin-bottom:6px;
+  font-weight:600;
+}
+.progress-track{
+  height:8px;
+  background:rgba(255,255,255,0.16);
+  border-radius:99px;
+  overflow:hidden;
+}
+.progress-fill{
+  height:100%;
+  background:linear-gradient(90deg,var(--teal),#39c2b0);
+  border-radius:99px;
+  transition:width .35s ease;
+}
+
+.chips{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+.chip{
+  font-size:.68rem;
+  font-weight:700;
+  padding:5px 9px;
+  border-radius:99px;
+  background:rgba(255,255,255,0.10);
+  color:#DCE8F0;
+  border:1px solid rgba(255,255,255,0.14);
+  white-space:nowrap;
+}
+.chip.status-connected{background:var(--ok-bg);color:var(--ok);border-color:transparent;}
+.chip.status-skipped{background:var(--skip-bg);color:var(--skip);border-color:transparent;}
+.chip.status-help{background:var(--help-bg);color:var(--help);border-color:transparent;}
+
+/* ---------- Main content ---------- */
+main{
+  flex:1;
+  padding:22px 18px 120px;
+}
+
+.card{
+  background:var(--card);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  padding:26px 22px 24px;
+  border:1px solid var(--line);
+  animation:fadeSlide .32s ease;
+}
+@keyframes fadeSlide{
+  from{opacity:0;transform:translateY(10px);}
+  to{opacity:1;transform:translateY(0);}
+}
+
+.eyebrow{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:.75rem;
+  font-weight:800;
+  color:var(--teal-dark);
+  text-transform:uppercase;
+  letter-spacing:.6px;
+  margin-bottom:8px;
+}
+.eyebrow .icon{font-size:1rem;}
+
+h1{
+  font-size:1.5rem;
+  margin:0 0 10px;
+  color:var(--navy);
+  line-height:1.25;
+}
+h2{
+  font-size:1.28rem;
+  margin:0 0 8px;
+  color:var(--navy);
+  line-height:1.3;
+}
+p.lead{
+  font-size:1rem;
+  color:var(--sub);
+  margin:0 0 18px;
+}
+
+.trust-box{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+  background:var(--navy-soft);
+  border:1px solid #d7e3ec;
+  border-radius:12px;
+  padding:14px 15px;
+  margin:16px 0 6px;
+}
+.trust-box .ico{
+  flex:0 0 auto;
+  width:34px;height:34px;
+  border-radius:50%;
+  background:var(--teal);
+  color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.05rem;
+  font-weight:800;
+}
+.trust-box p{margin:0;font-size:.92rem;color:var(--navy-2);font-weight:600;}
+.trust-box p span{font-weight:400;color:var(--sub);display:block;margin-top:2px;}
+
+.meta-row{
+  display:flex;
+  gap:16px;
+  margin:18px 0 4px;
+  flex-wrap:wrap;
+}
+.meta-item{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:.86rem;
+  color:var(--sub);
+  font-weight:600;
+}
+.meta-item .ico{font-size:1.1rem;}
+
+/* ---------- Form fields ---------- */
+.field{
+  margin-bottom:20px;
+}
+.field label{
+  display:block;
+  font-weight:700;
+  font-size:.95rem;
+  color:var(--navy);
+  margin-bottom:5px;
+}
+.field .helper{
+  font-size:.83rem;
+  color:var(--sub);
+  margin-bottom:8px;
+}
+.field input[type=text],
+.field input[type=tel],
+.field input[type=email],
+.field input[type=url]{
+  width:100%;
+  padding:14px 14px;
+  font-size:1rem;
+  border:1.5px solid var(--line);
+  border-radius:10px;
+  background:#fbfdfe;
+  color:var(--ink);
+  transition:border-color .15s, box-shadow .15s;
+  font-family:inherit;
+}
+.field input:focus{
+  outline:none;
+  border-color:var(--teal);
+  box-shadow:0 0 0 3px rgba(14,156,151,0.15);
+  background:#fff;
+}
+.not-sure-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:8px;
+}
+.not-sure-row input[type=checkbox]{
+  width:19px;height:19px;
+  accent-color:var(--teal);
+  flex:0 0 auto;
+}
+.not-sure-row label{
+  font-size:.86rem;
+  color:var(--teal-dark);
+  font-weight:700;
+  margin:0;
+  cursor:pointer;
+}
+
+.choice-group{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.choice-btn{
+  flex:1 1 auto;
+  min-width:96px;
+  padding:13px 10px;
+  border-radius:10px;
+  border:1.5px solid var(--line);
+  background:#fbfdfe;
+  color:var(--navy-2);
+  font-weight:700;
+  font-size:.92rem;
+  cursor:pointer;
+  text-align:center;
+  transition:all .15s;
+}
+.choice-btn:hover{border-color:var(--teal);}
+.choice-btn.selected{
+  background:var(--navy);
+  border-color:var(--navy);
+  color:#fff;
+}
+.conditional-field{
+  margin-top:12px;
+  display:none;
+}
+.conditional-field.show{display:block;}
+
+/* ---------- Vendor step ---------- */
+.vendor-header{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  margin-bottom:6px;
+}
+.vendor-badge{
+  flex:0 0 auto;
+  width:52px;height:52px;
+  border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.6rem;
+  color:#fff;
+  font-weight:800;
+}
+.vendor-why{
+  background:#fff7ef;
+  border:1px solid #f4dfc4;
+  border-left:4px solid var(--orange);
+  border-radius:10px;
+  padding:12px 14px;
+  font-size:.92rem;
+  color:#6b4620;
+  margin:14px 0 22px;
+}
+
+.steplist{
+  list-style:none;
+  margin:0 0 20px;
+  padding:0;
+  counter-reset:stepnum;
+}
+.steplist > li{
+  counter-increment:stepnum;
+  display:flex;
+  gap:14px;
+  padding:16px 0;
+  border-bottom:1px solid var(--line);
+}
+.steplist > li:last-child{border-bottom:none;}
+.steplist > li .num{
+  flex:0 0 auto;
+  width:30px;height:30px;
+  border-radius:50%;
+  background:var(--navy);
+  color:#fff;
+  font-weight:800;
+  font-size:.9rem;
+  display:flex;align-items:center;justify-content:center;
+}
+.steplist > li .body{flex:1;min-width:0;}
+.steplist > li .body p{
+  margin:0 0 10px;
+  font-size:.95rem;
+  color:var(--ink);
+}
+
+.btn-open{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background:var(--navy);
+  color:#fff;
+  text-decoration:none;
+  font-weight:700;
+  font-size:.95rem;
+  padding:13px 18px;
+  border-radius:10px;
+  box-shadow:0 3px 10px rgba(15,42,67,0.25);
+}
+.btn-open:active{transform:translateY(1px);}
+
+.copy-box{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  background:var(--navy-soft);
+  border:1.5px dashed #a9c1d3;
+  border-radius:10px;
+  padding:11px 14px;
+  margin-top:6px;
+}
+.copy-box code{
+  font-size:.92rem;
+  color:var(--navy);
+  font-weight:700;
+  word-break:break-all;
+}
+.copy-btn{
+  flex:0 0 auto;
+  background:var(--teal);
+  color:#fff;
+  border:none;
+  border-radius:8px;
+  padding:8px 12px;
+  font-size:.82rem;
+  font-weight:700;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.copy-btn.copied{background:var(--ok);}
+
+.screens-vary{
+  font-size:.8rem;
+  color:var(--sub);
+  font-style:italic;
+  margin-top:14px;
+}
+
+/* action buttons for a vendor step */
+.step-actions{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-top:22px;
+}
+.act-btn{
+  width:100%;
+  padding:15px 16px;
+  border-radius:12px;
+  font-size:1rem;
+  font-weight:700;
+  border:none;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+.act-primary{
+  background:var(--teal);
+  color:#fff;
+  box-shadow:0 4px 14px rgba(14,156,151,0.32);
+}
+.act-secondary{
+  background:#fff;
+  color:var(--sub);
+  border:1.5px solid var(--line);
+}
+.act-help{
+  background:#fff;
+  color:var(--help);
+  border:1.5px solid #f0c3ac;
+}
+
+.stuck-panel{
+  display:none;
+  margin-top:16px;
+  background:var(--help-bg);
+  border:1px solid #f0c3ac;
+  border-radius:12px;
+  padding:16px;
+}
+.stuck-panel.show{display:block;animation:fadeSlide .25s ease;}
+.stuck-panel h3{
+  margin:0 0 6px;
+  font-size:1rem;
+  color:var(--help);
+}
+.stuck-panel p{
+  margin:0 0 14px;
+  font-size:.9rem;
+  color:#7a3b1e;
+}
+.stuck-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.stuck-actions a{
+  flex:1 1 auto;
+  text-align:center;
+  padding:12px 14px;
+  border-radius:10px;
+  text-decoration:none;
+  font-weight:700;
+  font-size:.9rem;
+}
+.stuck-call{background:var(--help);color:#fff;}
+.stuck-text{background:#fff;color:var(--help);border:1.5px solid var(--help);}
+
+/* ---------- Nav bar ---------- */
+.footer-nav{
+  position:fixed;
+  bottom:0;left:0;right:0;
+  background:#fff;
+  border-top:1px solid var(--line);
+  padding:12px 18px calc(12px + env(safe-area-inset-bottom));
+  display:flex;
+  justify-content:center;
+  z-index:15;
+  box-shadow:0 -4px 14px rgba(0,0,0,0.06);
+}
+.footer-nav-inner{
+  max-width:640px;
+  width:100%;
+  display:flex;
+  gap:12px;
+}
+.nav-back{
+  flex:0 0 auto;
+  padding:14px 16px;
+  border-radius:12px;
+  background:#fff;
+  border:1.5px solid var(--line);
+  color:var(--navy-2);
+  font-weight:700;
+  cursor:pointer;
+  font-size:.95rem;
+}
+.nav-continue{
+  flex:1;
+  padding:14px 16px;
+  border-radius:12px;
+  background:var(--orange);
+  border:none;
+  color:#fff;
+  font-weight:800;
+  font-size:1rem;
+  cursor:pointer;
+  box-shadow:0 4px 14px rgba(232,121,44,0.35);
+}
+.nav-continue:disabled{
+  background:#cfd8de;
+  box-shadow:none;
+  cursor:not-allowed;
+}
+
+/* ---------- Welcome step ---------- */
+.welcome-icon{
+  width:64px;height:64px;
+  border-radius:18px;
+  background:linear-gradient(135deg,var(--teal),var(--navy));
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.9rem;
+  margin-bottom:16px;
+  color:#fff;
+}
+.pill-list{
+  list-style:none;
+  margin:18px 0;
+  padding:0;
+}
+.pill-list li{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  padding:9px 0;
+  font-size:.94rem;
+  color:var(--ink);
+}
+.pill-list li .tick{
+  color:var(--teal-dark);
+  font-weight:900;
+  flex:0 0 auto;
+}
+
+/* ---------- Summary / final ---------- */
+.summary-table{
+  width:100%;
+  border-collapse:collapse;
+  margin:16px 0;
+  font-size:.92rem;
+}
+.summary-table th,.summary-table td{
+  text-align:left;
+  padding:11px 8px;
+  border-bottom:1px solid var(--line);
+}
+.summary-table th{
+  color:var(--sub);
+  font-size:.75rem;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+.summary-table td.vname{font-weight:700;color:var(--navy);}
+
+.next-note{
+  background:var(--navy-soft);
+  border-radius:12px;
+  padding:14px 15px;
+  font-size:.9rem;
+  color:var(--navy-2);
+  margin:16px 0;
+}
+.next-note strong{color:var(--navy);}
+
+details.payload{
+  margin-top:18px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  overflow:hidden;
+}
+details.payload summary{
+  padding:13px 15px;
+  cursor:pointer;
+  font-weight:700;
+  font-size:.9rem;
+  color:var(--navy);
+  background:#f5f8fa;
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+details.payload summary::-webkit-details-marker{display:none;}
+details.payload summary:after{
+  content:"▾";
+  transition:transform .2s;
+}
+details.payload[open] summary:after{transform:rotate(180deg);}
+details.payload pre{
+  margin:0;
+  padding:14px 15px;
+  background:#0b1c2e;
+  color:#b7e6dd;
+  font-size:.78rem;
+  overflow-x:auto;
+  line-height:1.5;
+}
+
+.submit-confirm{
+  display:none;
+  text-align:center;
+  padding:30px 10px 10px;
+}
+.submit-confirm.show{display:block;}
+.submit-confirm .big-tick{
+  width:64px;height:64px;
+  border-radius:50%;
+  background:var(--ok-bg);
+  color:var(--ok);
+  font-size:2rem;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 14px;
+}
+.submit-error{
+  display:none;
+  margin-top:14px;
+  background:var(--help-bg);
+  border:1px solid #f0c3ac;
+  border-radius:10px;
+  padding:12px 14px;
+  font-size:.86rem;
+  color:#7a3b1e;
+}
+.submit-error.show{display:block;}
+
+/* utility */
+.hidden{display:none !important;}
+.small-note{font-size:.78rem;color:var(--sub);margin-top:6px;}
+
+@media (max-width:380px){
+  h1{font-size:1.32rem;}
+  .card{padding:20px 16px 20px;}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ HEADER ============ -->
+  <header class="topbar">
+    <div class="wordmark">
+      <span class="dot"></span>
+      <span>OQ Online Services
+        <small>by Stellar Edge Services</small>
+      </span>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span id="progressText">Getting started</span>
+        <span id="progressCount"></span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="chips" id="vendorChips"></div>
+  </header>
+
+  <!-- ============ MAIN ============ -->
+  <main id="mainContent"></main>
+
+  <!-- ============ FOOTER NAV (rendered per-step by JS where needed) ============ -->
+  <div class="footer-nav" id="footerNav">
+    <div class="footer-nav-inner">
+      <button class="nav-back" id="navBack">Back</button>
+      <button class="nav-continue" id="navContinue">Continue</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Site-wide config (Supabase URL/anon key, support contact) — same include used by
+     tools-online-presence.html for this product line. Declares global `var CONFIG`. -->
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+
+<script>
+/* ==============================================================
+   WIZARD_CONFIG — ops can retune copy, contact info, and vendor
+   order here without touching any logic below. Named distinctly
+   from the site-wide `CONFIG` (js/config.js, loaded above) to
+   avoid a duplicate-declaration collision — this page reads real
+   Supabase config from the global `CONFIG` at submit time.
+   ============================================================== */
+const WIZARD_CONFIG = {
+  brand: {
+    name: "OQ Online Services",
+    parent: "Stellar Edge Services",
+  },
+  access: {
+    email: "presence@otterquote.com",
+    // Real, already-live OtterQuote support line (same number published on
+    // contractor-faq.html and backed by the Twilio number in js/config.js).
+    // The prototype's own placeholder here was a fictional 555-01xx number.
+    supportPhone: "+18448753412",
+    supportPhoneDisplay: "(844) 875-3412",
+    supportSms: "+18448753412",
+  },
+  estimatedMinutes: 10,
+  // Vendor step order + all copy for each delegated-access flow.
+  vendors: [
+    {
+      id: "gbp",
+      name: "Google Business Profile",
+      shortName: "Google",
+      color: "#1a73e8",
+      badgeIcon: "G",
+      why: "Google Business Profile is what makes your business show up on Google Search and Maps — it's usually the single biggest driver of new calls. We use it to keep your hours, photos, and review replies up to date.",
+      steps: [
+        {
+          text: "Open your Google Business Profile manager.",
+          cta: { label: "Open Google Business Profile", href: "https://business.google.com" },
+        },
+        {
+          text: "Tap the settings gear or the three-dot menu, then choose <strong>“Managers”</strong> (sometimes labeled <strong>“People and access”</strong>).",
+        },
+        {
+          text: "Tap <strong>“Add”</strong> and paste this email address:",
+          copy: true,
+        },
+        {
+          text: "Choose the role <strong>“Manager”</strong> and tap <strong>Invite</strong>. That's it — you're done here.",
+        },
+      ],
+    },
+    {
+      id: "fb",
+      name: "Facebook Page",
+      shortName: "Facebook",
+      color: "#0866FF",
+      badgeIcon: "f",
+      why: "Your Facebook Page is often the first place a homeowner checks to see if you're a real, trusted local business. We use it to post updates and keep your info current.",
+      steps: [
+        {
+          text: "Open your Facebook Page (not your personal profile).",
+          cta: { label: "Open Facebook", href: "https://www.facebook.com" },
+        },
+        {
+          text: "Tap <strong>Settings</strong>, then <strong>“Page setup”</strong>, then <strong>“Page access.”</strong>",
+        },
+        {
+          text: "Under “People with facebook access,” tap <strong>“Add new”</strong> and paste this email address:",
+          copy: true,
+        },
+        {
+          text: "Grant <strong>task access</strong> (content &amp; messages) — this is Facebook's version of a limited manager role. Tap <strong>Send invite</strong>.",
+        },
+      ],
+    },
+    {
+      id: "yelp",
+      name: "Yelp",
+      shortName: "Yelp",
+      color: "#D32323",
+      badgeIcon: "Y",
+      why: "Yelp reviews carry a lot of weight for roofing and trade companies. We use access to respond to reviews on your behalf and keep your listing accurate.",
+      steps: [
+        {
+          text: "Open your Yelp for Business account.",
+          cta: { label: "Open Yelp for Business", href: "https://biz.yelp.com" },
+        },
+        {
+          text: "Tap <strong>“Account Settings,”</strong> then <strong>“User Management.”</strong>",
+        },
+        {
+          text: "Tap <strong>“Invite a user”</strong> and paste this email address:",
+          copy: true,
+        },
+        {
+          text: "Assign it as a standard user with edit access and send the invite.",
+        },
+      ],
+    },
+    {
+      id: "bing",
+      name: "Bing Places",
+      shortName: "Bing",
+      color: "#008373",
+      badgeIcon: "B",
+      why: "Bing Places puts your business in front of Microsoft Edge and Bing search users — a smaller slice of traffic, but easy points once Google is set up.",
+      steps: [
+        {
+          text: "Open Bing Places for Business.",
+          cta: { label: "Open Bing Places", href: "https://www.bingplaces.com" },
+        },
+        {
+          text: "Find your listing, then go to the <strong>“Users”</strong> section of your dashboard.",
+        },
+        {
+          text: "Tap <strong>“Add a user”</strong> and paste this email address:",
+          copy: true,
+        },
+        {
+          text: "Set the permission level to <strong>Manager</strong> and confirm.",
+        },
+      ],
+    },
+    {
+      id: "apple",
+      name: "Apple Business Connect",
+      shortName: "Apple",
+      color: "#111",
+      badgeIcon: "",
+      why: "Apple Business Connect controls how your business shows up in Apple Maps and Siri search — increasingly common on iPhones.",
+      steps: [
+        {
+          text: "Open Apple Business Connect.",
+          cta: { label: "Open Apple Business Connect", href: "https://businessconnect.apple.com" },
+        },
+        {
+          text: "Go to <strong>“Users”</strong> in your business account settings.",
+        },
+        {
+          text: "Tap <strong>“Invite”</strong> and paste this email address:",
+          copy: true,
+        },
+        {
+          text: "Choose the <strong>Manager</strong> role and send the invite.",
+        },
+      ],
+    },
+  ],
+};
+
+/* ==============================================================
+   STATE — in-memory only. No localStorage / sessionStorage.
+   ============================================================== */
+const state = {
+  step: 0, // 0 = welcome, 1 = business info, 2..(2+n-1) = vendors, last = summary
+  business: {
+    businessName: "",
+    ownerName: "",
+    mobile: "",
+    email: "",
+    address: "",
+    website: "",
+    googleEmail: "",
+    googleEmailNotSure: false,
+    hasFacebook: null,   // "yes" | "no" | null
+    facebookName: "",
+    yelpClaimed: null,   // "yes" | "no" | "notsure" | null
+  },
+  vendorStatus: {}, // { gbp: "connected"|"skipped"|"help"|undefined, ... }
+  submitted: false,
+  submitting: false,
+};
+WIZARD_CONFIG.vendors.forEach(v => state.vendorStatus[v.id] = null);
+
+const TOTAL_STEPS = 2 + WIZARD_CONFIG.vendors.length + 1; // welcome, info, vendors..., summary
+const SUMMARY_STEP = TOTAL_STEPS - 1;
+
+/* ==============================================================
+   RENDER HELPERS
+   ============================================================== */
+const mainEl = document.getElementById("mainContent");
+const footerNav = document.getElementById("footerNav");
+const navBack = document.getElementById("navBack");
+const navContinue = document.getElementById("navContinue");
+const progressFill = document.getElementById("progressFill");
+const progressText = document.getElementById("progressText");
+const progressCount = document.getElementById("progressCount");
+const vendorChips = document.getElementById("vendorChips");
+
+function connectedCount(){
+  return Object.values(state.vendorStatus).filter(s => s === "connected").length;
+}
+
+function renderChipsAndProgress(){
+  const n = WIZARD_CONFIG.vendors.length;
+  const connected = connectedCount();
+
+  // progress bar reflects overall wizard position, not just vendor connects
+  const pct = Math.min(100, Math.round((state.step / (TOTAL_STEPS - 1)) * 100));
+  progressFill.style.width = pct + "%";
+
+  if(state.step === 0){
+    progressText.textContent = "Welcome";
+    progressCount.textContent = "";
+  } else if(state.step === 1){
+    progressText.textContent = "Your business info";
+    progressCount.textContent = "";
+  } else if(state.step >= 2 && state.step < 2 + n){
+    progressText.textContent = "Connecting your accounts";
+    progressCount.textContent = connected + " of " + n + " connected";
+  } else {
+    progressText.textContent = "All set — review &amp; submit";
+    progressCount.textContent = connected + " of " + n + " connected";
+  }
+
+  // chips only show once we've entered the vendor flow
+  vendorChips.innerHTML = "";
+  if(state.step >= 2){
+    WIZARD_CONFIG.vendors.forEach(v => {
+      const s = state.vendorStatus[v.id];
+      const chip = document.createElement("span");
+      chip.className = "chip" +
+        (s === "connected" ? " status-connected" :
+         s === "skipped" ? " status-skipped" :
+         s === "help" ? " status-help" : "");
+      chip.textContent = v.shortName + ": " +
+        (s === "connected" ? "Connected" :
+         s === "skipped" ? "Skipped" :
+         s === "help" ? "Needs help" : "Pending");
+      vendorChips.appendChild(chip);
+    });
+  }
+}
+
+function isVendorStep(step){
+  return step >= 2 && step < 2 + WIZARD_CONFIG.vendors.length;
+}
+function vendorForStep(step){
+  return WIZARD_CONFIG.vendors[step - 2];
+}
+
+/* ==============================================================
+   STEP RENDERERS
+   ============================================================== */
+function renderStep(){
+  renderChipsAndProgress();
+
+  if(state.step === 0) return renderWelcome();
+  if(state.step === 1) return renderBusinessInfo();
+  if(isVendorStep(state.step)) return renderVendorStep(vendorForStep(state.step));
+  if(state.step === SUMMARY_STEP) return renderSummary();
+}
+
+/* ---------- Step 0: Welcome ---------- */
+function renderWelcome(){
+  footerNav.style.display = "flex";
+  navBack.style.visibility = "hidden";
+  navContinue.disabled = false;
+  navContinue.textContent = "Let's get started";
+
+  mainEl.innerHTML = `
+    <div class="card">
+      <div class="welcome-icon">\u{1F44B}</div>
+      <h1>Let's connect your online accounts</h1>
+      <p class="lead">
+        This takes about ${WIZARD_CONFIG.estimatedMinutes} minutes. We'll walk you through each site,
+        one screen at a time — no tech skills needed.
+      </p>
+
+      <ul class="pill-list">
+        <li><span class="tick">✓</span> We'll go one account at a time: Google, Facebook, Yelp, Bing, and Apple Maps.</li>
+        <li><span class="tick">✓</span> You can skip any account and come back later.</li>
+        <li><span class="tick">✓</span> Stuck on any step? Tap "I'm stuck" and we'll hop on a quick call.</li>
+      </ul>
+
+      <div class="trust-box">
+        <div class="ico">\u{1F512}</div>
+        <p>You will never give us your password.
+          <span>We only ask you to add our team as a "manager" or "collaborator" inside each site's own settings — the same way you'd add an employee. You can remove that access at any time.</span>
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- Step 1: Business info form ---------- */
+function renderBusinessInfo(){
+  footerNav.style.display = "flex";
+  navBack.style.visibility = "visible";
+  navContinue.textContent = "Continue";
+
+  const b = state.business;
+
+  mainEl.innerHTML = `
+    <div class="card">
+      <div class="eyebrow"><span class="icon">\u{1F4CB}</span> Step 1 of ${TOTAL_STEPS - 1}</div>
+      <h1>Tell us about your business</h1>
+      <p class="lead">Nothing here is a trick question — if you're not sure about something, just say so. We'll sort it out together.</p>
+
+      <div class="field">
+        <label for="businessName">Business name</label>
+        <div class="helper">Exactly as customers would recognize it — e.g. "Summit Roofing Co."</div>
+        <input type="text" id="businessName" placeholder="Summit Roofing Co." value="${escapeAttr(b.businessName)}">
+      </div>
+
+      <div class="field">
+        <label for="ownerName">Your name</label>
+        <div class="helper">The owner or main point of contact for this account.</div>
+        <input type="text" id="ownerName" placeholder="Jamie Summit" value="${escapeAttr(b.ownerName)}">
+      </div>
+
+      <div class="field">
+        <label for="mobile">Mobile number</label>
+        <div class="helper">We'll only text about this setup — no spam, ever.</div>
+        <input type="tel" id="mobile" placeholder="(555) 123-4567" value="${escapeAttr(b.mobile)}">
+      </div>
+
+      <div class="field">
+        <label for="email">Email address</label>
+        <div class="helper">Where we'll send confirmations once accounts are connected.</div>
+        <input type="email" id="email" placeholder="jamie@summitroofing.com" value="${escapeAttr(b.email)}">
+      </div>
+
+      <div class="field">
+        <label for="address">Business address</label>
+        <div class="helper">The address customers see on Google Maps and directories.</div>
+        <input type="text" id="address" placeholder="123 Main St, Springfield, IL" value="${escapeAttr(b.address)}">
+      </div>
+
+      <div class="field">
+        <label for="website">Website <span style="font-weight:400;color:var(--sub);">(optional)</span></label>
+        <div class="helper">Don't have one yet? Leave this blank — totally fine.</div>
+        <input type="url" id="website" placeholder="https://summitroofing.com" value="${escapeAttr(b.website)}">
+      </div>
+
+      <div class="field">
+        <label for="googleEmail">Which Google account email runs your business listing?</label>
+        <div class="helper">This is the Gmail (or Google-linked) address used to manage your Google Business Profile. Not sure? That's fine — just check the box below and we'll help you find it.</div>
+        <input type="email" id="googleEmail" placeholder="jamie@gmail.com" value="${escapeAttr(b.googleEmail)}" ${b.googleEmailNotSure ? "disabled" : ""}>
+        <div class="not-sure-row">
+          <input type="checkbox" id="googleEmailNotSure" ${b.googleEmailNotSure ? "checked" : ""}>
+          <label for="googleEmailNotSure">Not sure — help me figure this out</label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Do you have a Facebook Page for your business?</label>
+        <div class="helper">A business Page, not a personal profile.</div>
+        <div class="choice-group" data-group="hasFacebook">
+          ${choiceBtn("hasFacebook", "yes", "Yes", b.hasFacebook)}
+          ${choiceBtn("hasFacebook", "no", "No", b.hasFacebook)}
+        </div>
+        <div class="conditional-field ${b.hasFacebook === "yes" ? "show" : ""}" id="facebookNameWrap">
+          <label for="facebookName" style="margin-top:12px;">Facebook Page name</label>
+          <input type="text" id="facebookName" placeholder="Summit Roofing Co." value="${escapeAttr(b.facebookName)}">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Have you claimed your Yelp listing?</label>
+        <div class="helper">"Claiming" means you have an account that manages it. If you've never touched Yelp, pick "Not sure."</div>
+        <div class="choice-group" data-group="yelpClaimed">
+          ${choiceBtn("yelpClaimed", "yes", "Yes", b.yelpClaimed)}
+          ${choiceBtn("yelpClaimed", "no", "No", b.yelpClaimed)}
+          ${choiceBtn("yelpClaimed", "notsure", "Not sure", b.yelpClaimed)}
+        </div>
+      </div>
+    </div>
+  `;
+
+  attachBusinessInfoListeners();
+}
+
+function choiceBtn(group, value, label, current){
+  const selected = current === value ? " selected" : "";
+  return `<button type="button" class="choice-btn${selected}" data-group="${group}" data-value="${value}">${label}</button>`;
+}
+
+function attachBusinessInfoListeners(){
+  ["businessName","ownerName","mobile","email","address","website","googleEmail","facebookName"].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.addEventListener("input", () => { state.business[id] = el.value; });
+  });
+
+  const notSure = document.getElementById("googleEmailNotSure");
+  notSure.addEventListener("change", () => {
+    state.business.googleEmailNotSure = notSure.checked;
+    const gEmail = document.getElementById("googleEmail");
+    gEmail.disabled = notSure.checked;
+    if(notSure.checked){ gEmail.value = ""; state.business.googleEmail = ""; }
+  });
+
+  document.querySelectorAll(".choice-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const group = btn.dataset.group;
+      const value = btn.dataset.value;
+      state.business[group] = value;
+      // re-render just this card's choice buttons for feedback
+      document.querySelectorAll('.choice-btn[data-group="' + group + '"]').forEach(b => {
+        b.classList.toggle("selected", b.dataset.value === value);
+      });
+      if(group === "hasFacebook"){
+        const wrap = document.getElementById("facebookNameWrap");
+        wrap.classList.toggle("show", value === "yes");
+      }
+    });
+  });
+}
+
+/* ---------- Steps 2-6: vendor connect screens ---------- */
+function renderVendorStep(vendor){
+  footerNav.style.display = "none"; // vendor steps use their own in-card action buttons
+
+  const idx = WIZARD_CONFIG.vendors.findIndex(v => v.id === vendor.id);
+  const stepNum = idx + 2;
+
+  const stepsHtml = vendor.steps.map((s, i) => {
+    let extra = "";
+    if(s.cta){
+      extra = `<a class="btn-open" href="${s.cta.href}" target="_blank" rel="noopener">
+        <span>\u{1F517}</span> ${s.cta.label}
+      </a>`;
+    }
+    if(s.copy){
+      extra = `<div class="copy-box">
+        <code>${WIZARD_CONFIG.access.email}</code>
+        <button type="button" class="copy-btn" data-copy="${WIZARD_CONFIG.access.email}">Copy</button>
+      </div>`;
+    }
+    return `<li>
+      <div class="num">${i + 1}</div>
+      <div class="body">
+        <p>${s.text}</p>
+        ${extra}
+      </div>
+    </li>`;
+  }).join("");
+
+  const currentStatus = state.vendorStatus[vendor.id];
+
+  mainEl.innerHTML = `
+    <div class="card">
+      <div class="eyebrow"><span class="icon">\u{1F517}</span> Step ${stepNum} of ${TOTAL_STEPS - 1} &middot; Connecting ${vendor.name}</div>
+
+      <div class="vendor-header">
+        <div class="vendor-badge" style="background:${vendor.color};">${vendor.badgeIcon}</div>
+        <h2 style="margin:0;">${vendor.name}</h2>
+      </div>
+
+      <div class="vendor-why">${vendor.why}</div>
+
+      <ol class="steplist">${stepsHtml}</ol>
+
+      <p class="screens-vary">Screens vary slightly by device and by recent site updates — if yours looks different, tap "I'm stuck" below and we'll help.</p>
+
+      <div class="step-actions">
+        <button type="button" class="act-btn act-primary" id="btnDone">✓ Done — next</button>
+        <button type="button" class="act-btn act-secondary" id="btnSkip">⏭ Skip for now</button>
+        <button type="button" class="act-btn act-help" id="btnStuck">\u{1F198} I'm stuck</button>
+      </div>
+
+      <div class="stuck-panel" id="stuckPanel">
+        <h3>No problem — we'll do it together</h3>
+        <p>Tap below and we'll hop on a quick 5-minute call or text to get ${vendor.name} connected. We've marked this account as "needs help" so our team already knows to follow up.</p>
+        <div class="stuck-actions">
+          <a class="stuck-call" href="tel:${WIZARD_CONFIG.access.supportPhone}">\u{1F4DE} Call us: ${WIZARD_CONFIG.access.supportPhoneDisplay}</a>
+          <a class="stuck-text" href="sms:${WIZARD_CONFIG.access.supportSms}?&body=${encodeURIComponent("Hi! I need help connecting " + vendor.name + " for OQ Online Services.")}">\u{1F4AC} Text us</a>
+        </div>
+      </div>
+
+      <div style="margin-top:22px;">
+        <button type="button" class="nav-back" id="vendorBack" style="width:100%;">Back</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("btnDone").addEventListener("click", () => {
+    state.vendorStatus[vendor.id] = "connected";
+    goToStep(state.step + 1);
+  });
+  document.getElementById("btnSkip").addEventListener("click", () => {
+    state.vendorStatus[vendor.id] = "skipped";
+    goToStep(state.step + 1);
+  });
+  document.getElementById("btnStuck").addEventListener("click", () => {
+    state.vendorStatus[vendor.id] = "help";
+    renderChipsAndProgress();
+    document.getElementById("stuckPanel").classList.add("show");
+  });
+  document.getElementById("vendorBack").addEventListener("click", () => {
+    goToStep(state.step - 1);
+  });
+
+  document.querySelectorAll(".copy-btn").forEach(btn => {
+    btn.addEventListener("click", () => copyToClipboard(btn));
+  });
+
+  // if this vendor already has a status (revisit via back), reflect it
+  if(currentStatus === "help"){
+    document.getElementById("stuckPanel").classList.add("show");
+  }
+}
+
+function copyToClipboard(btn){
+  const text = btn.dataset.copy;
+  const finish = () => {
+    btn.textContent = "Copied!";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1800);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(finish).catch(() => fallbackCopy(text, finish));
+  } else {
+    fallbackCopy(text, finish);
+  }
+}
+function fallbackCopy(text, cb){
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch(e){ /* no-op */ }
+  document.body.removeChild(ta);
+  cb();
+}
+
+/* ---------- Final step: summary + submit ---------- */
+function renderSummary(){
+  footerNav.style.display = "none";
+
+  const statusLabel = s => s === "connected" ? "Connected" : s === "skipped" ? "Skipped" : s === "help" ? "Needs help" : "Pending";
+  const statusClass = s => s === "connected" ? "status-connected" : s === "skipped" ? "status-skipped" : s === "help" ? "status-help" : "";
+
+  const rows = WIZARD_CONFIG.vendors.map(v => {
+    const s = state.vendorStatus[v.id];
+    return `<tr>
+      <td class="vname">${v.name}</td>
+      <td><span class="chip ${statusClass(s)}" style="display:inline-block;">${statusLabel(s)}</span></td>
+    </tr>`;
+  }).join("");
+
+  const payload = buildPayload();
+
+  mainEl.innerHTML = `
+    <div class="card" id="summaryCard">
+      <div class="eyebrow"><span class="icon">\u{2705}</span> Almost done</div>
+      <h1>Here's where you stand</h1>
+      <p class="lead">Review your status below. You can always come back and connect a skipped account later.</p>
+
+      <table class="summary-table">
+        <thead><tr><th>Account</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      <div class="next-note">
+        <strong>What happens next:</strong> our team verifies each connection, usually within
+        <strong>1 business day</strong>. We'll confirm by email and text once everything is live —
+        no action needed from you in the meantime.
+      </div>
+
+      <details class="payload">
+        <summary>View submission data (for engineering)</summary>
+        <pre id="payloadPre">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
+      </details>
+
+      <div class="step-actions" style="margin-top:24px;">
+        <button type="button" class="act-btn act-primary" id="btnSubmit">Submit</button>
+      </div>
+
+      <div style="margin-top:14px;">
+        <button type="button" class="nav-back" id="summaryBack" style="width:100%;">Back</button>
+      </div>
+
+      <div class="submit-error" id="submitError"></div>
+
+      <div class="submit-confirm" id="submitConfirm">
+        <div class="big-tick">✓</div>
+        <h2>You're all set, ${escapeHtml(state.business.ownerName || "there")}!</h2>
+        <p class="lead">We received your info. Our team will verify access and follow up within 1 business day.</p>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("summaryBack").addEventListener("click", () => {
+    goToStep(state.step - 1);
+  });
+
+  document.getElementById("btnSubmit").addEventListener("click", submitOnboarding);
+}
+
+function buildPayload(){
+  const b = state.business;
+  return {
+    submittedAt: new Date().toISOString(),
+    source: "oqom-onboarding-wizard",
+    business: {
+      businessName: b.businessName,
+      ownerName: b.ownerName,
+      mobile: b.mobile,
+      email: b.email,
+      address: b.address,
+      website: b.website || null,
+      googleAccount: {
+        email: b.googleEmailNotSure ? null : (b.googleEmail || null),
+        notSure: b.googleEmailNotSure,
+      },
+      facebook: {
+        hasPage: b.hasFacebook, // "yes" | "no" | null
+        pageName: b.hasFacebook === "yes" ? (b.facebookName || null) : null,
+      },
+      yelp: {
+        claimed: b.yelpClaimed, // "yes" | "no" | "notsure" | null
+      },
+    },
+    accessGrantEmail: WIZARD_CONFIG.access.email,
+    vendorConnections: WIZARD_CONFIG.vendors.map(v => ({
+      vendorId: v.id,
+      vendorName: v.name,
+      status: state.vendorStatus[v.id] || "pending", // connected | skipped | help | pending
+    })),
+  };
+}
+
+/* Builds a readable plain-text version of the payload for the internal
+   notification email (send-support-email renders `message` as text). */
+function buildSubmitMessage(payload){
+  const b = payload.business;
+  const vendorLines = payload.vendorConnections
+    .map(v => "  - " + v.vendorName + ": " + v.status)
+    .join("\n");
+  return [
+    "OQOM ONBOARDING SUBMISSION",
+    "",
+    "Business:      " + b.businessName,
+    "Owner:         " + b.ownerName,
+    "Mobile:        " + b.mobile,
+    "Email:         " + b.email,
+    "Address:       " + b.address,
+    "Website:       " + (b.website || "(none)"),
+    "Google email:  " + (b.googleAccount.notSure ? "not sure — needs follow-up" : (b.googleAccount.email || "(blank)")),
+    "Facebook Page: " + (b.facebook.hasPage === "yes" ? (b.facebook.pageName || "(name not given)") : (b.facebook.hasPage || "(not answered)")),
+    "Yelp claimed:  " + (b.yelp.claimed || "(not answered)"),
+    "",
+    "Vendor connection status:",
+    vendorLines,
+    "",
+    "Access grant email used: " + payload.accessGrantEmail,
+    "Submitted at: " + payload.submittedAt,
+  ].join("\n");
+}
+
+/* Submits to the same send-support-email Edge Function tools-online-presence.html
+   already uses for this product line, so the wizard's data actually reaches the
+   OQOM team instead of only rendering a client-side confirmation. On failure, the
+   existing "View submission data" panel above stays available so the business
+   owner can copy/paste and email it manually as a fallback. */
+async function submitOnboarding(){
+  if(state.submitting) return;
+  state.submitting = true;
+
+  const btn = document.getElementById("btnSubmit");
+  const errEl = document.getElementById("submitError");
+  errEl.classList.remove("show");
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+
+  const payload = buildPayload();
+  const b = state.business;
+
+  try {
+    const SUPABASE_URL  = (typeof CONFIG !== "undefined" && CONFIG.SUPABASE_URL)  || "";
+    const SUPABASE_ANON = (typeof CONFIG !== "undefined" && CONFIG.SUPABASE_ANON) || "";
+
+    const res = await fetch(SUPABASE_URL + "/functions/v1/send-support-email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON,
+        "Authorization": "Bearer " + SUPABASE_ANON,
+      },
+      body: JSON.stringify({
+        from_name: b.ownerName + " (" + b.businessName + ")",
+        from_email: b.email,
+        subject: "OQOM Onboarding — " + b.businessName,
+        message: buildSubmitMessage(payload),
+      }),
+    });
+
+    if(!res.ok) throw new Error("send failed: " + res.status);
+
+    state.submitted = true;
+    document.getElementById("submitConfirm").classList.add("show");
+    btn.textContent = "Submitted";
+    btn.style.opacity = "0.6";
+
+    if(typeof gtag === "function"){
+      gtag("event", "oqom_onboarding_submit", { tool: "onboarding_wizard" });
+    }
+  } catch(err){
+    errEl.textContent = "Something went wrong sending this automatically. Please copy the submission data above and email it to " + WIZARD_CONFIG.access.email + ", or call " + WIZARD_CONFIG.access.supportPhoneDisplay + ".";
+    errEl.classList.add("show");
+    btn.disabled = false;
+    btn.textContent = "Submit";
+  } finally {
+    state.submitting = false;
+  }
+}
+
+/* ==============================================================
+   NAVIGATION
+   ============================================================== */
+function goToStep(n){
+  state.step = Math.max(0, Math.min(TOTAL_STEPS - 1, n));
+  renderStep();
+  window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+}
+
+navBack.addEventListener("click", () => {
+  if(state.step > 0) goToStep(state.step - 1);
+});
+navContinue.addEventListener("click", () => {
+  if(state.step === 0){
+    goToStep(1);
+    return;
+  }
+  if(state.step === 1){
+    if(!validateBusinessInfo()) return;
+    goToStep(2);
+    return;
+  }
+  goToStep(state.step + 1);
+});
+
+function validateBusinessInfo(){
+  const b = state.business;
+  const required = [
+    ["businessName", "your business name"],
+    ["ownerName", "your name"],
+    ["mobile", "a mobile number"],
+    ["email", "an email address"],
+    ["address", "a business address"],
+  ];
+  for(const [key, label] of required){
+    if(!b[key] || !b[key].trim()){
+      const el = document.getElementById(key);
+      if(el){ el.focus(); el.style.borderColor = "var(--orange)"; }
+      return false;
+    }
+  }
+  return true;
+}
+
+/* ==============================================================
+   UTIL
+   ============================================================== */
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[m]));
+}
+function escapeAttr(str){ return escapeHtml(str || ""); }
+
+/* ==============================================================
+   INIT
+   ============================================================== */
+renderStep();
+</script>
+</body>
+</html>

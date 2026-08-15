@@ -74,6 +74,33 @@ function _clearSentryUser() {
   } catch (e) { /* non-fatal */ }
 }
 
+/**
+ * gh-807: single source of truth for "is this a partner surface" page.
+ * Before this, requireAuth() tested the four-family regex against the full
+ * pathname while redirectToDashboard()'s #783 guard tested only
+ * `indexOf('partner-') === 0` against the trailing filename — so `ref-*`,
+ * `recruit*`, and `refer-a-friend*` pages were partner surfaces by
+ * requireAuth()'s own definition but NOT covered by redirectToDashboard()'s
+ * guard. Both now call this one function. It tests the trailing filename
+ * (not the full pathname) so a directory segment can never false-positive
+ * (e.g. a hypothetical /blog/refer-a-friend-story.html would not match).
+ */
+var PARTNER_SURFACE_FILE_RE = /^(partner-|ref-|recruit|refer-a-friend)/;
+function _isPartnerSurfaceFile(pathname) {
+  var file = pathname.substring(pathname.lastIndexOf('/') + 1);
+  return PARTNER_SURFACE_FILE_RE.test(file);
+}
+
+/**
+ * gh-851: single source of truth for the partner agent_type values, mirroring
+ * the gh-807 fix for _isPartnerSurfaceFile() above. Previously redeclared
+ * identically at three call sites in this file (sendMagicLink, requireAuth,
+ * and now redirectToDashboard) plus once more in index.html's standalone
+ * bounce script (which cannot reference this file — it runs before any
+ * script tag, including this one, loads).
+ */
+var PARTNER_ROLES = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+
 window.Auth = {
   /** Get current session - robust race-free implementation.
    *
@@ -230,7 +257,6 @@ window.Auth = {
     // Redirect URL depends on role — auth callback page handles final routing.
     // New users go to trade-selector (intake). Returning users should pass
     // redirectTo='/dashboard.html' to bypass the intake flow.
-    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
     // D-225 fix May 13: new contractors must land on /contractor-pre-approval.html,
     // not /contractor-dashboard.html. The pre-approval page reads cs_contractor_signup
     // from localStorage, creates the contractors row, and routes returning/active
@@ -238,7 +264,7 @@ window.Auth = {
     // caused a bounce loop (dashboard requireAuth -> no record -> bounce back).
     const defaultRedirectPage = role === 'contractor'
       ? '/contractor-pre-approval.html'
-      : partnerRoles.includes(role)
+      : PARTNER_ROLES.includes(role)
         ? '/partner-dashboard.html'
         : '/auth-callback.html';
     const redirectPage = redirectTo || defaultRedirectPage;
@@ -340,7 +366,7 @@ window.Auth = {
       // production, with no way back. Route partners to their own login gate.
       const path = window.location.pathname;
       const isContractorPage = path.includes('contractor');
-      const isPartnerPage = /(^|\/)(partner-|ref-|recruit|refer-a-friend)/.test(path);
+      const isPartnerPage = _isPartnerSurfaceFile(path); // gh-807: shared with redirectToDashboard()
       window.location.href = isContractorPage
         ? '/contractor-login.html'
         : isPartnerPage
@@ -357,9 +383,18 @@ window.Auth = {
     if (requiredRole) {
       const role = await this.getRole();
       if (role && role !== requiredRole) {
-        // Redirect to the correct dashboard for this user's actual role
+        // Redirect to the correct dashboard for this user's actual role.
+        // gh-817/#643: getRole() can now return a partnerRoles value (see
+        // getRole() above) — route those to partner-dashboard.html instead
+        // of falling into the homeowner dashboard, the same structural gap
+        // that caused the partner P0. No current caller passes a
+        // requiredRole on a partner-*.html page (partner-dashboard.html
+        // calls requireAuth() with no argument), so this branch is
+        // defense-in-depth for any page that gains a role check later.
         if (role === 'contractor') {
           window.location.href = '/contractor-dashboard.html';
+        } else if (PARTNER_ROLES.includes(role)) {
+          window.location.href = '/partner-dashboard.html';
         } else {
           window.location.href = '/dashboard.html';
         }
@@ -425,9 +460,37 @@ window.Auth = {
         // Network/JS exception — return null, not a wrong-role fallthrough
         return null;
       }
+
+      // gh-817/#643: getRole() never queried referral_agents, so a partner
+      // account fell straight through to profiles.role — which is
+      // 'homeowner' for every real partner-only account (verified live,
+      // 2026-08-14: every active referral_agents row with no contractors
+      // record carries profile_role='homeowner'). nav.js's _renderAuthSlot()
+      // has expected getRole() to return a partnerRoles value since #567 and
+      // has never actually received one. Contractor precedence above is
+      // unchanged — a dual-role account (contractor + referral_agents, e.g.
+      // dustinstohler1@gmail.com) still resolves to 'contractor' here;
+      // surface-aware callers (auth-callback.html's intent check,
+      // requireAuth()'s partner branch below) take precedence over this
+      // single-value getter when the user arrived via a partner surface.
+      try {
+        const { data: agent, error: agentError } = await sb
+          .from('referral_agents')
+          .select('agent_type')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .single();
+        if (agent && !agentError && agent.agent_type) {
+          return agent.agent_type;
+        }
+      } catch (e) {
+        // Network/JS exception — fall through to the profile check below,
+        // same handling as the contractor lookup above.
+      }
     }
 
-    // Fall back to profile role only when contractors table confirmed 0 rows (PGRST116)
+    // Fall back to profile role only when neither contractors nor
+    // referral_agents matched this user.
     const profile = await this.getProfile();
     return profile?.role || null;
   },
@@ -440,11 +503,60 @@ window.Auth = {
     const user = await this.getUser();
     if (!user) return;
 
-    // Check for a stored redirect path first
+    const currentFile = window.location.pathname.substring(
+      window.location.pathname.lastIndexOf('/') + 1
+    );
+    // gh-807: was `currentFile.indexOf('partner-') === 0`, narrower than
+    // requireAuth()'s partner-surface definition — ref-*/recruit*/
+    // refer-a-friend* pages fell through to role-based routing below and
+    // could be bounced into the homeowner intake flow. Now shares the same
+    // definition as requireAuth() via _isPartnerSurfaceFile().
+    const onPartnerPage = _isPartnerSurfaceFile(window.location.pathname);
+
+    // gh-817: cs_redirect is saved by requireAuth() on ANY earlier unauthenticated
+    // page hit in this tab's session (e.g. a contractor page Dustin visited before
+    // the partner magic-link login) and this shortcut used to run BEFORE the #783
+    // partner-stay-put guard below — so a stale value could silently bounce a
+    // just-completed partner login to an unrelated page. Reproduces the reported
+    // symptom exactly: partner-dashboard.html renders, then a leftover
+    // cs_redirect='/contractor-dashboard.html' from an earlier same-session
+    // contractor-page visit fires this redirect. Discard the saved value instead
+    // of honoring it once we're on a partner surface, unless the saved target
+    // is itself a partner surface (legitimate deep-link-while-logged-out case).
+    // gh-807: both sides of this check now use the shared partner-surface
+    // definition (was `indexOf('partner-') === 0` on the saved target only).
     const savedRedirect = sessionStorage.getItem('cs_redirect');
     if (savedRedirect) {
       sessionStorage.removeItem('cs_redirect');
-      window.location.href = savedRedirect;
+      const staleCrossSurface = onPartnerPage && !_isPartnerSurfaceFile(savedRedirect);
+      if (staleCrossSurface) {
+        console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — already on partner surface (' + currentFile + ')');
+      } else {
+        window.location.href = savedRedirect;
+        return;
+      }
+    }
+
+    // #643: never override the partner surface with role-based routing.
+    // The two destinations below (contractor-dashboard.html, or the
+    // homeowner dashboard.html/trade-selector.html pair) are the ONLY
+    // targets this function knows — it has no partner branch. sendMagicLink()
+    // already sent partner roles to /partner-dashboard.html via
+    // emailRedirectTo, which IS the explicit "which app" signal; this
+    // function used to discard that signal and re-derive a destination from
+    // getRole() alone. getRole() is contractor-table-first, so any dual-role
+    // account (contractor record + referral_agents record — e.g.
+    // dustinstohler1@gmail.com) was bounced straight to
+    // contractor-dashboard.html on first sign-in, and a partner-ONLY account
+    // (no contractor record) was bounced to trade-selector.html/dashboard.html
+    // instead — both wrong, because partner-dashboard.html was never a
+    // candidate. handleAuthCallback() (invoked from the SIGNED_IN listener
+    // partner-dashboard.html wires via onAuthStateChangeListener()) called
+    // straight into this function, which is what fired the bounce
+    // immediately after the magic-link redemption landed on the partner
+    // dashboard. Staying put when already on a partner-*.html page fixes
+    // both cases without touching contractor/homeowner routing.
+    if (onPartnerPage) {
       return;
     }
 
@@ -452,6 +564,14 @@ window.Auth = {
     const role = await this.getRole();
     if (role === 'contractor') {
       window.location.href = '/contractor-dashboard.html';
+    } else if (PARTNER_ROLES.includes(role)) {
+      // gh-851: this function had no partner branch at all -- every partner
+      // agent_type fell into the homeowner-intake else below. Saved today
+      // only by the onPartnerPage early-return above; a live gap for any
+      // partner who reaches this function off a non-partner page. Not a
+      // #842 regression -- pre-#842 a partner resolved to 'homeowner' via
+      // getRole() and hit this same branch.
+      window.location.href = '/partner-dashboard.html';
     } else {
       // Check if homeowner already has a claim in Supabase — if so, skip trade selector
       try {

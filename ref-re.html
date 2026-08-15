@@ -575,9 +575,6 @@
         <p class="form-note">
           We'll send you a secure login link. No password needed.
         </p>
-        <p class="form-note referral-fee-disclaimer">
-          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
-        </p>
       </form>
     </div>
   </section>
@@ -627,7 +624,6 @@
 <!-- ── Footer ── -->
 <footer class="footer" id="site-footer"></footer>
 
-<script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 
@@ -642,7 +638,7 @@ let referralAgentData = null;
 document.addEventListener('DOMContentLoaded', async () => {
   // Get referral code from URL
   const params = new URLSearchParams(window.location.search);
-  const refCode = params.get('ref');
+  const refCode = params.get('ref') || params.get('code');
 
   if (refCode) {
     // Store in hidden field and localStorage
@@ -728,8 +724,8 @@ function personalizeHero(agentData) {
   }
 
   html += `<strong>${agentData.first_name || 'Your Agent'}</strong>`;
-  if (agentData.company_name) {
-    html += `<span>${agentData.company_name}</span>`;
+  if (agentData.company) {
+    html += `<span>${agentData.company}</span>`;
   }
   html += '</div>';
 

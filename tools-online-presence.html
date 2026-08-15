@@ -293,7 +293,7 @@
       </div>
 
       <div class="job-card">
-        <h3>Review responses</h3>
+        <h3>Review responses &mdash; drafted for you, posted by you</h3>
         <p>The moment a new review lands, you get notified with an AI-drafted, on-brand reply ready to go &mdash; including the hard ones. You post it yourself, so it goes out as you, not us. A thoughtful answer to a two-star review sells better than the two-star review costs you.</p>
       </div>
 
@@ -419,58 +419,6 @@
   </div>
 </section>
 
-<!-- Signup Modal -->
-<div class="modal-overlay" id="signupOverlay">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="signupTitle">
-    <div class="modal-header">
-      <h3 class="form-note-title" id="signupTitle">Get Started &mdash; <span id="signupPackageLabel">Good ($10/mo)</span></h3>
-      <button type="button" class="modal-close" id="signupClose" aria-label="Close">&times;</button>
-    </div>
-
-    <div id="signupFormWrap">
-      <p class="form-subtitle">Tell us who you are and we'll get OQ Online Management set up on your accounts.</p>
-
-      <form class="oq-form" id="signupForm">
-        <div class="form-group">
-          <label for="su_name">Full Name</label>
-          <input type="text" id="su_name" required autocomplete="name" placeholder="Mike Reynolds">
-        </div>
-
-        <div class="form-group">
-          <label for="su_company">Company Name</label>
-          <input type="text" id="su_company" required autocomplete="organization" placeholder="Reynolds Roofing">
-        </div>
-
-        <div class="form-group">
-          <label for="su_email">Email</label>
-          <input type="email" id="su_email" required autocomplete="email" placeholder="mike@reynoldsroofing.com">
-        </div>
-
-        <div class="form-group">
-          <label for="su_phone">Phone</label>
-          <input type="tel" id="su_phone" required autocomplete="tel" placeholder="(555) 123-4567">
-        </div>
-
-        <div class="hp-field">
-          <label for="su_website">Website</label>
-          <input type="text" id="su_website" tabindex="-1" autocomplete="off">
-        </div>
-
-        <p class="form-error" id="signupError"></p>
-
-        <button type="submit" class="form-submit" id="signupSubmitBtn">Get Started</button>
-
-        <p class="form-note">We'll only use this to get you set up and talk to you about this product.</p>
-      </form>
-    </div>
-
-    <div class="form-success" id="signupSuccess">
-      <h3>You're set</h3>
-      <p>We'll have you live within 24 hours. If you want to talk sooner, call <a href="tel:+18448753412" style="color:var(--amber);">(844) 875-3412</a> and ask for Dustin.</p>
-    </div>
-  </div>
-</div>
-
 <footer id="site-footer"></footer>
 
 <script src="js/cookie-storage.js"></script>
@@ -479,8 +427,6 @@
 <script src="js/nav.js"></script>
 
 <script>
-var oqSelectedPackage = '';
-
 // Trusted checkout destinations, resolved by a fixed plan key -- never by trusting
 // a DOM attribute directly (gh-777: CodeQL js/client-side-unvalidated-url-redirection).
 var STRIPE_CHECKOUT_LINKS = {
@@ -489,130 +435,31 @@ var STRIPE_CHECKOUT_LINKS = {
   best:   'https://buy.stripe.com/eVqaEP68s2NG6OWbSJaMU00'
 };
 
+// gh-871: every .price-cta button's data-plan is present in STRIPE_CHECKOUT_LINKS,
+// so this always redirects straight to Stripe. The signup modal + intake form that
+// used to live here (from before these Stripe links existed) was unreachable dead
+// code -- removed rather than wired in, because resurrecting it in front of the
+// Stripe redirect would show a "you're set, live within 24 hours" promise before
+// any payment has happened, which is worse than no message at all.
+//
+// Known gap this does NOT fix (tracked in gh-871): Stripe's hosted_confirmation
+// for these three Payment Links has no custom_message and no redirect back to this
+// site, so a paying customer currently lands on Stripe's generic receipt page with
+// no next-step messaging, and we collect no fulfillment intake data at checkout.
+// Closing that gap requires Stripe Payment Link config changes (after_completion
+// and/or custom_fields), which is outside this page's client code.
 document.addEventListener('DOMContentLoaded', function () {
-  var overlay  = document.getElementById('signupOverlay');
-  var closeBtn = document.getElementById('signupClose');
-  var pkgLabel = document.getElementById('signupPackageLabel');
-  var form     = document.getElementById('signupForm');
-
   document.querySelectorAll('.price-cta').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var stripeLink = STRIPE_CHECKOUT_LINKS[btn.getAttribute('data-plan')];
-      if (stripeLink) {
-        if (typeof gtag === 'function') {
-          gtag('event', 'oqom_checkout_start', { tool: 'online_presence', package: btn.getAttribute('data-package') });
-        }
-        window.location.href = stripeLink;
-        return;
+      if (!stripeLink) return;
+      if (typeof gtag === 'function') {
+        gtag('event', 'oqom_checkout_start', { tool: 'online_presence', package: btn.getAttribute('data-package') });
       }
-      oqSelectedPackage = btn.getAttribute('data-package');
-      pkgLabel.textContent = oqSelectedPackage;
-      resetSignupForm();
-      overlay.classList.add('active');
-      document.body.style.overflow = 'hidden';
+      window.location.href = stripeLink;
     });
   });
-
-  function closeSignupModal() {
-    overlay.classList.remove('active');
-    document.body.style.overflow = '';
-  }
-
-  if (closeBtn) closeBtn.addEventListener('click', closeSignupModal);
-  if (overlay) {
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) closeSignupModal();
-    });
-  }
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && overlay.classList.contains('active')) closeSignupModal();
-  });
-
-  if (form) form.addEventListener('submit', handleSignup);
 });
-
-function resetSignupForm() {
-  document.getElementById('signupFormWrap').style.display = 'block';
-  document.getElementById('signupSuccess').style.display = 'none';
-  var form = document.getElementById('signupForm');
-  if (form) form.reset();
-  var errEl = document.getElementById('signupError');
-  errEl.textContent = '';
-  errEl.style.display = 'none';
-  var btn = document.getElementById('signupSubmitBtn');
-  btn.disabled = false;
-  btn.textContent = 'Get Started';
-}
-
-async function handleSignup(e) {
-  e.preventDefault();
-
-  var errEl = document.getElementById('signupError');
-  var btn   = document.getElementById('signupSubmitBtn');
-  errEl.style.display = 'none';
-
-  // Honeypot — bots fill hidden fields, people don't.
-  if (document.getElementById('su_website').value) return;
-
-  var name    = document.getElementById('su_name').value.trim();
-  var company = document.getElementById('su_company').value.trim();
-  var email   = document.getElementById('su_email').value.trim();
-  var phone   = document.getElementById('su_phone').value.trim();
-  var pkg     = oqSelectedPackage || 'Unspecified';
-
-  if (!name || !company || !email || !phone) {
-    errEl.textContent = 'Please fill in every field.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Sending…';
-
-  var subject = 'OQOM SIGNUP — ' + pkg;
-  var message =
-    subject + '\n\n' +
-    'Name:     ' + name + '\n' +
-    'Company:  ' + company + '\n' +
-    'Email:    ' + email + '\n' +
-    'Phone:    ' + phone + '\n' +
-    'Package:  ' + pkg + '\n\n' +
-    '---\nSubmitted from ' + window.location.href;
-
-  try {
-    var SUPABASE_URL  = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)  || '';
-    var SUPABASE_ANON = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) || '';
-
-    var res = await fetch(SUPABASE_URL + '/functions/v1/send-support-email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON,
-        'Authorization': 'Bearer ' + SUPABASE_ANON
-      },
-      body: JSON.stringify({
-        from_name:  name + ' (' + company + ')',
-        from_email: email,
-        subject:    subject,
-        message:    message
-      })
-    });
-
-    if (!res.ok) throw new Error('Send failed');
-
-    document.getElementById('signupFormWrap').style.display = 'none';
-    document.getElementById('signupSuccess').style.display = 'block';
-
-    if (typeof gtag === 'function') {
-      gtag('event', 'oqom_signup', { tool: 'online_presence', package: pkg });
-    }
-  } catch (err) {
-    errEl.textContent = 'Something went wrong. Please email info@otterquote.com or call (844) 875-3412.';
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Get Started';
-  }
-}
 </script>
 </body>
 </html>

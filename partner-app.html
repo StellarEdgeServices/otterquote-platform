@@ -269,7 +269,7 @@
             <div class="feature-card">
                 <div class="emoji">&#127968;</div>
                 <h3>Refer Homeowners</h3>
-                <p>Share your personal referral link by text, email, or QR code in one tap. Your client gets competing contractor bids &mdash; you earn $200 on completed jobs over $10,000.</p>
+                <p>Share your personal referral link by text, email, or QR code in one tap. Your client gets competing contractor bids &mdash; you earn $200 on completed jobs of $10,000 or more.</p>
             </div>
             <div class="feature-card">
                 <div class="emoji">&#129309;</div>
@@ -424,6 +424,18 @@
 
             // Service worker registration (partner surface only).
             if ('serviceWorker' in navigator) {
+                // gh-831: without this, the FIRST reopen after a new worker
+                // activates still runs under the old controller -- the page's
+                // initial fetch of js/auth.js/nav.js races registration and
+                // wins, so a stale auth-critical asset can still be served
+                // once per install. Reload exactly once when a new worker
+                // takes control so that reopen always ends up on the fresh one.
+                var swRefreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', function () {
+                    if (swRefreshing) return;
+                    swRefreshing = true;
+                    window.location.reload();
+                });
                 window.addEventListener('load', function () {
                     navigator.serviceWorker.register('/partner-sw.js').catch(function () { /* non-fatal */ });
                 });
