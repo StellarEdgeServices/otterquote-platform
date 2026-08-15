@@ -80,6 +80,7 @@ test.beforeAll(async () => {
     email: B_EMAIL,
     company_name: 'Test Auth Reconcile Co (E2E)',
     contact_name: 'Test AR-5 Contractor',
+    is_test: true, // #689: harness must stamp every row it creates, contractors included
     status: 'pending_approval',
     onboarding_step: 1,
     agreement_accepted_at: new Date().toISOString(),
