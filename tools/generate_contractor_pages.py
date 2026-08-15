@@ -2,8 +2,8 @@
 """
 Generate static contractor profile pages for SEO directory.
 
-Pulls approved contractors from Supabase and generates:
-  contractor/[slug]/index.html  for each contractor
+Pulls active (approved) contractors from Supabase and generates:
+  contractors/[slug]/index.html  for each contractor
 
 Also updates sitemap.xml with generated URLs.
 
@@ -95,8 +95,10 @@ def fetch_contractors(service_key: str) -> list:
     fields = (
         "id,company_name,trades,address_city,address_state,rating,review_count,status"
     )
+    # status=eq.active: canonical live-contractor status (admin approval path
+    # sets 'active'; prod has NO 'approved' rows — gh-403 status-semantics fix).
     path = (
-        f"contractors?select={fields}&status=eq.approved"
+        f"contractors?select={fields}&status=eq.active"
         f"&public_directory_optin=eq.true&order=company_name.asc"
     )
     return supabase_get(service_key, path)
@@ -351,7 +353,7 @@ def update_sitemap(generated_slugs: list[str], dry_run: bool) -> None:
 
 
 def generate_directory_index(contractors_with_slugs: list[tuple], dry_run: bool) -> None:
-    """Generate contractor/index.html — a directory listing page."""
+    """Generate contractors/index.html — a directory listing page."""
     today = datetime.date.today().isoformat()
     cards = []
     for c, slug in contractors_with_slugs:
