@@ -75,6 +75,37 @@
             line-height: 1.6;
             color: var(--slate, #94A3B8);
         }
+
+        /* gh-865: explicit type-chooser shown when the recruiter can't be
+           resolved (no code, unknown code, or a lookup error). Replaces the
+           old silent DEFAULT_DESTINATION redirect to partner-inspectors.html. */
+        .chooser-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 1.25rem;
+        }
+
+        .chooser-btn {
+            display: block;
+            width: 100%;
+            padding: 14px 18px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: transparent;
+            color: var(--white, #FFFFFF);
+            font-size: 15px;
+            font-family: inherit;
+            cursor: pointer;
+            text-align: left;
+            transition: border-color 0.15s ease, background 0.15s ease;
+        }
+
+        .chooser-btn:hover,
+        .chooser-btn:focus {
+            border-color: var(--amber, #E07B00);
+            background: rgba(224, 123, 0, 0.08);
+        }
     </style>
 </head>
 <body>
@@ -84,11 +115,20 @@
 <main>
     <div class="recruit-container">
         <div class="logo"><img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" style="mix-blend-mode:multiply;"></div>
-        <div class="spinner"></div>
+        <div class="spinner" id="spinner"></div>
         <p class="message" id="message">Redirecting you to sign up...</p>
+
+        <!-- gh-865: explicit type-chooser. Shown instead of the spinner
+             whenever the recruiter can't be resolved (no code, unknown code,
+             or a lookup error) — never an implicit default. -->
+        <div id="chooser" style="display:none;">
+            <div class="chooser-options" id="chooserOptions"></div>
+        </div>
+
         <!-- 1099-MISC Tax Reporting Notice (86e0zj7je &mdash; disclosure version 1099-misc-v1-2026-04)
-             NOTE: This page redirects immediately. Primary disclosure is on refer-a-friend.html
-             and each partner signup page. This notice is a belt-and-suspenders inclusion only. -->
+             NOTE: This page redirects immediately (or shows the chooser above).
+             Primary disclosure is on refer-a-friend.html and each partner signup
+             page. This notice is a belt-and-suspenders inclusion only. -->
         <p style="font-size: 13px; color: rgba(148, 163, 184, 0.55); margin-top: 1.5rem; line-height: 1.6; max-width: 360px; margin-left: auto; margin-right: auto;">
             Referral bonuses of $600 or more per calendar year are taxable income and are reported to the IRS on Form 1099-MISC.
         </p>
@@ -123,19 +163,31 @@
  *  1. Read ?code= from URL (format: r-XXXXXX)
  *  2. Store the code in localStorage as cs_recruit_code so the downstream
  *     partner signup page can pick it up after redirect.
- *  3. Look up the recruiter in referral_agents by recruit_code to determine
- *     which signup page is the best fit for this recruit (recruiter's type
- *     is a reasonable proxy &mdash; a real-estate agent tends to recruit other
- *     RE agents, etc.). If lookup fails, fall back to the inspector signup
- *     page &mdash; that's our primary channel.
- *  4. Redirect.
+ *  3. Look up the recruiter in referral_agents by recruit_code to pick a
+ *     sensible LANDING PAGE for this recruit (recruiter's type is a
+ *     reasonable proxy &mdash; a real-estate agent tends to recruit other RE
+ *     agents, etc.). This only pre-selects that page's default; it is not
+ *     the value written to the database (see gh-865 below).
+ *  4. Redirect &mdash; or, if the recruiter can't be resolved at all (no code,
+ *     unknown code, or a lookup error), show an explicit type-chooser
+ *     instead of guessing.
  *
- * Note: agent_type on the recruiter drives the redirect; the recruit itself
- * selects their own agent_type on the signup page. Default to partner-inspectors.html
- * on any unknown / lookup failure per spec.
+ * gh-865: this router used to fall back to partner-inspectors.html
+ * (DEFAULT_DESTINATION) whenever the code was missing or the lookup failed,
+ * which silently and permanently mis-typed every one of those visitors as
+ * home_inspector on signup. It also routed a legitimate cross-recruit (e.g.
+ * an inspector recruiting a realtor) to the recruiter's own signup page,
+ * which had the same effect. Two changes fix this:
+ *   1. There is no more silent default here &mdash; an unresolved recruiter
+ *      gets an explicit "What kind of partner are you?" chooser.
+ *   2. Recruiter type is now ONLY a landing-page hint. Every signup page
+ *      (partner-re / partner-insurance / partner-inspectors / partner-
+ *      adjusters / partner-other / inspector-landing) makes the visitor
+ *      confirm their own type before the account is created, and that
+ *      confirmed value &mdash; not the landing page's default &mdash; is what gets
+ *      written to referral_agents.agent_type. Recruiter attribution
+ *      (recruit_code) and the recruit's own type are fully decoupled.
  */
-
-const DEFAULT_DESTINATION = 'partner-inspectors.html';
 
 const DESTINATIONS = {
     home_inspector:  'partner-inspectors.html',
@@ -146,6 +198,43 @@ const DESTINATIONS = {
     other:           'partner-other.html',
 };
 
+const CHOOSER_OPTIONS = [
+    ['re_agent',        'Real Estate Agent'],
+    ['insurance_agent', 'Insurance Agent'],
+    ['home_inspector',  'Home Inspector'],
+    ['adjuster',        'Insurance Adjuster'],
+    ['customer',        "I'm a homeowner &mdash; I was referred for my own project"],
+    ['other',           'Other'],
+];
+
+function showChooser(code) {
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('message').textContent = 'What kind of partner are you?';
+
+    const optionsEl = document.getElementById('chooserOptions');
+    CHOOSER_OPTIONS.forEach(([type, label]) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chooser-btn';
+        btn.innerHTML = label;
+        btn.addEventListener('click', () => {
+            const destination = DESTINATIONS[type];
+            if (typeof gtag === 'function') {
+                gtag('event', 'recruit_chooser_selected', {
+                    recruit_code: code || null,
+                    chosen_type: type,
+                    destination: destination
+                });
+            }
+            const qs = code ? `?recruit=${encodeURIComponent(code)}` : '';
+            window.location.replace(`/${destination}${qs}`);
+        });
+        optionsEl.appendChild(btn);
+    });
+
+    document.getElementById('chooser').style.display = 'block';
+}
+
 async function handleRecruit() {
     try {
         if (typeof initNav === 'function') initNav();
@@ -154,9 +243,10 @@ async function handleRecruit() {
     const params = new URLSearchParams(window.location.search);
     const code = (params.get('code') || '').trim();
 
-    // No code &mdash; nothing to route on. Fall through to the default signup page.
+    // No code &mdash; nothing to route on. Ask the visitor explicitly rather
+    // than guessing (gh-865 AC1).
     if (!code) {
-        window.location.replace('/' + DEFAULT_DESTINATION);
+        showChooser('');
         return;
     }
 
@@ -169,6 +259,7 @@ async function handleRecruit() {
     }
 
     let agentType = null;
+    let resolved = false;
     try {
         if (typeof sb !== 'undefined' && sb) {
             const { data: recruiter, error } = await sb
@@ -182,6 +273,7 @@ async function handleRecruit() {
                 console.warn('Recruit lookup failed:', error.message);
             } else if (recruiter) {
                 agentType = recruiter.agent_type;
+                resolved = !!DESTINATIONS[agentType];
             }
         } else {
             console.warn('Supabase client not initialized &mdash; skipping recruit lookup');
@@ -190,7 +282,22 @@ async function handleRecruit() {
         console.warn('Recruit lookup threw:', err);
     }
 
-    const destination = DESTINATIONS[agentType] || DEFAULT_DESTINATION;
+    // Unknown code, inactive recruiter, RPC error, or an agent_type we don't
+    // have a landing page for &mdash; ask explicitly rather than guessing
+    // (gh-865 AC1). The code is still attributed via cs_recruit_code /
+    // ?recruit= for whichever type the visitor picks.
+    if (!resolved) {
+        if (typeof gtag === 'function') {
+            gtag('event', 'recruit_lookup_unresolved', {
+                recruit_code: code,
+                recruiter_type: agentType || 'unknown'
+            });
+        }
+        showChooser(code);
+        return;
+    }
+
+    const destination = DESTINATIONS[agentType];
 
     // Track recruit link usage
     gtag('event', 'recruit_link_used', {
