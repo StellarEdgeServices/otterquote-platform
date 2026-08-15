@@ -570,6 +570,12 @@
                     releasedTrades: releasedTrades,
                     bidWindowExpiresAt: claim.bid_window_expires_at || null,  // D-150 / 86e10t2bh
                     estimateFilename: claim.estimate_filename || null,         // 86e10t26y
+                    // gh-484: only expose a real storage path — never the Hover
+                    // completion sentinel (`hover_{job}_measurements.json`, written by
+                    // hover-webhook, matches no storage object).
+                    measurementsFilename: (claim.measurements_filename && !isHoverMeasurementsSentinel(claim.measurements_filename))
+                      ? claim.measurements_filename
+                      : null,
                   };
                 });
 
@@ -819,13 +825,27 @@
             return '<span class="expiry-badge expiry-neutral">&#x23F0; Closes in ' + diffDays + ' days</span>';
         }
 
+        // gh-484: hover-webhook stamps a synthesized `hover_{job}_measurements.json`
+        // completion marker onto claims.measurements_filename that names no storage
+        // object (the real Hover artifact is served by get-hover-pdf, separately).
+        // Ported from contractor-bid-form.html's isHoverMeasurementsSentinel().
+        function isHoverMeasurementsSentinel(filename) {
+            return /^hover_\d+_measurements\.json$/i.test(filename || '');
+        }
+
         // ── Document Links (86e10t26y) ─────────────────────────────────────────
         function getDocLinksHtml(opp) {
             // Populate oppDocMap so async click handlers can access filenames without inline escaping
-            oppDocMap[opp.id] = { estimateFilename: opp.estimateFilename || null, measurementsAvailable: !!opp.measurementsAvailable };
+            oppDocMap[opp.id] = { estimateFilename: opp.estimateFilename || null, measurementsFilename: opp.measurementsFilename || null, measurementsAvailable: !!opp.measurementsAvailable };
             const parts = [];
             if (opp.estimateFilename) {
                 parts.push('<button class="doc-link-btn" id="loss-' + opp.id + '" onclick="openEstimatePdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4C4; Loss Sheet</button>');
+            }
+            // gh-484: homeowner-uploaded measurement file — independent of the Hover
+            // PDF button / hover_orders row state below. Guarded by the sentinel above
+            // so contractors never get a "View Measurements" link that can only fail.
+            if (opp.measurementsFilename) {
+                parts.push('<button class="doc-link-btn" id="measurements-' + opp.id + '" onclick="openMeasurementsPdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4D0; View Measurements</button>');
             }
             if (opp.measurementsAvailable) {
                 parts.push('<button class="doc-link-btn" id="hover-' + opp.id + '" onclick="openHoverPdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4CF; Hover PDF</button>');
@@ -850,6 +870,25 @@
                 alert('Unable to open the loss sheet. Please try again.');
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4C4; Loss Sheet'; }
+            }
+        }
+
+        async function openMeasurementsPdf(claimId) {
+            const docInfo = oppDocMap[claimId];
+            if (!docInfo?.measurementsFilename) return;
+            const btn = document.getElementById('measurements-' + claimId);
+            if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
+            try {
+                const { data, error } = await sb.storage
+                    .from('claim-documents')
+                    .createSignedUrl(docInfo.measurementsFilename, 3600);
+                if (error || !data?.signedUrl) throw error || new Error('No URL returned');
+                window.open(data.signedUrl, '_blank');
+            } catch (err) {
+                console.error('Failed to open measurements file:', err);
+                alert('Unable to open the measurements file. Please try again.');
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4D0; View Measurements'; }
             }
         }
 
