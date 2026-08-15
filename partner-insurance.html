@@ -1212,6 +1212,63 @@
         let utmContext = { source: null, medium: null, campaign: null, content: null };
 
         /**
+         * gh-865: the visitor must see and explicitly confirm their partner
+         * type before the account is created — the page they landed on (and
+         * therefore this page's default) may not silently decide agent_type.
+         * Recruiter attribution (referredBy / recruit code) stays separate
+         * from this value.
+         */
+        function confirmAgentType(defaultType) {
+            return new Promise((resolve) => {
+                const AGENT_TYPE_LABELS = {
+                    re_agent: 'Real Estate Agent',
+                    insurance_agent: 'Insurance Agent',
+                    home_inspector: 'Home Inspector',
+                    adjuster: 'Insurance Adjuster',
+                    other: 'Other',
+                };
+                const overlay = document.createElement('div');
+                overlay.setAttribute('role', 'dialog');
+                overlay.setAttribute('aria-modal', 'true');
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+                const box = document.createElement('div');
+                box.style.cssText = 'background:#0D1B2E;border:1px solid rgba(224,123,0,0.4);border-radius:12px;padding:28px;max-width:380px;width:100%;text-align:left;font-family:inherit;';
+                const heading = document.createElement('p');
+                heading.textContent = 'Confirm your partner type';
+                heading.style.cssText = 'color:#FFFFFF;font-size:17px;font-weight:600;margin:0 0 8px;';
+                const sub = document.createElement('p');
+                sub.textContent = "This determines what you can do on Otter Quotes. Change it if it isn't right.";
+                sub.style.cssText = 'color:#94A3B8;font-size:14px;margin:0 0 16px;line-height:1.5;';
+                const select = document.createElement('select');
+                select.id = 'gh865AgentTypeConfirm';
+                select.style.cssText = 'width:100%;padding:10px;border-radius:8px;border:1px solid rgba(148,163,184,0.35);font-size:15px;margin-bottom:16px;background:#0D1B2E;color:#FFFFFF;';
+                Object.keys(AGENT_TYPE_LABELS).forEach((value) => {
+                    const o = document.createElement('option');
+                    o.value = value;
+                    o.textContent = AGENT_TYPE_LABELS[value];
+                    if (value === defaultType) o.selected = true;
+                    select.appendChild(o);
+                });
+                const confirmBtn = document.createElement('button');
+                confirmBtn.type = 'button';
+                confirmBtn.textContent = 'Confirm & Continue';
+                confirmBtn.className = 'btn btn-primary';
+                confirmBtn.style.cssText = 'width:100%;cursor:pointer;';
+                confirmBtn.addEventListener('click', () => {
+                    document.body.removeChild(overlay);
+                    resolve(select.value);
+                });
+                box.appendChild(heading);
+                box.appendChild(sub);
+                box.appendChild(select);
+                box.appendChild(confirmBtn);
+                overlay.appendChild(box);
+                document.body.appendChild(overlay);
+                select.focus();
+            });
+        }
+
+        /**
          * Capture utm_source/medium/campaign/content from the URL on first
          * landing and persist them so they survive a bounce before the form
          * is submitted. Falls back to a previously-stored value when this
@@ -1306,6 +1363,10 @@
         document.getElementById('insuranceAgentForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            // gh-865: explicit user confirmation — this, not the page
+            // default, is what gets written to referral_agents.agent_type.
+            const agentType = await confirmAgentType('insurance_agent');
+
             const formData = new FormData(document.getElementById('insuranceAgentForm'));
             const data = {
                 firstName: formData.get('firstName'),
@@ -1319,7 +1380,7 @@
                 referredBy: (formData.get('referredBy') || '').toString().trim() || null,
                 agreeToTerms: formData.get('agreeToTerms') === 'on',
                 submittedAt: new Date().toISOString(),
-                agent_type: 'insurance_agent'
+                agent_type: agentType
             };
 
             try {
@@ -1336,7 +1397,7 @@
 
                     // GA4 conversion event — partner funnel (demo mode)
                     gtag('event', 'partner_signup', {
-                        partner_type: 'insurance_agent',
+                        partner_type: agentType,
                         source:   utmContext.source   || 'direct',
                         medium:   utmContext.medium   || undefined,
                         campaign: utmContext.campaign || undefined,
@@ -1359,7 +1420,7 @@
                 // generation is gone — codes are server-generated only.
                 const { data: agentData, error: agentError } = await sb
                     .rpc('register_partner', {
-                        p_agent_type:       'insurance_agent',
+                        p_agent_type:       agentType,
                         p_first_name:       data.firstName,
                         p_last_name:        data.lastName,
                         p_email:            data.email,
@@ -1379,7 +1440,7 @@
                 if (agentError) {
                     if ((agentError.message || '').includes('partner_exists')) {
                         // Already registered — send a fresh login link and say so.
-                        try { await Auth.sendMagicLink(data.email, 'insurance_agent'); } catch (err) { /* non-fatal */ }
+                        try { await Auth.sendMagicLink(data.email, agentType); } catch (err) { /* non-fatal */ }
                         alert("You're already a partner — check your email for your login link.");
                         return;
                     }
@@ -1403,7 +1464,7 @@
                     email: data.email,
                     unique_code: finalCode,
                 }));
-                localStorage.setItem('cs_auth_role', 'insurance_agent');
+                localStorage.setItem('cs_auth_role', agentType);
 
                 // Recruit code consumed — clear so a future signup on this
                 // device doesn't accidentally attribute to the same recruiter.
@@ -1411,7 +1472,7 @@
                 localStorage.removeItem('cs_utm_context');
 
                 // 4. Send magic link → redirects to partner-dashboard.html
-                await Auth.sendMagicLink(data.email, 'insurance_agent');
+                await Auth.sendMagicLink(data.email, agentType);
 
                 // 5. Show referral link in success message
                 const referralLinkEl = document.getElementById('referralLink');
@@ -1428,7 +1489,7 @@
                 // from the persisted utmContext, same data that just went
                 // into register_partner().
                 gtag('event', 'partner_signup', {
-                    partner_type: 'insurance_agent',
+                    partner_type: agentType,
                     source:   utmContext.source   || 'direct',
                     medium:   utmContext.medium   || undefined,
                     campaign: utmContext.campaign || undefined,
