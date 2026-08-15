@@ -23,7 +23,7 @@ being a blunt instrument:
    never mentions commission/payout and is excluded by the gate itself,
    not by a special-case exemption.
 
-2. An explicit, reasoned ALLOWLIST for the two categories of duration
+2. An explicit, reasoned ALLOWLIST for the categories of duration
    claim that are legitimate here: (a) how long the *approval decision*
    takes ("commission is pending approval, typically 5 business days") --
    a claim about an internal review step, not about money movement, and
@@ -33,6 +33,13 @@ being a blunt instrument:
    these describe what the code does, they are not promises made to a
    partner). Each entry states which category and why. Anything not on
    the allowlist fails.
+
+   A third category was added 2026-08-15 (gh-892 follow-on): (c) durations
+   that are not about money at all and only collide with the keyword filter
+   because a contract section enumerating "material changes" happens to name
+   the commission structure on the same line. See the partner-agreement.html
+   Section 17 entry. Keep this category narrow -- it exists for
+   keyword-proximity false positives, not for softening a real payout claim.
 
    gh-850 Survivor A (react-app/app/refer/copy.ts's Tier-3 D-180
    disclosure) was carried here as known, tracked debt until Dustin's
@@ -72,6 +79,20 @@ DURATION_RE = re.compile(
 
 # (relative path, exact substring to match, category, reason)
 ALLOWLIST = [
+    (
+        "partner-agreement.html",
+        "notify Partner of material changes by email or through Partner",
+        "agreement-modification notice period",
+        "Section 17's 30-day notice period before an Agreement change takes "
+        "effect. Not a disbursement claim at all -- it says how much warning "
+        "Partner gets before terms change, which is entirely within Otter "
+        "Quotes' control and therefore keepable. It trips the scanner only "
+        "because the same sentence enumerates which changes are material and "
+        "names 'the commission structure in Section 4', putting the keyword "
+        "and an unrelated duration on one line. Distinct from the two payout "
+        "categories below: those constrain claims about money movement, this "
+        "constrains nothing about money at all.",
+    ),
     (
         "contractor-agreement.html",
         "typically approved and processed within five (5) business days",
