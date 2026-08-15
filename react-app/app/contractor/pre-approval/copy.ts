@@ -147,7 +147,7 @@ export const PRE_APPROVAL_COPY = {
       bodyPre: 'By joining Otter Quotes, you agree to the terms of the ',
       linkText: 'Otter Quotes Contractor Partner Agreement',
       bodyPost:
-        '. You will also be asked to sign it via DocuSign when your first project is matched. The platform fee is 5% of your accepted bid amount for all job types.',
+        '. You will also be asked to sign it electronically when your first project is matched. The platform fee is 5% of your accepted bid amount for all job types.',
       checkLabel:
         'I have reviewed the Contractor Partner Agreement and agree to its terms, including the platform fee structure.',
     },
@@ -199,7 +199,7 @@ export const PRE_APPROVAL_COPY = {
       'Upload the contract you use with homeowners. This is the agreement they will sign on Otter Quotes — your contract, your terms. Upload is required to complete your application. You can add additional templates for other trade and funding-type combinations later in your profile.',
     infoTitle: 'What to Upload',
     infoBody:
-      "Your standard contract PDF for your primary trade and funding type. Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields via DocuSign — but the contract terms are yours, drafted or reviewed by your attorney. We do not draft or provide homeowner-contractor contracts.",
+      "Your standard contract PDF for your primary trade and funding type. Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields electronically — but the contract terms are yours, drafted or reviewed by your attorney. We do not draft or provide homeowner-contractor contracts.",
     tradeLabel: 'Trade',
     tradePlaceholder: 'Select trade…',
     fundingLabel: 'Funding Type',
