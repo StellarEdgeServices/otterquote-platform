@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -191,6 +202,21 @@
     var role = null;
     try { role = await Auth.getRole(); } catch (e) { role = null; }
     _oqLog('role from DB:', role, 'intent:', intent, 'user.id:', session.user && session.user.id);
+
+    // gh-817/#643 P0: honor the surface the user signed in from. partner-login.html
+    // (and future partner persona pages) sets cs_auth_role to a partnerRoles value
+    // before sending the magic link — a stronger signal than getRole()'s
+    // contractor-first precedence, which otherwise sends a dual-role account
+    // (contractor + referral_agents, e.g. dustinstohler1@gmail.com) to
+    // /contractor-dashboard.html even when the user explicitly started from the
+    // partner login page. This must run before the role==='contractor' check below.
+    var partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+    if (partnerRoles.indexOf(intent) !== -1) {
+      _oqLog('routing -> /partner-dashboard.html (intent says partner surface)');
+      _oqTrackAuth(role || 'partner', '/partner-dashboard.html');
+      window.location.href = '/partner-dashboard.html';
+      return;
+    }
 
     // Hard signal: a contractor record exists. That's the source of truth —
     // even if the user clicked the wrong login button, route them home.

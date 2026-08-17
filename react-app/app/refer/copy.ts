@@ -5,7 +5,7 @@
  * This is the HOMEOWNER / CUSTOMER referral page (referral_agents.agent_type =
  * 'customer'), gated behind the homeowner coming-soon launch flag — distinct
  * from the partner program (Phase 12 /partner/dashboard). A customer refers
- * friends and earns a $200 bonus per completed (>$10K) job.
+ * friends and earns a $200 bonus per completed ($10K+) job.
  *
  * ⚠️ Tier-3 VERBATIM copy lives here and is ported BYTE-FOR-BYTE from the static
  * page (refer-a-friend.html @ main). It is pinned in refer.test.ts so any
@@ -37,7 +37,7 @@ export const REFERRAL_CODE_ERROR_TEXT =
 export const HERO = {
   heading: 'Love Your Project Results? Share the Love — and Earn $200',
   subtitle:
-    "For every friend you refer who completes a project over $10,000 through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.",
+    "For every friend you refer who completes a project of $10,000 or more through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.",
 } as const;
 
 export const REFERRAL_LINK_LABEL = 'Your Unique Referral Link';
@@ -96,7 +96,7 @@ export const HOW_IT_WORKS_HEADING = 'How It Works';
 export const HOW_IT_WORKS = [
   { number: '1', title: 'Share Your Link', text: 'Share your unique referral link with friends, family, or neighbors.' },
   { number: '2', title: 'They Get Competing Bids', text: 'They receive competing bids from licensed, insured contractors for their project.' },
-  { number: '3', title: 'You Earn $200', text: 'When their job completes (over $10K), you earn $200 in commission.' },
+  { number: '3', title: 'You Earn $200', text: 'When their job completes ($10K or more), you earn $200 in commission.' },
 ] as const;
 
 // ── FAQ ───────────────────────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ export const FAQ_HEADING = 'Frequently Asked Questions';
 export const FAQ = [
   {
     q: 'When do I get paid?',
-    a: "You'll receive payment within 14 days after the referred job is completed and the homeowner's contractor has been paid. We'll send payment via bank transfer or check, whichever you prefer.",
+    a: "You'll receive payment after the referred job is completed and the homeowner's contractor has been paid. We'll send payment via bank transfer or check, whichever you prefer.",
   },
   {
     q: 'Is there a limit to how many people I can refer?',
@@ -130,8 +130,12 @@ export const TAX_NOTICE = {
 } as const;
 
 // ── D-180 Commission Approval Disclosure — ⚠️ Tier-3 VERBATIM ──
+// No stated timeline (gh-850 Survivor A, struck 2026-08-14 per Dustin's ~09:00 ET GO,
+// "strike the payout timing everywhere") — matches the formulation already live on
+// partner-re.html/partner-insurance.html/partner-inspectors.html (PR #812) and
+// partner-agreement.html §4.2: paid after completion and approval, no interval promised.
 export const COMMISSION_APPROVAL_DISCLOSURE =
-  "Commission payments are subject to Otter Quotes' approval process and are typically completed within five business days of the qualifying job event.";
+  "Commission payments are subject to Otter Quotes' approval process and are paid after the qualifying job is complete and the payout has been approved.";
 
 // ── D-172 W-9 banner — ⚠️ Tier-3 VERBATIM ──
 export const W9_BANNER = {

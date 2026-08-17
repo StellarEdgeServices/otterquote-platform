@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -575,9 +586,6 @@
         <p class="form-note">
           We'll send you a secure login link. No password needed.
         </p>
-        <p class="form-note referral-fee-disclaimer">
-          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
-        </p>
       </form>
     </div>
   </section>
@@ -627,7 +635,6 @@
 <!-- ── Footer ── -->
 <footer class="footer" id="site-footer"></footer>
 
-<script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 
@@ -642,7 +649,7 @@ let referralAgentData = null;
 document.addEventListener('DOMContentLoaded', async () => {
   // Get referral code from URL
   const params = new URLSearchParams(window.location.search);
-  const refCode = params.get('ref');
+  const refCode = params.get('ref') || params.get('code');
 
   if (refCode) {
     // Store in hidden field and localStorage
@@ -728,8 +735,8 @@ function personalizeHero(agentData) {
   }
 
   html += `<strong>${agentData.first_name || 'Your Agent'}</strong>`;
-  if (agentData.company_name) {
-    html += `<span>${agentData.company_name}</span>`;
+  if (agentData.company) {
+    html += `<span>${agentData.company}</span>`;
   }
   html += '</div>';
 

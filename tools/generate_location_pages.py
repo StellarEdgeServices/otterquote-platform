@@ -4,9 +4,14 @@ Generate programmatic /locations/[county]/[trade]/ SEO landing pages.
 
 Pulls (county, trade, active contractor count) tuples from Supabase and
 generates one static page per ELIGIBLE tuple at:
-  otterquote-deploy/locations/[county-slug]/[trade-slug]/index.html
+  locations/[county-slug]/[trade-slug]/index.html   (repo root)
 
-Also updates otterquote-deploy/sitemap.xml with generated URLs
+Netlify publishes the repo root (netlify.toml: publish = "."), so repo-root
+locations/ is what actually serves at /locations/ — same convention as the
+contractors/ and partners/ generators (gh-403 publish-root fix; the previous
+otterquote-deploy/ output path could never serve at the canonical URLs).
+
+Also updates the repo-root sitemap.xml with generated URLs
 (lastmod = generation timestamp).
 
 Usage:
@@ -14,7 +19,8 @@ Usage:
 
 Eligibility (D-169 carve-out, D-241 guardrails — task 86e1h5hty):
   - trade in {roofing, siding, gutters, windows}
-  - contractors.status = 'approved'
+  - contractors.status = 'active' (the canonical live status: the admin
+    approval path sets 'active'; no 'approved' value exists in prod — gh-403)
   - contractors.service_counties overlaps the county
     ("Marion-IN" explicit entries; "IN:*" = statewide wildcard, expands
     to all 92 Indiana counties)
@@ -59,9 +65,8 @@ import urllib.parse
 SUPABASE_URL = "https://yeszghaspzwwstvsrioa.supabase.co"
 SITE_BASE = "https://otterquote.com"
 REPO_ROOT = pathlib.Path(__file__).parent.parent
-DEPLOY_ROOT = REPO_ROOT / "otterquote-deploy"
-LOCATIONS_DIR = DEPLOY_ROOT / "locations"
-SITEMAP_PATH = DEPLOY_ROOT / "sitemap.xml"
+LOCATIONS_DIR = REPO_ROOT / "locations"
+SITEMAP_PATH = REPO_ROOT / "sitemap.xml"
 
 # HARD guardrail (D-241) — do NOT lower. Pages must never render with
 # fewer than 2 approved contractors covering the (county, trade) tuple.
@@ -188,7 +193,9 @@ def fetch_approved_contractors(service_key: str) -> list:
     company name + profile slug reach the generated HTML. No PII (D-249).
     """
     fields = "id,company_name,trades,service_counties,status,public_directory_optin"
-    path = f"contractors?select={fields}&status=eq.approved&order=company_name.asc"
+    # status=eq.active: canonical live-contractor status (admin approval path
+    # sets 'active'; prod has NO 'approved' rows — gh-403 status-semantics fix).
+    path = f"contractors?select={fields}&status=eq.active&order=company_name.asc"
     return supabase_get(service_key, path)
 
 
@@ -804,7 +811,7 @@ def inject_noindex(path: pathlib.Path, dry_run: bool) -> bool:
 
 # ---------------------------------------------------------------------------
 # Sitemap (mirrors generate_contractor_pages.update_sitemap; targets
-# otterquote-deploy/sitemap.xml, lastmod = generation timestamp)
+# the repo-root sitemap.xml, lastmod = generation timestamp)
 # ---------------------------------------------------------------------------
 
 def update_sitemap(eligible_paths: list, generated_on: str, dry_run: bool) -> None:

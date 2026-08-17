@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -96,6 +107,12 @@
         .success-message { display: none; background-color: #D1FAE5; border: 1px solid #6EE7B7; color: #065F46; padding: var(--sp-8); border-radius: var(--radius-md); margin-bottom: var(--sp-8); text-align: center; }
         .success-message.show { display: block; }
         .fee-box { background: rgba(224,123,0,0.07); border-left: 4px solid var(--amber); border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+        /* gh-960(f): salvaged from inspector-landing.html's credibility-section
+           (padding tokens adapted to this file's --sp scale, which has no --sp-5/--sp-10). */
+        .credibility-section { padding: var(--sp-8) var(--sp-8); background: var(--navy); border-bottom: 1px solid rgba(255,255,255,0.06); text-align: center; }
+        .credibility-box { max-width: 700px; margin: 0 auto; padding: var(--sp-6) var(--sp-4); background: rgba(224, 123, 0, 0.06); border: 1px solid rgba(224, 123, 0, 0.15); border-radius: var(--radius-md); }
+        .credibility-box p { font-size: 0.95rem; color: var(--slate); line-height: 1.8; margin: 0; }
+        .credibility-highlight { color: var(--amber); font-weight: 600; }
         .oauth-divider {
             display: flex;
             align-items: center;
@@ -156,10 +173,22 @@
         </div>
         <section class="hero">
             <div class="container">
-                <h1>Join the Otter Quotes Contractor Network</h1>
+                <h1>Signed contracts, delivered. Pay 5% only when you win.</h1>
                 <p>Homeowners sign your contract right here. No marketing expense, sales people, or sales expenses.</p>
                 <p style="margin-top: var(--sp-4); font-size: 0.95rem;">
                     <a href="onboarding-demo.html" style="color: var(--amber); font-weight: 600; text-decoration: none;">👀 See a 2-minute walkthrough of the application →</a>
+                </p>
+            </div>
+        </section>
+
+        <!-- gh-960(f) SALVAGE: founder-credibility block, moved verbatim from
+             inspector-landing.html before that page's future retirement (Q9
+             hub consolidation, #969). Homepage + partner-hub placements deferred
+             to that build. -->
+        <section class="credibility-section">
+            <div class="credibility-box">
+                <p>
+                    Built by <span class="credibility-highlight">Dustin Stohler</span>, who grew Stay Dry Roofing from <span class="credibility-highlight">$0 to $10M</span> here in Indianapolis. He saw the problem from the contractor side — now he's fixing it.
                 </p>
             </div>
         </section>
@@ -168,10 +197,6 @@
             <div class="container">
                 <h2 style="font-family: var(--font-heading); font-size: 2rem; text-align: center; margin-bottom: var(--sp-8); color: var(--white);">Why Join Otter Quotes?</h2>
                 <div class="value-cards">
-                    <div class="value-card">
-                        <h3>Homeowners Sign Your Contract Right Here</h3>
-                        <p>No marketing expense, sales people, or sales expenses.</p>
-                    </div>
                     <div class="value-card">
                         <h3>Colors Selected</h3>
                         <p>Customers can pick out colors online. All you have to do is install it!</p>
@@ -195,7 +220,7 @@
                     </p>
                     <!-- D-242: Cross-role sibling link — contractor signup ↔ homeowner signup -->
                     <p style="color: var(--slate); font-size: 0.95rem; margin-top: var(--sp-2);">
-                        Not a contractor? <a href="get-started.html" style="color: var(--amber); font-weight: 600;">Get free quotes as a homeowner</a>
+                        Not a contractor? <a href="https://app.otterquote.com/get-started" style="color: var(--amber); font-weight: 600;">Get free quotes as a homeowner</a>
                     </p>
                 </div>
 
@@ -223,7 +248,7 @@
                     <ul style="margin: 0.5rem 0 0 1.25rem; padding: 0; color: var(--slate); font-size: 0.9rem; line-height: 1.8;">
                         <li>No monthly fees</li>
                         <li>No upfront costs</li>
-                        <li style="font-weight: 700; color: var(--amber);">NO SALES REP NEEDED!</li>
+                        <li style="font-weight: 700; color: var(--amber);">No sales rep needed.</li>
                     </ul>
                 </div>
 

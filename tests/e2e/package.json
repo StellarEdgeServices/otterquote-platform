@@ -15,11 +15,11 @@
     "report": "playwright show-report"
   },
   "devDependencies": {
-    "@playwright/test": "^1.44.0",
-    "typescript": "^5.4.5"
+    "@playwright/test": "^1.62.1",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.112.2",
-    "dotenv": "^16.4.5"
+    "@supabase/supabase-js": "^2.112.3",
+    "dotenv": "^17.4.2"
   }
 }

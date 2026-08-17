@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -269,7 +280,7 @@
             <div class="feature-card">
                 <div class="emoji">&#127968;</div>
                 <h3>Refer Homeowners</h3>
-                <p>Share your personal referral link by text, email, or QR code in one tap. Your client gets competing contractor bids &mdash; you earn $200 on completed jobs over $10,000.</p>
+                <p>Share your personal referral link by text, email, or QR code in one tap. Your client gets competing contractor bids &mdash; you earn $200 on completed jobs of $10,000 or more.</p>
             </div>
             <div class="feature-card">
                 <div class="emoji">&#129309;</div>
@@ -424,6 +435,18 @@
 
             // Service worker registration (partner surface only).
             if ('serviceWorker' in navigator) {
+                // gh-831: without this, the FIRST reopen after a new worker
+                // activates still runs under the old controller -- the page's
+                // initial fetch of js/auth.js/nav.js races registration and
+                // wins, so a stale auth-critical asset can still be served
+                // once per install. Reload exactly once when a new worker
+                // takes control so that reopen always ends up on the fresh one.
+                var swRefreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', function () {
+                    if (swRefreshing) return;
+                    swRefreshing = true;
+                    window.location.reload();
+                });
                 window.addEventListener('load', function () {
                     navigator.serviceWorker.register('/partner-sw.js').catch(function () { /* non-fatal */ });
                 });

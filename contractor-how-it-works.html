@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -256,8 +267,8 @@
         <div class="timeline-dot">⚡</div>
         <div class="timeline-content">
           <div class="timeline-tag">Step 1</div>
-          <h3>Apply in 60 Seconds</h3>
-          <p>Your email address is all you need to get started. We send you a magic link &mdash; click it and you're in. No lengthy application, no waiting room, no callbacks.</p>
+          <h3>Start in 60 Seconds</h3>
+          <p>Your email address is all you need to get started. We send you a magic link &mdash; click it and you're in. Complete your profile at your own pace.</p>
         </div>
       </div>
 
@@ -275,7 +286,7 @@
         <div class="timeline-content">
           <div class="timeline-tag">Step 3</div>
           <h3>Get Approved</h3>
-          <p>We review your profile to confirm licensing and insurance are in order. We make your research easy by gathering licensing, insurance, and review information all in one place for homeowners. Most approvals happen within 1&ndash;2 business days. Once approved, you start receiving opportunities matched to your service area and trades.</p>
+          <p>We review your profile to confirm licensing and insurance are in order. We make your research easy by gathering licensing, insurance, and review information all in one place for homeowners. Most approvals happen within 2&ndash;5 business days. Once approved, you start receiving opportunities matched to your service area and trades.</p>
         </div>
       </div>
 
@@ -294,7 +305,7 @@
         <div class="timeline-content">
           <div class="timeline-tag">Step 5</div>
           <h3>Win the Contract</h3>
-          <p>When a homeowner selects you, the contract is sent via DocuSign for sequential signing &mdash; you sign first, then the homeowner signs second. Both signatures happen right here on our platform. Once both parties have signed, you receive the completed contract, the loss sheet, trade-specific Hover aerial measurements, and the homeowner's color and material selections &mdash; which are made before bids go out so you know exactly what you're building. The homeowner's contact information is released the moment the contract is fully&nbsp;signed.</p>
+          <p>When a homeowner selects you, the contract is sent for sequential electronic signing &mdash; you sign first, then the homeowner signs second. Both signatures happen right here on our platform. Once both parties have signed, you receive the completed contract, the loss sheet, trade-specific Hover aerial measurements, and the homeowner's color and material selections &mdash; which are made before bids go out so you know exactly what you're building. The homeowner's contact information is released the moment the contract is fully&nbsp;signed.</p>
         </div>
       </div>
 

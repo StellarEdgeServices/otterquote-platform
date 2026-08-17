@@ -72,7 +72,7 @@ const STATIC = {
   addendumHeading: 'Sign Color Addendum',
   addendumBody:
     'Almost done! Please sign the color addendum below to add your selected color to your contract.',
-  addendumIframeTitle: 'Color Addendum — DocuSign',
+  addendumIframeTitle: 'Color Addendum — E-Sign',
   addendumFallbackBase:
     'Color saved. Your contractor will include the color selection in your final contract documents.',
   colorBoardAlreadyRequested:

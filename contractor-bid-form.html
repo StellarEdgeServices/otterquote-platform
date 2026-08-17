@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -2398,6 +2409,7 @@
   <!-- Scripts -->
   <script src="js/cookie-storage.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -4077,7 +4089,7 @@
               &#x1F517; Preview Template
             </button>
           </div>
-          <p class="contract-template-note">This template will be sent to you and the homeowner after selection for e-signature via DocuSign.</p>
+          <p class="contract-template-note">This template will be sent to you and the homeowner after selection for e-signature.</p>
         `;
       } else {
         bodyHtml = `
@@ -4108,7 +4120,6 @@
     }
 
     async function previewContractTemplateBid() {
-      if (!sb) return;
       const cardEl = document.getElementById('contractTemplateCard');
       const filePath = cardEl?.dataset.templatePath;
       if (!filePath) return;
@@ -4164,7 +4175,7 @@
     }
 
     async function openBidFormEstimatePdf() {
-      if (!sb || !currentClaim?.estimate_filename) return;
+      if (!currentClaim?.estimate_filename) return;
       try {
         const { data, error } = await sb.storage
           .from('claim-documents')
@@ -4185,7 +4196,7 @@
     }
 
     async function openBidFormMeasurementsPdf() {
-      if (!sb || !currentClaim?.measurements_filename) return;
+      if (!currentClaim?.measurements_filename) return;
       if (isHoverMeasurementsSentinel(currentClaim.measurements_filename)) return;
       try {
         const { data, error } = await sb.storage
@@ -4200,7 +4211,7 @@
     }
 
     async function openBidFormHoverPdf() {
-      if (!sb || !currentClaim?.id) return;
+      if (!currentClaim?.id) return;
       const btn = document.getElementById('bidFormHoverBtn');
       if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
       try {
@@ -4457,7 +4468,6 @@
         }
       } catch (e) { /* ignore — sessionStorage may be unavailable */ }
 
-      if (typeof sb === 'undefined' || !sb) return [];
       try {
         const { data, error } = await sb
           .from('warranty_options')
@@ -4487,10 +4497,6 @@
 
     async function loadD204State() {
       if (__d204VerifiedCerts && (Date.now() - __d204StateLoadedAt < 5 * 60 * 1000)) return;
-      if (typeof sb === 'undefined' || !sb) {
-        __d204VerifiedCerts = new Set();
-        return;
-      }
       try {
         const { data: flagRow } = await sb
           .from('platform_settings')
@@ -4767,7 +4773,7 @@
 
     // ── D-199 client-side bid-time gate ──
     async function checkBidCanSubmitGate(contractorId, trade, fundingType) {
-      if (typeof sb === 'undefined' || !sb || !contractorId) {
+      if (!contractorId) {
         return { can_submit: false, reason: 'Cannot determine contractor identity. Please refresh and try again.', status: null };
       }
       try {
@@ -4928,7 +4934,7 @@
     }
 
     async function saveWarrantyAsTemplate(cardIdx) {
-      if (!currentContractor || !sb) {
+      if (!currentContractor) {
         alert('Cannot save template — contractor profile not loaded.');
         return;
       }
@@ -4982,7 +4988,7 @@
     async function fetchPlatformFeePercentage() {
       // Fetch fee percentage from platform_fee_config based on contractor state + trade
       try {
-        if (!sb || !currentContractor || !currentClaim) return _platformFeePct;
+        if (!currentContractor || !currentClaim) return _platformFeePct;
 
         const contractorState = (currentContractor.state || '').toUpperCase();
         const tradeType = (currentClaim.trades?.[0] || 'roofing').toLowerCase();
@@ -5654,10 +5660,6 @@
 
     // ── Initialize ──
     document.addEventListener('DOMContentLoaded', () => {
-      if (!sb && typeof supabase !== 'undefined') {
-        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // #488: adapter, not default storage
-      }
-
       // Wire up bid type UI
       initBidTypeUI();
 
@@ -5780,10 +5782,6 @@
       const detailEl = document.getElementById('rescindBidDetail');
 
       // Require auth
-      if (!sb) {
-        if (detailEl) detailEl.textContent = 'Session error — please log in and try again.';
-        return;
-      }
       const { data: { session } } = await sb.auth.getSession();
       if (!session) {
         if (detailEl) detailEl.innerHTML =
@@ -5930,7 +5928,7 @@
         });
 
         if (invokeError) {
-          throw new Error(invokeError.message || 'Failed to create DocuSign envelope');
+          throw new Error(invokeError.message || 'Failed to create signing envelope');
         }
 
         // Store envelope ID

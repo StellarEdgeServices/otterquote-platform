@@ -141,3 +141,27 @@ If a clean break is needed for developer ergonomics, it should be discussed with
 ## Schema-Lint Integration
 
 The schema-lint CI check (task 86e1j4kd6) will enforce this convention on new files. Once that check is merged, naming violations will block PRs automatically. Until then, enforce manually on code review.
+
+---
+
+## GitHub Issue Linking on Two-Phase (Expand/Contract) Migrations
+
+Migrations that must ship as two distinct applied phases — e.g. the additive
+phase-1 (create a replacement function/column) followed by a later,
+separately-applied destructive phase-2 (drop the old view/column) — follow
+the expand/contract pattern documented inline in migrations like
+`sql/v109-contractors-referral-agents-public-security-invoker.sql`. That
+pattern exists specifically so phase 1 and phase 2 are NOT the same atomic
+step: phase 1 ships and deploys safely on its own, and phase 2 only applies
+once the paired call-site PR is confirmed live, avoiding an outage window.
+
+**Convention:** the PR that ships phase 1 should reference the GitHub issue
+with `Refs #NNN`, not `Fixes #NNN` / `Closes #NNN`. Reserve the closing
+keyword for whichever PR (or manual close) actually completes phase 2. Using
+a closing keyword on the phase-1 PR auto-closes the issue the moment phase 1
+merges, even though the migration isn't done — the issue tracker then shows
+"closed" for however long phase 2 is pending, which can be hours or days for
+migrations that wait on a paired app deploy to go live first.
+
+This gap was observed on #716 (v109): the phase-1 PR said "Fixes #716" and
+the issue closed on merge, before the phase-2 `DROP VIEW` had actually run.

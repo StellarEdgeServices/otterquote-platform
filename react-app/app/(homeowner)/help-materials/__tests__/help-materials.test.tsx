@@ -52,6 +52,7 @@ import {
   groupByManufacturer,
   impactBadge,
   isConfirmReady,
+  normalizeImpactClass,
   pricingRows,
   tierBadge,
   truncateDescription,
@@ -474,7 +475,7 @@ describe('(f) No-claim and load-error states', () => {
 // (g) PURE UNIT — utils invariants (faithful-port guards)
 // ─────────────────────────────────────────────────────────────────────────────
 describe('(g) utils', () => {
-  it('buildClaimMaterialUpdate preserves designer impact verbatim (class4, not normalized)', () => {
+  it('buildClaimMaterialUpdate normalizes designer impact (class4 → class-4) at the write boundary (gh-425)', () => {
     const state: MaterialSelectionState = {
       ...initialSelectionState(),
       category: 'shingles',
@@ -488,10 +489,18 @@ describe('(g) utils', () => {
       material_category: 'shingles',
       has_material_selection: true,
       shingle_type: 'designer',
-      impact_class: 'class4',
+      impact_class: 'class-4',
       designer_product: 'Grand Sequoia',
       designer_manufacturer: 'GAF',
     });
+  });
+
+  it('normalizeImpactClass canonicalizes designer forms and passes canonical forms through (gh-425)', () => {
+    expect(normalizeImpactClass('class3')).toBe('class-3');
+    expect(normalizeImpactClass('class4')).toBe('class-4');
+    expect(normalizeImpactClass('class-3')).toBe('class-3');
+    expect(normalizeImpactClass('class-4')).toBe('class-4');
+    expect(normalizeImpactClass('none')).toBe('none');
   });
 
   it('buildClaimMaterialUpdate preserves architectural hyphenated impact verbatim', () => {

@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -154,7 +165,7 @@
       "name": "How do I sign up for Otter Quotes?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Your email address is all you need. Enter it on the Apply to Join page and we'll send you a magic link. Click the link and you're in — no password, no lengthy form. Complete your profile at your own pace before you're reviewed for approval. Visit contractor-join.html to apply."
+        "text": "Your email address is all you need. Enter it on the Apply to Join page and we'll send you a magic link. Click the link and you're in. Complete your profile at your own pace before you're reviewed for approval. Visit contractor-join.html to apply."
       }
     },
     {
@@ -170,7 +181,7 @@
       "name": "How long does approval take?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "We review profiles as they come in. Most approvals happen within 1–2 business days."
+        "text": "We review profiles as they come in. Most approvals happen within 2–5 business days."
       }
     },
     {
@@ -186,7 +197,7 @@
       "name": "Do I need to upload my own contract template?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes — uploading your own contract template is required. Otter Quotes does not draft or provide homeowner-contractor contracts. You upload the contract you already use in the field (the one your attorney has reviewed), and Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields via DocuSign. The contract terms are yours, the agreement is between you and the homeowner, and Otter Quotes is not a party to it."
+        "text": "Yes — uploading your own contract template is required. Otter Quotes does not draft or provide homeowner-contractor contracts. You upload the contract you already use in the field (the one your attorney has reviewed), and Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields electronically. The contract terms are yours, the agreement is between you and the homeowner, and Otter Quotes is not a party to it."
       }
     },
     {
@@ -345,7 +356,7 @@
           <span class="faq-arrow">&#x25BC;</span>
         </button>
         <div class="faq-answer">
-          <p>Your email address is all you need. Enter it on the <a href="contractor-join.html" style="color:var(--amber);">Apply to Join</a> page and we'll send you a magic link &mdash; click it and you're in. No password to set, no lengthy application to fill out before you can look around. Complete your profile at your own pace before we review it for approval.</p>
+          <p>Your email address is all you need. Enter it on the <a href="contractor-join.html" style="color:var(--amber);">Apply to Join</a> page and we'll send you a magic link &mdash; click it and you're in. Complete your profile at your own pace before we review it for approval.</p>
           <p style="margin-top:var(--sp-4);"><a href="contractor-join.html" class="btn btn-primary" style="display:inline-block;">Click Here to Apply</a></p>
         </div>
       </div>
@@ -366,7 +377,7 @@
           <span class="faq-arrow">&#x25BC;</span>
         </button>
         <div class="faq-answer">
-          <p>We review profiles as they come in. Most approvals happen within 1&ndash;2 business days. Once approved, you'll start receiving opportunities matched to your service area and trades immediately.</p>
+          <p>We review profiles as they come in. Most approvals happen within 2&ndash;5 business days. Once approved, you'll start receiving opportunities matched to your service area and trades immediately.</p>
         </div>
       </div>
 
@@ -386,7 +397,7 @@
           <span class="faq-arrow">&#x25BC;</span>
         </button>
         <div class="faq-answer">
-          <p>Yes &mdash; uploading your own contract template is required. Otter Quotes does not draft or provide homeowner-contractor contracts. You upload the contract you already use in the field (the one your attorney has reviewed), and we auto-fill the homeowner's name, address, project details, and your bid fields via DocuSign before the homeowner signs. The contract terms are yours, the agreement is between you and the homeowner, and Otter Quotes is not a party to it. The Contractor Partner Agreement you sign with Otter Quotes is a separate document covering the platform relationship only.</p>
+          <p>Yes &mdash; uploading your own contract template is required. Otter Quotes does not draft or provide homeowner-contractor contracts. You upload the contract you already use in the field (the one your attorney has reviewed), and we auto-fill the homeowner's name, address, project details, and your bid fields electronically before the homeowner signs. The contract terms are yours, the agreement is between you and the homeowner, and Otter Quotes is not a party to it. The Contractor Partner Agreement you sign with Otter Quotes is a separate document covering the platform relationship only.</p>
         </div>
       </div>
 
@@ -466,36 +477,6 @@
         </button>
         <div class="faq-answer">
           <p>The platform fee is 5% of the signed contract value. It is charged at contract execution &mdash; when both you and the homeowner have signed &mdash; via your saved payment method on file. There are no monthly subscriptions, no upfront costs, and no charges for browsing opportunities or submitting bids you don't win. The bid form shows the exact fee in real time before you submit, so there are no surprises.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question">
-          How much does it cost?
-          <span class="faq-arrow">&#x25BC;</span>
-        </button>
-        <div class="faq-answer">
-          <p>The platform fee is 5% of the signed contract value. That's it &mdash; no add-ons, no monthly subscriptions, and no upfront costs. You only pay when a homeowner signs your contract.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question">
-          When am I charged?
-          <span class="faq-arrow">&#x25BC;</span>
-        </button>
-        <div class="faq-answer">
-          <p>You are only charged after both you and the homeowner have signed the contract. There are no monthly subscriptions, no upfront fees, and no charges for browsing opportunities or submitting bids you don't win.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question">
-          Can I see the fee before I bid?
-          <span class="faq-arrow">&#x25BC;</span>
-        </button>
-        <div class="faq-answer">
-          <p>Yes. The bid form shows exact fee calculations in real time as you enter your price. You always know your net on a job before you submit. No hidden math, no surprises after the fact.</p>
         </div>
       </div>
 

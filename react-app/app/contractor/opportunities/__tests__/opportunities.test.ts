@@ -13,6 +13,7 @@ import {
   mapClaimToOpportunity, filterByTradeRelease, excludeCappedClaims, applyMyBids,
   applyOppFilters, valueDisplay, calcFees, expiryCountdown, tradeReleaseBadges,
   tradeDisplay, resolveStateGate, resultsCountLabel, fmtCurrency,
+  isHoverMeasurementsSentinel,
   type RawClaim, type Opportunity,
 } from '../utils';
 import {
@@ -30,7 +31,7 @@ function opp(partial: Partial<Opportunity>): Opportunity {
     claimFiledDate: '2026-03-15', distance: null, urgency: 'flexible', urgencyDeadline: null,
     urgencyReason: null, homeownerNotes: null, contractorScopeSummary: null, fundingType: 'insurance',
     releasedTrades: { roofing: true, gutters: false, siding: false, windows: false },
-    bidWindowExpiresAt: null, estimateFilename: null,
+    bidWindowExpiresAt: null, estimateFilename: null, measurementsFilename: null,
     ...partial,
   };
 }
@@ -82,6 +83,36 @@ describe('mapClaimToOpportunity', () => {
     expect(o.trades).toEqual(['roofing']);
     expect(o.zip).toBe('46220');
     expect(o.distance).toBeNull(); // contractor zip null
+  });
+
+  // gh-484: contractor-facing "Measurements" badge previously offered only the
+  // Hover PDF button, which fails for homeowner-uploaded (non-Hover) files.
+  it('exposes a real homeowner-uploaded measurements path but not the Hover completion sentinel', () => {
+    const withRealUpload = mapClaimToOpportunity(
+      { ...claim, measurements_filename: 'uid-1/CL1/1785930676980-dummy-measurements.jpg' },
+      null,
+    );
+    expect(withRealUpload.measurementsFilename).toBe('uid-1/CL1/1785930676980-dummy-measurements.jpg');
+
+    const withHoverSentinel = mapClaimToOpportunity(
+      { ...claim, measurements_filename: 'hover_123456_measurements.json' },
+      null,
+    );
+    expect(withHoverSentinel.measurementsFilename).toBeNull();
+
+    const withNone = mapClaimToOpportunity(claim, null);
+    expect(withNone.measurementsFilename).toBeNull();
+  });
+});
+
+describe('isHoverMeasurementsSentinel', () => {
+  it('matches the hover-webhook completion marker and nothing else', () => {
+    expect(isHoverMeasurementsSentinel('hover_123456_measurements.json')).toBe(true);
+    expect(isHoverMeasurementsSentinel('HOVER_9_MEASUREMENTS.JSON')).toBe(true);
+    expect(isHoverMeasurementsSentinel('uid-1/claim-1/171234-dummy-measurements.jpg')).toBe(false);
+    expect(isHoverMeasurementsSentinel(null)).toBe(false);
+    expect(isHoverMeasurementsSentinel(undefined)).toBe(false);
+    expect(isHoverMeasurementsSentinel('')).toBe(false);
   });
 });
 
