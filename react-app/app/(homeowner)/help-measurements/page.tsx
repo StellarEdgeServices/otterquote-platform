@@ -157,9 +157,11 @@ function PageBody({
   }, [claim]);
 
   // ── Path A — step 2: payment succeeded → create the Hover order ──
-  // Throwing here propagates to HoverPaymentForm.onPay (error shown by the card, Pay
-  // re-enabled) — the static's confirmHoverPayment catch behaviour. A graceful
-  // EF-pending result resolves (placeholder) and advances to the success state.
+  // Throwing here propagates to HoverPaymentForm's order step, which parks the form in
+  // its post-charge 'orderFailed' state: error + "Retry Order" reusing the SAME
+  // paymentIntent id. The Pay button never re-arms after a successful charge (gh-416
+  // double-charge guard; supersedes the static's confirmHoverPayment re-arm behaviour).
+  // A graceful EF-pending result resolves (placeholder) and advances to the success state.
   const handlePaid = useCallback(
     async (paymentIntentId: string) => {
       if (!claim) throw new Error('Missing claim. Please refresh and try again.');

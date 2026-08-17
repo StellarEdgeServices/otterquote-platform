@@ -287,7 +287,7 @@ export async function createColorAddendumEnvelope({
     throw new Error(error.message || 'Failed to create color addendum envelope.');
   }
   if (!result?.signing_url) {
-    throw new Error('No signing URL returned from DocuSign');
+    throw new Error('No signing URL returned');
   }
 
   return {

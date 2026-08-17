@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -368,7 +379,7 @@
                     <!-- Partner Agreement -->
                     <div class="info-box">
                         <strong>Contractor Partner Agreement</strong>
-                        <p style="margin-top: var(--sp-2);">By joining Otter Quotes, you agree to the terms of the <a href='/contractor-agreement' style='color:var(--amber); font-weight:600;' target='_blank'>Otter Quotes Contractor Partner Agreement</a>. You will also be asked to sign it via DocuSign when your first project is matched. The platform fee is 5% of your accepted bid amount for all job types.</p>
+                        <p style="margin-top: var(--sp-2);">By joining Otter Quotes, you agree to the terms of the <a href='/contractor-agreement' style='color:var(--amber); font-weight:600;' target='_blank'>Otter Quotes Contractor Partner Agreement</a>. You will also be asked to sign it electronically when your first project is matched. The platform fee is 5% of your accepted bid amount for all job types.</p>
                     </div>
                     <div class="check-group" style="margin-bottom: var(--sp-8);">
                         <input type="checkbox" id="agreeToPartnerAgreement" required>
@@ -423,7 +434,7 @@
 
                     <div class="info-box">
                         <strong>What to Upload</strong>
-                        <p style="margin-top: var(--sp-2);">Your standard contract PDF for your primary trade and funding type. Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields via DocuSign &mdash; but the contract terms are yours, drafted or reviewed by your attorney. We do not draft or provide homeowner-contractor contracts.</p>
+                        <p style="margin-top: var(--sp-2);">Your standard contract PDF for your primary trade and funding type. Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields electronically &mdash; but the contract terms are yours, drafted or reviewed by your attorney. We do not draft or provide homeowner-contractor contracts.</p>
                     </div>
 
                     <!-- Trade + funding type selectors -->

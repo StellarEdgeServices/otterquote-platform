@@ -79,6 +79,7 @@ test.beforeAll(async () => {
     email: LIC_EMAIL,
     company_name: 'Test License Path Co (E2E)',
     contact_name: 'Test License Contractor',
+    is_test: true, // #689: harness must stamp every row it creates, contractors included
     status: 'pending_approval',
     onboarding_step: 1,
     agreement_accepted_at: new Date().toISOString(),

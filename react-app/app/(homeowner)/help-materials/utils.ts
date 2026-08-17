@@ -2,9 +2,10 @@
  * Pure helpers for the help-materials wizard (H8) — D-211.
  *
  * These mirror the static help-materials.html branching/labelling logic exactly
- * so the React port is behaviour-faithful. All value strings are PRESERVED
- * verbatim (the impact_class hyphen-vs-underscore inconsistency is intentional —
- * see types.ts / brief item 5). Kept side-effect-free for direct unit testing.
+ * so the React port is behaviour-faithful. In-wizard value strings are PRESERVED
+ * verbatim (the designer path carries material_catalog.impact_class as stored —
+ * see types.ts), but the DB write boundary normalizes impact_class to the
+ * canonical hyphenated form (gh-425). Kept side-effect-free for unit testing.
  */
 
 import type {
@@ -62,9 +63,23 @@ export function currentStep(state: MaterialSelectionState): number {
 }
 
 /**
- * Build the exact update object written to the claims row — faithful port of
- * the static submitSelection() (help-materials.html:1354-1371). Values are NOT
- * normalized.
+ * Normalize an impact-class value to the canonical stored form for
+ * claims.impact_class: 'none' | 'class-3' | 'class-4' (gh-425, Bridge ruling
+ * 2026-08-10). The designer path carries material_catalog.impact_class
+ * verbatim ('class3'/'class4'); the architectural path is already hyphenated.
+ * Applied at the DB write boundary ONLY — wizard state and display logic keep
+ * the verbatim value (catalog badges/labels compare against the stored
+ * catalog spelling).
+ */
+export function normalizeImpactClass(impactClass: string): string {
+  return impactClass.replace(/^class(\d)$/i, 'class-$1');
+}
+
+/**
+ * Build the exact update object written to the claims row — port of the static
+ * submitSelection() (help-materials.html). impact_class is normalized to the
+ * canonical hyphenated form at this write boundary (gh-425); all other values
+ * are preserved verbatim.
  */
 export function buildClaimMaterialUpdate(
   state: MaterialSelectionState,
@@ -76,7 +91,7 @@ export function buildClaimMaterialUpdate(
 
   if (state.category === 'shingles') {
     if (state.shingleType) update.shingle_type = state.shingleType;
-    if (state.impactClass) update.impact_class = state.impactClass;
+    if (state.impactClass) update.impact_class = normalizeImpactClass(state.impactClass);
     if (state.designerProduct) {
       update.designer_product = state.designerProduct;
       update.designer_manufacturer = state.designerManufacturer;

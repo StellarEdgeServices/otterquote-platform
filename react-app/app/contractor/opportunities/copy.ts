@@ -28,10 +28,12 @@ export const OPP_COPY = {
   documentsLabel: 'Documents',
   lossSheetBtn: '📄 Loss Sheet',
   hoverPdfBtn: '📏 Hover PDF',
+  measurementsBtn: '📐 View Measurements',
   loadingLabel: 'Loading…',
   lossSheetError: 'Unable to open the loss sheet. Please try again.',
   hoverPdfError:
     'Hover measurement PDF is not available for this project yet. The measurement may still be in progress.',
+  measurementsError: 'Unable to open the measurements file. Please try again.',
   notConnected: 'Not connected. Please refresh and try again.',
 
   detailsBtn: 'Details',
