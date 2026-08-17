@@ -158,6 +158,46 @@ async function sendMailgunEmail(
 }
 
 // =============================================================================
+// PARTNER STATUS EMAIL SERIES TRIGGER (#856, gh-916 stage 5)
+// Non-fatal fire-and-forget — triggers send-partner-status-email for the
+// referral's stage-5 (commission_paid) transition, mirroring the exact
+// invocation pattern mark-job-complete uses for its stage-4/catch-up call
+// site: same URL construction, same service-role Bearer auth header, same
+// { referral_id } payload shape. That function is stage-agnostic — called
+// with just referral_id, it sends every stage currently eligible per live
+// claims/quotes state and not yet sent, guarded by its own compare-and-swap
+// idempotency in referrals.metadata. A send failure here must never fail
+// the payout — the commission is already approved and paid by the time
+// this fires.
+// =============================================================================
+
+async function triggerPartnerStatusEmail(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  referralId: string
+): Promise<void> {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/send-partner-status-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({ referral_id: referralId }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "(unreadable)");
+      console.error(`[${FUNCTION_NAME}] send-partner-status-email returned ${res.status} for referral ${referralId}: ${errText}`);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      console.log(`[${FUNCTION_NAME}] send-partner-status-email triggered for referral ${referralId} — sent: ${JSON.stringify(data.sent || [])}`);
+    }
+  } catch (err) {
+    console.error(`[${FUNCTION_NAME}] send-partner-status-email fetch threw (non-fatal) for referral ${referralId}:`, err);
+  }
+}
+
+// =============================================================================
 // MAIN HANDLER
 // =============================================================================
 
@@ -387,6 +427,12 @@ serve(async (req: Request) => {
         console.error(`[${FUNCTION_NAME}] Failed to update referral status:`, statusError.message);
         // Non-fatal — approval row already updated; log and continue.
       }
+
+      // ── Partner status email series (#856, gh-916 stage 5) ──────────────────
+      // Fire-and-forget, same non-fatal pattern as mark-job-complete's stage-4/
+      // catch-up call site — send-partner-status-email applies its own
+      // idempotency guard and stage-eligibility check internally.
+      await triggerPartnerStatusEmail(supabaseUrl, serviceRoleKey, approval.referral_id);
     }
 
     // ── Send confirmation email to partner ───────────────────────────────────
