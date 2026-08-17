@@ -26,3 +26,9 @@ https://jade-alpaca-b82b5e.netlify.app/* https://otterquote.com/:splat 301!
 # function forwards every incoming param; see netlify.toml [[edge_functions]].
 https://stellaredgeservices.com/* /stellar-edge.html 200
 https://www.stellaredgeservices.com/* /stellar-edge.html 200
+
+# gh-960(b): oq-crm.html and tools-crm.html were near-duplicate pages for one
+# product under two names ("OQ CRM" vs "Otter CRM"). Consolidated onto
+# tools-crm.html (it lives in the tools- family the footer already links);
+# oq-crm.html deleted, 301 preserves any inbound links/bookmarks.
+/oq-crm.html /tools-crm.html 301

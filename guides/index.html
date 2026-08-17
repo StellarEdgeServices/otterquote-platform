@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Guides · Otter Quotes</title>
+<meta name="description" content="Guides for homeowners on insurance claims, contractor selection, and reading repair estimates.">
+<link rel="canonical" href="https://otterquote.com/guides/">
+<meta property="og:title" content="Guides · Otter Quotes">
+<meta property="og:description" content="Guides for homeowners on insurance claims, contractor selection, and reading repair estimates.">
+<meta property="og:url" content="https://otterquote.com/guides/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments)}
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<!-- Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    }
+  ]
+}
+</script>
+
+<style>
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+
+.guides-grid {
+  display: grid;
+  gap: var(--sp-8);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.guide-card {
+  padding: var(--sp-8);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-lg);
+  background: rgba(255,255,255,0.02);
+  transition: all 0.3s ease;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.guide-card:hover {
+  border-color: rgba(224,123,0,0.3);
+  background: rgba(224,123,0,0.02);
+  transform: translateY(-2px);
+}
+
+.guide-card h3 {
+  margin-bottom: var(--sp-2);
+  font-size: 1.4rem;
+  color: var(--text-primary);
+}
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Guides</h1>
+  </div>
+</section>
+
+<section class="main">
+  <div class="container">
+    <div class="guides-grid">
+      <a href="/guides/how-to-choose-contractor.html" class="guide-card">
+        <h3>How to Choose a Contractor for Insurance Repairs</h3>
+      </a>
+
+      <a href="/guides/how-to-file-property-damage-claim.html" class="guide-card">
+        <h3>How to File a Property Damage Insurance Claim</h3>
+      </a>
+
+      <a href="/guides/how-to-negotiate-with-insurer.html" class="guide-card">
+        <h3>How to Negotiate a Roof Insurance Claim Settlement</h3>
+      </a>
+
+      <a href="/guides/how-to-read-contractor-estimate.html" class="guide-card">
+        <h3>How to Read a Roofing Contractor Estimate</h3>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+</body>
+</html>
