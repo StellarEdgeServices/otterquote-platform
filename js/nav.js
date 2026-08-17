@@ -532,10 +532,14 @@ const Nav = {
               <a href="/contractor-faq.html">FAQ</a>
               <a href="/contractor-opportunities.html">Browse Opportunities</a>
               <a href="/tools.html">Contractor Tools</a>
+              <a href="/blog/index.html">Blog</a>
+              <a href="/guides/">Guides</a>
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               <a href="/faq.html">FAQ</a>
               <a href="https://app.otterquote.com/get-started">Get Started</a>
+              <a href="/blog/index.html">Blog</a>
+              <a href="/guides/">Guides</a>
             `}
           </div>
           <div class="footer-col">

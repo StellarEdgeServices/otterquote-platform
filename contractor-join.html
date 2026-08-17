@@ -107,6 +107,12 @@
         .success-message { display: none; background-color: #D1FAE5; border: 1px solid #6EE7B7; color: #065F46; padding: var(--sp-8); border-radius: var(--radius-md); margin-bottom: var(--sp-8); text-align: center; }
         .success-message.show { display: block; }
         .fee-box { background: rgba(224,123,0,0.07); border-left: 4px solid var(--amber); border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+        /* gh-960(f): salvaged from inspector-landing.html's credibility-section
+           (padding tokens adapted to this file's --sp scale, which has no --sp-5/--sp-10). */
+        .credibility-section { padding: var(--sp-8) var(--sp-8); background: var(--navy); border-bottom: 1px solid rgba(255,255,255,0.06); text-align: center; }
+        .credibility-box { max-width: 700px; margin: 0 auto; padding: var(--sp-6) var(--sp-4); background: rgba(224, 123, 0, 0.06); border: 1px solid rgba(224, 123, 0, 0.15); border-radius: var(--radius-md); }
+        .credibility-box p { font-size: 0.95rem; color: var(--slate); line-height: 1.8; margin: 0; }
+        .credibility-highlight { color: var(--amber); font-weight: 600; }
         .oauth-divider {
             display: flex;
             align-items: center;
@@ -171,6 +177,18 @@
                 <p>Homeowners sign your contract right here. No marketing expense, sales people, or sales expenses.</p>
                 <p style="margin-top: var(--sp-4); font-size: 0.95rem;">
                     <a href="onboarding-demo.html" style="color: var(--amber); font-weight: 600; text-decoration: none;">👀 See a 2-minute walkthrough of the application →</a>
+                </p>
+            </div>
+        </section>
+
+        <!-- gh-960(f) SALVAGE: founder-credibility block, moved verbatim from
+             inspector-landing.html before that page's future retirement (Q9
+             hub consolidation, #969). Homepage + partner-hub placements deferred
+             to that build. -->
+        <section class="credibility-section">
+            <div class="credibility-box">
+                <p>
+                    Built by <span class="credibility-highlight">Dustin Stohler</span>, who grew Stay Dry Roofing from <span class="credibility-highlight">$0 to $10M</span> here in Indianapolis. He saw the problem from the contractor side — now he's fixing it.
                 </p>
             </div>
         </section>
