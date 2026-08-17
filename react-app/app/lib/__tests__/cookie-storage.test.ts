@@ -15,6 +15,7 @@ import {
   readValidCookieSession,
   _COOKIE_ACCESS,
   _COOKIE_REFRESH,
+  _getCookieMaxAge,
 } from '../cookie-storage';
 
 // Build an unsigned JWT (header.payload.signature) with base64url segments.
@@ -206,5 +207,33 @@ describe('readValidCookieSession — fail-safe cookie recovery (D-212)', () => {
     setCookie(_COOKIE_ACCESS, 'not-a-jwt');
     setCookie(_COOKIE_REFRESH, 'refresh-token-abc');
     expect(readValidCookieSession()).toBeNull();
+  });
+});
+
+// ── gh-867: the 7-day hard cap on the session cookie was entirely ours — no
+// backend/Supabase requirement forced it (0 of 26,396 session rows carry a
+// not_after value). getCookieMaxAge()'s `remaining` argument is always ~3600
+// (the 1h access-token lifetime), so `Math.max(remaining, defaultSec)` always
+// resolved to `defaultSec` and the outer `Math.max(3600, …)` never bound —
+// this function returns exactly `defaultSec` on every call. Raised from 7
+// days (604800s) to 400 days (34560000s), Chrome's Max-Age ceiling. ────────
+describe('getCookieMaxAge — gh-867 400-day session lifetime', () => {
+  const FOUR_HUNDRED_DAYS_SEC = 400 * 24 * 3600;
+  const SEVEN_DAYS_SEC = 7 * 24 * 3600;
+
+  it('returns 400 days (not the old 7-day default) when expSec is absent', () => {
+    expect(_getCookieMaxAge(null)).toBe(FOUR_HUNDRED_DAYS_SEC);
+  });
+
+  it('returns 400 days for a typical ~1h access-token remaining lifetime (the always-hit case)', () => {
+    // This is the exact regression the issue describes: `remaining` here is
+    // ~3600s (a fresh 1h access token), which must NOT shrink the max-age
+    // back down to anything near 7 days.
+    expect(_getCookieMaxAge(NOW + 3600)).toBe(FOUR_HUNDRED_DAYS_SEC);
+    expect(_getCookieMaxAge(NOW + 3600)).toBeGreaterThan(SEVEN_DAYS_SEC);
+  });
+
+  it('never returns less than 400 days, even for an already-expired token', () => {
+    expect(_getCookieMaxAge(NOW - 3600)).toBe(FOUR_HUNDRED_DAYS_SEC);
   });
 });
