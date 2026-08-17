@@ -56,7 +56,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add otterquote-deploy/locations/ otterquote-deploy/sitemap.xml 2>/dev/null || true
+          git add locations/ sitemap.xml 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "No changes to commit — pages are up to date."
           else
@@ -70,8 +70,11 @@ Notes:
 - Uses the same `SUPABASE_SERVICE_ROLE_KEY` repository secret the contractor
   workflow already relies on — no new secrets required.
 - The nightly regeneration is what makes the auto-noindex guardrail live:
-  if a (county, trade) tuple drops below 2 approved contractors, the next
+  if a (county, trade) tuple drops below 2 active contractors, the next
   run keeps the page but injects `<meta name="robots" content="noindex">`
-  and removes the URL from `otterquote-deploy/sitemap.xml`.
+  and removes the URL from the repo-root `sitemap.xml`.
+- Output paths are repo-root `locations/` + repo-root `sitemap.xml` (gh-403):
+  Netlify publishes the repo root (`netlify.toml: publish = "."`), matching
+  the contractors/ and partners/ generator convention.
 - The 2-contractor eligibility minimum (`MIN_CONTRACTORS` in the script) is
   a hard D-241 guardrail — do not lower it.

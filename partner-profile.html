@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=partner-profile&persona=homeowner');}})()</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Partner Profile &mdash; Otter Quotes</title>
+<meta name="description" content="An Otter Quotes partner profile page.">
+<meta name="robots" content="noindex">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+    /* gh-862/gh-881: partner-branded "Trusted Partners" page — a real,
+       distinct destination, not a duplicate of the referral funnel link. */
+    .profile-wrapper {
+        min-height: calc(100vh - 64px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--sp-12) var(--sp-4);
+    }
+
+    .profile-card {
+        max-width: 560px;
+        width: 100%;
+        background: var(--navy-2);
+        border: 1px solid rgba(224, 123, 0, 0.2);
+        border-radius: var(--radius-lg);
+        padding: var(--sp-12) var(--sp-8);
+        text-align: center;
+    }
+
+    .profile-eyebrow {
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--amber);
+        margin-bottom: var(--sp-4);
+    }
+
+    .profile-avatar-img {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin: 0 auto var(--sp-4);
+        display: block;
+        border: 2px solid var(--amber);
+    }
+
+    .profile-avatar-fallback {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        margin: 0 auto var(--sp-4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(224, 123, 0, 0.15);
+        color: var(--amber);
+        font-size: 2rem;
+        font-weight: 700;
+        font-family: var(--font-heading);
+    }
+
+    .profile-name {
+        font-size: 1.5rem;
+        margin-bottom: var(--sp-1);
+        color: var(--white);
+    }
+
+    .profile-meta {
+        color: var(--slate);
+        font-size: 0.95rem;
+        margin-bottom: var(--sp-6);
+    }
+
+    .profile-trust {
+        background: var(--navy);
+        border: 1px solid rgba(224, 123, 0, 0.15);
+        border-radius: var(--radius-md);
+        padding: var(--sp-6);
+        margin-bottom: var(--sp-8);
+        color: var(--slate);
+        font-size: 0.95rem;
+        line-height: 1.7;
+        text-align: left;
+    }
+
+    .profile-loading,
+    .profile-error {
+        color: var(--slate);
+        font-size: 1rem;
+        line-height: 1.6;
+    }
+
+    .profile-error {
+        color: var(--red, #dc2626);
+    }
+</style>
+</head>
+<body>
+<header id="site-header" data-active=""></header>
+
+<main class="profile-wrapper">
+    <div class="profile-card" id="profileCard">
+        <p class="profile-loading" id="profileLoading">Loading partner profile&hellip;</p>
+    </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<script src="js/supabase-client.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+
+<script>
+    // gh-862/gh-881: reads ?code=, looks up the partner via the same public
+    // directory RPC ref-re.html already uses (get_referral_agents_public —
+    // SECURITY DEFINER, column-list reviewed #820: no email/phone/address),
+    // and renders "Proud partner of Otter Quotes" + name/photo/service area
+    // per the locked spec on #881. The CTA sends visitors to the real
+    // referral funnel (ref.html?code=...) — this page is the "badge of
+    // association" a partner can link to from their own site, not a second
+    // copy of that funnel link.
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    const AGENT_TYPE_LABELS = {
+        're_agent': 'Real Estate Agent',
+        'insurance_agent': 'Insurance Agent',
+        'home_inspector': 'Home Inspector',
+        'adjuster': 'Adjuster',
+        'customer': 'Otter Quotes Partner',
+        'other': 'Otter Quotes Partner'
+    };
+
+    function showError(message) {
+        const loading = document.getElementById('profileLoading');
+        if (loading) {
+            loading.className = 'profile-error';
+            loading.textContent = message;
+        }
+    }
+
+    function renderProfile(agent, code) {
+        const card = document.getElementById('profileCard');
+        if (!card) return;
+
+        const name = [agent.first_name, agent.last_name].filter(Boolean).join(' ') || 'Your Otter Quotes Partner';
+        const typeLabel = AGENT_TYPE_LABELS[agent.agent_type] || 'Otter Quotes Partner';
+        const metaParts = [typeLabel];
+        if (agent.company) metaParts.push(agent.company);
+        if (agent.service_area) metaParts.push(agent.service_area);
+        // Escape each part individually so a raw '·' separator (not user
+        // data) can be joined in afterward without re-escaping user content.
+        const metaText = metaParts.map(escapeHtml).join(' · ');
+
+        const avatarHtml = agent.photo_url
+            ? `<img class="profile-avatar-img" src="${escapeHtml(agent.photo_url)}" alt="${escapeHtml(name)}">`
+            : `<div class="profile-avatar-fallback">${escapeHtml((name || 'P').charAt(0).toUpperCase())}</div>`;
+
+        const bioHtml = agent.bio
+            ? `<p style="margin-top: var(--sp-3);">${escapeHtml(agent.bio)}</p>`
+            : '';
+
+        const ctaUrl = `${CONFIG.SITE_URL}/ref.html?code=${encodeURIComponent(code)}`;
+
+        card.innerHTML = `
+            <div class="profile-eyebrow">Proud Partner of Otter Quotes</div>
+            ${avatarHtml}
+            <h1 class="profile-name">${escapeHtml(name)}</h1>
+            <p class="profile-meta">${metaText}</p>
+            <div class="profile-trust">
+                Otter Quotes connects homeowners with multiple competing, licensed and insured
+                contractor bids for their project &mdash; free, with no obligation.
+                ${bioHtml}
+            </div>
+            <a class="btn btn-primary btn-full" href="${ctaUrl}">Get a Free Contractor Quote</a>
+        `;
+    }
+
+    async function init() {
+        // Header/footer auto-render via nav.js's DOMContentLoaded listener
+        // reading data-active/data-auth off #site-header (same pattern as
+        // ref-re.html) — no manual Nav.renderHeader() call needed here.
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+
+        if (!code) {
+            showError("This partner profile link is missing its code — please ask your partner for their link again.");
+            return;
+        }
+
+        try {
+            const { data, error } = await sb
+                .rpc('get_referral_agents_public')
+                .select('*')
+                .eq('unique_code', code)
+                .single();
+
+            if (error || !data) {
+                console.error('Failed to load partner profile:', error);
+                showError("We couldn't find that partner profile. The link may be out of date.");
+                return;
+            }
+
+            renderProfile(data, code);
+        } catch (err) {
+            console.error('Error loading partner profile:', err);
+            showError("Something went wrong loading this partner profile. Please try again.");
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

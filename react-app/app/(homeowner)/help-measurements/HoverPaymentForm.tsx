@@ -17,6 +17,14 @@
  * Money rule preserved: the card is charged here; the parent creates the Hover ORDER
  * only after paymentIntent.status === 'succeeded'. A decline/error surfaces inline and
  * does NOT advance the flow.
+ *
+ * Post-charge retry-safety (gh-416): once confirmCardPayment succeeds, the paymentIntent
+ * id is recorded in state and the Pay/Cancel controls are permanently retired for this
+ * mount. If the parent's ORDER step then throws, the form parks in an 'orderFailed'
+ * state whose only affordance is "Retry Order" — it re-runs the order step with the SAME
+ * recorded paymentIntent id and never re-confirms the card. Pay re-arms ONLY when the
+ * charge itself failed (decline / unexpected status / confirm threw), where no successful
+ * charge was observed.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -86,7 +94,22 @@ interface Props {
   onCancel: () => void;
 }
 
-type PayState = 'idle' | 'processing' | 'ordering';
+type PayState = 'idle' | 'processing' | 'ordering' | 'orderFailed';
+
+/**
+ * NEW operational copy for the gh-416 post-charge order-failure state. NOT part of the
+ * static verbatim port (the static page never rendered this state distinctly — it
+ * re-armed Pay, the double-charge defect this fixes), so these strings live here and
+ * deliberately stay OUT of the verbatim-locked ./copy.ts.
+ */
+export const ORDER_RETRY_COPY = {
+  paidNoRecharge:
+    'Your $150 payment went through and is confirmed. We could not start your Hover order — use Retry Order below. Retrying will not charge your card again.',
+  retryButton: 'Retry Order',
+  orderFailedFallback: 'Could not create your Hover order. Please retry.',
+  supportNote:
+    'If retrying does not work, contact support — your payment is confirmed and will be applied to your order.',
+} as const;
 
 export function HoverPaymentForm({ clientSecret, onPaid, onCancel }: Props) {
   const configured = !!STRIPE_PK;
@@ -97,6 +120,14 @@ export function HoverPaymentForm({ clientSecret, onPaid, onCancel }: Props) {
 
   const [cardError, setCardError] = useState('');
   const [payState, setPayState] = useState<PayState>('idle');
+  /**
+   * The id of the SUCCESSFULLY CHARGED PaymentIntent (gh-416). Set exactly once, the
+   * moment confirmCardPayment reports status === 'succeeded', BEFORE the order step
+   * runs. Non-null ⇒ the card has been charged ⇒ the Pay/Cancel controls are retired
+   * and only the order step may run (again).
+   */
+  const [paidIntentId, setPaidIntentId] = useState<string | null>(null);
+  const [orderError, setOrderError] = useState('');
 
   // Mount the Card Element once Stripe.js is ready (static purchaseHover 909-924).
   useEffect(() => {
@@ -132,8 +163,34 @@ export function HoverPaymentForm({ clientSecret, onPaid, onCancel }: Props) {
     };
   }, [configured]);
 
+  // Run the ORDER step only (gh-416). Retry-safe: a throw parks the form in
+  // 'orderFailed' with a Retry-Order affordance reusing the SAME paymentIntent id —
+  // it never falls back to 'idle', which would re-arm Pay after a successful charge.
+  const runOrder = useCallback(
+    async (paymentIntentId: string) => {
+      setPayState('ordering');
+      setOrderError('');
+      try {
+        await onPaid(paymentIntentId);
+      } catch (err) {
+        setOrderError(
+          err instanceof Error && err.message ? err.message : ORDER_RETRY_COPY.orderFailedFallback,
+        );
+        setPayState('orderFailed');
+      }
+    },
+    [onPaid],
+  );
+
   // Confirm the card payment, then hand paymentIntent.id to the parent for the order.
+  // Retry-safety (gh-416): once a charge has succeeded (paidIntentId set), this NEVER
+  // calls confirmCardPayment again — only the order step may run again.
   const onPay = useCallback(async () => {
+    if (paidIntentId) {
+      // Defensive: the card is already charged — route any invocation to the order step.
+      await runOrder(paidIntentId);
+      return;
+    }
     const stripe = stripeRef.current;
     const card = cardElRef.current;
     if (!stripe || !card) {
@@ -142,13 +199,15 @@ export function HoverPaymentForm({ clientSecret, onPaid, onCancel }: Props) {
     }
     setPayState('processing');
     setCardError('');
+    let chargedIntentId: string;
     try {
       const { paymentIntent, error } = await stripe.confirmCardPayment(clientSecret, {
         payment_method: { card },
       });
 
       if (error) {
-        // Stripe declined or card error — surface, do NOT create the order.
+        // Stripe declined or card error — surface, do NOT create the order. No charge
+        // happened, so re-arming Pay is legitimate.
         setCardError(error.message ?? 'Payment failed. Please try again.');
         setPayState('idle');
         return;
@@ -160,15 +219,21 @@ export function HoverPaymentForm({ clientSecret, onPaid, onCancel }: Props) {
         setPayState('idle');
         return;
       }
-
-      // Payment confirmed — hand off to the parent to create the Hover order.
-      setPayState('ordering');
-      await onPaid(paymentIntent.id);
+      chargedIntentId = paymentIntent.id;
     } catch (err) {
+      // The CONFIRM step itself threw — no successful charge was observed, so re-arming
+      // Pay is legitimate (re-confirming the same PaymentIntent cannot double-charge).
       setCardError(err instanceof Error ? err.message : 'Payment failed. Please try again.');
       setPayState('idle');
+      return;
     }
-  }, [clientSecret, onPaid]);
+
+    // Charge succeeded — record the paymentIntent id BEFORE the order step so no code
+    // path (including an order throw) can re-arm the Pay button (gh-416 guard), then
+    // hand off to the parent to create the Hover order.
+    setPaidIntentId(chargedIntentId);
+    await runOrder(chargedIntentId);
+  }, [clientSecret, paidIntentId, runOrder]);
 
   if (!configured) {
     return (
@@ -185,13 +250,41 @@ export function HoverPaymentForm({ clientSecret, onPaid, onCancel }: Props) {
     );
   }
 
+  // Once the charge has succeeded the card form + Pay/Cancel controls are permanently
+  // retired for this mount (gh-416): Cancel would path back to a fresh PaymentIntent
+  // (a second charge) and Pay must never re-confirm. Only order-step UI renders.
+  const charged = paidIntentId !== null;
   const busy = payState !== 'idle';
-  const payLabel =
-    payState === 'processing'
-      ? M.payProcessingButton
-      : payState === 'ordering'
-        ? M.payOrderingButton
-        : M.hoverPayButton;
+  const payLabel = payState === 'processing' ? M.payProcessingButton : M.hoverPayButton;
+
+  if (charged) {
+    return (
+      <div className="hm-payform">
+        {payState === 'orderFailed' ? (
+          <>
+            <div className="hm-status error" role="alert">
+              {orderError || ORDER_RETRY_COPY.orderFailedFallback}
+            </div>
+            <p className="hm-payform-lead">{ORDER_RETRY_COPY.paidNoRecharge}</p>
+            <div className="hm-btn-row">
+              <button
+                type="button"
+                className="hm-btn hm-btn-green"
+                onClick={() => void runOrder(paidIntentId)}
+              >
+                {ORDER_RETRY_COPY.retryButton}
+              </button>
+            </div>
+            <p className="hm-stripe-note">{ORDER_RETRY_COPY.supportNote}</p>
+          </>
+        ) : (
+          <p className="hm-payform-lead" role="status">
+            <span className="hm-spinner" aria-hidden="true" /> {M.payOrderingButton}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="hm-payform">

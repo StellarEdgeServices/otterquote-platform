@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -186,7 +197,7 @@
       "name": "Do I need to upload my own contract template?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes — uploading your own contract template is required. Otter Quotes does not draft or provide homeowner-contractor contracts. You upload the contract you already use in the field (the one your attorney has reviewed), and Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields via DocuSign. The contract terms are yours, the agreement is between you and the homeowner, and Otter Quotes is not a party to it."
+        "text": "Yes — uploading your own contract template is required. Otter Quotes does not draft or provide homeowner-contractor contracts. You upload the contract you already use in the field (the one your attorney has reviewed), and Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields electronically. The contract terms are yours, the agreement is between you and the homeowner, and Otter Quotes is not a party to it."
       }
     },
     {
@@ -386,7 +397,7 @@
           <span class="faq-arrow">&#x25BC;</span>
         </button>
         <div class="faq-answer">
-          <p>Yes &mdash; uploading your own contract template is required. Otter Quotes does not draft or provide homeowner-contractor contracts. You upload the contract you already use in the field (the one your attorney has reviewed), and we auto-fill the homeowner's name, address, project details, and your bid fields via DocuSign before the homeowner signs. The contract terms are yours, the agreement is between you and the homeowner, and Otter Quotes is not a party to it. The Contractor Partner Agreement you sign with Otter Quotes is a separate document covering the platform relationship only.</p>
+          <p>Yes &mdash; uploading your own contract template is required. Otter Quotes does not draft or provide homeowner-contractor contracts. You upload the contract you already use in the field (the one your attorney has reviewed), and we auto-fill the homeowner's name, address, project details, and your bid fields electronically before the homeowner signs. The contract terms are yours, the agreement is between you and the homeowner, and Otter Quotes is not a party to it. The Contractor Partner Agreement you sign with Otter Quotes is a separate document covering the platform relationship only.</p>
         </div>
       </div>
 

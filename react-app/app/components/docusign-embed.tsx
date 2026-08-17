@@ -51,7 +51,7 @@ const FRAME_STYLE: CSSProperties = {
 export function DocuSignEmbed({
   signingUrl,
   onComplete,
-  title = 'DocuSign contract signing',
+  title = 'Electronic contract signing',
 }: DocuSignEmbedProps) {
   // Hold the latest onComplete in a ref so the listener subscribes ONCE and never
   // re-binds per render (matches the reference's onCompleteRef pattern).
