@@ -125,6 +125,9 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
       existing_shingle_product: 'Timberline',
       existing_shingle_color: 'Weathered Wood',
       homeowner_notes: 'ceiling drip',
+      // gh-397/#689 (PR #785): is_test is now stamped on every claims insert.
+      // The mock user has no email, so isTestEmail(undefined) is false.
+      is_test: false,
     });
     // Final write marks the claim submitted.
     expect(rec.updates).toEqual([{ status: 'submitted' }]);
