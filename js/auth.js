@@ -244,6 +244,21 @@ window.Auth = {
   },
 
   /**
+   * gh-397/#689 — E2E-test-signal predicate for claim-creation call sites.
+   * Mirrors the CEO-approved contractor predicate (#543, see
+   * supabase/functions/notify-contractors/test-exclusion.ts): an
+   * @otterquote-internal.test address identifies an E2E/test actor. Used to
+   * stamp claims.is_test at INSERT time so E2E writes against the live
+   * BASE_URL never land as unflagged "real" claims. Case-insensitive,
+   * null-safe.
+   * @param {string|null|undefined} email
+   * @returns {boolean}
+   */
+  isTestEmail(email) {
+    return (email || '').trim().toLowerCase().endsWith('@otterquote-internal.test');
+  },
+
+  /**
    * Send magic link email with role-aware redirect.
    * @param {string} email
    * @param {string} role - 'homeowner' (default), 'contractor', 're_agent',

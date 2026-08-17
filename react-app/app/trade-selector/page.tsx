@@ -23,6 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { isTestEmail } from '@/lib/test-signal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -544,9 +545,14 @@ export default function TradeSelectorPage() {
               .update(claimPayload)
               .eq('id', existingClaim.id);
           } else {
+            // gh-397/#689: stamp is_test on this React parity insert path —
+            // PR #714 only fixed the COI-identity contractor insert, never
+            // any claims insert. Predicate mirrors the CEO-approved
+            // contractor check (#543 / test-exclusion.ts).
             await supabase.from('claims').insert({
               user_id: user.id,
               ...claimPayload,
+              is_test: isTestEmail(user.email),
               created_at: new Date().toISOString(),
             });
           }
