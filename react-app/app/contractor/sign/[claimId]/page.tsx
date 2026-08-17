@@ -206,8 +206,8 @@ function SignContent() {
         },
       );
 
-      if (error) throw new Error(error.message || 'Failed to create DocuSign envelope');
-      if (!result?.signing_url) throw new Error('No signing URL returned from DocuSign');
+      if (error) throw new Error(error.message || 'Failed to create signing envelope');
+      if (!result?.signing_url) throw new Error('No signing URL returned');
 
       setSigningUrl(result.signing_url as string);
       setPreparing(false);
@@ -298,7 +298,7 @@ function SignContent() {
           ) : (
             <iframe
               id="docusignFrame"
-              title="DocuSign contract signing"
+              title="Electronic contract signing"
               src={signingUrl}
               className="oqs-frame"
               allow="geolocation"

@@ -14,6 +14,20 @@ export function SentryInitializer() {
         replaysSessionSampleRate: 0,
         replaysOnErrorSampleRate: 1.0,
         integrations: [Sentry.replayIntegration({ maskAllInputs: true })],
+        // gh-439: drop phantom events from data:/file:/blob: preview contexts
+        // (e.g. Claude's HTML preview renders pages via data: URIs). Mirrors the
+        // beforeSend in sentry.client.config.ts -- this init runs later and would
+        // otherwise override that config without the filter.
+        denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+        beforeSend(event) {
+          if (typeof window !== "undefined") {
+            const proto = window.location.protocol;
+            if (proto !== "http:" && proto !== "https:") return null;
+          }
+          const url = event.request?.url;
+          if (url && /^(data|file|blob):/.test(url)) return null;
+          return event;
+        },
         debug: false,
       });
     }

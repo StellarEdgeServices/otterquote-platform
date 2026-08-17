@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -1348,7 +1359,7 @@
         <div class="settings-card-title">Contract Templates</div>
 
         <div class="info-box" style="margin-bottom: var(--sp-6);">
-            Upload your contract template for each type of work. Otter Quotes will auto-populate your company details and get it signed by the homeowner. The contract is sent for e-signature via DocuSign.
+            Upload your contract template for each type of work. Otter Quotes will auto-populate your company details and get it signed by the homeowner. The contract is sent for e-signature.
         </div>
 
         <div style="margin-bottom: var(--sp-6);">
