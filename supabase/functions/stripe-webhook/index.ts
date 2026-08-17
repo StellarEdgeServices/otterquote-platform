@@ -1,5 +1,6 @@
 // supabase/functions/stripe-webhook/index.ts
 // D-228: charge.dispute.created handler
+// gh-948: payment_intent.succeeded / payment_intent.payment_failed handlers
 // Tier 3 deploy — payment logic. Staging only until Dustin production approval.
 //
 // Required Supabase secrets (set before first invocation):
@@ -13,7 +14,20 @@
 //     → auto-submit D-215 evidence stack via Stripe Disputes API
 //   dispute.amount >= $500 OR reason == 'product_not_received'
 //     → create ClickUp task in list 901711730553 + insert into admin_dispute_queue
-//   ALL events → log to disputes table + activity_log
+//   ALL charge.dispute.created events → log to disputes table + activity_log
+//
+// gh-948 routing logic (platform-fee ACH charges only — metadata.type === 'platform_fee'):
+//   payment_intent.succeeded (quote currently 'pending')
+//     → finalize quotes.payment_status = 'succeeded', set claims.platform_fee_charged,
+//       notify the contractor (mirrors docusign-webhook's synchronous success path)
+//   payment_intent.payment_failed (quote currently 'pending')
+//     → quotes.payment_status = 'dunning', insert payment_failures, re-trigger
+//       process-dunning (mirrors docusign-webhook's synchronous failure path)
+//   Both are idempotent no-ops if the quote is already in a terminal state — this
+//   covers Stripe's at-least-once redelivery and the case where a card charge
+//   already settled synchronously before the webhook event arrives.
+//   NOTE: this webhook subscription itself (Stripe Dashboard/API event selection)
+//   is NOT changed by this PR — see the PR body for the documented dashboard step.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -660,6 +674,210 @@ async function handleDisputeCreated(
 }
 
 // ---------------------------------------------------------------------------
+// payment_intent.succeeded / payment_intent.payment_failed handlers (gh-948)
+// ---------------------------------------------------------------------------
+// D-214/D-215 platform-fee charges can be paid via ACH (us_bank_account), which
+// passes through a 'processing' PaymentIntent status before settling. docusign-webhook
+// and process-dunning now record a 'processing' charge as quotes.payment_status =
+// 'pending' (NOT 'succeeded') and withhold fulfillment (platform_fee_charged flag,
+// contractor notification). These two listeners are the ONLY place the later
+// resolution — success or failure — reaches the database. Scoped to
+// metadata.type === 'platform_fee': the homeowner-facing card flows (Hover
+// measurement purchase, deductible escrow) confirm synchronously client-side via
+// confirmCardPayment and already reject any non-'succeeded' status inline
+// (HoverPaymentForm.tsx) — they do not need this async finalizer.
+// ---------------------------------------------------------------------------
+interface StripePaymentIntent {
+  id: string;
+  object: "payment_intent";
+  status: string;
+  amount: number;
+  currency: string;
+  livemode: boolean;
+  metadata: Record<string, string>;
+  last_payment_error?: { message?: string; code?: string } | null;
+}
+
+interface StripePaymentIntentEvent {
+  id: string;
+  type: string;
+  livemode: boolean;
+  data: { object: StripePaymentIntent };
+}
+
+interface PendingQuoteRow {
+  id: string;
+  claim_id: string;
+  contractor_id: string;
+  payment_status: string | null;
+}
+
+async function handlePlatformFeePaymentSucceeded(
+  paymentIntent: StripePaymentIntent,
+  supabase: ReturnType<typeof createClient>,
+): Promise<void> {
+  if (paymentIntent.metadata?.type !== "platform_fee") return; // scope: platform-fee ACH surface only
+
+  const { data: quote, error: quoteErr } = await supabase
+    .from("quotes")
+    .select("id, claim_id, contractor_id, payment_status")
+    .eq("payment_intent_id", paymentIntent.id)
+    .maybeSingle();
+
+  if (quoteErr) {
+    console.error(`[${FN_NAME}] payment_intent.succeeded: quote lookup failed for PI ${paymentIntent.id}:`, quoteErr);
+    return;
+  }
+  if (!quote) {
+    // Can legitimately happen if a later charge attempt (e.g. a dunning retry)
+    // already overwrote quotes.payment_intent_id with a new intent id before this
+    // event arrived. Known residual gap — see PR body.
+    console.warn(`[${FN_NAME}] payment_intent.succeeded: no quote found for PI ${paymentIntent.id} — nothing to finalize`);
+    return;
+  }
+  const q = quote as PendingQuoteRow;
+  if (q.payment_status === "succeeded") {
+    console.log(`[${FN_NAME}] payment_intent.succeeded: quote ${q.id} already 'succeeded' — idempotent no-op`);
+    return; // already finalized synchronously (card) or by a prior delivery of this event
+  }
+
+  await supabase
+    .from("quotes")
+    .update({ payment_status: "succeeded" })
+    .eq("id", q.id);
+
+  // Only flip platform_fee_charged + notify the FIRST time this settles (idempotent).
+  const { data: claimRow } = await supabase
+    .from("claims")
+    .select("id, platform_fee_charged")
+    .eq("id", q.claim_id)
+    .maybeSingle();
+
+  if (claimRow && (claimRow as { id: string; platform_fee_charged: boolean }).platform_fee_charged !== true) {
+    await supabase
+      .from("claims")
+      .update({ platform_fee_charged: true })
+      .eq("id", q.claim_id);
+
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      // Mirrors docusign-webhook's synchronous "Notify contractor ONLY after
+      // payment succeeds" call — same endpoint, event type, and message text.
+      await fetch(`${supabaseUrl}/functions/v1/notify-contractors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}` },
+        body: JSON.stringify({
+          claim_id: q.claim_id,
+          event_type: "contract_signed",
+          message: "A homeowner has signed your contract! Contact them within 48 hours.",
+        }),
+      });
+    } catch (notifyErr) {
+      console.error(`[${FN_NAME}] notify-contractors call failed for claim ${q.claim_id}:`, notifyErr);
+    }
+  }
+
+  try {
+    await supabase.from("activity_log").insert({
+      event_type: "platform_fee.payment_intent_succeeded",
+      title: `Platform fee confirmed settled via webhook: quote ${q.id}`,
+      metadata: {
+        quote_id: q.id,
+        claim_id: q.claim_id,
+        contractor_id: q.contractor_id,
+        payment_intent_id: paymentIntent.id,
+        amount_cents: paymentIntent.amount,
+      },
+    });
+  } catch (activityErr) {
+    console.error(`[${FN_NAME}] activity_log insert failed:`, activityErr);
+  }
+}
+
+async function handlePlatformFeePaymentFailed(
+  paymentIntent: StripePaymentIntent,
+  supabase: ReturnType<typeof createClient>,
+): Promise<void> {
+  if (paymentIntent.metadata?.type !== "platform_fee") return; // scope: platform-fee ACH surface only
+
+  const { data: quote, error: quoteErr } = await supabase
+    .from("quotes")
+    .select("id, claim_id, contractor_id, payment_status")
+    .eq("payment_intent_id", paymentIntent.id)
+    .maybeSingle();
+
+  if (quoteErr) {
+    console.error(`[${FN_NAME}] payment_intent.payment_failed: quote lookup failed for PI ${paymentIntent.id}:`, quoteErr);
+    return;
+  }
+  if (!quote) {
+    console.warn(`[${FN_NAME}] payment_intent.payment_failed: no quote found for PI ${paymentIntent.id} — nothing to finalize`);
+    return;
+  }
+  const q = quote as PendingQuoteRow;
+  if (q.payment_status === "succeeded" || q.payment_status === "dunning" || q.payment_status === "failed") {
+    console.log(`[${FN_NAME}] payment_intent.payment_failed: quote ${q.id} already '${q.payment_status}' — idempotent no-op`);
+    return;
+  }
+
+  const stripeError =
+    paymentIntent.last_payment_error?.message ||
+    paymentIntent.last_payment_error?.code ||
+    "ACH payment failed after processing";
+
+  await supabase
+    .from("quotes")
+    .update({ payment_status: "dunning" })
+    .eq("id", q.id);
+
+  // Mirrors docusign-webhook's synchronous failure branch: durable failure record +
+  // alert + re-trigger process-dunning. This is the async (post-'processing') twin
+  // of that path — same taxonomy, distinguished in the alert message text.
+  try {
+    await supabase.from("payment_failures").insert({
+      quote_id: q.id,
+      contractor_id: q.contractor_id,
+      claim_id: q.claim_id,
+      amount_cents: paymentIntent.amount,
+      stripe_error: stripeError,
+    });
+  } catch (pfErr) {
+    console.error(`[${FN_NAME}] payment_failures insert failed:`, pfErr);
+  }
+
+  try {
+    await supabase.from("platform_alerts_log").insert({
+      alert_type: "payment_failed_hard",
+      function_name: FN_NAME,
+      message: `Claim ${q.claim_id} platform fee ACH charge FAILED after processing (quote ${q.id}, contractor ${q.contractor_id}, payment_intent ${paymentIntent.id}): ${stripeError}. Detected async via payment_intent.payment_failed (gh-948).`,
+      sent_at: new Date().toISOString(),
+    });
+  } catch (alertErr) {
+    console.error(`[${FN_NAME}] platform_alerts_log insert failed:`, alertErr);
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const dunningResponse = await fetch(`${supabaseUrl}/functions/v1/process-dunning`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}` },
+      body: JSON.stringify({
+        quote_id: q.id,
+        contractor_id: q.contractor_id,
+        claim_id: q.claim_id,
+        amount_cents: paymentIntent.amount,
+        stripe_error: stripeError,
+      }),
+    });
+    console.log(`[${FN_NAME}] dunning triggered for quote ${q.id}: ${dunningResponse.status}`);
+  } catch (dunningErr) {
+    console.error(`[${FN_NAME}] failed to trigger process-dunning for quote ${q.id}:`, dunningErr);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 Deno.serve(async (req: Request) => {
@@ -753,6 +971,12 @@ Deno.serve(async (req: Request) => {
 
     if (event.type === "charge.dispute.created") {
       await handleDisputeCreated(event, supabase);
+    } else if (event.type === "payment_intent.succeeded") {
+      const piEvent = event as unknown as StripePaymentIntentEvent;
+      await handlePlatformFeePaymentSucceeded(piEvent.data.object, supabase);
+    } else if (event.type === "payment_intent.payment_failed") {
+      const piEvent = event as unknown as StripePaymentIntentEvent;
+      await handlePlatformFeePaymentFailed(piEvent.data.object, supabase);
     } else {
       console.log(`[${FN_NAME}] Unhandled event type: ${event.type} — acknowledged`);
     }

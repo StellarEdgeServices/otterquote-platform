@@ -372,7 +372,18 @@ serve(async (req) => {
         throw new Error(`All ${methodsToTry.length} payment methods failed. Last error: ${lastError}`);
       }
       if (metadata.quote_id) {
-        const dbPaymentStatus = paymentIntentData.status === "processing" ? "succeeded" : paymentIntentData.status;
+        // gh-948: 'processing' (ACH in flight) is NOT success. Map it to the
+        // existing 'pending' quotes.payment_status value (allowed by
+        // quotes_payment_status_check) instead of fabricating a premature
+        // 'succeeded'. Any other non-succeeded status is treated as failed —
+        // by the time we reach here requires_action/requires_payment_method
+        // have already been filtered out of methodsToTry above.
+        const dbPaymentStatus =
+          paymentIntentData.status === "succeeded"
+            ? "succeeded"
+            : paymentIntentData.status === "processing"
+            ? "pending"
+            : "failed";
         const quoteUpdate: Record<string, any> = {
           payment_method_type: usedMethod!.payment_type,
           payment_status: dbPaymentStatus,
@@ -408,12 +419,20 @@ serve(async (req) => {
       paymentIntentData = await r.json();
     }
 
-    const isSuccessful = ["succeeded", "processing"].includes(paymentIntentData.status);
+    // gh-948: 'processing' (ACH in flight) must NOT be reported as `succeeded` —
+    // callers (docusign-webhook, process-dunning) previously conflated the two and
+    // ran fulfillment logic (fee-charged flag, contractor notification) on a charge
+    // that had not actually settled. `pending` lets callers withhold fulfillment and
+    // wait for the stripe-webhook payment_intent.succeeded / payment_intent.payment_failed
+    // listeners to finalize the outcome.
+    const succeeded = paymentIntentData.status === "succeeded";
+    const pending = paymentIntentData.status === "processing";
     return new Response(JSON.stringify({
       client_secret: paymentIntentData.client_secret || null,
       payment_intent_id: paymentIntentData.id,
       status: paymentIntentData.status,
-      succeeded: isSuccessful,
+      succeeded,
+      pending,
       amount: paymentIntentData.amount,
       currency: paymentIntentData.currency,
       rate_limit_counts: rateLimitResult?.counts,
