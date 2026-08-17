@@ -292,6 +292,37 @@ serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // ── gh-945: rate limit via the platform-standard check_rate_limit() RPC ──
+    // Buckets per contractor_id (not per authed user) so a single contractor
+    // account — including a compromised or runaway-scripted one — can't drive
+    // unlimited Mailgun sends/activity_log writes through this endpoint.
+    // NOTE: check_rate_limit() denies-by-default when no rate_limit_config row
+    // exists for 'send-bid-confirmation' — the paired config INSERT migration
+    // (see PR body) must land before this code is deployed, or every bid
+    // confirmation call will 429.
+    const { data: rateLimitResult, error: rlError } = await supabase.rpc(
+      "check_rate_limit",
+      { p_function_name: "send-bid-confirmation", p_user_id: contractor_id }
+    );
+    if (rlError) {
+      console.error("[send-bid-confirmation] Rate limit RPC error:", rlError.message);
+      return new Response(
+        JSON.stringify({ error: "Rate limit check failed. Refusing to send for safety." }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!rateLimitResult?.allowed) {
+      console.warn(`[send-bid-confirmation] RATE LIMITED: ${rateLimitResult?.reason}`);
+      return new Response(
+        JSON.stringify({
+          error: "Rate limit exceeded",
+          reason: rateLimitResult?.reason,
+          counts: rateLimitResult?.counts,
+        }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Verify quote exists, belongs to contractor, and fetch claim_id for Job # (D-216)
     const { data: quoteData, error: quoteError } = await supabase
       .from("quotes")
@@ -348,7 +379,7 @@ serve(async (req: Request) => {
     // Look up contractor email and name
     const { data: contractorData, error: contractorError } = await supabase
       .from("contractors")
-      .select("email, contact_name, user_id")
+      .select("email, contact_name, user_id, is_test")
       .eq("id", contractor_id)
       .single();
 
@@ -403,42 +434,64 @@ serve(async (req: Request) => {
       platform_fee_amount
     );
 
-    // Send via Mailgun
-    const mailgunFormData = new FormData();
-    mailgunFormData.append("from", "Otter Quotes <noreply@mail.otterquote.com>");
-    mailgunFormData.append("to", contractorEmail);
-    mailgunFormData.append("subject", subject);
-    mailgunFormData.append("text", textBody);
-    mailgunFormData.append("html", htmlBody);
+    // ── gh-945: is_test contractors never get a real Mailgun send ──────────
+    // The E2E seed fixture (tests/e2e/seed/seed.mjs) provisions a persistent
+    // is_test=true contractor at test-contractor@otterquote-internal.test —
+    // a non-routable .test TLD. Every CI run was sending a REAL Mailgun
+    // message to that address (351 accepted-for-delivery sends observed,
+    // 2026-07-13 through 2026-08-17), which can only hard-bounce and is the
+    // Mailgun-spend + sender-reputation risk gh-945 flagged. Skip the send
+    // for is_test contractors; still record the activity_log row (flagged)
+    // so downstream logic/tests that expect the row keep working.
+    const isTestContractor = contractorData.is_test === true;
+    let messageId: string | undefined;
+    let mailgunStatus: number;
 
-    const mailgunResponse = await fetch(
-      "https://api.mailgun.net/v3/mail.otterquote.com/messages",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${btoa(`api:${mailgunApiKey}`)}`,
-        },
-        body: mailgunFormData,
-      }
-    );
+    if (isTestContractor) {
+      console.log(
+        `[send-bid-confirmation] is_test contractor (${contractor_id}) — skipping real Mailgun send.`
+      );
+      messageId = undefined;
+      mailgunStatus = 0; // sentinel: no real send attempted
+    } else {
+      // Send via Mailgun
+      const mailgunFormData = new FormData();
+      mailgunFormData.append("from", "Otter Quotes <noreply@mail.otterquote.com>");
+      mailgunFormData.append("to", contractorEmail);
+      mailgunFormData.append("subject", subject);
+      mailgunFormData.append("text", textBody);
+      mailgunFormData.append("html", htmlBody);
 
-    if (!mailgunResponse.ok) {
-      const mailgunError = await mailgunResponse.text();
-      console.error("Mailgun error:", mailgunError);
-      return new Response(
-        JSON.stringify({
-          error: "Failed to send email",
-          details: mailgunError,
-        }),
+      const mailgunResponse = await fetch(
+        "https://api.mailgun.net/v3/mail.otterquote.com/messages",
         {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${btoa(`api:${mailgunApiKey}`)}`,
+          },
+          body: mailgunFormData,
         }
       );
-    }
 
-    const mailgunData = await mailgunResponse.json();
-    const messageId = mailgunData.id || mailgunData.message;
+      if (!mailgunResponse.ok) {
+        const mailgunError = await mailgunResponse.text();
+        console.error("Mailgun error:", mailgunError);
+        return new Response(
+          JSON.stringify({
+            error: "Failed to send email",
+            details: mailgunError,
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const mailgunData = await mailgunResponse.json();
+      messageId = mailgunData.id || mailgunData.message;
+      mailgunStatus = mailgunResponse.status;
+    }
 
     // Log activity
     // Fix 2026-07-08 (PFW run pfw-1783551078): user_id must be the contractor's
@@ -455,8 +508,11 @@ serve(async (req: Request) => {
         job_number: jobNumber,
         fee_amount: platform_fee_amount,
         fee_percentage: platform_fee_pct,
-        message_id: messageId,
-        mailgun_status: mailgunResponse.status,
+        message_id: messageId ?? null,
+        mailgun_status: mailgunStatus,
+        // gh-945: lets analytics/traffic-doctor filter this synthetic-funnel
+        // noise out without needing to re-join a since-deleted claim/quote.
+        is_test: isTestContractor,
       },
     });
 
