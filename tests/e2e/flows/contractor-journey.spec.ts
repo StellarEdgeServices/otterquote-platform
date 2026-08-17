@@ -135,6 +135,75 @@ test.describe('Flow A — Contractor Journey', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // A1b: D-242 cross-role link + D-243 email-exists gate (contractor-join.html)
+  // ──────────────────────────────────────────────────────────────────────────
+  test('A1b: contractor-join.html — D-242 cross-role link + D-243 email-exists banner (stub, does not block)', async ({ page }) => {
+    await page.goto('/contractor-join.html');
+    await page.waitForLoadState('load');
+    await page.locator('#contractorForm').waitFor({ state: 'visible', timeout: 15_000 });
+
+    // D-242: cross-role sibling link — contractor signup → homeowner signup.
+    const homeownerLink = page.getByRole('link', { name: /get free quotes as a homeowner/i });
+    await expect(homeownerLink).toBeVisible();
+    await expect(homeownerLink).toHaveAttribute('href', 'https://app.otterquote.com/get-started');
+
+    // D-243: the "account already exists" banner is wired into the DOM (hidden by
+    // default), with the correct copy and a link back to contractor-login.html.
+    const existsMsg = page.locator('#email-exists-msg');
+    await expect(existsMsg).toBeAttached();
+    await expect(existsMsg).toBeHidden();
+    await expect(existsMsg).toContainText('An account already exists for this email.');
+    await expect(existsMsg.locator('a')).toHaveAttribute('href', 'contractor-login.html');
+
+    // checkEmailExists() is a documented STUB (contractor-join.html) that always
+    // resolves false until the check-email-exists Edge Function is approved and
+    // deployed (Tier 3, D-220). Submitting with the SEEDED, already-registered test
+    // contractor's email proves today's actual behavior: the gate never blocks, even
+    // for a known-existing account.
+    // TRIP-WIRE: once the real EF ships, this test must be updated to expect the
+    // banner to become visible and the magic link to NOT be sent for this email —
+    // update it alongside that change rather than deleting it.
+    await page.fill('#businessEmail', state.contractorEmail);
+    await page.fill('#businessName', 'D-243 Spec Co');
+    await page.fill('#ownerFirstName', 'Spec');
+    await page.fill('#ownerLastName', 'Tester');
+    await page.fill('#phone', '5555550123');
+
+    await page.locator('#submitBtn').click();
+
+    // Stub never blocks: the banner stays hidden and the form proceeds past the
+    // D-243 gate to the normal send-magic-link success state.
+    await expect(existsMsg).toBeHidden();
+    await expect(page.locator('#successMessage')).toHaveClass(/show/, { timeout: 15_000 });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // A1c: D-242 cross-role link + D-244 verbatim sent-copy (contractor-login.html)
+  // ──────────────────────────────────────────────────────────────────────────
+  test('A1c: contractor-login.html — D-242 cross-role link + D-244 verbatim-locked sent-copy', async ({ page }) => {
+    await page.goto('/contractor-login.html');
+    await page.waitForLoadState('load');
+    await page.locator('#cl-form').waitFor({ state: 'visible', timeout: 15_000 });
+
+    // D-242: cross-role sibling link — contractor login → homeowner login.
+    const homeownerLink = page.getByRole('link', { name: /sign in to your account/i });
+    await expect(homeownerLink).toBeVisible();
+    await expect(homeownerLink).toHaveAttribute('href', 'login.html');
+
+    // D-244: verbatim-locked, privacy-preserving login-path copy. Submitting the
+    // magic-link form (any email — the copy is identical whether or not the account
+    // exists, by design) must render this exact wording.
+    const testEmail = `dustin+e2e-contractor-login-${state.runId}@stellaredgeservices.com`;
+    await page.fill('#email', testEmail);
+    await page.locator('#submit-btn').click();
+
+    const sentSection = page.locator('#magic-link-sent');
+    await expect(sentSection).toHaveClass(/active/, { timeout: 15_000 });
+    await expect(sentSection.locator('h2')).toHaveText('Check Your Email');
+    await expect(sentSection).toContainText('If an account exists, we sent a link.');
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // A2: Magic link authentication
   // ──────────────────────────────────────────────────────────────────────────
   test('A2: test contractor authenticates via magic link and lands on dashboard', async ({ page }) => {
