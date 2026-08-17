@@ -7,6 +7,27 @@
  * whose URL contains "contractor".
  */
 
+/**
+ * NAP (Name / Address / Phone) — single source of truth.
+ * Locked values: D-237 (address, 2026-05-23), D-240 (phone, 2026-05-25).
+ * Both the footer NAP block (renderFooter, below) and the RoofingContractor
+ * JSON-LD (renderLocalBusinessSchema, below) render from this object —
+ * do not hand-type these values anywhere else. (#757)
+ */
+const NAP = Object.freeze({
+  name: CONFIG.SITE_NAME,                 // 'Otter Quotes' — canonical form used sitewide (footer, JSON-LD, legal copy)
+  streetAddress: '3410 N High School Rd Ste G #102',
+  addressLocality: 'Indianapolis',
+  addressRegion: 'IN',
+  postalCode: '46224',
+  addressCountry: 'US',
+  phoneDisplay: '844-875-3412',           // D-240 byte-exact visible form
+  phoneTelHref: 'tel:+18448753412',
+  phoneE164: '+1-844-875-3412',           // machine-readable schema.org telephone field (E.164-normalized)
+  email: 'info@otterquote.com',
+  url: 'https://otterquote.com'
+});
+
 const Nav = {
   /** Detect if current page is a contractor page */
   _isContractorPage() {
@@ -520,9 +541,9 @@ const Nav = {
               : 'Helping homeowners get the best deal on roofing and exterior projects.'
             }</p>
             <address class="footer-nap" style="font-style:normal;margin-top:0.75rem;font-size:0.8rem;color:#94a3b8;line-height:1.6;">
-              3410 N High School Rd, Ste G #102<br>Indianapolis, IN 46224<br>
-              <a href="tel:+18448753412" style="color:#E07B00;">(844) 875-3412</a><br>
-              <a href="mailto:info@otterquote.com" style="color:#E07B00;">info@otterquote.com</a>
+              ${NAP.streetAddress},<br>${NAP.addressLocality} ${NAP.addressRegion} ${NAP.postalCode}<br>
+              <a href="${NAP.phoneTelHref}" style="color:#E07B00;">${NAP.phoneDisplay}</a><br>
+              <a href="mailto:${NAP.email}" style="color:#E07B00;">${NAP.email}</a>
             </address>
           </div>
           <div class="footer-col">
@@ -595,6 +616,35 @@ const Nav = {
         }
       });
     }
+  },
+
+  /**
+   * Inject RoofingContractor JSON-LD (D-237/D-240 NAP) into an opt-in mount
+   * point. Pages opt in with <script type="application/ld+json"
+   * id="nap-schema-mount"></script> — absent on most pages by design, so this
+   * only renders on pages that deliberately host the business entity schema
+   * (index.html for now). Rendered from the single NAP source above, so the
+   * machine copy can never drift from the visible footer NAP. (#757)
+   */
+  renderLocalBusinessSchema() {
+    const mount = document.getElementById('nap-schema-mount');
+    if (!mount) return;
+    const schema = {
+      '@context': 'https://schema.org',
+      '@type': 'RoofingContractor',
+      name: NAP.name,
+      url: NAP.url,
+      telephone: NAP.phoneE164,
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: NAP.streetAddress,
+        addressLocality: NAP.addressLocality,
+        addressRegion: NAP.addressRegion,
+        postalCode: NAP.postalCode,
+        addressCountry: NAP.addressCountry
+      }
+    };
+    mount.textContent = JSON.stringify(schema, null, 2);
   }
 };
 
@@ -629,4 +679,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (footer) {
     Nav.renderFooter();
   }
+
+  Nav.renderLocalBusinessSchema();
 });
