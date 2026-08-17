@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { isTestEmail } from '@/lib/test-signal';
 import {
   buildClaimInsert,
   buildClaimUpdate,
@@ -119,9 +120,13 @@ export async function submitRepairIntake(
   let claimId = sub.claimId;
   const submission: RepairSubmission = { ...sub, userId: user.id };
   if (!claimId) {
+    // gh-397/#689: stamp is_test on this insert path — PR #714 only fixed
+    // the COI-identity contractor insert, never any claims insert.
+    // Predicate mirrors the CEO-approved contractor check (#543 /
+    // test-exclusion.ts) and the static repair-intake.html parity fix.
     const { data, error } = await supabase
       .from('claims')
-      .insert(buildClaimInsert(submission))
+      .insert({ ...buildClaimInsert(submission), is_test: isTestEmail(user.email) })
       .select('id')
       .single();
     if (error || !data) throw new Error(error?.message || 'Failed to create claim');
