@@ -735,7 +735,7 @@ const WIZARD_CONFIG = {
       shortName: "Google",
       color: "#1a73e8",
       badgeIcon: "G",
-      why: "Google Business Profile is what makes your business show up on Google Search and Maps — it's usually the single biggest driver of new calls. We use it to keep your hours, photos, and review replies up to date.",
+      why: "Google Business Profile is what makes your business show up on Google Search and Maps — it's usually the single biggest driver of new calls. We use it to keep your hours and photos up to date, and to notify you the moment a new review comes in so you can respond yourself.",
       steps: [
         {
           text: "Open your Google Business Profile manager.",
@@ -783,7 +783,7 @@ const WIZARD_CONFIG = {
       shortName: "Yelp",
       color: "#D32323",
       badgeIcon: "Y",
-      why: "Yelp reviews carry a lot of weight for roofing and trade companies. We use access to respond to reviews on your behalf and keep your listing accurate.",
+      why: "Yelp reviews carry a lot of weight for roofing and trade companies. We use access to monitor your reviews and keep your listing accurate — you respond to reviews yourself.",
       steps: [
         {
           text: "Open your Yelp for Business account.",
@@ -1259,9 +1259,8 @@ function renderSummary(){
       </table>
 
       <div class="next-note">
-        <strong>What happens next:</strong> our team verifies each connection, usually within
-        <strong>1 business day</strong>. We'll confirm by email and text once everything is live —
-        no action needed from you in the meantime.
+        <strong>What happens next:</strong> our team verifies each connection you've shared access for.
+        We'll confirm by email and text once everything is live — no action needed from you in the meantime.
       </div>
 
       <details class="payload">
@@ -1282,7 +1281,7 @@ function renderSummary(){
       <div class="submit-confirm" id="submitConfirm">
         <div class="big-tick">✓</div>
         <h2>You're all set, ${escapeHtml(state.business.ownerName || "there")}!</h2>
-        <p class="lead">We received your info. Our team will verify access and follow up within 1 business day.</p>
+        <p class="lead">We received your info. Our team will verify access and follow up to get you set up.</p>
       </div>
     </div>
   `;
