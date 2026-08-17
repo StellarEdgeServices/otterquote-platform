@@ -174,6 +174,7 @@ function OpportunityCard({ opp, onDetails }: { opp: Opportunity; onDetails: () =
   const [scopeOpen, setScopeOpen] = useState(false);
   const [lossBusy, setLossBusy] = useState(false);
   const [hoverBusy, setHoverBusy] = useState(false);
+  const [measurementsBusy, setMeasurementsBusy] = useState(false);
 
   const fees = calcFees(opp);
   const vd = valueDisplay(opp);
@@ -198,6 +199,26 @@ function OpportunityCard({ opp, onDetails }: { opp: Opportunity; onDetails: () =
       alert(T.lossSheetError);
     } finally {
       setLossBusy(false);
+    }
+  };
+
+  // gh-484: signed-URL viewer for homeowner-uploaded measurement files — independent
+  // of the Hover PDF button / hover_orders row state (parity with the loss-sheet
+  // viewer above). opp.measurementsFilename is already sentinel-guarded in utils.ts.
+  const openMeasurements = async () => {
+    if (!opp.measurementsFilename) return;
+    setMeasurementsBusy(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from('claim-documents')
+        .createSignedUrl(opp.measurementsFilename, 3600);
+      if (error || !data?.signedUrl) throw error || new Error('No URL returned');
+      window.open(data.signedUrl, '_blank');
+    } catch (err) {
+      console.error('Failed to open measurements file:', err);
+      alert(T.measurementsError);
+    } finally {
+      setMeasurementsBusy(false);
     }
   };
 
@@ -293,6 +314,12 @@ function OpportunityCard({ opp, onDetails }: { opp: Opportunity; onDetails: () =
           {opp.estimateFilename && (
             <button type="button" className="oqo-doc-btn" disabled={lossBusy} onClick={openLossSheet}>
               {lossBusy ? T.loadingLabel : T.lossSheetBtn}
+            </button>
+          )}
+          {/* gh-484: homeowner-uploaded measurement file, independent of Hover state */}
+          {opp.measurementsFilename && (
+            <button type="button" className="oqo-doc-btn" disabled={measurementsBusy} onClick={openMeasurements}>
+              {measurementsBusy ? T.loadingLabel : T.measurementsBtn}
             </button>
           )}
           {opp.measurementsAvailable && (

@@ -103,7 +103,7 @@ describe('identity + links', () => {
   });
 
   it('partnerBadgeLabel maps agent_type; customer→Partner; unknown→Partner', () => {
-    expect(partnerBadgeLabel('re_agent')).toBe('RE Agent');
+    expect(partnerBadgeLabel('re_agent')).toBe('Real Estate Agent');
     expect(partnerBadgeLabel('insurance_agent')).toBe('Insurance Agent');
     expect(partnerBadgeLabel('home_inspector')).toBe('Home Inspector');
     expect(partnerBadgeLabel('customer')).toBe('Partner');
@@ -273,7 +273,7 @@ describe('recruit aggregation', () => {
     expect(recruitName({ first_name: null, last_name: null, email: 'a@x.com' })).toBe('a@x.com');
     expect(recruitName({ first_name: null, last_name: null, email: null })).toBe('Partner');
     expect(recruitTypeLabel('customer')).toBe('Customer');
-    expect(recruitTypeLabel('re_agent')).toBe('RE Agent');
+    expect(recruitTypeLabel('re_agent')).toBe('Real Estate Agent');
     expect(recruitTypeLabel('unknown')).toBe('Partner');
   });
 

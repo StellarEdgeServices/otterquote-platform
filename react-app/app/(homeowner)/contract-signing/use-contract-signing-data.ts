@@ -286,8 +286,8 @@ export async function createHomeownerEnvelope(args: {
     'create-docusign-envelope',
     { body },
   );
-  if (error) throw new Error(error.message || 'Failed to create DocuSign envelope');
-  if (!result?.signing_url) throw new Error('No signing URL returned from DocuSign');
+  if (error) throw new Error(error.message || 'Failed to create signing envelope');
+  if (!result?.signing_url) throw new Error('No signing URL returned');
   return { signingUrl: result.signing_url as string };
 }
 

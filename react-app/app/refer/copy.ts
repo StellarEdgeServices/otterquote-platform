@@ -5,7 +5,7 @@
  * This is the HOMEOWNER / CUSTOMER referral page (referral_agents.agent_type =
  * 'customer'), gated behind the homeowner coming-soon launch flag — distinct
  * from the partner program (Phase 12 /partner/dashboard). A customer refers
- * friends and earns a $200 bonus per completed (>$10K) job.
+ * friends and earns a $200 bonus per completed ($10K+) job.
  *
  * ⚠️ Tier-3 VERBATIM copy lives here and is ported BYTE-FOR-BYTE from the static
  * page (refer-a-friend.html @ main). It is pinned in refer.test.ts so any
@@ -37,7 +37,7 @@ export const REFERRAL_CODE_ERROR_TEXT =
 export const HERO = {
   heading: 'Love Your Project Results? Share the Love — and Earn $200',
   subtitle:
-    "For every friend you refer who completes a project over $10,000 through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.",
+    "For every friend you refer who completes a project of $10,000 or more through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.",
 } as const;
 
 export const REFERRAL_LINK_LABEL = 'Your Unique Referral Link';
@@ -96,7 +96,7 @@ export const HOW_IT_WORKS_HEADING = 'How It Works';
 export const HOW_IT_WORKS = [
   { number: '1', title: 'Share Your Link', text: 'Share your unique referral link with friends, family, or neighbors.' },
   { number: '2', title: 'They Get Competing Bids', text: 'They receive competing bids from licensed, insured contractors for their project.' },
-  { number: '3', title: 'You Earn $200', text: 'When their job completes (over $10K), you earn $200 in commission.' },
+  { number: '3', title: 'You Earn $200', text: 'When their job completes ($10K or more), you earn $200 in commission.' },
 ] as const;
 
 // ── FAQ ───────────────────────────────────────────────────────────────────────

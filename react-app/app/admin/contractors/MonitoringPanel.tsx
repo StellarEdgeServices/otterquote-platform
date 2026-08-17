@@ -314,7 +314,7 @@ function DocusignCard({ row }: { row: CronRow }) {
   return (
     <div style={{ background: '#1e293b', borderRadius: 6, padding: '0.75rem 1rem', marginBottom: '1rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#e2e8f0' }}>📧 DocuSign Envelopes</span>
+        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#e2e8f0' }}>📧 Signing Envelopes</span>
         <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
           Last checked: {lastRun} <StatusPill badge={cronStatusBadge(row.last_run_status, row.last_error)} />
         </span>

@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -89,6 +100,13 @@
 
         .partner-badge {
             display: inline-block;
+            /* gh-863: fixed min-width/height so the loading placeholder and the
+               resolved label (up to "Real Estate Agent") occupy the same box —
+               no layout shift when the real agent_type arrives. */
+            min-width: 150px;
+            min-height: 1em;
+            box-sizing: content-box;
+            text-align: center;
             background: var(--amber);
             color: var(--navy);
             padding: var(--sp-2) var(--sp-4);
@@ -98,6 +116,30 @@
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+        }
+
+        /* gh-863: neutral placeholder shown until agent_type resolves — replaces
+           the old hardcoded "RE Agent" markup that flashed for every partner type. */
+        .partner-badge.partner-badge-loading {
+            background: rgba(224, 123, 0, 0.35);
+            color: transparent;
+            animation: partnerBadgePulse 1.4s ease-in-out infinite;
+        }
+
+        /* gh-863: explicit failure state when the partner fetch fails outright
+           (instead of silently showing a wrong/stale badge). Clickable to retry. */
+        .partner-badge.partner-badge-error {
+            background: #fee2e2;
+            color: #991b1b;
+            text-transform: none;
+            letter-spacing: normal;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        @keyframes partnerBadgePulse {
+            0%, 100% { opacity: 0.55; }
+            50% { opacity: 1; }
         }
 
         .referral-link-section {
@@ -745,6 +787,97 @@
                 padding: var(--sp-3);
             }
         }
+
+        /* gh-881: first-screen task tiles ("a few buttons that fit without
+           scrolling") — the long-scroll content below becomes what each
+           tile opens into, via the [data-section] show/hide rule beneath. */
+        .tile-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: var(--sp-4);
+            margin-bottom: var(--sp-4);
+        }
+
+        .task-tile {
+            background: #FFFFFF;
+            border: 1px solid rgba(224, 123, 0, 0.2);
+            border-radius: var(--radius-lg);
+            padding: var(--sp-5) var(--sp-4);
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: var(--sp-2);
+            font-family: var(--font-body);
+        }
+
+        .task-tile:hover,
+        .task-tile.active {
+            border-color: var(--amber);
+            background: rgba(224, 123, 0, 0.08);
+            box-shadow: 0 4px 12px rgba(224, 123, 0, 0.1);
+        }
+
+        .task-tile-icon {
+            font-size: 1.6rem;
+        }
+
+        .task-tile-title {
+            font-family: var(--font-heading);
+            font-weight: 700;
+            color: var(--navy);
+            font-size: 1rem;
+        }
+
+        .task-tile-subtitle {
+            font-size: 0.82rem;
+            color: #5A6B7B;
+            line-height: 1.4;
+        }
+
+        .tile-grid-hint {
+            font-family: var(--font-body);
+            font-size: 0.8rem;
+            color: #5A6B7B;
+            margin-bottom: var(--sp-8);
+        }
+
+        /* Any existing section tagged data-section is hidden until its tile
+           is clicked (section-visible added by JS). This does not affect
+           elements that manage their own inline `style.display` (emptyState,
+           appInstallBanner, etc.) — those remain untagged children. */
+        [data-section] {
+            display: none;
+        }
+
+        [data-section].section-visible {
+            display: block;
+        }
+
+        .share-canvas-wrap {
+            text-align: center;
+            margin-bottom: var(--sp-4);
+        }
+
+        #partnerShareCanvas {
+            max-width: 100%;
+            height: auto;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(224, 123, 0, 0.15);
+        }
+
+        .copy-box {
+            background: var(--navy-2);
+            color: var(--white);
+            padding: var(--sp-3) var(--sp-4);
+            border-radius: var(--radius-md);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin-bottom: var(--sp-3);
+        }
     </style>
 </head>
 <body>
@@ -756,11 +889,49 @@
             <div class="hero-top">
                 <div class="hero-left">
                     <h1 id="welcomeText">Welcome back, Agent Name</h1>
-                    <span class="partner-badge" id="partnerBadge">RE Agent</span>
+                    <span class="partner-badge partner-badge-loading" id="partnerBadge" aria-live="polite">&nbsp;</span>
                 </div>
             </div>
 
-            <div class="referral-link-section">
+            <!-- gh-881: 6-tile first screen. Each tile shows/hides the
+                 matching [data-section="..."] content below via initTaskTiles()
+                 (bottom script) — the sections still contain everything the
+                 old long-scroll page had, they're just not all open at once. -->
+            <div class="tile-grid" id="taskTileGrid">
+                <button type="button" class="task-tile" data-target="refer-client">
+                    <span class="task-tile-icon" aria-hidden="true">🔗</span>
+                    <span class="task-tile-title">Refer a client</span>
+                    <span class="task-tile-subtitle">Get $200 for every job of $10,000 or more.</span>
+                </button>
+                <button type="button" class="task-tile" data-target="refer-partner">
+                    <span class="task-tile-icon" aria-hidden="true">🤝</span>
+                    <span class="task-tile-title">Refer a partner</span>
+                    <span class="task-tile-subtitle">Get $50 when they refer a qualifying job.</span>
+                </button>
+                <button type="button" class="task-tile" data-target="pipeline">
+                    <span class="task-tile-icon" aria-hidden="true">📊</span>
+                    <span class="task-tile-title">See my pipeline</span>
+                    <span class="task-tile-subtitle">Find out where your clients are in the process.</span>
+                </button>
+                <button type="button" class="task-tile" data-target="get-paid">
+                    <span class="task-tile-icon" aria-hidden="true">💰</span>
+                    <span class="task-tile-title">Get paid</span>
+                    <span class="task-tile-subtitle">W-9 status, payout approvals, and earnings.</span>
+                </button>
+                <button type="button" class="task-tile" data-target="add-to-website">
+                    <span class="task-tile-icon" aria-hidden="true">🌐</span>
+                    <span class="task-tile-title">Add OQ to my website</span>
+                    <span class="task-tile-subtitle">Embed a widget or link to your partner profile page.</span>
+                </button>
+                <button type="button" class="task-tile" data-target="promote-social">
+                    <span class="task-tile-icon" aria-hidden="true">📣</span>
+                    <span class="task-tile-title">Promote on Social Media</span>
+                    <span class="task-tile-subtitle">Share on Facebook, Nextdoor, email, and text.</span>
+                </button>
+            </div>
+            <p class="tile-grid-hint">Tap a task to see the details below. Tap it again to close.</p>
+
+            <div class="referral-link-section" data-section="refer-client">
                 <div class="referral-link-label">Your Referral Link</div>
                 <div class="referral-link-display">
                     <div class="referral-link-url" id="referralLink">https://otterquote.com/r/agent123</div>
@@ -772,7 +943,7 @@
                 <p class="link-hint referral-fee-disclaimer">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
             </div>
 
-            <div class="referral-link-section recruit-link-section">
+            <div class="referral-link-section recruit-link-section" data-section="refer-partner">
                 <div class="referral-link-label">Your Recruit Link</div>
                 <div class="referral-link-display">
                     <div class="referral-link-url" id="recruitLink">otterquote.com/recruit.html?code=&mdash;</div>
@@ -794,7 +965,9 @@
             </div>
         </div>
 
-        <!-- Stats Grid -->
+        <!-- Stats Grid + W-9 (gh-881: "Get paid" tile — matches the issue's
+             own mapping table: W-9 card + payout badges + earnings stats) -->
+        <div data-section="get-paid">
         <div class="stats-grid">
             <div class="stat-card">
                 <span class="stat-card-label">Total Referrals</span>
@@ -830,12 +1003,15 @@
 
         <!-- W-9 Status Card &mdash; D-172 (rendered by renderW9Card()) -->
         <div id="w9Upload"></div>
+        </div>
 
-        <!-- Quick Actions -->
-        <h2 class="section-header">Quick Actions</h2>
+        <!-- gh-881: no standalone heading here — these 5 cards belong to two
+             different tiles (refer-client, add-to-website), tagged
+             individually below, so there's no single [data-section] wrapper
+             to hang one heading on. Each card carries its own title. -->
         <div class="quick-actions-grid">
             <!-- Send to Client -->
-            <div class="action-card">
+            <div class="action-card" data-section="refer-client">
                 <h3 class="action-card-title">📬 Send to Client</h3>
                 <div class="form-group">
                     <label class="form-label">Client Name</label>
@@ -872,7 +1048,7 @@ Let me know if you have any questions!
             </div>
 
             <!-- Get Your Widget -->
-            <div class="action-card">
+            <div class="action-card" data-section="add-to-website">
                 <h3 class="action-card-title">🔧 Get Your Widget</h3>
                 <div class="form-group">
                     <label class="form-label">Widget Style</label>
@@ -892,7 +1068,7 @@ Let me know if you have any questions!
             </div>
 
             <!-- One-Pager (gh-847: no PDF exists — these are print-ready HTML pages) -->
-            <div class="action-card">
+            <div class="action-card" data-section="add-to-website">
                 <h3 class="action-card-title">📄 One-Pager</h3>
                 <div class="onepager-preview">
                     <div class="onepager-icon">📋</div>
@@ -903,9 +1079,42 @@ Let me know if you have any questions!
                     <a href="#" class="btn" id="downloadPdfBtn" target="_blank" rel="noopener">View / Print One-Pager</a>
                 </div>
             </div>
+
+            <!-- gh-881/gh-862: instructions for pasting the widget/link into a
+                 partner's own website — the "instructions" half of Dustin's
+                 "Add OQ to my website" ask (the widget/one-pager above already
+                 covered the content half). -->
+            <div class="action-card" data-section="add-to-website">
+                <h3 class="action-card-title">📝 Add These to Your Website</h3>
+                <p class="onepager-text" style="margin-bottom: var(--sp-3); text-align: left;">No developer needed &mdash; both of these are copy-and-paste.</p>
+                <ol style="font-family: var(--font-body); font-size: 0.9rem; color: #5A6B7B; line-height: 1.7; padding-left: 1.2em; margin: 0;">
+                    <li>Copy the widget code from the <strong>Get Your Widget</strong> card above.</li>
+                    <li>In Squarespace, Wix, WordPress, or any site builder, add an <strong>"Embed" / "Code" / "HTML"</strong> block to the page you want it on (usually under "Add Block" or "Add Element").</li>
+                    <li>Paste the copied code into that block and save/publish the page.</li>
+                    <li>To link to your <strong>Partner Profile Page</strong> instead (e.g., in a "Trusted Partners" or "Resources" section), copy its link from the card below and paste it as a normal hyperlink.</li>
+                </ol>
+            </div>
+
+            <!-- gh-862, rebuilt: this used to be a duplicate of the Referral
+                 Link box above (landingPageUrl === referralLink) with a dead
+                 "Preview" anchor and a fake /partner/agent123 placeholder that
+                 doesn't exist in _redirects. It is now a REAL, distinct,
+                 partner-branded page (partner-profile.html) meant for a
+                 partner's own "Trusted Partners" section — not a second copy
+                 of the customer referral funnel link. -->
+            <div class="action-card" data-section="add-to-website">
+                <h3 class="action-card-title">🌐 Your Partner Profile Page</h3>
+                <p class="onepager-text" style="margin-bottom: var(--sp-3); text-align: left;">A page you can link to from your own website's "Trusted Partners" section &mdash; not the same link as "Refer a client" above.</p>
+                <div class="profile-link" style="margin-top: 0;">
+                    <div class="profile-link-label">Your Partner Profile Page</div>
+                    <div class="profile-link-url" id="landingPageUrl">Your profile page link is loading&hellip;</div>
+                    <a href="#" class="btn secondary" id="landingPagePreviewBtn" style="width: 100%; text-align: center; display: block; margin-top: var(--sp-2); opacity: 0.5; pointer-events: none;" aria-disabled="true" target="_blank" rel="noopener">Preview</a>
+                </div>
+            </div>
         </div>
 
-        <!-- Portfolio Report -->
+        <!-- Portfolio Report (gh-881: "See my pipeline" tile) -->
+        <div data-section="pipeline">
         <h2 class="section-header">Portfolio Report</h2>
 
         <div class="table-filters">
@@ -940,8 +1149,11 @@ Let me know if you have any questions!
             <h3 class="empty-state-title">No Referrals Yet</h3>
             <p class="empty-state-text">You haven't made any referrals yet. Share your link or send it directly to a client above!</p>
         </div>
+        </div>
 
-        <!-- Your Recruit Network -->
+        <!-- Your Recruit Network (gh-881: "Refer a partner" tile, paired with
+             the Recruit Link box in the hero above via the same data-section) -->
+        <div data-section="refer-partner">
         <h2 class="section-header">Your Recruit Network</h2>
         <table class="referrals-table" id="recruitsTable">
             <thead>
@@ -950,7 +1162,7 @@ Let me know if you have any questions!
                     <th>Type</th>
                     <th>Signed Up</th>
                     <th>Their Referrals</th>
-                    <th title="Paid on completed jobs over $10,000. Smaller jobs earn no recruit bonus.">Your Earnings <span class="th-info" aria-hidden="true">ⓘ</span></th>
+                    <th title="Paid on completed jobs of $10,000 or more. Smaller jobs earn no recruit bonus.">Your Earnings <span class="th-info" aria-hidden="true">ⓘ</span></th>
                 </tr>
             </thead>
             <tbody id="recruitsTableBody">
@@ -963,6 +1175,61 @@ Let me know if you have any questions!
             <h3 class="empty-state-title">No Recruits Yet</h3>
             <p class="empty-state-text">You haven't recruited any partners yet. Share your recruit link with other professionals to start earning recruit bonuses.</p>
         </div>
+        </div>
+
+        <!-- Promote on Social Media (gh-881: genuine gap — nothing existed
+             here before. Adapted from refer-a-friend.html's share pattern:
+             canvas Facebook share card, copyable Nextdoor post, email
+             signature badge, and sms:/mailto: deep links — swapped to
+             partner/referral-income framing instead of customer framing. -->
+        <div data-section="promote-social">
+        <h2 class="section-header">Promote on Social Media</h2>
+        <div class="quick-actions-grid">
+            <div class="action-card">
+                <h3 class="action-card-title">👍 Share on Facebook</h3>
+                <div class="share-canvas-wrap">
+                    <canvas id="partnerShareCanvas" width="800" height="420"></canvas>
+                </div>
+                <div class="btn-group">
+                    <button class="btn" id="fbShareBtn">Share to Facebook</button>
+                    <button class="btn secondary" id="fbDownloadBtn">Download Image</button>
+                </div>
+            </div>
+
+            <div class="action-card">
+                <h3 class="action-card-title">🏘 Post on Nextdoor</h3>
+                <div class="copy-box" id="nextdoorPost">Your post is loading&hellip;</div>
+                <div class="btn-group">
+                    <button class="btn" id="copyNextdoorBtn">Copy Post</button>
+                    <a href="https://nextdoor.com/" target="_blank" rel="noopener" class="btn secondary">Open Nextdoor</a>
+                </div>
+            </div>
+
+            <div class="action-card">
+                <h3 class="action-card-title">✉️ Email Signature Badge</h3>
+                <div class="widget-preview" style="min-height: auto; padding: var(--sp-4);">
+                    <div style="display: inline-block; padding: var(--sp-3); background: var(--white); border-radius: 6px;">
+                        <strong style="color: var(--navy);">I'm an Otter Quotes Partner</strong>
+                        <p style="font-size: 0.75rem; color: #5A6B7B; margin: 4px 0 0;">Get a free contractor quote</p>
+                    </div>
+                </div>
+                <div class="copy-box" id="badgeHtmlCode"></div>
+                <div class="btn-group">
+                    <button class="btn" id="copyBadgeBtn">Copy HTML</button>
+                </div>
+                <p class="link-hint" style="margin-top: var(--sp-3);"><strong>Gmail:</strong> Settings &rarr; See all settings &rarr; Signature &rarr; Paste the HTML.<br><strong>Outlook:</strong> File &rarr; Options &rarr; Mail &rarr; Signatures &rarr; Paste the HTML.</p>
+            </div>
+
+            <div class="action-card">
+                <h3 class="action-card-title">📲 Text or Email Your Network</h3>
+                <p class="onepager-text" style="margin-bottom: var(--sp-3); text-align: left;">Send a quick message telling your contacts you're an Otter Quotes partner.</p>
+                <div class="btn-group">
+                    <button class="btn" id="socialSmsBtn">Text</button>
+                    <button class="btn secondary" id="socialEmailBtn">Email</button>
+                </div>
+            </div>
+        </div>
+        </div>
 
         <!-- Profile Settings -->
         <h2 class="section-header">Profile Settings</h2>
@@ -972,7 +1239,7 @@ Let me know if you have any questions!
                 <span class="toggle-icon">▼</span>
             </div>
 
-            <form class="profile-form" id="profileForm">
+            <form class="profile-form collapsed" id="profileForm">
                 <div class="form-group">
                     <label class="form-label">Name</label>
                     <input type="text" class="form-input" id="profileName" placeholder="Your Name">
@@ -1014,12 +1281,6 @@ Let me know if you have any questions!
                     <button type="submit" class="btn">Save Changes</button>
                 </div>
             </form>
-
-            <div class="profile-link">
-                <div class="profile-link-label">Your Personalized Landing Page</div>
-                <div class="profile-link-url" id="landingPageUrl">https://otterquote.com/partner/agent123</div>
-                <a href="#" class="btn secondary" style="width: 100%; text-align: center; display: block; margin-top: var(--sp-2);">Preview</a>
-            </div>
         </div>
     </main>
 
@@ -1118,11 +1379,31 @@ Let me know if you have any questions!
                     console.error('Error loading partner data:', err);
                     if (CONFIG.DEMO_MODE) {
                         loadDemoData();
+                    } else {
+                        // gh-863 AC4: an outright fetch failure must show an explicit
+                        // error/retry state, not a silently wrong (or blank) badge.
+                        setPartnerBadgeError();
                     }
                 }
             } else if (CONFIG.DEMO_MODE) {
                 loadDemoData();
             }
+        }
+
+        // gh-863 AC4: explicit, clickable error state for the partner badge when
+        // the partner-data fetch fails outright (distinct from the loading state).
+        function setPartnerBadgeError() {
+            const badge = document.getElementById('partnerBadge');
+            if (!badge) return;
+            badge.classList.remove('partner-badge-loading');
+            badge.classList.add('partner-badge-error');
+            badge.textContent = 'Unavailable — Retry';
+            badge.setAttribute('role', 'button');
+            badge.setAttribute('tabindex', '0');
+            badge.onclick = function () { window.location.reload(); };
+            badge.onkeydown = function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { window.location.reload(); }
+            };
         }
 
         function updateUI() {
@@ -1132,25 +1413,58 @@ Let me know if you have any questions!
             const agentName = [currentPartner.first_name, currentPartner.last_name].filter(Boolean).join(' ') || 'Agent';
             document.getElementById('welcomeText').textContent = `Welcome back, ${agentName}`;
 
-            // Update partner badge (schema column: agent_type)
-            const partnerType = currentPartner.agent_type || 're_agent';
+            // Update partner badge (schema column: agent_type).
+            // gh-863: do NOT default a missing/unknown agent_type to 're_agent' —
+            // that silently asserts a type that may be wrong. Leaving partnerType
+            // unset when agent_type is missing falls through the map below to the
+            // neutral 'Partner' label instead. (partnerType is also read further
+            // down for ONEPAGER_BY_TYPE, which already degrades gracefully on an
+            // unset/unknown key, so no fallback value is required by downstream
+            // logic.)
+            const partnerType = currentPartner.agent_type;
             const badgeText = {
-                're_agent': 'RE Agent',
+                're_agent': 'Real Estate Agent',
                 'insurance_agent': 'Insurance Agent',
                 'home_inspector': 'Home Inspector',
                 'customer': 'Partner',
                 'adjuster': 'Adjuster',
                 'other': 'Partner'
             }[partnerType] || 'Partner';
-            document.getElementById('partnerBadge').textContent = badgeText;
+            const partnerBadgeEl = document.getElementById('partnerBadge');
+            partnerBadgeEl.textContent = badgeText;
+            partnerBadgeEl.classList.remove('partner-badge-loading', 'partner-badge-error');
+            partnerBadgeEl.removeAttribute('role');
+            partnerBadgeEl.removeAttribute('tabindex');
+            partnerBadgeEl.onclick = null;
+            partnerBadgeEl.onkeydown = null;
 
             // Update referral link (schema column: unique_code)
             const uniqueCode = currentPartner.unique_code || currentPartner.id;
             const referralLink = `https://otterquote.com/ref.html?code=${uniqueCode}`;
             document.getElementById('referralLink').textContent = referralLink;
 
-            // Update landing page URL
-            document.getElementById('landingPageUrl').textContent = referralLink;
+            // gh-862, rebuilt: "Your Partner Profile Page" used to be
+            // landingPageUrl === referralLink verbatim — a literal duplicate
+            // of the Referral Link box above, with a dead href="#" Preview
+            // anchor and a fake /partner/agent123 placeholder that has no
+            // matching rule in _redirects (confirmed — grep found none).
+            // It's now a real, distinct, partner-branded page. Preview stays
+            // disabled (AC2) until this URL is computed, and is never left
+            // pointing at a 404 placeholder (AC3).
+            const profilePageUrl = `https://otterquote.com/partner-profile.html?code=${uniqueCode}`;
+            const landingUrlEl = document.getElementById('landingPageUrl');
+            const previewBtn = document.getElementById('landingPagePreviewBtn');
+            if (landingUrlEl) landingUrlEl.textContent = profilePageUrl;
+            if (previewBtn) {
+                previewBtn.href = profilePageUrl;
+                previewBtn.style.opacity = '';
+                previewBtn.style.pointerEvents = '';
+                previewBtn.removeAttribute('aria-disabled');
+            }
+
+            // gh-881: populate the Promote on Social Media tile now that the
+            // referral link + agent name are known.
+            if (typeof populateSocialPromo === 'function') populateSocialPromo(referralLink, agentName);
 
             // Update recruit link (schema column: recruit_code — added in v36)
             // If recruit_code is missing (partner record pre-dates v36 backfill),
@@ -1421,7 +1735,7 @@ Let me know if you have any questions!
                 allRecruits = recruits || [];
 
                 // For each recruit, sum their recruit_commission_amount (v36 column,
-                // populated by the DB trigger only on jobs > $10K per D-139). This
+                // populated by the DB trigger only on jobs of $10K or more per D-139). This
                 // makes per-row "Your Earnings" reconcile exactly with the
                 // authoritative "Recruit Earnings" stat card sourced from
                 // currentPartner.recruit_earnings. We intentionally do NOT compute
@@ -1483,7 +1797,7 @@ Let me know if you have any questions!
             table.style.display = '';
 
             const typeLabels = {
-                're_agent':        'RE Agent',
+                're_agent':        'Real Estate Agent',
                 'insurance_agent': 'Insurance Agent',
                 'home_inspector':  'Home Inspector',
                 'customer':        'Customer',
@@ -1539,6 +1853,135 @@ Let me know if you have any questions!
             ));
         }
 
+        // gh-861 AC1 (scoped to this file — sibling pages are outside gh-881's
+        // whitelist and keep their own existing working clipboard code):
+        // single clipboard helper, used by every copy control wired below.
+        // navigator.clipboard first, hidden-textarea execCommand fallback,
+        // and — if both fail (e.g. an iOS in-app-browser webview) — a
+        // visible failure state on the button rather than a console warning.
+        // Declared here (not inside the bottom IIFE) so both scripts share it.
+        function copyTextToClipboard(text, btnEl) {
+            function onSuccess() {
+                if (!btnEl) return;
+                const original = btnEl.textContent;
+                btnEl.textContent = 'Copied!';
+                btnEl.classList.add('copied');
+                setTimeout(() => {
+                    btnEl.textContent = original;
+                    btnEl.classList.remove('copied');
+                }, 2000);
+            }
+            function onFailure() {
+                if (!btnEl) return;
+                const original = btnEl.textContent;
+                btnEl.textContent = 'Copy failed — select and copy manually';
+                setTimeout(() => { btnEl.textContent = original; }, 3500);
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+                    fallbackCopy(text) ? onSuccess() : onFailure();
+                });
+            } else {
+                fallbackCopy(text) ? onSuccess() : onFailure();
+            }
+        }
+
+        function fallbackCopy(text) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return ok;
+            } catch (err) {
+                return false;
+            }
+        }
+
+        // gh-881: "Promote on Social Media" — the one genuine gap on this
+        // page. Adapted from refer-a-friend.html's share pattern (canvas
+        // Facebook card, copyable Nextdoor post, email-signature badge,
+        // sms:/mailto: deep links) with partner/referral-income framing
+        // swapped in for customer framing. Populated once referralLink is
+        // known (called from updateUI()); actions are bound in the bottom
+        // script via window.partnerSocialMessages.
+        function populateSocialPromo(referralLink, agentName) {
+            if (!referralLink) return;
+
+            const nextdoorEl = document.getElementById('nextdoorPost');
+            const badgeEl = document.getElementById('badgeHtmlCode');
+
+            const nextdoorMsg = `I partner with Otter Quotes, a free service that gets homeowners competing bids from licensed, insured contractors. If anyone in the neighborhood needs work done, I'd recommend checking them out: ${referralLink}`;
+            if (nextdoorEl) nextdoorEl.textContent = nextdoorMsg;
+
+            const badgeHtml = `<a href="${referralLink}" target="_blank" style="display: inline-block; padding: 8px 12px; background: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 8px; font-family: 'Rubik', sans-serif; font-size: 12px; font-weight: 600;">I'm an Otter Quotes Partner &mdash; Get a Free Quote</a>`;
+            if (badgeEl) badgeEl.textContent = badgeHtml;
+
+            window.partnerSocialMessages = {
+                referralLink,
+                nextdoorPost: nextdoorMsg,
+                badgeHtml,
+                smsText: `Hi! I'm a partner with Otter Quotes — I earn a referral fee when I connect people with them for home projects. If you know anyone who needs contractor bids, here's my link: ${referralLink}`,
+                emailSubject: 'A referral program worth a look — Otter Quotes',
+                emailBody: `Hi,\n\nI wanted to share something I've been using: Otter Quotes. It's a free service that gets homeowners competing bids from licensed, insured contractors.\n\nIf you or anyone you know needs work done, here's my personal link:\n${referralLink}\n\nHappy to answer any questions.`
+            };
+
+            drawPartnerShareCard(referralLink, agentName);
+        }
+
+        function drawPartnerShareCard(referralLink, agentName) {
+            const canvas = document.getElementById('partnerShareCanvas');
+            if (!canvas || !canvas.getContext) return;
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width, height = canvas.height;
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.fillStyle = '#0D1B2E';
+            ctx.fillRect(0, 0, width, 60);
+            ctx.fillStyle = '#E07B00';
+            ctx.font = 'bold 24px "Rubik", sans-serif';
+            ctx.fillText('Otter Quotes', 20, 40);
+
+            ctx.fillStyle = '#0D1B2E';
+            ctx.font = 'bold 30px "Rubik", sans-serif';
+            ctx.fillText(`${agentName || 'I'} partner${agentName ? 's' : ''} with Otter Quotes`, 30, 160);
+            ctx.font = '18px "Rubik", sans-serif';
+            ctx.fillStyle = '#5A6B7B';
+            wrapCanvasText(ctx, 'Free competing bids from licensed, insured contractors for your next project.', 30, 200, width - 60, 26);
+
+            ctx.fillStyle = '#0D1B2E';
+            ctx.fillRect(0, height - 50, width, 50);
+            ctx.fillStyle = '#E07B00';
+            ctx.font = '12px "Rubik", sans-serif';
+            ctx.fillText('Powered by Otter Quotes', 20, height - 15);
+            ctx.font = 'bold 12px "Rubik", sans-serif';
+            ctx.fillText(referralLink, 20, height - 30);
+        }
+
+        function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' ');
+            let line = '';
+            let curY = y;
+            for (let n = 0; n < words.length; n++) {
+                const testLine = line + words[n] + ' ';
+                if (ctx.measureText(testLine).width > maxWidth && n > 0) {
+                    ctx.fillText(line, x, curY);
+                    line = words[n] + ' ';
+                    curY += lineHeight;
+                } else {
+                    line = testLine;
+                }
+            }
+            ctx.fillText(line, x, curY);
+        }
+
         function loadDemoData() {
             currentPartner = {
                 id: 'demo-123',
@@ -1581,11 +2024,41 @@ Let me know if you have any questions!
             document.getElementById('totalEarnedSubtext').textContent = 'from completed jobs';
         }
 
+        // gh-861 control #8 (dateRangeFilter, was never bound to anything):
+        // filters the Portfolio Report table by created_at. Wired from the
+        // bottom script's 'change' listener via filterAndRenderReferrals().
+        let currentDateFilter = 'all-time';
+
+        function isWithinDateRange(dateStr, range) {
+            if (range === 'all-time' || !dateStr) return true;
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return true;
+            const now = new Date();
+            if (range === 'this-month') {
+                return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+            }
+            if (range === 'last-month') {
+                const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                return d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth();
+            }
+            if (range === 'last-3-months') {
+                const cutoff = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+                return d >= cutoff;
+            }
+            return true;
+        }
+
+        function filterAndRenderReferrals(range) {
+            currentDateFilter = range;
+            populateReferralsTable();
+        }
+
         function populateReferralsTable() {
             const tbody = document.getElementById('referralsTableBody');
             const emptyState = document.getElementById('emptyState');
+            const visibleReferrals = (allReferrals || []).filter(ref => isWithinDateRange(ref.created_at, currentDateFilter));
 
-            if (!allReferrals || allReferrals.length === 0) {
+            if (!visibleReferrals || visibleReferrals.length === 0) {
                 emptyState.style.display = 'block';
                 tbody.innerHTML = '';
                 return;
@@ -1593,7 +2066,7 @@ Let me know if you have any questions!
 
             emptyState.style.display = 'none';
 
-            tbody.innerHTML = allReferrals.map(ref => {
+            tbody.innerHTML = visibleReferrals.map(ref => {
                 // Map actual DB status values (v7 schema) to human-readable labels
                 const statusLabels = {
                     'clicked':          'Clicked',
@@ -1656,7 +2129,8 @@ Let me know if you have any questions!
 
 I wanted to refer you to Otter Quotes — a quick and easy way to get a free quote from qualified contractors.
 
-Check it out: ${referralLink}
+Check it out:
+${referralLink}
 
 Let me know if you have any questions!`;
 
@@ -1688,7 +2162,92 @@ Let me know if you have any questions!`;
             }
         }
 
+        // gh-861 AC5/AC6: #profileForm had no submit handler, no `action`, and no
+        // `name` attrs on its inputs — clicking "Save Changes" performed a default
+        // GET navigation to the current URL, silently discarding every edit while
+        // looking like a normal page refresh. This wires a real save: prevent the
+        // default navigation, read the fields, UPDATE the signed-in partner's
+        // referral_agents row, and show an explicit success/error result.
+        // Deliberately scoped to ONLY this destructive control (Bridge scoping,
+        // gh-861) — the other 9 unbound controls on this page live in sections
+        // gh-881 will replace and are left as-is.
+        function initProfileForm() {
+            const form = document.getElementById('profileForm');
+            if (!form) return;
+
+            let statusEl = document.getElementById('profileSaveStatus');
+            if (!statusEl) {
+                statusEl = document.createElement('div');
+                statusEl.id = 'profileSaveStatus';
+                statusEl.setAttribute('role', 'status');
+                statusEl.style.marginTop = 'var(--sp-2)';
+                statusEl.style.fontSize = '0.85rem';
+                statusEl.style.gridColumn = '1 / -1';
+                form.appendChild(statusEl);
+            }
+
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                const saveBtn = form.querySelector('button[type="submit"]');
+                const originalText = saveBtn ? saveBtn.textContent : '';
+                if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+                statusEl.style.color = '';
+                statusEl.textContent = '';
+
+                const fullName = document.getElementById('profileName').value.trim();
+                const nameParts = fullName.split(/\s+/).filter(Boolean);
+                const updates = {
+                    first_name: nameParts[0] || '',
+                    last_name: nameParts.slice(1).join(' '),
+                    email: document.getElementById('profileEmail').value.trim(),
+                    phone: document.getElementById('profilePhone').value.trim(),
+                    company: document.getElementById('profileCompany').value.trim(),
+                    service_area: document.getElementById('profileServiceArea').value.trim(),
+                    website: document.getElementById('profileWebsite').value.trim(),
+                    bio: document.getElementById('profileBio').value.trim()
+                };
+
+                try {
+                    if (CONFIG.DEMO_MODE) {
+                        // Demo mode has no backing row — reflect the edit locally only.
+                        currentPartner = Object.assign({}, currentPartner, updates);
+                        updateUI();
+                        statusEl.style.color = '#15803d';
+                        statusEl.textContent = 'Saved (demo mode — not persisted).';
+                        return;
+                    }
+
+                    if (!currentUser || !sb) {
+                        throw new Error('Not signed in — please refresh and try again.');
+                    }
+
+                    const { data: updated, error } = await sb
+                        .from('referral_agents')
+                        .update(updates)
+                        .eq('user_id', currentUser.id)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    currentPartner = updated;
+                    updateUI();
+                    statusEl.style.color = '#15803d';
+                    statusEl.textContent = 'Saved.';
+                } catch (err) {
+                    console.error('Profile save error:', err);
+                    statusEl.style.color = '#dc2626';
+                    statusEl.textContent = 'Could not save your changes: ' +
+                        (err && err.message ? err.message : 'unknown error') + '. Please try again.';
+                } finally {
+                    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = originalText; }
+                }
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', initProfileForm);
     </script>
 
     <!-- Partner App v1: share / QR / install / service worker -->
@@ -1782,6 +2341,174 @@ Let me know if you have any questions!`;
 
             bind('emailLinkBtn', function () { doEmail('referral', 'referralLink'); });
             bind('emailRecruitBtn', function () { doEmail('recruit', 'recruitLink'); });
+
+            // ── gh-861: the remaining 9 previously-unbound controls on this
+            // page (the 10th, #profileForm's submit handler, was fixed by
+            // #861/PR #890 and is deliberately left untouched). ──
+
+            // Control 1/9: copyLinkBtn
+            bind('copyLinkBtn', function () {
+                var link = linkFrom('referralLink');
+                if (!link) { toast('Your link is still loading — try again in a moment.'); return; }
+                gaEvent('partner_copy_click', { link_type: 'referral' });
+                copyTextToClipboard(link, document.getElementById('copyLinkBtn'));
+            });
+
+            // Control 2/9: copyRecruitLinkBtn
+            bind('copyRecruitLinkBtn', function () {
+                var btn = document.getElementById('copyRecruitLinkBtn');
+                if (btn && btn.disabled) return;
+                var link = linkFrom('recruitLink');
+                if (!link) { toast('Your link is still loading — try again in a moment.'); return; }
+                gaEvent('partner_copy_click', { link_type: 'recruit' });
+                copyTextToClipboard(link, btn);
+            });
+
+            // Control 3/9: copyMessageBtn
+            bind('copyMessageBtn', function () {
+                var el = document.getElementById('messagePreview');
+                copyTextToClipboard(el ? el.textContent.trim() : '', document.getElementById('copyMessageBtn'));
+            });
+
+            // Control 4/9: copyWidgetBtn (also revives the previously-dead
+            // getWidgetCode())
+            bind('copyWidgetBtn', function () {
+                var code = (typeof getWidgetCode === 'function') ? getWidgetCode() : '';
+                copyTextToClipboard(code, document.getElementById('copyWidgetBtn'));
+            });
+
+            // Control 5/9: sendBtn (Send to Client, sms:/mailto: deep link)
+            bind('sendBtn', function () {
+                var contactEl = document.getElementById('clientContact');
+                var contact = (contactEl && contactEl.value || '').trim();
+                if (!contact) {
+                    toast(contactMethod === 'email' ? 'Enter an email address first.' : 'Enter a phone number first.');
+                    return;
+                }
+                var msgEl = document.getElementById('messagePreview');
+                var msg = msgEl ? msgEl.textContent.trim() : '';
+                gaEvent('partner_send_to_client', { method: contactMethod });
+                if (contactMethod === 'email') {
+                    window.location.href = 'mailto:' + encodeURIComponent(contact) +
+                        '?subject=' + encodeURIComponent('A recommendation for your project') +
+                        '&body=' + encodeURIComponent(msg);
+                } else {
+                    window.location.href = 'sms:' + encodeURIComponent(contact) + '?body=' + encodeURIComponent(msg);
+                }
+            });
+
+            // Control 6/9: data-method SMS/Email toggle
+            document.querySelectorAll('.toggle-btn[data-method]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    document.querySelectorAll('.toggle-btn[data-method]').forEach(function (b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    contactMethod = btn.getAttribute('data-method');
+                    var label = document.getElementById('contactLabel');
+                    var input = document.getElementById('clientContact');
+                    if (contactMethod === 'email') {
+                        if (label) label.textContent = 'Email Address';
+                        if (input) input.placeholder = 'client@example.com';
+                    } else {
+                        if (label) label.textContent = 'Phone Number';
+                        if (input) input.placeholder = '+1 (555) 123-4567';
+                    }
+                    if (typeof updateMessagePreview === 'function') updateMessagePreview();
+                });
+            });
+
+            // Control 7/9: data-widget Button/Card toggle (also revives the
+            // previously-dead updateWidgetPreview())
+            document.querySelectorAll('.toggle-btn[data-widget]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    document.querySelectorAll('.toggle-btn[data-widget]').forEach(function (b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    widgetStyle = btn.getAttribute('data-widget');
+                    if (typeof updateWidgetPreview === 'function') updateWidgetPreview();
+                });
+            });
+
+            // Live message preview as the client-name field is edited
+            // (revives the previously-dead updateMessagePreview() further).
+            var clientNameInput = document.getElementById('clientName');
+            if (clientNameInput) {
+                clientNameInput.addEventListener('input', function () {
+                    if (typeof updateMessagePreview === 'function') updateMessagePreview();
+                });
+            }
+
+            // Control 8/9: dateRangeFilter
+            var dateRangeFilterEl = document.getElementById('dateRangeFilter');
+            if (dateRangeFilterEl) {
+                dateRangeFilterEl.addEventListener('change', function () {
+                    if (typeof filterAndRenderReferrals === 'function') filterAndRenderReferrals(this.value);
+                });
+            }
+
+            // Control 9/9: profileToggle (collapse/expand Profile Settings)
+            bind('profileToggle', function () {
+                var form = document.getElementById('profileForm');
+                var icon = document.querySelector('#profileToggle .toggle-icon');
+                if (!form) return;
+                form.classList.toggle('collapsed');
+                if (icon) icon.classList.toggle('open');
+            });
+
+            // ── gh-881: task tile navigation — click a tile to reveal (and
+            // scroll to) its [data-section], click again to close it. ──
+            document.querySelectorAll('.task-tile').forEach(function (tile) {
+                tile.addEventListener('click', function () {
+                    var target = tile.getAttribute('data-target');
+                    var wasActive = tile.classList.contains('active');
+                    document.querySelectorAll('.task-tile').forEach(function (t) { t.classList.remove('active'); });
+                    document.querySelectorAll('[data-section]').forEach(function (el) { el.classList.remove('section-visible'); });
+                    if (wasActive) { return; }
+                    tile.classList.add('active');
+                    var matches = document.querySelectorAll('[data-section="' + target + '"]');
+                    matches.forEach(function (el) { el.classList.add('section-visible'); });
+                    if (matches.length) { matches[0].scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+                    gaEvent('partner_tile_click', { tile: target });
+                });
+            });
+
+            // ── gh-881: Promote on Social Media actions ──
+            bind('fbShareBtn', function () {
+                var msgs = window.partnerSocialMessages;
+                var link = msgs ? msgs.referralLink : linkFrom('referralLink');
+                if (!link) { toast('Your link is still loading — try again in a moment.'); return; }
+                gaEvent('partner_share_click', { link_type: 'facebook_partner' });
+                var quote = "I'm an Otter Quotes partner and earn when I refer great contractors. Check them out:";
+                window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(link) + '&quote=' + encodeURIComponent(quote), 'facebook-share', 'width=600,height=400');
+            });
+            bind('fbDownloadBtn', function () {
+                var canvas = document.getElementById('partnerShareCanvas');
+                if (!canvas) return;
+                var a = document.createElement('a');
+                a.href = canvas.toDataURL('image/png');
+                a.download = 'otterquote-partner-card.png';
+                a.click();
+            });
+            bind('copyNextdoorBtn', function () {
+                var msgs = window.partnerSocialMessages;
+                if (!msgs) { toast('Your link is still loading — try again in a moment.'); return; }
+                copyTextToClipboard(msgs.nextdoorPost, document.getElementById('copyNextdoorBtn'));
+            });
+            bind('copyBadgeBtn', function () {
+                var msgs = window.partnerSocialMessages;
+                if (!msgs) { toast('Your link is still loading — try again in a moment.'); return; }
+                copyTextToClipboard(msgs.badgeHtml, document.getElementById('copyBadgeBtn'));
+            });
+            bind('socialSmsBtn', function () {
+                var msgs = window.partnerSocialMessages;
+                if (!msgs) { toast('Your link is still loading — try again in a moment.'); return; }
+                gaEvent('partner_share_click', { link_type: 'sms_promo' });
+                window.location.href = 'sms:?body=' + encodeURIComponent(msgs.smsText);
+            });
+            bind('socialEmailBtn', function () {
+                var msgs = window.partnerSocialMessages;
+                if (!msgs) { toast('Your link is still loading — try again in a moment.'); return; }
+                gaEvent('partner_share_click', { link_type: 'email_promo' });
+                window.location.href = 'mailto:?subject=' + encodeURIComponent(msgs.emailSubject) + '&body=' + encodeURIComponent(msgs.emailBody);
+            });
 
             var qrLibLoading = false;
             function withQrLib(cb) {

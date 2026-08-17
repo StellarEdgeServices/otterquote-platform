@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -730,6 +741,8 @@
     </style>
 </head>
 <body>
+    <header id="site-header" data-active=""></header>
+
     <nav id="navbar"></nav>
 
     <div class="container">
@@ -977,6 +990,8 @@
             </div>
         </div>
     </div>
+
+    <footer id="site-footer"></footer>
 
     <!-- Scripts -->
     <script src="js/cookie-storage.js"></script>
@@ -1358,7 +1373,13 @@
                 if (state.category === 'shingles') {
                     updateData.shingle_type = state.shingleType;
                     if (state.impactClass) {
-                        updateData.impact_class = state.impactClass;
+                        // gh-425: canonical stored form for claims.impact_class is
+                        // 'class-3'/'class-4' (Bridge ruling on #425, 2026-08-10).
+                        // The designer path copies material_catalog.impact_class
+                        // verbatim ('class3'/'class4'), so normalize at the DB write
+                        // boundary only — in-page state/display logic still uses the
+                        // catalog's verbatim value and is intentionally untouched.
+                        updateData.impact_class = state.impactClass.replace(/^class(\d)$/i, 'class-$1');
                     }
                     if (state.designerProduct) {
                         updateData.designer_product = state.designerProduct;
