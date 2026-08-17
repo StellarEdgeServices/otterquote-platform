@@ -103,8 +103,15 @@ repository settings before the workflow is active:
 | Secret Name | Value | Where to Find |
 |---|---|---|
 | `STAGING_URL` | `https://staging--jade-alpaca-b82b5e.netlify.app` | Netlify dashboard |
-| `SUPABASE_URL` | `https://yeszghaspzwwstvsrioa.supabase.co` | Supabase project settings |
+| `SUPABASE_URL` | `https://zsdvaqilfdclwosmiheh.supabase.co` (`otterquote-ci-test`, not production — gh-689) | Supabase project settings |
 | `SUPABASE_SERVICE_ROLE_KEY` | service role key | `otterquote-memory.md` → Key Infrastructure Details |
+
+**Historical note (gh-689, 2026-08-17):** this document predates the actual
+implemented workflow (`.github/workflows/e2e-tests.yml`, push/pull_request
+triggered — see that file, not the `e2e.yml` sketch below) and originally
+pointed at the production Supabase project. The values above are corrected
+to the dedicated `otterquote-ci-test` project so this plan document does not
+mislead a future reader into re-wiring CI back onto production.
 
 **Security note:** The service role key bypasses all Supabase RLS policies. It
 must never be in code or logs. GitHub Actions secrets are encrypted at rest and

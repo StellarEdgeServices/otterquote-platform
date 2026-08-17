@@ -1236,6 +1236,9 @@
                 if (!claimId) {
                     // Create a new repair claim if none exists
                     const profile = await sb.from('profiles').select('full_name').eq('id', user.id).single();
+                    // gh-397/#689: stamp is_test on this insert path too — a
+                    // second, independent claim-creation site PR #714 didn't
+                    // cover (it only fixed the COI-identity contractor insert).
                     const { data: newClaim, error: insertErr } = await sb
                         .from('claims')
                         .insert({
@@ -1247,7 +1250,8 @@
                             existing_shingle_brand: materialBrand,
                             existing_shingle_product: materialProduct,
                             existing_shingle_color: materialColor,
-                            homeowner_notes: repairNotes
+                            homeowner_notes: repairNotes,
+                            is_test: Auth.isTestEmail(user.email)
                         })
                         .select('id')
                         .single();
