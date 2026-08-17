@@ -117,7 +117,6 @@ const Nav = {
       { href: '/index.html',         label: 'Home',              id: 'home' },
       { href: '/how-it-works.html',  label: 'How It Works',      id: 'how-it-works' },
       { href: '/faq.html',           label: 'FAQ',               id: 'faq' },
-      { href: '/tools.html',         label: 'Contractor Tools',  id: 'tools' },
     ];
 
     nav.innerHTML = `
@@ -194,7 +193,6 @@ const Nav = {
       { href: '/index.html',        label: 'Home' },
       { href: '/how-it-works.html', label: 'How It Works' },
       { href: '/faq.html',          label: 'FAQ' },
-      { href: '/tools.html',        label: 'Contractor Tools' },
     ];
 
     // Rebuild nav links in-place to handle both role expansions and
@@ -548,12 +546,9 @@ const Nav = {
               <a href="/contractor-agreement.html">Partner Agreement</a>
               <a href="#" id="footer-support-link" style="color:#E07B00;font-weight:600;">💬 Contact Support</a>
             ` : `
-              <a href="/contractor-login.html">Contractor Login</a>
               <a href="/contractor-join.html">Join Our Network</a>
+              <a href="/contractor-login.html">Contractor Login</a>
               <a href="/tools.html">Contractor Tools</a>
-              <a href="/tools-crm.html">Free CRM</a>
-              <a href="/oq-crm.html">OQ CRM</a>
-              <a href="/oq-voice-ai.html">OQ Voice AI (Early Access)</a>
               <a href="/contractor-agreement.html">Partner Agreement</a>
             `}
           </div>
