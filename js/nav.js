@@ -256,11 +256,11 @@ const Nav = {
     // not auth.js (e.g. pure redirect pages). Guest state is correct fallback.
     if (typeof Auth === 'undefined') {
       const guestDesktop = `
-        <a href="/get-started.html" class="btn btn-sm btn-primary">Get Started</a>
+        <a href="https://app.otterquote.com/get-started" class="btn btn-sm btn-primary">Get Started</a>
         <a href="/contractor-login.html" class="btn btn-sm btn-ghost">Contractor Login</a>
       `;
       const guestMobile = `
-        <a href="/get-started.html" class="nav-link nav-mobile-cta">Get Started</a>
+        <a href="https://app.otterquote.com/get-started" class="nav-link nav-mobile-cta">Get Started</a>
         <a href="/contractor-login.html" class="nav-link nav-mobile-cta-secondary">Contractor Login</a>
       `;
       if (slot) slot.innerHTML = guestDesktop;
@@ -301,11 +301,11 @@ const Nav = {
       `;
     } else {
       desktopHTML = `
-        <a href="/get-started.html" class="btn btn-sm btn-primary">Get Started</a>
+        <a href="https://app.otterquote.com/get-started" class="btn btn-sm btn-primary">Get Started</a>
         <a href="/contractor-login.html" class="btn btn-sm btn-ghost">Contractor Login</a>
       `;
       mobileHTML = `
-        <a href="/get-started.html" class="nav-link nav-mobile-cta">Get Started</a>
+        <a href="https://app.otterquote.com/get-started" class="nav-link nav-mobile-cta">Get Started</a>
         <a href="/contractor-login.html" class="nav-link nav-mobile-cta-secondary">Contractor Login</a>
       `;
     }
@@ -537,7 +537,7 @@ const Nav = {
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               <a href="/faq.html">FAQ</a>
-              <a href="/get-started.html">Get Started</a>
+              <a href="https://app.otterquote.com/get-started">Get Started</a>
             `}
           </div>
           <div class="footer-col">
