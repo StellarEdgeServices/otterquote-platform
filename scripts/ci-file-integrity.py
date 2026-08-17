@@ -273,6 +273,21 @@ if _parity_result.stderr:
     print(_parity_result.stderr, end="", file=sys.stderr)
 partner_parity_exit = _parity_result.returncode
 
-if file_integrity_exit != 0 or partner_parity_exit != 0:
+# -- Agent-type label single-source-of-truth check (gh-914) ------------------
+# Chained for the same reason as partner_parity_check.py above: this is the
+# one CI job this lane's push credential can extend without a workflow-file
+# edit (gh-634/#873).
+print()
+print("-" * 78)
+_agent_types_script = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "tools", "agent_type_labels_check.py"
+)
+_agent_types_result = subprocess.run([sys.executable, _agent_types_script], capture_output=True, text=True)
+print(_agent_types_result.stdout, end="")
+if _agent_types_result.stderr:
+    print(_agent_types_result.stderr, end="", file=sys.stderr)
+agent_types_exit = _agent_types_result.returncode
+
+if file_integrity_exit != 0 or partner_parity_exit != 0 or agent_types_exit != 0:
     sys.exit(1)
 sys.exit(0)

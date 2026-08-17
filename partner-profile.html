@@ -157,6 +157,7 @@
 <script src="js/supabase-client.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
+<script src="js/agent-types.js"></script>
 
 <script>
     // gh-862/gh-881: reads ?code=, looks up the partner via the same public
@@ -177,14 +178,8 @@
             .replace(/'/g, '&#039;');
     }
 
-    const AGENT_TYPE_LABELS = {
-        're_agent': 'Real Estate Agent',
-        'insurance_agent': 'Insurance Agent',
-        'home_inspector': 'Home Inspector',
-        'adjuster': 'Adjuster',
-        'customer': 'Otter Quotes Partner',
-        'other': 'Otter Quotes Partner'
-    };
+    // gh-914 single source (js/agent-types.js)
+    const AGENT_TYPE_LABELS = AgentTypes.PARTNER_DISPLAY_LABELS;
 
     function showError(message) {
         const loading = document.getElementById('profileLoading');

@@ -45,6 +45,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
+import { ADMIN_DROPDOWN_LABELS } from '@/lib/agent-types';
 import { RequireAdmin } from '../_shell/RequireAdmin';
 import { AdminNav } from '../_shell/AdminNav';
 import { FilterTabs } from '../_shell/FilterTabs';
@@ -74,14 +75,10 @@ import {
 // gh-865: mirrors admin-referrals.html's AGENT_TYPE_LABELS in
 // openAgentTypeEditor() exactly — the six referral_agents_agent_type_check
 // values (sql/v0-base-schema.sql / baseline schema constraint).
-const AGENT_TYPE_LABELS: Record<string, string> = {
-  re_agent: 'Real Estate Agent',
-  insurance_agent: 'Insurance Agent',
-  home_inspector: 'Home Inspector',
-  customer: 'Customer',
-  adjuster: 'Insurance Adjuster',
-  other: 'Other',
-};
+// gh-914 single source (@/lib/agent-types) — was a second, independently
+// hand-typed copy of admin-referrals.html's L755 map; now imports the same
+// canonical values instead of mirroring them by hand.
+const AGENT_TYPE_LABELS: Record<string, string> = ADMIN_DROPDOWN_LABELS;
 
 export default function AdminReferralsPage() {
   return (
