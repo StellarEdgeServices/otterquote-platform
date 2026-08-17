@@ -116,6 +116,8 @@
 </script>
 </head>
 <body>
+    <header id="site-header" data-active=""></header>
+
     <div class="referral-container">
         <div id="loading-state">
             <div class="logo">OQ</div>
@@ -130,11 +132,14 @@
         </div>
     </div>
 
+    <footer id="site-footer"></footer>
+
     <!-- Supabase UMD (must come before config.js) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script src="js/supabase-client.js"></script>
+    <script src="js/nav.js"></script>
 
     <script>
         /**
