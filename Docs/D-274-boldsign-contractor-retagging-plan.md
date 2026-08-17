@@ -39,14 +39,16 @@ No insurance/roofing template is `manual_validated` — all but one of the 9 aut
 
 Four trade/funding-type manifests exist, each listing the exact Text Tags a contractor's PDF must contain. Signer index is **positional, not named** — `contractor_sign`'s fixed signer order is 1 = contractor, 2 = homeowner (flagged as a fragile coupling in the v3 manifest's own header comment; do not reorder without updating both sides together).
 
+**Re-verified 2026-08-17 against PR #797 @ `6d6fc9f` directly (counted `mechanism: "boldsign_tag"` entries in each `required` array, per-manifest) — all four rows below are now independently re-derived, not paraphrased. `roofing/insurance` corrects a transcription error in the original table (was 13, is actually 12 — the manifest's own `requiredCount` field of 14 includes the 2 `label_text` rows, which was miscounted the first time this table was written).**
+
 | Manifest | Tag count | Notes |
 |---|---|---|
 | roofing/retail | 11 | no insurance-specific tags |
-| roofing/insurance | 13 | adds `insurance_company`, `claim_number`, `deductible` |
-| siding/retail | ~10 (verify against PR #797 before executing — not independently re-derived here) | |
-| siding/insurance | ~12 (same caveat) | |
+| roofing/insurance | 12 | adds `insurance_company`, `claim_number`, `deductible` (was misstated as 13 — corrected 2026-08-17) |
+| siding/retail | 9 | corrected from "~10" — verified directly |
+| siding/insurance | 10 | corrected from "~12" — verified directly |
 
-Two manifest rows (`Manufacturer's Warranty:`, `Workmanship Warranty:`) stay `mechanism: "label_text"`, not a Text Tag — those are populated by D-202's own logic downstream, not by BoldSign field placement. Don't tag those two.
+Two manifest rows (`Manufacturer's Warranty:`, `Workmanship Warranty:`) stay `mechanism: "label_text"`, not a Text Tag — those are populated by D-202's own logic downstream, not by BoldSign field placement. Don't tag those two. Siding also has two additional `label_text` rows beyond those two — `Siding Product:` and `Wall Substrate:` — so siding's `requiredCount` (13 retail / 14 insurance) is 4 higher than its Text Tag count, not 2 higher like roofing.
 
 ## Execution plan (once #631 clears its production-cutover gate)
 
@@ -75,4 +77,4 @@ Two manifest rows (`Manufacturer's Warranty:`, `Workmanship Warranty:`) stay `me
 - Not a decision to cut over to BoldSign — that's #631's call, still open.
 - Not contractor communication — nothing here has been sent to anyone.
 - Not a migration — Phase 3 step 2's status-tracking column is flagged but not written.
-- Not independent verification of the siding manifests' exact tag counts — re-check against PR #797 directly before executing Phase 1, since this document paraphrases rather than re-deriving those two.
+- The siding manifest tag counts (and the roofing/insurance correction) above are now independently re-derived against PR #797 directly, not paraphrased — no outstanding count-verification gap remains on this document. Phase 0's other two preconditions (BoldSign 403 diagnosis, PR #797 merge) are unaffected and still open.
