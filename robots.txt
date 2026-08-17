@@ -14,9 +14,7 @@ Disallow: /contractor-settings.html
 Disallow: /partner-dashboard.html
 Disallow: /refer-a-friend.html
 Disallow: /ref.html
-Disallow: /status.html
 Disallow: /admin
-Disallow: /quotes.html
 Disallow: /contractor-leads.html
 Disallow: /contractor-onboarding.html
 Disallow: /landing.html
@@ -25,7 +23,6 @@ Disallow: /project-confirmation
 Disallow: /repair-intake
 
 # Admin and internal tools
-Disallow: /stripe-mockup.html
 Disallow: /contractor-agreement.html
 
 # Scripts (belt-and-suspenders — stohler-hover-import.py removed from deploy)
