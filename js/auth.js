@@ -400,6 +400,52 @@ window.Auth = {
         }
         return null;
       }
+
+      // gh-959 interim guard (pending #909 — profiles.role single-scalar
+      // redesign, CEO-board Q4 decision). The mismatch branch above only
+      // fires when getRole() resolves a TRUTHY role. When it resolves null —
+      // profiles.role is null/unset AND neither the contractors lookup nor
+      // the active-referral_agents lookup matched — this used to no-op
+      // silently, so a user with an unresolved role who *lands* on a
+      // contractor-required page (stale bookmark, shared link, direct URL
+      // entry) simply stayed there with no way out. That's the #959
+      // "land/stick... dead-end feel" symptom. This is a different gap from
+      // the role==='contractor' branch above: that branch only runs once
+      // getRole() has ALREADY positively confirmed a contractors row for
+      // this user, so a membership check inserted there could never fire —
+      // contractor identity is never "confirmed absent" at that point. This
+      // block is the actual reachable gap: it only runs when role resolution
+      // came back with no signal either way.
+      //
+      // Fail-open (D-211 precedent, PR #345): only divert when BOTH (a) an
+      // active referral_agents membership is POSITIVELY confirmed and (b) a
+      // contractors row is POSITIVELY confirmed absent. Any query error,
+      // timeout, or ambiguity falls through unchanged — a real contractor
+      // must never be stranded by this guard. Works regardless of which
+      // #909 option (A-D) is eventually chosen, since it never reads
+      // profiles.role. Remove once #909 lands. Refs #959.
+      if (!role && requiredRole === 'contractor' && sb) {
+        try {
+          const { data: agent, error: agentErr } = await sb
+            .from('referral_agents')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('status', 'active')
+            .single();
+          if (agent && !agentErr) {
+            const { data: contractorRow, error: contractorErr } = await sb
+              .from('contractors')
+              .select('id')
+              .eq('user_id', user.id)
+              .single();
+            const contractorConfirmedAbsent = !contractorRow && contractorErr && contractorErr.code === 'PGRST116';
+            if (contractorConfirmedAbsent) {
+              window.location.href = '/partner-dashboard.html';
+              return null;
+            }
+          }
+        } catch (e) { /* ambiguous — fall through, stay put (fail-open) */ }
+      }
     }
     return user;
   },
