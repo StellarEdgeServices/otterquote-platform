@@ -678,9 +678,15 @@ const PUBLIC_PATHS: Array<{ url: string; jobName: string; expectedBody: string }
     expectedBody: "Stop chasing contractors",
   },
   {
+    // otterquote.com/get-started.html 301s to the React app shell at
+    // app.otterquote.com/get-started (intentional, #955). fetch() follows
+    // the redirect and returns 200, but the shell is client-rendered — the
+    // old "Get Started" copy is never in the raw HTML, so it never matched
+    // and false-paged hourly (#980). The <title> tag IS server-rendered and
+    // stable, so assert on that instead.
     url:          "https://otterquote.com/get-started.html",
     jobName:      "public-path-get-started",
-    expectedBody: "Get Started",
+    expectedBody: "Otter Quotes App",
   },
 ];
 

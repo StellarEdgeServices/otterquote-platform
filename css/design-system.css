@@ -193,12 +193,11 @@ a:hover { color: var(--amber-2); }
 }
 
 .btn-secondary {
-  background: #0D1B2E;
-  color: #F8F9FC;
-  border: 2px solid #0D1B2E;
+  background: transparent;
+  border: 2px solid rgba(255,255,255,.45);
 }
 .btn-secondary:hover {
-  background: #162338;
+  border-color: rgba(255,255,255,0.65);
   transform: translateY(-1px);
 }
 
