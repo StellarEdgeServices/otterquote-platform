@@ -273,7 +273,42 @@ function nextHourlyReminder(now: Date, tz: string, warningAt: Date): Date {
 // ── EMAIL HELPER (Mailgun) ──
 // ═══════════════════════════════════════════════════════════
 
-async function sendEmail(to: string, subject: string, html: string, from?: string): Promise<boolean> {
+// #869 AC 5: this function sent HTML with no text/plain alternative to any of
+// its callers. Rather than hand-write a bespoke plain-text template for every
+// one of the ~10 call sites in this file, `text` derives generically from
+// `html` via htmlToPlainText() below when the caller doesn't supply one —
+// same net effect (every send now carries both parts) without expanding this
+// 1000+ line file's edit surface past what #869 actually requires.
+function htmlToPlainText(html: string): string {
+  return html
+    // `<a href="URL" ...>LABEL</a>` -> "LABEL: URL" — per #869 AC 2, the
+    // text part deliberately KEEPS the bare URL (accessibility / HTML-blocked
+    // fallback); this is the one place a bare URL belongs.
+    .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, label) => {
+      const cleanLabel = label.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+      return cleanLabel ? `${cleanLabel}: ${href}` : href;
+    })
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, "\n\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&rsquo;|&#39;/g, "'")
+    .replace(/&rdquo;|&ldquo;/g, '"')
+    .replace(/&mdash;/g, "—")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/[ \t]+/g, " ")
+    .split("\n")
+    .map((line) => line.trim())
+    // Collapse runs of blank lines (including ones that only became blank
+    // after trimming indentation whitespace) down to a single blank line.
+    .filter((line, i, arr) => line !== "" || arr[i - 1] !== "")
+    .join("\n")
+    .trim();
+}
+
+async function sendEmail(to: string, subject: string, html: string, from?: string, text?: string): Promise<boolean> {
   const key    = Deno.env.get("MAILGUN_API_KEY");
   const domain = Deno.env.get("MAILGUN_DOMAIN") || "mail.otterquote.com";
 
@@ -283,6 +318,7 @@ async function sendEmail(to: string, subject: string, html: string, from?: strin
   body.append("from",    from || `Otter Quotes <noreply@${domain}>`);
   body.append("to",      to);
   body.append("subject", subject);
+  body.append("text",    text || htmlToPlainText(html));
   body.append("html",    html);
 
   try {
