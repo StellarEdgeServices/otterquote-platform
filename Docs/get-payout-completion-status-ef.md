@@ -3,7 +3,7 @@
 **Doc date:** 2026-08-15 (GitHub #747)
 **Source:** `supabase/functions/get-payout-completion-status/index.ts`
 **Deployed:** created 2026-07-24 (PR #570, referral channel hardening #567) · live **v3**, ACTIVE, `verify_jwt = false` (verified 2026-08-15 via Supabase `list_edge_functions` on `yeszghaspzwwstvsrioa`)
-**D-number:** **pending assignment** — assignment is Bridge/Dustin-owned (next available after D-276 as of 2026-08-15). Parent-decision context is D-139 (referral commission completion gate). Do not treat this doc as a D-number registration.
+**D-number:** D-292 (registered 2026-08-17, decision-registry backfill)
 
 ---
 
