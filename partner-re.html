@@ -956,7 +956,18 @@
         <div class="form-group">
           <label class="form-label" for="email">Email</label>
           <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com">
-          <span class="form-hint">We'll send you a secure login link — no password needed.</span>
+        </div>
+
+        <!-- Password — gh-880 Half A: partner accounts now sign up with a
+             real credential instead of the password-less account
+             magic-link used to create implicitly. -->
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" id="password" class="form-input" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="confirm-password">Confirm Password</label>
+          <input type="password" id="confirm-password" class="form-input" required autocomplete="new-password" placeholder="Re-enter your password">
         </div>
 
         <!-- Phone -->
@@ -1333,12 +1344,12 @@
   (async function redirectSignedInPartner() {
     if (new URLSearchParams(window.location.search).get('stay') === '1') return;
     if ((document.referrer || '').includes('/partner-dashboard.html')) return;
-    const user = await Auth.getUser();
-    if (!user) return;
-    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
-    const role = await Auth.getRole();
-    if (!partnerRoles.includes(role)) return;
-    window.location.replace('/partner-dashboard.html');
+    // gh-880 Half A: shared Auth.hasPartnerSession() helper instead of a
+    // locally-declared partnerRoles array (same consolidation gh-851 did
+    // for PARTNER_ROLES itself).
+    if (await Auth.hasPartnerSession()) {
+      window.location.replace('/partner-dashboard.html');
+    }
   })();
 
   // Phone formatting
@@ -1379,6 +1390,8 @@
     const firstName = document.getElementById('first-name').value.trim();
     const lastName = document.getElementById('last-name').value.trim();
     const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
     const phone = document.getElementById('phone').value.trim();
     const brokerage = document.getElementById('brokerage').value.trim();
     const serviceArea = document.getElementById('service-area').value.trim();
@@ -1396,6 +1409,18 @@
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       errorEl.textContent = 'Please enter a valid email address.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    // gh-880 Half A: password replaces magic-link at signup.
+    if (!password || password.length < 8) {
+      errorEl.textContent = 'Password must be at least 8 characters.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (password !== confirmPassword) {
+      errorEl.textContent = 'Passwords do not match.';
       errorEl.style.display = 'block';
       return;
     }
@@ -1475,9 +1500,11 @@
 
       if (agentError) {
         if ((agentError.message || '').includes('partner_exists')) {
-          // Already registered — send a fresh login link and say so.
-          try { await Auth.sendMagicLink(email, agentType); } catch (e) { /* non-fatal */ }
-          errorEl.textContent = "You're already a partner — check your email for your login link.";
+          // Already registered. gh-880 Half A: do NOT attempt any sign-in
+          // with the password just typed on this signup form — it may not
+          // belong to whoever owns that account. Point them to the login
+          // page instead.
+          errorEl.innerHTML = "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.";
           errorEl.style.display = 'block';
           return;
         }
@@ -1508,8 +1535,15 @@
       localStorage.removeItem('cs_recruit_code');
       localStorage.removeItem('cs_utm_context');
 
-      // Send magic link → redirects to partner-dashboard.html
-      await Auth.sendMagicLink(email, agentType);
+      // gh-880 Half A: sign up with the password just collected instead of
+      // sending a magic link. signUpResult.session is null when the
+      // Supabase project requires email confirmation before first
+      // sign-in — handled the same way the magic-link "check your email"
+      // state used to be, just via an alert instead of a dedicated screen.
+      const signUpResult = await Auth.signUpWithPassword(email, password, agentType);
+      if (!signUpResult || !signUpResult.session) {
+        alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
+      }
 
       // Show success state with real referral link
       form.classList.add('hidden');

@@ -141,49 +141,106 @@ test.describe('Flow S — #564 test-world symmetry', () => {
       realSideUserId = created.user.id;
     }
 
-    const { error: profErr } = await admin.from('profiles').upsert(
-      {
-        id: realSideUserId,
-        full_name: 'Real-Side Probe (E2E #564)',
-        email: REAL_SIDE_EMAIL,
-        phone: '317-555-0564',
-        role: 'contractor',
-        is_test: true, // profile flagged test — only the CONTRACTORS flag drives claims RLS
-      },
-      { onConflict: 'id' }
-    );
-    if (profErr) throw new Error(`Real-side profile upsert failed: ${profErr.message}`);
+    // Everything from here on is wrapped in a try/catch: if the profile upsert
+    // succeeds but the contractor upsert throws (or vice versa), we still clean
+    // up whatever was created before re-throwing. Without this, a mid-hook
+    // failure can leave an orphaned real-flagged (is_test=false) profile and/or
+    // contractor row live in production with no guarantee afterAll ever runs to
+    // clean it up (gh-718, mirrors #689/#714's coi-upload-identity fix) — a leak
+    // here is worse than usual since S2's whole point is a contractor row that
+    // RLS (and any human reviewer) reads as REAL.
+    try {
+      const { error: profErr } = await admin.from('profiles').upsert(
+        {
+          id: realSideUserId,
+          full_name: 'Real-Side Probe (E2E #564)',
+          email: REAL_SIDE_EMAIL,
+          phone: '317-555-0564',
+          role: 'contractor',
+          is_test: true, // profile flagged test — only the CONTRACTORS flag drives claims RLS
+        },
+        { onConflict: 'id' }
+      );
+      if (profErr) throw new Error(`Real-side profile upsert failed: ${profErr.message}`);
 
-    const { data: existing } = await admin
-      .from('contractors')
-      .select('id')
-      .eq('user_id', realSideUserId)
-      .maybeSingle();
-    const payload = {
-      user_id: realSideUserId,
-      status: 'active',
-      // The point of S2: RLS must treat this contractor as REAL.
-      is_test: false,
-      company_name: 'Real-Side Probe Roofing (E2E #564)',
-      contact_name: 'Real-Side Probe',
-      email: REAL_SIDE_EMAIL, // internal domain — #543 keeps it out of real-claim fan-out
-      phone: '317-555-0564',
-      trades: ['roofing'],
-      service_counties: ['IN:*'],
-      address_state: 'IN',
-    };
-    const { error: upErr } = existing
-      ? await admin.from('contractors').update(payload).eq('id', existing.id)
-      : await admin.from('contractors').insert(payload);
-    if (upErr) throw new Error(`Real-side contractor upsert failed: ${upErr.message}`);
+      const { data: existing } = await admin
+        .from('contractors')
+        .select('id')
+        .eq('user_id', realSideUserId)
+        .maybeSingle();
+      const payload = {
+        user_id: realSideUserId,
+        status: 'active',
+        // The point of S2: RLS must treat this contractor as REAL.
+        is_test: false,
+        company_name: 'Real-Side Probe Roofing (E2E #564)',
+        contact_name: 'Real-Side Probe',
+        email: REAL_SIDE_EMAIL, // internal domain — #543 keeps it out of real-claim fan-out
+        phone: '317-555-0564',
+        trades: ['roofing'],
+        service_counties: ['IN:*'],
+        address_state: 'IN',
+      };
+      const { error: upErr } = existing
+        ? await admin.from('contractors').update(payload).eq('id', existing.id)
+        : await admin.from('contractors').insert(payload);
+      if (upErr) throw new Error(`Real-side contractor upsert failed: ${upErr.message}`);
+    } catch (err) {
+      const { error: contractorCleanupErr } = await admin
+        .from('contractors')
+        .delete()
+        .eq('user_id', realSideUserId);
+      const { error: profileCleanupErr } = await admin.from('profiles').delete().eq('id', realSideUserId);
+      if (contractorCleanupErr || profileCleanupErr) {
+        console.error(
+          `  ❌ beforeAll failed AND orphan cleanup also failed: ` +
+            `contractor=${contractorCleanupErr?.message ?? 'ok'}, profile=${profileCleanupErr?.message ?? 'ok'}`
+        );
+      } else {
+        console.error('  beforeAll failed after S2 rows were created — rows were cleaned up.');
+      }
+      throw err;
+    }
   });
 
   test.afterAll(async () => {
-    if (!realSideUserId) return;
+    if (!realSideUserId) {
+      console.log('  No S2 user id — beforeAll never reached user creation, nothing to tear down.');
+      return;
+    }
     const admin = createAdminClient();
-    await admin.from('contractors').delete().eq('user_id', realSideUserId);
-    await admin.from('profiles').delete().eq('id', realSideUserId);
-    await admin.auth.admin.deleteUser(realSideUserId);
+    let hadFailure = false;
+
+    // DB cleanup — contractor + profile rows then auth user (order matters for FK).
+    // A failed cleanup must surface, not be silently swallowed — the exact
+    // failure mode that let #689's contractor pollution go unnoticed
+    // (PR #695 precedent). Doubly true here: S2's contractor row is deliberately
+    // is_test=false, so a leaked row here is indistinguishable from a real one.
+    const { error: contractorErr } = await admin.from('contractors').delete().eq('user_id', realSideUserId);
+    if (contractorErr) {
+      console.error(`  ❌ S2 contractor cleanup failed: ${contractorErr.message}`);
+      hadFailure = true;
+    }
+
+    const { error: profileErr } = await admin.from('profiles').delete().eq('id', realSideUserId);
+    if (profileErr) {
+      console.error(`  ❌ S2 profile cleanup failed: ${profileErr.message}`);
+      hadFailure = true;
+    }
+
+    const { error: userErr } = await admin.auth.admin.deleteUser(realSideUserId);
+    if (userErr) {
+      console.error(`  ❌ S2 auth user cleanup failed: ${userErr.message}`);
+      hadFailure = true;
+    }
+
+    if (hadFailure) {
+      throw new Error(
+        'test-world-symmetry afterAll cleanup failed — see errors above. A silent, incomplete ' +
+          'cleanup is what let contractor rows accumulate in production (#689), and this row is ' +
+          'deliberately is_test=false (S2), so a leak here looks exactly like a real contractor.'
+      );
+    }
   });
 
   // ──────────────────────────────────────────────────────────────────────────

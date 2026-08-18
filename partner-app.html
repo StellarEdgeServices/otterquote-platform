@@ -408,15 +408,13 @@
             // open this page in a regular browser tab too - mirrors the loop-guard
             // in partner-login.html. ?stay=1 opts out; anon/homeowner/contractor
             // visitors and referral/recruit attribution are untouched.
+            // gh-880 Half A: uses the shared Auth.hasPartnerSession() helper
+            // instead of a locally-declared partnerRoles array (same
+            // consolidation gh-851 did for PARTNER_ROLES itself).
             if (new URLSearchParams(window.location.search).get('stay') !== '1' &&
                 (document.referrer || '').indexOf('/partner-dashboard.html') === -1) {
-                var partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
-                Auth.getUser().then(function (user) {
-                    if (!user) return;
-                    Auth.getRole().then(function (role) {
-                        if (partnerRoles.indexOf(role) === -1) return;
-                        window.location.replace('/partner-dashboard.html');
-                    });
+                Auth.hasPartnerSession().then(function (isPartner) {
+                    if (isPartner) window.location.replace('/partner-dashboard.html');
                 });
             }
 
