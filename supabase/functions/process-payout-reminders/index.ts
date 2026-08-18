@@ -1,7 +1,10 @@
 /**
  * OtterQuote Edge Function: process-payout-reminders
  *
- * D-180 — Daily Payout Reminder + Auto-Approve Cron
+ * D-180 — Daily Payout Reminder Cron (auto-approve removed per D-293,
+ * 2026-08-18, gh-1021 AC1 — no outbound payment rail exists, so nothing may
+ * silently self-approve; every commission now waits for Dustin to approve
+ * it manually via admin-payouts.html)
  *
  * Schedule: "0 9 * * *" (9:00 AM daily — matches process-coi-reminders cadence)
  * Can also be POST-ed manually for testing.
@@ -16,29 +19,13 @@
  *   Send Dustin a single digest email listing all pending approvals
  *   with amounts and partner names. Set reminder_sent_at = NOW().
  *
- * JOB 2 — Auto-Approve:
- *   Find payout_approvals where:
- *     status = 'pending_approval'
- *     AND auto_approve_at < NOW()
- *   Gates (both fail-safe — lookup error = hold, row stays pending_approval):
- *     1. W-9 (D-211 Phase 18 Unit 3): verified W-9 + payments unblocked.
- *     2. Completion (D-139, #567): linked claim has completion_date set.
- *   Auto-approve: set status = 'auto_approved', approved_at = NOW().
- *   Set referrals.commission_paid_at = NOW() and referrals.status =
- *   'commission_paid' (fires update_referral_stats) on associated referrals.
- *   Send Dustin a summary email of what auto-approved and what was held.
- *   Send the PARTNER a confirmation email for each row approved (#597 — this
- *   path previously notified nobody but Dustin, while the manual
- *   approve-payout path did email the partner; auto-approve is the default
- *   settle path, so the default outcome was silence).
- *
- * JOB 3 — Catch-up notifications:
+ * JOB 2 — Catch-up notifications:
  *   Find payout_approvals where:
  *     status = 'pending_approval'
  *     AND notification_sent_at IS NULL
  *   Call notify-payout-pending for each (in case pg_net failed on creation).
  *
- * JOB 4 — W-9 requests (#596):
+ * JOB 3 — W-9 requests (#596):
  *   Find partners who have a pending_approval accrual AND payments_blocked
  *   AND w9_notification_sent_at IS NULL. Call notify-partner-w9 for each and
  *   stamp w9_notification_sent_at only on a confirmed send.
@@ -58,8 +45,8 @@
  *   {
  *     remindersDigestSent: boolean,
  *     pendingReminderCount: number,
- *     autoApproved: number,
  *     catchupNotified: number,
+ *     w9RequestsSent: number,
  *     errors: string[],
  *     ranAt: string
  *   }
@@ -244,11 +231,7 @@ serve(async (req: Request) => {
   const results = {
     remindersDigestSent:  false,
     pendingReminderCount: 0,
-    autoApproved:         0,
-    heldPendingW9:        0,
-    heldPendingCompletion: 0,
     catchupNotified:      0,
-    partnerApprovalEmails: 0,   // #597
     w9RequestsSent:       0,    // #596
     errors:               [] as string[],
     ranAt:                new Date().toISOString(),
@@ -276,7 +259,7 @@ serve(async (req: Request) => {
 
     const { data: pendingReminder, error: prError } = await supabase
       .from("payout_approvals")
-      .select("id, partner_name, amount, payout_type, trigger_event, created_at, auto_approve_at")
+      .select("id, partner_name, amount, payout_type, trigger_event, created_at")
       .eq("status", "pending_approval")
       .is("reminder_sent_at", null)
       .lt("created_at", twoDaysAgo)
@@ -292,15 +275,15 @@ serve(async (req: Request) => {
       const totalAmount = pendingReminder.reduce((sum, p) => sum + Number(p.amount), 0);
 
       const rowsHtml = pendingReminder.map(p => {
-        const autoApproveOn = p.auto_approve_at
-          ? new Date(p.auto_approve_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        const pendingSince = p.created_at
+          ? new Date(p.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
           : "—";
         return `
 <tr>
   <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#0B1929;">${p.partner_name || "Unknown"}</td>
   <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#64748B;">${formatPayoutType(p.payout_type)}</td>
   <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;font-weight:600;color:#0B1929;">${formatCurrency(Number(p.amount))}</td>
-  <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#EF4444;">${autoApproveOn}</td>
+  <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#EF4444;">${pendingSince}</td>
 </tr>`;
       }).join("");
 
@@ -320,7 +303,7 @@ serve(async (req: Request) => {
       <th style="padding:10px 12px;text-align:left;font-size:0.8rem;color:#64748B;font-weight:600;">Partner</th>
       <th style="padding:10px 12px;text-align:left;font-size:0.8rem;color:#64748B;font-weight:600;">Type</th>
       <th style="padding:10px 12px;text-align:left;font-size:0.8rem;color:#64748B;font-weight:600;">Amount</th>
-      <th style="padding:10px 12px;text-align:left;font-size:0.8rem;color:#64748B;font-weight:600;">Auto-Approves</th>
+      <th style="padding:10px 12px;text-align:left;font-size:0.8rem;color:#64748B;font-weight:600;">Pending Since</th>
     </tr>
   </thead>
   <tbody>${rowsHtml}</tbody>
@@ -367,264 +350,20 @@ ${emailButton({ href: ADMIN_PAYOUTS_URL, label: "Review All Pending Approvals �
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // JOB 2 — Auto-approve overdue rows
+    // JOB 2 — Catch-up: notify for rows where notification_sent_at IS NULL
     // ════════════════════════════════════════════════════════════════════════
-    const now = new Date().toISOString();
-
-    const { data: autoApproveRows, error: aaError } = await supabase
-      .from("payout_approvals")
-      .select("id, referral_id, partner_id, partner_name, amount, payout_type")
-      .eq("status", "pending_approval")
-      .lt("auto_approve_at", now);
-
-    if (aaError) {
-      results.errors.push(`Auto-approve query error: ${aaError.message}`);
-      console.error(`[${FUNCTION_NAME}] Auto-approve query error:`, aaError.message);
-    } else if (autoApproveRows && autoApproveRows.length > 0) {
-      const approvedAt = new Date().toISOString();
-      const approvedRows: typeof autoApproveRows = [];
-      const heldRows:     typeof autoApproveRows = [];
-      const heldCompletionRows: typeof autoApproveRows = [];
-
-      for (const row of autoApproveRows) {
-        try {
-          // ── W-9 / payments gate (D-211 Phase 18 Unit 3) ────────────────────
-          // Auto-approve is the terminal money-state (no separate Stripe
-          // disbursement EF). Never cross it for a partner without a verified W-9
-          // and unblocked payments. Fail-safe: missing partner_id / agent row /
-          // lookup error SKIPS — the row stays pending_approval, no commission_paid_at.
-          let gateOk = false;
-          // #597: also carry the partner's email/name so the approval can be
-          // confirmed TO THE PARTNER, not just summarised to Dustin.
-          let gateAgent: { email?: string | null; first_name?: string | null } | null = null;
-          if (row.partner_id) {
-            const { data: agent, error: agentError } = await supabase
-              .from("referral_agents")
-              .select("payments_blocked, w9_verified_at, email, first_name")
-              .eq("id", row.partner_id)
-              .single();
-            if (agentError) {
-              results.errors.push(`Auto-approve gate: agent lookup failed for ${row.partner_id}: ${agentError.message}`);
-            } else if (agent && agent.payments_blocked === false && agent.w9_verified_at != null) {
-              gateOk = true;
-              gateAgent = agent;
-            }
-          }
-
-          if (!gateOk) {
-            results.heldPendingW9++;
-            heldRows.push(row);
-            console.log(`[${FUNCTION_NAME}] HELD auto-approve ${row.id} — partner ${row.partner_id ?? "none"} not W-9-verified`);
-            continue;
-          }
-
-          // ── Completion gate (D-139, #567) ──────────────────────────────────
-          // Commissions release only after the job is actually complete.
-          // Resolve payout → referral → claim → completion_date. Fail-safe like
-          // the W-9 gate: no referral / no claim / lookup error = HOLD.
-          let completionOk = false;
-          if (row.referral_id) {
-            const { data: refRow, error: refErr } = await supabase
-              .from("referrals")
-              .select("claim_id")
-              .eq("id", row.referral_id)
-              .single();
-            if (refErr) {
-              results.errors.push(`Auto-approve completion gate: referral lookup failed for ${row.referral_id}: ${refErr.message}`);
-            } else if (refRow?.claim_id) {
-              const { data: claimRow, error: claimErr } = await supabase
-                .from("claims")
-                .select("completion_date")
-                .eq("id", refRow.claim_id)
-                .single();
-              if (claimErr) {
-                results.errors.push(`Auto-approve completion gate: claim lookup failed for ${refRow.claim_id}: ${claimErr.message}`);
-              } else if (claimRow?.completion_date != null) {
-                completionOk = true;
-              }
-            }
-          }
-
-          if (!completionOk) {
-            results.heldPendingCompletion++;
-            heldCompletionRows.push(row);
-            console.log(`[${FUNCTION_NAME}] HELD auto-approve ${row.id} — job not complete (referral ${row.referral_id ?? "none"})`);
-            continue;
-          }
-
-          // Update payout_approvals
-          const { error: updateError } = await supabase
-            .from("payout_approvals")
-            .update({ status: "auto_approved", approved_at: approvedAt })
-            .eq("id", row.id)
-            .eq("status", "pending_approval"); // double-check status guard
-
-          if (updateError) {
-            results.errors.push(`Auto-approve update failed for ${row.id}: ${updateError.message}`);
-            continue;
-          }
-
-          // Set referrals.commission_paid_at
-          if (row.referral_id) {
-            const { error: referralError } = await supabase
-              .from("referrals")
-              .update({ commission_paid_at: approvedAt })
-              .eq("id", row.referral_id)
-              .is("commission_paid_at", null);
-
-            if (referralError) {
-              results.errors.push(`Auto-approve: referral update failed for ${row.referral_id}: ${referralError.message}`);
-            }
-
-            // D-139 (#567): advance the referral to commission_paid so the
-            // update_referral_stats trigger fires — nothing else ever sets it.
-            const { error: statusError } = await supabase
-              .from("referrals")
-              .update({ status: "commission_paid" })
-              .eq("id", row.referral_id)
-              .neq("status", "commission_paid");
-
-            if (statusError) {
-              results.errors.push(`Auto-approve: referral status update failed for ${row.referral_id}: ${statusError.message}`);
-            }
-          }
-
-          results.autoApproved++;
-          approvedRows.push(row);
-
-          // ── Partner confirmation email (#597) ──────────────────────────────
-          // approve-payout (the manual path) emails the partner; this path did
-          // not. Auto-approve is the DEFAULT settle path under D-180, so the
-          // default outcome was a partner being paid with no notification at
-          // all, while the exceptional outcome (Dustin clicks Approve first)
-          // was the one that told them. Non-fatal: an email failure must never
-          // undo an approval that already committed.
-          const partnerEmail = gateAgent?.email || null;
-          if (partnerEmail) {
-            try {
-              const greeting = gateAgent?.first_name ? `Hi ${gateAgent.first_name},` : "Hi,";
-              const amountStr = formatCurrency(row.amount);
-              const kind = row.payout_type === "commission_recruit"
-                ? "recruit bonus"
-                : "referral commission";
-
-              const partnerHtml = `
-<h2 style="font-size:1.5rem;font-weight:700;color:#0B1929;margin:0 0 8px;">Your ${kind} is approved</h2>
-<p style="margin:0 0 16px;color:#334155;">${greeting}</p>
-<p style="margin:0 0 16px;color:#334155;">
-  Your ${kind} of <strong>${amountStr}</strong> has been approved and is queued for payment.
-  No action is needed from you.
-</p>
-<p style="margin:0 0 16px;color:#334155;">
-  You can see all of your referrals and their status on your
-  <a href="https://otterquote.com/partner-dashboard.html" style="color:#0EA5E9;">partner dashboard</a>.
-</p>`;
-
-              const partnerText = [
-                `${greeting}`,
-                ``,
-                `Your ${kind} of ${amountStr} has been approved and is queued for payment. No action is needed from you.`,
-                ``,
-                `See your referrals: https://otterquote.com/partner-dashboard.html`,
-              ].join("\n");
-
-              const sent = await sendMailgunEmail(
-                mailgunApiKey, mailgunDomain, partnerEmail,
-                `Otter Quotes <notifications@${mailgunDomain}>`,
-                `Your ${kind} of ${amountStr} is approved`,
-                partnerText, buildEmail(partnerHtml)
-              );
-              if (sent) results.partnerApprovalEmails++;
-              else results.errors.push(`Partner approval email FAILED for ${row.id}`);
-            } catch (err) {
-              results.errors.push(`Partner approval email threw for ${row.id}: ${String(err)}`);
-            }
-          } else {
-            console.log(`[${FUNCTION_NAME}] Auto-approved ${row.id} — no partner email on file, notification skipped`);
-          }
-        } catch (err) {
-          results.errors.push(`Auto-approve row ${row.id} threw: ${String(err)}`);
-        }
-      }
-
-      // Send Dustin a summary of what auto-approved AND what was held pending
-      // W-9 or job completion.
-      if (approvedRows.length > 0 || heldRows.length > 0 || heldCompletionRows.length > 0) {
-        const autoTotal = approvedRows.reduce((sum, r) => sum + Number(r.amount), 0);
-        const heldTotal = heldRows.reduce((sum, r) => sum + Number(r.amount), 0);
-        const heldCompletionTotal = heldCompletionRows.reduce((sum, r) => sum + Number(r.amount), 0);
-
-        const rowHtml = (r: typeof autoApproveRows[number], amountColor: string) => `
-<tr>
-  <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#0B1929;">${r.partner_name || "Unknown"}</td>
-  <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#64748B;">${formatPayoutType(r.payout_type)}</td>
-  <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;font-weight:600;color:${amountColor};">${formatCurrency(Number(r.amount))}</td>
-</tr>`;
-
-        const tableShell = (rowsHtml: string) => `
-<table width="100%" cellpadding="0" cellspacing="0" border="0"
-       style="border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:24px;">
-  <thead>
-    <tr style="background:#F8FAFC;">
-      <th style="padding:8px 12px;text-align:left;font-size:0.8rem;color:#64748B;font-weight:600;">Partner</th>
-      <th style="padding:8px 12px;text-align:left;font-size:0.8rem;color:#64748B;font-weight:600;">Type</th>
-      <th style="padding:8px 12px;text-align:left;font-size:0.8rem;color:#64748B;font-weight:600;">Amount</th>
-    </tr>
-  </thead>
-  <tbody>${rowsHtml}</tbody>
-</table>`;
-
-        const approvedSection = approvedRows.length > 0 ? `
-<p style="color:#374151;font-size:0.95rem;margin:0 0 24px;">
-  ${approvedRows.length} commission${approvedRows.length === 1 ? "" : "s"} were automatically approved after 7 days with no action.
-  Total auto-approved: <strong>${formatCurrency(autoTotal)}</strong>
-</p>
-${tableShell(approvedRows.map(r => rowHtml(r, "#0B1929")).join(""))}` : `
-<p style="color:#374151;font-size:0.95rem;margin:0 0 24px;">
-  No commissions were auto-approved on this run.
-</p>`;
-
-        const heldSection = heldRows.length > 0 ? `
-<p style="color:#B45309;font-size:0.95rem;margin:0 0 12px;">
-  ⚠️ ${heldRows.length} commission${heldRows.length === 1 ? "" : "s"} were <strong>HELD pending W-9</strong>
-  (partner W-9 not on file / payments blocked) — total <strong>${formatCurrency(heldTotal)}</strong>.
-  These remain pending and were <strong>not</strong> paid. Resolve the partner's W-9 to release them.
-</p>
-${tableShell(heldRows.map(r => rowHtml(r, "#B45309")).join(""))}` : "";
-
-        const autoBodyHtml = `
-<h2 style="font-size:1.5rem;font-weight:700;color:#0B1929;margin:0 0 8px;">
-  Auto-Approval Summary
-</h2>
-${approvedSection}
-${heldSection}
-${emailButton({ href: ADMIN_PAYOUTS_URL, label: "View Full History →" })}
-`;
-
-        const subject = approvedRows.length > 0
-          ? (heldRows.length > 0
-              ? `Auto-approved ${approvedRows.length} (${formatCurrency(autoTotal)}) · ${heldRows.length} held pending W-9`
-              : `Auto-approved: ${approvedRows.length} commission${approvedRows.length === 1 ? "" : "s"} (${formatCurrency(autoTotal)})`)
-          : `Payout auto-approve: 0 approved · ${heldRows.length} held pending W-9 (${formatCurrency(heldTotal)})`;
-
-        const bodyText = [
-          `Auto-approved: ${approvedRows.length} commission(s), total ${formatCurrency(autoTotal)}.`,
-          `Held pending W-9: ${heldRows.length} commission(s), total ${formatCurrency(heldTotal)} (NOT paid).`,
-          ``,
-          `View: ${ADMIN_PAYOUTS_URL}`,
-        ].join("\n");
-
-        await sendMailgunEmail(
-          mailgunApiKey, mailgunDomain, ADMIN_EMAIL, fromAddress,
-          subject, bodyText, buildEmail(autoBodyHtml)
-        );
-      }
-    } else {
-      console.log(`[${FUNCTION_NAME}] No auto-approvals needed.`);
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // JOB 3 — Catch-up: notify for rows where notification_sent_at IS NULL
+    //
+    // (Renumbered from JOB 3.) The auto-approve sweep that used to run here
+    // was deleted per D-293 (Dustin-locked 2026-08-18, gh-1021 AC1): there is
+    // no outbound payment rail, ever, so nothing should ever silently
+    // transition to "approved" or tell a partner their commission is "queued
+    // for payment" when no payment mechanism exists. Every commission now
+    // waits in pending_approval for a human (Dustin, via admin-payouts.html)
+    // to approve it. auto_approve_at is left in the schema as a historical/
+    // display-only column (still rendered on existing rows) but nothing
+    // reads it to drive a state transition anymore.
+    // The remaining AC2–AC6 of gh-1021 (paid/paid_at state, dashboard
+    // cleanup, W-9+payment-info collection) are separate follow-on work.
     // ════════════════════════════════════════════════════════════════════════
     const { data: unnotified, error: unErr } = await supabase
       .from("payout_approvals")
@@ -663,7 +402,7 @@ ${emailButton({ href: ADMIN_PAYOUTS_URL, label: "View Full History →" })}
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // JOB 4 — W-9 request for partners with a held accrual (#596)
+    // JOB 3 — W-9 request for partners with a held accrual (#596)
     // ════════════════════════════════════════════════════════════════════════
     //
     // v49 designed apply_referral_commission() to check payments_blocked and,
