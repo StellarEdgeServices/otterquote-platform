@@ -25,6 +25,10 @@ export const CONTRACTOR_DASHBOARD_ROUTE = '/contractor/dashboard'; // migrated R
 export const CONTRACTOR_JOIN_URL = 'https://otterquote.com/contractor-join.html';
 export const CONTRACTOR_FAQ_URL = 'https://otterquote.com/contractor-faq.html';
 export const CONTRACTOR_AGREEMENT_URL = 'https://otterquote.com/contractor-agreement.html';
+// gh-590: Contract Templates lives on the static Settings page (nav.js links "Settings" to
+// this URL on both nav variants; not yet migrated to a React route) — not the React
+// /contractor/profile page.
+export const CONTRACTOR_SETTINGS_URL = 'https://otterquote.com/contractor-settings.html#contract-templates';
 export const SUPPORT_EMAIL = 'support@otterquote.com';
 
 // Trades the profile card offers (value -> label). Port of the 4 profile-trade checkboxes.
@@ -43,19 +47,15 @@ export const JURISDICTION_LEVELS: { value: string; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-// Step-4 contract-template selectors. Port of the trade + funding-type <select> options.
-export const TEMPLATE_TRADES = ['Roofing', 'Siding', 'Gutters', 'Windows'] as const;
-export const TEMPLATE_FUNDING_TYPES = ['Insurance (full replacement)', 'Retail'] as const;
-
 export const PRE_APPROVAL_COPY = {
-  // Progress header (Step 1 "Contact Info" is done before this page; steps 2-4 here).
+  // Progress header (Step 1 "Contact Info" is done before this page; steps 2-3 here —
+  // gh-590 removed the former step 4, Contract Template).
   progress: {
     title: 'Complete Your Application',
     steps: [
       { n: 1, label: 'Contact Info' },
       { n: 2, label: 'License & Insurance' },
       { n: 3, label: 'Agreements' },
-      { n: 4, label: 'Contract Template' },
     ],
   },
 
@@ -187,33 +187,14 @@ export const PRE_APPROVAL_COPY = {
         'I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. (Optional — you can still use the platform without SMS notifications.)',
     },
 
-    advance: 'Continue to Contract Template →',
+    // gh-590: Step 3 is now the terminal step (former Step 4 contract-upload removed).
+    advance: 'Submit Application →',
     incompleteAlert: 'Please review and accept all agreements before continuing.',
-    saveError: 'Failed to save agreements. Please try again.',
+    saveError: 'Failed to submit application. Please try again or contact support@otterquote.com.',
   },
 
-  // Step 4 — Contract Template (D-209: required)
-  step4: {
-    title: 'Upload Your Contract Template',
-    subtitle:
-      'Upload the contract you use with homeowners. This is the agreement they will sign on Otter Quotes — your contract, your terms. Upload is required to complete your application. You can add additional templates for other trade and funding-type combinations later in your profile.',
-    infoTitle: 'What to Upload',
-    infoBody:
-      "Your standard contract PDF for your primary trade and funding type. Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields electronically — but the contract terms are yours, drafted or reviewed by your attorney. We do not draft or provide homeowner-contractor contracts.",
-    tradeLabel: 'Trade',
-    tradePlaceholder: 'Select trade…',
-    fundingLabel: 'Funding Type',
-    fundingPlaceholder: 'Select type…',
-    uploadHeading: 'Click to upload your contract PDF',
-    uploadHint: 'PDF only · max 10MB',
-    submit: 'Upload & Submit Application →',
-    uploading: 'Uploading…',
-    uploadingStatus: 'Uploading contract template…',
-    uploadError: 'Upload failed. Please try again.',
-    submitError: 'Failed to submit application. Please try again or contact support@otterquote.com.',
-  },
-
-  // Submitted panel — D-225 verbatim (:139-153)
+  // Submitted panel — D-225 verbatim (:139-153), plus the gh-590 profile-Contracts pointer
+  // (one neutral sentence, no legal/fee copy).
   submitted: {
     title: 'Application Submitted!',
     confirmationPrefix: 'Confirmation sent to ',
@@ -222,6 +203,8 @@ export const PRE_APPROVAL_COPY = {
     whileYouWait: 'While You Wait',
     reviewFaqPre: 'Review the ',
     reviewFaqLink: 'Contractor FAQ',
+    contractsPre: 'Upload your contract templates in ',
+    contractsLink: 'Settings → Contract Templates',
     questionsPre: 'Questions? Email ',
     dashboardLink: 'Go to your contractor dashboard →',
   },

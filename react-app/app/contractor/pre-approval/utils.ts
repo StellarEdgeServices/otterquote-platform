@@ -72,14 +72,15 @@ export function buildInitialContractorInsert(
 export type InitialState =
   | { kind: 'active-redirect' }
   | { kind: 'submitted' }
-  | { kind: 'wizard'; step: 2 | 3 | 4 };
+  | { kind: 'wizard'; step: 2 | 3 };
 
 /**
  * Decide the landing state for a loaded/created contractor record. EXACT port of the
- * static init tail:
+ * static init tail (gh-590: Step 4 contract-upload removed — Step 3, Agreements, is now
+ * the terminal step, so the "submitted" threshold and the wizard-step cap move 4 -> 3):
  *   - status === 'active'                       -> redirect to the dashboard
- *   - onboarding_step >= 4 (submitted)          -> the "Application Submitted" panel
- *   - else show step = min(max(2, (step||1)+1), 4)
+ *   - onboarding_step >= 3 (submitted)          -> the "Application Submitted" panel
+ *   - else show step = min(max(2, (step||1)+1), 3)
  *
  * NOTE (brief): pre-approval is the PENDING contractor's landing page. The static init
  * does NOT bounce a pending contractor away — ONLY status === 'active' redirects. We
@@ -92,14 +93,14 @@ export function resolveInitialState(
   const status = str(contractor?.status);
   const stepNum = Number(contractor?.onboarding_step) || 0;
   if (status === 'active') return { kind: 'active-redirect' };
-  // static: onboarding_step >= 4 || (status==='pending_approval' && onboarding_step>=4)
-  if (stepNum >= 4 || (status === 'pending_approval' && stepNum >= 4)) {
+  // static: onboarding_step >= 3 || (status==='pending_approval' && onboarding_step>=3)
+  if (stepNum >= 3 || (status === 'pending_approval' && stepNum >= 3)) {
     return { kind: 'submitted' };
   }
-  // static: Math.min(Math.max(2, (contractor.onboarding_step || 1) + 1), 4)
+  // static: Math.min(Math.max(2, (contractor.onboarding_step || 1) + 1), 3)
   const base = (contractor?.onboarding_step as number) || 1;
-  const next = Math.min(Math.max(2, Number(base) + 1), 4);
-  return { kind: 'wizard', step: next as 2 | 3 | 4 };
+  const next = Math.min(Math.max(2, Number(base) + 1), 3);
+  return { kind: 'wizard', step: next as 2 | 3 };
 }
 
 // ================================================================
@@ -457,64 +458,21 @@ export function buildRecordAttestationBody(
 }
 
 // ================================================================
-// Step 4 — Contract Template (D-209: required, no fallback)
+// Step 3 (terminal) — final submit fields
 // ================================================================
 
-/** Validate the template upload. Port of submitStep4:1089-1092 (trade+funding, PDF, <=10MB). */
-export function validateTemplate(
-  trade: string,
-  funding: string,
-  file: { type?: string; size?: number } | null,
-): string | null {
-  if (!trade || !funding) return 'Please select a trade and funding type before uploading.';
-  if (!file) return 'Please select a PDF file to upload.';
-  if (file.type !== 'application/pdf') return 'Please upload a PDF file.';
-  if ((file.size || 0) > 10 * 1024 * 1024) return 'File too large. Maximum 10MB.';
-  return null;
-}
-
-/** Storage slot key for the template. Port of :1101 (trade/funding lower, spaces->_, ()-stripped). */
-export function templateSlotKey(trade: string, funding: string): string {
-  return `${trade.toLowerCase()}/${funding.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '')}`;
-}
-
-/** contractor-templates path. Port of :1102 (`${contractor.id}/${slotKey}.pdf`). */
-export function templateFilePath(contractorId: string, slotKey: string): string {
-  return `${contractorId}/${slotKey}.pdf`;
-}
-
-export interface ContractTemplate {
-  trade: string;
-  funding_type: string;
-  path: string;
-  uploaded_at: string;
-}
-
 /**
- * Upsert one template into the contract_templates JSONB array (replace same trade+funding,
- * else append). Port of :1111-1113.
+ * Non-contract terminal-submit fields, merged into the Step-3 contractors UPDATE
+ * (buildStep3ContractorUpdate) so submission happens in ONE write at the end of what
+ * used to be the second-to-last step. gh-590: Step 4 (contract-upload, D-209) removed
+ * — contract_templates is no longer written here; status stays 'pending_approval' from
+ * the Step-1 insert and is re-asserted for parity with the deleted finishAndSubmit
+ * (:1126-1132), which also wrote status + onboarding_step (now 3, not 4 — see
+ * buildStep3ContractorUpdate).
  */
-export function buildContractTemplatesArray(
-  existing: ContractTemplate[] | null | undefined,
-  trade: string,
-  funding: string,
-  path: string,
-  nowIso: string,
-): ContractTemplate[] {
-  const arr = Array.isArray(existing) ? existing : [];
-  const filtered = arr.filter((t) => !(t.trade === trade && t.funding_type === funding));
-  return [...filtered, { trade, funding_type: funding, path, uploaded_at: nowIso }];
-}
-
-/** Final contractors UPDATE on submit. Port of finishAndSubmit:1126-1132. */
-export function buildFinishSubmitUpdate(
-  contractTemplates: ContractTemplate[],
-  nowIso: string,
-): Record<string, unknown> {
+export function buildFinishSubmitUpdate(nowIso: string): Record<string, unknown> {
   return {
-    contract_templates: contractTemplates,
     status: 'pending_approval',
-    onboarding_step: 4,
     updated_at: nowIso,
   };
 }

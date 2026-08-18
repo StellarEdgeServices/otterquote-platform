@@ -7,8 +7,9 @@
  *     storage paths, the contractors UPDATE + 86e1p4pre create-fallback payloads
  *   - the create-hubspot-contact / send-support-email EF bodies (contracts UNCHANGED)
  *   - Step 3 IC 24-5-11 attestation payload + version stamps (Tier-3 VERBATIM) + the
- *     record-attestation parity body (the same payload the static page sends)
- *   - Step 4 template slot-key / path / contract_templates upsert / finish payload
+ *     record-attestation parity body (the same payload the static page sends); Step 3 is
+ *     now the terminal step (gh-590 removed Step 4 contract-upload) — buildFinishSubmitUpdate
+ *     supplies the non-contract terminal-submit fields merged into the same UPDATE
  *   - the verbatim Tier-3 legal copy (attestation, indemnity, cancellation, fee, D-225)
  * Network/storage/EF calls live in page.tsx, not here.
  */
@@ -21,12 +22,11 @@ import {
   docPath, wce1Path, licenseDocPath, buildStep2ContractorUpdate, buildStep2FallbackCreate,
   buildHubspotContactBody, buildSupportEmailBody,
   ATTESTATION_TEXT_VERSION, CPA_VERSION, AGREEMENT_VERSION,
-  buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, buildRecordAttestationBody,
-  validateTemplate, templateSlotKey, templateFilePath, buildContractTemplatesArray, buildFinishSubmitUpdate,
+  buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, buildRecordAttestationBody, buildFinishSubmitUpdate,
   REQUIRED_AGREEMENT_CHECKS, COUNTY_RE,
   type LicenseEntry,
 } from '../utils';
-import { PRE_APPROVAL_COPY, PROFILE_TRADES, TEMPLATE_TRADES, TEMPLATE_FUNDING_TYPES } from '../copy';
+import { PRE_APPROVAL_COPY, PROFILE_TRADES } from '../copy';
 
 const ISO = '2026-06-17T12:00:00.000Z';
 
@@ -62,20 +62,19 @@ describe('resolveInitialState — gating parity (do NOT invent gates)', () => {
 
   it('a PENDING contractor is NOT bounced — they land on the wizard (the opposite of dashboard gate)', () => {
     expect(resolveInitialState({ status: 'pending_approval', onboarding_step: 1 })).toEqual({ kind: 'wizard', step: 2 });
-    expect(resolveInitialState({ status: 'pending_approval', onboarding_step: 2 })).toEqual({ kind: 'wizard', step: 3 });
   });
 
-  it('onboarding_step >= 4 -> submitted panel', () => {
+  it('onboarding_step >= 3 -> submitted panel (gh-590: Step 3 is now terminal, was 4)', () => {
+    expect(resolveInitialState({ status: 'pending_approval', onboarding_step: 3 })).toEqual({ kind: 'submitted' });
     expect(resolveInitialState({ status: 'pending_approval', onboarding_step: 4 })).toEqual({ kind: 'submitted' });
     expect(resolveInitialState({ status: 'pending_approval', onboarding_step: 9 })).toEqual({ kind: 'submitted' });
   });
 
-  it('step resolution mirrors Math.min(max(2,(step||1)+1),4)', () => {
+  it('step resolution mirrors Math.min(max(2,(step||1)+1),3)', () => {
     expect(resolveInitialState({ onboarding_step: 0 })).toEqual({ kind: 'wizard', step: 2 });
     expect(resolveInitialState({ onboarding_step: undefined })).toEqual({ kind: 'wizard', step: 2 });
     expect(resolveInitialState({ onboarding_step: 1 })).toEqual({ kind: 'wizard', step: 2 });
     expect(resolveInitialState({ onboarding_step: 2 })).toEqual({ kind: 'wizard', step: 3 });
-    expect(resolveInitialState({ onboarding_step: 3 })).toEqual({ kind: 'wizard', step: 4 });
     expect(resolveInitialState(null)).toEqual({ kind: 'wizard', step: 2 });
   });
 });
@@ -301,44 +300,20 @@ describe('IC 24-5-11 attestation (Tier-3 verbatim version + payload)', () => {
 });
 
 // ============================================================
-// Step 4 — contract template
+// Step 3 (terminal) — final submit fields (gh-590: Step 4 contract-upload removed)
 // ============================================================
-describe('contract template (D-209)', () => {
-  it('validateTemplate: trade+funding, PDF type, <=10MB', () => {
-    expect(validateTemplate('', 'Retail', { type: 'application/pdf', size: 1 })).toMatch(/trade and funding/i);
-    expect(validateTemplate('Roofing', 'Retail', null)).toMatch(/select a PDF/i);
-    expect(validateTemplate('Roofing', 'Retail', { type: 'image/png', size: 1 })).toMatch(/upload a PDF/i);
-    expect(validateTemplate('Roofing', 'Retail', { type: 'application/pdf', size: 11 * 1024 * 1024 })).toMatch(/10MB/i);
-    expect(validateTemplate('Roofing', 'Retail', { type: 'application/pdf', size: 1024 })).toBeNull();
+describe('Step 3 terminal submit (gh-590)', () => {
+  it('buildFinishSubmitUpdate sets pending_approval, no contract_templates/onboarding_step', () => {
+    const u = buildFinishSubmitUpdate(ISO);
+    expect(u).toEqual({ status: 'pending_approval', updated_at: ISO });
+    expect('contract_templates' in u).toBe(false);
+    expect('onboarding_step' in u).toBe(false);
   });
 
-  it('templateSlotKey lowercases, spaces->_, strips parens', () => {
-    expect(templateSlotKey('Roofing', 'Retail')).toBe('roofing/retail');
-    expect(templateSlotKey('Siding', 'Insurance (full replacement)')).toBe('siding/insurance_full_replacement');
-  });
-
-  it('templateFilePath = contractorId/slotKey.pdf', () => {
-    expect(templateFilePath('c1', 'roofing/retail')).toBe('c1/roofing/retail.pdf');
-  });
-
-  it('buildContractTemplatesArray replaces same trade+funding, else appends', () => {
-    const existing = [{ trade: 'Roofing', funding_type: 'Retail', path: 'old.pdf', uploaded_at: 'old' }];
-    const appended = buildContractTemplatesArray(existing, 'Siding', 'Retail', 'new.pdf', ISO);
-    expect(appended).toHaveLength(2);
-    const replaced = buildContractTemplatesArray(existing, 'Roofing', 'Retail', 'new.pdf', ISO);
-    expect(replaced).toHaveLength(1);
-    expect(replaced[0]).toEqual({ trade: 'Roofing', funding_type: 'Retail', path: 'new.pdf', uploaded_at: ISO });
-    expect(buildContractTemplatesArray(null, 'Roofing', 'Retail', 'p.pdf', ISO)).toHaveLength(1);
-  });
-
-  it('buildFinishSubmitUpdate sets pending_approval + step 4', () => {
-    const u = buildFinishSubmitUpdate([], ISO);
-    expect(u).toEqual({ contract_templates: [], status: 'pending_approval', onboarding_step: 4, updated_at: ISO });
-  });
-
-  it('template catalogs match the static selectors', () => {
-    expect(TEMPLATE_TRADES).toEqual(['Roofing', 'Siding', 'Gutters', 'Windows']);
-    expect(TEMPLATE_FUNDING_TYPES).toEqual(['Insurance (full replacement)', 'Retail']);
+  it('merged with buildStep3ContractorUpdate, the combined write carries onboarding_step 3 + status pending_approval', () => {
+    const a = buildAttestationPayload('UA', ISO);
+    const merged = { ...buildStep3ContractorUpdate({}, a, false, ISO), ...buildFinishSubmitUpdate(ISO) };
+    expect(merged).toMatchObject({ onboarding_step: 3, status: 'pending_approval', updated_at: ISO });
   });
 });
 

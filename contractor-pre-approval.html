@@ -165,6 +165,7 @@
                     <strong style="color:var(--amber); display:block; margin-bottom: var(--sp-3);">While You Wait</strong>
                     <ul style="color:var(--slate); margin-left: var(--sp-5); line-height:2;">
                         <li>Review the <a href='/contractor-faq' style='color:var(--amber);'>Contractor FAQ</a></li>
+                        <li>Upload your contract templates in <a href='/contractor-settings.html#contract-templates' style='color:var(--amber);'>Settings → Contract Templates</a></li>
                         <li>Questions? Email <a href="mailto:support@otterquote.com" style="color:var(--amber);">support@otterquote.com</a></li>
                         <li><a href='/contractor-dashboard.html' style='color:var(--amber);'>Go to your contractor dashboard →</a></li>
                     </ul>
@@ -182,8 +183,6 @@
                         <div class="step-dot" id="dot2">2</div>
                         <div class="step-line" id="line23"></div>
                         <div class="step-dot" id="dot3">3</div>
-                        <div class="step-line" id="line34"></div>
-                        <div class="step-dot" id="dot4">4</div>
                     </div>
                     <div class="step-labels">
                         <span class="step-label done" style="width:80px;">Contact Info</span>
@@ -191,8 +190,6 @@
                         <span class="step-label" id="lbl2" style="width:80px;">License &amp; Insurance</span>
                         <span style="width:48px;"></span>
                         <span class="step-label" id="lbl3" style="width:80px;">Agreements</span>
-                        <span style="width:48px;"></span>
-                        <span class="step-label" id="lbl4" style="width:80px;">Contract Template</span>
                     </div>
                 </div>
 
@@ -424,52 +421,7 @@
                         <label for="agreeTcpaSms">I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. (Optional — you can still use the platform without SMS notifications.)</label>
                     </div>
 
-                    <button class="btn-primary" onclick="submitStep3()">Continue to Contract Template →</button>
-                </div>
-
-                <!-- Step 4: Contract Template (D-209: required, no fallback) -->
-                <div id="step4" style="display:none;" class="wizard-card">
-                    <h2>Upload Your Contract Template</h2>
-                    <p class="subtitle">Upload the contract you use with homeowners. This is the agreement they will sign on Otter Quotes &mdash; your contract, your terms. Upload is required to complete your application. You can add additional templates for other trade and funding-type combinations later in your profile.</p>
-
-                    <div class="info-box">
-                        <strong>What to Upload</strong>
-                        <p style="margin-top: var(--sp-2);">Your standard contract PDF for your primary trade and funding type. Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields electronically &mdash; but the contract terms are yours, drafted or reviewed by your attorney. We do not draft or provide homeowner-contractor contracts.</p>
-                    </div>
-
-                    <!-- Trade + funding type selectors -->
-                    <div class="form-row" style="margin-bottom: var(--sp-6);">
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="templateTrade" class="form-label required">Trade</label>
-                            <select id="templateTrade" class="form-select">
-                                <option value="">Select trade&hellip;</option>
-                                <option value="Roofing">Roofing</option>
-                                <option value="Siding">Siding</option>
-                                <option value="Gutters">Gutters</option>
-                                <option value="Windows">Windows</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="templateFunding" class="form-label required">Funding Type</label>
-                            <select id="templateFunding" class="form-select">
-                                <option value="">Select type&hellip;</option>
-                                <option value="Insurance (full replacement)">Insurance (full replacement)</option>
-                                <option value="Retail">Retail</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Upload area -->
-                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('templateFile').click()">
-                        <input type="file" id="templateFile" accept=".pdf" style="display:none;" onchange="handleFileSelect(this)">
-                        <div class="upload-icon">📄</div>
-                        <h4>Click to upload your contract PDF</h4>
-                        <p>PDF only · max 10MB</p>
-                        <div id="selectedFileName" style="margin-top: var(--sp-3); color:var(--amber); font-weight:600; display:none;"></div>
-                    </div>
-                    <div id="uploadStatus" class="upload-status"></div>
-
-                    <button class="btn-primary" id="uploadAndSubmitBtn" onclick="submitStep4()">Upload &amp; Submit Application →</button>
+                    <button class="btn-primary" onclick="submitStep3()">Submit Application →</button>
                 </div>
             </div>
         </div>
@@ -478,16 +430,17 @@
     <footer id="site-footer"></footer>
 
     <script src="js/cookie-storage.js"></script>
-    <!-- #505: D-199 validation helpers — step 4 must create the contractor_templates
-         row and validate it, or the quotes_enforce_bid_can_submit trigger blocks every bid. -->
-    <script src="js/contract-template-validation.js"></script>
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
 
     <script>
-    // D-190: Contractor pre-approval wizard — Steps 2, 3, 4
+    // D-190: Contractor pre-approval wizard — Steps 2, 3
     // Runs entirely off direct Supabase calls (no auth.js dependency for core logic).
+    // gh-590: Step 4 (contract-upload, D-209) removed — Step 3 (Agreements) is now the
+    // terminal step. Contract templates move to profile → Settings → Contract Templates,
+    // uploaded post-approval with per-slot D-199 validation. Bid gating is unaffected —
+    // it reads the contractor_templates table (D-199), not onboarding progress.
 
     // sb comes from js/config.js (the global Supabase client).
     // Do NOT create a second client here — that previously raced the global
@@ -505,8 +458,8 @@
     }
 
     function updateProgress(activeStep) {
-        // Dots: 1=done, 2/3/4 = active or pending
-        for (let i = 2; i <= 4; i++) {
+        // Dots: 1=done, 2/3 = active or pending
+        for (let i = 2; i <= 3; i++) {
             const dot = document.getElementById('dot' + i);
             const lbl = document.getElementById('lbl' + i);
             if (i < activeStep) {
@@ -523,16 +476,14 @@
         // Lines
         const line12 = document.getElementById('line12');
         const line23 = document.getElementById('line23');
-        const line34 = document.getElementById('line34');
         if (activeStep > 2) line12.classList.add('done'); else line12.classList.remove('done');
         if (activeStep > 3) line23.classList.add('done'); else line23.classList.remove('done');
-        if (activeStep > 4) line34.classList.add('done'); else line34.classList.remove('done');
     }
 
     function showStep(n) {
         currentStep = n;
         updateProgress(n);
-        ['step2','step3','step4'].forEach(id => {
+        ['step2','step3'].forEach(id => {
             document.getElementById(id).style.display = (id === 'step' + n) ? '' : 'none';
         });
         showPanel('wizard');
@@ -1134,6 +1085,13 @@
                     sms_consent_ts:           document.getElementById('agreeTcpaSms').checked ? now : null,
                     agreement_accepted_at:    now,
                     agreement_version:        'v1-2026-04',
+                    // gh-590: Step 3 is now the final wizard step (Step 4 contract-upload,
+                    // D-209, removed — templates move to profile → Settings → Contract
+                    // Templates). status stays 'pending_approval' from the Step 1 insert;
+                    // re-asserted here as the terminal non-contract write finishAndSubmit()
+                    // used to make. onboarding_step: 3 doubles as both "step 3 saved" and
+                    // "application submitted" now that there is no step 4.
+                    status:                   'pending_approval',
                     onboarding_step:          3,
                     updated_at:               now,
                 })
@@ -1157,100 +1115,17 @@
             }
 
             contractor.onboarding_step = 3;
-            showStep(4);
-        } catch (err) {
-            console.error('Step 3 error:', err);
-            alert('Failed to save agreements. Please try again.');
-        }
-    }
 
-    // ── Step 4 submit ──────────────────────────────────────────────────────────
-    async function submitStep4() {
-        const trade   = document.getElementById('templateTrade').value;
-        const funding = document.getElementById('templateFunding').value;
-        const file    = document.getElementById('templateFile').files[0];
-
-        if (!trade || !funding) { alert('Please select a trade and funding type before uploading.'); return; }
-        if (!file) { alert('Please select a PDF file to upload.'); return; }
-        if (file.type !== 'application/pdf') { alert('Please upload a PDF file.'); return; }
-        if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
-
-        const btn = document.getElementById('uploadAndSubmitBtn');
-        btn.disabled = true;
-        btn.textContent = 'Uploading…';
-        setUploadStatus('Uploading contract template…', 'info');
-
-        try {
-            // Upload to contractor-templates bucket
-            const slotKey  = `${trade.toLowerCase()}/${funding.toLowerCase().replace(/\s+/g,'_').replace(/[()]/g,'')}`;
-            const filePath = `${contractor.id}/${slotKey}.pdf`;
-
-            const { error: uploadError } = await sb.storage
-                .from('contractor-templates')
-                .upload(filePath, file, { contentType: 'application/pdf', upsert: true });
-
-            if (uploadError) throw uploadError;
-
-            // Update contract_templates JSONB array
-            const existing = contractor.contract_templates || [];
-            const filtered = existing.filter(t => !(t.trade === trade && t.funding_type === funding));
-            const updated  = [...filtered, { trade, funding_type: funding, path: filePath, uploaded_at: new Date().toISOString() }];
-
-            // #505: create the contractor_templates row + run D-199 validation.
-            // Without this the row never exists, bid_can_submit() returns
-            // 'not_found', and the quotes_enforce_bid_can_submit BEFORE INSERT
-            // trigger blocks EVERY bid on this trade x funding slot — a silent
-            // dead-end for every wizard-onboarded contractor.
-            // funding_type must be normalized to the RPC/manifest vocabulary
-            // ('insurance' | 'retail'); the select value is e.g. "Insurance (full replacement)".
-            try {
-                const normalizedFunding = /insurance/i.test(funding) ? 'insurance' : 'retail';
-                if (window.D199 && typeof D199.validateNewlyUploadedTemplate === 'function') {
-                    setUploadStatus('Validating contract template…', 'info');
-                    await D199.validateNewlyUploadedTemplate(
-                        contractor.id, trade.toLowerCase(), normalizedFunding, filePath, null
-                    );
-                } else {
-                    console.warn('[#505] D199 helpers unavailable — contract_templates row not created');
-                }
-            } catch (validationErr) {
-                // Non-fatal: the application still submits. The contractor can
-                // complete validation from Settings -> Contract Templates.
-                console.error('[#505] template validation failed (non-fatal):', validationErr);
-            }
-
-            await finishAndSubmit(updated);
-        } catch (err) {
-            console.error('Step 4 upload error:', err);
-            btn.disabled = false;
-            btn.textContent = 'Upload & Submit Application →';
-            setUploadStatus('Upload failed. Please try again.', 'error');
-        }
-    }
-
-    async function finishAndSubmit(contractTemplates) {
-        try {
-            const { error } = await sb.from('contractors')
-                .update({
-                    contract_templates: contractTemplates,
-                    status:             'pending_approval',
-                    onboarding_step:    4,
-                    updated_at:         new Date().toISOString(),
-                })
-                .eq('user_id', currentUser.id);
-
-            if (error) throw error;
-
-            // GA4
+            // gh-590: application is now fully submitted at the end of Step 3. GA4 event
+            // and the submitted panel moved here from the deleted finishAndSubmit().
             if (typeof gtag === 'function') {
                 gtag('event', 'contractor_signup_complete', { event_category: 'contractor_funnel' });
             }
-
             document.getElementById('submittedEmail').textContent = currentUser.email || '';
             showPanel('submitted');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (err) {
-            console.error('finishAndSubmit error:', err);
+            console.error('Step 3 error:', err);
             alert('Failed to submit application. Please try again or contact support@otterquote.com.');
         }
     }
@@ -1341,8 +1216,8 @@
                 return;
             }
 
-            // If already submitted (step 4 done), show submitted panel
-            if (contractor.onboarding_step >= 4 || contractor.status === 'pending_approval' && contractor.onboarding_step >= 4) {
+            // If already submitted (step 3 done — gh-590 removed step 4), show submitted panel
+            if (contractor.onboarding_step >= 3 || contractor.status === 'pending_approval' && contractor.onboarding_step >= 3) {
                 document.getElementById('submittedEmail').textContent = currentUser.email || '';
                 showPanel('submitted');
                 return;
@@ -1350,7 +1225,7 @@
 
             // Determine which step to show
             const step = Math.max(2, (contractor.onboarding_step || 1) + 1);
-            showStep(Math.min(step, 4));
+            showStep(Math.min(step, 3));
 
         } catch (err) {
             console.error('Pre-approval init error:', err);

@@ -4,20 +4,32 @@
  * Contract Templates card (IMP-009) — port of loadContractTemplates / uploadTemplateFile /
  * viewContractTemplate / the Review-Field-Mapping modal in contractor-profile.html.
  *
- * 8 slots (trade × funding) backed by contractors.contract_templates (JSONB array).
- * Storage + signed-URL contracts UNCHANGED (contractor-templates bucket). Each uploaded
- * slot shows its D-199 anchor-validation status (see d199-validation.tsx). All DB-sourced
- * strings render as React text (the static page hand-built DOM for XSS safety; JSX is safe
- * by construction).
+ * 8 slots (trade × funding) backed by contractors.contract_templates (JSONB array) — NO
+ * schema change (gh-590). Storage + signed-URL contracts UNCHANGED (contractor-templates
+ * bucket). Each uploaded slot shows its D-199 anchor-validation status (see
+ * d199-validation.tsx). All DB-sourced strings render as React text (the static page
+ * hand-built DOM for XSS safety; JSX is safe by construction).
+ *
+ * gh-590: single two-dropdown upload control (Contract Type: Retail/Insurance + Trade),
+ * "Contracts Uploaded" list grouped Retail then Insurance, and multi-slot assignment — one
+ * uploaded file can be assigned to additional trade/funding slots WITHOUT re-uploading.
+ * Each newly-assigned slot gets its OWN fresh contractor_templates row and its OWN D-199
+ * re-validation against that slot's manifest (mounting <D199Validation> for the
+ * newly-occupied slot triggers its existing upsertValidationRow + callValidate flow —
+ * see d199-validation.tsx's refresh()). Validation status is NEVER copied across slots
+ * (Bridge A-ANSWER, 2026-08-17: re-validate per slot, not propagate-without-rescan) —
+ * retail vs. insurance manifests require different anchor fields per trade.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { PROFILE_COPY as T, AUTOFILL_FIELDS, DEFAULT_FIELD_MAPPINGS } from './copy';
 import {
-  CONTRACT_TEMPLATE_SLOTS, contractTemplatePath, findContractTemplate, upsertContractTemplate,
-  setContractFieldMappings, storagePathFromValue, validatePdfUpload, initialFieldMappingValues,
-  collectFieldMappings, type ContractTemplate,
+  CONTRACT_TEMPLATE_GROUPS, contractTemplatePath, findContractTemplate,
+  upsertContractTemplate, removeContractTemplate, assignExistingTemplate, availableAssignmentTargets,
+  slotFundingType, setContractFieldMappings, storagePathFromValue, validatePdfUpload,
+  initialFieldMappingValues, collectFieldMappings, tradeKey, fundingKey,
+  type ContractTemplate, type ContractType,
 } from './utils';
 import { D199Validation } from './d199-validation';
 
@@ -30,6 +42,18 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const pending = useRef<{ trade: string; fundingType: string } | null>(null);
 
+  // gh-590: the single top upload control (two dropdowns, then Choose File).
+  const [uploadContractType, setUploadContractType] = useState<ContractType | ''>('');
+  const [uploadTrade, setUploadTrade] = useState('');
+
+  // gh-590: multi-slot assignment — reassign an already-uploaded file to another slot
+  // without re-uploading. At most one slot's picker is open at a time.
+  const [assigningSlot, setAssigningSlot] = useState<string | null>(null);
+  const [assignContractType, setAssignContractType] = useState<ContractType | ''>('');
+  const [assignTrade, setAssignTrade] = useState('');
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [removeBusySlot, setRemoveBusySlot] = useState<string | null>(null);
+
   async function reload() {
     const { data } = await supabase.from('contractors').select('contract_templates').eq('id', contractorId).single();
     setTemplates(((data?.contract_templates as ContractTemplate[]) ?? []));
@@ -40,6 +64,13 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
   function pickFile(trade: string, fundingType: string) {
     pending.current = { trade, fundingType };
     fileRef.current?.click();
+  }
+
+  /** gh-590: top upload control — resolves (Contract Type, Trade) to the exact existing
+   *  slot fundingType string, then reuses the same pickFile/onFile upload path as Replace. */
+  function startUploadNew() {
+    if (!uploadTrade || !uploadContractType) { alert('Select a contract type and trade first.'); return; }
+    pickFile(uploadTrade, slotFundingType(uploadTrade, uploadContractType));
   }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -60,6 +91,8 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
       if (dbErr) throw dbErr;
       setTemplates(updated);
       setMappingSlot({ trade: slot.trade, fundingType: slot.fundingType });
+      setUploadContractType('');
+      setUploadTrade('');
     } catch (err2) {
       console.error('Error uploading template:', err2);
       alert(T.contractTemplates.uploadFailed);
@@ -81,6 +114,76 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
     }
   }
 
+  function openAssign(trade: string, fundingType: string) {
+    setAssigningSlot(`${trade}/${fundingType}`);
+    setAssignContractType('');
+    setAssignTrade('');
+  }
+  function closeAssign() {
+    setAssigningSlot(null);
+  }
+
+  /**
+   * gh-590 multi-slot assignment: point the target slot at the SAME file_url as the
+   * source slot — no new upload. Deliberately does NOT touch contractor_templates (D-199)
+   * here: mounting <D199Validation> for the now-occupied target slot triggers its own
+   * upsertValidationRow + callValidate (d199-validation.tsx refresh()) against the SAME
+   * pdf_storage_path but the NEW trade/funding_type, so the target slot gets its own fresh
+   * row re-validated against its own manifest — never a copy of the source slot's status.
+   */
+  async function submitAssign(sourceTrade: string, sourceFundingType: string) {
+    if (!assignTrade || !assignContractType) { alert('Select a contract type and trade to assign to.'); return; }
+    const targetFundingType = slotFundingType(assignTrade, assignContractType);
+    const targets = availableAssignmentTargets(templates, sourceTrade, sourceFundingType);
+    const valid = targets.some((s) => s.trade === assignTrade && s.fundingType === targetFundingType);
+    if (!valid) { alert(T.contractTemplates.assignNoSlots); return; }
+    setAssignBusy(true);
+    try {
+      const updated = assignExistingTemplate(templates, sourceTrade, sourceFundingType, assignTrade, targetFundingType, new Date().toISOString());
+      const { error } = await supabase.from('contractors').update({ contract_templates: updated, updated_at: new Date().toISOString() }).eq('id', contractorId);
+      if (error) throw error;
+      setTemplates(updated);
+      closeAssign();
+    } catch (err) {
+      console.error('assignExistingTemplate error:', err);
+      alert(T.contractTemplates.assignFailed);
+    } finally {
+      setAssignBusy(false);
+    }
+  }
+
+  /**
+   * gh-590: clear just this slot's assignment. Leaves every other slot (including ones
+   * sharing the same file_url) and the storage object itself untouched. Also best-effort
+   * deletes the now-orphaned contractor_templates (D-199) row for this exact slot so
+   * bid_can_submit reverts to its clean 'not_found' deny instead of a stale 'valid' result
+   * for a slot with no visible template — this delete is non-fatal; the JSONB write above
+   * is the source of truth for what the UI shows.
+   */
+  async function removeAssignment(trade: string, fundingType: string) {
+    if (!window.confirm(T.contractTemplates.removeConfirm)) return;
+    const key = `${trade}/${fundingType}`;
+    setRemoveBusySlot(key);
+    try {
+      const updated = removeContractTemplate(templates, trade, fundingType);
+      const { error } = await supabase.from('contractors').update({ contract_templates: updated, updated_at: new Date().toISOString() }).eq('id', contractorId);
+      if (error) throw error;
+      setTemplates(updated);
+      try {
+        const { error: cleanupErr } = await supabase.from('contractor_templates').delete()
+          .eq('contractor_id', contractorId).eq('trade', tradeKey(trade)).eq('funding_type', fundingKey(fundingType));
+        if (cleanupErr) console.warn('[gh-590] contractor_templates row cleanup failed (non-fatal):', cleanupErr);
+      } catch (rowErr) {
+        console.warn('[gh-590] contractor_templates row cleanup threw (non-fatal):', rowErr);
+      }
+    } catch (err) {
+      console.error('removeContractTemplate error:', err);
+      alert(T.contractTemplates.removeFailed);
+    } finally {
+      setRemoveBusySlot(null);
+    }
+  }
+
   return (
     <section className="oqp-card" id="contract-templates">
       <h2 className="oqp-card-title"><span aria-hidden="true">📑</span>{T.contractTemplates.title}</h2>
@@ -99,41 +202,109 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
 
       <input ref={fileRef} type="file" accept=".pdf" style={{ display: 'none' }} onChange={onFile} />
 
-      <div className="oqp-template-grid">
-        {CONTRACT_TEMPLATE_SLOTS.map((slot) => {
-          const key = `${slot.trade}/${slot.fundingType}`;
-          const tpl = findContractTemplate(templates, slot.trade, slot.fundingType);
-          const busy = busySlot === key;
-          return (
-            <div key={key} className="oqp-slot">
-              <div className="oqp-slot-head">{slot.trade} — {slot.fundingType}</div>
-              {tpl ? (
-                <>
-                  <div className="oqp-slot-file">
-                    <div className="oqp-slot-file-name">{tpl.file_name || 'template.pdf'}</div>
-                    <div className="oqp-slot-file-date">{T.contractTemplates.uploadedPrefix}{tpl.uploaded_at ? new Date(tpl.uploaded_at).toLocaleDateString() : 'Unknown date'}</div>
-                  </div>
-                  <div className="oqp-slot-btns">
-                    <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" onClick={() => view(String(tpl.file_url))}>{T.contractTemplates.view}</button>
-                    <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" onClick={() => setMappingSlot({ trade: slot.trade, fundingType: slot.fundingType })}>{T.contractTemplates.reviewMapping}</button>
-                    <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" disabled={busy} onClick={() => pickFile(slot.trade, slot.fundingType)}>{T.contractTemplates.replace}</button>
-                  </div>
-                  <D199Validation contractorId={contractorId} trade={slot.trade} fundingType={slot.fundingType} storagePath={String(tpl.file_url)} />
-                </>
-              ) : (
-                <>
-                  <div className="oqp-slot-sub">{T.contractTemplates.noTemplate}</div>
-                  <button type="button" className="oqp-upload-box" disabled={busy} onClick={() => pickFile(slot.trade, slot.fundingType)}>
-                    <span className="oqp-upload-icon" aria-hidden="true">📄</span>
-                    <span className="oqp-upload-text">{busy ? 'Uploading…' : T.contractTemplates.uploadTemplate}</span>
-                    <span className="oqp-upload-hint">{T.contractTemplates.uploadHint}</span>
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })}
+      {/* gh-590: single two-dropdown upload control — profile is the only upload surface now
+          (pre-approval's Step 4 contract-upload, D-209, was removed). */}
+      <div className="oqp-form-group" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ fontSize: '.95rem', margin: '0 0 .6rem' }}>{T.contractTemplates.uploadNewHeading}</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem' }}>
+          <div className="oqp-form-group">
+            <label className="oqp-label" htmlFor="oqp-ct-contract-type">{T.contractTemplates.contractTypeLabel}</label>
+            <select id="oqp-ct-contract-type" className="oqp-input" value={uploadContractType} onChange={(e) => setUploadContractType(e.target.value as ContractType | '')}>
+              <option value="">{T.contractTemplates.contractTypePlaceholder}</option>
+              <option value="Retail">{T.contractTemplates.contractTypeRetail}</option>
+              <option value="Insurance">{T.contractTemplates.contractTypeInsurance}</option>
+            </select>
+          </div>
+          <div className="oqp-form-group">
+            <label className="oqp-label" htmlFor="oqp-ct-trade">{T.contractTemplates.tradeLabel}</label>
+            <select id="oqp-ct-trade" className="oqp-input" value={uploadTrade} onChange={(e) => setUploadTrade(e.target.value)}>
+              <option value="">{T.contractTemplates.tradePlaceholder}</option>
+              <option value="Roofing">Roofing</option>
+              <option value="Siding">Siding</option>
+              <option value="Gutters">Gutters</option>
+              <option value="Windows">Windows</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" className="oqp-btn-secondary" style={{ marginTop: '.6rem' }} disabled={!uploadTrade || !uploadContractType} onClick={startUploadNew}>
+          {T.contractTemplates.chooseFile}
+        </button>
       </div>
+
+      {/* gh-590: "Contracts Uploaded" list, grouped Retail then Insurance. */}
+      {CONTRACT_TEMPLATE_GROUPS.map((group) => (
+        <div key={group.contractType} style={{ marginBottom: '1.25rem' }}>
+          <h3 style={{ fontSize: '.95rem', margin: '0 0 .6rem' }}>{group.label}</h3>
+          <div className="oqp-template-grid">
+            {group.slots.map((slot) => {
+              const key = `${slot.trade}/${slot.fundingType}`;
+              const tpl = findContractTemplate(templates, slot.trade, slot.fundingType);
+              const busy = busySlot === key;
+              const removing = removeBusySlot === key;
+              const targets = availableAssignmentTargets(templates, slot.trade, slot.fundingType);
+              return (
+                <div key={key} className="oqp-slot">
+                  <div className="oqp-slot-head">{slot.trade}</div>
+                  {tpl ? (
+                    <>
+                      <div className="oqp-slot-file">
+                        <div className="oqp-slot-file-name">{tpl.file_name || 'template.pdf'}</div>
+                        <div className="oqp-slot-file-date">{T.contractTemplates.uploadedPrefix}{tpl.uploaded_at ? new Date(tpl.uploaded_at).toLocaleDateString() : 'Unknown date'}</div>
+                      </div>
+                      <div className="oqp-slot-btns">
+                        <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" onClick={() => view(String(tpl.file_url))}>{T.contractTemplates.view}</button>
+                        <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" onClick={() => setMappingSlot({ trade: slot.trade, fundingType: slot.fundingType })}>{T.contractTemplates.reviewMapping}</button>
+                        <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" disabled={busy} onClick={() => pickFile(slot.trade, slot.fundingType)}>{T.contractTemplates.replace}</button>
+                        {targets.length > 0 && (
+                          <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" onClick={() => openAssign(slot.trade, slot.fundingType)}>{T.contractTemplates.assign}</button>
+                        )}
+                        <button type="button" className="oqp-link-btn" disabled={removing} onClick={() => removeAssignment(slot.trade, slot.fundingType)}>
+                          {removing ? '…' : T.contractTemplates.removeAssignment}
+                        </button>
+                      </div>
+                      {assigningSlot === key && targets.length > 0 && (
+                        <div style={{ marginTop: '.6rem', padding: '.6rem', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px' }}>
+                          <div className="oqp-label" style={{ marginBottom: '.4rem' }}>{T.contractTemplates.assignTargetLabel}</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem', marginBottom: '.5rem' }}>
+                            <select className="oqp-input" value={assignContractType} onChange={(e) => setAssignContractType(e.target.value as ContractType | '')}>
+                              <option value="">{T.contractTemplates.contractTypePlaceholder}</option>
+                              <option value="Retail">{T.contractTemplates.contractTypeRetail}</option>
+                              <option value="Insurance">{T.contractTemplates.contractTypeInsurance}</option>
+                            </select>
+                            <select className="oqp-input" value={assignTrade} onChange={(e) => setAssignTrade(e.target.value)}>
+                              <option value="">{T.contractTemplates.tradePlaceholder}</option>
+                              <option value="Roofing">Roofing</option>
+                              <option value="Siding">Siding</option>
+                              <option value="Gutters">Gutters</option>
+                              <option value="Windows">Windows</option>
+                            </select>
+                          </div>
+                          <div className="oqp-slot-btns">
+                            <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" disabled={assignBusy || !assignTrade || !assignContractType} onClick={() => submitAssign(slot.trade, slot.fundingType)}>
+                              {assignBusy ? '…' : T.contractTemplates.assignAction}
+                            </button>
+                            <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" onClick={closeAssign}>{T.contractTemplates.cancel}</button>
+                          </div>
+                        </div>
+                      )}
+                      <D199Validation contractorId={contractorId} trade={slot.trade} fundingType={slot.fundingType} storagePath={String(tpl.file_url)} />
+                    </>
+                  ) : (
+                    <>
+                      <div className="oqp-slot-sub">{T.contractTemplates.noTemplate}</div>
+                      <button type="button" className="oqp-upload-box" disabled={busy} onClick={() => pickFile(slot.trade, slot.fundingType)}>
+                        <span className="oqp-upload-icon" aria-hidden="true">📄</span>
+                        <span className="oqp-upload-text">{busy ? 'Uploading…' : T.contractTemplates.uploadTemplate}</span>
+                        <span className="oqp-upload-hint">{T.contractTemplates.uploadHint}</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
 
       {mappingSlot && (
         <FieldMappingModal

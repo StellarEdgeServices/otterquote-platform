@@ -40,16 +40,15 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { markContractorGateBounce } from '@/lib/contractor-gate';
 import { type ContractorRecord } from '../_shell/use-contractor-record';
-import { PRE_APPROVAL_COPY as T, PROFILE_TRADES, JURISDICTION_LEVELS, TEMPLATE_TRADES, TEMPLATE_FUNDING_TYPES, CONTRACTOR_DASHBOARD_ROUTE, CONTRACTOR_JOIN_URL, CONTRACTOR_FAQ_URL, CONTRACTOR_AGREEMENT_URL, SUPPORT_EMAIL } from './copy';
+import { PRE_APPROVAL_COPY as T, PROFILE_TRADES, JURISDICTION_LEVELS, CONTRACTOR_DASHBOARD_ROUTE, CONTRACTOR_JOIN_URL, CONTRACTOR_FAQ_URL, CONTRACTOR_AGREEMENT_URL, CONTRACTOR_SETTINGS_URL, SUPPORT_EMAIL } from './copy';
 import {
   str, parseSignup, buildInitialContractorInsert, resolveInitialState,
   evaluateProfileBasics, wcSatisfied, coiSatisfied, licenseSatisfied, step2Complete,
   validateLicenseEntry, licenseEntrySummary, buildLicenseInsert,
   docPath, wce1Path, licenseDocPath, buildStep2ContractorUpdate, buildStep2FallbackCreate,
   buildHubspotContactBody, buildSupportEmailBody,
-  buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, buildRecordAttestationBody,
-  validateTemplate, templateSlotKey, templateFilePath, buildContractTemplatesArray, buildFinishSubmitUpdate,
-  type LicenseEntry, type WcChoice, type ContractTemplate,
+  buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, buildRecordAttestationBody, buildFinishSubmitUpdate,
+  type LicenseEntry, type WcChoice,
 } from './utils';
 
 const CONTRACTOR_LOGIN_ROUTE = '/contractor/login';
@@ -69,7 +68,7 @@ export default function ContractorPreApprovalPage() {
   const initRan = useRef(false);
 
   const [panel, setPanel] = useState<Panel>('loading');
-  const [step, setStep] = useState<2 | 3 | 4>(2);
+  const [step, setStep] = useState<2 | 3>(2);
   const [contractor, setContractor] = useState<ContractorRecord | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState('');
   const [errorView, setErrorView] = useState<{ title: string; body: string } | null>(null);
@@ -165,12 +164,6 @@ export default function ContractorPreApprovalPage() {
               {step === 3 && (
                 <Step3Card
                   contractor={contractor}
-                  onAdvance={(rec) => { setContractor(rec); setStep(4); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                />
-              )}
-              {step === 4 && (
-                <Step4Card
-                  contractor={contractor}
                   onSubmitted={() => showSubmitted(user.email ?? '')}
                 />
               )}
@@ -219,6 +212,7 @@ function SubmittedPanel({ email }: { email: string }) {
         <strong className="oqp-while-title">{T.submitted.whileYouWait}</strong>
         <ul className="oqp-while-list">
           <li>{T.submitted.reviewFaqPre}<a href={CONTRACTOR_FAQ_URL} className="oqp-link-amber">{T.submitted.reviewFaqLink}</a></li>
+          <li>{T.submitted.contractsPre}<a href={CONTRACTOR_SETTINGS_URL} className="oqp-link-amber">{T.submitted.contractsLink}</a></li>
           <li>{T.submitted.questionsPre}<a href={`mailto:${SUPPORT_EMAIL}`} className="oqp-link-amber">{SUPPORT_EMAIL}</a></li>
           <li><a href={CONTRACTOR_DASHBOARD_ROUTE} className="oqp-link-amber">{T.submitted.dashboardLink}</a></li>
         </ul>
@@ -227,7 +221,7 @@ function SubmittedPanel({ email }: { email: string }) {
   );
 }
 
-function ProgressHeader({ step }: { step: 2 | 3 | 4 }) {
+function ProgressHeader({ step }: { step: 2 | 3 }) {
   return (
     <div className="oqp-progress">
       <h1 className="oqp-progress-title">{T.progress.title}</h1>
@@ -635,13 +629,18 @@ function LicenseSection({ licenses, setLicenses, noLicense, setNoLicense, showFo
 // Step 3 — Platform Agreements (VERBATIM legal copy)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; onAdvance: (rec: ContractorRecord) => void }) {
+function Step3Card({ contractor, onSubmitted }: { contractor: ContractorRecord; onSubmitted: () => void }) {
   const [partner, setPartner] = useState(false);
   const [cancellation, setCancellation] = useState(false);
   const [attestation, setAttestation] = useState(false);
   const [tcpa, setTcpa] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // gh-590: Step 3 is now the final wizard step (Step 4 contract-upload, D-209, removed —
+  // templates move to profile → Settings → Contract Templates). The agreements UPDATE and
+  // the former finishAndSubmit()'s non-contract fields (buildFinishSubmitUpdate) are merged
+  // into ONE contractors write; status stays 'pending_approval' from the Step-1 insert and
+  // is re-asserted here for parity with the static page.
   async function submitStep3() {
     if (busy) return;
     if (!step3Complete(partner, cancellation, attestation)) {
@@ -654,7 +653,7 @@ function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; on
     const payload = buildAttestationPayload(ua, nowIso);
     try {
       const { error } = await supabase.from('contractors')
-        .update(buildStep3ContractorUpdate(contractor, payload, tcpa, nowIso))
+        .update({ ...buildStep3ContractorUpdate(contractor, payload, tcpa, nowIso), ...buildFinishSubmitUpdate(nowIso) })
         .eq('user_id', contractor.user_id);
       if (error) throw error;
 
@@ -667,7 +666,8 @@ function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; on
         console.warn('record-attestation edge function error (non-fatal):', fnErr);
       }
 
-      onAdvance({ ...contractor, onboarding_step: 3 } as ContractorRecord);
+      fireGtag('contractor_signup_complete', { event_category: 'contractor_funnel' });
+      onSubmitted();
     } catch (err) {
       console.error('Step 3 error:', err);
       setBusy(false);
@@ -722,90 +722,6 @@ function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; on
       </label>
 
       <button type="button" className="oqp-btn-primary" disabled={busy} onClick={submitStep3}>{T.step3.advance}</button>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Step 4 — Contract Template
-// ─────────────────────────────────────────────────────────────────────────────
-
-function Step4Card({ contractor, onSubmitted }: { contractor: ContractorRecord; onSubmitted: () => void }) {
-  const [trade, setTrade] = useState('');
-  const [funding, setFunding] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [status, setStatus] = useState<{ msg: string; kind: 'info' | 'error' | 'success' } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  async function submitStep4() {
-    const err = validateTemplate(trade, funding, file);
-    if (err) { alert(err); return; }
-    setBusy(true);
-    setStatus({ msg: T.step4.uploadingStatus, kind: 'info' });
-    try {
-      const slotKey = templateSlotKey(trade, funding);
-      const filePath = templateFilePath(contractor.id, slotKey);
-      const { error: upErr } = await supabase.storage.from('contractor-templates')
-        .upload(filePath, file as File, { contentType: 'application/pdf', upsert: true });
-      if (upErr) throw upErr;
-
-      const existing = (contractor.contract_templates as ContractTemplate[] | undefined) ?? [];
-      const updated = buildContractTemplatesArray(existing, trade, funding, filePath, new Date().toISOString());
-
-      const { error } = await supabase.from('contractors')
-        .update(buildFinishSubmitUpdate(updated, new Date().toISOString()))
-        .eq('user_id', contractor.user_id);
-      if (error) throw error;
-
-      fireGtag('contractor_signup_complete', { event_category: 'contractor_funnel' });
-      onSubmitted();
-    } catch (err) {
-      console.error('Step 4 upload error:', err);
-      setBusy(false);
-      setStatus({ msg: T.step4.uploadError, kind: 'error' });
-    }
-  }
-
-  return (
-    <div className="oqp-card">
-      <h2 className="oqp-card-title">{T.step4.title}</h2>
-      <p className="oqp-card-sub">{T.step4.subtitle}</p>
-
-      <div className="oqp-info-box">
-        <strong>{T.step4.infoTitle}</strong>
-        <p>{T.step4.infoBody}</p>
-      </div>
-
-      <div className="oqp-row2">
-        <div className="oqp-field oqp-field-last">
-          <label className="oqp-form-label">{T.step4.tradeLabel} <span className="oqp-req">*</span></label>
-          <select className="oqp-select" value={trade} onChange={(e) => setTrade(e.target.value)}>
-            <option value="">{T.step4.tradePlaceholder}</option>
-            {TEMPLATE_TRADES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div className="oqp-field oqp-field-last">
-          <label className="oqp-form-label">{T.step4.fundingLabel} <span className="oqp-req">*</span></label>
-          <select className="oqp-select" value={funding} onChange={(e) => setFunding(e.target.value)}>
-            <option value="">{T.step4.fundingPlaceholder}</option>
-            {TEMPLATE_FUNDING_TYPES.map((f) => <option key={f} value={f}>{f}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <div className="oqp-upload" onClick={() => fileRef.current?.click()}>
-        <input ref={fileRef} type="file" accept=".pdf" className="oqp-hidden-file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        <div className="oqp-upload-icon">📄</div>
-        <h4 className="oqp-upload-head">{T.step4.uploadHeading}</h4>
-        <p className="oqp-muted">{T.step4.uploadHint}</p>
-        {file && <div className="oqp-upload-file">📎 {file.name}</div>}
-      </div>
-      {status && <div className={'oqp-upload-status is-' + status.kind}>{status.msg}</div>}
-
-      <button type="button" className="oqp-btn-primary" disabled={busy} onClick={submitStep4}>
-        {busy ? T.step4.uploading : T.step4.submit}
-      </button>
     </div>
   );
 }
@@ -907,18 +823,5 @@ const STYLES = `
   .oqp-check { display:flex; align-items:flex-start; gap:.75rem; margin-bottom:2rem; }
   .oqp-check input { width:18px; height:18px; min-width:18px; cursor:pointer; accent-color:var(--amber); margin-top:2px; }
   .oqp-check span { cursor:pointer; font-size:.9rem; color:var(--slate); line-height:1.5; }
-  /* step 4 */
-  .oqp-row2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1.5rem; margin-bottom:1.5rem; }
-  .oqp-select { width:100%; padding:.75rem 1rem; border:1px solid rgba(255,255,255,0.12); border-radius:.5rem; font-size:1rem; background:rgba(255,255,255,0.06); color:var(--white); font-family:inherit; }
-  .oqp-select option { background:var(--navy-2); color:var(--white); }
-  .oqp-upload { border:2px dashed rgba(255,255,255,0.2); border-radius:.75rem; padding:3rem; text-align:center; cursor:pointer; }
-  .oqp-upload:hover { border-color:var(--amber); background:rgba(224,123,0,0.05); }
-  .oqp-upload-icon { font-size:2.5rem; margin-bottom:.75rem; }
-  .oqp-upload-head { font-size:1rem; margin-bottom:.5rem; }
-  .oqp-upload-file { margin-top:.75rem; color:var(--amber); font-weight:600; }
-  .oqp-upload-status { margin-top:1rem; padding:.75rem 1rem; border-radius:.5rem; font-size:.9rem; }
-  .oqp-upload-status.is-info { background:rgba(245,158,11,0.1); color:#E07B00; }
-  .oqp-upload-status.is-error { background:rgba(239,68,68,0.1); color:#ef4444; }
-  .oqp-upload-status.is-success { background:rgba(16,185,129,0.1); color:#10b981; }
   @media (max-width:600px) { .oqp-card { padding:1.5rem; } .oqp-main { padding:2rem 1rem; } }
 `;

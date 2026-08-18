@@ -15,7 +15,9 @@ import {
   buildInitialServiceConfigs, collectServiceArea, collectServiceCountiesForSave, serviceAreaSummary,
   formatPhone, tradesDisplay, brandsDisplay, normalizeWebsiteHref, storagePathFromValue, fileNameFromUrl,
   safeFundingToken, contractSlotId, contractTemplatePath, findContractTemplate, upsertContractTemplate,
-  setContractFieldMappings, CONTRACT_TEMPLATE_SLOTS, PC_TEMPLATE_SLOTS, pcSlotKey, pcTemplatePath, mergePcTemplate,
+  setContractFieldMappings, CONTRACT_TEMPLATE_SLOTS, CONTRACT_TEMPLATE_GROUPS, slotFundingType,
+  removeContractTemplate, assignExistingTemplate, availableAssignmentTargets,
+  PC_TEMPLATE_SLOTS, pcSlotKey, pcTemplatePath, mergePcTemplate,
   manufacturersWithCert, certTiersFor, splitCertVerifications, certStatusStyle, certSourceLabel,
   isCertExpiringSoon, certLetterPath, validationCounts, missingAnchors, D199_FAIL_STATES,
   initialFieldMappingValues, collectFieldMappings, validatePdfUpload, validateIntroVideo, validateCertClaim,
@@ -99,6 +101,59 @@ describe('Contract Templates (IMP-009) JSONB transforms', () => {
     const mapped = setContractFieldMappings(list, 'Roofing', 'Retail', { homeowner_name: 'Client' });
     expect(mapped[0].field_mappings?.homeowner_name).toBe('Client');
     expect(findContractTemplate(list, 'Siding', 'Retail')).toBeUndefined();
+  });
+});
+
+describe('gh-590: two-dropdown format + multi-slot assignment', () => {
+  it('slotFundingType resolves Retail directly; Insurance preserves the Roofing "(full replacement)" quirk', () => {
+    expect(slotFundingType('Roofing', 'Retail')).toBe('Retail');
+    expect(slotFundingType('Siding', 'Retail')).toBe('Retail');
+    expect(slotFundingType('Roofing', 'Insurance')).toBe('Insurance (full replacement)');
+    expect(slotFundingType('Siding', 'Insurance')).toBe('Insurance');
+    expect(slotFundingType('Gutters', 'Insurance')).toBe('Insurance');
+    expect(slotFundingType('Windows', 'Insurance')).toBe('Insurance');
+  });
+
+  it('CONTRACT_TEMPLATE_GROUPS is Retail-then-Insurance, derived from the same 8 slots (no drift)', () => {
+    expect(CONTRACT_TEMPLATE_GROUPS.map((g) => g.contractType)).toEqual(['Retail', 'Insurance']);
+    expect(CONTRACT_TEMPLATE_GROUPS[0].slots).toHaveLength(4);
+    expect(CONTRACT_TEMPLATE_GROUPS[1].slots).toHaveLength(4);
+    const flat = CONTRACT_TEMPLATE_GROUPS.flatMap((g) => g.slots);
+    expect(flat).toHaveLength(CONTRACT_TEMPLATE_SLOTS.length);
+    for (const s of CONTRACT_TEMPLATE_SLOTS) expect(flat).toContainEqual(s);
+  });
+
+  it('removeContractTemplate clears only the target slot, leaving other slots (incl. shared file_url) intact', () => {
+    let list = upsertContractTemplate([], 'Roofing', 'Retail', 'shared.pdf', 'a.pdf', 't1');
+    list = upsertContractTemplate(list, 'Siding', 'Retail', 'shared.pdf', 'a.pdf', 't1'); // multi-assigned
+    list = upsertContractTemplate(list, 'Gutters', 'Retail', 'other.pdf', 'b.pdf', 't2');
+    const afterRemove = removeContractTemplate(list, 'Roofing', 'Retail');
+    expect(findContractTemplate(afterRemove, 'Roofing', 'Retail')).toBeUndefined();
+    expect(findContractTemplate(afterRemove, 'Siding', 'Retail')?.file_url).toBe('shared.pdf'); // untouched
+    expect(findContractTemplate(afterRemove, 'Gutters', 'Retail')?.file_url).toBe('other.pdf'); // untouched
+    expect(afterRemove).toHaveLength(2);
+  });
+
+  it('assignExistingTemplate points a new slot at the SAME file_url; no-op if source slot is empty', () => {
+    const list = upsertContractTemplate([], 'Roofing', 'Retail', 'p1.pdf', 'a.pdf', 't1');
+    const assigned = assignExistingTemplate(list, 'Roofing', 'Retail', 'Siding', 'Retail', 't2');
+    expect(assigned).toHaveLength(2);
+    expect(findContractTemplate(assigned, 'Siding', 'Retail')?.file_url).toBe('p1.pdf');
+    expect(findContractTemplate(assigned, 'Siding', 'Retail')?.field_mappings).toBeUndefined(); // never copied
+
+    const noop = assignExistingTemplate([], 'Roofing', 'Retail', 'Siding', 'Retail', 't2');
+    expect(noop).toEqual([]);
+  });
+
+  it('availableAssignmentTargets excludes the source slot and any already-occupied slot', () => {
+    const list = upsertContractTemplate([], 'Roofing', 'Retail', 'p1.pdf', 'a.pdf', 't1');
+    const targets = availableAssignmentTargets(list, 'Roofing', 'Retail');
+    expect(targets).toHaveLength(7); // 8 total minus the source
+    expect(targets.some((s) => s.trade === 'Roofing' && s.fundingType === 'Retail')).toBe(false);
+
+    const list2 = upsertContractTemplate(list, 'Siding', 'Retail', 'p2.pdf', 'b.pdf', 't2');
+    const targets2 = availableAssignmentTargets(list2, 'Roofing', 'Retail');
+    expect(targets2).toHaveLength(6); // source + the now-occupied Siding/Retail both excluded
   });
 });
 

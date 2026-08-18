@@ -243,6 +243,82 @@ export function setContractFieldMappings(
   );
 }
 
+// ── gh-590: Contract Templates two-dropdown + multi-slot assignment ──
+// Same 8 (trade, fundingType) slots and contractors.contract_templates JSONB — NO schema
+// change. "Contract Type" (Retail/Insurance) + Trade dropdowns are a friendlier way to pick
+// one of the existing CONTRACT_TEMPLATE_SLOTS entries; the funding-type strings themselves
+// are UNCHANGED (including the Roofing-Insurance quirk, 'Insurance (full replacement)' vs
+// plain 'Insurance' for other trades — that exact string is the D-199 contractor_templates
+// row key via fundingKey(), so it must be preserved, not normalized away).
+
+export type ContractType = 'Retail' | 'Insurance';
+
+/** Resolve a (Trade, Contract Type) pick to the exact existing slot fundingType string. */
+export function slotFundingType(trade: string, contractType: ContractType): string {
+  const match = CONTRACT_TEMPLATE_SLOTS.find(
+    (s) => s.trade === trade && (contractType === 'Retail' ? s.fundingType === 'Retail' : /insurance/i.test(s.fundingType)),
+  );
+  return match ? match.fundingType : contractType;
+}
+
+export interface ContractTemplateGroup {
+  contractType: ContractType;
+  label: string;
+  slots: ContractTemplateSlot[];
+}
+
+/** Slots grouped Retail-first then Insurance (the CEO sketch's grouping), derived from the
+ *  single CONTRACT_TEMPLATE_SLOTS source of truth so the two can never drift apart. */
+export const CONTRACT_TEMPLATE_GROUPS: ContractTemplateGroup[] = [
+  { contractType: 'Retail', label: 'Retail', slots: CONTRACT_TEMPLATE_SLOTS.filter((s) => s.fundingType === 'Retail') },
+  { contractType: 'Insurance', label: 'Insurance', slots: CONTRACT_TEMPLATE_SLOTS.filter((s) => /insurance/i.test(s.fundingType)) },
+];
+
+/** Remove just ONE slot's assignment. Leaves every other slot (incl. ones sharing the same
+ *  file_url via multi-assignment) and the storage object itself untouched. */
+export function removeContractTemplate(
+  list: ContractTemplate[] | null | undefined,
+  trade: string,
+  fundingType: string,
+): ContractTemplate[] {
+  return (list ?? []).filter((t) => !(t.trade === trade && t.funding_type === fundingType));
+}
+
+/**
+ * Assign an ALREADY-uploaded file (identified by its existing source slot) to an additional
+ * target slot — no new upload, no new storage write; SAME file_url as the source. NEVER
+ * copies field_mappings or D-199 validation status: the caller must not pre-seed the target
+ * slot's contractor_templates row — mounting <D199Validation> for the newly-occupied target
+ * slot triggers its own upsertValidationRow + callValidate against the SAME pdf_storage_path
+ * but the NEW trade/funding_type, re-validating against that slot's own manifest (per the
+ * Bridge A-ANSWER: re-validate per slot, never propagate-without-rescan).
+ */
+export function assignExistingTemplate(
+  list: ContractTemplate[] | null | undefined,
+  sourceTrade: string,
+  sourceFundingType: string,
+  targetTrade: string,
+  targetFundingType: string,
+  iso: string,
+): ContractTemplate[] {
+  const src = findContractTemplate(list, sourceTrade, sourceFundingType);
+  if (!src) return list ?? [];
+  return upsertContractTemplate(list, targetTrade, targetFundingType, src.file_url, src.file_name || 'template.pdf', iso);
+}
+
+/** Slots with no uploaded file yet, excluding the given source slot — the eligible targets
+ *  for "assign to additional slot" (assigning over an already-occupied different slot is
+ *  intentionally not offered here; use Replace on that slot instead). */
+export function availableAssignmentTargets(
+  list: ContractTemplate[] | null | undefined,
+  sourceTrade: string,
+  sourceFundingType: string,
+): ContractTemplateSlot[] {
+  return CONTRACT_TEMPLATE_SLOTS.filter(
+    (s) => !(s.trade === sourceTrade && s.fundingType === sourceFundingType) && !findContractTemplate(list, s.trade, s.fundingType),
+  );
+}
+
 // ── Project Confirmation Templates (D-161) — contractors.color_confirmation_template JSONB map ──
 
 export interface PcTemplateSlot {
