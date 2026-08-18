@@ -85,17 +85,22 @@ jobs:
     name: Run E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # gh-689: every E2E run seeds/tears down ONE shared set of fixtures on the
-    # production Supabase project, so concurrent runs corrupt each other
-    # (proven twice on the issue: 08-11 run-timestamp reconciliation, and
-    # #703's claim-not-found failures on a SQL-only diff). Serialize all runs
-    # of this job repo-wide until real data isolation lands.
+    # gh-689: DB traffic now targets the dedicated otterquote-ci-test project
+    # (zsdvaqilfdclwosmiheh), not production — see the Seed/Run/Teardown steps
+    # below. Concurrency serialization is KEPT for now: every run still shares
+    # ONE set of fixtures on that one test project, so overlapping runs can
+    # still corrupt each other's seeded rows exactly as documented on #689
+    # (08-11 run-timestamp reconciliation, #703's claim-not-found failures).
+    # Revisit relaxing this once a few days of green runs confirm the new
+    # project holds up under concurrent CI load — not done as part of this
+    # cutover so the isolation change and the concurrency change aren't
+    # conflated if something needs to be rolled back.
     # GitHub semantics: at most 1 running + 1 pending per group; a newer
     # queued run supersedes (cancels) the previously PENDING one. E2E is
     # advisory, so a superseded run loses signal but blocks nothing — better
     # than N concurrent runs producing N false reds against each other.
     concurrency:
-      group: e2e-shared-prod-fixtures
+      group: e2e-test-project-fixtures
       cancel-in-progress: false
 
     steps:
@@ -177,8 +182,16 @@ jobs:
       - name: Seed test database
         working-directory: tests/e2e
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # gh-689: repointed off production (yeszghaspzwwstvsrioa) onto the
+          # dedicated otterquote-ci-test project. The project URL is not
+          # secret (same status as a client-side NEXT_PUBLIC_SUPABASE_URL) so
+          # it is inlined directly; only the service-role key needs a secret,
+          # and it is intentionally a NEW name (SUPABASE_TEST_SERVICE_ROLE_KEY)
+          # rather than reusing SUPABASE_SERVICE_ROLE_KEY, because that secret
+          # is also consumed by generate-contractor-pages.yml against
+          # production and must not be repointed.
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
           BASE_URL: ${{ secrets.BASE_URL }}
         run: npm run seed
 
@@ -186,16 +199,16 @@ jobs:
         working-directory: tests/e2e
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
         run: npm test
 
       - name: Teardown test database
         if: always()
         working-directory: tests/e2e
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
         run: npm run teardown
 
       - name: Upload test report on failure

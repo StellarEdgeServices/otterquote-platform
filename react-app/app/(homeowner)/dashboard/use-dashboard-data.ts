@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { isTestEmail } from '@/lib/test-signal';
 import type {
   CarrierOption,
   HomeownerClaim,
@@ -77,9 +78,21 @@ export function useLatestClaim(userId: string | null | undefined): LatestClaimRe
         }
 
         // No claim yet — create a draft (mirrors dashboard.html:1686-1694).
+        // gh-397/#689: stamp is_test on this auto-create path — PR #714 only
+        // fixed the COI-identity contractor insert, never any claims insert.
+        // Predicate mirrors the CEO-approved contractor check (#543 /
+        // test-exclusion.ts) and the static dashboard.html parity fix.
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
         const { data: created, error: createErr } = await supabase
           .from('claims')
-          .insert({ user_id: userId, status: 'draft', damage_type: 'roof' })
+          .insert({
+            user_id: userId,
+            status: 'draft',
+            damage_type: 'roof',
+            is_test: isTestEmail(authUser?.email),
+          })
           .select('id')
           .single();
 

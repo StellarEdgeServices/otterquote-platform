@@ -1695,12 +1695,15 @@
             // property_state is populated during the intake flow when the user explicitly enters
             // their property address. Pre-seeding it from signup localStorage caused the state
             // gate to fire on every non-IN user's first dashboard visit — before intake.
+            // gh-397/#689: stamp is_test on the auto-create-draft path — a
+            // third independent claim-creation site PR #714 didn't cover.
             const { data: newClaim, error: createError } = await sb
               .from('claims')
               .insert({
                 user_id: currentUser.id,
                 status: 'draft',
                 damage_type: 'roof',
+                is_test: Auth.isTestEmail(currentUser.email),
               })
               .select()
               .single();

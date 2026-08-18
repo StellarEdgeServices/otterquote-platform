@@ -1302,6 +1302,7 @@ Let me know if you have any questions!
 <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <script src="js/agent-types.js"></script>
 
     <script>
         // State
@@ -1422,14 +1423,8 @@ Let me know if you have any questions!
             // unset/unknown key, so no fallback value is required by downstream
             // logic.)
             const partnerType = currentPartner.agent_type;
-            const badgeText = {
-                're_agent': 'Real Estate Agent',
-                'insurance_agent': 'Insurance Agent',
-                'home_inspector': 'Home Inspector',
-                'customer': 'Partner',
-                'adjuster': 'Adjuster',
-                'other': 'Partner'
-            }[partnerType] || 'Partner';
+            // gh-914 single source (js/agent-types.js)
+            const badgeText = AgentTypes.PARTNER_DISPLAY_LABELS[partnerType] || 'Partner';
             const partnerBadgeEl = document.getElementById('partnerBadge');
             partnerBadgeEl.textContent = badgeText;
             partnerBadgeEl.classList.remove('partner-badge-loading', 'partner-badge-error');
@@ -1796,14 +1791,8 @@ Let me know if you have any questions!
             emptyState.style.display = 'none';
             table.style.display = '';
 
-            const typeLabels = {
-                're_agent':        'Real Estate Agent',
-                'insurance_agent': 'Insurance Agent',
-                'home_inspector':  'Home Inspector',
-                'customer':        'Customer',
-                'adjuster':        'Adjuster',
-                'other':           'Other'
-            };
+            // gh-914 single source (js/agent-types.js)
+            const typeLabels = AgentTypes.PARTNER_DISPLAY_LABELS;
 
             tbody.innerHTML = allRecruits.map(recruit => {
                 const name = [recruit.first_name, recruit.last_name]

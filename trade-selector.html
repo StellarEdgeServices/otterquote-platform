@@ -1431,11 +1431,19 @@
                 .update(claimData)
                 .eq('id', existingClaim.id);
             } else {
+              // gh-397/#689: stamp is_test at the ONLY point in this flow that
+              // creates the claim row — PR #714 stamped the COI-identity
+              // contractor insert but never touched this claim-creation path,
+              // so an E2E run driving the live trade-selector UI as
+              // test-homeowner@otterquote-internal.test still wrote an
+              // unflagged "real" claim. Predicate matches the CEO-approved
+              // contractor check (#543 / test-exclusion.ts).
               await sb
                 .from('claims')
                 .insert({
                   user_id: user.id,
                   ...claimData,
+                  is_test: Auth.isTestEmail(user.email),
                   created_at: new Date().toISOString()
                 });
             }
