@@ -36,13 +36,20 @@
  *     in the file, so no body is fabricated (PR-1 utils.ts header documents this).
  *   • No-claim edge: both actions require a loaded claim and surface an error rather than
  *     fabricate a "sent" success (the static silently showed success with no DB write).
+ *
+ * gh-951 — charge→order reload persistence: purchaseHover() below persists a
+ * {claimId, paymentIntentId} pointer to sessionStorage the moment the PaymentIntent is
+ * created (BEFORE the card is charged). If a full-page reload interrupts the flow anywhere
+ * between that point and a successful order, PageBody's resume effect finds the pointer on
+ * remount and retries the order step once, automatically, before rendering path-selection.
+ * See ./hover-charge-storage.ts for the persistence rationale and idempotency notes.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { MEASUREMENTS_COPY as M } from './copy';
-import { isAdjusterFormValid, type MeasurementsUser } from './utils';
+import { isAdjusterFormValid, paymentIntentIdFromClientSecret, type MeasurementsUser } from './utils';
 import {
   useHelpMeasurementsData,
   requestHoverPaymentIntent,
@@ -51,6 +58,29 @@ import {
   type HelpMeasurementsData,
 } from './use-help-measurements-data';
 import { HoverPaymentForm, isStripeConfigured } from './HoverPaymentForm';
+import {
+  readHoverChargeRecord,
+  saveHoverChargeRecord,
+  clearHoverChargeRecord,
+  type PendingHoverCharge,
+} from './hover-charge-storage';
+
+/**
+ * NEW operational copy for the gh-951 resume flow — like gh-416's ORDER_RETRY_COPY
+ * (HoverPaymentForm.tsx), this has no static-port equivalent (the static has no resume
+ * concept at all), so it lives here rather than in the verbatim-locked ./copy.ts.
+ *
+ * Deliberately worded to cover BOTH resume outcomes the client cannot distinguish from
+ * each other: create-hover-order's D-181 guard rejects an unconfirmed PaymentIntent by
+ * resolving (not throwing) with `placeholder: true` — the exact same shape a genuine
+ * post-payment Hover-API failure returns (services.ts createHoverOrder). Asserting either
+ * outcome specifically would risk telling a homeowner who never paid "your order failed",
+ * or worse, one whose payment DID succeed a reassuring nothing.
+ */
+export const RESUME_COPY = {
+  unresolved:
+    "We found an unfinished Hover order from your last visit. If you completed payment and don't see a confirmation, contact support with your claim number — we'll verify your payment and complete the order. If you did not finish paying, you can safely start over below.",
+} as const;
 
 // ── Top-level page ───────────────────────────────────────────────────────────────
 
@@ -108,6 +138,55 @@ function PageBody({
   const [adjusterPhone, setAdjusterPhone] = useState(claim?.adjuster_phone ?? '');
   const [sending, setSending] = useState(false);
 
+  // ── gh-951: resume a charge→order handoff a full-page reload interrupted ──
+  // A PendingHoverCharge is written the moment the PaymentIntent is created
+  // (purchaseHover, below) — before the card is even charged. If THIS mount finds one
+  // matching the loaded claim, attempt the order step once, automatically, before the
+  // normal path-selection UI ever renders (see the `resuming` render branch near the
+  // bottom of this component and the effect right below).
+  const [pendingResume] = useState<PendingHoverCharge | null>(() => readHoverChargeRecord());
+  const resumeEligible = !!(pendingResume && claim?.id && pendingResume.claimId === claim.id);
+  const [resuming, setResuming] = useState(resumeEligible);
+  const resumeAttempted = useRef(false);
+
+  useEffect(() => {
+    if (!resuming || resumeAttempted.current) return;
+    resumeAttempted.current = true;
+    if (!pendingResume || !claim) {
+      setResuming(false);
+      return;
+    }
+    (async () => {
+      try {
+        const result = await placeHoverOrder({
+          profile,
+          claim,
+          user,
+          paymentIntentId: pendingResume.paymentIntentId,
+        });
+        // create-hover-order's D-181 guard does NOT throw on an unverified/rejected
+        // payment — it resolves with `placeholder: true` and no capture_request_id
+        // (services.ts createHoverOrder). Only a real capture_request_id counts as a
+        // resumed order; anything else is treated defensively as "could not confirm"
+        // rather than a false success (a stale, never-charged pointer must never land
+        // on the success screen).
+        if (result?.capture_request_id) {
+          clearHoverChargeRecord();
+          setHoverStage('success');
+          setView('hover');
+        } else {
+          clearHoverChargeRecord();
+          setStatus({ text: RESUME_COPY.unresolved, type: 'error' });
+        }
+      } catch {
+        clearHoverChargeRecord();
+        setStatus({ text: RESUME_COPY.unresolved, type: 'error' });
+      } finally {
+        setResuming(false);
+      }
+    })();
+  }, [resuming, pendingResume, claim, profile, user]);
+
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
   const selectPath = useCallback((path: 'hover' | 'adjuster') => {
@@ -149,6 +228,12 @@ function PageBody({
       }
       setClientSecret(res.client_secret);
       setHoverStage('card');
+      // gh-951: persist the resume pointer NOW — before the card is charged — so a
+      // full-page reload anywhere from here through order creation can recover. Best-effort
+      // only: a null id (unexpected client_secret shape) simply skips persistence, matching
+      // pre-fix behaviour exactly rather than blocking the flow.
+      const piId = paymentIntentIdFromClientSecret(res.client_secret);
+      if (piId) saveHoverChargeRecord({ claimId: claim.id, paymentIntentId: piId, ts: Date.now() });
     } catch {
       setStatus({ text: M.statusPaymentInitError, type: 'error' });
     } finally {
@@ -166,12 +251,19 @@ function PageBody({
     async (paymentIntentId: string) => {
       if (!claim) throw new Error('Missing claim. Please refresh and try again.');
       await placeHoverOrder({ profile, claim, user, paymentIntentId });
+      // gh-951: the order step reached (a graceful-degrade) completion — clear the resume
+      // pointer so a later reload doesn't re-attempt an already-placed order.
+      clearHoverChargeRecord();
       setHoverStage('success');
     },
     [profile, claim, user],
   );
 
   const cancelHoverPayment = useCallback(() => {
+    // gh-951: Cancel is only reachable pre-charge (HoverPaymentForm retires it once a
+    // charge succeeds — gh-416), so the PaymentIntent behind any resume pointer here was
+    // never confirmed. Safe to drop.
+    clearHoverChargeRecord();
     setClientSecret(null);
     setHoverStage('intro');
   }, []);
@@ -207,6 +299,22 @@ function PageBody({
   }, [adjusterName, adjusterEmail, adjusterPhone, claim, profile]);
 
   const canSend = isAdjusterFormValid({ adjusterEmail: adjusterEmail.trim() }) && !sending;
+
+  // gh-951: a resume attempt is in flight — render nothing else until it resolves (either
+  // branch above flips `resuming` back to false and the normal tree below takes over).
+  // Reuses the existing "ordering" copy/spinner idiom (HoverPaymentForm's charged state)
+  // rather than inventing new in-progress copy.
+  if (resuming) {
+    return (
+      <div className="hm-container">
+        <div className="hm-section-card">
+          <p className="hm-payform-lead" role="status">
+            <span className="hm-spinner" aria-hidden="true" /> {M.payOrderingButton}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="hm-container">

@@ -23,6 +23,7 @@ import {
   buildAdjusterClaimWriteback,
   isAdjusterFormValid,
   isHoverPath,
+  paymentIntentIdFromClientSecret,
 } from '../utils';
 
 describe('constants (D-205 / D-181 parity values)', () => {
@@ -334,5 +335,22 @@ describe('isHoverPath', () => {
     expect(isHoverPath('')).toBe(false);
     expect(isHoverPath(null)).toBe(false);
     expect(isHoverPath(undefined)).toBe(false);
+  });
+});
+
+describe('paymentIntentIdFromClientSecret (gh-951 resume pointer)', () => {
+  it('extracts the pi_ id from a real Stripe client_secret shape', () => {
+    expect(paymentIntentIdFromClientSecret('pi_3Abc123_secret_XyzToken')).toBe('pi_3Abc123');
+  });
+
+  it('returns null for null/undefined/empty input', () => {
+    expect(paymentIntentIdFromClientSecret(null)).toBeNull();
+    expect(paymentIntentIdFromClientSecret(undefined)).toBeNull();
+    expect(paymentIntentIdFromClientSecret('')).toBeNull();
+  });
+
+  it("returns null for a string that doesn't look like a PaymentIntent client_secret", () => {
+    expect(paymentIntentIdFromClientSecret('not-a-client-secret')).toBeNull();
+    expect(paymentIntentIdFromClientSecret('seti_abc_secret_xyz')).toBeNull();
   });
 });
