@@ -152,6 +152,17 @@
   background: #e5e7eb;
 }
 
+/* gh-880 Half A: password sign-in + reset flow */
+.pl-forgot-row {
+  text-align: right;
+  margin-top: calc(-1 * var(--sp-2));
+  margin-bottom: var(--sp-4);
+}
+.pl-forgot-row a { font-size: 0.9rem; }
+
+.set-new-password { display: none; }
+.set-new-password.active { display: block; }
+
 </style>
 </head>
 <body>
@@ -177,23 +188,35 @@
     </button>
     <div class="oauth-divider"><span>or continue with email</span></div>
 
-    <!-- Login Form -->
+    <!-- Login Form — gh-880 Half A: password replaces magic-link as the
+         primary sign-in path. Magic-link's device-bound linkage was the
+         root cause of #594's cross-device attribution failures; a
+         password typed on the same device removes that failure class. -->
     <form id="pl-form" novalidate>
       <div class="form-group">
         <label class="form-label" for="email">Email</label>
         <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="you@example.com">
-        <span class="form-hint">We'll send a secure login link to this address.</span>
       </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <input type="password" id="password" class="form-input" required autocomplete="current-password" placeholder="Your password">
+      </div>
+
+      <div class="pl-forgot-row"><a href="#" id="forgot-password-link">Forgot password?</a></div>
 
       <div id="form-error" class="form-error" style="display:none;"></div>
 
       <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">
-        Send Login Link
+        Sign In
       </button>
     </form>
 
-    <!-- Magic Link Sent — D-244: canonical login-path copy, verbatim-locked.
-         Any deviation requires security review + Dustin sign-off. -->
+    <!-- Password Reset Sent — D-244 copy retained verbatim (still accurate:
+         "we sent a link" is true whether the link signs a user in directly
+         or lets them set a new password). gh-880 Half A: now triggered by
+         "Forgot password?", not by the primary sign-in submit. Any
+         deviation from this copy requires security review + Dustin sign-off. -->
     <div class="magic-link-sent" id="magic-link-sent">
       <div class="magic-link-icon">&#x2709;&#xFE0F;</div>
       <h2>Check Your Email</h2>
@@ -201,6 +224,29 @@
       <div class="magic-link-email" id="sent-email"></div>
       <p style="margin-top: var(--sp-4);">If you receive a link, it will expire in 1 hour.</p>
       <p style="margin-top: var(--sp-6);"><a href="#" id="resend-link">Didn't get it? Send again</a></p>
+    </div>
+
+    <!-- Set New Password — gh-880 Half A: shown when the user arrives via
+         the password-reset link above (?recovery=1). Supabase establishes
+         a temporary recovery session; submitting here calls
+         Auth.updatePassword() against that session. -->
+    <div class="set-new-password" id="set-new-password">
+      <h2>Set a New Password</h2>
+      <p class="subtitle" style="margin-bottom: var(--sp-4);">Choose a new password for your partner account.</p>
+      <form id="new-password-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="new-password">New Password</label>
+          <input type="password" id="new-password" class="form-input" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="confirm-new-password">Confirm New Password</label>
+          <input type="password" id="confirm-new-password" class="form-input" required autocomplete="new-password" placeholder="Re-enter your new password">
+        </div>
+        <div id="new-password-error" class="form-error" style="display:none;"></div>
+        <button type="submit" class="btn btn-primary btn-lg btn-full" id="new-password-submit">
+          Set Password
+        </button>
+      </form>
     </div>
   </div>
 
@@ -224,18 +270,33 @@
   const form       = document.getElementById('pl-form');
   const errorEl    = document.getElementById('form-error');
   const submitBtn  = document.getElementById('submit-btn');
+  const emailInput = document.getElementById('email');
   const sentEmail  = document.getElementById('sent-email');
   const sentSection= document.getElementById('magic-link-sent');
+  const forgotLink = document.getElementById('forgot-password-link');
+  const setNewPasswordSection = document.getElementById('set-new-password');
+  const newPasswordForm  = document.getElementById('new-password-form');
+  const newPasswordError = document.getElementById('new-password-error');
 
-  // Partner magic links redirect to /partner-dashboard.html (see
-  // Auth.sendMagicLink's partnerRoles branch). 'other' is the generic partner
-  // role — the dashboard resolves the real agent_type from referral_agents,
-  // so the role passed here only needs to be *a* partner role for routing.
+  // Partner accounts route to /partner-dashboard.html (see
+  // Auth.signInWithPassword/signUpWithPassword's partnerRoles handling).
+  // 'other' is the generic partner role — the dashboard resolves the real
+  // agent_type from referral_agents, so the role passed here only needs to
+  // be *a* partner role for routing.
   const PARTNER_ROLE = 'other';
 
-  async function send(email) {
-    localStorage.setItem('cs_auth_role', PARTNER_ROLE);
-    await Auth.sendMagicLink(email, PARTNER_ROLE);
+  // gh-880 Half A: user arrived via the password-reset email link. Gate
+  // this synchronously on the query param we control (set in
+  // Auth.sendPasswordReset's redirectPage) rather than waiting on the
+  // async PASSWORD_RECOVERY auth event, so there's no flash of the
+  // sign-in form before Supabase finishes parsing the recovery token.
+  const isRecovery = new URLSearchParams(window.location.search).get('recovery') === '1';
+  if (isRecovery) {
+    form.classList.add('hidden');
+    document.getElementById('google-btn').classList.add('hidden');
+    document.querySelector('.oauth-divider').classList.add('hidden');
+    document.getElementById('pl-signup-cta').classList.add('hidden');
+    setNewPasswordSection.classList.add('active');
   }
 
   // Google OAuth handler — D-207, gh-866. cs_auth_role is the routing
@@ -244,7 +305,7 @@
   // URL, so a partner intent value falls through to the localStorage read
   // below, which lands on the partnerRoles check (PARTNER_ROLE='other' is
   // in both js/auth.js PARTNER_ROLES and auth-callback.html's local copy)
-  // and routes to /partner-dashboard.html — same as the magic-link path.
+  // and routes to /partner-dashboard.html — same as the password path.
   document.getElementById('google-btn').addEventListener('click', async () => {
     const btn = document.getElementById('google-btn');
     btn.disabled = true;
@@ -256,19 +317,26 @@
       console.error('Google sign-in error:', err);
       btn.disabled = false;
       btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg> Sign in with Google';
-      errorEl.textContent = 'Google sign-in failed. Please try again or use the email link below.';
+      errorEl.textContent = 'Google sign-in failed. Please try again or use the password form below.';
       errorEl.style.display = 'block';
     }
   });
 
+  // gh-880 Half A: primary sign-in — email + password.
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorEl.style.display = 'none';
 
-    const email = document.getElementById('email').value.trim();
+    const email    = emailInput.value.trim();
+    const password = document.getElementById('password').value;
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       errorEl.textContent = 'Please enter a valid email address.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (!password) {
+      errorEl.textContent = 'Please enter your password.';
       errorEl.style.display = 'block';
       return;
     }
@@ -277,25 +345,45 @@
     submitBtn.disabled = true;
 
     try {
-      await send(email);
-
-      form.classList.add('hidden');
-      document.getElementById('pl-signup-cta').classList.add('hidden');
-      sentEmail.textContent = email;
-      sentSection.classList.add('active');
+      await Auth.signInWithPassword(email, password);
 
       gtag('event', 'login', {
-        method: 'magic_link',
+        method: 'password',
         role: 'partner',
       });
 
+      window.location.href = '/partner-dashboard.html';
     } catch (err) {
       console.error('Partner login error:', err);
-      errorEl.textContent = 'Something went wrong. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL;
+      errorEl.textContent = 'Incorrect email or password. Please try again, or use "Forgot password?" below.';
       errorEl.style.display = 'block';
     } finally {
       submitBtn.classList.remove('btn-loading');
       submitBtn.disabled = false;
+    }
+  });
+
+  // gh-880 Half A: "Forgot password?" — secondary, expected-friction
+  // account-recovery path. NOT the primary sign-in method.
+  forgotLink.addEventListener('click', async (e) => {
+    e.preventDefault();
+    errorEl.style.display = 'none';
+    const email = emailInput.value.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errorEl.textContent = 'Enter your email address above, then click "Forgot password?" again.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    try {
+      await Auth.sendPasswordReset(email);
+      form.classList.add('hidden');
+      document.getElementById('pl-signup-cta').classList.add('hidden');
+      sentEmail.textContent = email;
+      sentSection.classList.add('active');
+    } catch (err) {
+      console.error('Password reset error:', err);
+      errorEl.textContent = 'Something went wrong. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL;
+      errorEl.style.display = 'block';
     }
   });
 
@@ -304,7 +392,7 @@
     const email = sentEmail.textContent;
     if (email) {
       try {
-        await send(email);
+        await Auth.sendPasswordReset(email);
         // D-244: canonical login-path copy, verbatim-locked.
         alert('If an account exists, we sent a link.');
       } catch (err) {
@@ -313,25 +401,69 @@
     }
   });
 
+  // gh-880 Half A: complete the reset — set a new password on the
+  // temporary recovery session Supabase established from the emailed link.
+  if (newPasswordForm) {
+    newPasswordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      newPasswordError.style.display = 'none';
+
+      const newPassword     = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-new-password').value;
+
+      if (!newPassword || newPassword.length < 8) {
+        newPasswordError.textContent = 'Password must be at least 8 characters.';
+        newPasswordError.style.display = 'block';
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        newPasswordError.textContent = 'Passwords do not match.';
+        newPasswordError.style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('new-password-submit');
+      btn.classList.add('btn-loading');
+      btn.disabled = true;
+
+      try {
+        await Auth.updatePassword(newPassword);
+        window.location.href = '/partner-dashboard.html';
+      } catch (err) {
+        console.error('Set new password error:', err);
+        newPasswordError.textContent = 'Something went wrong. Please request a new reset link and try again.';
+        newPasswordError.style.display = 'block';
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+      }
+    });
+  }
+
   // Already signed in? Send them to the dashboard — but never if they just
   // bounced FROM it, which would be the dashboard <-> login flip pattern
-  // (same loop guard as contractor-login.html, May 4 2026).
+  // (same loop guard as contractor-login.html, May 4 2026), and never
+  // during the password-recovery flow above (gh-880 Half A) — the recovery
+  // session Supabase establishes from the emailed link would otherwise
+  // satisfy Auth.getUser() and yank the user away before they can set a
+  // new password.
   //
   // gh-737: deliberately NO ?stay=1 escape here, unlike the 6 other
   // redirecting partner pages. Those are marketing/signup pages a signed-in
   // partner might legitimately want to revisit (checking referral copy, QA).
-  // This is a bare magic-link form with no content of its own — there is no
+  // This is a bare login form with no content of its own — there is no
   // reason for a signed-in user to want to stay on it instead of going to
   // their dashboard. Decision: intentional exception, not drift.
-  Auth.getUser().then(user => {
-    if (!user) return;
-    const cameFromDashboard = (document.referrer || '').includes('/partner-dashboard.html');
-    if (cameFromDashboard) {
-      console.warn('[partner-login] Detected return-bounce from partner-dashboard; staying on login to break the loop.');
-      return;
-    }
-    window.location.href = '/partner-dashboard.html';
-  });
+  if (!isRecovery) {
+    Auth.getUser().then(user => {
+      if (!user) return;
+      const cameFromDashboard = (document.referrer || '').includes('/partner-dashboard.html');
+      if (cameFromDashboard) {
+        console.warn('[partner-login] Detected return-bounce from partner-dashboard; staying on login to break the loop.');
+        return;
+      }
+      window.location.href = '/partner-dashboard.html';
+    });
+  }
 })();
 </script>
 </body>
