@@ -38,6 +38,55 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+}
+
+/**
+ * HTML counterpart of the outbound adjuster email (gh-1013). `bodyText` is
+ * homeowner-authored free text sent to an external insurance adjuster — this
+ * adds structure only (escaped, line breaks preserved, existing URLs turned
+ * into clickable anchors), never new wording. The text/plain part above
+ * keeps any URL bare, per #869 AC 2.
+ */
+function adjusterEmailHtml(bodyText: string): string {
+  const escaped = escapeHtml(bodyText);
+  const linked = escaped.replace(
+    /(https?:\/\/[^\s<]+)/g,
+    (url) => `<a href="${url}" style="color:#0EA5E9;">${url}</a>`
+  );
+  const withBreaks = linked.replace(/\n/g, "<br>");
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#F1F5F9;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
+  <tr>
+    <td align="center" style="padding:24px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <tr>
+          <td style="padding:32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;color:#0F172A;">
+            ${withBreaks}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`.trim();
+}
+
 serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
@@ -195,6 +244,7 @@ serve(async (req) => {
     formData.append("to", recipientName ? `${recipientName} <${recipient}>` : recipient);
     formData.append("subject", subject);
     formData.append("text", body);
+    formData.append("html", adjusterEmailHtml(body));
     if (replyTo) {
       formData.append("h:Reply-To", replyTo);
     }

@@ -82,11 +82,40 @@ function buildEmail(bodyHtml: string): string {
 </html>`;
 }
 
+/**
+ * Plain-text fallback for the new-message notification email (gh-1013).
+ * Per #869 AC 2, this deliberately keeps the bare URL — text/plain clients
+ * cannot render a styled link, and this is the accessibility + HTML-blocked
+ * fallback. Never strip the URL here.
+ */
+function messageNotificationText(
+  recipientName: string,
+  senderName: string,
+  messagePreview: string,
+  truncated: boolean,
+  dashboardUrl: string
+): string {
+  return `Hi ${recipientName},
+
+You have a new message from ${senderName} regarding your project.
+
+Message preview:
+"${messagePreview}${truncated ? "..." : ""}"
+
+View message: ${dashboardUrl}
+
+Log in to Otter Quotes to read and reply to the full message.
+
+---
+Need help? Contact support@otterquote.com or call (844) 875-3412`;
+}
+
 async function sendMailgunEmail(
   recipientEmail: string,
   senderName: string,
   subject: string,
-  htmlBody: string
+  htmlBody: string,
+  textBody: string
 ): Promise<boolean> {
   const apiKey = Deno.env.get("MAILGUN_API_KEY");
   const domain = Deno.env.get("MAILGUN_DOMAIN");
@@ -101,6 +130,7 @@ async function sendMailgunEmail(
   formData.append("to", recipientEmail);
   formData.append("subject", subject);
   formData.append("html", htmlBody);
+  formData.append("text", textBody);
 
   try {
     const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
@@ -289,24 +319,34 @@ async function handleRequest(req: Request): Promise<Response> {
 
       // Send email to contractor
       const subject = "You have a new message on your Otter Quotes project";
+      const messagePreview = message.body.substring(0, 200);
+      const messageTruncated = message.body.length > 200;
       const htmlBody = buildEmail(`
         <p>Hi ${escapeHtml(contractorProfile.full_name || "")},</p>
         <p>You have a new message from <strong>${escapeHtml(senderProfile.full_name || "")}</strong> regarding your project.</p>
         <p><strong>Message preview:</strong></p>
         <blockquote style="border-left: 4px solid #14B8A6; padding-left: 16px; margin: 16px 0; color: #666;">
-          ${escapeHtml(message.body.substring(0, 200))}${message.body.length > 200 ? "..." : ""}
+          ${escapeHtml(messagePreview)}${messageTruncated ? "..." : ""}
         </blockquote>
         <p>
           <a href="${dashboardUrl}" class="button">View Message</a>
         </p>
         <p>Log in to Otter Quotes to read and reply to the full message.</p>
       `);
+      const textBody = messageNotificationText(
+        contractorProfile.full_name || "",
+        senderProfile.full_name || "",
+        messagePreview,
+        messageTruncated,
+        dashboardUrl
+      );
 
       const emailSent = await sendMailgunEmail(
         contractorProfile.email,
         senderProfile.full_name,
         subject,
-        htmlBody
+        htmlBody,
+        textBody
       );
 
       return new Response(
@@ -347,24 +387,34 @@ async function handleRequest(req: Request): Promise<Response> {
 
       // Send email to homeowner
       const subject = "You have a new message on your Otter Quotes project";
+      const messagePreview = message.body.substring(0, 200);
+      const messageTruncated = message.body.length > 200;
       const htmlBody = buildEmail(`
         <p>Hi ${escapeHtml(homeownerProfile.full_name || "")},</p>
         <p>You have a new message from <strong>${escapeHtml(senderProfile.full_name || "")}</strong> regarding your project.</p>
         <p><strong>Message preview:</strong></p>
         <blockquote style="border-left: 4px solid #14B8A6; padding-left: 16px; margin: 16px 0; color: #666;">
-          ${escapeHtml(message.body.substring(0, 200))}${message.body.length > 200 ? "..." : ""}
+          ${escapeHtml(messagePreview)}${messageTruncated ? "..." : ""}
         </blockquote>
         <p>
           <a href="${dashboardUrl}" class="button">View Message</a>
         </p>
         <p>Log in to Otter Quotes to read and reply to the full message.</p>
       `);
+      const textBody = messageNotificationText(
+        homeownerProfile.full_name || "",
+        senderProfile.full_name || "",
+        messagePreview,
+        messageTruncated,
+        dashboardUrl
+      );
 
       const emailSent = await sendMailgunEmail(
         homeownerProfile.email,
         senderProfile.full_name,
         subject,
-        htmlBody
+        htmlBody,
+        textBody
       );
 
       return new Response(

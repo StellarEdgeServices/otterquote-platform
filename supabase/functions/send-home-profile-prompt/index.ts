@@ -119,6 +119,32 @@ function getRoofCompletionYear(
 
 // ─── Email builder ────────────────────────────────────────────────────────────
 
+// ── Inlined from _shared/email.ts (#869) — see that file's header comment ──
+// for why this is duplicated rather than imported (the EF body-deploy path
+// does not resolve `_shared/` imports). Table-based CTA + MSO VML conditional
+// so Outlook renders a real filled rectangle, not a bare `<a>`. Brand amber
+// #E07B00 (this file already used it — now canonical + Outlook-safe).
+function emailButton({ href, label }: { href: string; label: string }): string {
+  const BRAND_AMBER = "#E07B00";
+  const FONT_STACK = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+  return `
+<!--[if mso]>
+<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:260px;" arcsize="15%" strokecolor="${BRAND_AMBER}" fillcolor="${BRAND_AMBER}">
+  <w:anchorlock/>
+  <center style="color:#ffffff;font-family:${FONT_STACK};font-size:16px;font-weight:700;">${label}</center>
+</v:roundrect>
+<![endif]-->
+<!--[if !mso]><!-->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+  <tr>
+    <td align="center" bgcolor="${BRAND_AMBER}" style="border-radius:8px;">
+      <a href="${href}" style="display:inline-block;font-family:${FONT_STACK};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;padding:14px 28px;">${label}</a>
+    </td>
+  </tr>
+</table>
+<!--<![endif]-->`.trim();
+}
+
 function buildEmailContent(
   homeownerName: string,
   tradeLabel: string,
@@ -231,17 +257,7 @@ function buildEmailContent(
               </table>
 
               <!-- CTA button -->
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:1.5rem;">
-                <tr>
-                  <td align="center">
-                    <a href="${profileUrl}"
-                       style="display:inline-block;background:#E07B00;color:#ffffff;padding:0.875rem 2rem;
-                              border-radius:0.5rem;text-decoration:none;font-weight:700;font-size:1rem;">
-                      Build My Home Profile →
-                    </a>
-                  </td>
-                </tr>
-              </table>
+              ${emailButton({ href: profileUrl, label: "Build My Home Profile →" })}
 
               <!-- What's included -->
               <p style="margin:0 0 0.75rem;font-weight:600;color:#374151;">The profile covers four quick questions:</p>
@@ -286,17 +302,7 @@ function buildEmailContent(
               ${roofYearNote}
 
               <!-- Second CTA -->
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:1.5rem 0;">
-                <tr>
-                  <td align="center">
-                    <a href="${profileUrl}"
-                       style="display:inline-block;background:#E07B00;color:#ffffff;padding:0.875rem 2rem;
-                              border-radius:0.5rem;text-decoration:none;font-weight:700;font-size:1rem;">
-                      Build My Home Profile →
-                    </a>
-                  </td>
-                </tr>
-              </table>
+              ${emailButton({ href: profileUrl, label: "Build My Home Profile →" })}
 
               <p style="margin:0 0 0;line-height:1.6;color:#374151;">
                 Thank you for trusting Otter Quotes with this project. We look forward to helping you again whenever you're ready.
