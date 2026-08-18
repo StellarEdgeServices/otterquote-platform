@@ -28,6 +28,52 @@ const NAP = Object.freeze({
   url: 'https://otterquote.com'
 });
 
+/**
+ * #952 PR1 — data-role registry (additive, opt-in).
+ * Row 2 tab sets, keyed by the data-role value set on #site-header.
+ * Pages that add data-role="..." get this two-tier system instead of the
+ * legacy URL-substring detection in _isContractorPage()/_isPartnerPage()
+ * (see renderHeader below). Un-migrated pages are unaffected — they have
+ * no data-role attribute and fall straight through to the legacy branch.
+ * 'admin' is a reserved key only: Bridge-approved as the 4th data-role
+ * category (#952 issue comment, 2026-08-17) for PR3 to populate — no admin
+ * page opts into data-role in this PR, so it stays empty here.
+ */
+const ROLE_TABS = {
+  homeowner: [
+    { href: '/index.html',        label: 'Home',         id: 'home' },
+    { href: '/how-it-works.html', label: 'How It Works', id: 'how-it-works' },
+    { href: '/faq.html',          label: 'FAQ',          id: 'faq' },
+  ],
+  contractor: [
+    { href: '/contractor-dashboard.html',     label: 'Home',          id: 'home' },
+    { href: '/contractor-opportunities.html', label: 'Opportunities', id: 'opportunities' },
+    { href: '/contractor-profile.html',       label: 'Profile',       id: 'profile' },
+    { href: '/contractor-settings.html',      label: 'Settings',      id: 'settings' },
+    { href: '/contractor-auto-bids.html',     label: 'Auto Bids',     id: 'auto-bids' },
+    { href: '/tools.html',                    label: 'Tools',         id: 'tools' },
+    { href: '/contractor-how-it-works.html',  label: 'How It Works',  id: 'how-it-works' },
+    { href: '/contractor-faq.html',           label: 'FAQ',           id: 'faq' },
+  ],
+  partner: [
+    { href: '/index.html',             label: 'Home',              id: 'home' },
+    { href: '/partner-dashboard.html', label: 'Partner Dashboard', id: 'partner-dashboard' },
+    { href: '/partner-app.html',       label: 'Get the App',       id: 'partner-app' },
+    { href: '/faq.html',               label: 'FAQ',               id: 'faq' },
+  ],
+  admin: [], // reserved for PR3 — see comment above
+};
+
+/**
+ * Row 1 — persistent role bar. Same three entries on every two-tier page
+ * (#952 issue text (a)); active role gets a clear active-state indicator.
+ */
+const ROLE_BAR_ENTRIES = [
+  { role: 'homeowner',  href: '/index.html',                label: 'Homeowner' },
+  { role: 'contractor', href: '/contractor-dashboard.html',  label: 'Contractor' },
+  { role: 'partner',    href: '/partner-dashboard.html',     label: 'Referral Partner' },
+];
+
 const Nav = {
   /** Detect if current page is a contractor page */
   _isContractorPage() {
@@ -111,11 +157,91 @@ const Nav = {
     });
   },
 
+  /** Row 1 markup — persistent role bar with clear active-state indicator. */
+  _roleBarHTML(activeRole) {
+    return `
+      <nav class="role-bar" aria-label="Switch role">
+        <div class="role-bar-inner container">
+          ${ROLE_BAR_ENTRIES.map(r => `
+            <a href="${r.href}" class="role-bar-link ${r.role === activeRole ? 'active' : ''}"${r.role === activeRole ? ' aria-current="page"' : ''}>${r.label}</a>
+          `).join('')}
+        </div>
+      </nav>
+    `;
+  },
+
+  /**
+   * Two-tier header (#952 PR1): Row 1 role bar + Row 2 role-scoped tab row,
+   * both driven by data-role instead of URL-substring inference. Opt in via
+   * <header id="site-header" data-role="homeowner|contractor|partner">.
+   * Keeps the same nav-inner/nav-links/nav-actions markup and CSS classes
+   * as the legacy header so hamburger/auth-slot behavior is unchanged.
+   */
+  _renderTwoTierHeader(nav, role, { active, showAuth }) {
+    const links = ROLE_TABS[role] || [];
+    const showPartnersDropdown = role === 'homeowner';
+
+    nav.innerHTML = `
+      ${this._roleBarHTML(role)}
+      <div class="nav-inner container">
+        <a href="${links[0] ? links[0].href : '/index.html'}" class="nav-logo">
+          <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
+          <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
+        </a>
+        <div class="nav-links" id="nav-links">
+          ${links.map(l => `
+            <a href="${l.href}" class="nav-link ${active === l.id ? 'active' : ''}">${l.label}</a>
+          `).join('')}
+          ${showPartnersDropdown ? this._partnersDropdownHTML() : ''}
+          ${showAuth ? '<div class="nav-mobile-auth" id="nav-mobile-auth-slot"></div>' : ''}
+          ${role === 'contractor' && !showAuth ? `
+            <a href="#" class="nav-link nav-mobile-cta-secondary" onclick="Auth.signOut(); return false;">Log Out</a>
+          ` : ''}
+        </div>
+        <div class="nav-actions" id="nav-actions">
+          ${showAuth ? '<div id="nav-auth-slot"></div>' : ''}
+          ${role === 'contractor' && !showAuth ? `
+            <button class="btn btn-sm btn-ghost" onclick="Auth.signOut()">Log Out</button>
+          ` : ''}
+        </div>
+        <button class="nav-hamburger" id="nav-hamburger" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    `;
+
+    const hamburger = document.getElementById('nav-hamburger');
+    const navLinks = document.getElementById('nav-links');
+    if (hamburger && navLinks) {
+      hamburger.addEventListener('click', () => {
+        hamburger.classList.toggle('open');
+        navLinks.classList.toggle('open');
+      });
+    }
+
+    if (showPartnersDropdown) {
+      this._wirePartnersDropdown();
+    }
+
+    if (showAuth) {
+      this._renderAuthSlot();
+    }
+  },
+
   /** Render the site header */
   renderHeader(options = {}) {
     const { active = '', showAuth = true } = options;
     const nav = document.getElementById('site-header');
     if (!nav) return;
+
+    // #952 PR1: pages that opt in via data-role get the new two-tier
+    // header; everything else keeps going through the legacy branch below
+    // untouched (graceful degradation for pages not yet migrated).
+    const role = nav.dataset.role;
+    if (role && Object.prototype.hasOwnProperty.call(ROLE_TABS, role)) {
+      this._renderTwoTierHeader(nav, role, { active, showAuth });
+      return;
+    }
 
     const isContractor = this._isContractorPage();
     const isPartner = this._isPartnerPage();
@@ -295,8 +421,13 @@ const Nav = {
       const role = await Auth.getRole();
 
       // Correct nav links if URL detection disagrees with actual role
-      // (e.g. homeowner on contractor-about.html, or contractor on a homeowner page)
-      this._updateNavLinksForRole(role);
+      // (e.g. homeowner on contractor-about.html, or contractor on a homeowner page).
+      // #952 PR1: two-tier pages (data-role present) declare their role
+      // explicitly and don't go through this URL-vs-role correction.
+      const headerEl = document.getElementById('site-header');
+      if (!headerEl || !headerEl.dataset.role) {
+        this._updateNavLinksForRole(role);
+      }
 
       // Partner roles mirror the list auth.js uses for magic-link routing.
       const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
