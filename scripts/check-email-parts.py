@@ -20,15 +20,23 @@ URL (accessibility fallback / HTML-blocked-client fallback), never "fixed".
 
 ── Known limitations (read before trusting a clean run) ─────────────────────
 This is a dependency-free regex heuristic, not a TypeScript parser, and it
-was written for gh-869's own migration. Two known gaps, both intentional
-trade-offs favoring zero false positives over exhaustive coverage:
+was written for gh-869's own migration. Known gaps, intentional trade-offs
+favoring zero false positives over exhaustive coverage:
 
-  1. Granularity is per EDGE-FUNCTION-FILE, not per send call-site. A file
-     with three different email sends where only one pairs html+text will
-     still PASS rule (a) as long as html and text both appear *somewhere*
-     in the file (e.g. admin-contractor-action/index.ts sends one dual-part
-     email and two text-only emails from the same file -- this script sees
-     "has html" + "has text" and passes it).
+  1. gh-1025: rule (a) is call-site granularity for the shared
+     sendMailgunEmail(apiKey, domain, to, from, subject, text, html?) helper
+     -- each call is checked independently for whether its optional 7th
+     (html) argument is present, so a file with one dual-part send and two
+     text-only sends now fails on the two text-only call sites even though
+     "html" and "text" both appear somewhere in the file. This closes the
+     exact gap that let admin-contractor-action's reject/COI sends through
+     while its approve send (which does pass html) kept the file "clean".
+     Files that build a Mailgun request by hand (raw formData.append("html"/
+     "text", ...) rather than going through the shared helper) are still
+     checked at FILE granularity only -- a file with multiple hand-built
+     sends where only one pairs html+text can still pass. No such file is
+     known to exist today (gh-1025's re-enumeration); if one appears, this
+     script will not catch a call-site-level gap in it.
   2. Rule (b) only inspects template literals whose owning function/const
      name contains "html" (case-insensitive) and does not also contain
      "text". Literals that can't be confidently named (e.g. deeply nested
@@ -71,6 +79,51 @@ MAILGUN_RE = re.compile(r"api\.mailgun\.net")
 HTML_APPEND_RE = re.compile(r"""(?:append|set)\(\s*["']html["']""")
 TEXT_APPEND_RE = re.compile(r"""(?:append|set)\(\s*["']text["']""")
 
+# gh-1025: shared helper call-site pattern. Signature (this repo's
+# convention, e.g. admin-contractor-action, platform-health-check,
+# check-rate-limits): sendMailgunEmail(apiKey, domain, to, from, subject,
+# text, html?) -- html is the optional 7th positional argument.
+SEND_MAILGUN_CALL_RE = re.compile(r"sendMailgunEmail\s*\(")
+
+
+def _find_call_arg_spans(content: str, open_paren_idx: int) -> list[tuple[int, int]]:
+    """Given the index of the '(' opening a call's argument list, return the
+    (start, end) character spans of each top-level (paren/brace/bracket/
+    template-literal-depth-0) comma-separated argument. Best-effort, not a
+    real parser -- balances (), {}, [], ``, and single/double-quoted
+    strings; does not handle every JS edge case (e.g. regex literals), but
+    is sufficient for this codebase's plain call-site shape."""
+    depth = 0
+    i = open_paren_idx
+    n = len(content)
+    arg_start = open_paren_idx + 1
+    spans: list[tuple[int, int]] = []
+    quote: str | None = None
+    while i < n:
+        ch = content[i]
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in "\"'`":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if ch == ")" and depth == 0:
+                spans.append((arg_start, i))
+                return spans
+            depth -= 1
+        elif ch == "," and depth == 0:
+            spans.append((arg_start, i))
+            arg_start = i + 1
+        i += 1
+    return spans  # unterminated -- best effort
+
 # Literal platform domains that must never appear bare (outside href=) in an
 # HTML-named template literal. Mailgun's own API domain is intentionally
 # excluded -- that's infrastructure, not a link shown to a recipient.
@@ -109,27 +162,69 @@ def _is_within(pos: int, spans: list[tuple[int, int]]) -> bool:
     return any(start <= pos < end for start, end in spans)
 
 
+def _check_sendmailgun_call_sites(
+    content: str, rel: str, fn_name: str, allowlisted: bool
+) -> tuple[list[str], int]:
+    """gh-1025: check each sendMailgunEmail(...) call site independently.
+    Returns (violations, call_site_count). call_site_count == 0 means this
+    file doesn't use the shared helper -- caller falls back to file-level
+    checking for it."""
+    violations: list[str] = []
+    count = 0
+    for m in SEND_MAILGUN_CALL_RE.finditer(content):
+        count += 1
+        spans = _find_call_arg_spans(content, m.end() - 1)
+        line_no = content[: m.start()].count("\n") + 1
+        if len(spans) < 6:
+            # Can't confidently parse this call (e.g. spread args) -- skip
+            # rather than guess; file-level fallback below still applies
+            # across the whole file as a safety net.
+            continue
+        # Args: 0=apiKey 1=domain 2=to 3=from 4=subject 5=text 6=html?
+        has_html_arg = len(spans) >= 7 and content[spans[6][0]:spans[6][1]].strip() not in ("", "undefined")
+        if not has_html_arg and not allowlisted:
+            violations.append(
+                f"{rel}:{line_no}: sendMailgunEmail() call site sends 'text' "
+                f"but omits the optional 'html' argument, and '{fn_name}' is "
+                f"not on TEXT_ONLY_ALLOWLIST (gh-1025/gh-869 AC 4/AC 6a) -- "
+                f"add an html argument, or add to TEXT_ONLY_ALLOWLIST with a "
+                f"comment stating why every send from this file is "
+                f"internal-admin-only"
+            )
+    return violations, count
+
+
 def check_file(path: pathlib.Path, content: str) -> list[str]:
     violations: list[str] = []
     rel = str(path.relative_to(REPO)).replace("\\", "/")
     fn_name = path.parent.name
-
-    has_html = bool(HTML_APPEND_RE.search(content))
-    has_text = bool(TEXT_APPEND_RE.search(content))
     allowlisted = fn_name in TEXT_ONLY_ALLOWLIST
 
-    if has_html and not has_text and not allowlisted:
-        violations.append(
-            f"{rel}: appends Mailgun 'html' but never 'text' (gh-869 AC 6a) "
-            f"-- add a text/plain part"
-        )
-    if has_text and not has_html and not allowlisted:
-        violations.append(
-            f"{rel}: appends Mailgun 'text' but never 'html', and "
-            f"'{fn_name}' is not on TEXT_ONLY_ALLOWLIST (gh-869 AC 4/AC 6a) "
-            f"-- add an HTML part, or add to TEXT_ONLY_ALLOWLIST with a "
-            f"comment stating why the recipient is internal-admin-only"
-        )
+    call_site_violations, call_site_count = _check_sendmailgun_call_sites(
+        content, rel, fn_name, allowlisted
+    )
+    violations.extend(call_site_violations)
+
+    if call_site_count == 0:
+        # No sendMailgunEmail() call sites found -- this file builds its
+        # Mailgun request by hand (formData.append(...) directly). Fall
+        # back to the original file-level check (gap 1 in the module
+        # docstring: still can't see per-send granularity in that shape).
+        has_html = bool(HTML_APPEND_RE.search(content))
+        has_text = bool(TEXT_APPEND_RE.search(content))
+
+        if has_html and not has_text and not allowlisted:
+            violations.append(
+                f"{rel}: appends Mailgun 'html' but never 'text' (gh-869 AC 6a) "
+                f"-- add a text/plain part"
+            )
+        if has_text and not has_html and not allowlisted:
+            violations.append(
+                f"{rel}: appends Mailgun 'text' but never 'html', and "
+                f"'{fn_name}' is not on TEXT_ONLY_ALLOWLIST (gh-869 AC 4/AC 6a) "
+                f"-- add an HTML part, or add to TEXT_ONLY_ALLOWLIST with a "
+                f"comment stating why the recipient is internal-admin-only"
+            )
 
     for m in TEMPLATE_LITERAL_RE.finditer(content):
         literal = m.group(1)
