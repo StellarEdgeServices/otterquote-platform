@@ -17,10 +17,12 @@
  *
  * Bootstrap mode (one-time admin):
  *   Updates HubSpot wc_path and license_path enum options to D-218 values.
- *   Protected by bootstrap_key. Run once after initial deploy.
+ *   Protected by HS_BOOTSTRAP_KEY (Supabase Edge Function secret — see
+ *   gh-435). Run once after initial deploy.
  *
  * Environment variables:
  *   HUBSPOT_PRIVATE_APP_TOKEN  — pat-na2-... private app token (scopes: contacts r/w, properties r/w)
+ *   HS_BOOTSTRAP_KEY           — shared secret gating mode:"bootstrap"; fails closed (500) if unset
  *   SUPABASE_URL               — injected automatically by Supabase Edge Function runtime
  *   SUPABASE_SERVICE_ROLE_KEY  — injected automatically by Supabase Edge Function runtime
  */
@@ -29,7 +31,6 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const HUBSPOT_API = "https://api.hubapi.com";
-const BOOTSTRAP_KEY = "otter-hs-prop-bootstrap-d218-2026";
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -102,8 +103,17 @@ serve(async (req: Request) => {
   // ── BOOTSTRAP MODE ──────────────────────────────────────────────────────────
   // One-time admin action: adds correct D-218 enum options to wc_path and
   // license_path HubSpot Contact properties. Run once after initial deploy.
+  // gh-435: key moved out of source into the HS_BOOTSTRAP_KEY Supabase Edge
+  // Function secret and rotated. Fails closed (500) if the secret is unset —
+  // never falls back to an empty-string comparison that would accept an
+  // empty bootstrap_key.
   if (body.mode === "bootstrap") {
-    if (body.bootstrap_key !== BOOTSTRAP_KEY) {
+    const expectedBootstrapKey = Deno.env.get("HS_BOOTSTRAP_KEY");
+    if (!expectedBootstrapKey) {
+      console.error("create-hubspot-contact (bootstrap): HS_BOOTSTRAP_KEY not set");
+      return jsonResponse({ error: "bootstrap not configured" }, 500, cors);
+    }
+    if (typeof body.bootstrap_key !== "string" || body.bootstrap_key !== expectedBootstrapKey) {
       console.warn("create-hubspot-contact (bootstrap): unauthorized attempt");
       return jsonResponse({ error: "unauthorized" }, 401, cors);
     }
