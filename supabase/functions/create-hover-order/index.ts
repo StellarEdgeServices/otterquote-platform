@@ -326,7 +326,7 @@ serve(async (req) => {
           location_city: address_city || undefined,
           location_region: address_state || undefined,
           location_postal_code: address_zip || undefined,
-          name: `OtterQuote - ${address_line_1}`,
+          name: `Otter Quotes - ${address_line_1}`,
           deliverable_id: String(deliverable_type_id),
           external_identifier: claim_id || order_id,
         },

@@ -78,7 +78,7 @@ export const PLATFORM_FEE_DISCLOSURE_AT_BID = `The Platform Fee applicable to ea
  * This is the exact text displayed to contractors immediately before the fee acceptance checkbox
  * at bid submission time. The percentage and dollar amounts are dynamically populated but the text template is static.
  */
-export const FEE_DISCLOSURE_AT_BID_FORM = `By submitting this bid, you agree to pay OtterQuote a platform fee of [FEE_PERCENT]% ([FEE_AMOUNT]) upon contract execution. This fee is deducted from your bid amount before disbursement. You will receive [NET_AMOUNT] upon completion.`;
+export const FEE_DISCLOSURE_AT_BID_FORM = `By submitting this bid, you agree to pay Otter Quotes a platform fee of [FEE_PERCENT]% ([FEE_AMOUNT]) upon contract execution. This fee is deducted from your bid amount before disbursement. You will receive [NET_AMOUNT] upon completion.`;
 
 /**
  * Platform Fee Acceptance Checkbox Label (D-215)

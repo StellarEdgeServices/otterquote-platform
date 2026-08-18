@@ -1,0 +1,55 @@
+-- v000b_pg_cron_extension.sql
+--
+-- gh-1022: enable pg_cron before any migration that references the `cron`
+-- schema, so `supabase branches create` can replay the production ledger
+-- on a fresh branch without failing.
+--
+-- ROOT CAUSE (re-verified live against yeszghaspzwwstvsrioa's own
+-- supabase_migrations.schema_migrations ledger, 2026-08-18): pg_cron 1.6.4
+-- is installed on production (schema `cron`, confirmed via
+-- list_extensions/pg_extension), but there is NO `CREATE EXTENSION
+-- pg_cron` statement anywhere in the ~120-row live ledger -- it was
+-- enabled out-of-band (Supabase Dashboard toggle or equivalent), not
+-- through a tracked migration. The v000 baseline
+-- (20260101000000_v000_baseline_schema.sql) explicitly assumed pg_cron
+-- was "Supabase-platform-managed" the same way pg_stat_statements/
+-- supabase_vault/plpgsql are auto-present on every project -- that
+-- assumption is correct for those three but NOT for pg_cron, which
+-- Supabase enables per-project (background workers + shared_preload_libraries)
+-- and does not appear to provision automatically on a fresh preview branch.
+--
+-- The earliest ledger row that references the `cron` schema is
+-- 20260423185612 (v56_hover_rebate_trigger), whose statement body ends
+-- with `SELECT cron.schedule('process-hover-rebate-scan', ...)`. A fresh
+-- branch replays the ledger in version order and hard-fails there with
+-- `schema "cron" does not exist`, since nothing before it creates the
+-- extension. (v108_pg_cron_vault_secrets, 20260812125540, was suspected
+-- as the extension-creation point by the original triage in #728, but its
+-- statements only call cron.alter_job()/query cron.job -- it does not
+-- CREATE EXTENSION either; re-checked directly against the ledger's
+-- `statements` column for this file.)
+--
+-- Versioned immediately after the v000 baseline (20260101000000) so it
+-- is the second migration to replay on a fresh branch, ahead of every
+-- `cron.*` reference (20260423185612 and later: v59, v60,
+-- v92_counter_sig_reminder_cron, v108_pg_cron_vault_secrets and its
+-- v108b/v108c neighbors).
+--
+-- Idempotent (IF NOT EXISTS) -- safe to mark applied on production
+-- without re-running this DDL there, since pg_cron is already installed.
+-- Schema matches production's actual pg_extension.extnamespace for
+-- pg_cron (pg_catalog); the extension's own install script creates and
+-- owns the separate `cron` schema for cron.job/cron.schedule() regardless
+-- of the WITH SCHEMA clause here.
+--
+-- DEPLOYMENT NOTE -- same pattern as gh-728's v000 baseline row: do NOT
+-- `apply_migration` this file against production. The correct operation
+-- is a ledger-only `supabase migration repair --status applied
+-- 20260101000001` against yeszghaspzwwstvsrioa (Management-API-backed,
+-- no direct DDL execution) so this version is marked already-applied and
+-- future preview branches replay it in the right position. That repair
+-- is a prod migration-ledger write gated D-182/Tier-3 and is scoped but
+-- NOT executed by this PR -- see gh-1022 for the approval request and
+-- the follow-up branch-creation verification once it lands.
+
+CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA pg_catalog;
