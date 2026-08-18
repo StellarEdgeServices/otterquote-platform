@@ -203,11 +203,16 @@ serve(async (req) => {
     // ── Action: approve ──
     if (action === "approve") {
       // Update contractor status
+      // gh-755: Dustin-ruled default (2026-08-18) — newly-approved
+      // contractors are opted into the public directory by default, with
+      // notice given at signup (contractor-pre-approval.html). They can
+      // still opt out afterward via the settings toggle (PR #194/#293).
       const { error: updateError } = await supabase
         .from("contractors")
         .update({
           status: "active",
           approved_at: new Date().toISOString(),
+          public_directory_optin: true,
         })
         .eq("id", contractor_id);
 
