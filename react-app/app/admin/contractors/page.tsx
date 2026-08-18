@@ -305,7 +305,8 @@ function AdminContractorsContent() {
     }
   }
 
-  // ── Platform-health-check EF + acknowledge_alert RPC (UNCHANGED contracts) ──
+  // ── Platform-health-check EF + acknowledge alert (gh-970: RPC replaced with a direct
+  //    RLS-authorized UPDATE, see acknowledgeAlert below) ──
   async function runHealthCheck(): Promise<number> {
     const { data, error } = await supabase.functions.invoke('platform-health-check', { body: {} });
     if (error) throw error;
@@ -317,9 +318,16 @@ function AdminContractorsContent() {
     return total;
   }
 
+  // gh-970 §9.1: acknowledge_alert() RPC was a SECURITY DEFINER RLS bypass reachable by any
+  // authenticated user. admin_update_platform_alerts already authorizes this exact UPDATE for
+  // the admin directly, so EXECUTE was revoked from authenticated -- mirrors the static-page fix.
   async function acknowledgeAlert(alertId: string) {
     try {
-      const { error } = await supabase.rpc('acknowledge_alert', { p_id: alertId });
+      const { error } = await supabase
+        .from('platform_alerts_log')
+        .update({ acknowledged_at: new Date().toISOString() })
+        .eq('id', alertId)
+        .is('acknowledged_at', null);
       if (error) throw error;
       await loadCronHealth();
     } catch (err) {
