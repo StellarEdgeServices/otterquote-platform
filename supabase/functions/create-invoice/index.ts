@@ -91,6 +91,49 @@ async function sendGA4Event(eventName: string, params: Record<string, unknown> =
   } catch (_) { /* non-fatal */ }
 }
 
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+}
+
+/**
+ * HTML counterpart of the invoice email (gh-1013). Wraps the SAME
+ * GC-approved emailBody string used for the text part — escaped and
+ * rendered in a monospace <pre> block so every dollar figure, invoice
+ * field, and disclosure sentence stays byte-identical to the text/plain
+ * part. Do not re-derive the copy here; always pass the computed emailBody.
+ */
+function invoiceEmailHtml(emailBody: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#F1F5F9;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
+  <tr>
+    <td align="center" style="padding:24px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <tr>
+          <td style="padding:32px;">
+            <pre style="margin:0;white-space:pre-wrap;word-wrap:break-word;font-family:'Courier New',Courier,monospace;font-size:13px;line-height:1.6;color:#0F172A;">${escapeHtml(emailBody)}</pre>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`.trim();
+}
+
 async function sendInvoiceEmail(
   contractorEmail: string,
   contractorName: string,
@@ -159,6 +202,7 @@ Stellar Edge Services, LLC d/b/a Otter Quotes
     `Otter Quotes Invoice ${invoiceNumber} — ${propertyAddress}`
   );
   formData.append("text", emailBody);
+  formData.append("html", invoiceEmailHtml(emailBody));
 
   const auth = "Basic " + btoa(`api:${mailgunApiKey}`);
   const response = await fetch(
