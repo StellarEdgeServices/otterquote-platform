@@ -141,6 +141,24 @@ export function buildHoverPaymentIntentParams(
   };
 }
 
+// ── PaymentIntent id from client_secret (gh-951 resume) ─────────────────────────────
+
+/**
+ * Extract the PaymentIntent id from a Stripe client_secret (`pi_XXX_secret_YYY` → `pi_XXX`).
+ * Pure string parsing — no network, no Stripe.js. Used to persist a resume pointer the
+ * moment the PaymentIntent is created (page.tsx), before the charge is initiated, so a
+ * full-page reload during the charge→order window doesn't lose it (gh-951, see
+ * ./hover-charge-storage.ts). Returns null for anything that doesn't look like a real
+ * client_secret.
+ */
+export function paymentIntentIdFromClientSecret(
+  clientSecret: string | null | undefined,
+): string | null {
+  if (!clientSecret) return null;
+  const id = clientSecret.split('_secret_')[0];
+  return id && id.startsWith('pi_') ? id : null;
+}
+
 // ── Hover order params (help-measurements.html:976-990) ────────────────────────────
 
 /**
