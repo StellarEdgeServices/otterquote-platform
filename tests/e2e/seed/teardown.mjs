@@ -48,6 +48,20 @@ class NoRealtimeTransportStub {
   }
 }
 
+// gh-1028: production-target guard — see seed.mjs for the full incident
+// history (#945/#1028/#689/#1000). Teardown deletes claims/quotes; refusing
+// to run it against production is the more consequential half of this guard.
+const PRODUCTION_PROJECT_REF = 'yeszghaspzwwstvsrioa';
+if ((process.env.SUPABASE_URL || '').includes(PRODUCTION_PROJECT_REF)) {
+  console.error(
+    '\n❌ SUPABASE_URL points at the PRODUCTION project ' +
+      `(${PRODUCTION_PROJECT_REF}). Refusing to run teardown there — see ` +
+      'gh-1028 and gh-689/#1000. Point SUPABASE_URL at the dedicated E2E ' +
+      'test project instead.\n'
+  );
+  process.exit(1);
+}
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,

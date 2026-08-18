@@ -45,6 +45,26 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
   process.exit(1);
 }
 
+// gh-1028: production-target guard. Before #1000 (2026-08-17) this script's
+// SUPABASE_URL pointed at the production project (yeszghaspzwwstvsrioa) for
+// ~2.5 months — every seed/teardown cycle wrote real activity_log rows and,
+// intermittently, real quotes rows into prod, misdiagnosed as bot activity
+// in #945. #1000 repointed CI's SUPABASE_URL secret to the dedicated test
+// project; this guard makes a repeat of that misconfiguration (a stale local
+// .env.test, a reverted CI secret, a new workflow copy-pasted without the
+// fix) fail loudly here instead of silently seeding/tearing down against
+// real user data again.
+const PRODUCTION_PROJECT_REF = 'yeszghaspzwwstvsrioa';
+if (SUPABASE_URL.includes(PRODUCTION_PROJECT_REF)) {
+  console.error(
+    '\n❌ SUPABASE_URL points at the PRODUCTION project ' +
+      `(${PRODUCTION_PROJECT_REF}). Refusing to seed/teardown test data ` +
+      'there — see gh-1028 and gh-689/#1000. Point SUPABASE_URL at the ' +
+      'dedicated E2E test project instead.\n'
+  );
+  process.exit(1);
+}
+
 // @supabase/supabase-js eagerly resolves a WebSocket constructor for its
 // Realtime client at construction time, even when no channel is ever opened.
 // On Node < 22 (no native WebSocket global) and with the `ws` package removed

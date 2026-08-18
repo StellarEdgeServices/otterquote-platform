@@ -1674,10 +1674,17 @@
             }
         }
 
-        // Acknowledge an alert (sets acknowledged_at via SECURITY DEFINER RPC)
+        // Acknowledge an alert. gh-970 §9.1: the acknowledge_alert() RPC was a SECURITY DEFINER
+        // RLS bypass reachable by any authenticated user, not just the admin. admin_update_platform_alerts
+        // already authorizes this exact UPDATE for the admin directly, so the RPC was redundant --
+        // EXECUTE was revoked from authenticated and this now goes straight through RLS.
         async function acknowledgeAlert(alertId) {
             try {
-                const { error } = await sb.rpc('acknowledge_alert', { p_id: alertId });
+                const { error } = await sb
+                    .from('platform_alerts_log')
+                    .update({ acknowledged_at: new Date().toISOString() })
+                    .eq('id', alertId)
+                    .is('acknowledged_at', null);
                 if (error) throw error;
                 cronHealthLoaded = false;
                 await loadCronHealth();
