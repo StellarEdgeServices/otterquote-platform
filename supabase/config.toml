@@ -197,3 +197,15 @@ verify_jwt = false
 
 [functions.get-payout-completion-status]
 verify_jwt = false
+
+# ── gh-916 AC1 (2026-08-18): pin verify_jwt for send-partner-status-email ──
+# Service-role-only internal function (#856/#905), matches the
+# notify-partner-w9 / mark-job-complete pattern above. Deployed live as v1
+# with verify_jwt=false (confirmed via #916 AC4 smoke) but this repo's
+# config.toml had no block for it — a future flagless `functions deploy`
+# (CLI default verify_jwt=true) would have silently regressed it and broken
+# every caller (mark-job-complete's catch-up call, and the two new trigger
+# call sites drafted in supabase/migrations_drafts/gh916_progressive_partner_status_triggers.sql).
+# Pinned so that can't happen. No behavior change — matches live state.
+[functions.send-partner-status-email]
+verify_jwt = false
