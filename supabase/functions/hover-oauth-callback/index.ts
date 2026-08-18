@@ -258,7 +258,7 @@ serve(async (req) => {
     return new Response(
       generateHTML(
         "Hover Connected!",
-        "OtterQuote is now connected to Hover. You can close this window and return to the platform.",
+        "Otter Quotes is now connected to Hover. You can close this window and return to the platform.",
         true
       ),
       { status: 200, headers: { "Content-Type": "text/html" } }
@@ -295,7 +295,7 @@ function generateHTML(title: string, message: string, success: boolean): string 
   return `<!DOCTYPE html>
 <html>
 <head>
-  <title>${safeTitle} — OtterQuote</title>
+  <title>${safeTitle} — Otter Quotes</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f8fafc; }
