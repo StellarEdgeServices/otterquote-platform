@@ -66,15 +66,30 @@ function emailFooter(): string {
 </table>`.trim();
 }
 
-function ctaButton(text: string, url: string, color = "#14B8A6"): string {
+// ── Inlined from _shared/email.ts (#869) — see that file's header comment ──
+// for why this is duplicated rather than imported (the EF body-deploy path
+// does not resolve `_shared/` imports). Table-based CTA + MSO VML conditional
+// so Outlook renders a real filled rectangle, not a bare link. Brand amber
+// #E07B00 — replaces the non-brand #14B8A6 teal this function used to default to.
+function emailButton({ href, label }: { href: string; label: string }): string {
+  const BRAND_AMBER = "#E07B00";
+  const FONT_STACK = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
   return `
-<table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+<!--[if mso]>
+<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:260px;" arcsize="15%" strokecolor="${BRAND_AMBER}" fillcolor="${BRAND_AMBER}">
+  <w:anchorlock/>
+  <center style="color:#ffffff;font-family:${FONT_STACK};font-size:16px;font-weight:700;">${label}</center>
+</v:roundrect>
+<![endif]-->
+<!--[if !mso]><!-->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
   <tr>
-    <td align="center" bgcolor="${color}" style="border-radius:8px;">
-      <a href="${url}" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;padding:14px 28px;">${text}</a>
+    <td align="center" bgcolor="${BRAND_AMBER}" style="border-radius:8px;">
+      <a href="${href}" style="display:inline-block;font-family:${FONT_STACK};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;padding:14px 28px;">${label}</a>
     </td>
   </tr>
-</table>`.trim();
+</table>
+<!--<![endif]-->`.trim();
 }
 
 function buildEmail(bodyHtml: string): string {
@@ -142,7 +157,7 @@ function w9RequestEmailHtml(firstName: string): string {
 
     <p style="margin:0 0 4px;color:#374151;font-size:14px;">Once received, our team will process your W-9 and release your payment promptly.</p>
 
-    ${ctaButton("Upload My W-9 &rarr;", PARTNER_DASHBOARD_URL)}
+    ${emailButton({ href: PARTNER_DASHBOARD_URL, label: "Upload My W-9 &rarr;" })}
 
     <p style="margin:16px 0 0;color:#64748B;font-size:13px;line-height:1.6;">Need a blank W-9 form? <a href="https://www.irs.gov/pub/irs-pdf/fw9.pdf" style="color:#0EA5E9;text-decoration:none;">Download from the IRS website &rarr;</a></p>
     <p style="margin:8px 0 0;color:#64748B;font-size:13px;line-height:1.6;">Questions? Reply to this email or contact us at <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>.</p>
