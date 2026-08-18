@@ -1409,10 +1409,13 @@
                 }
 
                 // Load activity feed from activity_log
+                // gh-1028: exclude harness/fixture rows (is_test) so a test account
+                // can never surface fabricated activity in a real user's feed.
                 const { data: activityData } = await sb
                   .from('activity_log')
                   .select('event_type, title, metadata, created_at')
                   .eq('user_id', currentUser.id)
+                  .eq('is_test', false)
                   .order('created_at', { ascending: false })
                   .limit(15);
 
