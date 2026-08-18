@@ -85,8 +85,8 @@
     "manufacturer": "Other (free-text)",
     "tier": "Other / Custom (free-text)",
     "yearFields": ["materialYears", "laborYears", "windMph", "hailClass"],
-    "displayStringSuffix": "Administered by manufacturer; not verified by OtterQuote per D-204. OtterQuote is not the warrantor.",
-    "profileBadge": "Custom warranty — not OtterQuote-verified",
+    "displayStringSuffix": "Administered by manufacturer; not verified by Otter Quotes per D-204. Otter Quotes is not the warrantor.",
+    "profileBadge": "Custom warranty — not Otter Quotes-verified",
     "adminReviewQueue": "admin-template-review.html (free-text entries flagged for possible manifest expansion)"
   }
 }
