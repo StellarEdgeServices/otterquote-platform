@@ -35,6 +35,9 @@ jobs:
       - name: $10,000 commission-floor phrasing guard (D-286, gh-920)
         run: python3 scripts/check-10k-floor-phrasing.py
 
+      - name: Partner-signup consent checkbox link guard (D-278, gh-943)
+        run: python3 scripts/check-partner-consent-link.py
+
   typescript-check:
     name: TypeScript Check
     runs-on: ubuntu-latest
