@@ -727,10 +727,21 @@ serve(async (req) => {
               `Payment result: status=${paymentResult.status}, id=${paymentResult.payment_intent_id}`
             );
 
-            // Check if payment succeeded
-            const isPaymentSuccessful = paymentResult.succeeded === true;
+            // gh-948: Stripe's 'processing' (ACH in flight) is NOT success and must
+            // not run fulfillment logic. Three outcomes now instead of a binary flag:
+            //   succeeded -> existing success path (fee charged, contractor notified)
+            //   pending   -> NEW: signing recorded, fee NOT marked charged, contractor
+            //                NOT notified. stripe-webhook's payment_intent.succeeded /
+            //                payment_intent.payment_failed listeners finalize this later.
+            //   failed    -> existing dunning path (unchanged)
+            const paymentOutcome: "succeeded" | "pending" | "failed" =
+              paymentResult.succeeded === true
+                ? "succeeded"
+                : paymentResult.pending === true
+                ? "pending"
+                : "failed";
 
-            if (!isPaymentSuccessful) {
+            if (paymentOutcome === "failed") {
               // ── Payment FAILED — #480: the signing is a FACT; record it. ──
               // Collection moves to dunning. Retries won't re-charge: the outer
               // `if (!claim.contract_signed_at)` idempotency guard now holds
@@ -826,30 +837,68 @@ serve(async (req) => {
               );
             }
 
-            // ── Payment SUCCEEDED — mark contract as signed and notify contractor ──
-            console.log(`Payment succeeded for quote ${quote.id}`);
+            if (paymentOutcome === "pending") {
+              // ── Payment PENDING (ACH processing, gh-948) ──
+              // The charge is in flight, not settled. Signing is a fact (same
+              // precedent as #480) so it is recorded, but fulfillment (fee-charged
+              // flag, contractor notification / agreement release) is withheld
+              // until stripe-webhook's payment_intent.succeeded / payment_failed
+              // listener confirms the final outcome.
+              console.log(`Payment PENDING (ACH processing) for quote ${quote.id}`);
 
-            // Update quote with payment success
-            await supabase
-              .from("quotes")
-              .update({
-                payment_intent_id: paymentResult.payment_intent_id,
-                payment_status: "succeeded",
-              })
-              .eq("id", quote.id);
+              await supabase
+                .from("quotes")
+                .update({
+                  payment_intent_id: paymentResult.payment_intent_id,
+                  payment_status: "pending",
+                })
+                .eq("id", quote.id);
 
-            // Now update claim status
-            updateData.contract_signed_at =
-              completedDateTime || new Date().toISOString();
-            updateData.contract_signed_by = recipientEmail || null;
-            updateData.status = "contract_signed";
-            // Phase 18: record fee-charged on confirmed payment success.
-            // claims.platform_fee_charged is boolean DEFAULT false; v53 never
-            // wrote it. Set only on the succeeded path, alongside the status flip.
-            updateData.platform_fee_charged = true;
+              updateData.contract_signed_at =
+                completedDateTime || new Date().toISOString();
+              updateData.contract_signed_by = recipientEmail || null;
+              updateData.status = "contract_signed";
+              // platform_fee_charged intentionally left false — not yet settled.
 
-            // Flag for contractor notification (only after successful payment)
-            shouldNotifyContractor = true;
+              try {
+                await supabase.from("platform_alerts_log").insert({
+                  alert_type: "payment_pending_ach",
+                  function_name: "docusign-webhook",
+                  message: `Claim ${claim.id} contract signed, platform fee charge PENDING (ACH processing) for quote ${quote.id}, contractor ${quote.contractor_id}, payment_intent ${paymentResult.payment_intent_id}. Awaiting stripe-webhook settlement (gh-948).`,
+                  sent_at: new Date().toISOString(),
+                });
+              } catch (alertErr) {
+                console.error("platform_alerts_log insert failed:", alertErr);
+              }
+
+              // shouldNotifyContractor stays false here — the contractor is notified
+              // only once the fee is CONFIRMED charged (stripe-webhook success handler).
+            } else {
+              // ── Payment SUCCEEDED — mark contract as signed and notify contractor ──
+              console.log(`Payment succeeded for quote ${quote.id}`);
+
+              // Update quote with payment success
+              await supabase
+                .from("quotes")
+                .update({
+                  payment_intent_id: paymentResult.payment_intent_id,
+                  payment_status: "succeeded",
+                })
+                .eq("id", quote.id);
+
+              // Now update claim status
+              updateData.contract_signed_at =
+                completedDateTime || new Date().toISOString();
+              updateData.contract_signed_by = recipientEmail || null;
+              updateData.status = "contract_signed";
+              // Phase 18: record fee-charged on confirmed payment success.
+              // claims.platform_fee_charged is boolean DEFAULT false; v53 never
+              // wrote it. Set only on the succeeded path, alongside the status flip.
+              updateData.platform_fee_charged = true;
+
+              // Flag for contractor notification (only after successful payment)
+              shouldNotifyContractor = true;
+            }
           } catch (paymentErr) {
             const paymentErrReason =
               paymentErr instanceof Error ? paymentErr.message : "Unknown payment error";

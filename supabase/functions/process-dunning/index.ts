@@ -895,7 +895,12 @@ serve(async (req) => {
 
               const respData = await resp.json();
 
-              if (resp.ok && respData.status !== "requires_action" && respData.status !== "requires_payment_method") {
+              // gh-948: 'processing' (ACH in flight) is NOT success — branch explicitly
+              // instead of treating "anything but requires_action/requires_payment_method"
+              // as settled. A processing charge already claimed funds from this method, so
+              // we must STOP retrying other methods (avoid a concurrent double-charge) but
+              // must NOT tell the homeowner/contractor the fee is paid yet.
+              if (resp.ok && respData.status === "succeeded") {
                 // SUCCESS — payment went through on a retry method
                 console.log(`Dunning AVOIDED: Payment succeeded on method ${method.stripe_pm_id} (${method.payment_type}). PI: ${respData.id}`);
 
@@ -917,6 +922,36 @@ serve(async (req) => {
                     payment_intent_id: respData.id,
                     payment_method_type: method.payment_type,
                     message: `Payment succeeded on alternate method (${method.payment_type}). Dunning not initiated.`,
+                  }),
+                  { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+              }
+
+              if (resp.ok && respData.status === "processing") {
+                // PENDING (ACH in flight, gh-948) — do NOT claim success and do NOT try
+                // further methods (this one already has funds in motion). Record 'pending'
+                // and let the stripe-webhook payment_intent.succeeded / payment_failed
+                // listeners finalize the outcome and, on failure, re-trigger dunning.
+                console.log(`Dunning retry PENDING (ACH processing) on method ${method.stripe_pm_id} (${method.payment_type}). PI: ${respData.id}`);
+
+                const quoteUpdate: Record<string, any> = {
+                  payment_intent_id: respData.id,
+                  payment_status: "pending",
+                  payment_method_type: method.payment_type,
+                };
+                if (method.cpm_id) quoteUpdate.payment_method_id = method.cpm_id;
+                if (cardFee > 0) quoteUpdate.card_fee_cents = cardFee;
+
+                await supabase.from("quotes").update(quoteUpdate).eq("id", quote_id);
+
+                return new Response(
+                  JSON.stringify({
+                    success: true,
+                    dunning_avoided: false,
+                    payment_pending: true,
+                    payment_intent_id: respData.id,
+                    payment_method_type: method.payment_type,
+                    message: `Payment is processing on alternate method (${method.payment_type}). Awaiting confirmation; dunning is paused, not resumed, until the stripe-webhook listener confirms the outcome.`,
                   }),
                   { headers: { ...corsHeaders, "Content-Type": "application/json" } }
                 );
