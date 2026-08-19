@@ -5,7 +5,8 @@
     "event_type",
     "title",
     "metadata",
-    "created_at"
+    "created_at",
+    "is_test"
   ],
   "adjuster_email_requests": [
     "id",
