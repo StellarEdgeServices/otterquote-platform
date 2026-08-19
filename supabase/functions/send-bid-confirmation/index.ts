@@ -295,7 +295,7 @@ serve(async (req: Request) => {
     // Verify quote exists, belongs to contractor, and fetch claim_id for Job # (D-216)
     const { data: quoteData, error: quoteError } = await supabase
       .from("quotes")
-      .select("id, contractor_id, claim_id")
+      .select("id, contractor_id, claim_id, is_test")
       .eq("id", quote_id)
       .single();
 
@@ -449,6 +449,7 @@ serve(async (req: Request) => {
       user_id: contractorData.user_id,
       event_type: "bid_confirmation_email_sent",
       title: `Bid confirmation email sent for quote ${quote_id}`,
+      is_test: quoteData.is_test ?? false,
       metadata: {
         quote_id,
         claim_id: claimId,

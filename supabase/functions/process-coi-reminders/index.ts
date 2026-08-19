@@ -931,7 +931,7 @@ async function processWCReminders(
     .select(
       `id, user_id, contact_name, email, notification_emails,
        wc_cert_expiry, wc_cert_file_ref,
-       wc_cert_reminder_30_sent_at`
+       wc_cert_reminder_30_sent_at, is_test`
     )
     .not("wc_cert_expiry", "is", null);
 
@@ -1039,6 +1039,7 @@ async function processWCReminders(
             event_type: "wc_cert_expiry_reminder_sent",
             title: "wc_cert_expiry_reminder_sent",
             user_id: contractor.user_id,
+            is_test: contractor.is_test ?? false,
             metadata: { contractor_id: contractorId, days_until_expiry: days, expiry_date: wcExpiryDate },
           });
           
