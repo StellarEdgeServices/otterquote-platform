@@ -241,7 +241,7 @@ serve(async (req) => {
     // Look up claim by docusign_envelope_id or color_confirmation_envelope_id
     const { data: claim, error: claimError } = await supabase
       .from("claims")
-      .select("id, status, docusign_envelope_id, color_confirmation_envelope_id, contract_signed_at")
+      .select("id, status, docusign_envelope_id, color_confirmation_envelope_id, contract_signed_at, is_test")
       .or(`docusign_envelope_id.eq.${envelopeId},color_confirmation_envelope_id.eq.${envelopeId}`)
       .limit(1)
       .single();
@@ -935,6 +935,7 @@ serve(async (req) => {
             try {
               await supabase.from("activity_log").insert({
                 event_type: "signed_unbilled_no_method",
+                is_test: claim.is_test ?? false,
                 metadata: {
                   claim_id: claim.id,
                   contractor_id: contractorIdForAlert,
@@ -1130,6 +1131,7 @@ serve(async (req) => {
               console.log(`Homeowner contract-signed email Mailgun status=${mgResp.status} to=${homeownerEmail}`);
               const { error: hcsLogError } = await supabase.from("activity_log").insert({
                 event_type: "homeowner_contract_signed_email_sent",
+                is_test: claim.is_test ?? false,
                 metadata: { claim_id: claim.id, job_number: jobNumber, mailgun_status: mgResp.status },
               });
               if (hcsLogError) {

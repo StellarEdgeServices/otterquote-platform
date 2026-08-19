@@ -207,7 +207,7 @@ serve(async (req) => {
   // ── Check contractor exists ─────────────────────────────────────────────
   const { data: contractor, error: contractorError } = await supabase
     .from("contractors")
-    .select("id, user_id")
+    .select("id, user_id, is_test")
     .eq("id", contractor_id)
     .single();
 
@@ -268,6 +268,7 @@ serve(async (req) => {
     event_type: "attestation_recorded",
     title: "attestation_recorded",
     user_id: contractor.user_id,
+    is_test: contractor.is_test ?? false,
     metadata: {
       contractor_id,
       attestation_type,

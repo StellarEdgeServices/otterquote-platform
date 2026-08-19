@@ -604,70 +604,58 @@ window.Auth = {
 
   /**
    * Get the user's role — database-driven to prevent email confusion.
-   * Returns 'contractor' if a contractor record exists for this user,
-   * otherwise checks the profile role. Returns null if no profile.
    *
-   * SECURITY: If a contractor record exists, that's the source of truth.
-   * This prevents homeowners from being misrouted as contractors and vice versa.
+   * gh-909 (D-182 v113, 2026-08-19): this used to be an inline three-step
+   * cascade (contractors -> referral_agents -> profiles.role) built up
+   * across #817/#643/#851. That precedence now lives in
+   * `public.resolved_user_role`, a read-only SECURITY INVOKER view scoped to
+   * auth.uid() (see supabase/migrations/v113_derived_role_view.sql and
+   * gh-909). This function's contract is unchanged — it still returns
+   * 'contractor', a partner agent_type, 'homeowner', a raw profiles.role
+   * value, or null — it just gets the answer from one query instead of
+   * three, and profiles.role is no longer read directly here (the view
+   * consults it as a fallback internally). Every case this function used to
+   * resolve was branch-tested to return the identical value from the view
+   * (see the migration's pre-flight doc); the one NEW behavior — a user with
+   * no contractor/partner record who owns a claim now resolves 'homeowner'
+   * even when profiles.role is unset — was explicitly approved 2026-08-19
+   * (gh-909 comment 5346445233). Dual-role precedence (contractor beats an
+   * active referral_agents membership) and surface-aware callers
+   * (auth-callback.html's intent check, requireAuth()'s partner branch
+   * below) are UNCHANGED — this migration relocates the FACT, not the
+   * routing logic built on top of it.
+   *
+   * SECURITY: If a contractor record exists, that's still the source of
+   * truth (now encoded in the view's precedence, not here). This prevents
+   * homeowners from being misrouted as contractors and vice versa.
    */
   async getRole() {
     const user = await this.getUser();
     if (!user) return null;
 
-    // Check if this user has a contractor record — that's the source of truth
     if (sb) {
       try {
-        const { data: contractor, error } = await sb
-          .from('contractors')
-          .select('id')
-          .eq('user_id', user.id)
+        const { data, error } = await sb
+          .from('resolved_user_role')
+          .select('derived_role')
           .single();
 
-        if (contractor && !error) {
-          return 'contractor';
+        if (data && !error) {
+          return data.derived_role || null;
         }
-        // PGRST116 = 0 rows (expected for homeowners) — fall through to profile check.
-        // Any other error = transient failure (JWT expiry, network, RLS) — return null
-        // to avoid falling through to a potentially stale profile value and misfiring
-        // the requireAuth() role-mismatch redirect. (Bug fix: May 7, 2026)
-        if (error && error.code !== 'PGRST116') {
-          return null;
-        }
+        // Any error (network, RLS, JWT expiry, unexpected 0 rows) — return
+        // null rather than falling through to a possibly-stale value. Same
+        // fail-closed handling the old contractor-lookup error branch used
+        // (bug fix: May 7, 2026), now applied to the single view read.
+        return null;
       } catch (e) {
         // Network/JS exception — return null, not a wrong-role fallthrough
         return null;
       }
-
-      // gh-817/#643: getRole() never queried referral_agents, so a partner
-      // account fell straight through to profiles.role — which is
-      // 'homeowner' for every real partner-only account (verified live,
-      // 2026-08-14: every active referral_agents row with no contractors
-      // record carries profile_role='homeowner'). nav.js's _renderAuthSlot()
-      // has expected getRole() to return a partnerRoles value since #567 and
-      // has never actually received one. Contractor precedence above is
-      // unchanged — a dual-role account (contractor + referral_agents, e.g.
-      // dustinstohler1@gmail.com) still resolves to 'contractor' here;
-      // surface-aware callers (auth-callback.html's intent check,
-      // requireAuth()'s partner branch below) take precedence over this
-      // single-value getter when the user arrived via a partner surface.
-      try {
-        const { data: agent, error: agentError } = await sb
-          .from('referral_agents')
-          .select('agent_type')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .single();
-        if (agent && !agentError && agent.agent_type) {
-          return agent.agent_type;
-        }
-      } catch (e) {
-        // Network/JS exception — fall through to the profile check below,
-        // same handling as the contractor lookup above.
-      }
     }
 
-    // Fall back to profile role only when neither contractors nor
-    // referral_agents matched this user.
+    // No Supabase client configured — last-resort fallback, unchanged from
+    // pre-#909 (unreachable in practice: getProfile() itself requires `sb`).
     const profile = await this.getProfile();
     return profile?.role || null;
   },

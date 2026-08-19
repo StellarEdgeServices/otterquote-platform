@@ -487,7 +487,7 @@ serve(async (req) => {
     // ── Log to activity_log ────────────────────────────────────────
     const { data: claimOwner } = await supabase
       .from("claims")
-      .select("user_id")
+      .select("user_id, is_test")
       .eq("id", claim_id)
       .single();
 
@@ -497,6 +497,7 @@ serve(async (req) => {
         event_type: "loss_sheet_parsed",
         title: `Loss sheet parsed via ${FUNCTION_NAME}. Carrier: ${parsed.carrier_name || "unknown"}. Format: ${parsed.format_detected || "unknown"}. RCV: ${parsed.summary?.rcv ? "$" + parsed.summary.rcv.toLocaleString() : "n/a"}. Sections: ${parsed.sections?.length ?? 0}.`,
         user_id: claimOwner?.user_id ?? null,
+        is_test: claimOwner?.is_test ?? false,
         metadata: { claim_id },
         created_at: new Date().toISOString(),
       });
