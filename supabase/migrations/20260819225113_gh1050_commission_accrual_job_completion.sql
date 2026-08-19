@@ -1,102 +1,92 @@
--- ============================================================================
--- gh1050_commission_accrual_job_completion — Forward migration (REBASED)
--- ============================================================================
--- D-283 code half (GitHub #1050). R-097 24h notice window opened
--- 2026-08-14T16:44:53Z, closed 2026-08-15T16:44:53Z with no objection.
--- Execution permitted. Bridge answer A3 on #1053 (comment 2026-08-19T22:20:06Z)
--- reconfirmed execution is authorized and required this rebase before apply.
+-- gh-1050: D-283 code half — commission accrual, deposit success -> job completion
+-- Tier 3B (D-182). R-097 24h notice window opened 2026-08-14T16:44:53Z, closed
+-- 2026-08-15T16:44:53Z with no objection. Execution authorized by Bridge answer
+-- A3 on #1053 (comment 2026-08-19T22:20:06Z), which also required this migration
+-- be rebased against gh-916's now-live apply_referral_commission() body before
+-- applying, and required a fresh live blast-radius re-verification at apply time
+-- (not the ~20:56Z branch-test figures from the original draft).
 --
--- REBASE NOTE (2026-08-19, this session, rw-1050-f22-apply2)
---   The original draft (session rw-1050-f22-b6cm, 2026-08-19T20:56Z) was
---   written against the PRE-gh-916 body of apply_referral_commission().
---   gh-916's own migration (20260819210920_gh916_progressive_partner_status_
---   triggers, repo-tracked as supabase/migrations/20260819211149_gh916_
---   progressive_partner_status_triggers.sql, PR #1062) applied to production
---   BEFORE this migration and appended a new, independently-BEGIN/EXCEPTION-
---   wrapped "step 9" send-partner-status-email pg_net call to the end of
---   apply_referral_commission() — strictly after the existing step 8
---   (notify-payout-pending) call, before RETURN NEW. Verified byte-for-byte
---   via pg_get_functiondef('public.apply_referral_commission()'::regprocedure)
---   against production yeszghaspzwwstvsrioa (this session) and against
---   supabase/migrations/20260819211149_gh916_progressive_partner_status_
---   triggers.sql on origin/main: identical. gh-916's addition is purely
---   additive/appendable and does not touch the commission math, the
---   payout_approvals insert, the recruit-bonus block, or the notify-payout-
---   pending block gh-1050 already carries — so this rebase carries gh-916's
---   step 9 forward VERBATIM as a new step 10, on top of gh-1050's claims-
---   retargeted body, with no other change to either side's logic.
+-- Applied to production yeszghaspzwwstvsrioa via apply_migration 2026-08-19
+-- (session rw-1050-f22-apply2). This repo file is added post-apply to keep a
+-- trace, matching the gh-752/gh-886/gh-916 precedent -- merging this PR does
+-- NOT (re-)apply the migration, it already ran.
 --
--- PROBLEM
---   apply_referral_commission() currently fires on the trigger
---   after_quote_paid (AFTER UPDATE OF payment_status ON quotes, WHEN
---   NEW.payment_status = 'succeeded' AND total_price >= $10,000). Per the
---   stripe-webhook gh-948 routing comment, that transition is written by the
---   platform-fee ACH charge finalizing at CONTRACT SIGNING — i.e. before any
---   contracted work has happened. Every partner-facing surface (Partner
---   Referral Agreement Sec 4.2, partner-re.html, partner-dashboard.html)
---   already says the commission is owed once the job is done. The gap this
---   migration closes: the commission ledger entry (referrals.commission_amount
---   + a payout_approvals row) is created before completion, not after.
+-- Drafted 2026-08-19 (session rw-1050-f22-b6cm, PR #1060) as
+-- supabase/migrations_drafts/gh1050_commission_accrual_job_completion.sql,
+-- against the body of apply_referral_commission() as it existed BEFORE gh-916
+-- applied. gh-916 (PR #1062) applied to production first and appended a new,
+-- independently-BEGIN/EXCEPTION-wrapped "step 9" send-partner-status-email
+-- pg_net call to the end of the same function. This session (rw-1050-f22-apply2)
+-- rebased the draft: refetched the live post-gh-916 function body via
+-- pg_get_functiondef, confirmed gh-916's addition was purely additive/appendable
+-- (no overlap with gh-1050's changes to the referral-resolution, floor-check,
+-- commission-write, payout_approvals-insert, or notify-payout-pending logic),
+-- and carried gh-916's step forward verbatim as step 10 on top of gh-1050's
+-- claims-retargeted body. Full section-by-section comparison plus a live branch
+-- test (branch gh1050-rebase-verify, synced to post-gh-916 state first, then the
+-- rebased migration applied on top) reproduced all 4 of the original draft's
+-- assertions unchanged and confirmed the new step-10 send-partner-status-email
+-- call fires without disturbing the accrual write. Branch deleted after use.
 --
--- COMPLETION SIGNAL CHOSEN — claims.completion_date, via a DB trigger
---   Confirmed (2026-08-19) that claims.completion_date has exactly ONE write
---   path in the live codebase: the mark-job-complete Edge Function
---   (supabase/functions/mark-job-complete/index.ts). It is contractor-
---   authenticated, requires the claim to be in ('contract_signed',
---   'awarded'), and is itself idempotent. No other Edge Function, trigger,
---   or admin surface sets this column.
+-- Live blast-radius re-verification immediately before this migration applied
+-- (2026-08-19T22:5x, this session, NOT the ~20:56Z figures from the original
+-- draft): payout_approvals = 0 rows, total_commission_paid = $0.00,
+-- total_commission_earned = $0.00 across all referral_agents, referrals with
+-- commission_amount > 0 = 0 (of 8 total), quotes with payment_status='succeeded'
+-- = 0. Risk profile as originally described in #1050 -- unchanged, still
+-- near-zero.
 --
---   A DB trigger (not an explicit call inside mark-job-complete) matches this
---   repo's existing pattern (after_quote_paid / after_quote_refunded /
---   trg_claims_advance_referral are all triggers-on-event) and gets ACID
---   guarantees for free in the same transaction as the completion_date write.
+-- Summary: moves commission accrual from firing on quotes.payment_status
+-- transitioning to 'succeeded' (the platform-fee ACH charge finalizing at
+-- CONTRACT SIGNING, per the stripe-webhook gh-948 routing comment) to firing on
+-- claims.completion_date transitioning from NULL to set (JOB COMPLETION,
+-- currently the mark-job-complete Edge Function's sole write path). Every
+-- partner-facing surface (Partner Referral Agreement Sec 4.2, partner-re.html,
+-- partner-dashboard.html) already states commissions are owed once the job is
+-- done; the code owed it at deposit. This is the code half of D-283 (locked
+-- 2026-08-14); the contract half (offset-only reversal, no cash-repayment
+-- demand) becomes operationally real only once this lands.
 --
--- WHAT THIS MIGRATION DOES
---   1. Drops after_quote_paid (the old quotes.payment_status='succeeded'
---      firing point).
---   2. Replaces apply_referral_commission() so it operates on a claims row
---      instead of a quotes row: NEW.referral_id (direct FK on claims)
---      resolves the referral directly; the $10K qualifying-job floor
---      (D-139) and job_value now come from the winning quote (status IN
---      ('selected','awarded')) looked up inside the function body, since a
---      trigger WHEN clause on claims cannot reference quotes columns.
---      Carries gh-916's step 9 (send-partner-status-email catch-up notify)
---      forward verbatim as step 10, after gh-1050's own notify-payout-
---      pending call. All other steps otherwise unchanged from the live body
---      captured via pg_get_functiondef() on 2026-08-19 (post-gh-916).
---   3. Creates after_claim_completed (AFTER UPDATE OF completion_date ON
---      claims, WHEN NEW.completion_date IS NOT NULL AND OLD.completion_date
---      IS NULL) to replace after_quote_paid as the sole firing point.
+-- apply_referral_commission() is retargeted from a quotes row to a claims row:
+-- referral_id is read directly off claims (simpler than the old
+-- claims-lookup-via-quotes.claim_id indirection), and the $10K qualifying-job
+-- floor (D-139) plus job_value are resolved from the winning quote
+-- (status IN ('selected','awarded'), the same predicate mark-job-complete
+-- itself uses) inside the function body, since a trigger WHEN clause on claims
+-- cannot reference quotes columns.
 --
--- WHAT THIS MIGRATION DELIBERATELY DOES NOT TOUCH
---   - reverse_referral_commission() / after_quote_refunded (v42/v102):
---     unaffected — operates purely on referrals' current ledger state.
---   - approve-payout's existing completion gate (D-139/#567): unaffected —
---     already holds payout RELEASE on completion_date IS NULL.
---   - mark-job-complete's own non-fatal referrals.status='job_completed'
---     advance write: unaffected, still idempotent, now a no-op in the
---     common case since the new trigger sets the same status first.
---   - claims_advance_referral() and notify_partner_status_on_bid_submitted()
---     (gh-916 sites 1 and 2): untouched by this migration — gh-1050 only
---     ever modified apply_referral_commission() and its two triggers.
+-- Post-apply live verification (rw-1050-f22-apply2, 2026-08-19):
+--   - pg_get_triggerdef confirms after_quote_paid is gone; after_claim_completed
+--     exists on public.claims, enabled, WHEN NEW.completion_date IS NOT NULL AND
+--     OLD.completion_date IS NULL.
+--   - pg_get_functiondef on apply_referral_commission() shows BOTH gh-916's step
+--     (send-partner-status-email) and gh-1050's claims-retarget verbatim.
+--   - Smoke, zero real-partner impact, against the designated E2E TEST CLAIM
+--     (claim_id 8dcf76f1-f518-4363-a37f-192dec10b9bb, referral_id
+--     ea75db9f-0f49-4aec-aaa4-45cc82ef7aa3, agent email
+--     dustinstohler1+jjdemo0805@gmail.com -- Dustin's own test inbox):
+--       1. Set the test quote's payment_status to 'succeeded' -- confirmed NO
+--          accrual (referrals.commission_amount stayed NULL, payout_approvals
+--          rows = 0). The old deposit-success firing point is gone.
+--       2. Set claims.completion_date -- confirmed exactly ONE accrual:
+--          referrals.commission_amount = 200.00, job_value = 15000.00,
+--          status = 'job_completed', payout_approvals = 1 row
+--          (trigger_event = 'Job completed -- referral ea75db9f... (claim
+--          8dcf76f1...)'). net._http_response shows the new step-10
+--          send-partner-status-email call succeeded (200, stage 5 sent,
+--          real Mailgun send); the step-9 notify-payout-pending call timed out
+--          (non-fatal by design -- swallowed by its own BEGIN/EXCEPTION block,
+--          did not affect the accrual write, which committed successfully
+--          regardless).
 --
--- Rollback: gh1050_commission_accrual_job_completion_rollback.sql (rebased
---   to restore the live post-gh-916, pre-gh-1050 body verbatim).
--- Pre-flight: gh1050_commission_accrual_job_completion_pre-flight.md
+-- Rollback: supabase/migrations_rollbacks/gh1050_commission_accrual_job_completion_rollback.sql
+-- Draft history: supabase/migrations_drafts/gh1050_commission_accrual_job_completion.sql (rebased)
 -- GitHub: #1050 (D-283 code half)
--- ============================================================================
 
 BEGIN;
 
--- ============================================================================
--- SECTION 1: DROP the old deposit-success firing point
--- ============================================================================
 DROP TRIGGER IF EXISTS after_quote_paid ON public.quotes;
 
--- ============================================================================
--- SECTION 2: FUNCTION — apply_referral_commission() retargeted to claims,
---            carrying gh-916's step 9 (send-partner-status-email) forward
--- ============================================================================
 CREATE OR REPLACE FUNCTION public.apply_referral_commission()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -115,7 +105,7 @@ DECLARE
 BEGIN
   -- 1. gh-1050: NEW is now a claims row (trigger moved from
   --    quotes.payment_status to claims.completion_date). referral_id lives
-  --    directly on claims — no join through quotes.claim_id needed anymore.
+  --    directly on claims -- no join through quotes.claim_id needed anymore.
   IF NEW.referral_id IS NULL THEN
     RETURN NEW;
   END IF;
@@ -163,7 +153,7 @@ BEGIN
 
   -- 6. Apply the $200 referrer bonus and advance status to 'job_completed'.
   --    gh-1050: this function now only ever runs AT completion, so the
-  --    interim 'contract_signed' label v94 introduced no longer applies —
+  --    interim 'contract_signed' label v94 introduced no longer applies --
   --    accrual IS completion now. Guard only against 'commission_paid' so a
   --    manually-reconciled row is never walked backward.
   UPDATE public.referrals
@@ -228,8 +218,8 @@ BEGIN
   END IF;
 
   -- 9. Fire notify-payout-pending via pg_net (async, fire-and-forget).
-  --    Vault-based key resolution — matches the LIVE gh-752 (2026-08-17)
-  --    body. Non-fatal — failure here never affects the accrual write above.
+  --    Vault-based key resolution -- matches the LIVE gh-752 (2026-08-17)
+  --    body. Non-fatal -- failure here never affects the accrual write above.
   BEGIN
     SELECT decrypted_secret INTO v_service_role_key
       FROM vault.decrypted_secrets
@@ -257,11 +247,11 @@ BEGIN
 
   -- 10. gh-916 AC2 (carried forward verbatim by this rebase): progressive
   --     partner-status notify, catch-up mode. Independent BEGIN/EXCEPTION
-  --     block from step 9 — a failure sending the partner-status email can
+  --     block from step 9 -- a failure sending the partner-status email can
   --     never affect the notify-payout-pending call above, and vice versa.
   --     Reuses v_service_role_key if step 9 already resolved it; re-resolves
   --     only if step 9's Vault lookup itself failed. References v_referral.id
-  --     — unchanged meaning under gh-1050's retarget, since v_referral is
+  --     -- unchanged meaning under gh-1050's retarget, since v_referral is
   --     still loaded (and still the same row) in step 2 above.
   BEGIN
     IF v_service_role_key IS NULL THEN
@@ -306,9 +296,6 @@ $function$;
 COMMENT ON FUNCTION public.apply_referral_commission() IS
 'gh-1050/D-283 + gh-916 AC2 (rebased 2026-08-19): retargeted from quotes.payment_status=succeeded (deposit/fee-charge success at contract signing) to claims.completion_date being set (job completion — currently sole write path: mark-job-complete Edge Function). On the transition, resolves the claim''s referral directly via claims.referral_id, floor-checks the winning quote''s total_price >= $10K, attributes $200 referrer + optional $50 recruiter commission, inserts payout_approvals rows with status=pending_approval, fires notify-payout-pending via pg_net (Vault-based key, gh-752 pattern), and fires send-partner-status-email catch-up notify via pg_net (gh-916 AC2, carried forward unchanged by this rebase). Idempotent via commission_amount > 0 guard. SECURITY DEFINER; all errors swallowed to protect the completion write.';
 
--- ============================================================================
--- SECTION 3: TRIGGER — after_claim_completed (new accrual firing point)
--- ============================================================================
 DROP TRIGGER IF EXISTS after_claim_completed ON public.claims;
 
 CREATE TRIGGER after_claim_completed
@@ -324,20 +311,3 @@ COMMENT ON TRIGGER after_claim_completed ON public.claims IS
 'gh-1050/D-283: fires apply_referral_commission() once, on the transition of claims.completion_date from NULL to a value — i.e. job completion (currently the mark-job-complete Edge Function''s sole write path). Supersedes after_quote_paid (dropped by this same migration), which fired too early, on the homeowner/platform-fee deposit success at contract signing.';
 
 COMMIT;
-
--- ============================================================================
--- SECTION 4: VERIFICATION QUERIES (run after apply)
--- ============================================================================
--- 4a. Confirm the old trigger is gone and the new one exists.
-SELECT tgname, tgrelid::regclass AS table_name, tgenabled, pg_get_triggerdef(oid) AS def
-FROM pg_trigger
-WHERE tgname IN ('after_quote_paid', 'after_claim_completed');
-
--- 4b. Confirm the function is SECURITY DEFINER and matches expectations.
-SELECT p.proname, p.prosecdef
-FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public' AND p.proname = 'apply_referral_commission';
-
--- ============================================================================
--- End of Migration gh1050_commission_accrual_job_completion (rebased)
--- ============================================================================

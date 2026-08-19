@@ -164,9 +164,9 @@ All four assertions passed as expected.
 
 ---
 
-## Known Coordination Item — gh916 (unrelated, unapplied draft)
+## Known Coordination Item — gh916 (RESOLVED via rebase, session rw-1050-f22-apply2)
 
-`supabase/migrations_drafts/gh916_progressive_partner_status_triggers.sql` also modifies `apply_referral_commission()` (adds a step-9 partner-status-email `pg_net` call), written against the OLD quotes-triggered body, and is itself still an unapplied D-182-pending draft as of 2026-08-19. **If gh916 is approved and applied to production before this migration, gh1050's `CREATE OR REPLACE FUNCTION` will silently drop gh916's step-9 addition** (a full function-body replace, not a patch). Whichever of gh916 / gh1050 is approved and applied **second** must be rebased against the other's already-live function body before applying. Flagged on GitHub #1050 and #916 (comment) and in the PR body for this migration.
+`supabase/migrations_drafts/gh916_progressive_partner_status_triggers.sql` also modified `apply_referral_commission()` (adds a step-9 partner-status-email `pg_net` call). gh-916 applied to production first (PR #1062, 2026-08-19T21:xx), before this migration. As flagged below, session `rw-1050-f22-apply2` rebased this draft (both the forward and rollback SQL in this directory reflect the rebased version, not the original) against the live post-gh-916 function body before applying: refetched the live body via `pg_get_functiondef`, confirmed gh-916's step was purely additive (appended after the existing notify-payout-pending call, independently BEGIN/EXCEPTION-wrapped, no overlap with any line gh-1050 touches), and carried it forward verbatim as step 10 on top of gh-1050's claims-retargeted body. Verified via a synced branch test (branch `gh1050-rebase-verify`, gh-916's migration applied first to bring the branch to production parity, then the rebased gh-1050 migration on top) reproducing all 4 of the original assertions unchanged, plus confirming the carried-forward step 10 fires without disturbing the accrual write. Applied to production 2026-08-19T22:51:53Z as `20260819225113_gh1050_commission_accrual_job_completion`.
 
 ---
 
