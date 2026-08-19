@@ -137,7 +137,7 @@ function w9RequestEmailHtml(firstName: string): string {
 
     <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">${greeting}</p>
 
-    <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">Your referral generated a commission payment, but we&rsquo;re unable to issue it yet. <strong>A completed IRS Form W-9 is required before any payment can be released.</strong></p>
+    <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">Your referral generated a referral fee payment, but we&rsquo;re unable to issue it yet. <strong>A completed IRS Form W-9 is required before any payment can be released.</strong></p>
 
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;margin:16px 0 24px;">
       <tr>
@@ -247,7 +247,7 @@ serve(async (req) => {
     const firstName = (agent.first_name || "").trim();
 
     const htmlBody = w9RequestEmailHtml(firstName);
-    const plainText = `Hi ${firstName || "there"},\n\nYour referral generated a commission payment, but we need a completed W-9 before we can release it.\n\nPlease log in to your partner dashboard to upload your W-9:\n${PARTNER_DASHBOARD_URL}\n\nQuestions? Email support@otterquote.com or call (844) 875-3412.\n\nOtter Quotes Team`;
+    const plainText = `Hi ${firstName || "there"},\n\nYour referral generated a referral fee payment, but we need a completed W-9 before we can release it.\n\nPlease log in to your partner dashboard to upload your W-9:\n${PARTNER_DASHBOARD_URL}\n\nQuestions? Email support@otterquote.com or call (844) 875-3412.\n\nOtter Quotes Team`;
 
     const formData = new URLSearchParams();
     formData.append("from",    `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`);
