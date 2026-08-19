@@ -82,7 +82,7 @@ export const CONTRACTOR_LOGIN_COPY = {
     {
       icon: '👋',
       h: 'No sales reps needed!',
-      p: "Don't want the headaches of a sales force? These sales are already closed for you. No truck, gas, or commissions needed.",
+      p: "Don't want the headaches of a sales force? These sales are already closed for you. No truck, gas, or referral fees needed.",
     },
   ],
 } as const;
