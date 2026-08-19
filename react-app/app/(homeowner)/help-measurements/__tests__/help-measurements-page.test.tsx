@@ -7,6 +7,11 @@
  * selection, the two happy paths (Hover paid → order; adjuster email → success), the
  * graceful EF-pending vs error branches, the already-sent note, and the locked email-preview
  * placeholder. No real Supabase/Stripe/EF is touched.
+ *
+ * gh-951 section (bottom of this file) covers the charge→order reload-persistence fix:
+ * ../hover-charge-storage is NOT mocked — tests seed/inspect real jsdom sessionStorage via
+ * its exported helpers, exercising the actual persist/resume/clear behaviour rather than a
+ * stub.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -67,7 +72,12 @@ import {
 } from '../use-help-measurements-data';
 import { isStripeConfigured } from '../HoverPaymentForm';
 import { MEASUREMENTS_COPY as M } from '../copy';
-import HelpMeasurementsPage from '../page';
+import HelpMeasurementsPage, { RESUME_COPY } from '../page';
+import {
+  saveHoverChargeRecord,
+  readHoverChargeRecord,
+  clearHoverChargeRecord,
+} from '../hover-charge-storage';
 
 type Fn = ReturnType<typeof vi.fn>;
 
@@ -101,13 +111,20 @@ beforeEach(() => {
   (useAuthReady as unknown as Fn).mockReturnValue(authed());
   (useHelpMeasurementsData as unknown as Fn).mockReturnValue(readyData());
   (isStripeConfigured as unknown as Fn).mockReturnValue(true);
-  (requestHoverPaymentIntent as unknown as Fn).mockResolvedValue({ client_secret: 'cs_test' });
+  // gh-951: a realistic `pi_..._secret_...` shape so paymentIntentIdFromClientSecret (the
+  // resume-pointer write in purchaseHover) round-trips in tests that don't override this.
+  (requestHoverPaymentIntent as unknown as Fn).mockResolvedValue({
+    client_secret: 'pi_test_secret_cs_test',
+  });
   (placeHoverOrder as unknown as Fn).mockResolvedValue({ order_id: 'o1', capture_link: null });
   (sendMeasurementRequest as unknown as Fn).mockResolvedValue(undefined);
+  // gh-951: start every test with a clean resume pointer (real sessionStorage, not mocked).
+  clearHoverChargeRecord();
 });
 
 afterEach(() => {
   vi.clearAllMocks();
+  clearHoverChargeRecord();
 });
 
 // ── 1. Render: header + path selection ─────────────────────────────────────────
@@ -272,5 +289,117 @@ describe('help-measurements page — adjuster email path', () => {
     expect((screen.getByPlaceholderText(M.adjusterNamePlaceholder) as HTMLInputElement).value).toBe(
       'Existing Adj',
     );
+  });
+});
+
+// ── 4. gh-951 — charge→order reload persistence ─────────────────────────────────
+
+describe('help-measurements page — gh-951 resume after a full-page reload', () => {
+  it('persists a resume pointer the moment the PaymentIntent is created, before any charge', async () => {
+    (requestHoverPaymentIntent as unknown as Fn).mockResolvedValue({
+      client_secret: 'pi_new_charge_secret_abc123',
+    });
+    render(<HelpMeasurementsPage />);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
+    fireEvent.click(await screen.findByText(M.hoverPurchaseButton));
+
+    await screen.findByTestId('hover-payment-form');
+    // The card was never charged yet (no Pay click) — the pointer must already exist.
+    expect(readHoverChargeRecord()).toMatchObject({
+      claimId: 'c1',
+      paymentIntentId: 'pi_new_charge',
+    });
+  });
+
+  it('clears the resume pointer once the order is placed via the normal (non-reload) flow', async () => {
+    render(<HelpMeasurementsPage />);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
+    fireEvent.click(await screen.findByText(M.hoverPurchaseButton));
+    await screen.findByTestId('hover-payment-form');
+    expect(readHoverChargeRecord()).not.toBeNull();
+
+    fireEvent.click(screen.getByTestId('pay-now'));
+    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
+    expect(readHoverChargeRecord()).toBeNull();
+  });
+
+  it('clears the resume pointer when the user cancels before charging', async () => {
+    render(<HelpMeasurementsPage />);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
+    fireEvent.click(await screen.findByText(M.hoverPurchaseButton));
+    await screen.findByTestId('hover-payment-form');
+    expect(readHoverChargeRecord()).not.toBeNull();
+
+    fireEvent.click(screen.getByTestId('cancel-pay'));
+    expect(readHoverChargeRecord()).toBeNull();
+  });
+
+  it('on mount, resumes automatically and lands on the success screen when the order confirms', async () => {
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_1', ts: Date.now() });
+    (placeHoverOrder as unknown as Fn).mockResolvedValue({
+      order_id: 'o1',
+      capture_link: 'https://hover.example/capture/1',
+      capture_request_id: 'cap_1',
+    });
+
+    render(<HelpMeasurementsPage />);
+
+    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
+    expect((placeHoverOrder as unknown as Fn).mock.calls[0][0]).toMatchObject({
+      claim: { id: 'c1' },
+      paymentIntentId: 'pi_resume_1',
+    });
+    expect(await screen.findByText(M.hoverSuccessTitle)).toBeTruthy();
+    // No path-selection flash left behind, and the pointer is gone either way.
+    expect(screen.queryByText(M.pathIntroTitle)).toBeNull();
+    expect(readHoverChargeRecord()).toBeNull();
+  });
+
+  it('shows the neutral resume-unresolved message (not a false success) when the order does not confirm', async () => {
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_2', ts: Date.now() });
+    // Mirrors create-hover-order's D-181 guard shape: it resolves (does not throw) with
+    // `placeholder: true` and no capture_request_id when the PaymentIntent never succeeded.
+    (placeHoverOrder as unknown as Fn).mockResolvedValue({
+      order_id: 'o1',
+      capture_link: null,
+      placeholder: true,
+      message: 'Hover order creation failed. Please try again.',
+    });
+
+    render(<HelpMeasurementsPage />);
+
+    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(RESUME_COPY.unresolved)).toBeTruthy();
+    expect(screen.queryByText(M.hoverSuccessTitle)).toBeNull();
+    expect(readHoverChargeRecord()).toBeNull();
+  });
+
+  it('clears the pointer and surfaces the unresolved message when the order step throws', async () => {
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_3', ts: Date.now() });
+    (placeHoverOrder as unknown as Fn).mockRejectedValue(new Error('network blip'));
+
+    render(<HelpMeasurementsPage />);
+
+    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(RESUME_COPY.unresolved)).toBeTruthy();
+    expect(readHoverChargeRecord()).toBeNull();
+  });
+
+  it('ignores a pending pointer left over from a different claim — no resume attempt', async () => {
+    saveHoverChargeRecord({ claimId: 'some-other-claim', paymentIntentId: 'pi_stale', ts: Date.now() });
+
+    render(<HelpMeasurementsPage />);
+
+    expect(await screen.findByText(M.pathIntroTitle)).toBeTruthy();
+    expect(placeHoverOrder as unknown as Fn).not.toHaveBeenCalled();
+    // A mismatched pointer is left alone (harmless in sessionStorage; it never matches).
+    expect(readHoverChargeRecord()).toMatchObject({ claimId: 'some-other-claim' });
+  });
+
+  it('does nothing when there is no pending pointer at all', async () => {
+    render(<HelpMeasurementsPage />);
+
+    expect(await screen.findByText(M.pathIntroTitle)).toBeTruthy();
+    expect(placeHoverOrder as unknown as Fn).not.toHaveBeenCalled();
   });
 });

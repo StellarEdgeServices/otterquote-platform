@@ -4,9 +4,11 @@
  * Primary use: detect when a measurement job completes, then
  * fetch the measurements and attach them to the claim.
  *
- * Webhook event: job-state-changed
- * When state becomes "complete", we fetch the measurement data
- * and store it in Supabase for the associated claim.
+ * Webhook event: job-state-changed-v2 (#430 — Hover deprecated the legacy
+ * job-state-changed shape; only the v2 shape is handled now).
+ * When state becomes "completed", we fetch the measurement data
+ * and store it in Supabase for the associated claim. See job-completion.ts
+ * for the state → hover_orders.status mapping and completion detection.
  *
  * No rate limiting needed — Hover calls us, not the other way around.
  *
@@ -22,6 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveJobState } from "./job-completion.ts";
 
 const HOVER_API_BASE = "https://hover.to";
 
@@ -83,8 +86,8 @@ serve(async (req) => {
       });
     }
 
-    // Hover webhook payload includes:
-    // { event: "job-state-changed", job_id: 12345, state: "complete", ... }
+    // Hover webhook payload includes (job-state-changed-v2 shape, #430):
+    // { event: "job-state-changed-v2", job_id: 12345, state: "completed", ... }
     const { event, job_id, state } = payload;
 
     if (!event || !job_id) {
@@ -124,15 +127,8 @@ serve(async (req) => {
 
     const order = orders[0];
 
-    // Update order status based on job state
-    const statusMap: Record<string, string> = {
-      processing: "processing",
-      complete: "complete",
-      failed: "failed",
-      cancelled: "cancelled",
-    };
-
-    const newStatus = statusMap[state] || order.status;
+    // Update order status based on job state (job-state-changed-v2 semantics, #430).
+    const { newStatus, isCompleted } = resolveJobState(state, order.status);
 
     await supabase
       .from("hover_orders")
@@ -143,8 +139,8 @@ serve(async (req) => {
       `Updated hover_order ${order.id} status: ${order.status} → ${newStatus}`
     );
 
-    // If the job is complete, fetch measurements
-    if (state === "complete" && order.claim_id) {
+    // If the job is complete, fetch measurements (job-state-changed-v2: state === "completed", #430)
+    if (isCompleted && order.claim_id) {
       console.log(
         `Job ${job_id} complete! Fetching measurements for claim ${order.claim_id}...`
       );

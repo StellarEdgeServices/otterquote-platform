@@ -88,16 +88,33 @@ function emailFooter(): string {
 </table>`.trim();
 }
 
-/** Render a teal CTA button. */
-function ctaButton(text: string, url: string, color = "#14B8A6"): string {
+// ── Inlined from _shared/email.ts (#869) — see that file's header comment ──
+// for why this is duplicated rather than imported (the EF body-deploy path
+// does not resolve `_shared/` imports). Table-based CTA + MSO VML conditional
+// so Outlook renders a real filled rectangle, not a bare link. Brand amber
+// #E07B00 — replaces the non-brand #14B8A6 teal default AND every per-call
+// accent override (navy/red/gold/green) this file used to hand-roll; the
+// canonical helper is intentionally single-color so every CTA in the
+// codebase reads as the same brand button (#869 AC 1/AC 3).
+function emailButton({ href, label }: { href: string; label: string }): string {
+  const BRAND_AMBER = "#E07B00";
+  const FONT_STACK = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
   return `
-<table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+<!--[if mso]>
+<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:260px;" arcsize="15%" strokecolor="${BRAND_AMBER}" fillcolor="${BRAND_AMBER}">
+  <w:anchorlock/>
+  <center style="color:#ffffff;font-family:${FONT_STACK};font-size:16px;font-weight:700;">${label}</center>
+</v:roundrect>
+<![endif]-->
+<!--[if !mso]><!-->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
   <tr>
-    <td align="center" bgcolor="${color}" style="border-radius:8px;">
-      <a href="${url}" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;padding:14px 28px;">${text}</a>
+    <td align="center" bgcolor="${BRAND_AMBER}" style="border-radius:8px;">
+      <a href="${href}" style="display:inline-block;font-family:${FONT_STACK};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;padding:14px 28px;">${label}</a>
     </td>
   </tr>
-</table>`.trim();
+</table>
+<!--<![endif]-->`.trim();
 }
 
 /** Wrap any body HTML in the shared Otter Quotes email shell. */
@@ -179,7 +196,7 @@ function newOpportunityEmailHtml(
     <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
     <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">A new opportunity is available in your service area. The winning contractor receives a fully executed contract, Hover aerial measurements, and the homeowner&rsquo;s contact information &mdash; everything you need to schedule and start work.</p>
 
-    ${ctaButton("View Opportunity &rarr;", OPPORTUNITIES_URL)}
+    ${emailButton({ href: OPPORTUNITIES_URL, label: "View Opportunity &rarr;" })}
 
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;margin-top:8px;">
       <tr>
@@ -253,7 +270,7 @@ function contractSignedEmailHtml(contractorName: string, claimId: string): strin
       </td></tr>
     </table>
 
-    ${ctaButton("Go to My Dashboard &rarr;", DASHBOARD_URL)}
+    ${emailButton({ href: DASHBOARD_URL, label: "Go to My Dashboard &rarr;" })}
   `;
 
   return buildEmail(body);
@@ -293,7 +310,7 @@ function bidUpdateEmailHtml(contractorName: string): string {
 
     <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">You can update your bid any time before the homeowner makes a selection.</p>
 
-    ${ctaButton("View My Dashboard &rarr;", DASHBOARD_URL, "#0369A1")}
+    ${emailButton({ href: DASHBOARD_URL, label: "View My Dashboard &rarr;" })}
   `;
 
   return buildEmail(body);
@@ -336,7 +353,7 @@ function agreementRequestedEmailHtml(
       </td></tr>
     </table>
 
-    ${ctaButton("Sign My Agreement Now &rarr;", signingLink, "#DC2626")}
+    ${emailButton({ href: signingLink, label: "Sign My Agreement Now &rarr;" })}
 
     <p style="margin:16px 0 0;color:#6B7280;font-size:13px;">This link takes you directly to your agreement signing page and keeps your bid active.</p>
   `;
@@ -391,7 +408,7 @@ function bidExpiredEmailHtml(
       </td></tr>
     </table>
 
-    ${ctaButton("Renew My Bid &rarr;", renewUrl, "#D97706")}
+    ${emailButton({ href: renewUrl, label: "Renew My Bid &rarr;" })}
 
     <p style="margin:16px 0 0;color:#6B7280;font-size:13px;">Don&rsquo;t want renewal reminders? Update your <a href="https://otterquote.com/contractor-settings.html" style="color:#0369A1;">notification preferences</a>.</p>
   `;
@@ -431,7 +448,7 @@ function bidRenewalRequestedEmailHtml(
 
     <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">You can update your bid details at any time before the homeowner makes a selection.</p>
 
-    ${ctaButton("View My Dashboard &rarr;", DASHBOARD_URL, "#059669")}
+    ${emailButton({ href: DASHBOARD_URL, label: "View My Dashboard &rarr;" })}
   `;
   return buildEmail(body);
 }

@@ -143,7 +143,14 @@
 
   /** Cookie Max-Age — outlive the access token so refresh can rotate it. */
   function getCookieMaxAge(expSec) {
-    var defaultSec = 7 * 24 * 3600; // 7 days, matches Supabase refresh-token default
+    // gh-867: Supabase imposes no session time-box on this project (0 of
+    // 26,396 session rows carry a not_after value) and refresh-token
+    // rotation is healthy well past a week — the prior 7-day default was a
+    // self-imposed cap with no backend requirement behind it, forcing weekly
+    // magic-link re-auth. 400 days is Chrome's Max-Age ceiling (anything
+    // larger is silently clamped); this does not invalidate existing
+    // sessions — they pick up the longer window on their next token refresh.
+    var defaultSec = 400 * 24 * 3600; // 400 days — Chrome's Max-Age ceiling
     if (!expSec) return defaultSec;
     var remaining = expSec - Math.floor(Date.now() / 1000);
     return Math.max(3600, Math.max(remaining, defaultSec));
@@ -323,8 +330,9 @@
   };
 
   // Constants exposed for diagnostics + contract tests.
-  window.OtterQuoteCookieStorage._COOKIE_ACCESS  = COOKIE_ACCESS;
-  window.OtterQuoteCookieStorage._COOKIE_REFRESH = COOKIE_REFRESH;
-  window.OtterQuoteCookieStorage._STORAGE_KEY    = STORAGE_KEY;
+  window.OtterQuoteCookieStorage._COOKIE_ACCESS   = COOKIE_ACCESS;
+  window.OtterQuoteCookieStorage._COOKIE_REFRESH  = COOKIE_REFRESH;
+  window.OtterQuoteCookieStorage._STORAGE_KEY     = STORAGE_KEY;
+  window.OtterQuoteCookieStorage._getCookieMaxAge = getCookieMaxAge; // gh-867 test hook
 
 })();

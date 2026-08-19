@@ -459,6 +459,7 @@
 <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <script src="js/agent-types.js"></script>
     <script>
         let currentFilter = 'all';
         let allPartners   = [];
@@ -558,15 +559,10 @@
         }
 
         function typeBadge(type) {
-            const map = {
-                're_agent':        ['badge-type-re',   'Real Estate Agent'],
-                'insurance_agent': ['badge-type-ins',  'Insurance'],
-                'home_inspector':  ['badge-type-insp', 'Inspector'],
-                'customer':        ['badge-type-cust', 'Customer'],
-                'adjuster':        ['badge-type-ins',  'Adjuster'],
-                'other':           ['badge-type-cust', 'Other'],
-            };
-            const [cls, label] = map[type] || ['badge-not-filed', type || '—'];
+            // gh-914 single source (js/agent-types.js)
+            const entry = AgentTypes.ADMIN_BADGE[type];
+            const cls = entry ? entry.className : 'badge-not-filed';
+            const label = entry ? entry.label : (type || '—');
             return `<span class="badge ${cls}">${label}</span>`;
         }
 
@@ -752,14 +748,8 @@
         // (is_admin_email(), p18_admin_identity_allowlist.sql) already
         // permits this column, so no migration is needed.
         function openAgentTypeEditor(agentId, currentType) {
-            const AGENT_TYPE_LABELS = {
-                re_agent:        'Real Estate Agent',
-                insurance_agent: 'Insurance Agent',
-                home_inspector:  'Home Inspector',
-                customer:        'Customer',
-                adjuster:        'Insurance Adjuster',
-                other:           'Other',
-            };
+            // gh-914 single source (js/agent-types.js)
+            const AGENT_TYPE_LABELS = AgentTypes.ADMIN_DROPDOWN_LABELS;
             const overlay = document.createElement('div');
             overlay.setAttribute('role', 'dialog');
             overlay.setAttribute('aria-modal', 'true');

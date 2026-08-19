@@ -32,3 +32,11 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # tools-crm.html (it lives in the tools- family the footer already links);
 # oq-crm.html deleted, 301 preserves any inbound links/bookmarks.
 /oq-crm.html /tools-crm.html 301
+
+# #1027: inspector-landing.html and partner-inspectors.html were two live
+# pages competing for one intent (both returned 200). partner-inspectors.html
+# is the page the homepage links to. The only unique content on
+# inspector-landing.html — the founder-credibility block — was salvaged
+# verbatim into contractor-join.html first (gh-960(f)). File deleted so this
+# redirect isn't shadowed by the static asset; 301 not 302 to pass link equity.
+/inspector-landing.html /partner-inspectors.html 301

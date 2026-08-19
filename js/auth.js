@@ -244,6 +244,21 @@ window.Auth = {
   },
 
   /**
+   * gh-397/#689 — E2E-test-signal predicate for claim-creation call sites.
+   * Mirrors the CEO-approved contractor predicate (#543, see
+   * supabase/functions/notify-contractors/test-exclusion.ts): an
+   * @otterquote-internal.test address identifies an E2E/test actor. Used to
+   * stamp claims.is_test at INSERT time so E2E writes against the live
+   * BASE_URL never land as unflagged "real" claims. Case-insensitive,
+   * null-safe.
+   * @param {string|null|undefined} email
+   * @returns {boolean}
+   */
+  isTestEmail(email) {
+    return (email || '').trim().toLowerCase().endsWith('@otterquote-internal.test');
+  },
+
+  /**
    * Send magic link email with role-aware redirect.
    * @param {string} email
    * @param {string} role - 'homeowner' (default), 'contractor', 're_agent',
@@ -292,6 +307,122 @@ window.Auth = {
       }
     });
     if (error) throw error;
+  },
+
+  /**
+   * Sign in with email + password.
+   * gh-880 Half A: primary sign-in method for the Partner App, replacing
+   * magic-link as the primary path. Magic link's device-bound linkage was
+   * the root cause of #594's cross-device attribution failures — a
+   * password typed on the same device the app is open on removes that
+   * failure class entirely. Homeowner/contractor surfaces are unaffected;
+   * this and the three methods below exist for partner-login.html and the
+   * partner signup pages only.
+   * @param {string} email
+   * @param {string} password
+   * @returns {Promise<object|null>} the new session
+   */
+  async signInWithPassword(email, password) {
+    if (!sb) throw new Error('Supabase not initialized');
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data.session;
+  },
+
+  /**
+   * Sign up a new user with email + password, mirroring sendMagicLink's
+   * role-aware redirect signature. gh-880 Half A signup audit: the 6
+   * partner entry pages call this instead of sendMagicLink so the
+   * referral_agents row register_partner() creates (still unlinked,
+   * user_id NULL) is backed by a real credential from the first signup
+   * instead of the password-less account magic-link used to create
+   * implicitly.
+   * NOTE: data.session comes back null when the Supabase project requires
+   * email confirmation before first sign-in (or, by GoTrue design, when
+   * the email already belongs to an existing account — this is the
+   * anti-enumeration "fake success" case, not a coding error). Callers
+   * must handle a null session the same way they already handle the
+   * magic-link "check your email" state; do not assume signUp() always
+   * yields an immediate session.
+   * @param {string} email
+   * @param {string} password
+   * @param {string} role - partner agent_type, e.g. 're_agent'
+   * @param {string|null} redirectTo - optional override, same contract as sendMagicLink
+   */
+  async signUpWithPassword(email, password, role = 'homeowner', redirectTo = null) {
+    if (!sb) throw new Error('Supabase not initialized');
+    const defaultRedirectPage = PARTNER_ROLES.includes(role)
+      ? '/partner-dashboard.html'
+      : '/auth-callback.html';
+    const redirectPage = redirectTo || defaultRedirectPage;
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: `${CONFIG.SITE_URL}${redirectPage}` }
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  /**
+   * Send a password-reset email. Distinct from sendMagicLink: this is the
+   * secondary, expected-friction "Forgot password?" path (gh-880 Half A),
+   * never the primary sign-in method. Supabase redirects the clicked link
+   * back to redirectPage with a temporary recovery session; the page is
+   * expected to listen for the PASSWORD_RECOVERY auth event and call
+   * updatePassword() below to complete the flow.
+   * @param {string} email
+   * @param {string} redirectPage
+   */
+  async sendPasswordReset(email, redirectPage = '/partner-login.html?recovery=1') {
+    if (!sb) throw new Error('Supabase not initialized');
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: `${CONFIG.SITE_URL}${redirectPage}`,
+    });
+    if (error) throw error;
+    return true;
+  },
+
+  /**
+   * Set a new password on the temporary recovery session Supabase
+   * establishes after a password-reset email link redirect. Also used as
+   * the completion step for a brand-new account created via
+   * signUpWithPassword when email confirmation is required (same
+   * updateUser() call — the difference is purely how the temporary
+   * session was established, which Supabase handles transparently).
+   * @param {string} newPassword
+   */
+  async updatePassword(newPassword) {
+    if (!sb) throw new Error('Supabase not initialized');
+    const { error } = await sb.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    return true;
+  },
+
+  /**
+   * gh-880 Half A: "already authenticated" check for partner surfaces —
+   * true when a valid session exists AND its role is a partner
+   * agent_type. Centralizes a check partner-app.html and several of the
+   * partner signup pages already perform ad hoc with a locally-declared
+   * partnerRoles array (same duplication gh-851 fixed for PARTNER_ROLES
+   * itself) — new partner entry points get "skip the login screen when
+   * already signed in" for free.
+   * This only decides whether an EXISTING session should bypass a login
+   * screen; it does not extend how long that session lives. Session
+   * lifetime is still capped by the existing cookie infra (WebKit/ITP caps
+   * every JS-written cookie at 7 days on iOS/Safari regardless of
+   * Max-Age — see #867). True indefinite "stays signed in" trusted-device
+   * persistence needs a server-set HttpOnly cookie from a Netlify edge
+   * function (#867 Step 2) and is explicitly out of scope here (Half B) —
+   * no caller of this method may present its true branch as a promise
+   * that the device will never need to sign in again.
+   * @returns {Promise<boolean>}
+   */
+  async hasPartnerSession() {
+    const user = await this.getUser();
+    if (!user) return false;
+    const role = await this.getRole();
+    return PARTNER_ROLES.includes(role);
   },
 
   /** Sign out */

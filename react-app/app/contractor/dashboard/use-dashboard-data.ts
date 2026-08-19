@@ -205,10 +205,13 @@ export function useDashboardData(
         });
 
         // 6) Activity feed.
+        // gh-1028: exclude harness/fixture rows (is_test) so a test account can
+        // never surface fabricated activity in a real user's feed.
         const { data: activityData } = await supabase
           .from('activity_log')
           .select('event_type, title, metadata, created_at')
           .eq('user_id', userId)
+          .eq('is_test', false)
           .order('created_at', { ascending: false })
           .limit(15);
         activity = (activityData || []).map((evt: Record<string, unknown>) => ({

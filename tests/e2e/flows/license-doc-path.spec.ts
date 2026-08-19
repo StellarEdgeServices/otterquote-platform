@@ -72,36 +72,87 @@ test.beforeAll(async () => {
   }
   licUserId = existing!.id;
 
-  // Clean contractors row at onboarding_step 1 so the wizard renders.
+  // Clean contractors row at onboarding_step 1 so the wizard renders. Everything
+  // from the insert onward is wrapped in a try/catch: if a later step in this
+  // hook throws (e.g. the storage pre-clean below), we still delete the row we
+  // just inserted before re-throwing. Without this, a mid-hook failure can leave
+  // an orphaned contractor row in production with no guarantee afterAll ever
+  // runs to clean it up (gh-718, mirrors #689/#714's coi-upload-identity fix).
   await admin.from('contractors').delete().eq('user_id', licUserId);
-  const { error: insertErr } = await admin.from('contractors').insert({
-    user_id: licUserId,
-    email: LIC_EMAIL,
-    company_name: 'Test License Path Co (E2E)',
-    contact_name: 'Test License Contractor',
-    is_test: true, // #689: harness must stamp every row it creates, contractors included
-    status: 'pending_approval',
-    onboarding_step: 1,
-    agreement_accepted_at: new Date().toISOString(),
-    agreement_version: 'v1-2026-04',
-  });
-  if (insertErr) throw new Error(`contractors insert failed: ${insertErr.message}`);
+  try {
+    const { error: insertErr } = await admin.from('contractors').insert({
+      user_id: licUserId,
+      email: LIC_EMAIL,
+      company_name: 'Test License Path Co (E2E)',
+      contact_name: 'Test License Contractor',
+      is_test: true, // #689: harness must stamp every row it creates, contractors included
+      status: 'pending_approval',
+      onboarding_step: 1,
+      agreement_accepted_at: new Date().toISOString(),
+      agreement_version: 'v1-2026-04',
+    });
+    if (insertErr) throw new Error(`contractors insert failed: ${insertErr.message}`);
 
-  // Pre-clean probe objects from prior runs (both path shapes).
-  await admin.storage.from(BUCKET).remove([
-    `${licUserId}/licenses/${PROBE_FILENAME}`,
-    `licenses/${licUserId}/${PROBE_FILENAME}`,
-  ]);
+    // Pre-clean probe objects from prior runs (both path shapes).
+    const { error: preCleanErr } = await admin.storage.from(BUCKET).remove([
+      `${licUserId}/licenses/${PROBE_FILENAME}`,
+      `licenses/${licUserId}/${PROBE_FILENAME}`,
+    ]);
+    if (preCleanErr) {
+      console.warn(`  ⚠️  Storage pre-clean warning: ${preCleanErr.message}`);
+    }
+  } catch (err) {
+    const { error: cleanupErr } = await admin.from('contractors').delete().eq('user_id', licUserId);
+    if (cleanupErr) {
+      console.error(
+        `  ❌ beforeAll failed AND orphan cleanup of the license-path contractor row also failed: ${cleanupErr.message}`
+      );
+    } else {
+      console.error(`  beforeAll failed after the license-path contractor row was created — row was cleaned up.`);
+    }
+    throw err;
+  }
 });
 
 test.afterAll(async () => {
+  if (!licUserId) {
+    console.log('  No license-path user id — beforeAll never reached user creation, nothing to tear down.');
+    return;
+  }
   const admin = createAdminClient();
-  await admin.storage.from(BUCKET).remove([
+  let hadFailure = false;
+
+  // Storage cleanup — best-effort; log rather than swallow
+  const { error: storageErr } = await admin.storage.from(BUCKET).remove([
     `${licUserId}/licenses/${PROBE_FILENAME}`,
     `licenses/${licUserId}/${PROBE_FILENAME}`,
   ]);
-  await admin.from('contractors').delete().eq('user_id', licUserId);
-  await admin.auth.admin.deleteUser(licUserId);
+  if (storageErr) {
+    console.warn(`  ⚠️  Storage cleanup warning: ${storageErr.message}`);
+  }
+
+  // DB cleanup — contractor row then auth user (order matters for FK).
+  // A failed cleanup must surface, not be silently swallowed — the exact
+  // failure mode that let #689's contractor pollution go unnoticed
+  // (PR #695 precedent).
+  const { error: contractorErr } = await admin.from('contractors').delete().eq('user_id', licUserId);
+  if (contractorErr) {
+    console.error(`  ❌ License-path contractor cleanup failed: ${contractorErr.message}`);
+    hadFailure = true;
+  }
+
+  const { error: userErr } = await admin.auth.admin.deleteUser(licUserId);
+  if (userErr) {
+    console.error(`  ❌ License-path auth user cleanup failed: ${userErr.message}`);
+    hadFailure = true;
+  }
+
+  if (hadFailure) {
+    throw new Error(
+      'license-doc-path afterAll cleanup failed — see errors above. A silent, incomplete ' +
+        'cleanup is what let contractor rows accumulate in production (#689).'
+    );
+  }
 });
 
 /** Sign in via magic link and wait for the live sb session to settle. */
