@@ -54,6 +54,26 @@ function makeSandbox({ pathname, user, contractorRow, agentRow, profileRole, ses
     set href(v) { locationWrites.push(v); },
   };
 
+  // gh-909 (D-182 v113, 2026-08-19): getRole() now reads a single
+  // `resolved_user_role` row instead of querying contractors/
+  // referral_agents/profiles directly, so that is what these fixtures need
+  // to seed for getRole()-driven behavior (requireAuth(), redirectToDashboard()
+  // role branches). The precedence itself (contractor -> active partner ->
+  // owns-a-claim -> profiles.role -> 'homeowner' default) is server-side and
+  // already branch-tested (v113 migration pre-flight doc) — this mock just
+  // reproduces it from the same fixture inputs so existing test cases don't
+  // need to change shape. `contractors`/`referral_agents`/`profiles` mocks
+  // are kept for requireAuth()'s gh-959 interim guard, which queries those
+  // tables directly and is UNCHANGED by this migration. `claims` is kept
+  // for redirectToDashboard()'s own separate existing-claim routing check
+  // (also unchanged — it does not go through getRole()/the view).
+  function resolvedRoleFor() {
+    if (contractorRow) return 'contractor';
+    if (agentRow && agentRow.agent_type) return agentRow.agent_type;
+    if (claimRow) return 'homeowner';
+    return profileRole ?? 'homeowner';
+  }
+
   function tableQuery(table) {
     return {
       select() { return this; },
@@ -61,6 +81,9 @@ function makeSandbox({ pathname, user, contractorRow, agentRow, profileRole, ses
       order() { return this; },
       limit() { return this; },
       single() {
+        if (table === 'resolved_user_role') {
+          return Promise.resolve({ data: { derived_role: resolvedRoleFor() }, error: null });
+        }
         if (table === 'contractors') {
           return Promise.resolve(
             contractorRow ? { data: contractorRow, error: null } : { data: null, error: { code: 'PGRST116' } }
