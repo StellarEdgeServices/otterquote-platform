@@ -291,7 +291,7 @@ serve(async (req: Request) => {
     const { data: quote, error: quoteError } = await sb
       .from("quotes")
       .select(
-        "id, contractor_id, claim_id, total_price, fee_percentage, platform_fee_pct, platform_fee_basis, fee_accepted_at"
+        "id, contractor_id, claim_id, total_price, fee_percentage, platform_fee_pct, platform_fee_basis, fee_accepted_at, is_test"
       )
       .eq("id", quote_id)
       .single();
@@ -389,6 +389,7 @@ serve(async (req: Request) => {
       event_type: "invoice_created",
       title: "invoice_created",
       user_id: contractor.user_id,
+      is_test: quote.is_test ?? false,
       metadata: {
         contractor_id,
         quote_id,

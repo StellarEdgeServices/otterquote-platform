@@ -34,6 +34,7 @@ interface Claim {
   id: string;
   rcv_amount: number;
   property_state: string | null;
+  is_test: boolean | null;
 }
 
 interface ProcessResult {
@@ -82,7 +83,7 @@ serve(async (req: Request) => {
     // D-093: insurance full replacement roofing, bid-released, RCV amount present
     const { data: claims, error: claimsError } = await supabase
       .from('claims')
-      .select('id, rcv_amount, property_state')
+      .select('id, rcv_amount, property_state, is_test')
       .eq('funding_type', 'insurance')
       .eq('job_type', 'insurance_rcv')
       .eq('ready_for_bids', true)
@@ -215,6 +216,7 @@ serve(async (req: Request) => {
             user_id: contractor.user_id,
             event_type: 'auto_bid_submitted',
             title: 'Auto-bid submitted on your behalf',
+            is_test: claim.is_test ?? false,
             metadata: {
               claim_id: claim.id,
               quote_id: quote!.id,
