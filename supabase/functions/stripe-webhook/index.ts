@@ -85,6 +85,7 @@ interface ClaimRow {
   completion_date: string | null;
   homeowner_name: string | null;
   property_address: string | null;
+  is_test: boolean | null;
 }
 
 interface QuoteRow {
@@ -416,7 +417,7 @@ async function handleDisputeCreated(
   const { data: claimRows } = await supabase
     .from("claims")
     .select(
-      "id, user_id, platform_fee_stripe_id, platform_fee_amount, selected_contractor_id, contract_signed_at, completion_date, homeowner_name, property_address",
+      "id, user_id, platform_fee_stripe_id, platform_fee_amount, selected_contractor_id, contract_signed_at, completion_date, homeowner_name, property_address, is_test",
     )
     .eq("platform_fee_stripe_id", dispute.charge)
     .limit(1);
@@ -438,7 +439,7 @@ async function handleDisputeCreated(
       const { data: claimFromQuote } = await supabase
         .from("claims")
         .select(
-          "id, user_id, platform_fee_stripe_id, platform_fee_amount, selected_contractor_id, contract_signed_at, completion_date, homeowner_name, property_address",
+          "id, user_id, platform_fee_stripe_id, platform_fee_amount, selected_contractor_id, contract_signed_at, completion_date, homeowner_name, property_address, is_test",
         )
         .eq("id", quote.claim_id)
         .limit(1);
@@ -558,6 +559,7 @@ async function handleDisputeCreated(
       user_id: claim?.user_id ?? "00000000-0000-0000-0000-000000000000",
       event_type: "dispute.auto_evidence_submitted",
       title: `Dispute evidence auto-submitted: ${dispute.id}`,
+      is_test: claim?.is_test ?? false,
       metadata: {
         stripe_dispute_id: dispute.id,
         amount_cents: dispute.amount,
@@ -656,6 +658,7 @@ async function handleDisputeCreated(
       user_id: claim?.user_id ?? "00000000-0000-0000-0000-000000000000",
       event_type: "dispute.routed_to_manual_queue",
       title: `Dispute routed to manual review: ${dispute.id}`,
+      is_test: claim?.is_test ?? false,
       metadata: {
         stripe_dispute_id: dispute.id,
         amount_cents: dispute.amount,
@@ -710,6 +713,7 @@ interface PendingQuoteRow {
   claim_id: string;
   contractor_id: string;
   payment_status: string | null;
+  is_test: boolean | null;
 }
 
 async function handlePlatformFeePaymentSucceeded(
@@ -720,7 +724,7 @@ async function handlePlatformFeePaymentSucceeded(
 
   const { data: quote, error: quoteErr } = await supabase
     .from("quotes")
-    .select("id, claim_id, contractor_id, payment_status")
+    .select("id, claim_id, contractor_id, payment_status, is_test")
     .eq("payment_intent_id", paymentIntent.id)
     .maybeSingle();
 
@@ -782,6 +786,7 @@ async function handlePlatformFeePaymentSucceeded(
     await supabase.from("activity_log").insert({
       event_type: "platform_fee.payment_intent_succeeded",
       title: `Platform fee confirmed settled via webhook: quote ${q.id}`,
+      is_test: q.is_test ?? false,
       metadata: {
         quote_id: q.id,
         claim_id: q.claim_id,
@@ -803,7 +808,7 @@ async function handlePlatformFeePaymentFailed(
 
   const { data: quote, error: quoteErr } = await supabase
     .from("quotes")
-    .select("id, claim_id, contractor_id, payment_status")
+    .select("id, claim_id, contractor_id, payment_status, is_test")
     .eq("payment_intent_id", paymentIntent.id)
     .maybeSingle();
 

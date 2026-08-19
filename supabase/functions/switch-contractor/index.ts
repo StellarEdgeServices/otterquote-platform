@@ -513,6 +513,7 @@ serve(async (req) => {
       event_type:  "contractor_switched",
       title:       `Homeowner switched contractors. Original contractor: ${contractorName}. Refund: ${refundResult.success ? "issued" : "pending"}.${surveyDesc}`,
       user_id:     user.id,
+      is_test:     claim.is_test ?? false,
       metadata:    { claim_id },
       created_at:  new Date().toISOString(),
     }).catch(err => console.warn("[switch-contractor] Activity log insert failed (non-critical):", err));

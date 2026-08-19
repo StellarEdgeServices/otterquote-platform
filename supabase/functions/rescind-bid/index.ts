@@ -115,7 +115,7 @@ Deno.serve(async (req: Request) => {
   // Fetch the quote
   const { data: quote, error: fetchError } = await supabase
     .from("quotes")
-    .select("id, bid_status, contractor_id, created_at")
+    .select("id, bid_status, contractor_id, created_at, is_test")
     .eq("id", body.quote_id)
     .single();
 
@@ -214,6 +214,7 @@ Deno.serve(async (req: Request) => {
     user_id: user.id,
     event_type: "bid_rescinded",
     title: `Bid rescinded for quote ${body.quote_id}`,
+    is_test: quote.is_test ?? false,
     metadata: {
       quote_id: body.quote_id,
       previous_status: previousStatus,

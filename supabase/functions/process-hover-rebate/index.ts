@@ -111,10 +111,11 @@ async function rebateOne(
   // Fetch claim owner for activity_log user_id
   const { data: claimOwner } = await supabase
     .from("claims")
-    .select("user_id")
+    .select("user_id, is_test")
     .eq("id", order.claim_id)
     .single();
   const claimUserId = claimOwner?.user_id ?? null;
+  const claimIsTest = claimOwner?.is_test ?? false;
 
   // Stripe refund — idempotency key prevents double refund on retry.
   const basicAuth = btoa(`${stripeSecretKey}:`);
@@ -146,6 +147,7 @@ async function rebateOne(
         event_type: "hover_rebate_failed",
         title: "hover_rebate_failed",
         user_id: claimUserId,
+        is_test: claimIsTest,
         metadata: {
           hover_order_id: order.id,
           claim_id: order.claim_id,
@@ -176,6 +178,7 @@ async function rebateOne(
         event_type: "hover_rebate_db_update_failed",
         title: "hover_rebate_db_update_failed",
         user_id: claimUserId,
+        is_test: claimIsTest,
         metadata: {
           hover_order_id: order.id,
           claim_id: order.claim_id,

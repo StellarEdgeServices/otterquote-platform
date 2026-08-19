@@ -106,7 +106,7 @@ serve(async (req: Request) => {
   // ── Load contractor (service-role; recipient is server-derived) ─────────────
   const { data: contractor, error: contractorErr } = await sb
     .from("contractors")
-    .select("id, user_id, email, company_name")
+    .select("id, user_id, email, company_name, is_test")
     .eq("id", contractor_id)
     .single();
 
@@ -312,6 +312,7 @@ https://otterquote.com`;
       user_id: contractor.user_id,
       event_type: "welcome_email_sent",
       title: `Welcome email sent to ${recipient}`,
+      is_test: contractor.is_test ?? false,
       metadata: {
         contractor_id: contractor.id,
         message_id: mailgunResult.id,
