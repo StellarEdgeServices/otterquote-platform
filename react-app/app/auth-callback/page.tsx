@@ -164,24 +164,23 @@ export default function AuthCallbackPage() {
           ? localStorage.getItem('cs_auth_role')
           : null;
 
-      // Role resolution — contractor-table-first (F-007 pattern)
+      // Role resolution — gh-909 (D-182 v113, 2026-08-19): single
+      // fact-table-derived read via public.resolved_user_role replaces the
+      // old contractors -> profiles.role cascade, which (like
+      // auth-provider.tsx's resolveRole()) never queried referral_agents at
+      // all. See supabase/migrations/v113_derived_role_view.sql and
+      // js/auth.js getRole()'s comment for the full design. Routing below is
+      // UNCHANGED — this page has no partner destination, so a partner-only
+      // account still falls through to the homeowner path exactly as before;
+      // only the FACT source moved.
       let role: string | null = null;
       try {
-        const { data: contractor } = await supabase
-          .from('contractors')
-          .select('id')
+        const { data: resolved } = await supabase
+          .from('resolved_user_role')
+          .select('derived_role')
           .eq('user_id', session.user.id)
           .maybeSingle();
-        if (contractor) {
-          role = 'contractor';
-        } else {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', session.user.id)
-            .maybeSingle();
-          role = (profile?.role as string) ?? null;
-        }
+        role = (resolved?.derived_role as string) ?? null;
       } catch {
         // Proceed with null role — default to homeowner path below
       }

@@ -18,27 +18,46 @@
     log('hash=', hash.substring(0,80), 'search=', search.substring(0,80), 'hasAuth=', hasAuth);
     if (!hasAuth) return;
 
-    // Primary: extract role from access_token JWT (user_metadata.role)
+    var partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+
+    // gh-817 A1b: user_metadata.role is a signup-time artifact (stamped once by
+    // contractor-join.html, never updated) and is stale for any account whose
+    // role changed since. cs_auth_role is stamped fresh by the surface the user
+    // is actually logging in from, so it wins -- but only when it names a
+    // partner role, to keep this scoped: absent/contractor/homeowner values
+    // fall through to the untouched precedence below (see #817 comment
+    // 5292800526).
     var role = null;
     try {
-      var params = new URLSearchParams(hash.charAt(0) === '#' ? hash.substring(1) : hash);
-      var token = params.get('access_token');
-      if (token) {
-        var parts = token.split('.');
-        if (parts.length === 3) {
-          var b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-          while (b64.length % 4) b64 += '=';
-          var payload = JSON.parse(atob(b64));
-          role = (payload.user_metadata && payload.user_metadata.role) ||
-                 (payload.app_metadata && payload.app_metadata.role) || null;
-          log('JWT user_metadata.role=', role, 'sub=', payload.sub);
-        }
+      var lsRoleEarly = localStorage.getItem('cs_auth_role');
+      if (partnerRoles.indexOf(lsRoleEarly) !== -1) {
+        role = lsRoleEarly;
+        log('cs_auth_role override (partner role)=', role);
       }
-    } catch (e) { log('JWT decode err:', e && e.message); }
+    } catch (e) {}
 
-    // Fallback: localStorage
     if (!role) {
-      try { role = localStorage.getItem('cs_auth_role'); log('localStorage cs_auth_role=', role); } catch (e) {}
+      // Primary: extract role from access_token JWT (user_metadata.role)
+      try {
+        var params = new URLSearchParams(hash.charAt(0) === '#' ? hash.substring(1) : hash);
+        var token = params.get('access_token');
+        if (token) {
+          var parts = token.split('.');
+          if (parts.length === 3) {
+            var b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) b64 += '=';
+            var payload = JSON.parse(atob(b64));
+            role = (payload.user_metadata && payload.user_metadata.role) ||
+                   (payload.app_metadata && payload.app_metadata.role) || null;
+            log('JWT user_metadata.role=', role, 'sub=', payload.sub);
+          }
+        }
+      } catch (e) { log('JWT decode err:', e && e.message); }
+
+      // Fallback: localStorage
+      if (!role) {
+        try { role = localStorage.getItem('cs_auth_role'); log('localStorage cs_auth_role=', role); } catch (e) {}
+      }
     }
 
     if (role === 'contractor') {
@@ -48,8 +67,15 @@
     } else if (role === 'homeowner') {
       log('BOUNCING to /dashboard.html');
       window.location.replace('/dashboard.html' + search + hash);
+    } else if (partnerRoles.indexOf(role) !== -1) {
+      // gh-817/#643: Supabase Auth's redirect-URL allowlist can silently
+      // override emailRedirectTo to bare SITE_URL for a partner magic link
+      // (see #817 comment 5288476400) — this bounce is the only thing that
+      // still gets that user to partner-dashboard.html in that case.
+      log('BOUNCING to /partner-dashboard.html (role=' + role + ')');
+      window.location.replace('/partner-dashboard.html' + search + hash);
     } else {
-      log('not a contractor (role=' + role + '), letting homepage render');
+      log('not a recognized role (role=' + role + '), letting homepage render');
     }
   } catch (e) {
     try { console.warn('[bounce] fatal err:', e && e.message); } catch (_) {}
@@ -64,7 +90,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -139,6 +176,11 @@
   "url": "https://otterquote.com"
 }
 </script>
+<!-- RoofingContractor JSON-LD (D-237/D-240 NAP) — rendered client-side by js/nav.js
+     from the single NAP source (see NAP const + Nav.renderLocalBusinessSchema in
+     js/nav.js), so it can never drift from the visible footer NAP. Empty until
+     nav.js populates it on DOMContentLoaded. (#757) -->
+<script type="application/ld+json" id="nap-schema-mount"></script>
 
 <style>
 /* ── Hero ── */
@@ -166,8 +208,7 @@
   margin: 0 auto var(--sp-6);
   display: block;
   animation: fadeUp 0.5s var(--ease) both;
-  mix-blend-mode: multiply;
-  filter: contrast(1.15) drop-shadow(0 6px 28px rgba(224,123,0,0.22));
+  filter: drop-shadow(0 6px 28px rgba(224,123,0,0.22));
 }
 
 .hero-brand-name {
@@ -262,13 +303,13 @@
 .hero-callout-text {
   font-size: 1rem;
   font-weight: 700;
-  color: var(--teal, #E07B00);
+  color: var(--amber);
   display: block;
 }
 
 .hero-callout-item:last-child .hero-callout-text {
   font-size: 1.15rem;
-  color: var(--teal, #E07B00);
+  color: var(--amber);
 }
 
 .hero-subtitle {
@@ -302,7 +343,7 @@
   align-items: center;
   gap: var(--sp-2);
   font-size: 0.9rem;
-  color: var(--gray);
+  color: var(--light);
 }
 
 .trust-icon {
@@ -736,12 +777,12 @@
   <div class="container">
     <p class="two-track-heading">Otter Quotes works for both types of homeowner:</p>
     <div class="two-track-grid">
-      <a href="https://app.otterquote.com/get-started" class="track-card">
+      <a href="https://app.otterquote.com/get-started?track=insurance" class="track-card">
         <span class="track-card-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:12px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
         <h3>I have an insurance claim</h3>
         <p>Your insurer has approved a repair &mdash; or you're in the process of filing. Otter Quotes helps you gather your insurance estimate and measurements, then gets multiple licensed contractors competing on your job. You choose the one you trust most.</p>
       </a>
-      <a href="https://app.otterquote.com/get-started" class="track-card">
+      <a href="https://app.otterquote.com/get-started?track=retail" class="track-card">
         <span class="track-card-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:12px"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
         <h3>I'm paying out of pocket</h3>
         <p>No insurance involved &mdash; you just need the work done and you want a fair price. Otter Quotes handles the measurements and gets contractors to compete for your business, so you know what the market actually charges before you commit to anyone.</p>
@@ -791,12 +832,6 @@
         <p>Once your home's measurements and documents are on file, you're set for future repairs, renovations, or even selling your home. You'll never have to start from scratch on the next project.</p>
       </div>
 
-      <div class="value-card card">
-        <div class="icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-        <h3>You Stay in the Driver's Seat</h3>
-        <p>You see each contractor's license, insurance, and public reviews before bidding even begins. Compare quotes side-by-side and choose the contractor who fits best &mdash; no pressure, no hidden agendas.</p>
-      </div>
-
     </div>
   </div>
 </section>
@@ -838,76 +873,32 @@
 </section>
 
 <!-- ═══════════════════════════════════════ -->
-<!-- 5. PROBLEM / TRUST SECTION             -->
-<!-- ═══════════════════════════════════════ -->
-<section class="problem-section section">
-  <div class="container">
-    <h2>Finding a contractor you can trust shouldn't be this hard.</h2>
-    <p>
-      Most homeowners have no easy way to know whether they're getting a fair price &mdash; or whether the contractor they're considering is actually licensed, insured, and worth trusting. It can be hard to know where to start.
-    </p>
-    <p>
-      Otter Quotes was built to answer those questions before you sign anything. Here's how:
-    </p>
-    <div class="problem-answers">
-      <div class="problem-answer">
-        <div class="problem-answer-q">How do you know who to trust?</div>
-        <p>You see each contractor's state license, proof of insurance, public reviews, and years in business before you ever commit to anything. Otter Quotes pulls that information together so you can do your own due diligence in one place &mdash; and make the call for yourself.</p>
-      </div>
-      <div class="problem-answer">
-        <div class="problem-answer-q">How do you know if the price is fair?</div>
-        <p>When multiple contractors compete for the exact same job, you see what the market actually charges &mdash; not one company's best guess. Real competition produces real market pricing. You compare them all side by side before making any decision.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════ -->
-<!-- 6. HOW IT WORKS (6 steps)              -->
+<!-- 6. HOW IT WORKS (3-step summary)       -->
 <!-- ═══════════════════════════════════════ -->
 <section class="section" style="background: var(--navy-2);">
   <div class="container">
     <h2 class="text-center" style="margin-bottom: var(--sp-4); color: var(--white);">How It Works</h2>
     <p class="text-center" style="max-width: 600px; margin: 0 auto var(--sp-12); color: var(--slate);">
-      Six straightforward steps from your first description to a contractor you trust, ready to start.
+      Three straightforward steps from your first description to a contractor you trust, ready to start.
     </p>
     <div class="steps-grid">
 
       <div class="step-card card">
         <div class="step-number">1</div>
         <h3>Tell Us About Your Home</h3>
-        <p>Describe what needs to be done and let us know how it's being paid for &mdash; insurance claim or out of pocket. No expertise required, just the basics. We'll help you figure out the rest.</p>
+        <p>Describe what needs to be done and let us know how it's being paid for &mdash; insurance claim or out of pocket.</p>
       </div>
 
       <div class="step-card card">
         <div class="step-number">2</div>
-        <h3>We Take It From Here</h3>
-        <p>Once you give us the basics, we get to work. No calls to make, no paperwork to chase, no insurance jargon to decode. We handle the prep work so you don't have to.</p>
+        <h3>Contractors Submit Their Best Quote</h3>
+        <p>Licensed, insured contractors in your area review your project details and compete for your business.</p>
       </div>
 
       <div class="step-card card">
         <div class="step-number">3</div>
-        <h3>Measurements &amp; Materials &mdash; Without the Pressure</h3>
-        <p>We use aerial imaging technology to get precise measurements of your home &mdash; no one needs to come to your door for this. Then you browse and choose your materials at your own pace, with no salesperson pushing you. Everything on your schedule.</p>
-      </div>
-
-      <div class="step-card card">
-        <div class="step-number">4</div>
-        <h3>Contractors Submit Their Best Quote</h3>
-        <p>Licensed, insured contractors in your area review your project details and compete for your business. Contractors see your job description and measurements &mdash; not your name, phone number, or address.</p>
-        <div class="step-privacy-note"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Your contact info stays private until you choose someone.</div>
-      </div>
-
-      <div class="step-card card">
-        <div class="step-number">5</div>
-        <h3>Compare Your Options</h3>
-        <p>Review quotes side by side. See each contractor's pricing, workmanship and materials warranties, years in business, contractor licensing and insurance status, and customer reviews from Google, BBB, Angi, and Yelp &mdash; all gathered in one place.</p>
-      </div>
-
-      <div class="step-card card">
-        <div class="step-number">6</div>
         <h3>Move Forward on Your Terms</h3>
-        <p>Choose the contractor that feels right and move forward at your own pace. When you're ready, lock in your contractor with a simple digital agreement. We check in when your quotes arrive, when you choose a contractor, and when the work is done.</p>
+        <p>Choose the contractor that feels right and move forward at your own pace.</p>
       </div>
 
     </div>
@@ -969,7 +960,6 @@
       <a href="partner-re.html" class="btn btn-secondary">Real Estate Agents</a>
       <a href="partner-insurance.html" class="btn btn-secondary">Insurance Agents</a>
       <a href="partner-inspectors.html" class="btn btn-secondary">Home Inspectors</a>
-      <a href="inspector-landing.html" class="btn btn-secondary">Inspector Partner Info</a>
     </div>
   </div>
 </section>
@@ -1001,8 +991,8 @@
       We deliver signed contracts &mdash; complete with aerial measurements, project documentation, and homeowner material selections. You review the opportunity, submit your best quote, and pay only when you win the job.
     </p>
     <div style="display: flex; justify-content: center; gap: var(--sp-4); flex-wrap: wrap;">
-      <a href="contractor-login.html" class="btn btn-primary btn-lg">Contractor Login</a>
-      <a href="contractor-join.html" class="btn btn-secondary btn-lg">Apply to Join</a>
+      <a href="contractor-login.html" class="btn btn-secondary btn-lg">Contractor Login</a>
+      <a href="contractor-join.html" class="btn btn-primary btn-lg">Apply to Join</a>
     </div>
   </div>
 </section>

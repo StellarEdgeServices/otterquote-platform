@@ -102,11 +102,13 @@ describe('identity + links', () => {
     expect(agentDisplayName({ first_name: null, last_name: null })).toBe('Agent');
   });
 
-  it('partnerBadgeLabel maps agent_type; customer→Partner; unknown→Partner', () => {
-    expect(partnerBadgeLabel('re_agent')).toBe('RE Agent');
+  it('partnerBadgeLabel maps agent_type (gh-914 PARTNER_DISPLAY_LABELS); unknown→Partner', () => {
+    expect(partnerBadgeLabel('re_agent')).toBe('Real Estate Agent');
     expect(partnerBadgeLabel('insurance_agent')).toBe('Insurance Agent');
     expect(partnerBadgeLabel('home_inspector')).toBe('Home Inspector');
-    expect(partnerBadgeLabel('customer')).toBe('Partner');
+    expect(partnerBadgeLabel('adjuster')).toBe('Insurance Adjuster');
+    expect(partnerBadgeLabel('customer')).toBe('Otter Quotes Partner');
+    expect(partnerBadgeLabel('other')).toBe('Otter Quotes Partner');
     expect(partnerBadgeLabel('weird')).toBe('Partner');
     expect(partnerBadgeLabel(null)).toBe('Partner');
   });
@@ -272,8 +274,9 @@ describe('recruit aggregation', () => {
     expect(recruitName({ first_name: 'Al', last_name: 'Bo', email: 'a@x.com' })).toBe('Al Bo');
     expect(recruitName({ first_name: null, last_name: null, email: 'a@x.com' })).toBe('a@x.com');
     expect(recruitName({ first_name: null, last_name: null, email: null })).toBe('Partner');
-    expect(recruitTypeLabel('customer')).toBe('Customer');
-    expect(recruitTypeLabel('re_agent')).toBe('RE Agent');
+    expect(recruitTypeLabel('customer')).toBe('Otter Quotes Partner');
+    expect(recruitTypeLabel('re_agent')).toBe('Real Estate Agent');
+    expect(recruitTypeLabel('adjuster')).toBe('Insurance Adjuster');
     expect(recruitTypeLabel('unknown')).toBe('Partner');
   });
 

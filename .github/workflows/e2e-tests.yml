@@ -14,10 +14,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  test:
-    name: Run E2E Tests
+  static-integrity:
+    name: Static Integrity Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
 
     steps:
       - name: Checkout code
@@ -28,6 +28,96 @@ jobs:
 
       - name: sb.auth.onAuthStateChange guard check (Stage 5 prevention, 86e1fratf)
         run: python3 scripts/check-sb-auth-guards.py
+
+      - name: cookie-storage.js/config.js load-order check (Stage 5 prevention, #601)
+        run: python3 scripts/check-script-load-order.py
+
+      - name: $10,000 commission-floor phrasing guard (D-286, gh-920)
+        run: python3 scripts/check-10k-floor-phrasing.py
+
+      - name: Partner-signup consent checkbox link guard (D-278, gh-943)
+        run: python3 scripts/check-partner-consent-link.py
+
+  typescript-check:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: 'react-app/package-lock.json'
+
+      - name: Install react-app dependencies
+        working-directory: react-app
+        run: npm ci --no-audit --no-fund
+
+      - name: tsc --noEmit type gate (gh-414)
+        working-directory: react-app
+        run: npx tsc --noEmit
+
+  edge-function-tests:
+    name: Edge Function Tests (Deno)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: '2.8.3'
+
+      # Pure-unit lane (gh-422): discovers every *.test.ts under supabase/functions/.
+      # Runs with ZERO permission flags — no env, no secrets, no --allow-net — so any
+      # future test that needs a secret fails loudly here instead of silently gaining one.
+      # As of gh-422: 66 tests across 4 files (ack-verify 11, payload-parser 7,
+      # test-exclusion 11, templates 37 — incl. the #850/#856 duration-guard class tests).
+      - name: Edge Function unit tests (pure-unit, no secrets)
+        run: deno test supabase/functions/
+
+  test:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # gh-689: DB traffic now targets the dedicated otterquote-ci-test project
+    # (zsdvaqilfdclwosmiheh), not production — see the Seed/Run/Teardown steps
+    # below. Concurrency serialization is KEPT for now: every run still shares
+    # ONE set of fixtures on that one test project, so overlapping runs can
+    # still corrupt each other's seeded rows exactly as documented on #689
+    # (08-11 run-timestamp reconciliation, #703's claim-not-found failures).
+    # Revisit relaxing this once a few days of green runs confirm the new
+    # project holds up under concurrent CI load — not done as part of this
+    # cutover so the isolation change and the concurrency change aren't
+    # conflated if something needs to be rolled back.
+    # GitHub semantics: at most 1 running + 1 pending per group; a newer
+    # queued run supersedes (cancels) the previously PENDING one. E2E is
+    # advisory, so a superseded run loses signal but blocks nothing — better
+    # than N concurrent runs producing N false reds against each other.
+    concurrency:
+      group: e2e-test-project-fixtures
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: partner-sw.js VERSION-bump check (gh-831)
+        run: python3 scripts/check-partner-sw-version.py
+
+      - name: partner-surface single-source-of-truth check (gh-807)
+        run: python3 scripts/check-partner-surface-single-source.py
+
+      - name: payout-timing copy drift check (gh-832)
+        run: python3 scripts/check-payout-timing-copy-drift.py
 
       - name: Lint vanilla JS for syntax errors
         run: |
@@ -63,6 +153,18 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'tests/e2e/package.json'
 
+      - name: auth.js stale-session no-hang unit test (#602 regression)
+        run: node tests/auth-stale-session-no-hang.mjs
+
+      - name: auth.js partner-role-resolution unit test (#817/#643 regression)
+        run: node tests/auth-partner-role-resolution.mjs
+
+      - name: index.html bounce routing-outcome unit test (#817 A1b regression)
+        run: node tests/auth-index-bounce-routing.mjs
+
+      - name: auth.js partner-surface single-source-of-truth unit test (#807 regression)
+        run: node tests/auth-partner-surface-single-source.mjs
+
       - name: Install E2E test dependencies
         working-directory: tests/e2e
         run: npm ci
@@ -83,8 +185,16 @@ jobs:
       - name: Seed test database
         working-directory: tests/e2e
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # gh-689: repointed off production (yeszghaspzwwstvsrioa) onto the
+          # dedicated otterquote-ci-test project. The project URL is not
+          # secret (same status as a client-side NEXT_PUBLIC_SUPABASE_URL) so
+          # it is inlined directly; only the service-role key needs a secret,
+          # and it is intentionally a NEW name (SUPABASE_TEST_SERVICE_ROLE_KEY)
+          # rather than reusing SUPABASE_SERVICE_ROLE_KEY, because that secret
+          # is also consumed by generate-contractor-pages.yml against
+          # production and must not be repointed.
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
           BASE_URL: ${{ secrets.BASE_URL }}
         run: npm run seed
 
@@ -92,16 +202,16 @@ jobs:
         working-directory: tests/e2e
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
         run: npm test
 
       - name: Teardown test database
         if: always()
         working-directory: tests/e2e
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
         run: npm run teardown
 
       - name: Upload test report on failure

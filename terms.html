@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -69,7 +80,7 @@
             max-width: 600px;
             margin: 0 auto;
             font-size: 1.1rem;
-            color: var(--slate);
+            color: var(--dark-gray);
         }
 
         .legal-content {
@@ -83,7 +94,7 @@
         }
 
         .legal-content h2 {
-            color: var(--amber);
+            color: var(--amber-2);
             font-family: var(--font-heading);
             font-size: 1.5rem;
             margin-bottom: var(--sp-4);
@@ -91,7 +102,7 @@
         }
 
         .legal-content h3 {
-            color: var(--white);
+            color: var(--navy);
             font-size: 1.1rem;
             margin-bottom: var(--sp-3);
             margin-top: var(--sp-6);
@@ -99,7 +110,7 @@
         }
 
         .legal-content p {
-            color: var(--light);
+            color: var(--dark-gray);
             margin-bottom: var(--sp-4);
             line-height: 1.7;
         }
@@ -108,7 +119,7 @@
         .legal-content ol {
             margin-left: var(--sp-8);
             margin-bottom: var(--sp-4);
-            color: var(--light);
+            color: var(--dark-gray);
         }
 
         .legal-content li {
@@ -116,11 +127,11 @@
         }
 
         .legal-content strong {
-            color: var(--amber);
+            color: var(--amber-2);
         }
 
         .legal-content a {
-            color: var(--amber);
+            color: var(--amber-2);
             text-decoration: none;
         }
 
@@ -137,7 +148,7 @@
         }
 
         .disclaimer-box h3 {
-            color: var(--amber);
+            color: var(--navy);
             margin-bottom: var(--sp-2);
             font-size: 0.9rem;
             text-transform: uppercase;
@@ -145,7 +156,7 @@
         }
 
         .disclaimer-box p {
-            color: var(--slate);
+            color: var(--dark-gray);
             font-size: 0.95rem;
         }
 
@@ -303,27 +314,27 @@
                 <p>All fees are clearly disclosed to contractors before they enter into any agreement with homeowners through the Platform. Once a contractor accepts a project, the fee structure is locked in for that specific project.</p>
 
                 <h3>8.3 Payment Terms</h3>
-                <p>Fees are calculated and due upon receipt of insurance payment for the repairs. Otter Quotes handles all fee collection and payment processing.</p>
+                <p>The platform fee described in Section 8.1 is charged directly to the contractor's payment method on file once the project contract has been fully executed (signed by both homeowner and contractor) through the Platform. This charge is independent of, and does not wait upon, any insurance claim payment, and applies uniformly to insurance, retail, cash, ACV, and RCV projects. Otter Quotes handles all fee collection and payment processing.</p>
 
                 <h3>8.4 No Refunds</h3>
-                <p>Except as required by law, all fees paid are non-refundable. Otter Quotes does not refund platform fees in cases where projects are terminated or completed by other means. This Section 8.4 does not apply to the Hover Measurement Fee Rebate described in Section 8.5, which is governed by the terms of that section.</p>
+                <p>Except as required by law, all fees paid are non-refundable. Otter Quotes does not refund platform fees in cases where projects are terminated or completed by other means. This Section 8.4 does not apply to the RoofScope Measurement Fee Rebate described in Section 8.5, which is governed by the terms of that section.</p>
 
-                <h3>8.5 Hover Measurement Fee and Rebate</h3>
-                <p>When you elect to obtain a Hover 3D measurement report through the Platform, you authorize Otter Quotes to charge your selected payment method a measurement fee of $150 USD (the "<strong>Hover Measurement Fee</strong>"). The amount of the Hover Measurement Fee is subject to change and will be displayed on the measurement purchase page at the time of payment. By completing that payment, you agree to the terms of this Section 8.5.</p>
+                <h3>8.5 RoofScope Measurement Fee and Rebate</h3>
+                <p>When you elect to obtain a RoofScope 3D measurement report through the Platform, you authorize Otter Quotes to charge your selected payment method a measurement fee of $15 USD (the "<strong>RoofScope Measurement Fee</strong>"). The amount of the RoofScope Measurement Fee is subject to change and will be displayed on the measurement purchase page at the time of payment. By completing that payment, you agree to the terms of this Section 8.5.</p>
 
-                <p><strong>What the Fee Covers.</strong> Otter Quotes uses the Hover Measurement Fee to order an aerial/photo-based measurement report from Hover, Inc. on your behalf. The resulting measurement report is yours to keep, regardless of whether you subsequently contract with any contractor through the Platform.</p>
+                <p><strong>What the Fee Covers.</strong> Otter Quotes uses the RoofScope Measurement Fee to order an aerial/photo-based measurement report from RoofScope on your behalf. The resulting measurement report is yours to keep, regardless of whether you subsequently contract with any contractor through the Platform.</p>
 
-                <p><strong>Conditions for the Rebate.</strong> Otter Quotes will refund the Hover Measurement Fee in full (the "<strong>Rebate</strong>") if all of the following occur: (i) you enter into a signed contract with a contractor through the Platform for the project tied to the claim for which you purchased the Hover report; (ii) that contract proceeds to completion and the contractor's platform fee obligation is satisfied; and (iii) no chargeback, reversal, or refund dispute is pending or resolved against you in connection with the original Hover Measurement Fee payment.</p>
+                <p><strong>Conditions for the Rebate.</strong> Otter Quotes will refund the RoofScope Measurement Fee in full (the "<strong>Rebate</strong>") if all of the following occur: (i) you enter into a signed contract with a contractor through the Platform for the project tied to the claim for which you purchased the RoofScope report; (ii) that contract proceeds to completion and the contractor's platform fee obligation is satisfied; and (iii) no chargeback, reversal, or refund dispute is pending or resolved against you in connection with the original RoofScope Measurement Fee payment.</p>
 
-                <p><strong>How and When the Rebate Is Issued.</strong> When the conditions above are met, Otter Quotes will issue the Rebate automatically as a refund to the original payment method used to pay the Hover Measurement Fee. Rebates are typically issued within a few business days after the triggering project-completion event and may take an additional 5&ndash;10 business days to appear on your statement, depending on your card issuer or bank. Otter Quotes is not responsible for delays attributable to your payment processor or bank.</p>
+                <p><strong>How and When the Rebate Is Issued.</strong> When the conditions above are met, Otter Quotes will issue the Rebate automatically as a refund to the original payment method used to pay the RoofScope Measurement Fee. Rebates are typically issued within a few business days after the triggering project-completion event and may take an additional 5&ndash;10 business days to appear on your statement, depending on your card issuer or bank. Otter Quotes is not responsible for delays attributable to your payment processor or bank.</p>
 
-                <p><strong>When the Rebate Is Not Owed.</strong> The Hover Measurement Fee is not rebated and is retained by Otter Quotes if: (i) you do not enter into a contract with an Otter Quotes contractor for the project; (ii) you select a contractor through the Platform but the project is abandoned, cancelled prior to contractor payment completion, or otherwise does not reach the completion event described above; (iii) you contract with a contractor outside the Platform for the project, whether after browsing bids on the Platform or otherwise; or (iv) the original Hover Measurement Fee payment is subject to a chargeback or reversal. In each such case, you retain the Hover measurement report for your own use; the $150 compensates Otter Quotes for the cost of ordering the report on your behalf.</p>
+                <p><strong>When the Rebate Is Not Owed.</strong> The RoofScope Measurement Fee is not rebated and is retained by Otter Quotes if: (i) you do not enter into a contract with an Otter Quotes contractor for the project; (ii) you select a contractor through the Platform but the project is abandoned, cancelled prior to contractor payment completion, or otherwise does not reach the completion event described above; (iii) you contract with a contractor outside the Platform for the project, whether after browsing bids on the Platform or otherwise; or (iv) the original RoofScope Measurement Fee payment is subject to a chargeback or reversal. In each such case, you retain the RoofScope measurement report for your own use; the $15 compensates Otter Quotes for the cost of ordering the report on your behalf.</p>
 
                 <p><strong>Project Switching Within the Platform.</strong> If you switch from one Otter Quotes contractor to another within the Platform (a "switch-contractor" event), Rebate eligibility follows the project; completion by the replacement contractor satisfies condition (ii) above. If you leave the Platform entirely, you forfeit the Rebate and are bound by the contract you signed with your originally selected contractor.</p>
 
                 <p><strong>Partial Rebates.</strong> Otter Quotes does not issue partial Rebates. The Rebate is either issued in full when the conditions above are met or not issued at all.</p>
 
-                <p><strong>Chargebacks and Disputes.</strong> Initiating a chargeback or payment dispute with your card issuer or bank in connection with the Hover Measurement Fee, or with any other fee governed by these Terms, forfeits any Rebate that might otherwise be owed, is a breach of these Terms, and may result in suspension of your account.</p>
+                <p><strong>Chargebacks and Disputes.</strong> Initiating a chargeback or payment dispute with your card issuer or bank in connection with the RoofScope Measurement Fee, or with any other fee governed by these Terms, forfeits any Rebate that might otherwise be owed, is a breach of these Terms, and may result in suspension of your account.</p>
             </section>
 
             <section>

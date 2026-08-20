@@ -6,6 +6,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: { getUser: vi.fn() },
     from: vi.fn(),
+    rpc: vi.fn(),
     storage: { from: vi.fn() },
   },
 }));
@@ -124,6 +125,9 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
       existing_shingle_product: 'Timberline',
       existing_shingle_color: 'Weathered Wood',
       homeowner_notes: 'ceiling drip',
+      // gh-397/#689 (PR #785): is_test is now stamped on every claims insert.
+      // The mock user has no email, so isTestEmail(undefined) is false.
+      is_test: false,
     });
     // Final write marks the claim submitted.
     expect(rec.updates).toEqual([{ status: 'submitted' }]);
@@ -198,7 +202,7 @@ describe('(d) useRepairContractors — public-safe view query', () => {
     vi.clearAllMocks();
   });
 
-  it('queries contractors_public (repairs_accepted + trade) only once enabled', async () => {
+  it('queries get_contractors_public RPC (repairs_accepted + trade) only once enabled', async () => {
     const limit = vi.fn(() =>
       Promise.resolve({
         data: [{ id: 'k1', company_name: 'Acme', years_in_business: 9, rating: 4.7 }],
@@ -208,20 +212,20 @@ describe('(d) useRepairContractors — public-safe view query', () => {
     const contains = vi.fn(() => ({ limit }));
     const eq = vi.fn(() => ({ contains }));
     const select = vi.fn(() => ({ eq }));
-    sb.from.mockReturnValue({ select });
+    sb.rpc.mockReturnValue({ select });
 
     const { result, rerender } = renderHook(
       ({ enabled }) => useRepairContractors('roofing', enabled),
       { initialProps: { enabled: false } },
     );
     // Disabled → no query.
-    expect(sb.from).not.toHaveBeenCalled();
+    expect(sb.rpc).not.toHaveBeenCalled();
 
     rerender({ enabled: true });
     await waitFor(() => {
       expect(result.current.contractors).toHaveLength(1);
     });
-    expect(sb.from).toHaveBeenCalledWith('contractors_public');
+    expect(sb.rpc).toHaveBeenCalledWith('get_contractors_public');
     expect(select).toHaveBeenCalledWith(
       'id, company_name, years_in_business, rating, service_counties',
     );
@@ -236,7 +240,7 @@ describe('(d) useRepairContractors — public-safe view query', () => {
     const contains = vi.fn(() => ({ limit }));
     const eq = vi.fn(() => ({ contains }));
     const select = vi.fn(() => ({ eq }));
-    sb.from.mockReturnValue({ select });
+    sb.rpc.mockReturnValue({ select });
 
     const { result } = renderHook(() => useRepairContractors('roofing', true));
     await waitFor(() => {

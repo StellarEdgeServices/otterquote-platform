@@ -156,7 +156,7 @@ export function useProjectConfirmationData(
 
         // 6. Load contractor (static 2195-2201)
         const { data: contractorData, error: contractorError } = await supabase
-          .from('contractors_public')
+          .rpc('get_contractors_public')
           .select('id, company_name, years_in_business, logo_url')
           .eq('id', contractorId)
           .single();
@@ -262,7 +262,7 @@ export async function createProjectConfirmationEnvelope({
     throw new Error(error.message || 'Failed to create project confirmation envelope.');
   }
   if (!result?.signing_url) {
-    throw new Error('No signing URL returned from DocuSign');
+    throw new Error('No signing URL returned');
   }
 
   return {

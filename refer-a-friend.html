@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -21,7 +32,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
   <title>Refer a Friend &mdash; Earn $200 &mdash; Otter Quotes</title>
-  <meta name="description" content="Share your unique referral link and earn $200 for every friend who completes a job over $10K through Otter Quotes.">
+  <meta name="description" content="Share your unique referral link and earn $200 for every friend who completes a job of $10K or more through Otter Quotes.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
@@ -580,7 +591,7 @@
       <!-- Hero Section -->
       <section class="hero-section">
         <h1>Love Your Project Results? Share the Love &mdash; and Earn $200</h1>
-        <p class="subtitle">For every friend you refer who completes a project over $10,000 through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.</p>
+        <p class="subtitle">For every friend you refer who completes a project of $10,000 or more through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.</p>
       </section>
 
       <!-- Your Referral Link -->
@@ -764,7 +775,7 @@
                   <th>Friend's Name</th>
                   <th>Date Referred</th>
                   <th>Status</th>
-                  <th>Commission</th>
+                  <th>Referral Fee</th>
                 </tr>
               </thead>
               <tbody id="referrals-tbody">
@@ -794,7 +805,7 @@
           <div class="how-step">
             <div class="how-step-number">3</div>
             <h4>You Earn $200</h4>
-            <p>When their job completes (over $10K), you earn $200 in commission.</p>
+            <p>When their job completes ($10K or more), you earn $200 in commission.</p>
           </div>
         </div>
       </section>
@@ -809,7 +820,7 @@
               <span class="faq-icon">▼</span>
             </button>
             <div class="faq-answer">
-              <p>Commissions are paid after job completion and approval — typically within 14 days of completion. We'll send payment via bank transfer or check, whichever you prefer.</p>
+              <p>Commissions are paid after job completion and approval. We'll send payment via bank transfer or check, whichever you prefer.</p>
             </div>
           </div>
           <div class="faq-item">
@@ -853,7 +864,7 @@
       <!-- D-180: Commission Approval Disclosure -->
       <section class="refer-section">
         <p style="color: #5A6B7B; font-size: 0.85rem; line-height: 1.6; text-align: center; margin: 0;">
-          Commission payments are subject to Otter Quotes' approval process. Commissions are paid after job completion and approval — typically within 14 days of completion.
+          Commission payments are subject to Otter Quotes' approval process. Commissions are paid after job completion and approval.
         </p>
       </section>
 
@@ -871,7 +882,7 @@
   <footer id="site-footer"></footer>
 
   <!-- Scripts -->
-  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -1072,7 +1083,9 @@
 
 I recently used Otter Quotes to get my roof replaced, and I wanted to share it with you. The platform is amazing — you get competing bids from multiple licensed, insured contractors, which means you get the best deal and can compare options side-by-side.
 
-If you need any exterior work done (roof, siding, gutters, etc.), check out Otter Quotes here: ${referralUrl}
+If you need any exterior work done (roof, siding, gutters, etc.), check out Otter Quotes here:
+
+${referralUrl}
 
 Best regards`;
       document.getElementById('email-body-display').textContent = emailBody;
@@ -1273,7 +1286,7 @@ Best regards`;
     }
 
     async function loadReferrals() {
-      if (!currentUser || !sb) return;
+      if (!currentUser) return;
 
       // Two-step (#567): referrals has no referrer_id column — resolve our own
       // agent row first, then match referrals.referral_agent_id.

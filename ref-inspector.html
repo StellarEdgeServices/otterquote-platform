@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -655,9 +666,6 @@
         <p class="form-note">
           We'll send you a secure login link. No password needed.
         </p>
-        <p class="form-note referral-fee-disclaimer">
-          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
-        </p>
       </form>
     </div>
   </section>
@@ -693,7 +701,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          For a full replacement, yes &mdash; contractors need accurate measurements to give you a real bid, not a ballpark. We use Hover, a professional measurement service that builds a complete 3D model of the home. Either you take photos with their app (takes about 15 minutes) or your inspector or agent can do it. The cost is $150 for a complete property data file, which is rebated in full if you use an Otter Quotes contractor. For smaller repairs, we may not need formal measurements.
+          For a full replacement, yes &mdash; contractors need accurate measurements to give you a real bid, not a ballpark. We use RoofScope, a professional measurement service that builds a complete 3D model of the home. Either you take photos with their app (takes about 15 minutes) or your inspector or agent can do it. The cost is $15 for a complete property data file, which is rebated in full if you use an Otter Quotes contractor. For smaller repairs, we may not need formal measurements.
         </div>
       </div>
 
@@ -725,7 +733,6 @@
 <!-- ── Footer ── -->
 <footer class="footer" id="site-footer"></footer>
 
-<script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 
@@ -741,7 +748,7 @@ let referralAgentData = null;
 document.addEventListener('DOMContentLoaded', async () => {
   // Get referral code from URL
   const params = new URLSearchParams(window.location.search);
-  const refCode = params.get('ref');
+  const refCode = params.get('ref') || params.get('code');
 
   if (refCode) {
     document.getElementById('referralCode').value = refCode;
@@ -751,7 +758,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Look up the inspector in referral_agents
     try {
       const { data, error } = await sb
-        .from('referral_agents_public')
+        .rpc('get_referral_agents_public')
         .select('*')
         .eq('unique_code', refCode)
         .eq('agent_type', 'home_inspector')
@@ -826,8 +833,8 @@ function personalizeHero(agentData) {
 
   html += '<div class="ref-badge-text">';
   html += `<strong>Referred by ${agentData.first_name || 'Your Inspector'}${agentData.last_name ? ' ' + agentData.last_name : ''}</strong>`;
-  if (agentData.company_name) {
-    html += `<span>${agentData.company_name}</span>`;
+  if (agentData.company) {
+    html += `<span>${agentData.company}</span>`;
   }
   html += '</div>';
 

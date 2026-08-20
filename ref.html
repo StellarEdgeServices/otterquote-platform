@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -105,14 +116,13 @@
 </script>
 </head>
 <body>
+    <header id="site-header" data-active=""></header>
+
     <div class="referral-container">
         <div id="loading-state">
             <div class="logo">OQ</div>
             <div class="spinner"></div>
             <p class="message">Setting up your referral...</p>
-            <p style="font-size: 13px; color: rgba(148, 163, 184, 0.55); margin-top: 1rem; line-height: 1.6; max-width: 360px; margin-left: auto; margin-right: auto;" class="referral-fee-disclaimer">
-                Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
-            </p>
         </div>
 
         <div id="error-state" class="hidden error-message">
@@ -122,10 +132,14 @@
         </div>
     </div>
 
+    <footer id="site-footer"></footer>
+
     <!-- Supabase UMD (must come before config.js) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
+    <script src="js/nav.js"></script>
 
     <script>
         /**
@@ -151,16 +165,9 @@
                     return;
                 }
 
-                // 2. Make sure global Supabase client is ready
-                if (!sb) {
-                    console.error('Supabase client not initialized');
-                    showError();
-                    return;
-                }
-
                 // 3. Look up the agent by unique_code (public read policy allows this)
                 const { data: agent, error: agentError } = await sb
-                    .from('referral_agents_public')
+                    .rpc('get_referral_agents_public')
                     .select('id, agent_type, first_name, last_name, company, photo_url, status')
                     .eq('unique_code', code)
                     .eq('status', 'active')

@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -744,7 +755,7 @@
 <section class="hero">
   <div class="hero-content">
     <h1>GET PAID FASTER</h1>
-    <p class="subtitle">Help your clients get repair bids from the comfort of their home. They get multiple quotes quickly and easily. Repairs get done faster, better, and cheaper. And you get more time to think about how you are going to spend that commission check.</p>
+    <p class="subtitle">Help your clients get repair bids from the comfort of their home. They get multiple quotes quickly and easily. Repairs get done faster, better, and cheaper. And you get more time to think about how you are going to spend that referral fee check.</p>
     <button class="btn btn-primary btn-lg" id="hero-cta">Become a Partner — It's Free</button>
   </div>
 </section>
@@ -752,7 +763,7 @@
 <!-- How It Works -->
 <section class="how-it-works">
   <div class="section-header">
-    <h2>How It Works for RE Agents</h2>
+    <h2>How It Works for Real Estate Agents</h2>
   </div>
 
   <div class="steps-grid">
@@ -769,7 +780,7 @@
     <div class="step-card">
       <div class="step-number">3</div>
       <h3>Earn $200 Per Job</h3>
-      <p>When your referral's job completes (over $10,000), you earn $200. Track everything in your partner dashboard. Bonus: recruit another agent and earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
+      <p>When your referral's job completes ($10,000 or more), you earn $200. Track everything in your partner dashboard. Bonus: recruit another agent and earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
     </div>
   </div>
 </section>
@@ -777,7 +788,7 @@
 <!-- Value Props -->
 <section class="value-props">
   <div class="section-header">
-    <h2>Why RE Agents Love Otter Quotes</h2>
+    <h2>Why Real Estate Agents Love Otter Quotes</h2>
   </div>
 
   <div class="props-grid">
@@ -807,7 +818,7 @@
 <!-- Commission Details -->
 <section class="commission-section">
   <div class="section-header">
-    <h2>Commission Details</h2>
+    <h2>Referral Fee Details</h2>
   </div>
 
   <div class="commission-card">
@@ -816,7 +827,7 @@
     <div class="commission-detail">
       <div class="detail-check">✓</div>
       <div class="detail-text">
-        <strong>$200 per completed job over $10,000 — referral commission</strong>
+        <strong>$200 per completed job of $10,000+ — referral fee</strong>
         <p>Earned when your referral's job is complete and payment is processed.</p>
       </div>
     </div>
@@ -825,7 +836,7 @@
       <div class="detail-check">✓</div>
       <div class="detail-text">
         <strong>+ $50 per completed job — recruit bonus</strong>
-        <p>For every job over $10,000 that completes from a referral sent by an agent you personally recruited to Otter Quotes. One level only — simple, transparent, no MLM.</p>
+        <p>For every job of $10,000 or more that completes from a referral sent by an agent you personally recruited to Otter Quotes. One level only — simple, transparent, no MLM.</p>
       </div>
     </div>
 
@@ -833,7 +844,7 @@
       <div class="detail-check">✓</div>
       <div class="detail-text">
         <strong>Paid after job completion</strong>
-        <p>Commissions are paid after job completion and approval — typically within 14 days of completion.</p>
+        <p>Commissions are paid after job completion and approval.</p>
       </div>
     </div>
 
@@ -841,20 +852,20 @@
       <div class="detail-check">✓</div>
       <div class="detail-text">
         <strong>Jobs under $10K: Your value is faster closings & better service</strong>
-        <p>Not every client needs to earn commission — but they all get faster, better-managed projects.</p>
+        <p>Not every client needs to earn referral fee — but they all get faster, better-managed projects.</p>
       </div>
     </div>
 
     <div class="commission-detail">
       <div class="detail-check">✓</div>
       <div class="detail-text">
-        <strong>Track all referrals and commissions in real-time</strong>
+        <strong>Track all referrals and referral fees in real-time</strong>
         <p>Your partner dashboard shows every referral status, earnings, and payout history.</p>
       </div>
     </div>
-    <p style="margin-top: 1.25rem; font-size: 0.85rem; color: var(--slate); opacity: 0.8;">A completed IRS Form W-9 is required before your first commission payment is issued.</p>
+    <p style="margin-top: 1.25rem; font-size: 0.85rem; color: var(--slate); opacity: 0.8;">A completed IRS Form W-9 is required before your first referral fee payment is issued.</p>
     <!-- D-180: Approval process disclosure -->
-    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--slate); opacity: 0.8;">Commissions are paid after job completion and approval — typically within 14 days of completion.</p>
+    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--slate); opacity: 0.8;">Commissions are paid after job completion and approval.</p>
   </div>
 </section>
 
@@ -878,7 +889,7 @@
       <div class="feature-check">✓</div>
       <div class="feature-content">
         <h4>Partner dashboard with real-time tracking</h4>
-        <p>See every referral, their status, and your earned commissions at a glance.</p>
+        <p>See every referral, their status, and your earned referral fees at a glance.</p>
       </div>
     </div>
 
@@ -886,7 +897,7 @@
       <div class="feature-check">✓</div>
       <div class="feature-content">
         <h4>Co-branded one-pager for packets</h4>
-        <p>Include Otter Quotes in your buyer and seller packets with professional materials.</p>
+        <p>Include Otter Quotes in your buyer and seller packets with professional materials. <a href="/assets/partner-onepager-re.html" target="_blank" rel="noopener">View / print the one-pager &rarr;</a></p>
       </div>
     </div>
 
@@ -926,7 +937,7 @@
     <!-- Form Side -->
     <div class="signup-form-wrap">
       <h2>Create Your Partner Account</h2>
-      <p class="subtitle">Join hundreds of RE agents earning referral commissions while helping clients save time and money.</p>
+      <p class="subtitle">Join hundreds of real estate agents earning referral fees while helping clients save time and money.</p>
 
       <form class="partner-form" id="partner-form" novalidate>
         <!-- Name Row -->
@@ -945,14 +956,25 @@
         <div class="form-group">
           <label class="form-label" for="email">Email</label>
           <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com">
-          <span class="form-hint">We'll send you a secure login link — no password needed.</span>
+        </div>
+
+        <!-- Password — gh-880 Half A: partner accounts now sign up with a
+             real credential instead of the password-less account
+             magic-link used to create implicitly. -->
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" id="password" class="form-input" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="confirm-password">Confirm Password</label>
+          <input type="password" id="confirm-password" class="form-input" required autocomplete="new-password" placeholder="Re-enter your password">
         </div>
 
         <!-- Phone -->
         <div class="form-group">
           <label class="form-label" for="phone">Phone</label>
           <input type="tel" id="phone" class="form-input" required autocomplete="tel" placeholder="(317) 555-1234">
-          <span class="form-hint">For important partner updates and commission notifications.</span>
+          <span class="form-hint">For important partner updates and referral fee notifications.</span>
         </div>
 
         <!-- Brokerage -->
@@ -992,7 +1014,7 @@
         <div class="form-checkbox-group">
           <input type="checkbox" id="terms" class="form-checkbox" required>
           <label for="terms" class="checkbox-label">
-            I agree to Otter Quotes's <a href="terms.html">Partner Terms</a>
+            I agree to Otter Quotes's <a href="partner-agreement.html">Partner Terms</a>
           </label>
         </div>
 
@@ -1105,7 +1127,7 @@
         <span class="faq-toggle">▼</span>
       </div>
       <div class="faq-answer">
-        <p>They pay $150 upfront for a Hover Complete property data file (3D model + full exterior measurements). If they end up using one of the Otter Quotes contractors for the work, that cost is rebated in full. The bidding, comparison, contract management, and payment processing are 100% free for Homeowners.</p>
+        <p>They pay $15 upfront for a RoofScope Complete property data file (3D model + full exterior measurements). If they end up using one of the Otter Quotes contractors for the work, that cost is rebated in full. The bidding, comparison, contract management, and payment processing are 100% free for Homeowners.</p>
       </div>
     </div>
 
@@ -1115,7 +1137,7 @@
         <span class="faq-toggle">▼</span>
       </div>
       <div class="faq-answer">
-        <p>Your partner dashboard shows every referral, their status (measurement in progress, bidding active, job awarded, completed), and your earned commissions in real-time. You'll also get email notifications when key milestones happen — job completion, commission earned, etc.</p>
+        <p>Your partner dashboard shows every referral, their status (measurement in progress, bidding active, job awarded, completed), and your earned referral fees in real-time. You'll also get email notifications when key milestones happen — job completion, referral fee earned, etc.</p>
       </div>
     </div>
 
@@ -1125,7 +1147,7 @@
         <span class="faq-toggle">▼</span>
       </div>
       <div class="faq-answer">
-        <p>Absolutely. Otter Quotes handles both insurance claims and retail/cash projects equally well. Storm damage claim? Post-purchase improvement? Inspection-driven repair? All earn referral commissions the same way. If the total project value is over $10,000 and completes, you earn $200.</p>
+        <p>Absolutely. Otter Quotes handles both insurance claims and retail/cash projects equally well. Storm damage claim? Post-purchase improvement? Inspection-driven repair? All earn referral fees the same way. If the total project value is $10,000 or more and completes, you earn $200.</p>
       </div>
     </div>
 
@@ -1135,7 +1157,7 @@
         <span class="faq-toggle">▼</span>
       </div>
       <div class="faq-answer">
-        <p>When you bring another agent to Otter Quotes using your recruit link, you earn $50 for every job over $10,000 that their referrals complete. It's one level only — you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on your partner dashboard.</p>
+        <p>When you bring another agent to Otter Quotes using your recruit link, you earn $50 for every job of $10,000 or more that their referrals complete. It's one level only — you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on your partner dashboard.</p>
       </div>
     </div>
   </div>
@@ -1156,9 +1178,9 @@
 
 <footer id="site-footer"></footer>
 
-<script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
+<script src="js/agent-types.js"></script>
 
 <script>
 (function() {
@@ -1174,6 +1196,90 @@
 
   // Recruit context populated by detectRecruitCode() and consumed on submit.
   let recruitContext = { recruitCode: null, recruiterId: null };
+
+  // gh-846: UTM context populated by captureUtmContext() and consumed on
+  // submit. Persisted to localStorage so it survives a page bounce mid
+  // signup — same pattern as cs_recruit_code above.
+  let utmContext = { source: null, medium: null, campaign: null, content: null };
+
+  /**
+   * gh-865: the visitor must see and explicitly confirm their partner type
+   * before the account is created — the page they landed on (and therefore
+   * this page's default) may not silently decide agent_type. Recruiter
+   * attribution (referredBy / recruit code) stays separate from this value.
+   * Scoped to only the p_agent_type write path in this file (gh-865 file
+   * whitelist) — placed here, alongside the other module-scoped helpers
+   * used by the submit handler, not in the form markup above.
+   */
+  function confirmAgentType(defaultType) {
+    return new Promise((resolve) => {
+      const AGENT_TYPE_LABELS = AgentTypes.CHOOSER_LABELS; // gh-914 single source (js/agent-types.js)
+      const overlay = document.createElement('div');
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#0D1B2E;border:1px solid rgba(224,123,0,0.4);border-radius:12px;padding:28px;max-width:380px;width:100%;text-align:left;font-family:inherit;';
+      const heading = document.createElement('p');
+      heading.textContent = 'Confirm your partner type';
+      heading.style.cssText = 'color:#FFFFFF;font-size:17px;font-weight:600;margin:0 0 8px;';
+      const sub = document.createElement('p');
+      sub.textContent = "This determines what you can do on Otter Quotes. Change it if it isn't right.";
+      sub.style.cssText = 'color:#94A3B8;font-size:14px;margin:0 0 16px;line-height:1.5;';
+      const select = document.createElement('select');
+      select.id = 'gh865AgentTypeConfirm';
+      select.style.cssText = 'width:100%;padding:10px;border-radius:8px;border:1px solid rgba(148,163,184,0.35);font-size:15px;margin-bottom:16px;background:#0D1B2E;color:#FFFFFF;';
+      Object.keys(AGENT_TYPE_LABELS).forEach((value) => {
+        const o = document.createElement('option');
+        o.value = value;
+        o.textContent = AGENT_TYPE_LABELS[value];
+        if (value === defaultType) o.selected = true;
+        select.appendChild(o);
+      });
+      const confirmBtn = document.createElement('button');
+      confirmBtn.type = 'button';
+      confirmBtn.textContent = 'Confirm & Continue';
+      confirmBtn.className = 'btn btn-primary';
+      confirmBtn.style.cssText = 'width:100%;cursor:pointer;';
+      confirmBtn.addEventListener('click', () => {
+        document.body.removeChild(overlay);
+        resolve(select.value);
+      });
+      box.appendChild(heading);
+      box.appendChild(sub);
+      box.appendChild(select);
+      box.appendChild(confirmBtn);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      select.focus();
+    });
+  }
+
+  /**
+   * Capture utm_source/medium/campaign/content from the URL on first landing
+   * and persist them so they survive a bounce (e.g. leaving to check email,
+   * or a multi-tab flow) before the form is actually submitted. Falls back
+   * to a previously-stored value when this load has no UTM params of its
+   * own, so a later page in the flow doesn't clobber an earlier capture.
+   */
+  function captureUtmContext() {
+    const params = new URLSearchParams(window.location.search);
+    const fresh = {
+      source:   params.get('utm_source'),
+      medium:   params.get('utm_medium'),
+      campaign: params.get('utm_campaign'),
+      content:  params.get('utm_content'),
+    };
+    if (fresh.source || fresh.medium || fresh.campaign || fresh.content) {
+      utmContext = fresh;
+      localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
+      return;
+    }
+    try {
+      const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+      if (stored) utmContext = stored;
+    } catch (e) { /* malformed stored value — ignore, keep default */ }
+  }
 
   // Smooth scroll to signup
   heroCta.addEventListener('click', () => {
@@ -1193,7 +1299,7 @@
 
     try {
       const { data: recruiter, error } = await sb
-        .from('referral_agents_public')
+        .rpc('get_referral_agents_public')
         .select('id, first_name, last_name, company')
         .eq('recruit_code', recruitCode)
         .eq('status', 'active')
@@ -1228,6 +1334,7 @@
   // Kick off recruit detection immediately — the IIFE runs after DOMContentLoaded
   // because this <script> tag sits at the end of the body.
   detectRecruitCode();
+  captureUtmContext();
 
   // #632: signed-in partners land straight on their dashboard instead of
   // re-seeing the signup form - same loop-guard shape as partner-login.html.
@@ -1237,12 +1344,12 @@
   (async function redirectSignedInPartner() {
     if (new URLSearchParams(window.location.search).get('stay') === '1') return;
     if ((document.referrer || '').includes('/partner-dashboard.html')) return;
-    const user = await Auth.getUser();
-    if (!user) return;
-    const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
-    const role = await Auth.getRole();
-    if (!partnerRoles.includes(role)) return;
-    window.location.replace('/partner-dashboard.html');
+    // gh-880 Half A: shared Auth.hasPartnerSession() helper instead of a
+    // locally-declared partnerRoles array (same consolidation gh-851 did
+    // for PARTNER_ROLES itself).
+    if (await Auth.hasPartnerSession()) {
+      window.location.replace('/partner-dashboard.html');
+    }
   })();
 
   // Phone formatting
@@ -1276,9 +1383,15 @@
     e.preventDefault();
     errorEl.style.display = 'none';
 
+    // gh-865: explicit user confirmation — this, not the page default, is
+    // what gets written to referral_agents.agent_type.
+    const agentType = await confirmAgentType('re_agent');
+
     const firstName = document.getElementById('first-name').value.trim();
     const lastName = document.getElementById('last-name').value.trim();
     const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
     const phone = document.getElementById('phone').value.trim();
     const brokerage = document.getElementById('brokerage').value.trim();
     const serviceArea = document.getElementById('service-area').value.trim();
@@ -1296,6 +1409,18 @@
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       errorEl.textContent = 'Please enter a valid email address.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    // gh-880 Half A: password replaces magic-link at signup.
+    if (!password || password.length < 8) {
+      errorEl.textContent = 'Password must be at least 8 characters.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (password !== confirmPassword) {
+      errorEl.textContent = 'Passwords do not match.';
       errorEl.style.display = 'block';
       return;
     }
@@ -1356,7 +1481,7 @@
       // {id, unique_code, recruit_code}.
       const { data: agentData, error: agentError } = await sb
         .rpc('register_partner', {
-          p_agent_type:       're_agent',
+          p_agent_type:       agentType,
           p_first_name:       firstName,
           p_last_name:        lastName,
           p_email:            email,
@@ -1367,13 +1492,19 @@
           p_referred_by_note: referredBy || null,
           p_recruit_code:     recruitContext.recruitCode || null,
           p_photo_url:        headshot_url || null,  // schema column is 'photo_url'
+          p_utm_source:       utmContext.source   || null,
+          p_utm_medium:       utmContext.medium   || null,
+          p_utm_campaign:     utmContext.campaign || null,
+          p_utm_content:      utmContext.content  || null,
         });
 
       if (agentError) {
         if ((agentError.message || '').includes('partner_exists')) {
-          // Already registered — send a fresh login link and say so.
-          try { await Auth.sendMagicLink(email, 're_agent'); } catch (e) { /* non-fatal */ }
-          errorEl.textContent = "You're already a partner — check your email for your login link.";
+          // Already registered. gh-880 Half A: do NOT attempt any sign-in
+          // with the password just typed on this signup form — it may not
+          // belong to whoever owns that account. Point them to the login
+          // page instead.
+          errorEl.innerHTML = "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.";
           errorEl.style.display = 'block';
           return;
         }
@@ -1384,29 +1515,52 @@
       const finalCode = agentData?.unique_code;
       const finalLink = `https://otterquote.com/ref.html?code=${finalCode}`;
 
+      // #801: the SEO footer link is bare by default (no code — nothing to
+      // attribute for a first-time visitor). Once we have this partner's own
+      // code, carry it so a copied footer link still attributes correctly.
+      const seoRefLink = document.getElementById('seoRefLink');
+      if (seoRefLink && finalCode) {
+        seoRefLink.href = `/ref-re.html?code=${finalCode}`;
+      }
+
       // Store minimal data for post-auth linking (auth.js handleAuthCallback reads this)
       localStorage.setItem('cs_partner_signup', JSON.stringify({
         email: email,
         unique_code: finalCode,
       }));
-      localStorage.setItem('cs_auth_role', 're_agent');
+      localStorage.setItem('cs_auth_role', agentType);
 
       // Recruit code consumed — clear so a future signup on this device
       // doesn't accidentally attribute to the same recruiter.
       localStorage.removeItem('cs_recruit_code');
+      localStorage.removeItem('cs_utm_context');
 
-      // Send magic link → redirects to partner-dashboard.html
-      await Auth.sendMagicLink(email, 're_agent');
+      // gh-880 Half A: sign up with the password just collected instead of
+      // sending a magic link. signUpResult.session is null when the
+      // Supabase project requires email confirmation before first
+      // sign-in — handled the same way the magic-link "check your email"
+      // state used to be, just via an alert instead of a dedicated screen.
+      const signUpResult = await Auth.signUpWithPassword(email, password, agentType);
+      if (!signUpResult || !signUpResult.session) {
+        alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
+      }
 
       // Show success state with real referral link
       form.classList.add('hidden');
       referralCode.textContent = finalLink;
       successMsg.classList.add('active');
 
-      // GA4 conversion event — partner funnel
+      // GA4 conversion event — partner funnel. gh-846: previously read
+      // utm_source inline from the current URL (lost on a page bounce) and
+      // always dropped utm_content — the one field that identifies which
+      // warm-outreach contact converted. Now sourced from the persisted
+      // utmContext, same data that just went into register_partner().
       gtag('event', 'partner_signup', {
-        partner_type: 're_agent',
-        source: new URLSearchParams(location.search).get('utm_source') || 'direct',
+        partner_type: agentType,
+        source:   utmContext.source   || 'direct',
+        medium:   utmContext.medium   || undefined,
+        campaign: utmContext.campaign || undefined,
+        content:  utmContext.content  || undefined,
       });
 
     } catch (err) {
@@ -1437,6 +1591,6 @@
 </script>
 
 <!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-re.html" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
+<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-re.html" id="seoRefLink" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
 </body>
 </html>

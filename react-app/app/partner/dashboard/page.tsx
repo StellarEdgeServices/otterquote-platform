@@ -38,7 +38,7 @@
  * (G-D1Y1TLGEFY) is intentionally NOT carried over.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
@@ -315,7 +315,7 @@ function DashboardView({
               <th>Date Referred</th>
               <th>Status</th>
               <th>Job Value</th>
-              <th>Commission</th>
+              <th>Referral Fee</th>
             </tr>
           </thead>
           <tbody>
@@ -357,7 +357,12 @@ function DashboardView({
 
       {/* Profile Settings */}
       <h2 className="section-header">{SECTION_HEADERS.profile}</h2>
-      <ProfileSettings partner={partner} referralLink={referralLink} />
+      <ProfileSettings
+        partner={partner}
+        referralLink={referralLink}
+        userId={userId}
+        onPartnerRefresh={onPartnerRefresh}
+      />
     </main>
   );
 }
@@ -717,10 +722,76 @@ function CopyTextButton({ text, label, className }: { text: string; label: strin
   );
 }
 
-// ── Profile Settings (display + collapse; no functional save in the static page) ─
-function ProfileSettings({ partner, referralLink }: { partner: PartnerRecord; referralLink: string }) {
+// ── Profile Settings ──────────────────────────────────────────────────────────
+// gh-861 AC7: the static page's #profileForm had no submit handler at all
+// (default GET navigation → silent data loss, fixed separately in
+// partner-dashboard.html). This React port never had that specific bug — no
+// <form action> exists in JSX, so there's no default navigation — but its
+// onSubmit was JUST `e.preventDefault()`: the button reads "Save Changes" and
+// nothing is ever read from the fields or written anywhere. That is the same
+// destructive-save-loss outcome (edits silently discarded, no error shown), so
+// it gets the same fix here in the same PR.
+function ProfileSettings({
+  partner,
+  referralLink,
+  userId,
+  onPartnerRefresh,
+}: {
+  partner: PartnerRecord;
+  referralLink: string;
+  userId: string;
+  onPartnerRefresh: (p: PartnerRecord) => void;
+}) {
   const [open, setOpen] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<{ kind: 'success' | 'error'; msg: string } | null>(null);
   const name = agentDisplayName(partner);
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSaving(true);
+    setStatus(null);
+
+    const form = new FormData(e.currentTarget);
+    const fullName = String(form.get('name') ?? '').trim();
+    const nameParts = fullName.split(/\s+/).filter(Boolean);
+
+    const updates = {
+      first_name: nameParts[0] ?? '',
+      last_name: nameParts.slice(1).join(' '),
+      email: String(form.get('email') ?? '').trim(),
+      phone: String(form.get('phone') ?? '').trim(),
+      company: String(form.get('company') ?? '').trim(),
+      service_area: String(form.get('service_area') ?? '').trim(),
+      website: String(form.get('website') ?? '').trim(),
+      bio: String(form.get('bio') ?? '').trim(),
+    };
+
+    try {
+      if (!userId) throw new Error('Not signed in — please refresh and try again.');
+
+      const { data: updated, error } = await supabase
+        .from('referral_agents')
+        .update(updates)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (updated) onPartnerRefresh(updated as PartnerRecord);
+      setStatus({ kind: 'success', msg: 'Saved.' });
+    } catch (err) {
+      console.error('Profile save error:', err);
+      setStatus({
+        kind: 'error',
+        msg: `Could not save your changes: ${err instanceof Error ? err.message : String(err)}. Please try again.`,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="profile-section">
       <div className="profile-section-header" onClick={() => setOpen((v) => !v)}>
@@ -728,35 +799,36 @@ function ProfileSettings({ partner, referralLink }: { partner: PartnerRecord; re
         <span className={'toggle-icon' + (open ? ' open' : '')}>▼</span>
       </div>
 
-      <form className={'profile-form' + (open ? '' : ' collapsed')} onSubmit={(e) => e.preventDefault()}>
+      <form className={'profile-form' + (open ? '' : ' collapsed')} onSubmit={onSubmit}>
         <div className="form-group">
           <label className="form-label">Name</label>
-          <input type="text" className="form-input" defaultValue={name} placeholder="Your Name" />
+          <input type="text" name="name" className="form-input" defaultValue={name} placeholder="Your Name" />
         </div>
         <div className="form-group">
           <label className="form-label">Email</label>
-          <input type="email" className="form-input" defaultValue={partner.email ?? ''} placeholder="your@email.com" />
+          <input type="email" name="email" className="form-input" defaultValue={partner.email ?? ''} placeholder="your@email.com" />
         </div>
         <div className="form-group">
           <label className="form-label">Phone</label>
-          <input type="tel" className="form-input" defaultValue={partner.phone ?? ''} placeholder="+1 (555) 123-4567" />
+          <input type="tel" name="phone" className="form-input" defaultValue={partner.phone ?? ''} placeholder="+1 (555) 123-4567" />
         </div>
         <div className="form-group">
           <label className="form-label">Company</label>
-          <input type="text" className="form-input" defaultValue={partner.company ?? ''} placeholder="Company Name" />
+          <input type="text" name="company" className="form-input" defaultValue={partner.company ?? ''} placeholder="Company Name" />
         </div>
         <div className="form-group">
           <label className="form-label">Service Area</label>
-          <input type="text" className="form-input" defaultValue={partner.service_area ?? ''} placeholder="City, State" />
+          <input type="text" name="service_area" className="form-input" defaultValue={partner.service_area ?? ''} placeholder="City, State" />
         </div>
         <div className="form-group">
           <label className="form-label">Website</label>
-          <input type="url" className="form-input" defaultValue={partner.website ?? ''} placeholder="https://yourwebsite.com" />
+          <input type="url" name="website" className="form-input" defaultValue={partner.website ?? ''} placeholder="https://yourwebsite.com" />
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <div className="form-group">
             <label className="form-label">Bio</label>
             <textarea
+              name="bio"
               className="form-input"
               defaultValue={partner.bio ?? ''}
               placeholder="Tell us about yourself..."
@@ -764,8 +836,21 @@ function ProfileSettings({ partner, referralLink }: { partner: PartnerRecord; re
             />
           </div>
         </div>
+        {status && (
+          <div
+            style={{
+              gridColumn: '1 / -1',
+              fontSize: '0.85rem',
+              color: status.kind === 'error' ? '#dc2626' : '#15803d',
+            }}
+          >
+            {status.msg}
+          </div>
+        )}
         <div style={{ gridColumn: '1 / -1' }}>
-          <button type="submit" className="btn">Save Changes</button>
+          <button type="submit" className="btn" disabled={saving}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
         </div>
       </form>
 

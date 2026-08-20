@@ -7,6 +7,27 @@
  * whose URL contains "contractor".
  */
 
+/**
+ * NAP (Name / Address / Phone) — single source of truth.
+ * Locked values: D-237 (address, 2026-05-23), D-240 (phone, 2026-05-25).
+ * Both the footer NAP block (renderFooter, below) and the RoofingContractor
+ * JSON-LD (renderLocalBusinessSchema, below) render from this object —
+ * do not hand-type these values anywhere else. (#757)
+ */
+const NAP = Object.freeze({
+  name: CONFIG.SITE_NAME,                 // 'Otter Quotes' — canonical form used sitewide (footer, JSON-LD, legal copy)
+  streetAddress: '3410 N High School Rd Ste G #102',
+  addressLocality: 'Indianapolis',
+  addressRegion: 'IN',
+  postalCode: '46224',
+  addressCountry: 'US',
+  phoneDisplay: '844-875-3412',           // D-240 byte-exact visible form
+  phoneTelHref: 'tel:+18448753412',
+  phoneE164: '+1-844-875-3412',           // machine-readable schema.org telephone field (E.164-normalized)
+  email: 'info@otterquote.com',
+  url: 'https://otterquote.com'
+});
+
 const Nav = {
   /** Detect if current page is a contractor page */
   _isContractorPage() {
@@ -117,13 +138,12 @@ const Nav = {
       { href: '/index.html',         label: 'Home',              id: 'home' },
       { href: '/how-it-works.html',  label: 'How It Works',      id: 'how-it-works' },
       { href: '/faq.html',           label: 'FAQ',               id: 'faq' },
-      { href: '/tools.html',         label: 'Contractor Tools',  id: 'tools' },
     ];
 
     nav.innerHTML = `
       <div class="nav-inner container">
         <a href="${isContractor ? '/contractor-dashboard.html' : '/index.html'}" class="nav-logo">
-          <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;mix-blend-mode:multiply;">
+          <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
           <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
         </a>
         <div class="nav-links" id="nav-links">
@@ -194,7 +214,6 @@ const Nav = {
       { href: '/index.html',        label: 'Home' },
       { href: '/how-it-works.html', label: 'How It Works' },
       { href: '/faq.html',          label: 'FAQ' },
-      { href: '/tools.html',        label: 'Contractor Tools' },
     ];
 
     // Rebuild nav links in-place to handle both role expansions and
@@ -256,11 +275,11 @@ const Nav = {
     // not auth.js (e.g. pure redirect pages). Guest state is correct fallback.
     if (typeof Auth === 'undefined') {
       const guestDesktop = `
-        <a href="/get-started.html" class="btn btn-sm btn-primary">Get Started</a>
+        <a href="https://app.otterquote.com/get-started" class="btn btn-sm btn-primary">Get Started</a>
         <a href="/contractor-login.html" class="btn btn-sm btn-ghost">Contractor Login</a>
       `;
       const guestMobile = `
-        <a href="/get-started.html" class="nav-link nav-mobile-cta">Get Started</a>
+        <a href="https://app.otterquote.com/get-started" class="nav-link nav-mobile-cta">Get Started</a>
         <a href="/contractor-login.html" class="nav-link nav-mobile-cta-secondary">Contractor Login</a>
       `;
       if (slot) slot.innerHTML = guestDesktop;
@@ -301,11 +320,11 @@ const Nav = {
       `;
     } else {
       desktopHTML = `
-        <a href="/get-started.html" class="btn btn-sm btn-primary">Get Started</a>
+        <a href="https://app.otterquote.com/get-started" class="btn btn-sm btn-primary">Get Started</a>
         <a href="/contractor-login.html" class="btn btn-sm btn-ghost">Contractor Login</a>
       `;
       mobileHTML = `
-        <a href="/get-started.html" class="nav-link nav-mobile-cta">Get Started</a>
+        <a href="https://app.otterquote.com/get-started" class="nav-link nav-mobile-cta">Get Started</a>
         <a href="/contractor-login.html" class="nav-link nav-mobile-cta-secondary">Contractor Login</a>
       `;
     }
@@ -514,7 +533,7 @@ const Nav = {
         <div class="footer-grid">
           <div class="footer-col">
             <div class="footer-logo">
-              <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;mix-blend-mode:multiply;">
+              <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
               <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
             </div>
             <p class="footer-tagline">${isContractor
@@ -522,9 +541,9 @@ const Nav = {
               : 'Helping homeowners get the best deal on roofing and exterior projects.'
             }</p>
             <address class="footer-nap" style="font-style:normal;margin-top:0.75rem;font-size:0.8rem;color:#94a3b8;line-height:1.6;">
-              3410 N High School Rd, Ste G #102<br>Indianapolis, IN 46224<br>
-              <a href="tel:+18448753412" style="color:#E07B00;">(844) 875-3412</a><br>
-              <a href="mailto:info@otterquote.com" style="color:#E07B00;">info@otterquote.com</a>
+              ${NAP.streetAddress},<br>${NAP.addressLocality} ${NAP.addressRegion} ${NAP.postalCode}<br>
+              <a href="${NAP.phoneTelHref}" style="color:#E07B00;">${NAP.phoneDisplay}</a><br>
+              <a href="mailto:${NAP.email}" style="color:#E07B00;">${NAP.email}</a>
             </address>
           </div>
           <div class="footer-col">
@@ -534,10 +553,14 @@ const Nav = {
               <a href="/contractor-faq.html">FAQ</a>
               <a href="/contractor-opportunities.html">Browse Opportunities</a>
               <a href="/tools.html">Contractor Tools</a>
+              <a href="/blog/index.html">Blog</a>
+              <a href="/guides/">Guides</a>
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               <a href="/faq.html">FAQ</a>
-              <a href="/get-started.html">Get Started</a>
+              <a href="https://app.otterquote.com/get-started">Get Started</a>
+              <a href="/blog/index.html">Blog</a>
+              <a href="/guides/">Guides</a>
             `}
           </div>
           <div class="footer-col">
@@ -548,12 +571,9 @@ const Nav = {
               <a href="/contractor-agreement.html">Partner Agreement</a>
               <a href="#" id="footer-support-link" style="color:#E07B00;font-weight:600;">💬 Contact Support</a>
             ` : `
-              <a href="/contractor-login.html">Contractor Login</a>
               <a href="/contractor-join.html">Join Our Network</a>
+              <a href="/contractor-login.html">Contractor Login</a>
               <a href="/tools.html">Contractor Tools</a>
-              <a href="/tools-crm.html">Free CRM</a>
-              <a href="/oq-crm.html">OQ CRM</a>
-              <a href="/oq-voice-ai.html">OQ Voice AI (Early Access)</a>
               <a href="/contractor-agreement.html">Partner Agreement</a>
             `}
           </div>
@@ -596,6 +616,35 @@ const Nav = {
         }
       });
     }
+  },
+
+  /**
+   * Inject RoofingContractor JSON-LD (D-237/D-240 NAP) into an opt-in mount
+   * point. Pages opt in with <script type="application/ld+json"
+   * id="nap-schema-mount"></script> — absent on most pages by design, so this
+   * only renders on pages that deliberately host the business entity schema
+   * (index.html for now). Rendered from the single NAP source above, so the
+   * machine copy can never drift from the visible footer NAP. (#757)
+   */
+  renderLocalBusinessSchema() {
+    const mount = document.getElementById('nap-schema-mount');
+    if (!mount) return;
+    const schema = {
+      '@context': 'https://schema.org',
+      '@type': 'RoofingContractor',
+      name: NAP.name,
+      url: NAP.url,
+      telephone: NAP.phoneE164,
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: NAP.streetAddress,
+        addressLocality: NAP.addressLocality,
+        addressRegion: NAP.addressRegion,
+        postalCode: NAP.postalCode,
+        addressCountry: NAP.addressCountry
+      }
+    };
+    mount.textContent = JSON.stringify(schema, null, 2);
   }
 };
 
@@ -630,4 +679,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (footer) {
     Nav.renderFooter();
   }
+
+  Nav.renderLocalBusinessSchema();
 });

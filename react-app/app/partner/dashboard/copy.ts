@@ -111,7 +111,7 @@ export const RECRUIT_LINK_PENDING =
 
 /** Recruit "Your Earnings" column tooltip ($10K threshold disclosure — D-139). */
 export const RECRUIT_EARNINGS_TOOLTIP =
-  'Paid on completed jobs over $10,000. Smaller jobs earn no recruit bonus.';
+  'Paid on completed jobs of $10,000 or more. Smaller jobs earn no recruit bonus.';
 
 // ── Hero / static labels ──────────────────────────────────────────────────────
 export const HERO_COPY = {

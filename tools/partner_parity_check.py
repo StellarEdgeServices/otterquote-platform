@@ -21,10 +21,19 @@ reading every page's actual markup rather than assumed.
     referral-fee arrangement). NOT partner-login.html.
   - signed-in-partner redirect snippet (?stay=1 escape): 6 of 8 (the 5
     vertical signup pages + partner-app.html). NOT partner-login.html
-    (adding it there is a product call, not this guard's job) and NOT
+    (gh-737: decided as an intentional exception, not drift -- it's a bare
+    magic-link form with no content a signed-in user would want to revisit,
+    unlike the marketing/signup pages the escape exists for) and NOT
     partner-dashboard.html (it is the redirect destination).
   - Get-the-App promo block + post-signup dashboard-access block: the 5
     vertical signup pages ONLY.
+
+gh-634's 2026-08-11 adversarial review flagged partner-login.html's missing
+?stay=1 escape as an open gap needing its own decision, tracked separately
+as gh-737 rather than resolved silently by this tool's exclusion list. gh-737
+settled it (see the signed_in_redirect entry above): intentional exception,
+not drift. partner-login.html's own redirect block carries a matching
+comment recording the same decision.
 """
 import re
 import sys

@@ -20,6 +20,12 @@
  * Pairs with the unit-level gate assertions in
  * app/(homeowner)/dashboard/__tests__/dashboard.test.tsx (mocked useAuthReady) and
  * mirrors app/contractor/_shell/__tests__/ContractorShell.hydration.test.tsx.
+ *
+ * gh-909 (D-182 v113, 2026-08-19) update: resolveRole() now makes a single
+ * `resolved_user_role` query instead of contractors -> profiles.role, so `roleRows`
+ * below is keyed by 'resolved_user_role' with a `{ derived_role: <value> }` payload
+ * (the view's own precedence — branch-tested — already resolves contractor/partner/
+ * claims/profile-fallback server-side; these fixtures just seed its final answer).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -123,7 +129,7 @@ describe('HomeownerShell × AuthProvider — cold-start hydration (D-211 86e1zpr
     // The live repro user is a contractor visiting a homeowner page: warm load
     // correctly sends them to contractor-dashboard.html; cold load PRE-FIX ejected
     // them to get-started.html instead.
-    roleRows = { contractors: { data: { id: 'c1' }, error: null } };
+    roleRows = { resolved_user_role: { data: { derived_role: 'contractor' }, error: null } };
     setValidCookieSession('pro@roofco.com');
 
     renderShell();
@@ -147,8 +153,7 @@ describe('HomeownerShell × AuthProvider — cold-start hydration (D-211 86e1zpr
 
   it('admits an authenticated homeowner on a cold start (null INITIAL_SESSION, valid homeowner cookie)', async () => {
     roleRows = {
-      contractors: { data: null, error: { message: 'no rows' } },
-      profiles: { data: { role: 'homeowner' }, error: null },
+      resolved_user_role: { data: { derived_role: 'homeowner' }, error: null },
     };
     setValidCookieSession('jane@example.com');
 

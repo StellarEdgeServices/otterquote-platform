@@ -163,11 +163,24 @@ serve(async (req) => {
     ).toISOString();
 
     // Store tokens in Supabase — scope deletion to this owner (86e1v6nnh).
-    if (tokenData.owner_id) {
-      await supabase.from("hover_tokens").delete().eq("owner_id", tokenData.owner_id);
-    } else {
-      await supabase.from("hover_tokens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    // No owner_id fallback: Hover's documented token response always includes
+    // owner_id (see the shape comment above). A missing owner_id is anomalous
+    // and must not fall through to deleting every row in hover_tokens — that
+    // fallback existed here previously and would wipe every other contractor's
+    // live Hover connection on a single anomalous response (found during a
+    // fresh live re-verification pass, GitHub #463, 2026-08-12).
+    if (!tokenData.owner_id) {
+      console.error("Hover token response missing owner_id — refusing to store or delete tokens:", JSON.stringify(tokenData));
+      return new Response(
+        generateHTML(
+          "Token Storage Error",
+          "Hover did not return an owner ID with the authorization tokens. Please try again or contact support.",
+          false
+        ),
+        { status: 502, headers: { "Content-Type": "text/html" } }
+      );
     }
+    await supabase.from("hover_tokens").delete().eq("owner_id", tokenData.owner_id);
 
     const { error: insertError } = await supabase
       .from("hover_tokens")
@@ -245,7 +258,7 @@ serve(async (req) => {
     return new Response(
       generateHTML(
         "Hover Connected!",
-        "OtterQuote is now connected to Hover. You can close this window and return to the platform.",
+        "Otter Quotes is now connected to Hover. You can close this window and return to the platform.",
         true
       ),
       { status: 200, headers: { "Content-Type": "text/html" } }
@@ -282,7 +295,7 @@ function generateHTML(title: string, message: string, success: boolean): string 
   return `<!DOCTYPE html>
 <html>
 <head>
-  <title>${safeTitle} — OtterQuote</title>
+  <title>${safeTitle} — Otter Quotes</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f8fafc; }

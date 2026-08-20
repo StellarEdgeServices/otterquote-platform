@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -143,7 +154,7 @@
       "name": "What does Otter Quotes cost?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Otter Quotes is 100% free for Homeowners. You will never pay us a dime. If you choose to add professional Hover measurements, that is a $150 charge paid upfront and refunded in full when you sign a contract with one of our contractors."
+        "text": "Otter Quotes is 100% free for Homeowners. You will never pay us a dime. If you choose to add professional RoofScope measurements, that is a $15 charge paid upfront and refunded in full when you sign a contract with one of our contractors."
       }
     },
     {
@@ -188,10 +199,10 @@
     },
     {
       "@type": "Question",
-      "name": "Why am I paying $150 for Hover?",
+      "name": "Why am I paying $15 for RoofScope?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Hover builds a complete 3D model of your home from photos you take with your phone — every measurement, every wall, every opening, captured in one property data file. The $150 covers Otter Quotes' cost to order it on your behalf. Here's the deal: when your project closes with an Otter Quotes contractor, the full $150 is rebated to your original payment method — you pay nothing net. If you don't complete your project with an Otter Quotes contractor, you keep the property data file to use on any future project, and the $150 covers our cost of ordering it. Either way, the file is yours forever — and we're building a suite of products around your home that this file becomes the foundation of."
+        "text": "RoofScope builds a complete 3D model of your home from photos you take with your phone — every measurement, every wall, every opening, captured in one property data file. The $15 covers Otter Quotes' cost to order it on your behalf. Here's the deal: when your project closes with an Otter Quotes contractor, the full $15 is rebated to your original payment method — you pay nothing net. If you don't complete your project with an Otter Quotes contractor, you keep the property data file to use on any future project, and the $15 covers our cost of ordering it. Either way, the file is yours forever — and we're building a suite of products around your home that this file becomes the foundation of."
       }
     },
     {
@@ -285,7 +296,7 @@
           <span class="faq-arrow">&#x25BC;</span>
         </button>
         <div class="faq-answer">
-          <p>Otter Quotes is 100% free for Homeowners. You will never pay us a dime. If you choose to add professional Hover measurements, that is a $150 charge paid upfront and refunded in full when you sign a contract with one of our contractors.</p>
+          <p>Otter Quotes is 100% free for Homeowners. You will never pay us a dime. If you choose to add professional RoofScope measurements, that is a $15 charge paid upfront and refunded in full when you sign a contract with one of our contractors.</p>
         </div>
       </div>
 
@@ -343,13 +354,13 @@
 
       <div class="faq-item">
         <button class="faq-question">
-          Why am I paying $150 for Hover?
+          Why am I paying $15 for RoofScope?
           <span class="faq-arrow">&#x25BC;</span>
         </button>
         <div class="faq-answer">
-          <p>Hover builds a complete 3D model of your home from photos you take with your phone &mdash; every measurement, every wall, every opening, captured in one property data file. The $150 covers Otter Quotes' cost to order it on your behalf.</p>
-          <p><strong>When your project closes with an Otter Quotes contractor, the full $150 is rebated to your original payment method automatically</strong> &mdash; you pay nothing net. Rebates typically appear on your statement within 5&ndash;10 business days of project completion.</p>
-          <p>If you don't complete your project with an Otter Quotes contractor, you keep the property data file &mdash; it's yours forever and reusable for any future home project &mdash; and the $150 covers our cost of ordering it.</p>
+          <p>RoofScope builds a complete 3D model of your home from photos you take with your phone &mdash; every measurement, every wall, every opening, captured in one property data file. The $15 covers Otter Quotes' cost to order it on your behalf.</p>
+          <p><strong>When your project closes with an Otter Quotes contractor, the full $15 is rebated to your original payment method automatically</strong> &mdash; you pay nothing net. Rebates typically appear on your statement within 5&ndash;10 business days of project completion.</p>
+          <p>If you don't complete your project with an Otter Quotes contractor, you keep the property data file &mdash; it's yours forever and reusable for any future home project &mdash; and the $15 covers our cost of ordering it.</p>
           <p>Either way, the file is yours forever &mdash; and we're building a suite of products around your home that this file becomes the foundation of.</p>
         </div>
       </div>

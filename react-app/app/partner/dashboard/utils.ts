@@ -19,6 +19,7 @@
  */
 
 import type { PartnerRecord } from '@/lib/partner-record';
+import { PARTNER_DISPLAY_LABELS } from '@/lib/agent-types';
 
 // ── Data models ───────────────────────────────────────────────────────────────
 
@@ -83,18 +84,15 @@ export function agentDisplayName(p: Pick<PartnerRecord, 'first_name' | 'last_nam
 }
 
 /**
- * Partner badge label by agent_type (updateUI badge map). NOTE: `customer`
- * maps to 'Partner' here (distinct from the recruit-table type map, where
- * `customer` → 'Customer'). Unknown / missing → 'Partner'.
+ * Partner badge label by agent_type (updateUI badge map). gh-914 single
+ * source (@/lib/agent-types PARTNER_DISPLAY_LABELS) — previously a
+ * hand-copied 4-of-6-key subset that silently omitted `adjuster`/`other`
+ * (both fell through to the generic 'Partner' fallback instead of a real
+ * label); importing the complete map fixes that omission as a side effect
+ * of the refactor. Unknown / missing → 'Partner'.
  */
 export function partnerBadgeLabel(agentType: string | null | undefined): string {
-  const map: Record<string, string> = {
-    re_agent: 'RE Agent',
-    insurance_agent: 'Insurance Agent',
-    home_inspector: 'Home Inspector',
-    customer: 'Partner',
-  };
-  return map[agentType ?? ''] ?? 'Partner';
+  return PARTNER_DISPLAY_LABELS[agentType as keyof typeof PARTNER_DISPLAY_LABELS] ?? 'Partner';
 }
 
 /** Referral link: `https://otterquote.com/ref.html?code=${unique_code || id}`. */
@@ -309,13 +307,16 @@ export function partnersRecruitedSubtext(count: number): string {
 
 // ── Recruits (loadRecruits / populateRecruitsTable / updateRecruitStats) ───────
 
-/** Recruit type labels. NOTE: `customer` → 'Customer' here (vs 'Partner' in the badge). */
-export const RECRUIT_TYPE_LABELS: Record<string, string> = {
-  re_agent: 'RE Agent',
-  insurance_agent: 'Insurance Agent',
-  home_inspector: 'Home Inspector',
-  customer: 'Customer',
-};
+/**
+ * Recruit type labels. gh-914 single source (@/lib/agent-types
+ * PARTNER_DISPLAY_LABELS) — previously a hand-copied 4-of-6-key subset that
+ * silently omitted `adjuster`/`other`; importing the complete map fixes that
+ * omission as a side effect of the refactor. Now the same map as the badge
+ * label above (both source the static page's single AgentTypes.PARTNER_DISPLAY_LABELS
+ * post-refactor — the pre-refactor `customer` divergence, 'Partner' here vs
+ * 'Customer' there, was drift, not intentional design).
+ */
+export const RECRUIT_TYPE_LABELS: Record<string, string> = PARTNER_DISPLAY_LABELS;
 
 export function recruitTypeLabel(agentType: string | null | undefined): string {
   return RECRUIT_TYPE_LABELS[agentType ?? ''] ?? 'Partner';

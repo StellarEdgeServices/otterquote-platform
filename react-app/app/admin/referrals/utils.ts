@@ -19,6 +19,8 @@
  * an injection sink closed by construction in the React port.)
  */
 
+import { ADMIN_BADGE, type AgentType } from '@/lib/agent-types';
+
 // ── Data model (referral_agents — sql/v7-referral-system.sql, v88) ────────────
 
 export interface ReferralAgent {
@@ -152,18 +154,18 @@ export function w9StatusBadge(p: ReferralAgent): BadgeDescriptor {
 }
 
 /**
- * Agent-type badge. Mirrors typeBadge() map EXACTLY (unknown type → raw value or '—').
+ * Agent-type badge. Mirrors admin-referrals.html's typeBadge() map via the
+ * gh-914 single source (@/lib/agent-types ADMIN_BADGE) — unknown type falls
+ * back to raw value or '—'. Previously hand-copied a 4-of-6-key subset here
+ * (adjuster/other were silently absent, falling to the generic 'badge-not-filed'
+ * branch instead of their real badge); importing the complete map fixes that
+ * omission as a side effect of the refactor.
  * NOTE: the static page interpolated the raw type into innerHTML on the fallback
  * branch (an XSS sink). Here `label` is rendered as JSX text → inert by construction.
  */
 export function typeBadge(type: string | null | undefined): BadgeDescriptor {
-  const map: Record<string, BadgeDescriptor> = {
-    re_agent: { label: 'RE Agent', className: 'badge-type-re' },
-    insurance_agent: { label: 'Insurance', className: 'badge-type-ins' },
-    home_inspector: { label: 'Inspector', className: 'badge-type-insp' },
-    customer: { label: 'Customer', className: 'badge-type-cust' },
-  };
-  return map[type ?? ''] ?? { label: type || '—', className: 'badge-not-filed' };
+  const entry = ADMIN_BADGE[(type ?? '') as AgentType];
+  return entry ?? { label: type || '—', className: 'badge-not-filed' };
 }
 
 /**

@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -409,7 +420,7 @@
                     <div class="summary-card-value" id="refInFunnelCount" style="color:#2563eb;">—</div>
                 </div>
                 <div class="summary-card" style="border-left:4px solid #86efac;">
-                    <div class="summary-card-label" style="color:#166534;">Commission Earned</div>
+                    <div class="summary-card-label" style="color:#166534;">Referral Fee Earned</div>
                     <div class="summary-card-value" id="refEarnedCount" style="color:#15803d;">—</div>
                 </div>
                 <div class="summary-card" style="border-left:4px solid #fcd34d;">
@@ -429,7 +440,7 @@
                             <th>Landing Page</th>
                             <th>Status</th>
                             <th>Job Value</th>
-                            <th>Commission</th>
+                            <th>Referral Fee</th>
                             <th>Claim</th>
                         </tr>
                     </thead>
@@ -448,6 +459,7 @@
 <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <script src="js/agent-types.js"></script>
     <script>
         let currentFilter = 'all';
         let allPartners   = [];
@@ -547,15 +559,10 @@
         }
 
         function typeBadge(type) {
-            const map = {
-                're_agent':        ['badge-type-re',   'RE Agent'],
-                'insurance_agent': ['badge-type-ins',  'Insurance'],
-                'home_inspector':  ['badge-type-insp', 'Inspector'],
-                'customer':        ['badge-type-cust', 'Customer'],
-                'adjuster':        ['badge-type-ins',  'Adjuster'],
-                'other':           ['badge-type-cust', 'Other'],
-            };
-            const [cls, label] = map[type] || ['badge-not-filed', type || '—'];
+            // gh-914 single source (js/agent-types.js)
+            const entry = AgentTypes.ADMIN_BADGE[type];
+            const cls = entry ? entry.className : 'badge-not-filed';
+            const label = entry ? entry.label : (type || '—');
             return `<span class="badge ${cls}">${label}</span>`;
         }
 
@@ -579,7 +586,7 @@
                 <tr>
                     <td><strong>${escHtml(([p.first_name, p.last_name].filter(Boolean).join(' ')) || '—')}</strong></td>
                     <td>${escHtml(p.email || '—')}</td>
-                    <td>${typeBadge(p.agent_type)}</td>
+                    <td>${typeBadge(p.agent_type)} <button class="btn-sm btn-sm-view" onclick="openAgentTypeEditor('${p.id}', '${escHtml(p.agent_type || '')}')" title="gh-865: correct a mis-classified partner">Edit</button></td>
                     <td>${fmtDate(p.created_at)}</td>
                     <td>${w9StatusBadge(p)}</td>
                     <td>${fmtDate(p.w9_notification_sent_at)}</td>
@@ -664,7 +671,7 @@
                     ? (r.claim_completion_date
                         ? `<span style="color:#15803d;">Completed ${new Date(r.claim_completion_date).toLocaleDateString()}</span>`
                         : `<span style="color:#2563eb;">Linked</span>`)
-                    : `<span style="color:#d97706;font-weight:600;" title="No claim linked — this referral cannot accrue a commission">None</span>`;
+                    : `<span style="color:#d97706;font-weight:600;" title="No claim linked — this referral cannot accrue a referral fee">None</span>`;
 
                 return `
                     <tr>
@@ -729,6 +736,83 @@
             }
 
             showToast('Partner manually unblocked ✅');
+            await loadPartners();
+        }
+
+        // gh-865: admin correction path for referral_agents.agent_type. The
+        // signup pages now make the visitor confirm their own type, but
+        // partners created before that fix (or mis-typed some other way)
+        // have no self-service correction path, so admin is the floor
+        // (issue AC4). Uses the same direct .update() pattern as verifyW9 /
+        // manualUnblock above — "Admin can update referral agents" RLS
+        // (is_admin_email(), p18_admin_identity_allowlist.sql) already
+        // permits this column, so no migration is needed.
+        function openAgentTypeEditor(agentId, currentType) {
+            // gh-914 single source (js/agent-types.js)
+            const AGENT_TYPE_LABELS = AgentTypes.ADMIN_DROPDOWN_LABELS;
+            const overlay = document.createElement('div');
+            overlay.setAttribute('role', 'dialog');
+            overlay.setAttribute('aria-modal', 'true');
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#0D1B2E;border:1px solid rgba(224,123,0,0.4);border-radius:12px;padding:28px;max-width:380px;width:100%;text-align:left;font-family:inherit;';
+            const heading = document.createElement('p');
+            heading.textContent = 'Change partner type';
+            heading.style.cssText = 'color:#FFFFFF;font-size:17px;font-weight:600;margin:0 0 8px;';
+            const sub = document.createElement('p');
+            sub.textContent = 'Corrects a mis-classified partner (e.g. a signup that landed on the wrong recruit page). Writes directly to referral_agents.agent_type.';
+            sub.style.cssText = 'color:#94A3B8;font-size:14px;margin:0 0 16px;line-height:1.5;';
+            const select = document.createElement('select');
+            select.style.cssText = 'width:100%;padding:10px;border-radius:8px;border:1px solid rgba(148,163,184,0.35);font-size:15px;margin-bottom:16px;background:#0D1B2E;color:#FFFFFF;';
+            Object.keys(AGENT_TYPE_LABELS).forEach((value) => {
+                const o = document.createElement('option');
+                o.value = value;
+                o.textContent = AGENT_TYPE_LABELS[value];
+                if (value === currentType) o.selected = true;
+                select.appendChild(o);
+            });
+            const btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;gap:8px;';
+            const saveBtn = document.createElement('button');
+            saveBtn.type = 'button';
+            saveBtn.textContent = 'Save';
+            saveBtn.className = 'btn-sm btn-sm-verify';
+            saveBtn.style.cssText = 'flex:1;cursor:pointer;';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.className = 'btn-sm btn-sm-view';
+            cancelBtn.style.cssText = 'flex:1;cursor:pointer;';
+            cancelBtn.addEventListener('click', () => document.body.removeChild(overlay));
+            saveBtn.addEventListener('click', () => {
+                document.body.removeChild(overlay);
+                if (select.value !== currentType) changeAgentType(agentId, select.value);
+            });
+            btnRow.appendChild(saveBtn);
+            btnRow.appendChild(cancelBtn);
+            box.appendChild(heading);
+            box.appendChild(sub);
+            box.appendChild(select);
+            box.appendChild(btnRow);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            select.focus();
+        }
+
+        async function changeAgentType(agentId, newType) {
+            // Matches referral_agents_agent_type_check (baseline schema):
+            // re_agent, insurance_agent, home_inspector, customer, adjuster, other.
+            const { error } = await sb
+                .from('referral_agents')
+                .update({ agent_type: newType })
+                .eq('id', agentId);
+
+            if (error) {
+                showToast('Error changing partner type: ' + error.message);
+                return;
+            }
+
+            showToast('Partner type updated ✅');
             await loadPartners();
         }
 

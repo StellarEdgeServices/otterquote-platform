@@ -57,26 +57,29 @@ function setSbAtCookie(session: Session | null): void {
   }
 }
 
-// ─── Role resolution (F-007 getRole — contractor-table-first) ────────────────
+// ─── Role resolution (F-007 getRole — now a single fact-table-derived read) ──
+// gh-909 (D-182 v113, 2026-08-19): this used to be contractors -> profiles.role
+// only — it never queried referral_agents at all, so a partner-only account
+// silently resolved 'homeowner' (the #643-class gap gh-909 comment 5320260678
+// flagged for this exact function). Precedence (contractor row -> active
+// referral_agents.agent_type -> owns a claims row -> profiles.role ->
+// 'homeowner' default) now lives in public.resolved_user_role, a read-only
+// SECURITY INVOKER view scoped to auth.uid() (see
+// supabase/migrations/v113_derived_role_view.sql). js/auth.js getRole() was
+// cut over to the same view first as the lowest-risk validation step; see its
+// comment for the full design pointer. NOTE: this closes the FACT gap only —
+// no page in react-app has a partner destination yet, so a partner-only
+// account here still has nowhere new to route to; that is unchanged by this
+// migration (relocates where the fact comes from, not routing behavior).
 async function resolveRole(user: User): Promise<OtterRole> {
   try {
-    const { data: contractor, error } = await supabase
-      .from('contractors')
-      .select('id')
+    const { data, error } = await supabase
+      .from('resolved_user_role')
+      .select('derived_role')
       .eq('user_id', user.id)
       .single();
-    if (contractor && !error) return 'contractor';
-  } catch {
-    // No contractor record — fall through
-  }
-
-  try {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-    return (profile?.role as OtterRole) ?? null;
+    if (data && !error) return (data.derived_role as OtterRole) ?? null;
+    return null;
   } catch {
     return null;
   }

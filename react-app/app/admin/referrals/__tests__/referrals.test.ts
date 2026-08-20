@@ -275,11 +275,13 @@ describe('fmtDate', () => {
 // ── typeBadge ────────────────────────────────────────────────────────────────
 
 describe('typeBadge', () => {
-  it('maps the four known agent types', () => {
-    expect(typeBadge('re_agent')).toEqual({ label: 'RE Agent', className: 'badge-type-re' });
+  it('maps all six known agent types (gh-914: adjuster/other were previously silently absent, falling to the unknown-type branch)', () => {
+    expect(typeBadge('re_agent')).toEqual({ label: 'Real Estate Agent', className: 'badge-type-re' });
     expect(typeBadge('insurance_agent')).toEqual({ label: 'Insurance', className: 'badge-type-ins' });
     expect(typeBadge('home_inspector')).toEqual({ label: 'Inspector', className: 'badge-type-insp' });
     expect(typeBadge('customer')).toEqual({ label: 'Customer', className: 'badge-type-cust' });
+    expect(typeBadge('adjuster')).toEqual({ label: 'Adjuster', className: 'badge-type-ins' });
+    expect(typeBadge('other')).toEqual({ label: 'Other', className: 'badge-type-cust' });
   });
   it('unknown type → raw value with badge-not-filed', () => {
     expect(typeBadge('weird')).toEqual({ label: 'weird', className: 'badge-not-filed' });

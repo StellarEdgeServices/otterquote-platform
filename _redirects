@@ -7,6 +7,12 @@ https://jade-alpaca-b82b5e.netlify.app/* https://otterquote.com/:splat 301!
 # Redirect published short URL to contractor signup (YouTube channel description uses /contractor)
 /contractor /contractor-join 301
 
+# Redirect legacy get-started page to the app intake (gh-955: the page was a
+# client-side meta-refresh that pushed a history entry, trapping users behind
+# a Back-button loop into the app). Wildcard covers both /get-started and
+# /get-started.html; get-started.html itself is deleted.
+/get-started* https://app.otterquote.com/get-started 301
+
 # Referral short links (/ref/:code) — handled by the ref-redirect Netlify Edge
 # Function (netlify/edge-functions/ref-redirect.ts), NOT a rule in this file.
 # History: a 200 rewrite here left the browser's visible URL at /ref/:code
@@ -20,3 +26,17 @@ https://jade-alpaca-b82b5e.netlify.app/* https://otterquote.com/:splat 301!
 # function forwards every incoming param; see netlify.toml [[edge_functions]].
 https://stellaredgeservices.com/* /stellar-edge.html 200
 https://www.stellaredgeservices.com/* /stellar-edge.html 200
+
+# gh-960(b): oq-crm.html and tools-crm.html were near-duplicate pages for one
+# product under two names ("OQ CRM" vs "Otter CRM"). Consolidated onto
+# tools-crm.html (it lives in the tools- family the footer already links);
+# oq-crm.html deleted, 301 preserves any inbound links/bookmarks.
+/oq-crm.html /tools-crm.html 301
+
+# #1027: inspector-landing.html and partner-inspectors.html were two live
+# pages competing for one intent (both returned 200). partner-inspectors.html
+# is the page the homepage links to. The only unique content on
+# inspector-landing.html — the founder-credibility block — was salvaged
+# verbatim into contractor-join.html first (gh-960(f)). File deleted so this
+# redirect isn't shadowed by the static asset; 301 not 302 to pass link equity.
+/inspector-landing.html /partner-inspectors.html 301

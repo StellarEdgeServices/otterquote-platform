@@ -13,6 +13,8 @@
  *   - Test contractor auth user (email: test-contractor@otterquote-internal.test)
  *   - Test contractor profile row (is_test = true)
  *   - Test contractor business record in contractors table (status = active)
+ *   - Multi-role test account (contractors + active referral_agents row on
+ *     the same user, gh-817/#643 regression fixture)
  *   - Fresh test claim in bidding status with pre-populated mock data
  *
  * Idempotent: auth users and profiles are upserted (not re-created on repeat runs).
@@ -39,6 +41,26 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error(
     '\n❌ Missing env vars. Copy .env.test.example → .env.test and fill in:\n' +
       '   SUPABASE_URL\n   SUPABASE_SERVICE_ROLE_KEY\n'
+  );
+  process.exit(1);
+}
+
+// gh-1028: production-target guard. Before #1000 (2026-08-17) this script's
+// SUPABASE_URL pointed at the production project (yeszghaspzwwstvsrioa) for
+// ~2.5 months — every seed/teardown cycle wrote real activity_log rows and,
+// intermittently, real quotes rows into prod, misdiagnosed as bot activity
+// in #945. #1000 repointed CI's SUPABASE_URL secret to the dedicated test
+// project; this guard makes a repeat of that misconfiguration (a stale local
+// .env.test, a reverted CI secret, a new workflow copy-pasted without the
+// fix) fail loudly here instead of silently seeding/tearing down against
+// real user data again.
+const PRODUCTION_PROJECT_REF = 'yeszghaspzwwstvsrioa';
+if (SUPABASE_URL.includes(PRODUCTION_PROJECT_REF)) {
+  console.error(
+    '\n❌ SUPABASE_URL points at the PRODUCTION project ' +
+      `(${PRODUCTION_PROJECT_REF}). Refusing to seed/teardown test data ` +
+      'there — see gh-1028 and gh-689/#1000. Point SUPABASE_URL at the ' +
+      'dedicated E2E test project instead.\n'
   );
   process.exit(1);
 }
@@ -333,12 +355,133 @@ async function seed() {
     console.log('  ✅ Orphaned D-210 contractor rows cleaned up');
   }
 
+  // ── 5e. Multi-role test account (gh-817/#643 regression fixture) ─────────
+  // Mirrors the real-world bug pattern exactly: one auth user holding BOTH a
+  // contractors row AND an active referral_agents row (the shape that broke
+  // partner-surface role resolution — see js/auth.js getRole()). Dedicated
+  // account, not reused from the single-role contractor/homeowner fixtures
+  // above, so a regression here can't be masked by state left over from
+  // another spec.
+  console.log('5e. Multi-role test account (contractor + referral_agents)...');
+  const MULTIROLE_EMAIL = 'test-multirole@otterquote-internal.test';
+  const multiRoleUserId = await findOrCreateUser(MULTIROLE_EMAIL, 'contractor');
+
+  const { error: mrProfErr } = await supabase.from('profiles').upsert(
+    {
+      id: multiRoleUserId,
+      full_name: 'Test Multirole',
+      email: MULTIROLE_EMAIL,
+      phone: '317-555-0300',
+      role: 'contractor',
+      is_test: true,
+    },
+    { onConflict: 'id' }
+  );
+  if (mrProfErr) throw new Error(`Multi-role profile upsert failed: ${mrProfErr.message}`);
+
+  const { data: existingMRC } = await supabase
+    .from('contractors')
+    .select('id')
+    .eq('user_id', multiRoleUserId)
+    .maybeSingle();
+
+  // pending_approval, not active — matches the real dual-role account
+  // (dustinstohler1@gmail.com) that surfaced this bug; the fix must not
+  // depend on contractor-approval status to resolve the partner branch.
+  const multiRoleContractorPayload = {
+    user_id: multiRoleUserId,
+    status: 'pending_approval',
+    is_test: true,
+    company_name: 'Test Multirole Roofing (E2E)',
+    contact_name: 'Test Multirole',
+    email: MULTIROLE_EMAIL,
+    phone: '317-555-0300',
+    trades: ['roofing'],
+    service_counties: ['IN:*'],
+    address_state: 'IN',
+  };
+
+  let multiRoleContractorId;
+  if (existingMRC) {
+    multiRoleContractorId = existingMRC.id;
+    const { error: mrcUpdErr } = await supabase
+      .from('contractors')
+      .update(multiRoleContractorPayload)
+      .eq('id', multiRoleContractorId);
+    if (mrcUpdErr) throw new Error(`Multi-role contractor update failed: ${mrcUpdErr.message}`);
+  } else {
+    const { data: newMRC, error: mrcInsErr } = await supabase
+      .from('contractors')
+      .insert(multiRoleContractorPayload)
+      .select('id')
+      .single();
+    if (mrcInsErr) throw new Error(`Multi-role contractor insert failed: ${mrcInsErr.message}`);
+    multiRoleContractorId = newMRC.id;
+  }
+
+  const { data: existingMRA } = await supabase
+    .from('referral_agents')
+    .select('id')
+    .eq('user_id', multiRoleUserId)
+    .maybeSingle();
+
+  const multiRoleAgentPayload = {
+    user_id: multiRoleUserId,
+    agent_type: 'home_inspector',
+    first_name: 'Test',
+    last_name: 'Multirole',
+    email: MULTIROLE_EMAIL,
+    status: 'active',
+    unique_code: 'e2etestmultirole',
+    is_test: true,
+  };
+
+  let multiRoleAgentId;
+  if (existingMRA) {
+    multiRoleAgentId = existingMRA.id;
+    const { error: mraUpdErr } = await supabase
+      .from('referral_agents')
+      .update(multiRoleAgentPayload)
+      .eq('id', multiRoleAgentId);
+    if (mraUpdErr) throw new Error(`Multi-role referral_agents update failed: ${mraUpdErr.message}`);
+  } else {
+    const { data: newMRA, error: mraInsErr } = await supabase
+      .from('referral_agents')
+      .insert(multiRoleAgentPayload)
+      .select('id')
+      .single();
+    if (mraInsErr) throw new Error(`Multi-role referral_agents insert failed: ${mraInsErr.message}`);
+    multiRoleAgentId = newMRA.id;
+  }
+  console.log(`  ✅ Multi-role test account ready: contractors.id ${multiRoleContractorId}, referral_agents.id ${multiRoleAgentId}`);
+
   // ── 6. Fresh test claim ──────────────────────────────────────────────────
   console.log('6. Test claim (delete old, create fresh)...');
   // hover_orders.claim_id has a FK to claims — must delete hover_orders first
   // or the claims DELETE silently fails and claims accumulate across runs.
-  await supabase.from('hover_orders').delete().eq('user_id', homeownerUserId);
-  await supabase.from('claims').delete().eq('user_id', homeownerUserId);
+  //
+  // #689: these pre-deletes previously discarded their errors entirely. A
+  // single claim with a NO ACTION FK child (e.g. fee_acceptances from an
+  // interrupted run) makes Postgres reject the WHOLE delete statement
+  // atomically — every historical claim then persists invisibly, which is
+  // exactly how 4 stragglers from 2026-08-11 survived 4 days of green runs.
+  // Warn loudly (non-fatal: a blocked historical straggler must not brick
+  // every CI run — run-scoped teardown owns this run's cleanup; stragglers
+  // get an R-109-gated manual sweep).
+  const { error: preHoErr } = await supabase
+    .from('hover_orders')
+    .delete()
+    .eq('user_id', homeownerUserId);
+  if (preHoErr) {
+    console.warn(`  ⚠️ Pre-seed hover_orders delete BLOCKED (rows will accumulate): ${preHoErr.message}`);
+  }
+  const { error: preClErr } = await supabase
+    .from('claims')
+    .delete()
+    .eq('user_id', homeownerUserId);
+  if (preClErr) {
+    console.warn(`  ⚠️ Pre-seed claims delete BLOCKED (stragglers persist, see #689): ${preClErr.message}`);
+  }
 
   const { data: claim, error: claimErr } = await supabase
     .from('claims')
@@ -381,8 +524,16 @@ async function seed() {
 
   // ── 6b. Fresh retail siding test claim (D-164 design gate) ─────────────
   console.log('6b. Retail siding test claim (design gate verification)...');
-  // Delete previous retail siding test claims
-  await supabase.from('claims').delete().eq('user_id', homeownerUserId).eq('job_type', 'retail');
+  // Delete previous retail siding test claims (#689: same loud-warn treatment
+  // as the step-6 pre-deletes — a FK-blocked delete must be visible in logs)
+  const { error: preRetailErr } = await supabase
+    .from('claims')
+    .delete()
+    .eq('user_id', homeownerUserId)
+    .eq('job_type', 'retail');
+  if (preRetailErr) {
+    console.warn(`  ⚠️ Pre-seed retail claims delete BLOCKED (stragglers persist, see #689): ${preRetailErr.message}`);
+  }
 
   const { data: retailClaim, error: retailClaimErr } = await supabase
     .from('claims')
@@ -524,6 +675,10 @@ async function seed() {
     contractorEmail: CONTRACTOR_EMAIL,
     d210ContractorId,
     d210ContractorEmail: D210_CONTRACTOR_EMAIL,
+    multiRoleUserId,
+    multiRoleEmail: MULTIROLE_EMAIL,
+    multiRoleContractorId,
+    multiRoleAgentId,
     testClaimId,
     testRetailClaimId,
     baseUrl: BASE_URL,
@@ -538,6 +693,7 @@ async function seed() {
   console.log(`  Homeowner:         ${HOMEOWNER_EMAIL}`);
   console.log(`  Contractor:        ${CONTRACTOR_EMAIL} → contractors.id ${contractorId}`);
   console.log(`  D210 Contractor:   ${D210_CONTRACTOR_EMAIL} → contractors.id ${d210ContractorId}`);
+  console.log(`  Multi-role:        ${MULTIROLE_EMAIL} → contractors.id ${multiRoleContractorId}, referral_agents.id ${multiRoleAgentId}`);
   console.log(`  Test claim (insurance): ${testClaimId}`);
   console.log(`  Test claim (retail siding): ${testRetailClaimId}`);
   console.log(`  State file: .test-state.json\n`);

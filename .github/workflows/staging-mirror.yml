@@ -3,9 +3,9 @@
 # match main HEAD. Branch protection on staging blocks direct commits;
 # only this workflow may advance the staging ref.
 #
-# Prerequisites for this workflow to push to a protected staging branch:
-#   GitHub Actions bot must be in the staging branch protection bypass list.
-#   (Settings → Branches → staging rule → Bypass list → GitHub Actions)
+# Prerequisite: the staging classic branch-protection rule must have
+# "Allow force pushes: Everyone" enabled (GitHub offers no github-actions
+# bot-scoping on this repo — verified 2026-07-13). Deletions stay blocked.
 name: Sync staging ← main
 
 on:

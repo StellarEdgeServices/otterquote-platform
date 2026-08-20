@@ -23,6 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { isTestEmail } from '@/lib/test-signal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ async function resolveReferralAgentId(partnerIdParam: string | null): Promise<st
   try {
     // Try unique_code match first
     const { data } = await supabase
-      .from('referral_agents_public')
+      .rpc('get_referral_agents_public')
       .select('id')
       .eq('unique_code', partnerIdParam.toUpperCase())
       .eq('status', 'active')
@@ -76,7 +77,7 @@ async function resolveReferralAgentId(partnerIdParam: string | null): Promise<st
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidPattern.test(partnerIdParam)) {
       const { data: byId } = await supabase
-        .from('referral_agents_public')
+        .rpc('get_referral_agents_public')
         .select('id')
         .eq('id', partnerIdParam)
         .eq('status', 'active')
@@ -544,9 +545,14 @@ export default function TradeSelectorPage() {
               .update(claimPayload)
               .eq('id', existingClaim.id);
           } else {
+            // gh-397/#689: stamp is_test on this React parity insert path —
+            // PR #714 only fixed the COI-identity contractor insert, never
+            // any claims insert. Predicate mirrors the CEO-approved
+            // contractor check (#543 / test-exclusion.ts).
             await supabase.from('claims').insert({
               user_id: user.id,
               ...claimPayload,
+              is_test: isTestEmail(user.email),
               created_at: new Date().toISOString(),
             });
           }

@@ -10,7 +10,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -934,6 +945,7 @@
   <!-- Configuration and Auth -->
   <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -1278,11 +1290,11 @@
     // Look up a referral agent by unique_code or UUID and return their id.
     // Returns null if not found or on any error.
     async function resolveReferralAgentId(partnerIdParam) {
-      if (!partnerIdParam || !sb) return null;
+      if (!partnerIdParam) return null;
       try {
         // Try unique_code match first (the value partners share in URLs)
         let { data } = await sb
-          .from('referral_agents_public')
+          .rpc('get_referral_agents_public')
           .select('id')
           .eq('unique_code', partnerIdParam.toUpperCase())
           .eq('status', 'active')
@@ -1294,7 +1306,7 @@
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (uuidPattern.test(partnerIdParam)) {
           const { data: byId } = await sb
-            .from('referral_agents_public')
+            .rpc('get_referral_agents_public')
             .select('id')
             .eq('id', partnerIdParam)
             .eq('status', 'active')
@@ -1419,11 +1431,19 @@
                 .update(claimData)
                 .eq('id', existingClaim.id);
             } else {
+              // gh-397/#689: stamp is_test at the ONLY point in this flow that
+              // creates the claim row — PR #714 stamped the COI-identity
+              // contractor insert but never touched this claim-creation path,
+              // so an E2E run driving the live trade-selector UI as
+              // test-homeowner@otterquote-internal.test still wrote an
+              // unflagged "real" claim. Predicate matches the CEO-approved
+              // contractor check (#543 / test-exclusion.ts).
               await sb
                 .from('claims')
                 .insert({
                   user_id: user.id,
                   ...claimData,
+                  is_test: Auth.isTestEmail(user.email),
                   created_at: new Date().toISOString()
                 });
             }

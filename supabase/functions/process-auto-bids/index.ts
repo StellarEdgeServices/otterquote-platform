@@ -34,6 +34,7 @@ interface Claim {
   id: string;
   rcv_amount: number;
   property_state: string | null;
+  is_test: boolean | null;
 }
 
 interface ProcessResult {
@@ -82,7 +83,7 @@ serve(async (req: Request) => {
     // D-093: insurance full replacement roofing, bid-released, RCV amount present
     const { data: claims, error: claimsError } = await supabase
       .from('claims')
-      .select('id, rcv_amount, property_state')
+      .select('id, rcv_amount, property_state, is_test')
       .eq('funding_type', 'insurance')
       .eq('job_type', 'insurance_rcv')
       .eq('ready_for_bids', true)
@@ -215,6 +216,7 @@ serve(async (req: Request) => {
             user_id: contractor.user_id,
             event_type: 'auto_bid_submitted',
             title: 'Auto-bid submitted on your behalf',
+            is_test: claim.is_test ?? false,
             metadata: {
               claim_id: claim.id,
               quote_id: quote!.id,
@@ -248,11 +250,14 @@ serve(async (req: Request) => {
           if (MAILGUN_API_KEY && MAILGUN_DOMAIN && toEmail) {
             const name = contractor.contact_name ?? 'there';
             const html = buildEmailHtml(name, rcvAmount, feeAmount, resolvedFeePct);
+            // #869 AC 5: this function sent HTML with no text/plain alternative.
+            const text = buildEmailText(name, rcvAmount, feeAmount, resolvedFeePct);
 
             const fd = new FormData();
             fd.append('from', `Otter Quotes <noreply@${MAILGUN_DOMAIN}>`);
             fd.append('to', toEmail);
             fd.append('subject', 'Otter Quotes: Auto-bid submitted on your behalf');
+            fd.append('text', text);
             fd.append('html', html);
 
             const mgRes = await fetch(
@@ -294,7 +299,31 @@ serve(async (req: Request) => {
   }
 });
 
-// ── Email template ────────────────────────────────────────────────────────────
+// ── Email template (text/plain) ─────────────────────────────────────────────
+// #869 AC 5: text/plain alternative for the HTML-only send below. Per AC 2,
+// bare URLs are correct — and required — in this text part.
+function buildEmailText(name: string, rcvAmount: number, feeAmount: number, feePct: number): string {
+  const fmtUSD = (n: number) =>
+    n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+  return [
+    `Hi ${name},`,
+    ``,
+    `We automatically submitted a bid on your behalf for a new insurance roofing project.`,
+    ``,
+    `Bid Amount: ${fmtUSD(rcvAmount)}`,
+    `Platform Fee (${feePct}%): ${fmtUSD(feeAmount)}`,
+    `Project Type: Insurance full replacement — roofing`,
+    ``,
+    `View Project: https://otterquote.com/contractor-opportunities.html`,
+    ``,
+    `To turn off auto-bidding, visit your auto-bid settings: https://otterquote.com/contractor-auto-bids.html`,
+    ``,
+    `— The Otter Quotes Team`,
+  ].join('\n');
+}
+
+// ── Email template (HTML) ─────────────────────────────────────────────────────
 function buildEmailHtml(name: string, rcvAmount: number, feeAmount: number, feePct: number): string {
   const fmtUSD = (n: number) =>
     n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });

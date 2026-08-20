@@ -5,7 +5,8 @@
     "event_type",
     "title",
     "metadata",
-    "created_at"
+    "created_at",
+    "is_test"
   ],
   "adjuster_email_requests": [
     "id",
@@ -374,38 +375,6 @@
     "needs_cpa_reattestation",
     "public_directory_optin",
     "is_test"
-  ],
-  "contractors_public": [
-    "id",
-    "company_name",
-    "contact_name",
-    "address_city",
-    "address_state",
-    "trades",
-    "specialties",
-    "rating",
-    "review_count",
-    "years_in_business",
-    "num_employees",
-    "about_us",
-    "why_choose_us",
-    "owner_photo_url",
-    "gallery_photo_urls",
-    "intro_video_path",
-    "service_area_description",
-    "service_counties",
-    "verified",
-    "has_workers_comp",
-    "has_general_liability",
-    "license_number",
-    "google_reviews_url",
-    "bbb_url",
-    "angi_url",
-    "yelp_url",
-    "website_url",
-    "status",
-    "repairs_accepted",
-    "public_directory_optin"
   ],
   "contribution_summary": [
     "contribution_type",
@@ -813,20 +782,6 @@
     "w9_verified_at",
     "payments_blocked",
     "w9_notification_sent_at"
-  ],
-  "referral_agents_public": [
-    "id",
-    "first_name",
-    "last_name",
-    "company",
-    "photo_url",
-    "bio",
-    "website",
-    "service_area",
-    "agent_type",
-    "status",
-    "unique_code",
-    "recruit_code"
   ],
   "referral_network": [
     "id",

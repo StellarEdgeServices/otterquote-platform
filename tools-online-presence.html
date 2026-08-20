@@ -9,7 +9,18 @@
 <script>
   Sentry.onLoad(function() {
     Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production"
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
     });
   });
 </script>
@@ -17,10 +28,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
 <title>Online Presence Manager for Contractors | Otter Quotes</title>
-<meta name="description" content="The marketing busywork that keeps contractors findable online &mdash; Google Business Profile, review requests and AI-drafted replies, directory listings, and regular posts &mdash; run automatically. Plans from $10/mo.">
+<meta name="description" content="The marketing busywork that keeps contractors findable online &mdash; Google Business Profile, review requests, directory listings, and regular posts &mdash; run automatically. Plans from $10/mo.">
 <link rel="canonical" href="https://otterquote.com/tools-online-presence.html">
 <meta property="og:title" content="Online Presence Manager &mdash; The Marketing Busywork, Automated &middot; Otter Quotes">
-<meta property="og:description" content="Google Business Profile, review requests and AI-drafted replies, listings, and posts &mdash; run automatically, without an agency retainer. Plans from $10/mo.">
+<meta property="og:description" content="Google Business Profile, review requests, listings, and posts &mdash; run automatically, without an agency retainer. Plans from $10/mo.">
 <meta property="og:url" content="https://otterquote.com/tools-online-presence.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Otter Quotes">
@@ -192,6 +203,7 @@
   color: var(--amber);
   font-weight: 700;
 }
+.price-trial { color: var(--amber); font-size: 0.82rem; font-weight: 600; text-align: center; margin: 0 0 var(--sp-3); }
 .btn-full { width: 100%; }
 .pricing-note { text-align: center; color: var(--slate); font-size: 0.85rem; max-width: 620px; margin: 0 auto; line-height: 1.75; }
 
@@ -292,8 +304,8 @@
       </div>
 
       <div class="job-card">
-        <h3>Review responses</h3>
-        <p>The moment a new review lands, you get notified with an AI-drafted, on-brand reply ready to go &mdash; including the hard ones. You post it yourself, so it goes out as you, not us. A thoughtful answer to a two-star review sells better than the two-star review costs you.</p>
+        <h3>Review responses &mdash; flagged for you, posted by you</h3>
+        <p>The moment a new review lands, you get notified &mdash; including the hard ones. Write your reply with our in-app response tool. You post it yourself, so it goes out as you, not us. A thoughtful answer to a two-star review sells better than the two-star review costs you.</p>
       </div>
 
       <div class="job-card">
@@ -370,10 +382,11 @@
         <ul class="price-features">
           <li>GBP posts from real jobs (about 2/month)</li>
           <li>Review requests via SMS/email after every job</li>
-          <li>Review monitoring + notification + AI-drafted reply for Google &mdash; you post it</li>
+          <li>Review monitoring + notification + in-app response tool for Google &mdash; you post it</li>
           <li>Basic monthly report: GBP views, calls, direction requests, and review trend</li>
         </ul>
-        <button type="button" class="btn btn-secondary btn-full price-cta" data-package="Good ($10/mo)" data-stripe-link="https://buy.stripe.com/5kQ7sD54ocog7T03mdaMU02">Get Started</button>
+        <p class="price-trial">7-day free trial &mdash; cancel anytime</p>
+        <button type="button" class="btn btn-secondary btn-full price-cta" data-package="Good ($10/mo)" data-plan="good">Start free trial</button>
       </div>
 
       <div class="price-card price-card-featured">
@@ -390,7 +403,8 @@
           <li>Directory-listing sync across the core four: Google, Facebook, Apple Maps, and Bing Places</li>
           <li>Facebook posting</li>
         </ul>
-        <button type="button" class="btn btn-primary btn-full price-cta" data-package="Better ($55/mo)" data-stripe-link="https://buy.stripe.com/aFaeV540kcogddk9KBaMU01">Get Started</button>
+        <p class="price-trial">7-day free trial &mdash; cancel anytime</p>
+        <button type="button" class="btn btn-primary btn-full price-cta" data-package="Better ($55/mo)" data-plan="better">Start free trial</button>
       </div>
 
       <div class="price-card">
@@ -406,7 +420,8 @@
           <li>Full aggregator directory sync</li>
           <li>Facebook + Instagram posting</li>
         </ul>
-        <button type="button" class="btn btn-secondary btn-full price-cta" data-package="Best ($125/mo)" data-stripe-link="https://buy.stripe.com/eVqaEP68s2NG6OWbSJaMU00">Get Started</button>
+        <p class="price-trial">7-day free trial &mdash; cancel anytime</p>
+        <button type="button" class="btn btn-secondary btn-full price-cta" data-package="Best ($125/mo)" data-plan="best">Start free trial</button>
       </div>
 
     </div>
@@ -414,58 +429,6 @@
     <p class="pricing-note">Every package, every tier: real reviews only &mdash; no bought or gated reviews. Replies and posts sound like you. Your Google, Facebook, and directory accounts stay in your name. Cancel any time &mdash; no 12-month contract, no mandatory calls.</p>
   </div>
 </section>
-
-<!-- Signup Modal -->
-<div class="modal-overlay" id="signupOverlay">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="signupTitle">
-    <div class="modal-header">
-      <h3 class="form-note-title" id="signupTitle">Get Started &mdash; <span id="signupPackageLabel">Good ($10/mo)</span></h3>
-      <button type="button" class="modal-close" id="signupClose" aria-label="Close">&times;</button>
-    </div>
-
-    <div id="signupFormWrap">
-      <p class="form-subtitle">Tell us who you are and we'll get OQ Online Management set up on your accounts.</p>
-
-      <form class="oq-form" id="signupForm">
-        <div class="form-group">
-          <label for="su_name">Full Name</label>
-          <input type="text" id="su_name" required autocomplete="name" placeholder="Mike Reynolds">
-        </div>
-
-        <div class="form-group">
-          <label for="su_company">Company Name</label>
-          <input type="text" id="su_company" required autocomplete="organization" placeholder="Reynolds Roofing">
-        </div>
-
-        <div class="form-group">
-          <label for="su_email">Email</label>
-          <input type="email" id="su_email" required autocomplete="email" placeholder="mike@reynoldsroofing.com">
-        </div>
-
-        <div class="form-group">
-          <label for="su_phone">Phone</label>
-          <input type="tel" id="su_phone" required autocomplete="tel" placeholder="(555) 123-4567">
-        </div>
-
-        <div class="hp-field">
-          <label for="su_website">Website</label>
-          <input type="text" id="su_website" tabindex="-1" autocomplete="off">
-        </div>
-
-        <p class="form-error" id="signupError"></p>
-
-        <button type="submit" class="form-submit" id="signupSubmitBtn">Get Started</button>
-
-        <p class="form-note">We'll only use this to get you set up and talk to you about this product.</p>
-      </form>
-    </div>
-
-    <div class="form-success" id="signupSuccess">
-      <h3>You're set</h3>
-      <p>We'll have you live within 24 hours. If you want to talk sooner, call <a href="tel:+18448753412" style="color:var(--amber);">(844) 875-3412</a> and ask for Dustin.</p>
-    </div>
-  </div>
-</div>
 
 <footer id="site-footer"></footer>
 
@@ -475,132 +438,39 @@
 <script src="js/nav.js"></script>
 
 <script>
-var oqSelectedPackage = '';
+// Trusted checkout destinations, resolved by a fixed plan key -- never by trusting
+// a DOM attribute directly (gh-777: CodeQL js/client-side-unvalidated-url-redirection).
+var STRIPE_CHECKOUT_LINKS = {
+  good:   'https://buy.stripe.com/5kQ7sD54ocog7T03mdaMU02',
+  better: 'https://buy.stripe.com/aFaeV540kcogddk9KBaMU01',
+  best:   'https://buy.stripe.com/eVqaEP68s2NG6OWbSJaMU00'
+};
 
+// gh-871: every .price-cta button's data-plan is present in STRIPE_CHECKOUT_LINKS,
+// so this always redirects straight to Stripe. The signup modal + intake form that
+// used to live here (from before these Stripe links existed) was unreachable dead
+// code -- removed rather than wired in, because resurrecting it in front of the
+// Stripe redirect would show a "you're set, live within 24 hours" promise before
+// any payment has happened, which is worse than no message at all.
+//
+// Known gap this does NOT fix (tracked in gh-871): Stripe's hosted_confirmation
+// for these three Payment Links has no custom_message and no redirect back to this
+// site, so a paying customer currently lands on Stripe's generic receipt page with
+// no next-step messaging, and we collect no fulfillment intake data at checkout.
+// Closing that gap requires Stripe Payment Link config changes (after_completion
+// and/or custom_fields), which is outside this page's client code.
 document.addEventListener('DOMContentLoaded', function () {
-  var overlay  = document.getElementById('signupOverlay');
-  var closeBtn = document.getElementById('signupClose');
-  var pkgLabel = document.getElementById('signupPackageLabel');
-  var form     = document.getElementById('signupForm');
-
   document.querySelectorAll('.price-cta').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      var stripeLink = btn.getAttribute('data-stripe-link');
-      if (stripeLink) {
-        if (typeof gtag === 'function') {
-          gtag('event', 'oqom_checkout_start', { tool: 'online_presence', package: btn.getAttribute('data-package') });
-        }
-        window.location.href = stripeLink;
-        return;
+      var stripeLink = STRIPE_CHECKOUT_LINKS[btn.getAttribute('data-plan')];
+      if (!stripeLink) return;
+      if (typeof gtag === 'function') {
+        gtag('event', 'oqom_checkout_start', { tool: 'online_presence', package: btn.getAttribute('data-package') });
       }
-      oqSelectedPackage = btn.getAttribute('data-package');
-      pkgLabel.textContent = oqSelectedPackage;
-      resetSignupForm();
-      overlay.classList.add('active');
-      document.body.style.overflow = 'hidden';
+      window.location.href = stripeLink;
     });
   });
-
-  function closeSignupModal() {
-    overlay.classList.remove('active');
-    document.body.style.overflow = '';
-  }
-
-  if (closeBtn) closeBtn.addEventListener('click', closeSignupModal);
-  if (overlay) {
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) closeSignupModal();
-    });
-  }
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && overlay.classList.contains('active')) closeSignupModal();
-  });
-
-  if (form) form.addEventListener('submit', handleSignup);
 });
-
-function resetSignupForm() {
-  document.getElementById('signupFormWrap').style.display = 'block';
-  document.getElementById('signupSuccess').style.display = 'none';
-  var form = document.getElementById('signupForm');
-  if (form) form.reset();
-  var errEl = document.getElementById('signupError');
-  errEl.textContent = '';
-  errEl.style.display = 'none';
-  var btn = document.getElementById('signupSubmitBtn');
-  btn.disabled = false;
-  btn.textContent = 'Get Started';
-}
-
-async function handleSignup(e) {
-  e.preventDefault();
-
-  var errEl = document.getElementById('signupError');
-  var btn   = document.getElementById('signupSubmitBtn');
-  errEl.style.display = 'none';
-
-  // Honeypot — bots fill hidden fields, people don't.
-  if (document.getElementById('su_website').value) return;
-
-  var name    = document.getElementById('su_name').value.trim();
-  var company = document.getElementById('su_company').value.trim();
-  var email   = document.getElementById('su_email').value.trim();
-  var phone   = document.getElementById('su_phone').value.trim();
-  var pkg     = oqSelectedPackage || 'Unspecified';
-
-  if (!name || !company || !email || !phone) {
-    errEl.textContent = 'Please fill in every field.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Sending…';
-
-  var subject = 'OQOM SIGNUP — ' + pkg;
-  var message =
-    subject + '\n\n' +
-    'Name:     ' + name + '\n' +
-    'Company:  ' + company + '\n' +
-    'Email:    ' + email + '\n' +
-    'Phone:    ' + phone + '\n' +
-    'Package:  ' + pkg + '\n\n' +
-    '---\nSubmitted from ' + window.location.href;
-
-  try {
-    var SUPABASE_URL  = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)  || '';
-    var SUPABASE_ANON = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) || '';
-
-    var res = await fetch(SUPABASE_URL + '/functions/v1/send-support-email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON,
-        'Authorization': 'Bearer ' + SUPABASE_ANON
-      },
-      body: JSON.stringify({
-        from_name:  name + ' (' + company + ')',
-        from_email: email,
-        subject:    subject,
-        message:    message
-      })
-    });
-
-    if (!res.ok) throw new Error('Send failed');
-
-    document.getElementById('signupFormWrap').style.display = 'none';
-    document.getElementById('signupSuccess').style.display = 'block';
-
-    if (typeof gtag === 'function') {
-      gtag('event', 'oqom_signup', { tool: 'online_presence', package: pkg });
-    }
-  } catch (err) {
-    errEl.textContent = 'Something went wrong. Please email info@otterquote.com or call (844) 875-3412.';
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Get Started';
-  }
-}
 </script>
 </body>
 </html>

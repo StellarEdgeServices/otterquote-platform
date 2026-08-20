@@ -7,8 +7,9 @@
  * Allows a contractor to mark one of their won jobs as complete.
  * Sets claims.completion_date, writes an activity_log entry,
  * sends a homeowner notification email via Mailgun (D-228),
- * triggers the home profile prompt flow (D-231), and non-fatally
- * advances a linked referral to 'job_completed' (D-139, #567).
+ * triggers the home profile prompt flow (D-231), non-fatally
+ * advances a linked referral to 'job_completed' (D-139, #567), and
+ * non-fatally triggers the partner status email catch-up (#856).
  *
  * Authorization:
  *   - Caller must have a valid Supabase JWT (contractor)
@@ -29,8 +30,10 @@
  *   409 — claim is not in a completable state (not contract_signed or awarded)
  *   500 — internal error
  *
- * Downstream listeners (D-228 + D-231 wired in this build):
- *   job_completed → sendHomeownerNotification (D-228), send-home-profile-prompt (D-231)
+ * Downstream listeners (D-228 + D-231 + #856 wired in this build):
+ *   job_completed → sendHomeownerNotification (D-228), send-home-profile-prompt (D-231),
+ *                    triggerPartnerStatusEmail (#856, catch-up mode — also delivers any
+ *                    earlier stages 1/3/4 that never had a wiring point)
  *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, MAILGUN_API_KEY
@@ -221,6 +224,44 @@ async function triggerHomeProfilePrompt(
 }
 
 // =============================================================================
+// PARTNER STATUS EMAIL SERIES TRIGGER (#856)
+// Non-fatal fire-and-forget — triggers send-partner-status-email for the
+// claim's referral, if any. That function is stage-agnostic and catch-up:
+// called with no `stage`, it sends every stage that is currently eligible
+// (per live claims/quotes state) and not yet sent — so this single call
+// site also catches up any earlier stages (1/3/4) that never had a wiring
+// point of their own. Stage 2 (bid_received) has no write path in the live
+// schema and is permanently skipped by design (see send-partner-status-email
+// header). Same non-fatal pattern as triggerHomeProfilePrompt above.
+// =============================================================================
+
+async function triggerPartnerStatusEmail(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  referralId: string
+): Promise<void> {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/send-partner-status-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({ referral_id: referralId }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "(unreadable)");
+      console.error(`[${FUNCTION_NAME}] send-partner-status-email returned ${res.status} for referral ${referralId}: ${errText}`);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      console.log(`[${FUNCTION_NAME}] send-partner-status-email triggered for referral ${referralId} — sent: ${JSON.stringify(data.sent || [])}`);
+    }
+  } catch (err) {
+    console.error(`[${FUNCTION_NAME}] send-partner-status-email fetch threw (non-fatal) for referral ${referralId}:`, err);
+  }
+}
+
+// =============================================================================
 // MAIN HANDLER
 // =============================================================================
 
@@ -330,7 +371,7 @@ serve(async (req: Request) => {
     // ── Fetch claim ────────────────────────────────────────────────────────────
     const { data: claim, error: claimError } = await supabase
       .from("claims")
-      .select("id, status, completion_date, property_address, user_id, referral_id")
+      .select("id, status, completion_date, property_address, user_id, referral_id, is_test")
       .eq("id", claimId)
       .single();
 
@@ -377,6 +418,7 @@ serve(async (req: Request) => {
         user_id:    authUserId,
         event_type: "job_completed",
         title:      `Job marked complete for ${address}`,
+        is_test:    claim.is_test ?? false,
         metadata: {
           claim_id:     claimId,
           quote_id:     quote.id,
@@ -404,6 +446,11 @@ serve(async (req: Request) => {
       if (referralAdvanceError) {
         console.error(`[${FUNCTION_NAME}] referral advance failed (non-fatal) for referral ${claim.referral_id}:`, referralAdvanceError.message);
       }
+
+      // ── Partner status email series (#856) ─────────────────────────────────
+      // Fire-and-forget, same as above — send-partner-status-email applies its
+      // own idempotency guard and stage-eligibility check internally.
+      await triggerPartnerStatusEmail(supabaseUrl, serviceRoleKey, claim.referral_id);
     }
 
     // ── Homeowner notification (job-complete email) ──────────────────────────────

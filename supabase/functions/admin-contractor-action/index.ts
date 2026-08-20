@@ -203,11 +203,16 @@ serve(async (req) => {
     // ── Action: approve ──
     if (action === "approve") {
       // Update contractor status
+      // gh-755: Dustin-ruled default (2026-08-18) — newly-approved
+      // contractors are opted into the public directory by default, with
+      // notice given at signup (contractor-pre-approval.html). They can
+      // still opt out afterward via the settings toggle (PR #194/#293).
       const { error: updateError } = await supabase
         .from("contractors")
         .update({
           status: "active",
           approved_at: new Date().toISOString(),
+          public_directory_optin: true,
         })
         .eq("id", contractor_id);
 
@@ -336,13 +341,29 @@ If you'd like to address this and reapply, please contact us at support@otterquo
 
 The Otter Quotes Team`;
 
+        const rejectionEmailHtml = buildEmail(`
+          <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Update on Your Otter Quotes Application</h2>
+
+          <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">Hi ${greeting},</p>
+          <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">Thank you for applying to join the Otter Quotes contractor network. After reviewing your application, we weren't able to approve your account at this time.</p>
+
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;margin-bottom:20px;">
+            <tr><td style="padding:14px 16px;">
+              <p style="margin:0;color:#991B1B;font-size:14px;"><strong>Reason:</strong> ${reason}</p>
+            </td></tr>
+          </table>
+
+          <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">If you'd like to address this and reapply, please contact us at <a href="mailto:support@otterquote.com" style="color:#E07B00;">support@otterquote.com</a> or call (844) 875-3412. We're happy to work with you to get things squared away.</p>
+        `);
+
         await sendMailgunEmail(
           mailgunKey,
           mailgunDomain,
           contractor.email,
           "Otter Quotes <notifications@mail.otterquote.com>",
           "Otter Quotes Application — Update on Your Account",
-          rejectionEmailText
+          rejectionEmailText,
+          rejectionEmailHtml
         );
       }
 
@@ -391,13 +412,27 @@ info@otterquote.com
 (844) 875-3412
 https://otterquote.com`;
 
+      const coiEmailHtml = buildEmail(`
+          <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Certificate of Insurance Verification Request</h2>
+
+          <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">Dear Insurance Representative,</p>
+          <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">We are writing to verify the Certificate of Insurance on file for <strong>${contractor_company_name}</strong>, who has applied to join the Otter Quotes contractor network.</p>
+          <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.6;">We are requesting confirmation that the following policies are currently active and in good standing for this insured:</p>
+          <table cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;">
+            <tr><td style="padding:2px 0;color:#374151;font-size:15px;">&bull;&nbsp; Commercial General Liability Insurance</td></tr>
+            <tr><td style="padding:2px 0;color:#374151;font-size:15px;">&bull;&nbsp; Workers' Compensation Insurance</td></tr>
+          </table>
+          <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Please reply to this email confirming policy status, or contact us at <a href="mailto:info@otterquote.com" style="color:#E07B00;">info@otterquote.com</a> or (844) 875-3412 with any questions.</p>
+      `);
+
       await sendMailgunEmail(
         mailgunKey,
         mailgunDomain,
         broker_email,
         "Otter Quotes <info@mail.otterquote.com>",
         "COI Verification Request — Otter Quotes",
-        coiEmail
+        coiEmail,
+        coiEmailHtml
       );
 
       return new Response(

@@ -120,7 +120,7 @@ function formatCurrency(amount: number): string {
 }
 
 function formatPayoutType(type: string): string {
-  return type === "commission_referral" ? "Referral Commission" : "Recruit Bonus";
+  return type === "commission_referral" ? "Referral Fee" : "Recruit Bonus";
 }
 
 async function sendMailgunEmail(
@@ -407,11 +407,11 @@ serve(async (req: Request) => {
 
       const bodyHtml = `
 <h2 style="font-size:1.5rem;font-weight:700;color:#0B1929;margin:0 0 8px;">
-  Great news — your commission is approved!
+  Great news — your referral fee is approved!
 </h2>
 <p style="color:#374151;font-size:0.95rem;margin:0 0 24px;">
-  Hi ${partnerName}, your ${payoutType.toLowerCase()} of <strong>${amount}</strong> has been approved
-  and is now processing. You should expect to receive it within the next 1–3 business days.
+  Hi ${partnerName}, your ${payoutType.toLowerCase()} of <strong>${amount}</strong> has been approved.
+  Our team will follow up separately with next steps to get you paid.
 </p>
 
 <table width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -420,7 +420,7 @@ serve(async (req: Request) => {
     <td style="padding:20px 24px;">
       <table width="100%" cellpadding="0" cellspacing="0" border="0">
         <tr>
-          <td style="padding:4px 0;font-size:0.875rem;color:#64748B;width:140px;">Commission Type</td>
+          <td style="padding:4px 0;font-size:0.875rem;color:#64748B;width:140px;">Referral Fee Type</td>
           <td style="padding:4px 0;font-size:0.875rem;font-weight:600;color:#0B1929;">${payoutType}</td>
         </tr>
         <tr>
@@ -447,8 +447,8 @@ ${ctaButton("View Your Dashboard →", PARTNER_DASH_URL)}
       const bodyText = [
         `Hi ${partnerName},`,
         ``,
-        `Your ${payoutType.toLowerCase()} of ${amount} has been approved and is now processing.`,
-        `Expected arrival: 1–3 business days.`,
+        `Your ${payoutType.toLowerCase()} of ${amount} has been approved.`,
+        `Our team will follow up separately with next steps to get you paid.`,
         ``,
         `View your dashboard: ${PARTNER_DASH_URL}`,
       ].join("\n");

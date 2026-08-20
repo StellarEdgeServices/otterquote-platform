@@ -43,10 +43,15 @@ Copy `.env.test.example` to `.env.test` and fill in:
 | Variable | Value |
 |---|---|
 | `BASE_URL` | `https://staging--jade-alpaca-b82b5e.netlify.app` |
-| `SUPABASE_URL` | `https://yeszghaspzwwstvsrioa.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (in `otterquote-memory.md`) |
+| `SUPABASE_URL` | `https://zsdvaqilfdclwosmiheh.supabase.co` (dedicated `otterquote-ci-test` project — gh-689) |
+| `SUPABASE_SERVICE_ROLE_KEY` | `otterquote-ci-test` service role key (Supabase Dashboard → otterquote-ci-test → Project Settings → API) |
 
 **Never commit `.env.test`.** It is gitignored.
+
+**gh-689 (2026-08-17):** seed/teardown used to run against the production
+Supabase project (`yeszghaspzwwstvsrioa`). CI now targets a dedicated test
+project so E2E runs never write to production; point local runs at the same
+test project unless you have a specific reason to test against prod data.
 
 ### 2. Supabase Auth redirect allowlist
 
