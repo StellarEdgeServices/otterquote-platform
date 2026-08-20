@@ -4,8 +4,9 @@
  *
  * Every user-facing string in ../copy.ts is asserted BYTE-FOR-BYTE against an independently
  * re-typed snapshot of help-measurements.html (the live homeowner reference). Any reword of
- * copy.ts trips this lock. The D-205 financial terms ($150 price line + rebate callout) and
- * the Stripe security line are the highest-value locks.
+ * copy.ts trips this lock. The D-291 financial terms ($15 price line + rebate callout,
+ * repricing D-205's now-superseded $150) and the Stripe security line are the highest-value
+ * locks.
  *
  * Convention mirrors H5 color-selection.test.ts: the STATIC object below is typed by hand from
  * the static page (entities decoded, <strong> flattened) and is the source of truth for the
@@ -29,7 +30,7 @@ const STATIC = {
   hoverBadge: 'Recommended for Most',
   hoverIcon: '📐',
   hoverCardTitle: 'Hover Complete Property Data File',
-  hoverCardPrice: '$150 (rebated if you use an Otter Quotes contractor)',
+  hoverCardPrice: '$15 (rebated if you use an Otter Quotes contractor)',
   hoverCardDescription:
     "Get a complete 3D model of your home — roof, walls, openings, and full measurements — by taking photos with your phone. Hover's technology builds the model from your photos. This is your best option for any full-replacement project.",
   hoverCardFeatures: [
@@ -57,10 +58,10 @@ const STATIC = {
   hoverSectionIntro:
     'Hover uses advanced technology to build a complete 3D model of your home from photos you take with your phone — roof, walls, openings, and every measurement contractors need to bid accurately.',
   rebateCallout:
-    "How the $150 works: You pay $150 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project closes with an Otter Quotes contractor, the full $150 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $15 works: You pay $15 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project closes with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
   hoverStep1Title: 'Purchase Your Report',
   hoverStep1Text:
-    'Pay the $150 fee securely through Stripe. This covers your Hover Complete property data file.',
+    'Pay the $15 fee securely through Stripe. This covers your RoofScope Complete property data file.',
   hoverStep2Title: 'Take Photos of Your Home',
   hoverStep2Text:
     "We'll send you a link to Hover's guided photo capture. Their app walks you through taking 8-10 photos from around your home — it checks photo quality as you go.",
@@ -69,11 +70,11 @@ const STATIC = {
     "Hover processes your photos (usually 24-48 hours) and creates a detailed measurement report. We'll save it in your account — you'll get a notification when it's ready.",
   hoverWhatYouNeed:
     "What you'll need: A smartphone with a decent camera and the ability to walk around the outside of your home. Hover's guided process handles the rest.",
-  hoverPurchaseButton: 'Purchase Property Data File — $150',
+  hoverPurchaseButton: 'Purchase Property Data File — $15',
   chooseDifferentButton: '← Choose Different Option',
   // Stripe form (649-659)
-  hoverCardFormLead: '💳 Enter your card details to complete the $150 purchase:',
-  hoverPayButton: 'Pay $150 Securely',
+  hoverCardFormLead: '💳 Enter your card details to complete the $15 purchase:',
+  hoverPayButton: 'Pay $15 Securely',
   hoverCancelButton: 'Cancel',
   stripeSecurityLine:
     '🔒 Payment secured by Stripe. Your card info is never stored on our servers.',
@@ -140,20 +141,20 @@ describe('MEASUREMENTS_COPY — header & path intro', () => {
   });
 });
 
-describe('MEASUREMENTS_COPY — D-205 financial terms (highest-value locks)', () => {
-  it('locks the $150 price line exactly', () => {
+describe('MEASUREMENTS_COPY — D-291 financial terms (highest-value locks)', () => {
+  it('locks the $15 price line exactly', () => {
     expect(MEASUREMENTS_COPY.hoverCardPrice).toBe(STATIC.hoverCardPrice);
     expect(MEASUREMENTS_COPY.hoverCardPrice).toBe(
-      '$150 (rebated if you use an Otter Quotes contractor)',
+      '$15 (rebated if you use an Otter Quotes contractor)',
     );
   });
 
   it('locks the full rebate callout (every clause, exact)', () => {
     expect(MEASUREMENTS_COPY.rebateCallout).toBe(STATIC.rebateCallout);
     // spot-check the load-bearing clauses survive verbatim
-    expect(MEASUREMENTS_COPY.rebateCallout).toContain('You pay $150 now');
+    expect(MEASUREMENTS_COPY.rebateCallout).toContain('You pay $15 now');
     expect(MEASUREMENTS_COPY.rebateCallout).toContain(
-      'the full $150 is rebated to your original payment method',
+      'the full $15 is rebated to your original payment method',
     );
     expect(MEASUREMENTS_COPY.rebateCallout).toContain('the file stays with you');
   });

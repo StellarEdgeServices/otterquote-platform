@@ -150,7 +150,8 @@ export function useHelpMeasurementsData(
 // ── Path A: Hover (paid) ────────────────────────────────────────────────────────────
 
 /**
- * Step 1 — create the Stripe PaymentIntent for the $150 Hover fee (NO charge yet).
+ * Step 1 — create the Stripe PaymentIntent for the $15 Hover fee (D-291, repricing D-205's
+ * now-superseded $150) (NO charge yet).
  * Calls create-payment-intent via Services with its contract UNCHANGED. Returns the
  * PaymentIntentResult ({ client_secret }); the page mounts the card form only when a
  * client_secret comes back (static purchaseHover 885-907).

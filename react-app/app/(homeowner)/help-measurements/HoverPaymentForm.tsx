@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * Hover $150 card form — D-211 Phase 28, PR 2/2 (Tier-3 surface, NO Tier-3 change).
+ * Hover $15 card form (D-291, repricing D-205's now-superseded $150) — D-211 Phase 28,
+ * PR 2/2 (Tier-3 surface, NO Tier-3 change).
  *
- * Mounts a Stripe Card Element and confirms the $150 PaymentIntent the parent already
+ * Mounts a Stripe Card Element and confirms the $15 PaymentIntent the parent already
  * created. Mirrors the static help-measurements.html card form (649-659 markup +
  * confirmHoverPayment 939-1002) and the contractor-settings Stripe idiom
  * (StripePaymentMethods.tsx) — but uses confirmCardPayment, not confirmCardSetup.
@@ -104,7 +105,7 @@ type PayState = 'idle' | 'processing' | 'ordering' | 'orderFailed';
  */
 export const ORDER_RETRY_COPY = {
   paidNoRecharge:
-    'Your $150 payment went through and is confirmed. We could not start your Hover order — use Retry Order below. Retrying will not charge your card again.',
+    'Your $15 payment went through and is confirmed. We could not start your Hover order — use Retry Order below. Retrying will not charge your card again.',
   retryButton: 'Retry Order',
   orderFailedFallback: 'Could not create your Hover order. Please retry.',
   supportNote:

@@ -6,16 +6,16 @@
  *
  * VERBATIM-LOCKED. Every user-facing string below is ported BYTE-FOR-BYTE (rendered text
  * content) from help-measurements.html and asserted by ./__tests__/copy.test.ts — any reword
- * trips the lock. These include the D-205 financial terms ($150 price line + rebate callout)
- * and the Stripe security line, which must be exact.
+ * trips the lock. These include the D-291 financial terms ($15 price line + rebate callout,
+ * repricing D-205's now-superseded $150) and the Stripe security line, which must be exact.
  *
  * Faithful-port notes (same idiom as the H5 color-selection copy.ts):
  *   • HTML entities are decoded to their rendered glyph because React renders text nodes,
  *     not HTML. Em-dashes in the static are literal U+2014 (—); all apostrophes are straight
  *     ASCII ('); the "Sending…" label uses a literal U+2026 ellipsis (…).
  *   • Inline <strong> markup is presentation-only and flattened to plain text (the words are
- *     what is locked). e.g. "<strong>How the $150 works:</strong> You pay…" →
- *     "How the $150 works: You pay…".
+ *     what is locked). e.g. "<strong>How the $15 works:</strong> You pay…" →
+ *     "How the $15 works: You pay…".
  *   • Icon glyphs (📐 📬 ✓ ← 💳 🔒) are kept as the literal emoji/symbol the static renders.
  *   • There are NO interpolated copy strings to lock: the only runtime-text element is the
  *     #emailPreview div, whose updater (updateEmailPreview) is CALLED-BUT-NEVER-DEFINED in the
@@ -51,8 +51,8 @@ export const MEASUREMENTS_COPY = {
   hoverBadge: 'Recommended for Most',
   hoverIcon: '📐',
   hoverCardTitle: 'Hover Complete Property Data File',
-  // D-205 price line — LOCKED, exact.
-  hoverCardPrice: '$150 (rebated if you use an Otter Quotes contractor)',
+  // D-291 price line (repriced from D-205's $150) — LOCKED, exact.
+  hoverCardPrice: '$15 (rebated if you use an Otter Quotes contractor)',
   hoverCardDescription:
     "Get a complete 3D model of your home — roof, walls, openings, and full measurements — by taking photos with your phone. Hover's technology builds the model from your photos. This is your best option for any full-replacement project.",
   hoverCardFeatures: [
@@ -84,15 +84,15 @@ export const MEASUREMENTS_COPY = {
   hoverSectionIntro:
     'Hover uses advanced technology to build a complete 3D model of your home from photos you take with your phone — roof, walls, openings, and every measurement contractors need to bid accurately.',
 
-  // Rebate callout (help-measurements.html:611) — D-205 financial terms, LOCKED.
-  // "<strong>How the $150 works:</strong> …" flattened.
+  // Rebate callout (help-measurements.html:611) — D-291 financial terms (repriced from D-205's $150), LOCKED.
+  // "<strong>How the $15 works:</strong> …" flattened.
   rebateCallout:
-    "How the $150 works: You pay $150 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project closes with an Otter Quotes contractor, the full $150 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $15 works: You pay $15 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project closes with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
 
   // Hover steps (help-measurements.html:614-636).
   hoverStep1Title: 'Purchase Your Report',
   hoverStep1Text:
-    'Pay the $150 fee securely through Stripe. This covers your Hover Complete property data file.',
+    'Pay the $15 fee securely through Stripe. This covers your RoofScope Complete property data file.',
   hoverStep2Title: 'Take Photos of Your Home',
   hoverStep2Text:
     "We'll send you a link to Hover's guided photo capture. Their app walks you through taking 8-10 photos from around your home — it checks photo quality as you go.",
@@ -105,13 +105,13 @@ export const MEASUREMENTS_COPY = {
     "What you'll need: A smartphone with a decent camera and the ability to walk around the outside of your home. Hover's guided process handles the rest.",
 
   // Hover purchase button (help-measurements.html:644).
-  hoverPurchaseButton: 'Purchase Property Data File — $150',
+  hoverPurchaseButton: 'Purchase Property Data File — $15',
   // Shared "go back" button (help-measurements.html:646/724).
   chooseDifferentButton: '← Choose Different Option',
 
   // ── Stripe card form (help-measurements.html:649-659) ──
-  hoverCardFormLead: '💳 Enter your card details to complete the $150 purchase:',
-  hoverPayButton: 'Pay $150 Securely',
+  hoverCardFormLead: '💳 Enter your card details to complete the $15 purchase:',
+  hoverPayButton: 'Pay $15 Securely',
   hoverCancelButton: 'Cancel',
   // Stripe security line (help-measurements.html:658) — LOCKED, exact.
   stripeSecurityLine:

@@ -26,10 +26,10 @@ import {
   paymentIntentIdFromClientSecret,
 } from '../utils';
 
-describe('constants (D-205 / D-181 parity values)', () => {
+describe('constants (D-291 / D-181 parity values)', () => {
   it('matches the static charge/deliverable/description constants', () => {
-    expect(HOVER_AMOUNT_CENTS).toBe(15000);
-    expect(HOVER_AMOUNT_DOLLARS).toBe(150.0);
+    expect(HOVER_AMOUNT_CENTS).toBe(1500);
+    expect(HOVER_AMOUNT_DOLLARS).toBe(15.0);
     expect(HOVER_DELIVERABLE_TYPE_ID).toBe(3);
     expect(HOVER_PAYMENT_DESCRIPTION).toBe('Hover Complete Property Data File');
     expect(MEASUREMENTS_REQUEST_TYPE).toBe('measurements');
@@ -83,10 +83,10 @@ describe('resolveAddressLine1', () => {
 });
 
 describe('buildHoverPaymentIntentParams', () => {
-  it('shapes the PaymentIntent params with claim_id + 15000c + description', () => {
+  it('shapes the PaymentIntent params with claim_id + 1500c + description', () => {
     expect(buildHoverPaymentIntentParams({ id: 'claim-1' })).toEqual({
       claim_id: 'claim-1',
-      amount: 15000,
+      amount: 1500,
       description: 'Hover Complete Property Data File',
     });
   });
@@ -117,7 +117,7 @@ describe('buildHoverOrderParams', () => {
       homeowner_name: 'Jane Roof',
       homeowner_email: 'jane@example.com',
       homeowner_phone: '(317) 555-1234',
-      amount_charged: 150.0,
+      amount_charged: 15.0,
       deliverable_type_id: 3,
       payment_intent_id: 'pi_abc',
     });
@@ -150,9 +150,9 @@ describe('buildHoverOrderParams', () => {
     expect(out.user_id).toBe('');
   });
 
-  it('always carries the D-205 amount/deliverable + the D-181 payment_intent_id', () => {
+  it('always carries the D-291 amount/deliverable + the D-181 payment_intent_id', () => {
     const out = buildHoverOrderParams({ profile, claim, user, paymentIntentId: 'pi_guard' });
-    expect(out.amount_charged).toBe(150.0);
+    expect(out.amount_charged).toBe(15.0);
     expect(out.deliverable_type_id).toBe(3);
     expect(out.payment_intent_id).toBe('pi_guard');
   });
