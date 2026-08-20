@@ -133,17 +133,17 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // Cron-secret gate — required on all non-OPTIONS requests (verify_jwt = false for this function)
-  const cronSecret = Deno.env.get("CRON_SECRET") ?? "";
-  const authHeader = req.headers.get("Authorization") ?? "";
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  // Health check ping
+  // Health check ping — gh-1102: runs BEFORE the CRON_SECRET gate below, matching
+  // the pattern used by every other probed function (admin-contractor-action,
+  // create-payment-intent, notify-contractors, process-dunning, send-support-email).
+  // platform-health-check's Phase 1 prober pings every EDGE_FUNCTIONS_TO_PING entry
+  // with SUPABASE_SERVICE_ROLE_KEY, never CRON_SECRET, so with the gate first this
+  // probe was rejected 401 before ever reaching this bypass — 96 escalated
+  // false-positive alerts over ~2 days, zero real outage (the real pg_cron trigger
+  // carries the correct CRON_SECRET and was unaffected throughout). This bypass
+  // returns a static {status:"ok"} with no data access and no side effects, so
+  // moving it first does not reopen the open-relay gap the CRON_SECRET gate (added
+  // 2026-05-20, commit d6abdabd) exists to close for every other request shape.
   try {
     const bodyPeek = await req.clone().json().catch(() => ({}));
     if (bodyPeek?.health_check === true) {
@@ -152,6 +152,16 @@ serve(async (req) => {
       });
     }
   } catch { /* no-op */ }
+
+  // Cron-secret gate — required on all non-health-check requests (verify_jwt = false for this function)
+  const cronSecret = Deno.env.get("CRON_SECRET") ?? "";
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   const SUPABASE_URL          = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_ROLE_KEY      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
