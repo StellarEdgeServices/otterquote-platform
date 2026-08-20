@@ -17,10 +17,11 @@
  *       – Adjuster email (help-measurements.html:1064) → the SIMPLER full_name || 'Homeowner'
  *         (no first/last fallback). buildAdjusterEmailParams deliberately does NOT call
  *         resolveHomeownerName. Do not unify them.
- *   • amount (15000 cents) on the payment-intent params and amount_charged (150.00) on the
+ *   • amount (1500 cents) on the payment-intent params and amount_charged (15.00) on the
  *     order params are INFORMATIONAL — the create-hover-* Edge Functions enforce the price
- *     server-side (D-205 / D-181). They are kept verbatim for parity, not as the source of
- *     truth. Tier-3 charge/price logic is untouched by this PR.
+ *     server-side (D-291, repricing D-205 / D-181's now-superseded $150). They are kept
+ *     verbatim for parity, not as the source of truth. Tier-3 charge/price logic is untouched
+ *     by this PR.
  *   • isAdjusterFormValid mirrors the static `checkReady` (help-measurements.html:1021-1024),
  *     which gates ONLY on the email (non-empty AND contains '@'). The static wires a listener
  *     on the name field too, but that listener calls the same email-only check — the name is
@@ -52,12 +53,13 @@ import type {
   SendAdjusterEmailParams,
 } from '../../lib/services';
 
-// ── D-205 / D-181 constants (informational — EF enforces server-side) ──────────────
+// ── D-291 / D-181 constants (informational — EF enforces server-side) ──────────────
+// D-291 (2026-08-17) repriced the RoofScope/Hover measurement fee from D-205's $150 to $15.
 
 /** Hover fee in cents, sent on the PaymentIntent params (help-measurements.html:897). */
-export const HOVER_AMOUNT_CENTS = 15000 as const;
+export const HOVER_AMOUNT_CENTS = 1500 as const;
 /** Hover fee in dollars, sent as amount_charged on the order (help-measurements.html:987). */
-export const HOVER_AMOUNT_DOLLARS = 150.0 as const;
+export const HOVER_AMOUNT_DOLLARS = 15.0 as const;
 /** D-205 deliverable: 3 = Complete (universal for full-replacement). help-measurements.html:988. */
 export const HOVER_DELIVERABLE_TYPE_ID = 3 as const;
 /** PaymentIntent description (help-measurements.html:898). */
@@ -128,7 +130,7 @@ export function resolveAddressLine1(
 
 /**
  * Build the createHoverPaymentIntent params. amount is informational (the EF enforces the
- * $150 price server-side); kept at 15000 cents for parity. No charge is made here — this only
+ * $15 price server-side); kept at 1500 cents for parity. No charge is made here — this only
  * shapes the request the PR-2 page sends to create the PaymentIntent.
  */
 export function buildHoverPaymentIntentParams(
@@ -163,8 +165,8 @@ export function paymentIntentIdFromClientSecret(
 
 /**
  * Assemble the createHoverOrder params from loaded profile/claim/user + the confirmed Stripe
- * PaymentIntent id. amount_charged (150.00) and deliverable_type_id (3) are the D-205 values;
- * the EF re-validates them. payment_intent_id is the D-181 verification guard.
+ * PaymentIntent id. amount_charged (15.00) and deliverable_type_id (3) are the D-291/D-205
+ * values; the EF re-validates them. payment_intent_id is the D-181 verification guard.
  */
 export function buildHoverOrderParams({
   profile,
