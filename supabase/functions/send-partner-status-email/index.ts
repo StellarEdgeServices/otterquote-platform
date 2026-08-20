@@ -144,6 +144,7 @@ interface AgentRow {
   id: string;
   first_name: string | null;
   email: string | null;
+  agent_type: string | null;
 }
 
 /** Determines which stages are currently eligible given live claim/quote state. */
@@ -263,7 +264,7 @@ serve(async (req: Request) => {
 
     const { data: agent, error: agentErr } = await supabase
       .from("referral_agents")
-      .select("id, first_name, email")
+      .select("id, first_name, email, agent_type")
       .eq("id", referral.referral_agent_id)
       .single<AgentRow>();
 
@@ -274,6 +275,19 @@ serve(async (req: Request) => {
     if (!agent.email) {
       console.warn(`[${FUNCTION_NAME}] agent ${agent.id} has no email — skipping`);
       return jsonResponse({ ok: true, sent: [], skipped: [], reason: "agent has no email" }, 200, corsHeaders);
+    }
+
+    // ── D-303 gate: this 5-stage series is professional-referrer copy only.
+    // Homeowner referrers (agent_type='customer') get a separate, not-yet-built
+    // 2-email series (signup + work completion) — tracked as its own item, not
+    // sent here. Without this gate every homeowner referrer silently received
+    // the full professional series (gh-856/gh-916 live defect). ────────────
+    if (agent.agent_type === "customer") {
+      return jsonResponse(
+        { ok: true, sent: [], skipped: [], reason: "homeowner referrer (agent_type=customer) — professional status series does not apply (D-303)" },
+        200,
+        corsHeaders,
+      );
     }
 
     // ── Load the linked claim (drives stage eligibility) ────────────────────
