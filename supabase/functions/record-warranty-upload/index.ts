@@ -173,7 +173,7 @@ serve(async (req: Request) => {
     // ── Fetch quote + claim in one query ────────────────────────────────────────
     const { data: quote, error: quoteError } = await supabase
       .from("quotes")
-      .select("id, status, claim_id, warranty_document_url, claims(id, completion_date)")
+      .select("id, status, claim_id, warranty_document_url, is_test, claims(id, completion_date)")
       .eq("id", quoteId)
       .eq("contractor_id", contractorId)
       .maybeSingle();
@@ -234,6 +234,7 @@ serve(async (req: Request) => {
         title:      replacingPrevious
           ? `Warranty document replaced for claim ${quote.claim_id}`
           : `Warranty document uploaded for claim ${quote.claim_id}`,
+        is_test:    quote.is_test ?? false,
         metadata: {
           quote_id:          quoteId,
           claim_id:          quote.claim_id,

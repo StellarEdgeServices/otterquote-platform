@@ -192,7 +192,7 @@ function AdminPayoutsContent() {
       <div className="oqpa-header">
         <div className="oqpa-title">
           <span className="oqpa-badge">ADMIN</span>
-          <h1 className="oqpa-h1">Commission Payouts</h1>
+          <h1 className="oqpa-h1">Referral Fee Payouts</h1>
         </div>
         <button type="button" className="oqpa-logout" onClick={handleLogout}>
           Log Out

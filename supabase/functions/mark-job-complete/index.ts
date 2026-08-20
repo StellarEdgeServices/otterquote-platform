@@ -371,7 +371,7 @@ serve(async (req: Request) => {
     // ── Fetch claim ────────────────────────────────────────────────────────────
     const { data: claim, error: claimError } = await supabase
       .from("claims")
-      .select("id, status, completion_date, property_address, user_id, referral_id")
+      .select("id, status, completion_date, property_address, user_id, referral_id, is_test")
       .eq("id", claimId)
       .single();
 
@@ -418,6 +418,7 @@ serve(async (req: Request) => {
         user_id:    authUserId,
         event_type: "job_completed",
         title:      `Job marked complete for ${address}`,
+        is_test:    claim.is_test ?? false,
         metadata: {
           claim_id:     claimId,
           quote_id:     quote.id,

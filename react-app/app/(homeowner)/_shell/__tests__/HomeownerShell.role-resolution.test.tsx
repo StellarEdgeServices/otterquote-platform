@@ -22,6 +22,18 @@
  *
  * Mirrors HomeownerShell.cold-start.test.tsx (which covers the #343 session-recovery
  * race) — this file covers the role-resolution race on top of it.
+ *
+ * gh-909 (D-182 v113, 2026-08-19) update: resolveRole() used to make TWO queries
+ * (contractors, then — only if that came back empty — an immediate profiles
+ * fallback), so the old mock deferred only the first query and resolved the second
+ * synchronously. It now makes ONE query (`resolved_user_role`), which already
+ * encodes the full contractor -> partner -> claims -> profiles.role precedence
+ * server-side (branch-tested — see supabase/migrations/v113_derived_role_view.sql).
+ * The mock below reflects that: a single deferred `roleDeferred` stands in for the
+ * one query, resolved per test with `{ data: { derived_role: <value> }, error }` —
+ * the exact shape resolveRole() now reads. The timing races under test (in-flight
+ * vs. >4s-timeout vs. immediate) are unchanged; only the number of queries being
+ * raced changed from two to one.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -33,14 +45,13 @@ vi.mock('@/hooks/use-notification-count', () => ({
 
 // Capture the onAuthStateChange callback so the test drives INITIAL_SESSION by hand.
 // getSession() hangs so the only route to a settled state is the event we fire.
-// The `contractors` query is a deferred the test resolves on demand, so role
+// The `resolved_user_role` query is a deferred the test resolves on demand, so role
 // resolution can be made to outrun the 4s timeout deterministically.
 let authCb: ((event: string, session: unknown) => void | Promise<void>) | null = null;
-let contractorDeferred: {
+let roleDeferred: {
   promise: Promise<{ data: unknown; error: unknown }>;
   resolve: (v: { data: unknown; error: unknown }) => void;
 };
-let profileRow: { data: unknown; error: unknown } = { data: null, error: { message: 'no rows' } };
 
 function makeDeferred() {
   let resolve!: (v: { data: unknown; error: unknown }) => void;
@@ -64,9 +75,9 @@ vi.mock('@/lib/supabase', () => ({
       select: () => ({
         eq: () => ({
           single: () =>
-            table === 'contractors'
-              ? contractorDeferred.promise
-              : Promise.resolve(profileRow),
+            table === 'resolved_user_role'
+              ? roleDeferred.promise
+              : Promise.resolve({ data: null, error: { message: 'no rows' } }),
         }),
       }),
     })),
@@ -93,8 +104,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
   authCb = null;
-  contractorDeferred = makeDeferred();
-  profileRow = { data: null, error: { message: 'no rows' } };
+  roleDeferred = makeDeferred();
   originalLocation = window.location;
   Object.defineProperty(window, 'location', {
     configurable: true,
@@ -134,7 +144,7 @@ describe('HomeownerShell × AuthProvider — role-resolution race (D-211 86e1zve
 
     // Role resolves to contractor, still well under the 4s timeout.
     await act(async () => {
-      contractorDeferred.resolve({ data: { id: 'c1' }, error: null });
+      roleDeferred.resolve({ data: { derived_role: 'contractor' }, error: null });
       await vi.advanceTimersByTimeAsync(100);
     });
     expect(window.location.href).toBe('https://otterquote.com/contractor-dashboard.html');
@@ -160,7 +170,7 @@ describe('HomeownerShell × AuthProvider — role-resolution race (D-211 86e1zve
     // The authoritative contractor role finally lands — self-heal must upgrade it
     // and the gate must now redirect, ending the wrong-role render.
     await act(async () => {
-      contractorDeferred.resolve({ data: { id: 'c1' }, error: null });
+      roleDeferred.resolve({ data: { derived_role: 'contractor' }, error: null });
       await vi.advanceTimersByTimeAsync(100);
     });
     expect(window.location.href).toBe('https://otterquote.com/contractor-dashboard.html');
@@ -169,7 +179,6 @@ describe('HomeownerShell × AuthProvider — role-resolution race (D-211 86e1zve
   });
 
   it('SELF-HEAL homeowner: a slow (>4s) homeowner role lands → keeps rendering, never redirects', async () => {
-    profileRow = { data: { role: 'homeowner' }, error: null };
     renderShell();
     await act(async () => {
       void authCb!('INITIAL_SESSION', makeSession('jane@example.com'));
@@ -178,9 +187,10 @@ describe('HomeownerShell × AuthProvider — role-resolution race (D-211 86e1zve
     // Fail-open render of the homeowner body; no redirect of any kind.
     expect(window.location.href).toBe('');
 
-    // contractors lookup returns "no contractor", role heals to 'homeowner'.
+    // resolved_user_role lookup finally lands as 'homeowner' (view precedence:
+    // no contractor row, no active partner, no claim -> profiles.role fallback).
     await act(async () => {
-      contractorDeferred.resolve({ data: null, error: { message: 'no rows' } });
+      roleDeferred.resolve({ data: { derived_role: 'homeowner' }, error: null });
       await vi.advanceTimersByTimeAsync(100);
     });
     expect(screen.getByText('DASH_BODY')).toBeInTheDocument();
@@ -188,11 +198,10 @@ describe('HomeownerShell × AuthProvider — role-resolution race (D-211 86e1zve
   });
 
   it('homeowner happy path (role resolves WITHIN timeout) renders and never redirects', async () => {
-    profileRow = { data: { role: 'homeowner' }, error: null };
     renderShell();
     await act(async () => {
       void authCb!('INITIAL_SESSION', makeSession('jane@example.com'));
-      contractorDeferred.resolve({ data: null, error: { message: 'no rows' } });
+      roleDeferred.resolve({ data: { derived_role: 'homeowner' }, error: null });
       await vi.advanceTimersByTimeAsync(100);
     });
     expect(screen.getByText('DASH_BODY')).toBeInTheDocument();
