@@ -1,12 +1,14 @@
 /**
  * OtterQuote Edge Function: process-hover-rebate
  *
- * D-181 (Apr 23, 2026, ClickUp 86e11mcf4) amended by D-205 (May 2, 2026):
- * Issues a Stripe refund for the homeowner's Hover measurement fee when a
- * quote on the same claim flips to payment_status='succeeded' (job
- * completed with an OtterQuote contractor). Idempotent. Rebate amount is
- * read per-order from hover_orders.homeowner_charge_amount — no code
- * change needed when the charge amount changes.
+ * D-181 (Apr 23, 2026, ClickUp 86e11mcf4) amended by D-205 (May 2, 2026),
+ * amended again by D-291 (Aug 17, 2026): Issues a Stripe refund for the
+ * homeowner's Hover/RoofScope measurement fee when the claim's job is
+ * marked complete — claims.completion_date is set, by mark-job-complete.
+ * D-291 moved this off the old signing-time trigger (quotes.payment_status
+ * ='succeeded') to a true job-completion trigger. Idempotent. Rebate
+ * amount is read per-order from hover_orders.homeowner_charge_amount — no
+ * code change needed when the charge amount changes.
  *
  * Two invocation modes:
  *   POST { claim_id }   — process rebate for a specific claim on demand.
@@ -93,29 +95,23 @@ async function rebateOne(
     return { ...base, detail: "No homeowner_charge_amount recorded; cannot refund." };
   }
 
-  // Confirm a completed quote exists on this claim (payment_status='succeeded').
-  // This is the canonical "job completed" signal — matches v40 after_quote_paid.
-  const { data: completedQuotes, error: qErr } = await supabase
-    .from("quotes")
-    .select("id, payment_status")
-    .eq("claim_id", order.claim_id)
-    .eq("payment_status", "succeeded")
-    .limit(1);
-  if (qErr) {
-    return { ...base, status: "failed", detail: `Quote lookup failed: ${qErr.message}` };
-  }
-  if (!completedQuotes || completedQuotes.length === 0) {
-    return { ...base, detail: "No completed quote on claim yet; rebate not owed." };
-  }
-
-  // Fetch claim owner for activity_log user_id
-  const { data: claimOwner } = await supabase
+  // Confirm the job has been marked complete on this claim. D-291 moves the
+  // rebate trigger from payment_status='succeeded' (contract signing — the
+  // old v40 after_quote_paid signal) to completion_date, set by
+  // mark-job-complete when the contractor finishes the job.
+  const { data: claimRow, error: cErr } = await supabase
     .from("claims")
-    .select("user_id, is_test")
+    .select("user_id, is_test, completion_date")
     .eq("id", order.claim_id)
-    .single();
-  const claimUserId = claimOwner?.user_id ?? null;
-  const claimIsTest = claimOwner?.is_test ?? false;
+    .maybeSingle();
+  if (cErr) {
+    return { ...base, status: "failed", detail: `Claim lookup failed: ${cErr.message}` };
+  }
+  if (!claimRow?.completion_date) {
+    return { ...base, detail: "Job not marked complete on claim yet; rebate not owed." };
+  }
+  const claimUserId = claimRow.user_id ?? null;
+  const claimIsTest = claimRow.is_test ?? false;
 
   // Stripe refund — idempotency key prevents double refund on retry.
   const basicAuth = btoa(`${stripeSecretKey}:`);
