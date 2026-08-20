@@ -144,6 +144,7 @@ interface AgentRow {
   id: string;
   first_name: string | null;
   email: string | null;
+  agent_type: string | null;
 }
 
 /** Determines which stages are currently eligible given live claim/quote state. */
@@ -263,7 +264,7 @@ serve(async (req: Request) => {
 
     const { data: agent, error: agentErr } = await supabase
       .from("referral_agents")
-      .select("id, first_name, email")
+      .select("id, first_name, email, agent_type")
       .eq("id", referral.referral_agent_id)
       .single<AgentRow>();
 
@@ -274,6 +275,16 @@ serve(async (req: Request) => {
     if (!agent.email) {
       console.warn(`[${FUNCTION_NAME}] agent ${agent.id} has no email — skipping`);
       return jsonResponse({ ok: true, sent: [], skipped: [], reason: "agent has no email" }, 200, corsHeaders);
+    }
+    // D-303: this 5-stage series is professional-partner copy. Homeowner
+    // referrers (`agent_type: "customer"`) get exactly two emails —
+    // signup and work-completion — sent by a separate path, not this one.
+    if (agent.agent_type === "customer") {
+      return jsonResponse(
+        { ok: true, sent: [], skipped: [], reason: "agent_type is customer — professional status series does not apply" },
+        200,
+        corsHeaders,
+      );
     }
 
     // ── Load the linked claim (drives stage eligibility) ────────────────────
