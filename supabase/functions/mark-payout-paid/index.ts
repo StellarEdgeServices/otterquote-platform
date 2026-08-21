@@ -1,35 +1,38 @@
 /**
- * OtterQuote Edge Function: approve-payout
+ * OtterQuote Edge Function: mark-payout-paid
  *
- * D-180 — Admin Commission Approval
+ * D-293 — Manual Commission Payment, step 2: "I sent the money"
  *
- * Approves a pending commission. Admin-only (JWT must be dustinstohler1@gmail.com).
- * On approval:
- *   1. Sets payout_approvals.status = 'approved', approved_at = NOW(), approved_by = 'admin'
+ * Split from approve-payout (gh-1155, child of #1021). approve-payout is now
+ * authorization only ("I authorized this") — it no longer touches referral
+ * payment state. This function is the second, separate human action that
+ * records "I sent the money":
+ *   1. Sets payout_approvals.status = 'approved' -> 'paid', paid_at = NOW()
  *   2. Sets referrals.commission_paid_at = NOW() and referrals.status =
- *      'commission_paid' (fires update_referral_stats) on the associated referral
- *   3. Sends a Mailgun confirmation email to the partner
+ *      'commission_paid' (fires update_referral_stats) on the associated
+ *      referral — the same write that used to live in approve-payout, now
+ *      gated on 'paid' instead of 'approved', and performed after the
+ *      payout_approvals write above.
+ *   3. Sends a Mailgun "marked as paid" confirmation email to the partner
  *
- * Input: POST { payout_approval_id: string, override_incomplete?: boolean }
- *   override_incomplete — admin explicitly releases a commission whose linked
- *   job is not yet complete (D-139, #567). admin-payouts.html shows a warning
- *   dialog before sending it.
+ * Input: POST { payout_approval_id: string }
  * Output: { ok: true, approval_id: string }
  *
- * Auth: Requires valid Supabase JWT with email = dustinstohler1@gmail.com.
+ * Auth: Requires valid Supabase JWT with email in ADMIN_EMAILS (same
+ * allow-list as approve-payout / reject-payout).
  *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   MAILGUN_API_KEY, MAILGUN_DOMAIN
  *
- * ClickUp: 86e1160fg
+ * GitHub: gh-1155 (child of #1021, D-293)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const FUNCTION_NAME     = "approve-payout";
-// D-211 Phase 18 Unit 2: admin allow-list (was single ADMIN_EMAIL). Admit either operator email.
+const FUNCTION_NAME     = "mark-payout-paid";
+// Same admin allow-list as approve-payout / reject-payout (D-211 Phase 18 Unit 2).
 const ADMIN_EMAILS      = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
 const PARTNER_DASH_URL  = "https://otterquote.com/partner-dashboard.html";
 
@@ -219,7 +222,6 @@ serve(async (req: Request) => {
     }
 
     const payoutApprovalId = (body.payout_approval_id as string || "").trim();
-    const overrideIncomplete = body.override_incomplete === true;
     if (!payoutApprovalId) {
       return new Response(JSON.stringify({ ok: false, error: "payout_approval_id is required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -239,8 +241,11 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Idempotency: only act on pending rows ────────────────────────────────
-    if (!["pending_approval"].includes(approval.status)) {
+    // ── Idempotency: only act on approved rows ───────────────────────────────
+    // Covers a repeated call after this row already reached 'paid' (or is in
+    // any other non-'approved' state) — no action taken, no duplicate writes
+    // or emails.
+    if (approval.status !== "approved") {
       return new Response(JSON.stringify({
         ok: true,
         sent: false,
@@ -250,14 +255,14 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── W-9 / payments gate (D-211 Phase 18 Unit 2) ──────────────────────────
-    // Flipping status to 'approved' + stamping commission_paid_at is the terminal
-    // money-state (no separate Stripe disbursement EF). Never cross that line for a
-    // partner without a verified W-9 and unblocked payments. Fail-safe: a missing
-    // partner_id / agent row / lookup error HOLDS — the row stays pending_approval
-    // and commission_paid_at is never set. Held is returned as { ok:false, held:true }
-    // with `error` so admin-payouts.html surfaces the reason (and skips its
-    // optimistic "approved" row update, which only runs on the ok:true path).
+    // ── W-9 / payments gate (copy of approve-payout's gate, D-211 Phase 18 Unit 2) ──
+    // A payout must not reach 'paid' without a verified W-9 and unblocked
+    // payments — re-checked here (not only at approve time) because a
+    // partner's W-9/payments-blocked state can change between approve and
+    // mark-paid. Fail-safe: a missing partner_id / agent row / lookup error
+    // HOLDS — the row stays 'approved' and neither paid_at nor
+    // commission_paid_at is ever set. Held is returned as { ok:false,
+    // held:true } with `error`.
     const heldResponse = (reason: string) =>
       new Response(JSON.stringify({ ok: false, held: true, reason, error: reason }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -288,64 +293,22 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Completion gate (D-139, #567) ────────────────────────────────────────
-    // Commissions are payable after job completion. Resolve referral → claim →
-    // completion_date. An incomplete (or unverifiable) job HOLDS unless the
-    // admin explicitly passed override_incomplete: true — admin-payouts.html
-    // shows a warning dialog before sending it. Fail-safe: lookup error with
-    // no override = hold.
-    if (!overrideIncomplete) {
-      let jobComplete = false;
-      let completionCheckError: string | null = null;
-
-      if (approval.referral_id) {
-        const { data: refRow, error: refErr } = await supabase
-          .from("referrals")
-          .select("claim_id")
-          .eq("id", approval.referral_id)
-          .single();
-        if (refErr) {
-          completionCheckError = `referral lookup failed: ${refErr.message}`;
-        } else if (refRow?.claim_id) {
-          const { data: claimRow, error: claimErr } = await supabase
-            .from("claims")
-            .select("completion_date")
-            .eq("id", refRow.claim_id)
-            .single();
-          if (claimErr) {
-            completionCheckError = `claim lookup failed: ${claimErr.message}`;
-          } else if (claimRow?.completion_date != null) {
-            jobComplete = true;
-          }
-        }
-      }
-
-      if (!jobComplete) {
-        console.log(`[${FUNCTION_NAME}] HELD ${payoutApprovalId} — job not complete (referral ${approval.referral_id ?? "none"}${completionCheckError ? `; ${completionCheckError}` : ""})`);
-        return heldResponse(
-          completionCheckError
-            ? "Held — could not verify job completion; resolve the lookup error or approve with the incomplete-job override"
-            : "Held — job not marked complete (D-139: commissions pay after completion); approve with the incomplete-job override to release early"
-        );
-      }
-    }
-
     const now = new Date().toISOString();
 
-    // ── Update payout_approvals ──────────────────────────────────────────────
-    // Atomic status guard (86e1xrwq2 #1): the JS pre-check above is advisory only.
-    // Constrain the UPDATE itself to pending_approval (mirrors the
-    // process-payout-reminders auto-approve guard) and treat 0 rows updated as a
-    // concurrent-processing conflict — before commission_paid_at or the email.
+    // ── Update payout_approvals: approved -> paid ────────────────────────────
+    // Atomic status guard (mirrors approve-payout's pending_approval guard):
+    // the JS pre-check above is advisory only. Constrain the UPDATE itself to
+    // status = 'approved' and treat 0 rows updated as a concurrent-processing
+    // conflict — before commission_paid_at or the email — so a concurrent
+    // double-click 409s instead of double-writing.
     const { data: updatedRows, error: updateError } = await supabase
       .from("payout_approvals")
       .update({
-        status:      "approved",
-        approved_at: now,
-        approved_by: "admin",
+        status:  "paid",
+        paid_at: now,
       })
       .eq("id", payoutApprovalId)
-      .eq("status", "pending_approval")
+      .eq("status", "approved")
       .select("id");
 
     if (updateError) {
@@ -356,13 +319,43 @@ serve(async (req: Request) => {
     }
 
     if (!updatedRows || updatedRows.length === 0) {
-      console.warn(`[${FUNCTION_NAME}] Conflict — payout ${payoutApprovalId} was no longer pending_approval at UPDATE time (processed concurrently)`);
+      console.warn(`[${FUNCTION_NAME}] Conflict — payout ${payoutApprovalId} was no longer 'approved' at UPDATE time (processed concurrently)`);
       return new Response(JSON.stringify({ ok: false, error: "Conflict — payout already processed (status changed since it was loaded)" }), {
         status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ── Send confirmation email to partner ───────────────────────────────────
+    // ── Set referrals.commission_paid_at ─────────────────────────────────────
+    // Moved here from approve-payout (gh-1155): this is now the only place
+    // that advances a referral to commission_paid — one step later than
+    // authorization, and only once the payout has actually reached 'paid'.
+    if (approval.referral_id) {
+      const { error: referralError } = await supabase
+        .from("referrals")
+        .update({ commission_paid_at: now })
+        .eq("id", approval.referral_id)
+        .is("commission_paid_at", null); // Only set if not already paid
+
+      if (referralError) {
+        console.error(`[${FUNCTION_NAME}] Failed to update referral commission_paid_at:`, referralError.message);
+        // Non-fatal — approval row already updated; log and continue.
+      }
+
+      // D-139 (#567): advance the referral to commission_paid so the
+      // update_referral_stats trigger fires — nothing else ever sets it.
+      const { error: statusError } = await supabase
+        .from("referrals")
+        .update({ status: "commission_paid" })
+        .eq("id", approval.referral_id)
+        .neq("status", "commission_paid");
+
+      if (statusError) {
+        console.error(`[${FUNCTION_NAME}] Failed to update referral status:`, statusError.message);
+        // Non-fatal — approval row already updated; log and continue.
+      }
+    }
+
+    // ── Send "marked as paid" confirmation email to partner ─────────────────
     // Reuse the agent row already loaded by the W-9 gate above (same columns).
     const partnerEmail: string | null = agent.email || null;
     if (!approval.partner_name) {
@@ -376,15 +369,18 @@ serve(async (req: Request) => {
       const payoutType  = formatPayoutType(approval.payout_type);
       const partnerName = approval.partner_name || "Partner";
 
-      const subject = `Your ${payoutType.toLowerCase()} of ${amount} has been approved`;
+      const subject = `Your ${payoutType.toLowerCase()} of ${amount} has been paid`;
 
+      // D-290: states only what happened. No mechanism, no timeline, no
+      // interval. Tone matches approve-payout's reference copy ("Our team
+      // will follow up separately with next steps to get you paid").
       const bodyHtml = `
 <h2 style="font-size:1.5rem;font-weight:700;color:#0B1929;margin:0 0 8px;">
-  Great news — your referral fee is approved!
+  Your referral fee has been paid!
 </h2>
 <p style="color:#374151;font-size:0.95rem;margin:0 0 24px;">
-  Hi ${partnerName}, your ${payoutType.toLowerCase()} of <strong>${amount}</strong> has been approved.
-  Our team will follow up separately with next steps to get you paid.
+  Hi ${partnerName}, your ${payoutType.toLowerCase()} of <strong>${amount}</strong> has been marked as paid.
+  Thank you for being an Otter Quotes partner.
 </p>
 
 <table width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -402,7 +398,7 @@ serve(async (req: Request) => {
         </tr>
         <tr>
           <td style="padding:4px 0;font-size:0.875rem;color:#64748B;">Status</td>
-          <td style="padding:4px 0;font-size:0.875rem;font-weight:600;color:#10B981;">✓ Approved</td>
+          <td style="padding:4px 0;font-size:0.875rem;font-weight:600;color:#10B981;">✓ Paid</td>
         </tr>
       </table>
     </td>
@@ -412,7 +408,7 @@ serve(async (req: Request) => {
 ${ctaButton("View Your Dashboard →", PARTNER_DASH_URL)}
 
 <p style="font-size:0.8rem;color:#94A3B8;">
-  Thank you for being an Otter Quotes partner. Questions? Email us at
+  Questions? Email us at
   <a href="mailto:support@otterquote.com" style="color:#0EA5E9;">support@otterquote.com</a>.
 </p>
 `;
@@ -420,8 +416,8 @@ ${ctaButton("View Your Dashboard →", PARTNER_DASH_URL)}
       const bodyText = [
         `Hi ${partnerName},`,
         ``,
-        `Your ${payoutType.toLowerCase()} of ${amount} has been approved.`,
-        `Our team will follow up separately with next steps to get you paid.`,
+        `Your ${payoutType.toLowerCase()} of ${amount} has been marked as paid.`,
+        `Thank you for being an Otter Quotes partner.`,
         ``,
         `View your dashboard: ${PARTNER_DASH_URL}`,
       ].join("\n");
@@ -431,7 +427,7 @@ ${ctaButton("View Your Dashboard →", PARTNER_DASH_URL)}
         fromAddress, subject, bodyText, buildEmail(bodyHtml));
     }
 
-    console.log(`[${FUNCTION_NAME}] Approved payout ${payoutApprovalId} — partner email ${emailSent ? "sent" : partnerEmail ? "FAILED" : "skipped (no email)"}`);
+    console.log(`[${FUNCTION_NAME}] Marked payout ${payoutApprovalId} paid — partner email ${emailSent ? "sent" : partnerEmail ? "FAILED" : "skipped (no email)"}`);
 
     return new Response(JSON.stringify({ ok: true, approval_id: payoutApprovalId, partner_email_sent: emailSent }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
