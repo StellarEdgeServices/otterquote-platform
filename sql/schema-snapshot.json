@@ -637,7 +637,8 @@
     "approved_by",
     "reminder_sent_at",
     "notification_sent_at",
-    "created_at"
+    "created_at",
+    "paid_at"
   ],
   "platform_alerts_log": [
     "id",
