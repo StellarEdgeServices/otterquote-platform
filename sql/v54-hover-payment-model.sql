@@ -3,8 +3,9 @@
 -- ============================================================================
 -- Locked April 23, 2026 (ClickUp 86e117ty3). OtterQuote pays Hover directly.
 -- Homeowner pays OtterQuote $79 upfront at help-measurements.html. $79 is
--- rebated to the homeowner upon job completion (quotes.payment_status =
--- 'succeeded') on a quote tied to the same claim.
+-- rebated to the homeowner upon signing (quotes.payment_status =
+-- 'succeeded'), which fires at contract signing per D-127 — not at job
+-- completion — on a quote tied to the same claim.
 --
 -- Homeowners who do not complete a project with an OtterQuote contractor keep
 -- their Hover report; the $79 is retained. OtterQuote controls the Hover order

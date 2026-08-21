@@ -13,7 +13,9 @@
 
 Moves the hover/RoofScope $15 rebate trigger from firing on **contractor platform-fee charge success at contract signing** (`quotes.payment_status` transitioning to `'succeeded'`, trigger `after_quote_paid_rebate`) to firing on **job completion** (`claims.completion_date` transitioning from `NULL` to set, new trigger `after_claim_completed_rebate`). This is the exact same retarget gh-1050/D-283 already applied to production for the sibling referral-commission trigger (`20260819225113_gh1050_commission_accrual_job_completion.sql`) — same signal, same reasoning, different downstream function.
 
-The Edge Function half of D-291 is **already deployed** (`process-hover-rebate` v33, 2026-08-20T19:44:09Z, PR #1098) and already gates the refund on `claims.completion_date`. That redeploy did not touch the DB trigger. Today the trigger fires at signing, wakes v33, v33 finds `completion_date` unset, and declines — and nothing fires it again at actual completion. **Net effect: the rebate never pays**, which this migration fixes.
+The Edge Function half of D-291 is **already deployed** (`process-hover-rebate` v33, 2026-08-20T19:44:09Z, PR #1098) and already gates the refund on `claims.completion_date`. That redeploy did not touch the DB trigger. Today the trigger fires at signing, wakes v33, v33 finds `completion_date` unset, and declines — a wasted no-op `pg_net` POST, not a failure.
+
+**Correction (2026-08-21, gh-1162):** an adversarial re-verification on 2026-08-20 refuted this section's original "the rebate never pays" claim. The rebate does still pay: cron jobid 10 (`process-hover-rebate-scan`, `*/30 * * * *`, 5,667+ succeeded runs) independently invokes `process-hover-rebate` in scan mode, gating each row on the same `claims.completion_date` condition — already the correct D-291 signal. **The real, smaller defect this migration fixes**: (a) one wasted no-op POST at contract signing, and (b) up to 30 minutes of added latency before the scan picks up the completion. Neither is "the rebate never pays" — this changes the urgency, not the fix.
 
 ---
 
