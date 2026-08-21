@@ -4220,7 +4220,15 @@
         });
         if (error) throw error;
         if (!data?.url) throw new Error('No PDF URL');
-        window.open(data.url, '_blank');
+        // Defensive: anchor click-through instead of window.open() to avoid
+        // popup-blocker/native-dialog conditions (gh-751). Refs #751.
+        const hoverPdfLink = document.createElement('a');
+        hoverPdfLink.href = data.url;
+        hoverPdfLink.target = '_blank';
+        hoverPdfLink.rel = 'noopener';
+        document.body.appendChild(hoverPdfLink);
+        hoverPdfLink.click();
+        document.body.removeChild(hoverPdfLink);
       } catch (err) {
         console.error('Failed to open Hover PDF:', err);
         alert('Hover measurement PDF is not available for this project yet. The measurement may still be in progress.');
