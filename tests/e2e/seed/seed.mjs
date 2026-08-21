@@ -618,7 +618,7 @@ async function seed() {
       status: 'complete',
       stripe_payment_id: 'e2e-injected-retail-siding',
       homeowner_stripe_payment_intent_id: null,
-      amount_charged: 15000, // Hover measurement + design fee (E2E injected)
+      amount_charged: 15, // RoofScope measurement + design fee, dollars not cents (E2E injected)
       rebate_due: false,
       hover_job_id: 999999, // Fake job ID for E2E — not queried in test
       material_list: mockMaterialList,
