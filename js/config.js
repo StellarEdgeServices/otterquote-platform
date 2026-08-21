@@ -15,7 +15,13 @@ var CONFIG = {
   // ── Mailgun (inbound email parsing) ──
   MAILGUN_DOMAIN:  'sandboxd2b099fad357409b845e5f4c5e8bd74e.mailgun.org',
   MAILGUN_API_URL: 'https://api.mailgun.net',
-  INGEST_EMAIL_DOMAIN: 'claims.otterquote.com', // Production domain — sandbox for now
+  // gh-1135: INGEST_EMAIL_DOMAIN removed — claims.otterquote.com was NXDOMAIN
+  // with zero inbound routes, so every generated docs-*@claims.otterquote.com
+  // address silently hard-bounced adjuster replies. js/services.js now sets
+  // Reply-To to the requesting homeowner's own email instead. The receiving
+  // half (an inbound-parse Edge Function) is tracked as a separate,
+  // explicitly non-urgent feature issue — if it's ever built, this constant
+  // comes back then, not before.
   // NOTE: MAILGUN_API_KEY is server-side only (Edge Functions), never exposed in frontend
 
   // ── Twilio (SMS notifications) ──
