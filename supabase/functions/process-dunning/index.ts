@@ -279,25 +279,43 @@ function nextHourlyReminder(now: Date, tz: string, warningAt: Date): Date {
 // `html` via htmlToPlainText() below when the caller doesn't supply one —
 // same net effect (every send now carries both parts) without expanding this
 // 1000+ line file's edit surface past what #869 actually requires.
+// gh-1020 (CodeQL js/incomplete-multi-character-sanitization): a single
+// non-recursive `<[^>]+>` pass can leave residual "<script"-shaped text
+// behind on malformed/nested markup. Looping to a fixed point closes that.
+function stripTags(input: string): string {
+  let prev: string;
+  let out = input;
+  do {
+    prev = out;
+    out = prev.replace(/<[^>]+>/g, "");
+  } while (out !== prev);
+  return out;
+}
+
 function htmlToPlainText(html: string): string {
-  return html
+  const withoutTags = html
     // `<a href="URL" ...>LABEL</a>` -> "LABEL: URL" — per #869 AC 2, the
     // text part deliberately KEEPS the bare URL (accessibility / HTML-blocked
     // fallback); this is the one place a bare URL belongs.
     .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, label) => {
-      const cleanLabel = label.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+      const cleanLabel = stripTags(label).replace(/\s+/g, " ").trim();
       return cleanLabel ? `${cleanLabel}: ${href}` : href;
     })
     .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, "\n\n")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+    .replace(/<br\s*\/?>/gi, "\n");
+
+  return stripTags(withoutTags)
+    // gh-1020 (CodeQL js/double-escaping-or-unescaping): decode named
+    // entities and &lt;/&gt; BEFORE &amp; — decoding &amp; first would let a
+    // double-encoded "&amp;lt;script&amp;gt;" resolve into a literal
+    // "<script>" once &lt;/&gt; ran, in text meant to be plain/safe.
     .replace(/&rsquo;|&#39;/g, "'")
     .replace(/&rdquo;|&ldquo;/g, '"')
     .replace(/&mdash;/g, "—")
     .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
     .replace(/[ \t]+/g, " ")
     .split("\n")
     .map((line) => line.trim())
