@@ -14,7 +14,7 @@
  *     Services.* calls against the UNCHANGED Edge Functions).
  *   • Stripe card form:            ./HoverPaymentForm (CDN Stripe.js, publishable key only).
  *
- * Tier-3 boundary (the $150 Hover charge): this page only CALLS the already-hardened
+ * Tier-3 boundary (the $15 RoofScope charge): this page only CALLS the already-hardened
  * create-payment-intent / create-hover-order / send-adjuster-email Edge Functions through
  * the Services layer with their contracts UNCHANGED. No EF/SQL/price/idempotency/DocuSign
  * change is made.
