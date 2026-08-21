@@ -28,11 +28,20 @@
 --
 -- Net effect today: the trigger fires at signing, wakes v33, v33 checks
 -- claims.completion_date, finds it unset (job just signed, not done), and
--- declines. The trigger never fires again later at actual completion, because
--- nothing updates quotes.payment_status at that point. The $15 rebate D-291
--- promises never pays. This is worse than the pre-v33 state (wrong-time
--- rebate), not better (no rebate, ever) — fixing the EF alone did not
--- half-fix this.
+-- declines -- a wasted no-op pg_net POST, not a failure. The trigger never
+-- fires again later at actual completion, because nothing updates
+-- quotes.payment_status at that point.
+--
+-- CORRECTION (2026-08-21, gh-1162): an adversarial re-verification on
+-- 2026-08-20 refuted the "the rebate never pays" framing this section
+-- originally carried. It does still pay: cron jobid 10
+-- (process-hover-rebate-scan, */30 * * * *, 5,667+ succeeded runs) invokes
+-- process-hover-rebate in scan mode independently of this trigger, gating
+-- each row on the same claims.completion_date condition -- already the
+-- correct D-291 signal. The real, smaller defect this migration fixes is
+-- (a) the wasted no-op POST at signing, and (b) up to 30 minutes of added
+-- latency before the scan picks up the completion. Neither is "the rebate
+-- never pays." This changes the urgency, not the fix or the tier.
 --
 -- ── Live blast-radius, re-verified at draft time (R-107, not carried forward) ──
 -- select count(*) from hover_orders                                        -> 0
