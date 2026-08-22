@@ -1,0 +1,35 @@
+-- Migration: gh1041_revoke_platform_alerts_log_anon_grants
+-- Author: Claude Code (automated, run-work rw-f22-20260819T200908-x9qn)
+-- Date: 2026-08-19
+-- GitHub: #1041
+--
+-- Summary: platform_alerts_log (internal ops-alerting table) had full
+-- table-level CRUD grants (INSERT/SELECT/UPDATE/DELETE/TRUNCATE/REFERENCES/
+-- TRIGGER) to both anon and authenticated, left over from default Postgres
+-- grant behavior on table creation. RLS was already correctly scoped (the
+-- issue's feared "service_role_insert_platform_alerts applies to PUBLIC"
+-- was checked live via pg_policy.polroles and is FALSE -- that policy is
+-- already TO service_role only), so this was not currently exploitable,
+-- but the excess grants are the same "policy name implies a restriction
+-- the grants don't back up" pattern already cleaned up on #886/#970.
+--
+-- This migration is a record of a change already applied directly
+-- (REVOKE, not apply_migration) on 2026-08-19T22:10Z, per this repo's
+-- established pattern for RLS/grant-only changes -- see prior REVOKE-class
+-- migrations for the same precedent. R-134 protective fast path applies:
+-- pure grant removal, RLS already blocked every operation these grants
+-- nominally allowed, zero behavior change for any legitimate caller.
+--
+-- What changed:
+--   REVOKE ALL ON platform_alerts_log FROM anon (had all 7 privileges, needs none --
+--     no anon-scoped RLS policy exists on this table)
+--   REVOKE INSERT, DELETE, TRUNCATE, REFERENCES, TRIGGER ON platform_alerts_log
+--     FROM authenticated (kept SELECT + UPDATE, matching the two
+--     authenticated-scoped admin policies)
+--
+-- Rollback: re-grant the removed privileges (restores the pre-fix,
+-- over-permissive state -- included for completeness per this repo's
+-- rollback-required convention, not because it should ever be run).
+
+REVOKE ALL ON public.platform_alerts_log FROM anon;
+REVOKE INSERT, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.platform_alerts_log FROM authenticated;
