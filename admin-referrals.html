@@ -420,7 +420,7 @@
                     <div class="summary-card-value" id="refInFunnelCount" style="color:#2563eb;">—</div>
                 </div>
                 <div class="summary-card" style="border-left:4px solid #86efac;">
-                    <div class="summary-card-label" style="color:#166534;">Commission Earned</div>
+                    <div class="summary-card-label" style="color:#166534;">Referral Fee Earned</div>
                     <div class="summary-card-value" id="refEarnedCount" style="color:#15803d;">—</div>
                 </div>
                 <div class="summary-card" style="border-left:4px solid #fcd34d;">
@@ -440,7 +440,7 @@
                             <th>Landing Page</th>
                             <th>Status</th>
                             <th>Job Value</th>
-                            <th>Commission</th>
+                            <th>Referral Fee</th>
                             <th>Claim</th>
                         </tr>
                     </thead>
@@ -502,6 +502,7 @@
             const { data, error } = await sb
                 .from('referral_agents')
                 .select('id, first_name, last_name, email, agent_type, created_at, payments_blocked, w9_file_url, w9_submitted_at, w9_verified_at, w9_notification_sent_at')
+                .eq('is_test', false)
                 .order('created_at', { ascending: false });
 
             if (error) {
@@ -671,7 +672,7 @@
                     ? (r.claim_completion_date
                         ? `<span style="color:#15803d;">Completed ${new Date(r.claim_completion_date).toLocaleDateString()}</span>`
                         : `<span style="color:#2563eb;">Linked</span>`)
-                    : `<span style="color:#d97706;font-weight:600;" title="No claim linked — this referral cannot accrue a commission">None</span>`;
+                    : `<span style="color:#d97706;font-weight:600;" title="No claim linked — this referral cannot accrue a referral fee">None</span>`;
 
                 return `
                     <tr>

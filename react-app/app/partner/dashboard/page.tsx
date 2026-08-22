@@ -315,7 +315,7 @@ function DashboardView({
               <th>Date Referred</th>
               <th>Status</th>
               <th>Job Value</th>
-              <th>Commission</th>
+              <th>Referral Fee</th>
             </tr>
           </thead>
           <tbody>

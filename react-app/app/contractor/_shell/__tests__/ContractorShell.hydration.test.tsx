@@ -39,9 +39,15 @@ vi.mock('@/lib/supabase', () => ({
       getSession: vi.fn(() => getSessionDeferred.promise),
       signOut: vi.fn(),
     },
-    // contractor row present → resolveRole() === 'contractor';
-    // template_review_role null → resolveIsAdmin() === false.
-    from: vi.fn(() => chain({ data: { id: 'c1', template_review_role: null }, error: null })),
+    // resolved_user_role row present → resolveRole() === 'contractor' (gh-909,
+    // D-182 v113: resolveRole() reads this view instead of `contractors` directly);
+    // template_review_role null on `contractors` → resolveIsAdmin() === false
+    // (resolveIsAdmin() is unchanged by gh-909 — still reads contractors directly).
+    from: vi.fn((table: string) =>
+      table === 'resolved_user_role'
+        ? chain({ data: { derived_role: 'contractor' }, error: null })
+        : chain({ data: { id: 'c1', template_review_role: null }, error: null }),
+    ),
   },
 }));
 

@@ -14,8 +14,9 @@
  * D-205 (May 2, 2026): deliverable_type_id is now REQUIRED on the request
  * body — no silent default. Allowed values: 2 (Roof Only) or 3 (Complete).
  * Frontend always sends 3 for full-replacement jobs per the universal
- * Hover Complete + $150 model. Fails loud with HTTP 400 if missing or
- * invalid.
+ * Hover Complete model. Fails loud with HTTP 400 if missing or invalid.
+ * D-291 (Aug 17, 2026) repriced the homeowner charge from $150 to $15
+ * (see the platform_settings lookup below).
  *
  * THIS IS THE MOST EXPENSIVE METERED CALL (~$25-40 per order).
  * Hard-capped at 2/day, 10/month via rate_limit_config.
@@ -114,7 +115,7 @@ async function verifyHoverPayment(
     return { ok: false, status: 500, error: "Stripe secret key not configured." };
   }
 
-  // Look up expected price (defensive default 15000 — D-205, $150).
+  // Look up expected price (defensive default 1500 — D-291, $15; supersedes D-205's $150).
   const { data: priceRow } = await supabase
     .from("platform_settings")
     .select("value")
@@ -122,7 +123,7 @@ async function verifyHoverPayment(
     .maybeSingle();
   const expectedAmount = typeof priceRow?.value === "number"
     ? priceRow.value
-    : Number(priceRow?.value ?? 15000);
+    : Number(priceRow?.value ?? 1500);
 
   const basicAuth = btoa(`${stripeSecretKey}:`);
   const piRes = await fetch(`${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}`, {

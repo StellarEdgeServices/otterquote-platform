@@ -28,7 +28,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - Commission Payouts | Otter Quotes</title>
+    <title>Admin - Referral Fee Payouts | Otter Quotes</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
@@ -142,6 +142,7 @@
         }
         .summary-card.pending   .summary-card-value { color: #D97706; }
         .summary-card.approved  .summary-card-value { color: var(--green); }
+        .summary-card.awaiting  .summary-card-value { color: var(--teal); }
         .summary-card.rejected  .summary-card-value { color: var(--red); }
 
         /* ── Filter tabs ────────────────────────────────────── */
@@ -211,6 +212,7 @@
         .badge-pending     { background: #FEF3C7; color: #92400E; }
         .badge-approved    { background: #D1FAE5; color: #065F46; }
         .badge-auto        { background: #DBEAFE; color: #1E40AF; }
+        .badge-paid        { background: #CCFBF1; color: #0F766E; }
         .badge-rejected    { background: #FEE2E2; color: #991B1B; }
         .badge-pre         { background: #F3F4F6; color: #6B7280; }
 
@@ -233,6 +235,8 @@
         .btn-approve:hover:not(:disabled) { background: #A7F3D0; }
         .btn-reject  { background: #FEE2E2; color: #991B1B; }
         .btn-reject:hover:not(:disabled)  { background: #FECACA; }
+        .btn-mark-paid { background: #CCFBF1; color: #0F766E; }
+        .btn-mark-paid:hover:not(:disabled) { background: #99F6E4; }
         .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* ── Inline rejection textarea ───────────────────────── */
@@ -309,9 +313,7 @@
             .admin-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
             .admin-header h1 { font-size: 1.75rem; }
             .payout-table th:nth-child(5),
-            .payout-table td:nth-child(5),
-            .payout-table th:nth-child(6),
-            .payout-table td:nth-child(6) { display: none; }
+            .payout-table td:nth-child(5) { display: none; }
         }
     </style>
 <!-- GA4 -->
@@ -330,7 +332,7 @@
     <div class="admin-header">
         <div class="admin-title">
             <span class="admin-badge">ADMIN</span>
-            <h1>Commission Payouts</h1>
+            <h1>Referral Fee Payouts</h1>
         </div>
         <button class="logout-btn" onclick="handleLogout()">Log Out</button>
     </div>
@@ -356,10 +358,10 @@
             <div class="summary-card-value" id="cardApprovedCount">—</div>
             <div class="summary-card-sub" id="cardApprovedAmount">loading…</div>
         </div>
-        <div class="summary-card approved">
-            <div class="summary-card-label">Auto-Approved This Month</div>
-            <div class="summary-card-value" id="cardAutoCount">—</div>
-            <div class="summary-card-sub" id="cardAutoAmount">loading…</div>
+        <div class="summary-card awaiting">
+            <div class="summary-card-label">Approved — Awaiting Payment</div>
+            <div class="summary-card-value" id="cardAwaitingCount">—</div>
+            <div class="summary-card-sub" id="cardAwaitingAmount">loading…</div>
         </div>
         <div class="summary-card rejected">
             <div class="summary-card-label">Rejected</div>
@@ -373,7 +375,7 @@
         <button class="filter-tab active" onclick="setFilter('all')">All</button>
         <button class="filter-tab" onclick="setFilter('pending_approval')">Pending</button>
         <button class="filter-tab" onclick="setFilter('approved')">Approved</button>
-        <button class="filter-tab" onclick="setFilter('auto_approved')">Auto-Approved</button>
+        <button class="filter-tab" onclick="setFilter('paid')">Paid</button>
         <button class="filter-tab" onclick="setFilter('rejected')">Rejected</button>
         <button class="filter-tab" onclick="setFilter('pre_approved')">Pre-Approved</button>
     </div>
@@ -389,7 +391,6 @@
                     <th>Amount</th>
                     <th>Trigger</th>
                     <th>Created</th>
-                    <th>Auto-Approves</th>
                     <th>Job</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -498,7 +499,9 @@
 
         const pending  = allPayouts.filter(p => p.status === 'pending_approval');
         const approved = allPayouts.filter(p => p.status === 'approved' && p.approved_at >= monthStart);
-        const auto     = allPayouts.filter(p => p.status === 'auto_approved' && p.approved_at >= monthStart);
+        // #1160 (D-293): rows that are approved but not yet paid — the number
+        // Dustin acts on. paid_at is only ever set by mark-payout-paid.
+        const awaiting = allPayouts.filter(p => p.status === 'approved' && p.paid_at == null);
         const rejected = allPayouts.filter(p => p.status === 'rejected');
 
         const sumAmount = (rows) => rows.reduce((s, r) => s + Number(r.amount || 0), 0);
@@ -508,8 +511,8 @@
         document.getElementById('cardPendingAmount').textContent = fmt(sumAmount(pending)) + ' pending';
         document.getElementById('cardApprovedCount').textContent  = approved.length;
         document.getElementById('cardApprovedAmount').textContent = fmt(sumAmount(approved)) + ' this month';
-        document.getElementById('cardAutoCount').textContent      = auto.length;
-        document.getElementById('cardAutoAmount').textContent     = fmt(sumAmount(auto)) + ' this month';
+        document.getElementById('cardAwaitingCount').textContent  = awaiting.length;
+        document.getElementById('cardAwaitingAmount').textContent = fmt(sumAmount(awaiting)) + ' awaiting payment';
         document.getElementById('cardRejectedCount').textContent  = rejected.length;
     }
 
@@ -521,7 +524,7 @@
                 (filter === 'all' && btn.textContent === 'All') ||
                 (filter === 'pending_approval' && btn.textContent === 'Pending') ||
                 (filter === 'approved' && btn.textContent === 'Approved') ||
-                (filter === 'auto_approved' && btn.textContent === 'Auto-Approved') ||
+                (filter === 'paid' && btn.textContent === 'Paid') ||
                 (filter === 'rejected' && btn.textContent === 'Rejected') ||
                 (filter === 'pre_approved' && btn.textContent === 'Pre-Approved')
             );
@@ -555,7 +558,12 @@
             const statusBadge = {
                 pending_approval: '<span class="badge badge-pending">Pending</span>',
                 approved:         '<span class="badge badge-approved">Approved</span>',
+                // #1160: process-payout-reminders no longer produces auto_approved
+                // rows (#1021 AC1 deleted the sweep) but the CHECK constraint still
+                // admits it for historical rows (#1150) — badge kept so those rows
+                // don't fall through to the bare fallback below.
                 auto_approved:    '<span class="badge badge-auto">Auto-Approved</span>',
+                paid:             '<span class="badge badge-paid">Paid</span>',
                 rejected:         '<span class="badge badge-rejected">Rejected</span>',
                 pre_approved:     '<span class="badge badge-pre">Pre-Approved</span>',
             }[p.status] || `<span class="badge badge-pre">${p.status}</span>`;
@@ -563,16 +571,14 @@
             const payoutTypeLabel = p.payout_type === 'commission_referral' ? 'Referral' : 'Recruit Bonus';
             const amount = '$' + Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const created = new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-            const autoOn  = p.auto_approve_at
-                ? new Date(p.auto_approve_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                : '—';
             const trigger = (p.trigger_event || '—').substring(0, 60);
             const jobBadge = p._job_complete === true
                 ? '<span class="badge badge-approved">Job complete ✓</span>'
                 : '<span class="badge badge-pending">In progress ⏳</span>';
 
-            const actionHtml = p.status === 'pending_approval'
-                ? `<button class="action-btn btn-approve" onclick="handleApprove('${p.id}', this)">Approve</button>
+            let actionHtml = '—';
+            if (p.status === 'pending_approval') {
+                actionHtml = `<button class="action-btn btn-approve" onclick="handleApprove('${p.id}', this)">Approve</button>
                    <button class="action-btn btn-reject"  onclick="showRejectForm('${p.id}', this)">Reject</button>
                    <div class="reject-inline" id="reject-form-${p.id}" style="display:none;">
                      <textarea class="reject-reason-input" id="reject-reason-${p.id}"
@@ -581,8 +587,10 @@
                      <button class="reject-confirm-btn" id="reject-btn-${p.id}"
                        onclick="handleReject('${p.id}')" disabled>Confirm Reject</button>
                      <button class="reject-cancel-btn" onclick="cancelRejectForm('${p.id}')">Cancel</button>
-                   </div>`
-                : '—';
+                   </div>`;
+            } else if (p.status === 'approved') {
+                actionHtml = `<button class="action-btn btn-mark-paid" onclick="handleMarkPaid('${p.id}', this)">Mark Paid</button>`;
+            }
 
             return `<tr id="row-${p.id}">
                 <td>
@@ -593,7 +601,6 @@
                 <td class="amount-cell">${amount}</td>
                 <td style="font-size:0.8rem;color:#64748B;">${escapeHtml(trigger)}</td>
                 <td>${created}</td>
-                <td>${autoOn}</td>
                 <td>${jobBadge}</td>
                 <td>${statusBadge}</td>
                 <td>${actionHtml}</td>
@@ -609,8 +616,8 @@
         let overrideIncomplete = false;
         if (!approvalRow || approvalRow._job_complete !== true) {
             const proceed = confirm(
-                '⚠️ The job linked to this commission is NOT marked complete.\n\n' +
-                'D-139: commissions are paid after job completion. Approving now releases the payout early.\n\n' +
+                '⚠️ The job linked to this referral fee is NOT marked complete.\n\n' +
+                'D-139: referral fees are paid after job completion. Approving now releases the payout early.\n\n' +
                 'Approve anyway?'
             );
             if (!proceed) return;
@@ -653,6 +660,53 @@
             btn.disabled = false;
             btn.textContent = 'Approve';
             alert('Approval failed: ' + err.message);
+        }
+    }
+
+    // ── Mark Paid ─────────────────────────────────────────────────────────────
+    // #1160 (D-293 step 2, gh-1155's mark-payout-paid): "I sent the money."
+    // Same fetch + session-bearer + apikey shape as handleApprove/handleReject.
+    // mark-payout-paid can also return a held response ({ ok:false, held:true,
+    // reason, error }) when the partner's W-9/payments gate re-fails between
+    // approve and mark-paid — surfaced the same way handleApprove already
+    // surfaces its own held case: via json.error in the thrown Error/alert.
+    async function handleMarkPaid(approvalId, btn) {
+        btn.disabled = true;
+        btn.textContent = 'Marking Paid…';
+
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            if (!session) throw new Error('Not authenticated');
+
+            const res = await fetch(
+                `${CONFIG.SUPABASE_URL}/functions/v1/mark-payout-paid`,
+                {
+                    method:  'POST',
+                    headers: {
+                        'Content-Type':  'application/json',
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'apikey': CONFIG.SUPABASE_ANON,
+                    },
+                    body: JSON.stringify({ payout_approval_id: approvalId }),
+                }
+            );
+            const json = await res.json();
+            if (!res.ok || !json.ok) throw new Error(json.error || 'Mark Paid failed');
+
+            // Update row in place
+            const approval = allPayouts.find(p => p.id === approvalId);
+            if (approval) {
+                approval.status  = 'paid';
+                approval.paid_at = new Date().toISOString();
+            }
+            updateSummaryCards();
+            renderTable();
+
+        } catch (err) {
+            console.error('Mark Paid error:', err);
+            btn.disabled = false;
+            btn.textContent = 'Mark Paid';
+            alert('Mark Paid failed: ' + err.message);
         }
     }
 

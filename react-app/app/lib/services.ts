@@ -18,9 +18,12 @@
 
 import { supabase } from '@/lib/supabase';
 
-// CONFIG.INGEST_EMAIL_DOMAIN in the static stack (js/config.js). Not a secret.
-const INGEST_EMAIL_DOMAIN =
-  process.env.NEXT_PUBLIC_INGEST_EMAIL_DOMAIN || 'claims.otterquote.com';
+// gh-1135: INGEST_EMAIL_DOMAIN removed — claims.otterquote.com was NXDOMAIN
+// with zero inbound routes, so every generated docs-*@claims.otterquote.com
+// address silently hard-bounced adjuster replies. sendAdjusterEmail below
+// now sets Reply-To to the requesting homeowner's own email instead. The
+// receiving half (an inbound-parse Edge Function) is tracked as a separate,
+// explicitly non-urgent feature issue.
 
 // ── Param / return shapes ──────────────────────────────────────────────────
 
@@ -38,7 +41,7 @@ export interface SendAdjusterEmailParams {
 
 export interface SendAdjusterEmailResult {
   success: boolean;
-  ingest_email: string;
+  reply_to: string;
   request_id: string;
   edge_function_pending?: boolean;
 }
@@ -161,8 +164,10 @@ function normalizePhone(phone: string): string {
 // ── Mailgun — Adjuster Email (D-043, D-045, D-048) ──────────────────────────
 
 /**
- * Send an email to the adjuster requesting documents.
- * Creates an ingest email address for auto-reply capture.
+ * Send an email to the adjuster requesting documents. Reply-To is set to
+ * the requesting homeowner's own email (gh-1135) — the docs-*@claims.
+ * otterquote.com ingest address it used to generate pointed at an NXDOMAIN
+ * with no inbound route, so every adjuster reply silently hard-bounced.
  */
 async function sendAdjusterEmail(
   params: SendAdjusterEmailParams,
@@ -177,9 +182,11 @@ async function sendAdjusterEmail(
     request_type = 'estimate',
   } = params;
 
-  // Generate unique ingest email address for this request
-  const ingestId = crypto.randomUUID().split('-')[0]; // short unique ID
-  const ingestEmail = `docs-${ingestId}@${INGEST_EMAIL_DOMAIN}`;
+  // gh-1135: Reply-To is the requesting homeowner's own email, read off the
+  // current auth session — not a generated claims.otterquote.com ingest
+  // address (there is no receiver for that domain).
+  const { data: authData } = await supabase.auth.getUser();
+  const replyToEmail = authData?.user?.email || '';
 
   // Build email subject
   let subject = `Request for Insurance Estimate`;
@@ -199,10 +206,15 @@ async function sendAdjusterEmail(
     body += `I would also appreciate any property measurements you have on file from the inspection, if available.\n\n`;
   }
 
-  body += `You can reply directly to this email with the documents attached.\n\n`;
+  body += `You can reply directly to this email with the documents attached — it will come straight to me.\n\n`;
   body += `Thank you,\n${homeowner_name}\n${homeowner_phone}`;
 
-  // Save the request to the database
+  // Save the request to the database. adjuster_email_requests.ingest_email
+  // is a NOT NULL column (schema), so it still needs a value — we store the
+  // homeowner's reply-to address there rather than a generated
+  // claims.otterquote.com address (gh-1135). claims.ingest_email (the
+  // separate, nullable column) is left untouched — reserved for a future
+  // inbound receiver, per the issue's acceptance criteria.
   const { data: requestData, error: dbError } = await supabase
     .from('adjuster_email_requests')
     .insert({
@@ -210,21 +222,18 @@ async function sendAdjusterEmail(
       to_email: adjuster_email,
       to_name: adjuster_name,
       request_type,
-      ingest_email: ingestEmail,
+      ingest_email: replyToEmail,
     })
     .select()
     .single();
 
   if (dbError) throw dbError;
 
-  // Update the claim with the ingest email
-  await supabase
-    .from('claims')
-    .update({ ingest_email: ingestEmail })
-    .eq('id', claim_id);
-
-  // Call Edge Function to actually send via Mailgun (handles Mailgun API call +
-  // setting reply-to to ingestEmail). Invoked via the authenticated session.
+  // Call Edge Function to actually send via Mailgun. The Edge Function
+  // derives Reply-To from the adjuster_email_requests row it looks up by
+  // request_id (see supabase/functions/send-adjuster-email/index.ts) — the
+  // reply_to field below is not read by the EF but is included for
+  // clarity/telemetry parity with the DB write above.
   try {
     const { error } = await supabase.functions.invoke('send-adjuster-email', {
       body: {
@@ -232,7 +241,7 @@ async function sendAdjusterEmail(
         to_name: adjuster_name,
         subject,
         body,
-        reply_to: ingestEmail,
+        reply_to: replyToEmail,
         request_id: requestData.id,
       },
     });
@@ -241,19 +250,19 @@ async function sendAdjusterEmail(
       console.warn('Edge function not yet deployed. Email request saved to database.', error);
       return {
         success: true, // Request saved even if email didn't send yet
-        ingest_email: ingestEmail,
+        reply_to: replyToEmail,
         request_id: requestData.id,
         edge_function_pending: true,
       };
     }
 
-    return { success: true, ingest_email: ingestEmail, request_id: requestData.id };
+    return { success: true, reply_to: replyToEmail, request_id: requestData.id };
   } catch (err) {
     // Edge function may not be deployed yet — that's OK, request is saved
     console.warn('Edge function call failed (may not be deployed):', err);
     return {
       success: true,
-      ingest_email: ingestEmail,
+      reply_to: replyToEmail,
       request_id: requestData.id,
       edge_function_pending: true,
     };

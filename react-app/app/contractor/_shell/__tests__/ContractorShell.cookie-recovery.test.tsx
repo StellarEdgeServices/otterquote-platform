@@ -18,8 +18,14 @@ vi.mock('@/hooks/use-notification-count', () => ({
   useNotificationCount: vi.fn(() => ({ count: 0, loading: false, error: null })),
 }));
 
-// getSession() never resolves (the orphaned-lock hang). The contractors role query
-// DOES resolve, so the only route to a settled state is the cookie-recovery path.
+// getSession() never resolves (the orphaned-lock hang). The role query DOES
+// resolve, so the only route to a settled state is the cookie-recovery path.
+//
+// gh-909 (D-182 v113, 2026-08-19): resolveRole() now reads `resolved_user_role`
+// instead of `contractors` directly, so that table must return a
+// `{ derived_role: 'contractor' }` shape for role to resolve. resolveIsAdmin()
+// is unchanged by gh-909 and still reads `contractors.template_review_role`
+// directly, so that table keeps its original fixture shape.
 const chain = (result: unknown) => ({
   select: () => ({ eq: () => ({ single: () => Promise.resolve(result) }) }),
 });
@@ -30,7 +36,11 @@ vi.mock('@/lib/supabase', () => ({
       getSession: vi.fn(() => new Promise(() => {})),
       signOut: vi.fn(),
     },
-    from: vi.fn(() => chain({ data: { id: 'c1', template_review_role: null }, error: null })),
+    from: vi.fn((table: string) =>
+      table === 'resolved_user_role'
+        ? chain({ data: { derived_role: 'contractor' }, error: null })
+        : chain({ data: { id: 'c1', template_review_role: null }, error: null }),
+    ),
   },
 }));
 

@@ -1096,10 +1096,16 @@
                                 <div class="info-row">
                                     <div class="info-label">States</div>
                                     <div class="info-value">${(function(){
-                                        // service_states column does not exist; derive from service_counties suffix.
+                                        // gh-749: prefer the structured service_states column. Fall back to
+                                        // deriving from service_counties (format "STATE:county" / "STATE:*",
+                                        // e.g. "IN:*" — state is the colon-delimited prefix) only for legacy
+                                        // rows that predate the backfill.
+                                        if (Array.isArray(c.service_states) && c.service_states.length > 0) {
+                                            return c.service_states.join(', ');
+                                        }
                                         const counties = c.service_counties || [];
                                         const states = Array.from(new Set(counties
-                                            .map(s => (typeof s === 'string' && s.includes('-')) ? s.split('-').pop() : null)
+                                            .map(s => (typeof s === 'string' && s.includes(':')) ? s.split(':')[0] : null)
                                             .filter(Boolean)));
                                         return states.join(', ') || '—';
                                     })()}</div>

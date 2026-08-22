@@ -115,12 +115,11 @@ function ctaButton(text: string, url: string): string {
 </table>`.trim();
 }
 
-function formatCurrency(amount: number): string {
-  return `$${Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+// formatCurrency was removed with the D-307 job-amount suppression (gh-1055) —
+// the amount is no longer rendered in this function's partner-facing email.
 
 function formatPayoutType(type: string): string {
-  return type === "commission_referral" ? "Referral Commission" : "Recruit Bonus";
+  return type === "commission_referral" ? "Referral Fee" : "Recruit Bonus";
 }
 
 async function sendMailgunEmail(
@@ -362,33 +361,6 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Set referrals.commission_paid_at ─────────────────────────────────────
-    if (approval.referral_id) {
-      const { error: referralError } = await supabase
-        .from("referrals")
-        .update({ commission_paid_at: now })
-        .eq("id", approval.referral_id)
-        .is("commission_paid_at", null); // Only set if not already paid
-
-      if (referralError) {
-        console.error(`[${FUNCTION_NAME}] Failed to update referral commission_paid_at:`, referralError.message);
-        // Non-fatal — approval row already updated; log and continue.
-      }
-
-      // D-139 (#567): advance the referral to commission_paid so the
-      // update_referral_stats trigger fires — nothing else ever sets it.
-      const { error: statusError } = await supabase
-        .from("referrals")
-        .update({ status: "commission_paid" })
-        .eq("id", approval.referral_id)
-        .neq("status", "commission_paid");
-
-      if (statusError) {
-        console.error(`[${FUNCTION_NAME}] Failed to update referral status:`, statusError.message);
-        // Non-fatal — approval row already updated; log and continue.
-      }
-    }
-
     // ── Send confirmation email to partner ───────────────────────────────────
     // Reuse the agent row already loaded by the W-9 gate above (same columns).
     const partnerEmail: string | null = agent.email || null;
@@ -399,19 +371,24 @@ serve(async (req: Request) => {
 
     let emailSent = false;
     if (partnerEmail) {
-      const amount      = formatCurrency(Number(approval.amount));
       const payoutType  = formatPayoutType(approval.payout_type);
       const partnerName = approval.partner_name || "Partner";
 
-      const subject = `Your ${payoutType.toLowerCase()} of ${amount} has been approved`;
+      // D-307 (board Q22, 2026-08-19, gh-1055): the job amount is hidden from
+      // ALL partner-facing email, not just the progress series. Q26 (may a
+      // partner see their OWN referral fee amount in their OWN
+      // payment-confirmation email) was unanswered as of this change — the
+      // conservative reading governs per the issue: suppress the figure here
+      // too and point the partner at their dashboard for it.
+      const subject = `Your ${payoutType.toLowerCase()} has been approved`;
 
       const bodyHtml = `
 <h2 style="font-size:1.5rem;font-weight:700;color:#0B1929;margin:0 0 8px;">
-  Great news — your commission is approved!
+  Great news — your referral fee is approved!
 </h2>
 <p style="color:#374151;font-size:0.95rem;margin:0 0 24px;">
-  Hi ${partnerName}, your ${payoutType.toLowerCase()} of <strong>${amount}</strong> has been approved.
-  Our team will follow up separately with next steps to get you paid.
+  Hi ${partnerName}, your ${payoutType.toLowerCase()} has been approved.
+  Sign in to your dashboard to see the amount — our team will follow up separately with next steps to get you paid.
 </p>
 
 <table width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -420,12 +397,8 @@ serve(async (req: Request) => {
     <td style="padding:20px 24px;">
       <table width="100%" cellpadding="0" cellspacing="0" border="0">
         <tr>
-          <td style="padding:4px 0;font-size:0.875rem;color:#64748B;width:140px;">Commission Type</td>
+          <td style="padding:4px 0;font-size:0.875rem;color:#64748B;width:140px;">Referral Fee Type</td>
           <td style="padding:4px 0;font-size:0.875rem;font-weight:600;color:#0B1929;">${payoutType}</td>
-        </tr>
-        <tr>
-          <td style="padding:4px 0;font-size:0.875rem;color:#64748B;">Amount</td>
-          <td style="padding:4px 0;font-size:1.25rem;font-weight:700;color:#10B981;">${amount}</td>
         </tr>
         <tr>
           <td style="padding:4px 0;font-size:0.875rem;color:#64748B;">Status</td>
@@ -447,8 +420,8 @@ ${ctaButton("View Your Dashboard →", PARTNER_DASH_URL)}
       const bodyText = [
         `Hi ${partnerName},`,
         ``,
-        `Your ${payoutType.toLowerCase()} of ${amount} has been approved.`,
-        `Our team will follow up separately with next steps to get you paid.`,
+        `Your ${payoutType.toLowerCase()} has been approved.`,
+        `Sign in to your dashboard to see the amount. Our team will follow up separately with next steps to get you paid.`,
         ``,
         `View your dashboard: ${PARTNER_DASH_URL}`,
       ].join("\n");
