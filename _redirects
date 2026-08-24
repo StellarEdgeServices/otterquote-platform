@@ -40,3 +40,8 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # verbatim into contractor-join.html first (gh-960(f)). File deleted so this
 # redirect isn't shadowed by the static asset; 301 not 302 to pass link equity.
 /inspector-landing.html /partner-inspectors.html 301
+
+# Pretty URL for the referral-partner profession gate (partners.html). The
+# role switcher and every "become a partner" CTA point at /partners.html;
+# this keeps a bare /partners working for anything typed, printed, or spoken.
+/partners /partners.html 301

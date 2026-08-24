@@ -187,7 +187,10 @@
   .nav-links {
     display: none;
     position: absolute;
-    top: 64px;
+    /* Was a hardcoded 64px (the height of the single-row header). The role
+       bar above adds a second row, so the mobile menu must hang off the
+       bottom of whatever the header actually is, not off a magic number. */
+    top: 100%;
     left: 0;
     right: 0;
     background: var(--navy-2);
@@ -351,4 +354,82 @@
     margin-left: var(--sp-3);
     padding: 0 0 0 var(--sp-2);
   }
+}
+
+
+/* ═══════════════════════════════════════════════════
+   TWO-TIER NAVIGATION — role switcher (row 1)
+   Row 1 answers "who are you"; row 2 answers "what can you do".
+   The switcher is present on every page for every visitor, signed in or
+   not, so changing roles is never more than one click away.
+   ═══════════════════════════════════════════════════ */
+
+.nav-roles {
+  background: rgba(4, 18, 28, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.nav-roles-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 40px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.nav-roles-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7C8FA3;
+  flex-shrink: 0;
+}
+
+.nav-roles-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  /* Never wrap onto a second line on small screens — scroll instead, so the
+     third role is reachable rather than pushed below the fold. */
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.nav-roles-tabs::-webkit-scrollbar { display: none; }
+
+.nav-role-tab {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #94A3B8;
+  text-decoration: none;
+  padding: 5px var(--sp-3);
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid transparent;
+  transition: all var(--duration) var(--ease);
+}
+
+.nav-role-tab:hover {
+  color: var(--white);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nav-role-tab.active {
+  color: var(--navy, #0D1B2E);
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+.nav-role-tab:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .nav-roles-label { display: none; }
+  .nav-role-tab { font-size: 0.78rem; padding: 5px var(--sp-2); }
 }
