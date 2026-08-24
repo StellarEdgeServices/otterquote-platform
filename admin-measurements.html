@@ -450,7 +450,7 @@ function updateMarginLive() {
   }
   var net = paid - Math.round(costDollars * 100);
   var product = row ? (state.catalog[row.product_code] || {}) : {};
-  var rebateNote = product.rebate_on_close ? ' — and the ' + money(paid) + ' is rebated if this project closes with one of our contractors' : '';
+  var rebateNote = product.rebate_on_close ? ' — and the ' + money(paid) + ' is rebated if this project is completed with one of our contractors' : '';
   el.innerHTML = 'Margin on this order: <strong class="' + (net < 0 ? 'margin-neg' : 'margin-pos') + '">' +
     (net < 0 ? '-' : '') + '$' + Math.abs(net / 100).toFixed(2) + '</strong>' + esc(rebateNote);
 }
