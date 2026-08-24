@@ -859,7 +859,7 @@
                 parts.push('<button class="doc-link-btn" id="measurements-' + opp.id + '" onclick="openMeasurementsPdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4D0; View Measurements</button>');
             }
             if (opp.measurementsAvailable) {
-                parts.push('<button class="doc-link-btn" id="hover-' + opp.id + '" onclick="openHoverPdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4CF; Hover PDF</button>');
+                parts.push('<button class="doc-link-btn" id="hover-' + opp.id + '" onclick="openHoverPdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4CF; Measurement PDF</button>');
             }
             if (!parts.length) return '';
             return '<div class="docs-section"><span class="docs-label">Documents</span>' + parts.join('') + '</div>';
@@ -915,9 +915,9 @@
                 window.open(data.url, '_blank');
             } catch (err) {
                 console.error('Failed to open Hover PDF:', err);
-                alert('Hover measurement PDF is not available for this project yet. The measurement may still be in progress.');
+                alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
             } finally {
-                if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; Hover PDF'; }
+                if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; Measurement PDF'; }
             }
         }
 

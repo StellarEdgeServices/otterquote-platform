@@ -532,13 +532,13 @@ function DocLinks({ claim }: { claim: Record<string, unknown> }) {
   async function openHoverPdf() {
     if (!claim.id) return;
     const { data, error } = await supabase.functions.invoke('get-hover-pdf', { body: { claim_id: claim.id, format: 'url' } });
-    if (error || !data?.url) { alert('Hover measurement PDF is not available for this project yet.'); return; }
+    if (error || !data?.url) { alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.'); return; }
     window.open(data.url, '_blank');
   }
   return (
     <div className="oqb-doclinks">
       {!!claim.estimate_filename && <button type="button" className="oqb-doclink" onClick={openLossSheet}>📄 View Loss Sheet</button>}
-      {!!claim.id && <button type="button" className="oqb-doclink" onClick={openHoverPdf}>📏 View Hover PDF</button>}
+      {!!claim.id && <button type="button" className="oqb-doclink" onClick={openHoverPdf}>📏 View Measurement PDF</button>}
     </div>
   );
 }

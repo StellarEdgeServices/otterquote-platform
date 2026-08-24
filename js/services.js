@@ -237,7 +237,7 @@ const Services = {
         body: {
           amount,
           currency: 'usd',
-          description: description || 'Hover Complete Property Data File',
+          description: description || 'Complete Property Report',
           metadata: {
             claim_id,
             type: 'hover_measurement',
@@ -353,7 +353,7 @@ const Services = {
     } = params;
 
     if (!payment_intent_id) {
-      throw new Error('Missing payment_intent_id — Hover payment must complete before ordering (D-181).');
+      throw new Error('Missing payment_intent_id — payment must complete before ordering (D-181).');
     }
     // D-205: deliverable_type_id is required and must be 2 or 3. Fail loud at the client too.
     if (deliverable_type_id !== 2 && deliverable_type_id !== 3) {
@@ -401,7 +401,7 @@ const Services = {
           order_id: order.id,
           capture_link: null,
           placeholder: true,
-          message: 'Hover order creation failed. Please try again.',
+          message: 'Measurement order creation failed. Please try again.',
         };
       }
 

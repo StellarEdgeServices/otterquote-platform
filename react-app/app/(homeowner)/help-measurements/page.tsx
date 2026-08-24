@@ -79,7 +79,7 @@ import {
  */
 export const RESUME_COPY = {
   unresolved:
-    "We found an unfinished Hover order from your last visit. If you completed payment and don't see a confirmation, contact support with your claim number — we'll verify your payment and complete the order. If you did not finish paying, you can safely start over below.",
+    "We found an unfinished measurement order from your last visit. If you completed payment and don't see a confirmation, contact support with your claim number — we'll verify your payment and complete the order. If you did not finish paying, you can safely start over below.",
 } as const;
 
 // ── Top-level page ───────────────────────────────────────────────────────────────

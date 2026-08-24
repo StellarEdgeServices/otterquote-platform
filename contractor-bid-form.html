@@ -1427,7 +1427,7 @@
         <div id="hoverPhotos3DBtn" style="display:none;">
           <a id="hoverPhotos3DLink" href="#" target="_blank" rel="noopener"
              style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#0EA5E9;color:#fff;font-size:0.82rem;font-weight:600;border-radius:var(--radius-sm);text-decoration:none;transition:background 0.15s;">
-            Open Hover 3D Design ↗
+            Open 3D Property Design ↗
           </a>
         </div>
       </div>
@@ -1441,8 +1441,8 @@
       <div id="hoverPhotosMore" style="display:none;margin-top:var(--sp-2);font-size:0.8rem;color:#0369A1;"></div>
       <!-- Empty state -->
       <div id="hoverPhotosEmpty" style="display:none;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:var(--radius-md);padding:var(--sp-5);text-align:center;font-size:0.875rem;color:#6B7280;">
-        Property photos will appear here once Hover measurements are complete.
-        <div style="margin-top:var(--sp-2);"><a id="hoverPhotosDirectLink" href="#" target="_blank" rel="noopener" style="color:#0284C7;font-size:0.82rem;">View in Hover ↗</a></div>
+        Property photos will appear here once measurements are complete.
+        <div style="margin-top:var(--sp-2);"><a id="hoverPhotosDirectLink" href="#" target="_blank" rel="noopener" style="color:#0284C7;font-size:0.82rem;">View measurements ↗</a></div>
       </div>
     </div>
 
@@ -1591,21 +1591,21 @@
           <div id="hoverRoofingPanel" style="display:none;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-6);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-4);">
               <div>
-                <strong style="color:#0369A1;font-size:1rem;">📐 Hover Roofing Measurements</strong>
+                <strong style="color:#0369A1;font-size:1rem;">📐 Roofing Measurements</strong>
                 <div id="hoverRoofingAddressLine" style="font-size:0.8rem;color:#64748B;margin-top:2px;"></div>
               </div>
               <div style="display:flex;align-items:center;gap:var(--sp-3);">
                 <div id="hoverRoofingLink" style="display:none;">
                   <a id="hoverRoofingJobLink" href="#" target="_blank" rel="noopener"
                      style="color:#0284C7;font-size:0.8rem;font-weight:600;text-decoration:none;border:1px solid #BAE6FD;padding:4px 10px;border-radius:var(--radius-sm);background:#fff;">
-                    View in Hover ↗
+                    View measurements ↗
                   </a>
                 </div>
                 <button type="button" id="loadHoverRoofingBtn" class="btn-sm primary" onclick="loadHoverRoofingData()" style="font-size:0.8rem;">Load Measurements</button>
               </div>
             </div>
             <div id="hoverRoofingContent" style="font-size:0.875rem;color:#6B7280;">
-              Click <strong>Load Measurements</strong> to fetch aerial roof measurements from Hover.
+              Click <strong>Load Measurements</strong> to fetch aerial roof measurements.
             </div>
           </div>
 
@@ -2102,7 +2102,7 @@
         <!-- ── Siding Trade Section (retail siding jobs) ── -->
         <div class="form-section" id="sidingTradeSection" style="grid-column: 1 / -1; display: none;">
           <h3 style="font-size:1.1rem;margin-bottom:var(--sp-2);">🧱 Siding Project Details</h3>
-          <p style="font-size:0.85rem;color:#6B7280;margin-bottom:var(--sp-6);">This is a retail siding project. The homeowner uses Hover to design their siding, so you can see exactly what product and color was selected before bidding.</p>
+          <p style="font-size:0.85rem;color:#6B7280;margin-bottom:var(--sp-6);">This is a retail siding project. The homeowner designs their siding in our property design tool, so you can see exactly what product and color was selected before bidding.</p>
 
           <!-- Hover Design Summary Panel -->
           <div id="hoverDesignPanel" style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-8);">
@@ -2110,14 +2110,14 @@
             <!-- Panel header row -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-4);">
               <div>
-                <strong style="color:#0369A1;font-size:1rem;">🏠 Homeowner's Hover Design</strong>
+                <strong style="color:#0369A1;font-size:1rem;">🏠 Homeowner's Property Design</strong>
                 <div id="hoverJobAddressLine" style="font-size:0.8rem;color:#64748B;margin-top:2px;"></div>
               </div>
               <div style="display:flex;align-items:center;gap:var(--sp-3);">
                 <div id="hoverDesignLink" style="display:none;">
                   <a id="hoverJobLink" href="#" target="_blank" rel="noopener"
                      style="color:#0284C7;font-size:0.8rem;font-weight:600;text-decoration:none;border:1px solid #BAE6FD;padding:4px 10px;border-radius:var(--radius-sm);background:#fff;">
-                    View in Hover ↗
+                    View property design ↗
                   </a>
                 </div>
                 <button type="button" id="loadHoverSidingDataBtn" class="btn-sm primary" onclick="loadHoverSidingData()" style="font-size:0.8rem;">Load Design Data</button>
@@ -2132,13 +2132,13 @@
 
             <!-- Material & labor table (populated by JS) -->
             <div id="hoverDesignContent" style="font-size:0.875rem;color:#6B7280;">
-              Click <strong>Load Design Data</strong> to fetch the homeowner's product and color selections from Hover.
+              Click <strong>Load Design Data</strong> to fetch the homeowner's product and color selections.
             </div>
 
             <!-- No-data help prompt (shown when no material list exists) -->
             <div id="hoverNoDesignHelp" style="display:none;margin-top:var(--sp-4);background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--radius-sm);padding:var(--sp-3) var(--sp-4);font-size:0.82rem;color:#92400E;">
-              <strong>No product selections on file.</strong> The homeowner's Hover measurements are available but they haven't selected specific products yet.
-              To see brand, color, and exact quantities here, the homeowner needs to open their Hover job and create an Estimate (Hover's material list tool) with their desired products.
+              <strong>No product selections on file.</strong> The homeowner's professional measurements are available but they haven't selected specific products yet.
+              To see brand, color, and exact quantities here, the homeowner needs to open their property design and create a material list with their desired products.
               In the meantime, wall area and square count appear above.
             </div>
 
@@ -2968,7 +2968,7 @@
 
       btn.disabled = true;
       btn.textContent = 'Loading…';
-      content.innerHTML = '<span style="color:#6B7280;">Fetching design data from Hover…</span>';
+      content.innerHTML = '<span style="color:#6B7280;">Fetching design data…</span>';
       if (noDataHelp) noDataHelp.style.display = 'none';
 
       try {
@@ -3032,7 +3032,7 @@
           // Store for fee-calculator math; update per-square note
           sidingWallSquares = parseFloat(data.wall_squares) || 0;
           const note = document.getElementById('sidingSquaresNote');
-          if (note) note.textContent = 'Hover reports ' + data.wall_squares + ' squares of siding area';
+          if (note) note.textContent = 'Measurements report ' + data.wall_squares + ' squares of siding area';
           syncSidingTotal();
         }
 
@@ -3106,20 +3106,20 @@
 
         } else if (data.wall_squares || data.wall_sqft) {
           // We have measurements but no product selections
-          content.innerHTML = '<span style="color:#6B7280;">Measurements loaded. No specific products selected yet in Hover — see note below.</span>';
+          content.innerHTML = '<span style="color:#6B7280;">Measurements loaded. No specific products selected yet — see note below.</span>';
           if (noDataHelp) noDataHelp.style.display = 'block';
 
         } else {
           content.innerHTML = data.message
             ? '<span style="color:#6B7280;">' + escHtmlBid(data.message) + '</span>'
-            : '<span style="color:#6B7280;">No Hover data available for this project.</span>';
+            : '<span style="color:#6B7280;">No property design data available for this project.</span>';
         }
 
         btn.textContent = 'Refresh';
         btn.disabled = false;
       } catch (err) {
         console.warn('loadHoverSidingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Use the "View in Hover" button above to view manually.</span>';
+        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Use the "View property design" button above to view manually.</span>';
         // Still show the Hover link even on failure so contractor isn't blocked
         const linkDiv = document.getElementById('hoverDesignLink');
         if (linkDiv) linkDiv.style.display = 'block';
@@ -3330,7 +3330,7 @@
 
       btn.disabled = true;
       btn.textContent = 'Loading…';
-      content.innerHTML = '<span style="color:#6B7280;">Fetching roofing measurements from Hover…</span>';
+      content.innerHTML = '<span style="color:#6B7280;">Fetching roofing measurements…</span>';
 
       try {
         const { data: { session } } = await sb.auth.getSession();
@@ -3382,7 +3382,7 @@
           content.innerHTML = html;
         } else {
           content.innerHTML = '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--radius-sm);padding:var(--sp-3) var(--sp-4);font-size:0.85rem;color:#92400E;">'
-            + '<strong>No Hover roofing data yet.</strong> Hover measurements are pending for this project. '
+            + '<strong>No roofing measurement data yet.</strong> Professional measurements are pending for this project. '
             + 'Once measurements are complete, roofing squares, ridge, hip, valley, and eave lengths will appear here.'
             + '</div>';
         }
@@ -3391,7 +3391,7 @@
         btn.disabled = false;
       } catch (err) {
         console.warn('loadHoverRoofingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load roofing measurements. Try the View in Hover link above.</span>';
+        content.innerHTML = '<span style="color:#DC2626;">Could not load roofing measurements. Try the View measurements link above.</span>';
         const linkDiv = document.getElementById('hoverRoofingLink');
         if (linkDiv) linkDiv.style.display = 'block';
         btn.textContent = 'Retry';
@@ -4161,7 +4161,7 @@
       }
       // Always offer Hover PDF — function handles gracefully if no Hover job exists
       if (currentClaim.id && !CONFIG.DEMO_MODE) {
-        parts.push('<button class="doc-link-btn-form" id="bidFormHoverBtn" onclick="openBidFormHoverPdf()">&#x1F4CF; View Hover PDF</button>');
+        parts.push('<button class="doc-link-btn-form" id="bidFormHoverBtn" onclick="openBidFormHoverPdf()">&#x1F4CF; View Measurement PDF</button>');
       }
 
       if (!parts.length) return;
@@ -4231,9 +4231,9 @@
         document.body.removeChild(hoverPdfLink);
       } catch (err) {
         console.error('Failed to open Hover PDF:', err);
-        alert('Hover measurement PDF is not available for this project yet. The measurement may still be in progress.');
+        alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
       } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; View Hover PDF'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; View Measurement PDF'; }
       }
     }
 

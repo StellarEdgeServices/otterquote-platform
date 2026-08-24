@@ -55,7 +55,7 @@ const STATIC = {
     'Note: If you choose to leave the Otter Quotes platform entirely rather than switch within the network, you remain bound by the contract you signed with your contractor. To initiate a contractor switch, go to your dashboard and use the "Switch Contractor" option, or contact us at support@otterquote.com.',
   signedContractTitle: '📋 Your Signed Contract',
   signedContractBody:
-    'DocuSign has emailed a copy of your fully signed contract to the address on your account. Keep it for your records.',
+    "We've emailed a copy of your fully signed contract to the address on your account. Keep it for your records.",
   signedContractSpam:
     "If you don't see it within a few minutes, check your spam folder or contact us at support@otterquote.com.",
   signedTitle: 'Contract Signed Successfully',

@@ -221,8 +221,8 @@ export function buildRebateCard(order: HoverRebateOrder): RebateCardModel {
     return {
       variant: 'rebated',
       amountLabel,
-      header: 'Hover measurement fee rebated',
-      body: `Your ${amountLabel} Hover measurement fee was rebated to your original payment method on ${dateStr}. Refunds typically show on your statement within 5–10 business days.`,
+      header: 'Measurement fee rebated',
+      body: `Your ${amountLabel} measurement fee was rebated to your original payment method on ${dateStr}. Refunds typically show on your statement within 5–10 business days.`,
     };
   }
 
@@ -230,15 +230,15 @@ export function buildRebateCard(order: HoverRebateOrder): RebateCardModel {
     return {
       variant: 'pending',
       amountLabel,
-      header: `Hover fee paid — ${amountLabel} rebate pending`,
-      body: `You've paid ${amountLabel} for your Hover measurement report. When your project closes with an Otter Quotes contractor, the full ${amountLabel} is rebated to your original payment method automatically.`,
+      header: `Measurement fee paid — ${amountLabel} rebate pending`,
+      body: `You've paid ${amountLabel} for your measurement report. When your project closes with an Otter Quotes contractor, the full ${amountLabel} is rebated to your original payment method automatically.`,
     };
   }
 
   return {
     variant: 'on_file',
     amountLabel,
-    header: `Hover fee paid — ${amountLabel}`,
-    body: `Your ${amountLabel} Hover measurement payment is on file.`,
+    header: `Measurement fee paid — ${amountLabel}`,
+    body: `Your ${amountLabel} measurement payment is on file.`,
   };
 }

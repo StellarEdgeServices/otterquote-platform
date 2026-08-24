@@ -420,7 +420,7 @@
               <a id="hoverPropViewLink" href="#" target="_blank" rel="noopener"
                  style="display:none;color:#E07B00;font-size:0.82rem;font-weight:600;text-decoration:none;border:1px solid rgba(224,123,0,0.4);padding:5px 12px;border-radius:0.5rem;white-space:nowrap;transition:background 0.2s;"
                  onmouseover="this.style.background='rgba(224,123,0,0.1)'" onmouseout="this.style.background='transparent'">
-                View in Hover ↗
+                View property design ↗
               </a>
             </div>
 
@@ -434,7 +434,7 @@
             <div id="hoverPropMaterials" style="display:none;"></div>
 
             <!-- Loading / empty state -->
-            <div id="hoverPropStatus" style="font-size:0.875rem;color:#64748B;">Loading your property data from Hover&hellip;</div>
+            <div id="hoverPropStatus" style="font-size:0.875rem;color:#64748B;">Loading your property data&hellip;</div>
           </div>
 
           <!-- All-Expired Banner (shown when every bid on this claim has expired) -->
@@ -1137,7 +1137,7 @@
           });
           mHtml += '</div>';
           if (!hasMats) {
-            mHtml += '<div style="font-size:0.8rem;color:#64748B;margin-top:0.5rem;">Your measurements are ready. To see specific product selections here, open your Hover job and choose your preferred siding products.</div>';
+            mHtml += '<div style="font-size:0.8rem;color:#64748B;margin-top:0.5rem;">Your measurements are ready. To see specific product selections here, open your property design and choose your preferred siding products.</div>';
           }
           matEl.innerHTML = mHtml;
           matEl.style.display = 'block';
@@ -1145,17 +1145,17 @@
         } else if (data.wall_squares || data.design_images?.length > 0) {
           // Measurements available but no product selections
           statusEl.innerHTML = '<span style="color:#64748B;">Measurements loaded. '
-            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#E07B00;">open your project in Hover ↗</a> and create an Estimate.' : '')
+            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#E07B00;">open your property design ↗</a> and create an Estimate.' : '')
             + '</span>';
         } else if (data.message) {
           statusEl.innerHTML = '<span style="color:#64748B;">' + data.message + '</span>';
         } else {
-          statusEl.innerHTML = '<span style="color:#64748B;">No Hover data available for this project.</span>';
+          statusEl.innerHTML = '<span style="color:#64748B;">No property design data available for this project.</span>';
         }
 
       } catch (err) {
         console.warn('loadHoverPropertyDesign error:', err);
-        if (statusEl) statusEl.innerHTML = '<span style="color:#64748B;">Could not load Hover data.</span>';
+        if (statusEl) statusEl.innerHTML = '<span style="color:#64748B;">Could not load property data.</span>';
       }
     }
 

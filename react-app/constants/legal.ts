@@ -198,7 +198,7 @@ export const FEE_BASIS_DISCLOSURE_ONBOARDING = `The platform fee is 5% of your a
  * Source: contractor-agreement.html (Section 1: Definitions, important notice section)
  * References: E-SIGN Act, electronic signature enforceability
  */
-export const CONTRACTOR_AGREEMENT_ATTESTATION = `We strongly recommend that you review this agreement with a qualified attorney before accepting these terms. By executing this Agreement via DocuSign (or other electronic signature method designated by Otter Quotes), you agree to be bound by all provisions of this Agreement. Your electronic signature has the same legal force and effect as a handwritten signature.`;
+export const CONTRACTOR_AGREEMENT_ATTESTATION = `We strongly recommend that you review this agreement with a qualified attorney before accepting these terms. By executing this Agreement via e-signature (or other electronic signature method designated by Otter Quotes), you agree to be bound by all provisions of this Agreement. Your electronic signature has the same legal force and effect as a handwritten signature.`;
 
 /**
  * Contractor Definition — OQ Non-Party Positioning

@@ -105,9 +105,9 @@ type PayState = 'idle' | 'processing' | 'ordering' | 'orderFailed';
  */
 export const ORDER_RETRY_COPY = {
   paidNoRecharge:
-    'Your $15 payment went through and is confirmed. We could not start your Hover order — use Retry Order below. Retrying will not charge your card again.',
+    'Your $15 payment went through and is confirmed. We could not start your measurement order — use Retry Order below. Retrying will not charge your card again.',
   retryButton: 'Retry Order',
-  orderFailedFallback: 'Could not create your Hover order. Please retry.',
+  orderFailedFallback: 'Could not create your measurement order. Please retry.',
   supportNote:
     'If retrying does not work, contact support — your payment is confirmed and will be applied to your order.',
 } as const;
