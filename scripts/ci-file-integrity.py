@@ -69,12 +69,17 @@ CANARY_FILES = {
     "js/auth.js":                  8000,
     "js/config.js":                 200,
     # Supabase Edge Function canaries (path canaries, ~80% of known-good size)
-    "supabase/functions/create-docusign-envelope/index.ts": 59000,  # known-good 74,299 bytes
+    # [D-274 / #631, 2026-08-13] create-docusign-envelope and docusign-webhook
+    # thresholds + known-good sizes updated for the BoldSign rewrite (same
+    # files, same paths — see the D-274 build report on issue #631). Both grew
+    # (JWT/RSA machinery removed, but BoldSign-specific comments and the
+    # server-side operator-token/HMAC logic added more than it removed).
+    "supabase/functions/create-docusign-envelope/index.ts": 69000,  # known-good 87,017 bytes (was 74,299 pre-BoldSign)
     "supabase/functions/notify-contractors/index.ts":        48000,  # known-good 61,138 bytes
     "supabase/functions/process-dunning/index.ts":           43000,  # known-good 53,989 bytes
     "supabase/functions/process-coi-reminders/index.ts":     32000,  # known-good 40,948 bytes
     "supabase/functions/process-bid-expirations/index.ts":   29000,  # known-good 36,794 bytes
-    "supabase/functions/docusign-webhook/index.ts":          24000,  # known-good 30,263 bytes
+    "supabase/functions/docusign-webhook/index.ts":          52000,  # known-good 65,017 bytes (was 30,263 pre-BoldSign)
 }
 
 # Directories to skip entirely
