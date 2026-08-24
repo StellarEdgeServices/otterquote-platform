@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Admin - Measurement Orders | Otter Quotes</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+<style>
+:root {
+  --navy: #0D1B2E; --amber: #E07B00; --white: #FFFFFF;
+  --slate: #94A3B8; --light: #E2E8F0;
+  --red: #EF4444; --green: #10B981; --teal: #14B8A6;
+}
+body { background-color: var(--navy); color: #1F2937; font-family: 'Rubik', sans-serif; }
+main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+.admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+.admin-title  { display: flex; align-items: center; gap: 1rem; }
+.admin-badge  { background: var(--amber); color: var(--navy); padding: 0.4rem 0.8rem; border-radius: 0.5rem; font-weight: 700; font-size: 0.875rem; }
+.admin-header h1 { font-size: 2.5rem; color: var(--white); margin: 0; }
+.logout-btn  { background: var(--white); color: var(--navy); border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; }
+
+.admin-nav { display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap; }
+.admin-nav a { color: var(--slate); text-decoration: none; font-weight: 500; font-size: 0.9rem; padding: 0.5rem 1rem; border-radius: 0.5rem; }
+.admin-nav a:hover  { background: rgba(255,255,255,0.08); color: var(--white); }
+.admin-nav a.active { background: rgba(255,255,255,0.12); color: var(--white); }
+
+.summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+.summary-card { background: var(--white); border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.summary-card-label { font-size: 0.8rem; color: var(--slate); margin-bottom: 0.4rem; font-weight: 500; }
+.summary-card-value { font-size: 2rem; font-weight: 700; color: var(--navy); }
+.summary-card-sub { font-size: 0.78rem; color: var(--slate); margin-top: 0.2rem; }
+.margin-pos { color: var(--green); }
+.margin-neg { color: var(--red); }
+
+.info-banner { background: rgba(20,184,166,0.08); border: 1px solid rgba(20,184,166,0.25); color: var(--teal); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.9rem; line-height: 1.5; }
+
+.filter-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.filter-tab  { background: rgba(255,255,255,0.05); color: var(--slate); border: 1px solid rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; font-size: 0.9rem; font-family: inherit; }
+.filter-tab:hover  { background: rgba(255,255,255,0.1); color: var(--white); }
+.filter-tab.active { background: var(--amber); color: var(--navy); border-color: var(--amber); font-weight: 600; }
+
+.table-wrapper { background: var(--white); border-radius: 0.75rem; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+.m-table { width: 100%; border-collapse: collapse; min-width: 900px; }
+.m-table th { background: var(--light); padding: 0.875rem 1rem; text-align: left; font-weight: 600; color: var(--navy); font-size: 0.85rem; white-space: nowrap; }
+.m-table td { padding: 1rem; border-top: 1px solid var(--light); font-size: 0.9rem; vertical-align: top; }
+.m-table tr:hover { background: rgba(0,0,0,0.02); }
+.addr { font-size: 0.82rem; color: #64748B; margin-top: 0.15rem; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; }
+
+.badge { display: inline-block; padding: 0.25rem 0.65rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.badge-awaiting_fulfillment { background: #FEF3C7; color: #92400E; }
+.badge-awaiting_quote      { background: #DBEAFE; color: #1E40AF; }
+.badge-completed           { background: #D1FAE5; color: #065F46; }
+.badge-cancelled           { background: #F1F5F9; color: #475569; }
+.badge-other               { background: #F1F5F9; color: #475569; }
+
+.btn-sm { padding: 0.45rem 0.9rem; border-radius: 0.4rem; border: none; font-weight: 600; font-size: 0.82rem; cursor: pointer; font-family: inherit; }
+.btn-fulfil { background: var(--amber); color: var(--navy); }
+.btn-ghost-sm { background: transparent; color: #64748B; border: 1px solid var(--light); }
+.loading, .empty { padding: 2rem; text-align: center; color: var(--slate); }
+
+/* ── Fulfillment drawer ── */
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999; align-items: center; justify-content: center; padding: 1rem; }
+.overlay.open { display: flex; }
+.drawer { background: var(--white); border-radius: 0.75rem; padding: 1.75rem; width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto; }
+.drawer h2 { margin: 0 0 0.25rem; font-size: 1.3rem; color: var(--navy); }
+.drawer .sub { color: #64748B; font-size: 0.88rem; margin-bottom: 1.25rem; }
+.field { margin-bottom: 1rem; }
+.field label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--navy); margin-bottom: 0.3rem; }
+.field input, .field textarea, .field select {
+  width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--light); border-radius: 0.4rem;
+  font-family: inherit; font-size: 0.9rem; color: #1F2937; background: #fff; box-sizing: border-box;
+}
+.field .hint { font-size: 0.76rem; color: #94A3B8; margin-top: 0.25rem; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+@media (max-width: 560px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+.fieldset-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #94A3B8; margin: 1.5rem 0 0.75rem; }
+.drawer-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
+.drawer-err { background: #FEE2E2; color: #991B1B; padding: 0.7rem 0.9rem; border-radius: 0.4rem; font-size: 0.86rem; margin-bottom: 1rem; display: none; }
+.margin-live { background: #F8FAFC; border: 1px solid var(--light); border-radius: 0.4rem; padding: 0.7rem 0.9rem; font-size: 0.88rem; color: var(--navy); }
+</style>
+</head>
+<body>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+
+<main id="main-content" style="display:none">
+
+  <div class="admin-header">
+    <div class="admin-title">
+      <span class="admin-badge">ADMIN</span>
+      <h1>Measurement Orders</h1>
+    </div>
+    <button class="logout-btn" onclick="Auth.signOut()">Sign Out</button>
+  </div>
+
+  <nav class="admin-nav">
+    <a href="admin-contractors.html">Contractors</a>
+    <a href="admin-incomplete-profiles.html">Incomplete Profiles</a>
+    <a href="admin-template-review.html">Template Review</a>
+    <a href="admin-cert-verifications.html">Cert Verifications</a>
+    <a href="admin-payouts.html">Payouts</a>
+    <a href="admin-warranty-drift.html">Warranty Drift</a>
+    <a href="admin-measurements.html" class="active">Measurements</a>
+  </nav>
+
+  <div class="info-banner">
+    📐 <strong>Manual fulfillment.</strong> The homeowner has already paid. Order the report from the
+    measurement vendor yourself, then come back here, upload the PDF and key in the numbers.
+    The homeowner sees the report the moment you save; the contractor sees the measurements on the
+    bid form. <strong>Enter what we paid the vendor</strong> — it is the only way real margin per
+    order is visible instead of estimated.
+  </div>
+
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="summary-card-label">Awaiting fulfillment</div>
+      <div class="summary-card-value" id="count-awaiting">—</div>
+      <div class="summary-card-sub" id="oldest-awaiting">&nbsp;</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Contractor requests (unpriced)</div>
+      <div class="summary-card-value" id="count-quote">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Delivered</div>
+      <div class="summary-card-value" id="count-done">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Margin to date</div>
+      <div class="summary-card-value" id="margin-total">—</div>
+      <div class="summary-card-sub" id="margin-detail">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="filter-tabs" id="filterTabs">
+    <button class="filter-tab active" data-filter="awaiting_fulfillment" type="button">Awaiting fulfillment</button>
+    <button class="filter-tab" data-filter="awaiting_quote" type="button">Contractor requests</button>
+    <button class="filter-tab" data-filter="completed" type="button">Delivered</button>
+    <button class="filter-tab" data-filter="all" type="button">All</button>
+  </div>
+
+  <div class="table-wrapper">
+    <table class="m-table">
+      <thead>
+        <tr>
+          <th>Ordered</th>
+          <th>Property</th>
+          <th>Report</th>
+          <th>Requested by</th>
+          <th>Paid</th>
+          <th>Our cost</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</main>
+
+<!-- ── Fulfillment drawer ── -->
+<div class="overlay" id="drawerOverlay">
+  <div class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+    <h2 id="drawerTitle">Fulfil measurement order</h2>
+    <div class="sub" id="drawerSub"></div>
+    <div class="drawer-err" id="drawerErr"></div>
+
+    <div class="field">
+      <label for="fVendorRef">Vendor order / report number</label>
+      <input type="text" id="fVendorRef" placeholder="e.g. RS-1043928" autocomplete="off">
+      <div class="hint">Whatever the vendor calls this order. Lets you find it again without searching your email.</div>
+    </div>
+
+    <div class="grid2">
+      <div class="field">
+        <label for="fVendorCost">What we paid the vendor ($)</label>
+        <input type="number" id="fVendorCost" step="0.01" min="0" placeholder="11.00">
+        <div class="hint">Real cost, not the list price.</div>
+      </div>
+      <div class="field">
+        <label for="fReport">Report PDF</label>
+        <input type="file" id="fReport" accept="application/pdf">
+        <div class="hint">Optional on save, but the homeowner has nothing to open without it.</div>
+      </div>
+    </div>
+
+    <div class="margin-live" id="marginLive">Margin on this order: —</div>
+
+    <div class="fieldset-title">Roof numbers (from the report)</div>
+    <div class="grid3">
+      <div class="field"><label for="mSquares">Squares</label><input type="number" id="mSquares" step="0.1" min="0" placeholder="22.6"></div>
+      <div class="field"><label for="mAreaSf">Roof area (sf)</label><input type="number" id="mAreaSf" step="1" min="0" placeholder="2260"></div>
+      <div class="field"><label for="mPitch">Predominant pitch</label><input type="text" id="mPitch" placeholder="6/12"></div>
+    </div>
+    <div class="grid3">
+      <div class="field"><label for="mRidgeHip">Ridges / hips (lf)</label><input type="number" id="mRidgeHip" step="0.01" min="0"></div>
+      <div class="field"><label for="mValley">Valleys (lf)</label><input type="number" id="mValley" step="0.01" min="0"></div>
+      <div class="field"><label for="mRake">Rakes (lf)</label><input type="number" id="mRake" step="0.01" min="0"></div>
+    </div>
+    <div class="grid3">
+      <div class="field"><label for="mEave">Eaves (lf)</label><input type="number" id="mEave" step="0.01" min="0"></div>
+      <div class="field"><label for="mDripEdge">Drip edge / perimeter (lf)</label><input type="number" id="mDripEdge" step="0.01" min="0"></div>
+      <div class="field"><label for="mStepFlash">Step flashing (lf)</label><input type="number" id="mStepFlash" step="0.01" min="0"></div>
+    </div>
+
+    <div class="field" style="margin-top:1rem">
+      <label for="fNotes">Internal notes</label>
+      <textarea id="fNotes" rows="2" placeholder="Anything the next person should know. Never shown to the homeowner."></textarea>
+    </div>
+
+    <div class="drawer-actions">
+      <button class="btn-sm btn-ghost-sm" type="button" onclick="closeDrawer()">Cancel</button>
+      <button class="btn-sm btn-fulfil" type="button" id="saveBtn" onclick="saveFulfillment()">Save &amp; deliver</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * Admin measurement fulfillment queue.
+ *
+ * The homeowner pays on the site; create-measurement-order records the order
+ * in status 'awaiting_fulfillment' WITHOUT contacting any vendor. A human
+ * orders the report, then delivers it here. That is Dustin's stated process
+ * for the first several runs, and this page is that process made explicit
+ * rather than a spreadsheet and a memory.
+ *
+ * Writes on save:
+ *   hover_orders  — vendor_order_ref, vendor_cost_cents, measurements_json,
+ *                   report_url, admin_notes, fulfilled_at/by, status
+ *   claims.hover_measurements — the SAME normalized shape that
+ *                   parse-hover-measurements writes, so every downstream
+ *                   reader (bid form, opportunity card, auto-bid math) works
+ *                   on a hand-entered report exactly as on a parsed one.
+ *                   Getting these key names wrong is the silent failure here.
+ */
+var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+var STORAGE_BUCKET = 'claim-documents';
+
+var state = { filter: 'awaiting_fulfillment', rows: [], catalog: {}, current: null, user: null };
+
+var _initFired = false;
+sb.auth.onAuthStateChange(async function (event, session) {
+  if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
+    _initFired = true;
+    if (!session) { window.location.href = '/'; return; }
+    await checkAdminAndInit(session.user);
+  }
+});
+
+async function checkAdminAndInit(user) {
+  // Same admin test as every other admin page: the primary admin address, or
+  // a contractor row flagged template_review_role='admin'.
+  var isAdmin = user.email === 'dustinstohler1@gmail.com';
+  if (!isAdmin) {
+    var res = await sb.from('contractors').select('template_review_role').eq('user_id', user.id).maybeSingle();
+    isAdmin = res.data && res.data.template_review_role === 'admin';
+  }
+  if (!isAdmin) { window.location.href = '/'; return; }
+  state.user = user;
+  document.getElementById('main-content').style.display = 'block';
+
+  document.getElementById('filterTabs').addEventListener('click', function (e) {
+    var btn = e.target.closest('.filter-tab');
+    if (!btn) return;
+    state.filter = btn.dataset.filter;
+    document.querySelectorAll('.filter-tab').forEach(function (t) { t.classList.toggle('active', t === btn); });
+    renderRows();
+  });
+  document.getElementById('fVendorCost').addEventListener('input', updateMarginLive);
+  document.getElementById('drawerOverlay').addEventListener('click', function (e) {
+    if (e.target === this) closeDrawer();
+  });
+
+  await loadCatalog();
+  await loadOrders();
+}
+
+function money(cents) {
+  if (cents === null || cents === undefined) return '—';
+  return '$' + (cents / 100).toFixed(2);
+}
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function daysAgo(iso) {
+  if (!iso) return '';
+  var d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  return d <= 0 ? 'today' : d === 1 ? '1 day ago' : d + ' days ago';
+}
+
+async function loadCatalog() {
+  var res = await sb.from('platform_settings').select('value').eq('key', 'measurement_products').maybeSingle();
+  state.catalog = (res.data && res.data.value) || {};
+}
+
+async function loadOrders() {
+  // Only rows on the manual path. API-path rows (the legacy vendor
+  // integration) are a different lifecycle and are not this queue's business.
+  var res = await sb
+    .from('hover_orders')
+    .select('id, claim_id, status, product_code, fulfillment_mode, vendor_order_ref, vendor_cost_cents, homeowner_charge_amount, requested_by_role, fulfilled_at, report_url, admin_notes, created_at, claims(id, address_line_1, address_city, address_state, address_zip, user_id)')
+    .eq('fulfillment_mode', 'manual')
+    .order('created_at', { ascending: true });
+
+  if (res.error) {
+    document.getElementById('rows').innerHTML =
+      '<tr><td colspan="8" class="empty">Could not load orders: ' + esc(res.error.message) + '</td></tr>';
+    return;
+  }
+  state.rows = res.data || [];
+  renderSummary();
+  renderRows();
+}
+
+function renderSummary() {
+  var awaiting = state.rows.filter(function (r) { return r.status === 'awaiting_fulfillment'; });
+  var quotes   = state.rows.filter(function (r) { return r.status === 'awaiting_quote'; });
+  var done     = state.rows.filter(function (r) { return r.status === 'completed'; });
+
+  document.getElementById('count-awaiting').textContent = awaiting.length;
+  document.getElementById('count-quote').textContent = quotes.length;
+  document.getElementById('count-done').textContent = done.length;
+
+  var oldest = awaiting[0];
+  document.getElementById('oldest-awaiting').textContent =
+    oldest ? 'oldest ' + daysAgo(oldest.created_at) : ' ';
+
+  // Margin counts only DELIVERED orders where we actually recorded a cost.
+  // An order with no cost entered is excluded rather than counted as free —
+  // counting it as free is how a number like this starts lying.
+  var priced = done.filter(function (r) { return r.vendor_cost_cents !== null && r.vendor_cost_cents !== undefined; });
+  var paid = priced.reduce(function (a, r) { return a + (r.homeowner_charge_amount || 0); }, 0);
+  var cost = priced.reduce(function (a, r) { return a + (r.vendor_cost_cents || 0); }, 0);
+  var net = paid - cost;
+  var el = document.getElementById('margin-total');
+  el.textContent = (net < 0 ? '-' : '') + '$' + Math.abs(net / 100).toFixed(2);
+  el.className = 'summary-card-value ' + (net < 0 ? 'margin-neg' : 'margin-pos');
+  var missing = done.length - priced.length;
+  document.getElementById('margin-detail').textContent =
+    priced.length + ' priced order' + (priced.length === 1 ? '' : 's') +
+    (missing > 0 ? ' · ' + missing + ' missing a cost' : '');
+}
+
+function statusBadge(s) {
+  var cls = ['awaiting_fulfillment', 'awaiting_quote', 'completed', 'cancelled'].indexOf(s) >= 0 ? s : 'other';
+  var label = { awaiting_fulfillment: 'Awaiting fulfillment', awaiting_quote: 'Needs a quote', completed: 'Delivered', cancelled: 'Cancelled' }[s] || s;
+  return '<span class="badge badge-' + cls + '">' + esc(label) + '</span>';
+}
+
+function renderRows() {
+  var list = state.filter === 'all' ? state.rows : state.rows.filter(function (r) { return r.status === state.filter; });
+  var tbody = document.getElementById('rows');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">Nothing here.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(function (r) {
+    var c = r.claims || {};
+    var addr = [c.address_line_1, c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', ');
+    var product = state.catalog[r.product_code] || {};
+    var canFulfil = r.status === 'awaiting_fulfillment' || r.status === 'awaiting_quote' || r.status === 'completed';
+    return '<tr>' +
+      '<td>' + esc(new Date(r.created_at).toLocaleDateString()) + '<div class="addr">' + esc(daysAgo(r.created_at)) + '</div></td>' +
+      '<td>' + (addr ? esc(addr) : '<span class="addr">no address on claim</span>') +
+        '<div class="addr mono">' + esc((r.claim_id || '').slice(0, 8)) + '</div></td>' +
+      '<td>' + esc(product.label || r.product_code || '—') +
+        (r.vendor_order_ref ? '<div class="addr mono">' + esc(r.vendor_order_ref) + '</div>' : '') + '</td>' +
+      '<td>' + esc(r.requested_by_role || 'homeowner') + '</td>' +
+      '<td>' + money(r.homeowner_charge_amount) + '</td>' +
+      '<td>' + money(r.vendor_cost_cents) + '</td>' +
+      '<td>' + statusBadge(r.status) + '</td>' +
+      '<td>' + (canFulfil
+        ? '<button class="btn-sm btn-fulfil" type="button" onclick="openDrawer(\'' + esc(r.id) + '\')">' +
+            (r.status === 'completed' ? 'Edit' : 'Fulfil') + '</button>'
+        : '') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function openDrawer(orderId) {
+  var row = state.rows.filter(function (r) { return r.id === orderId; })[0];
+  if (!row) return;
+  state.current = row;
+
+  var c = row.claims || {};
+  var addr = [c.address_line_1, c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', ');
+  var product = state.catalog[row.product_code] || {};
+  document.getElementById('drawerSub').textContent =
+    (product.label || row.product_code || 'Measurement report') + ' · ' + (addr || 'no address on claim') +
+    ' · homeowner paid ' + money(row.homeowner_charge_amount);
+
+  document.getElementById('fVendorRef').value = row.vendor_order_ref || '';
+  document.getElementById('fVendorCost').value =
+    row.vendor_cost_cents !== null && row.vendor_cost_cents !== undefined ? (row.vendor_cost_cents / 100).toFixed(2) : '';
+  document.getElementById('fNotes').value = row.admin_notes || '';
+  document.getElementById('fReport').value = '';
+  ['mSquares','mAreaSf','mPitch','mRidgeHip','mValley','mRake','mEave','mDripEdge','mStepFlash']
+    .forEach(function (id) { document.getElementById(id).value = ''; });
+  document.getElementById('drawerErr').style.display = 'none';
+  updateMarginLive();
+  document.getElementById('drawerOverlay').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+  state.current = null;
+}
+
+function updateMarginLive() {
+  var row = state.current;
+  var paid = row ? (row.homeowner_charge_amount || 0) : 0;
+  var costDollars = parseFloat(document.getElementById('fVendorCost').value);
+  var el = document.getElementById('marginLive');
+  if (isNaN(costDollars)) {
+    el.textContent = 'Margin on this order: — (enter what we paid)';
+    return;
+  }
+  var net = paid - Math.round(costDollars * 100);
+  var product = row ? (state.catalog[row.product_code] || {}) : {};
+  var rebateNote = product.rebate_on_close ? ' — and the ' + money(paid) + ' is rebated if this project closes with one of our contractors' : '';
+  el.innerHTML = 'Margin on this order: <strong class="' + (net < 0 ? 'margin-neg' : 'margin-pos') + '">' +
+    (net < 0 ? '-' : '') + '$' + Math.abs(net / 100).toFixed(2) + '</strong>' + esc(rebateNote);
+}
+
+function numOrNull(id) {
+  var v = document.getElementById(id).value;
+  if (v === '' || v === null) return null;
+  var n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+async function saveFulfillment() {
+  var row = state.current;
+  if (!row) return;
+  var btn = document.getElementById('saveBtn');
+  var err = document.getElementById('drawerErr');
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    var costDollars = parseFloat(document.getElementById('fVendorCost').value);
+    var vendorCostCents = isNaN(costDollars) ? null : Math.round(costDollars * 100);
+
+    // ── Upload the PDF first ──
+    // If storage fails we must not mark the order delivered: a homeowner told
+    // "your report is ready" with nothing to open is worse than a slow order.
+    var reportPath = row.report_url || null;
+    var file = document.getElementById('fReport').files[0];
+    if (file) {
+      if (file.type !== 'application/pdf') throw new Error('The report must be a PDF.');
+      var path = 'measurements/' + row.claim_id + '/' + row.id + '.pdf';
+      var up = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: true, contentType: 'application/pdf' });
+      if (up.error) throw new Error('Upload failed: ' + up.error.message);
+      reportPath = path;
+    }
+
+    // ── Normalized measurements ──
+    // Key names match parse-hover-measurements exactly. `source` records that
+    // a person typed these, which matters when a number is later disputed.
+    var m = {
+      source: 'manual_entry',
+      entered_at: new Date().toISOString(),
+      entered_by: state.user ? state.user.email : null,
+      roof_area_sf: numOrNull('mAreaSf'),
+      squares: numOrNull('mSquares'),
+      ridge_hip_lf: numOrNull('mRidgeHip'),
+      valley_lf: numOrNull('mValley'),
+      rake_lf: numOrNull('mRake'),
+      eave_lf: numOrNull('mEave'),
+      drip_edge_perimeter_lf: numOrNull('mDripEdge'),
+      step_flashing_lf: numOrNull('mStepFlash'),
+      flashing_lf: null,
+      predominant_pitch: document.getElementById('mPitch').value.trim() || null
+    };
+    var anyNumber = ['roof_area_sf','squares','ridge_hip_lf','valley_lf','rake_lf','eave_lf','drip_edge_perimeter_lf','step_flashing_lf']
+      .some(function (k) { return m[k] !== null; }) || m.predominant_pitch !== null;
+
+    // Deliver only when there is something to deliver.
+    var delivering = !!reportPath || anyNumber;
+
+    var patch = {
+      vendor_order_ref: document.getElementById('fVendorRef').value.trim() || null,
+      vendor_cost_cents: vendorCostCents,
+      admin_notes: document.getElementById('fNotes').value.trim() || null,
+      report_url: reportPath,
+      updated_at: new Date().toISOString()
+    };
+    if (anyNumber) patch.measurements_json = m;
+    if (delivering) {
+      patch.status = 'completed';
+      patch.fulfilled_at = new Date().toISOString();
+      patch.fulfilled_by = state.user ? state.user.id : null;
+    }
+
+    var upd = await sb.from('hover_orders').update(patch).eq('id', row.id);
+    if (upd.error) throw new Error(upd.error.message);
+
+    // Mirror onto the claim so every existing reader — bid form, opportunity
+    // card, auto-bid math — sees a hand-entered report exactly as a parsed one.
+    if (anyNumber && row.claim_id) {
+      var cUpd = await sb.from('claims').update({ hover_measurements: m }).eq('id', row.claim_id);
+      if (cUpd.error) throw new Error('Order saved, but writing measurements to the claim failed: ' + cUpd.error.message);
+    }
+
+    closeDrawer();
+    await loadOrders();
+  } catch (e) {
+    err.textContent = e.message || String(e);
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save & deliver';
+  }
+}
+</script>
+</body>
+</html>
