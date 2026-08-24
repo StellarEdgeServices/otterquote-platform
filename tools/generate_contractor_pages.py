@@ -97,9 +97,11 @@ def fetch_contractors(service_key: str) -> list:
     )
     # status=eq.active: canonical live-contractor status (admin approval path
     # sets 'active'; prod has NO 'approved' rows — gh-403 status-semantics fix).
+    # gh-1236: exclude test contractors. `not.is.true` matches false AND null,
+    # so a nullable is_test can never leak a test row into the public directory.
     path = (
         f"contractors?select={fields}&status=eq.active"
-        f"&public_directory_optin=eq.true&order=company_name.asc"
+        f"&public_directory_optin=eq.true&is_test=not.is.true&order=company_name.asc"
     )
     return supabase_get(service_key, path)
 
