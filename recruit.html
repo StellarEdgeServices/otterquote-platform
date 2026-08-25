@@ -313,7 +313,33 @@ async function handleRecruit() {
         return;
     }
 
-    const destination = DESTINATIONS[agentType];
+    // ── 2026-08-25, Dustin-directed ───────────────────────────────────
+    // This used to redirect to DESTINATIONS[agentType] — the RECRUITER's own
+    // profession page. Reported symptom: "It seems like my partner link takes
+    // me to the home inspector partner page." Correct, and wrong: Dustin is a
+    // home_inspector, so every professional he recruited — insurance agents,
+    // realtors, adjusters — landed on partner-inspectors.html and had to
+    // work out that the page was not about them.
+    //
+    // The recruiter's type was never evidence of the RECRUIT's type. gh-865
+    // already established that the two are "fully decoupled" and made the
+    // UNRESOLVED path show an explicit chooser; the resolved path kept
+    // guessing anyway, which is the harder bug to see because it looks like
+    // it is working.
+    //
+    // Now every resolved recruit lands on partners.html — the profession
+    // gate — and picks their own world.
+    //
+    // Attribution is NOT lost by adding this hop, which was Dustin's
+    // question. Three independent carriers survive it:
+    //   1. cs_recruit_code in localStorage, written above before any redirect;
+    //   2. ?recruit= on this redirect, which partners.html reads
+    //      (`params.get('recruit') || params.get('code')`) and forwards to
+    //      the profession page it sends the visitor on to;
+    //   3. that same value written to referral_agents.recruit_code at signup.
+    // Verified against partners.html's own query-param handling and its
+    // recruit_code pass-through, not assumed.
+    const destination = 'partners.html';
 
     // Track recruit link usage
     gtag('event', 'recruit_link_used', {
