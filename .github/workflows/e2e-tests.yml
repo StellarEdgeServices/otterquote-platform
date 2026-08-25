@@ -146,6 +146,9 @@ jobs:
       - name: notify-contractors fan-out symmetry unit tests (#564 regression, notification direction)
         run: deno test supabase/functions/notify-contractors/test-exclusion.test.ts
 
+      - name: BoldSign webhook payload-parser + D-269 ack-backstop unit tests (D-274 / #631)
+        run: deno test supabase/functions/docusign-webhook/payload-parser.test.ts supabase/functions/docusign-webhook/ack-verify.test.ts
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

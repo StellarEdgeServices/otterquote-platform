@@ -1,13 +1,58 @@
 // D-199 validate-contract-template Edge Function
-// Scans a contractor's uploaded PDF for required DocuSign anchor strings (per trade × funding_type)
-// and updates contractor_templates.status with the result.
+// Scans a contractor's uploaded PDF for required signature-placement/anchor markers
+// (per trade x funding_type) and updates contractor_templates.status with the result.
 //
-// 3-tier escalation per D-199:
+// [D-274 / #631, 2026-08-13] Re-grammared for BoldSign. DocuSign's `anchorString`
+// mechanism could locate a field anywhere ORDINARY pre-existing text appeared (e.g.
+// the literal word "Name" already printed in a contractor's PDF) — no special markup
+// needed. BoldSign has NO equivalent. Confirmed against the live OpenAPI spec
+// (api.boldsign.com/swagger/v1/swagger.json) and developer docs
+// (developers.boldsign.com/text-tags/*): BoldSign's only text-based placement
+// mechanism is "Text Tags" — a literal `{{FieldType|SignerIndex|Required|Label|FieldID}}`
+// bracket string that must be typed into the document as its own contiguous, single-line
+// run of text. There is no API-callable "find this arbitrary string and place a field
+// near it" feature (BoldSign's "Anchor Text" is a human-driven web-UI-only feature in
+// their template editor, not exposed via the REST API at all).
+//
+// Practical effect: every contractor-uploaded template that was previously validated
+// under the v2 manifest (DocuSign anchors like "/Customer/", "/Contractor/", "Name",
+// "Address:") is validated against the WRONG markers now — those strings no longer do
+// anything at send time. Every contractor must add the new bracket tags to their PDF
+// before their template will place fields correctly under BoldSign. This is a real
+// operational migration (contractor communication + re-upload), not something this
+// function can paper over. See the D-274 build report on issue #631 for the full
+// rollout plan question this raises for Dustin.
+//
+// Scope-reduction decision (keeps the re-tagging burden as small as it can be):
+// only anchors that ALSO drive live field PLACEMENT (the 4 signature/date anchors,
+// plus the header fields that create-docusign-envelope's buildTextTabs equivalent
+// auto-fills — customer_name, customer_address, contract_price, job_description,
+// material_type, estimated_start, decking_per_sheet, insurance_company,
+// claim_number, deductible) are converted to BoldSign bracket tags. Anchors that were
+// PURE content-presence checks (e.g. "Manufacturer's Warranty:", "Wall Substrate:",
+// "Linear Feet:" — proving required boilerplate/labels exist in the document, never
+// wired to an auto-fill value) are UNCHANGED plain-text checks: this file's job of
+// scanning extracted PDF text for a required substring is independent of BoldSign's
+// API and works identically regardless of e-sign vendor. Each requirement below
+// carries `mechanism: "boldsign_tag" | "label_text"` making this explicit.
+//
+// FRAGILE COUPLING (flagged, not solved, here): a Text Tag's SignerIndex is
+// POSITIONAL — it refers to whichever signer occupies that slot in the `Signers`
+// array of the send() call that uses this exact document, not a named role. This
+// manifest bakes in SignerIndex 1 = contractor, 2 = homeowner, matching the fixed
+// Signers order create-docusign-envelope's handleContractorSign always uses for the
+// contractor_sign flow (the only flow these D-199 templates are used by — legacy
+// "contract" document_type uses a different, unvalidated template path). If that
+// signer order ever changes, every contractor template's baked-in tags break
+// silently and would need re-tagging again. DocuSign's role-named anchors
+// (/Customer/, /Contractor/) never had this coupling.
+//
+// 3-tier escalation per D-199 (unchanged):
 //   Tier 1 (auto):    no manualOverrides supplied → "auto_validated" or "manual_mapping_pending"
 //   Tier 2 (manual):  manualOverrides supplied   → "manual_validated" or "manual_mapping_pending"
 //   Tier 3 (admin):   set by admin-template-review.html (manualOverrides === "admin" string)
 //
-// Auth gate (added 2026-05-10, fixes Architect finding 86e1adykz):
+// Auth gate (unchanged, added 2026-05-10, fixes Architect finding 86e1adykz):
 //   All non-health-check calls require Authorization: Bearer <token>.
 //   Contractor path (Tier 1 + 2): JWT verified + caller must own the template.
 //   Admin path (manualOverrides === "admin"): JWT verified + caller must have app_metadata.role === "admin".
@@ -22,7 +67,7 @@
 //   { ok: true, status: "auto_validated" | "manual_validated" | "manual_mapping_pending",
 //     validation_result: {...} }
 //
-// ClickUp: 86e15abkr · Decision: D-199 · Manifest source: data/contract-anchor-manifest.json (v2)
+// ClickUp: 86e15abkr · Decisions: D-199, D-274 (#631) · Manifest source: this file (v3)
 
 // deno-lint-ignore-file no-explicit-any
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -35,13 +80,28 @@ import * as pdfjsLib from "npm:pdfjs-dist@4.0.379/legacy/build/pdf.mjs";
 import "npm:pdfjs-dist@4.0.379/legacy/build/pdf.worker.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Inlined D-199 anchor manifest v2 (APPROVED April 30, 2026)
-// Authoritative source: data/contract-anchor-manifest.json + Docs/D-199-D-202-design-artifacts/D-199-anchor-manifest-v2.md
-// Update this constant when the manifest changes; do NOT fetch at runtime (avoid IO dependency).
+// BoldSign Text Tag builder — matches the syntax create-docusign-envelope's
+// PDF generators (and, per this manifest, contractor-authored templates) must
+// use: `{{FieldType|SignerIndex|Required|FieldLabel|FieldID}}`. FieldType tokens
+// are the 7 documented at developers.boldsign.com/text-tags/supported-fields/:
+// text, sign, init, date, editdate, title, company. Required is "*" or a
+// single space (not-required) per the same page.
+function tag(fieldType: "text" | "sign" | "init" | "date", signerIndex: 1 | 2, required: boolean, label: string, fieldId: string): string {
+  return `{{${fieldType}|${signerIndex}|${required ? "*" : " "}|${label}|${fieldId}}}`;
+}
+const CONTRACTOR_IDX = 1; // Signers[0] in handleContractorSign — see file header coupling note.
+const HOMEOWNER_IDX = 2; // Signers[1] in handleContractorSign.
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v3 anchor manifest (APPROVED scope per D-274 #631 build; supersedes the v2
+// DocuSign-anchor manifest APPROVED April 30, 2026). Same trades, same funding
+// types, same required/optional field SET as v2 — only the `anchor` value and
+// `mechanism` are new. Do NOT fetch at runtime (avoid IO dependency).
 const MANIFEST: any = {
-  version: "v2",
-  approvedDate: "2026-04-30",
-  decision: "D-199",
+  version: "v3",
+  approvedDate: "2026-08-13",
+  decision: "D-274",
+  supersedes: "v2 (D-199, 2026-04-30) — DocuSign anchorString grammar retired, see file header",
   anchorOptions: { caseSensitive: true },
   trades: {
     roofing: {
@@ -49,19 +109,19 @@ const MANIFEST: any = {
         slot: "roofing/retail",
         requiredCount: 13,
         required: [
-          { anchor: "/Customer/", field: "Homeowner signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Customer_Date/", field: "Homeowner sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "/Contractor/", field: "Contractor signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Contractor_Date/", field: "Contractor sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "Name", field: "Customer name", tabType: "text", source: "Party identification" },
-          { anchor: "Address:", field: "Property address", tabType: "text", source: "Property identification" },
-          { anchor: "Contract Price:", field: "Total contract amount", tabType: "text", source: "Financial term" },
-          { anchor: "Description:", field: "Job description / See Exhibit A", tabType: "text", source: "Scope reference (D-186)" },
-          { anchor: "Material:", field: "Shingle product/brand", tabType: "text", source: "Material commitment" },
-          { anchor: "Manufacturer's Warranty:", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
-          { anchor: "Workmanship Warranty:", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
-          { anchor: "Decking/Sheet:", field: "Per-sheet decking replacement price", tabType: "text", source: "Roofing contingency" },
-          { anchor: "Start Date:", field: "Estimated start date", tabType: "text", source: "Scheduling commitment" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount", tabType: "text", source: "Financial term" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Job Description", "job_description"), mechanism: "boldsign_tag", field: "Job description / See Exhibit A", tabType: "text", source: "Scope reference (D-186)" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Material Type", "material_type"), mechanism: "boldsign_tag", field: "Shingle product/brand", tabType: "text", source: "Material commitment" },
+          { anchor: "Manufacturer's Warranty:", mechanism: "label_text", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
+          { anchor: "Workmanship Warranty:", mechanism: "label_text", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Decking Per Sheet", "decking_per_sheet"), mechanism: "boldsign_tag", field: "Per-sheet decking replacement price", tabType: "text", source: "Roofing contingency" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Start Date", "estimated_start"), mechanism: "boldsign_tag", field: "Estimated start date", tabType: "text", source: "Scheduling commitment" },
         ],
         optional: ["City/Zip:", "Phone", "Email:", "Single Manufacture", "Shingle Type:", "Shingle Color:", "Drip Edge Color:", "Vents", "Satellite", "Skylights", "Full Redeck:", "Permit Fee:", "Dumpster Fee:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Structures:", "Structure Names:", "Valley Type:", "Bad Decking:", "Project Notes:"],
       },
@@ -69,20 +129,20 @@ const MANIFEST: any = {
         slot: "roofing/insurance",
         requiredCount: 14,
         required: [
-          { anchor: "/Customer/", field: "Homeowner signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Customer_Date/", field: "Homeowner sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "/Contractor/", field: "Contractor signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Contractor_Date/", field: "Contractor sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "Name", field: "Customer name", tabType: "text", source: "Party identification" },
-          { anchor: "Address:", field: "Property address", tabType: "text", source: "Property identification" },
-          { anchor: "Contract Price:", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
-          { anchor: "Insurance Co", field: "Insurance carrier", tabType: "text", source: "Insurance-specific" },
-          { anchor: "Claim #", field: "Carrier claim number", tabType: "text", source: "Insurance-specific" },
-          { anchor: "DEDUCTIBLE:", field: "Homeowner deductible amount", tabType: "text", source: "Financial term" },
-          { anchor: "Material:", field: "Shingle product/brand", tabType: "text", source: "Material commitment" },
-          { anchor: "Manufacturer's Warranty:", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
-          { anchor: "Workmanship Warranty:", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
-          { anchor: "Decking/Sheet:", field: "Per-sheet decking replacement price", tabType: "text", source: "Roofing contingency" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Insurance Company", "insurance_company"), mechanism: "boldsign_tag", field: "Insurance carrier", tabType: "text", source: "Insurance-specific" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Claim Number", "claim_number"), mechanism: "boldsign_tag", field: "Carrier claim number", tabType: "text", source: "Insurance-specific" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Deductible", "deductible"), mechanism: "boldsign_tag", field: "Homeowner deductible amount", tabType: "text", source: "Financial term" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Material Type", "material_type"), mechanism: "boldsign_tag", field: "Shingle product/brand", tabType: "text", source: "Material commitment" },
+          { anchor: "Manufacturer's Warranty:", mechanism: "label_text", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
+          { anchor: "Workmanship Warranty:", mechanism: "label_text", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Decking Per Sheet", "decking_per_sheet"), mechanism: "boldsign_tag", field: "Per-sheet decking replacement price", tabType: "text", source: "Roofing contingency" },
         ],
         optional: ["City/Zip:", "Phone", "Email:", "Single Manufacture", "Shingle Type:", "Shingle Color:", "Drip Edge Color:", "Vents", "Satellite", "Skylights", "Full Redeck:", "Permit Fee:", "Dumpster Fee:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Structures:", "Structure Names:", "Valley Type:", "Bad Decking:", "Project Notes:", "Non-Recoverable Dep:", "Work Not Done:", "Description:"],
       },
@@ -92,19 +152,19 @@ const MANIFEST: any = {
         slot: "siding/retail",
         requiredCount: 13,
         required: [
-          { anchor: "/Customer/", field: "Homeowner signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Customer_Date/", field: "Homeowner sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "/Contractor/", field: "Contractor signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Contractor_Date/", field: "Contractor sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "Name", field: "Customer name", tabType: "text", source: "Party identification" },
-          { anchor: "Address:", field: "Property address", tabType: "text", source: "Property identification" },
-          { anchor: "Contract Price:", field: "Total contract amount", tabType: "text", source: "Financial term" },
-          { anchor: "Description:", field: "Job description / See Exhibit A", tabType: "text", source: "Scope reference (D-186)" },
-          { anchor: "Siding Product:", field: "Siding product/brand", tabType: "text", source: "Material commitment" },
-          { anchor: "Manufacturer's Warranty:", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
-          { anchor: "Workmanship Warranty:", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
-          { anchor: "Wall Substrate:", field: "Per-sheet sheathing replacement contingency", tabType: "text", source: "Siding contingency" },
-          { anchor: "Start Date:", field: "Estimated start date", tabType: "text", source: "Scheduling commitment" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount", tabType: "text", source: "Financial term" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Job Description", "job_description"), mechanism: "boldsign_tag", field: "Job description / See Exhibit A", tabType: "text", source: "Scope reference (D-186)" },
+          { anchor: "Siding Product:", mechanism: "label_text", field: "Siding product/brand", tabType: "text", source: "Material commitment" },
+          { anchor: "Manufacturer's Warranty:", mechanism: "label_text", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
+          { anchor: "Workmanship Warranty:", mechanism: "label_text", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
+          { anchor: "Wall Substrate:", mechanism: "label_text", field: "Per-sheet sheathing replacement contingency", tabType: "text", source: "Siding contingency" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Start Date", "estimated_start"), mechanism: "boldsign_tag", field: "Estimated start date", tabType: "text", source: "Scheduling commitment" },
         ],
         optional: ["City/Zip:", "Phone", "Email:", "Siding Color:", "Siding Profile:", "Trim Color:", "Trim Material:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"],
       },
@@ -112,20 +172,20 @@ const MANIFEST: any = {
         slot: "siding/insurance",
         requiredCount: 14,
         required: [
-          { anchor: "/Customer/", field: "Homeowner signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Customer_Date/", field: "Homeowner sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "/Contractor/", field: "Contractor signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Contractor_Date/", field: "Contractor sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "Name", field: "Customer name", tabType: "text", source: "Party identification" },
-          { anchor: "Address:", field: "Property address", tabType: "text", source: "Property identification" },
-          { anchor: "Contract Price:", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
-          { anchor: "Insurance Co", field: "Insurance carrier", tabType: "text", source: "Insurance-specific" },
-          { anchor: "Claim #", field: "Carrier claim number", tabType: "text", source: "Insurance-specific" },
-          { anchor: "DEDUCTIBLE:", field: "Homeowner deductible amount", tabType: "text", source: "Financial term" },
-          { anchor: "Siding Product:", field: "Siding product/brand", tabType: "text", source: "Material commitment" },
-          { anchor: "Manufacturer's Warranty:", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
-          { anchor: "Workmanship Warranty:", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
-          { anchor: "Wall Substrate:", field: "Per-sheet sheathing replacement contingency", tabType: "text", source: "Siding contingency" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Insurance Company", "insurance_company"), mechanism: "boldsign_tag", field: "Insurance carrier", tabType: "text", source: "Insurance-specific" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Claim Number", "claim_number"), mechanism: "boldsign_tag", field: "Carrier claim number", tabType: "text", source: "Insurance-specific" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Deductible", "deductible"), mechanism: "boldsign_tag", field: "Homeowner deductible amount", tabType: "text", source: "Financial term" },
+          { anchor: "Siding Product:", mechanism: "label_text", field: "Siding product/brand", tabType: "text", source: "Material commitment" },
+          { anchor: "Manufacturer's Warranty:", mechanism: "label_text", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
+          { anchor: "Workmanship Warranty:", mechanism: "label_text", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
+          { anchor: "Wall Substrate:", mechanism: "label_text", field: "Per-sheet sheathing replacement contingency", tabType: "text", source: "Siding contingency" },
         ],
         optional: ["City/Zip:", "Phone", "Email:", "Start Date:", "Siding Color:", "Siding Profile:", "Trim Color:", "Trim Material:", "Description:", "Non-Recoverable Dep:", "Work Not Done:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"],
       },
@@ -135,18 +195,18 @@ const MANIFEST: any = {
         slot: "gutters/retail",
         requiredCount: 12,
         required: [
-          { anchor: "/Customer/", field: "Homeowner signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Customer_Date/", field: "Homeowner sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "/Contractor/", field: "Contractor signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Contractor_Date/", field: "Contractor sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "Name", field: "Customer name", tabType: "text", source: "Party identification" },
-          { anchor: "Address:", field: "Property address", tabType: "text", source: "Property identification" },
-          { anchor: "Contract Price:", field: "Total contract amount", tabType: "text", source: "Financial term" },
-          { anchor: "Linear Feet:", field: "Gutter run linear footage", tabType: "text", source: "Scope measurement" },
-          { anchor: "Gutter Size:", field: "Gutter size", tabType: "text", source: "Specification" },
-          { anchor: "Downspout Count:", field: "Number of downspouts", tabType: "text", source: "Scope measurement" },
-          { anchor: "Manufacturer's Warranty:", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
-          { anchor: "Workmanship Warranty:", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount", tabType: "text", source: "Financial term" },
+          { anchor: "Linear Feet:", mechanism: "label_text", field: "Gutter run linear footage", tabType: "text", source: "Scope measurement" },
+          { anchor: "Gutter Size:", mechanism: "label_text", field: "Gutter size", tabType: "text", source: "Specification" },
+          { anchor: "Downspout Count:", mechanism: "label_text", field: "Number of downspouts", tabType: "text", source: "Scope measurement" },
+          { anchor: "Manufacturer's Warranty:", mechanism: "label_text", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
+          { anchor: "Workmanship Warranty:", mechanism: "label_text", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
         ],
         optional: ["City/Zip:", "Phone", "Email:", "Start Date:", "Description:", "Gutter Color:", "Gutter Guards:", "Splash Block Count:", "Hanger Spacing:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"],
       },
@@ -154,19 +214,19 @@ const MANIFEST: any = {
         slot: "gutters/insurance",
         requiredCount: 13,
         required: [
-          { anchor: "/Customer/", field: "Homeowner signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Customer_Date/", field: "Homeowner sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "/Contractor/", field: "Contractor signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Contractor_Date/", field: "Contractor sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "Name", field: "Customer name", tabType: "text", source: "Party identification" },
-          { anchor: "Address:", field: "Property address", tabType: "text", source: "Property identification" },
-          { anchor: "Contract Price:", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
-          { anchor: "Insurance Co", field: "Insurance carrier", tabType: "text", source: "Insurance-specific" },
-          { anchor: "Claim #", field: "Carrier claim number", tabType: "text", source: "Insurance-specific" },
-          { anchor: "DEDUCTIBLE:", field: "Homeowner deductible amount", tabType: "text", source: "Financial term" },
-          { anchor: "Linear Feet:", field: "Gutter run linear footage", tabType: "text", source: "Scope measurement" },
-          { anchor: "Gutter Size:", field: "Gutter size", tabType: "text", source: "Specification" },
-          { anchor: "Downspout Count:", field: "Number of downspouts", tabType: "text", source: "Scope measurement" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Insurance Company", "insurance_company"), mechanism: "boldsign_tag", field: "Insurance carrier", tabType: "text", source: "Insurance-specific" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Claim Number", "claim_number"), mechanism: "boldsign_tag", field: "Carrier claim number", tabType: "text", source: "Insurance-specific" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Deductible", "deductible"), mechanism: "boldsign_tag", field: "Homeowner deductible amount", tabType: "text", source: "Financial term" },
+          { anchor: "Linear Feet:", mechanism: "label_text", field: "Gutter run linear footage", tabType: "text", source: "Scope measurement" },
+          { anchor: "Gutter Size:", mechanism: "label_text", field: "Gutter size", tabType: "text", source: "Specification" },
+          { anchor: "Downspout Count:", mechanism: "label_text", field: "Number of downspouts", tabType: "text", source: "Scope measurement" },
         ],
         optional: ["City/Zip:", "Phone", "Email:", "Start Date:", "Manufacturer's Warranty:", "Workmanship Warranty:", "Gutter Color:", "Gutter Guards:", "Splash Block Count:", "Hanger Spacing:", "Description:", "Non-Recoverable Dep:", "Work Not Done:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"],
       },
@@ -176,17 +236,17 @@ const MANIFEST: any = {
         slot: "windows/retail",
         requiredCount: 11,
         required: [
-          { anchor: "/Customer/", field: "Homeowner signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Customer_Date/", field: "Homeowner sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "/Contractor/", field: "Contractor signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Contractor_Date/", field: "Contractor sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "Name", field: "Customer name", tabType: "text", source: "Party identification" },
-          { anchor: "Address:", field: "Property address", tabType: "text", source: "Property identification" },
-          { anchor: "Contract Price:", field: "Total contract amount", tabType: "text", source: "Financial term" },
-          { anchor: "Window Manufacturer:", field: "Window manufacturer", tabType: "text", source: "Specification" },
-          { anchor: "Window Count:", field: "Number of windows", tabType: "text", source: "Scope measurement" },
-          { anchor: "Manufacturer's Warranty:", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
-          { anchor: "Workmanship Warranty:", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount", tabType: "text", source: "Financial term" },
+          { anchor: "Window Manufacturer:", mechanism: "label_text", field: "Window manufacturer", tabType: "text", source: "Specification" },
+          { anchor: "Window Count:", mechanism: "label_text", field: "Number of windows", tabType: "text", source: "Scope measurement" },
+          { anchor: "Manufacturer's Warranty:", mechanism: "label_text", field: "Auto-filled from D-202 manifest", tabType: "text", source: "D-202" },
+          { anchor: "Workmanship Warranty:", mechanism: "label_text", field: "Contractor workmanship years", tabType: "text", source: "Workmanship commitment" },
         ],
         optional: ["City/Zip:", "Phone", "Email:", "Start Date:", "Description:", "Window Series:", "Glass Package:", "Frame Color:", "Trim Notes:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"],
       },
@@ -194,18 +254,18 @@ const MANIFEST: any = {
         slot: "windows/insurance",
         requiredCount: 12,
         required: [
-          { anchor: "/Customer/", field: "Homeowner signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Customer_Date/", field: "Homeowner sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "/Contractor/", field: "Contractor signature", tabType: "signHere", source: "HICA" },
-          { anchor: "/Contractor_Date/", field: "Contractor sign date", tabType: "dateSigned", source: "HICA" },
-          { anchor: "Name", field: "Customer name", tabType: "text", source: "Party identification" },
-          { anchor: "Address:", field: "Property address", tabType: "text", source: "Property identification" },
-          { anchor: "Contract Price:", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
-          { anchor: "Insurance Co", field: "Insurance carrier", tabType: "text", source: "Insurance-specific" },
-          { anchor: "Claim #", field: "Carrier claim number", tabType: "text", source: "Insurance-specific" },
-          { anchor: "DEDUCTIBLE:", field: "Homeowner deductible amount", tabType: "text", source: "Financial term" },
-          { anchor: "Window Manufacturer:", field: "Window manufacturer", tabType: "text", source: "Specification" },
-          { anchor: "Window Count:", field: "Number of windows", tabType: "text", source: "Scope measurement" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Insurance Company", "insurance_company"), mechanism: "boldsign_tag", field: "Insurance carrier", tabType: "text", source: "Insurance-specific" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Claim Number", "claim_number"), mechanism: "boldsign_tag", field: "Carrier claim number", tabType: "text", source: "Insurance-specific" },
+          { anchor: tag("text", CONTRACTOR_IDX, true, "Deductible", "deductible"), mechanism: "boldsign_tag", field: "Homeowner deductible amount", tabType: "text", source: "Financial term" },
+          { anchor: "Window Manufacturer:", mechanism: "label_text", field: "Window manufacturer", tabType: "text", source: "Specification" },
+          { anchor: "Window Count:", mechanism: "label_text", field: "Number of windows", tabType: "text", source: "Scope measurement" },
         ],
         optional: ["City/Zip:", "Phone", "Email:", "Start Date:", "Manufacturer's Warranty:", "Workmanship Warranty:", "Window Series:", "Glass Package:", "Frame Color:", "Trim Notes:", "Description:", "Non-Recoverable Dep:", "Work Not Done:", "Contractor:", "Contractor Phone:", "Contractor Email:", "Contractor Address:", "License #:", "Project Notes:"],
       },
@@ -369,17 +429,22 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Failed to parse PDF", details: parseErr.message }, 422, corsHeaders);
     }
 
-    // Scan required anchors (case-sensitive substring match per manifest)
+    // Scan required anchors (case-sensitive substring match per manifest).
+    // For mechanism: "boldsign_tag" entries, `req.anchor` IS the literal
+    // `{{...}}` string BoldSign's UseTextTags parser needs — this scan proves
+    // the contractor's PDF actually contains it (not just the old human-readable
+    // label). For mechanism: "label_text" entries, behavior is unchanged from
+    // v2 — a plain content-presence check with no BoldSign placement meaning.
+    //
     // manualOverrides values may be:
     //   "alt label"  — contractor's actual PDF text for this anchor; re-scanned against the PDF
     //   anything else — not overridden
-    // NOTE (D-211 Phase 16 Unit 4 — evidence integrity): a bare boolean `true` is NO LONGER
-    // accepted. Previously `override === true` marked an anchor "found" with no PDF check,
-    // letting a contractor self-validate a template containing none of the required anchors.
-    // An override is now honored ONLY when the contractor-supplied string is actually present
-    // in the PDF (stringOverrideMatch). Verified no client sends bare `true` — both contractor
-    // callers (js/contract-template-validation.js, react d199-validation.tsx) build string-only
-    // override maps, and the admin path clears manualOverrides before this scan.
+    // A bare boolean `true` is NOT accepted (D-211 Phase 16 Unit 4 evidence-integrity
+    // fix, carried forward unchanged from v2) — an override is honored ONLY when the
+    // contractor-supplied string is actually present in the PDF (stringOverrideMatch).
+    // For boldsign_tag entries, a manual override effectively lets a contractor supply
+    // their own FieldID/label text for that slot — same mechanism, just scanning for a
+    // tag string instead of a label string.
     const anchorResults = tradeManifest.required.map((req: any) => {
       const literalMatch = pdfText.includes(req.anchor);
       const override = manualOverrides ? manualOverrides[req.anchor] : undefined;
@@ -390,6 +455,7 @@ Deno.serve(async (req: Request) => {
       const overridden = stringOverrideMatch;
       return {
         anchor: req.anchor,
+        mechanism: req.mechanism,
         field: req.field,
         tabType: req.tabType,
         source: req.source,
