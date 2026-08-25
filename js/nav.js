@@ -58,7 +58,7 @@ const Nav = {
     return file === 'partners.html' || file.startsWith('partner-');
   },
 
-  /* ═══════════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════════════════════════════
      TWO-TIER NAVIGATION
      Row 1 — role switcher: Homeowner · Contractor · Referral Partner.
              Always visible, always clickable, on every page.
@@ -72,7 +72,7 @@ const Nav = {
        5. homeowner
      An AUTHENTICATED role always overrides all of the above once auth
      resolves — see _updateNavLinksForRole(), called from _renderAuthSlot().
-     ═══════════════════════════════════════════════════ */
+     ═══════════════════════════════════════════════════════════════════════ */
 
   /**
    * The referral_agents.agent_type values that mean "this account is a
