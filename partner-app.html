@@ -110,36 +110,6 @@
 
         .app-hero .hero-body { flex: 1; min-width: 260px; }
 
-        .install-cta-row {
-            display: flex;
-            align-items: center;
-            gap: var(--sp-4);
-            flex-wrap: wrap;
-            margin-top: var(--sp-6);
-        }
-
-        .install-btn {
-            font-family: var(--font-body);
-            display: inline-block;
-            padding: 16px 32px;
-            background: var(--amber);
-            color: var(--navy);
-            border: none;
-            border-radius: var(--radius-md);
-            font-size: 1.05rem;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-        }
-
-        .install-btn:hover { background: var(--amber-light); }
-
-        .install-note {
-            font-family: var(--font-body);
-            font-size: 0.85rem;
-            color: #94A3B8;
-        }
-
         .section-title {
             font-family: var(--font-heading);
             font-size: 1.6rem;
@@ -147,37 +117,6 @@
             color: var(--navy);
             margin-bottom: var(--sp-6);
             text-align: center;
-        }
-
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: var(--sp-5);
-            margin-bottom: var(--sp-12);
-        }
-
-        .feature-card {
-            background: var(--offwhite);
-            border: 1px solid var(--light);
-            border-radius: var(--radius-lg);
-            padding: var(--sp-6);
-        }
-
-        .feature-card .emoji { font-size: 1.8rem; margin-bottom: var(--sp-3); }
-
-        .feature-card h3 {
-            font-family: var(--font-heading);
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--navy);
-            margin-bottom: var(--sp-2);
-        }
-
-        .feature-card p {
-            font-family: var(--font-body);
-            font-size: 0.92rem;
-            color: #5A6B7B;
-            line-height: 1.55;
         }
 
         .howto-grid {
@@ -194,8 +133,6 @@
             padding: var(--sp-6);
         }
 
-        .howto-card.highlight { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
-
         .howto-card h3 {
             font-family: var(--font-heading);
             font-size: 1.05rem;
@@ -210,6 +147,34 @@
             color: #5A6B7B;
             line-height: 1.7;
             padding-left: var(--sp-5);
+        }
+
+        .howto-qr-wrap {
+            text-align: center;
+            padding-top: var(--sp-2);
+        }
+
+        .howto-qr {
+            /* 200px, not 160px. These are 39-module (version-5) codes: at 160px
+               with 10px of padding, only 140px carries 39 modules — 3.6 px per
+               module, which is under the ~4 px/module a phone camera wants at
+               arm's length from a laptop screen. 200px gives 180/39 = 4.6.
+               Measured 2026-08-25; both codes decode-verified at this size. */
+            width: 200px;
+            height: 200px;
+            min-width: 200px;
+            min-height: 200px;
+            background: #FFFFFF;
+            padding: 10px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--light);
+        }
+
+        .howto-qr-caption {
+            font-family: var(--font-body);
+            font-size: 0.85rem;
+            color: #5A6B7B;
+            margin-top: var(--sp-3);
         }
 
         .qr-block {
@@ -267,30 +232,6 @@
             <div class="hero-body">
                 <h1>The Otter Quotes Partner App</h1>
                 <p>Refer homeowners, grow your partner network, and track your referrals and payouts &mdash; right from your phone. Free, no app store needed, installs in seconds.</p>
-                <div class="install-cta-row">
-                    <button class="install-btn" id="installAppBtn">Install the App</button>
-                    <span class="install-note" id="installNote">Works on iPhone, Android, and desktop.</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Features -->
-        <h2 class="section-title">What you can do</h2>
-        <div class="feature-grid">
-            <div class="feature-card">
-                <div class="emoji">&#127968;</div>
-                <h3>Refer Homeowners</h3>
-                <p>Share your personal referral link by text, email, or QR code in one tap. Your client gets competing contractor bids &mdash; you earn $200 on completed jobs of $10,000 or more.</p>
-            </div>
-            <div class="feature-card">
-                <div class="emoji">&#129309;</div>
-                <h3>Refer Partners</h3>
-                <p>Know another agent, adjuster, or inspector? Share your recruit link. When partners you recruit close referrals, you earn $50 per completed job.</p>
-            </div>
-            <div class="feature-card">
-                <div class="emoji">&#128202;</div>
-                <h3>Track Referrals &amp; Payouts</h3>
-                <p>See every referral's status and your referral fee history in your partner dashboard &mdash; one tap from your home screen.</p>
             </div>
         </div>
 
@@ -299,27 +240,23 @@
         <div class="howto-grid">
             <div class="howto-card" id="howtoIos">
                 <h3>&#63743; iPhone &amp; iPad (Safari)</h3>
-                <ol>
-                    <li>Open this page in Safari</li>
-                    <li>Tap the <strong>Share</strong> button</li>
-                    <li>Scroll and tap <strong>Add to Home Screen</strong></li>
-                    <li>Tap <strong>Add</strong> &mdash; the OQ Partners icon appears on your home screen and opens straight to your Partner Dashboard</li>
-                </ol>
+                <div class="howto-qr-wrap">
+                    <svg viewBox="0 0 156 156" id="qr-ios" class="howto-qr" role="img" aria-labelledby="qr-ios-title"><title id="qr-ios-title">QR code linking to the iPhone install instructions</title><g transform="scale(4)"><path fill="#fff" d="M0 0h39v39h-39z"/><path class="qr-line" stroke="#0d1b2e" d="M3 3.5h7m2 0h1m2 0h3m1 0h5m1 0h2m2 0h7m-33 1h1m5 0h1m2 0h2m2 0h5m2 0h1m1 0h1m1 0h1m1 0h1m5 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m3 0h2m1 0h10m1 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m2 0h2m1 0h3m2 0h1m2 0h1m1 0h1m1 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m2 0h1m1 0h2m2 0h3m2 0h1m1 0h3m1 0h1m-33 1h1m5 0h1m1 0h3m1 0h2m1 0h2m4 0h1m4 0h1m5 0h1m-33 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-25 1h2m5 0h1m5 0h2m1 0h1m-25 1h1m1 0h5m2 0h5m1 0h1m1 0h2m3 0h2m2 0h5m-30 1h4m3 0h1m3 0h1m3 0h1m1 0h6m2 0h2m1 0h4m-33 1h7m1 0h1m6 0h1m2 0h1m1 0h1m4 0h1m2 0h1m1 0h2m-31 1h5m3 0h2m1 0h1m1 0h1m1 0h1m2 0h1m1 0h2m5 0h3m-31 1h1m4 0h5m1 0h1m6 0h1m5 0h2m2 0h2m-29 1h2m2 0h1m2 0h1m1 0h2m2 0h4m3 0h1m1 0h1m2 0h1m3 0h3m-33 1h1m1 0h2m2 0h1m6 0h1m3 0h1m3 0h2m2 0h2m1 0h1m1 0h2m-32 1h1m3 0h2m1 0h1m3 0h1m1 0h2m1 0h1m3 0h3m2 0h3m2 0h1m-30 1h6m1 0h2m1 0h3m3 0h1m1 0h1m2 0h4m1 0h2m3 0h1m-33 1h1m3 0h2m1 0h2m3 0h1m3 0h2m1 0h2m2 0h1m2 0h2m1 0h4m-31 1h1m1 0h3m2 0h1m1 0h5m1 0h1m4 0h1m1 0h1m2 0h2m1 0h2m-31 1h2m4 0h4m1 0h1m1 0h8m3 0h1m1 0h5m-32 1h1m1 0h1m2 0h4m1 0h1m4 0h2m2 0h1m2 0h1m1 0h2m2 0h2m-30 1h1m1 0h3m3 0h2m1 0h3m1 0h1m2 0h3m2 0h2m1 0h1m2 0h1m2 0h1m-33 1h1m2 0h1m1 0h2m1 0h1m1 0h1m2 0h1m1 0h2m1 0h1m1 0h1m1 0h1m1 0h8m-32 1h1m4 0h1m3 0h1m1 0h1m3 0h1m2 0h1m1 0h3m2 0h2m1 0h5m-33 1h1m2 0h1m2 0h5m1 0h2m1 0h3m1 0h1m2 0h7m-21 1h1m1 0h1m2 0h1m2 0h1m1 0h2m2 0h3m3 0h1m1 0h1m1 0h1m-33 1h7m3 0h6m2 0h1m1 0h2m1 0h2m1 0h1m1 0h1m1 0h2m-32 1h1m5 0h1m1 0h2m1 0h1m2 0h1m5 0h2m1 0h2m3 0h4m-32 1h1m1 0h3m1 0h1m1 0h3m1 0h1m1 0h2m2 0h1m3 0h1m1 0h6m1 0h2m-33 1h1m1 0h3m1 0h1m1 0h2m3 0h4m2 0h4m1 0h2m2 0h1m2 0h2m-33 1h1m1 0h3m1 0h1m1 0h3m1 0h3m3 0h1m2 0h7m1 0h2m-31 1h1m5 0h1m3 0h1m5 0h1m3 0h2m3 0h2m1 0h3m-31 1h7m1 0h2m1 0h1m2 0h1m1 0h2m4 0h3m2 0h1m3 0h1"/></g></svg>
+                    <p class="howto-qr-caption">Scan with your iPhone camera</p>
+                </div>
             </div>
             <div class="howto-card" id="howtoAndroid">
                 <h3>&#129302; Android (Chrome)</h3>
-                <ol>
-                    <li>Open this page in Chrome</li>
-                    <li>Tap <strong>Install the App</strong> above &mdash; or the <strong>&#8942;</strong> menu</li>
-                    <li>Choose <strong>Install app</strong> (or <strong>Add to Home screen</strong>)</li>
-                    <li>Confirm &mdash; the OQ Partners icon appears on your home screen</li>
-                </ol>
+                <div class="howto-qr-wrap">
+                    <svg viewBox="0 0 156 156" id="qr-android" class="howto-qr" role="img" aria-labelledby="qr-android-title"><title id="qr-android-title">QR code linking to the Android install instructions</title><g transform="scale(4)"><path fill="#fff" d="M0 0h39v39h-39z"/><path class="qr-line" stroke="#0d1b2e" d="M3 3.5h7m6 0h2m1 0h1m1 0h3m1 0h2m2 0h7m-33 1h1m5 0h1m2 0h3m1 0h4m3 0h1m1 0h1m1 0h1m1 0h1m5 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m3 0h2m1 0h2m1 0h4m1 0h2m1 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m1 0h3m1 0h4m1 0h2m1 0h1m1 0h1m1 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h2m1 0h1m3 0h1m1 0h5m1 0h1m2 0h1m1 0h3m1 0h1m-33 1h1m5 0h1m1 0h1m1 0h2m1 0h1m1 0h2m4 0h1m4 0h1m5 0h1m-33 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-25 1h1m1 0h2m3 0h1m5 0h2m1 0h1m-25 1h1m1 0h5m6 0h1m1 0h1m1 0h3m2 0h1m3 0h5m-31 1h1m1 0h1m2 0h1m1 0h2m1 0h1m5 0h8m2 0h2m1 0h4m-33 1h3m1 0h1m1 0h1m2 0h2m1 0h1m2 0h1m4 0h3m2 0h1m2 0h1m1 0h2m-31 1h1m1 0h2m3 0h5m1 0h1m1 0h1m2 0h1m1 0h1m6 0h3m-28 1h1m1 0h3m2 0h2m5 0h1m4 0h1m1 0h2m2 0h2m-30 1h1m2 0h3m4 0h14m2 0h1m3 0h3m-32 1h1m3 0h3m1 0h1m2 0h1m4 0h1m3 0h2m2 0h2m1 0h1m1 0h2m-31 1h5m1 0h1m1 0h1m1 0h1m1 0h1m2 0h1m2 0h4m2 0h3m2 0h1m-30 1h1m4 0h1m3 0h3m4 0h1m1 0h1m2 0h4m1 0h2m3 0h1m-31 1h1m1 0h2m1 0h1m2 0h1m1 0h3m1 0h2m1 0h3m1 0h1m2 0h2m1 0h4m-33 1h1m1 0h5m1 0h2m2 0h1m1 0h2m8 0h1m2 0h2m1 0h2m-32 1h1m1 0h2m5 0h3m2 0h3m1 0h4m3 0h1m1 0h5m-32 1h2m1 0h2m1 0h1m1 0h1m2 0h1m2 0h3m1 0h2m2 0h1m1 0h2m2 0h2m-30 1h1m1 0h4m1 0h1m1 0h1m1 0h5m2 0h2m3 0h2m1 0h1m2 0h1m2 0h1m-33 1h1m1 0h2m1 0h3m2 0h3m2 0h2m1 0h1m3 0h1m1 0h8m-32 1h1m1 0h4m2 0h3m4 0h1m2 0h1m1 0h3m2 0h2m1 0h5m-33 1h1m1 0h1m1 0h1m1 0h2m1 0h2m1 0h6m4 0h7m2 0h1m-24 1h2m1 0h2m3 0h1m1 0h2m2 0h3m3 0h1m1 0h1m1 0h1m-33 1h7m2 0h2m1 0h1m1 0h2m2 0h1m1 0h1m1 0h3m1 0h1m1 0h1m1 0h2m-32 1h1m5 0h1m1 0h5m5 0h1m1 0h5m3 0h4m-32 1h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h2m1 0h1m2 0h1m3 0h1m1 0h6m1 0h2m-33 1h1m1 0h3m1 0h1m1 0h1m4 0h1m1 0h2m1 0h4m2 0h2m2 0h1m2 0h2m-33 1h1m1 0h3m1 0h1m1 0h2m1 0h1m6 0h1m1 0h8m1 0h2m-31 1h1m5 0h1m3 0h1m2 0h2m1 0h1m4 0h1m3 0h2m1 0h3m-31 1h7m1 0h1m3 0h2m2 0h2m1 0h1m2 0h3m2 0h1m3 0h1"/></g></svg>
+                    <p class="howto-qr-caption">Scan with your Android camera or Chrome</p>
+                </div>
             </div>
             <div class="howto-card" id="howtoDesktop">
                 <h3>&#128187; Desktop (Chrome / Edge)</h3>
                 <ol>
                     <li>Open this page in Chrome or Edge</li>
-                    <li>Click <strong>Install the App</strong> above &mdash; or the install icon in the address bar</li>
+                    <li>Click the <strong>install icon</strong> in the address bar (or the browser menu &rarr; <strong>Install Otter Quotes Partners&hellip;</strong>)</li>
                     <li>The app opens in its own window and pins like any program</li>
                 </ol>
             </div>
@@ -347,17 +284,8 @@
 
     <script>
         (function () {
-            var deferredPrompt = null;
-            var installBtn = document.getElementById('installAppBtn');
-            var installNote = document.getElementById('installNote');
-
             function gaEvent(name, params) {
                 if (typeof gtag === 'function') { gtag('event', name, params || {}); }
-            }
-
-            function isIos() {
-                return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
             }
 
             function isStandalone() {
@@ -365,39 +293,14 @@
                     window.navigator.standalone === true;
             }
 
-            function highlight(id) {
-                var el = document.getElementById(id);
-                if (!el) return;
-                el.classList.add('highlight');
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-
-            window.addEventListener('beforeinstallprompt', function (e) {
-                e.preventDefault();
-                deferredPrompt = e;
-                gaEvent('app_install_prompt_available', { page: 'partner-app' });
-            });
-
+            // The two "How to install" QR codes link out to their own
+            // walkthrough pages (partner-app-install-ios.html /
+            // partner-app-install-android.html) - no in-page install button
+            // or beforeinstallprompt handling needed here. Chrome's own
+            // automatic install banner (Android) is left unsuppressed.
             window.addEventListener('appinstalled', function () {
                 gaEvent('app_installed', { page: 'partner-app' });
-                if (installNote) { installNote.textContent = 'Installed! Look for OQ Partners on your home screen.'; }
             });
-
-            if (installBtn) {
-                installBtn.addEventListener('click', function () {
-                    gaEvent('app_install_click', { page: 'partner-app' });
-                    if (deferredPrompt) {
-                        deferredPrompt.prompt();
-                        deferredPrompt.userChoice.then(function () { deferredPrompt = null; });
-                    } else if (isIos()) {
-                        highlight('howtoIos');
-                    } else if (/android/i.test(navigator.userAgent)) {
-                        highlight('howtoAndroid');
-                    } else {
-                        highlight('howtoDesktop');
-                    }
-                });
-            }
 
             if (isStandalone()) {
                 window.location.replace('/partner-dashboard.html?source=pwa');
