@@ -413,7 +413,7 @@
     Auth.getUser().then(async user => {
       if (!user) return;
 
-      // ── 2026-08-25 ────────────────────────────────────────────────────
+      // ── 2026-08-25 ─────────────────────────────────────────────────
       // This used to be an unconditional redirectToDashboard(). That is right
       // for a homeowner returning to their own sign-in page, and wrong for
       // anyone whose account carries a non-homeowner role: they arrive at the
