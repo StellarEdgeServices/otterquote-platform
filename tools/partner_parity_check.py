@@ -109,8 +109,21 @@ CHECKS = [
     },
     {
         "key": "get_the_app_promo",
+        # partner-insurance is exempt as of 2026-08-25, Dustin-directed:
+        # "Remove the 'Get the Otter Quotes Partner app'. That should be once
+        # they are in." The promo was competing with the signup form on a page
+        # whose only job is to convert a cold insurance agent, and the app is
+        # useless to someone who has no account yet.
+        #
+        # This is a ONE-PAGE exemption, not a policy change, because that is
+        # the only page the instruction covered. NOTE FOR WHOEVER READS THIS
+        # NEXT: the same argument applies verbatim to the other four vertical
+        # pages, which still carry the promo above the fold for logged-out
+        # visitors. If that is resolved, delete this exemption rather than
+        # widening it — a parity check with five exemptions is not a parity
+        # check.
         "description": "Get-the-App promo block",
-        "pages": VERTICAL_PAGES,
+        "pages": [p for p in VERTICAL_PAGES if p != "partner-insurance"],
         "test": check_get_the_app_promo,
     },
     {
