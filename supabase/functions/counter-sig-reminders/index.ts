@@ -3,14 +3,28 @@
  *
  * D-149 — Counter-Signature Nudge Cadence (ClickUp 86e1gabf4)
  *
+ * [D-274 / #631, 2026-08-13] Disposition for the BoldSign migration: SURVIVES
+ * AS-IS. This function never called the DocuSign API directly — it only reads
+ * `notifications` marker rows written by docusign-webhook (renamed in
+ * comments only, not vendor-coupled itself) and sends Mailgun email. The
+ * D-274 build brief's premise that this function "invokes create-invoice
+ * server-to-server on its cron schedule" does not match this file's actual
+ * code (verified by full read — no fetch() to any other Edge Function
+ * anywhere in this file); that appears to be a stale/incorrect brief
+ * assumption, flagged in the D-274 build report on issue #631 rather than
+ * silently acted on. The only change in this pass is adopting the
+ * SUPABASE_SECRET_KEYS credential pattern (see getServiceRoleKey() below),
+ * consistent with every other function touched by this build.
+ *
  * Invoked every 30 minutes via pg_cron (sql/v92, schedule "each half hour").
  * May also be manually POST-ed for testing.
  *
  * ── What it does ─────────────────────────────────────────────────────────────
  *
- * When a homeowner signs a contract, docusign-webhook sends the contractor an
- * immediate counter-signature nudge and inserts a marker row into the
- * `notifications` table:
+ * When a homeowner signs a contract, docusign-webhook (BoldSign-backed as of
+ * D-274; file path unchanged) sends the contractor an immediate
+ * counter-signature nudge and inserts a marker row into the `notifications`
+ * table:
  *
  *   notification_type = 'countersign_nudge_pending'
  *   message_preview   = 'envelope=<envelopeId>;homeowner_signed_at=<ISO ts>'
@@ -68,7 +82,7 @@
  *   service-role key is a valid JWT, so the platform gate stays on.
  *
  * ── Env vars required ────────────────────────────────────────────────────────
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ *   SUPABASE_URL, SUPABASE_SECRET_KEYS (preferred) or SUPABASE_SERVICE_ROLE_KEY (fallback)
  *   MAILGUN_API_KEY, MAILGUN_DOMAIN
  *
  * ── Returns ──────────────────────────────────────────────────────────────────
@@ -89,6 +103,22 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// [D-274 / #631] Service-role-equivalent credential via the new secret-key
+// rotation pattern, NOT the legacy auto-injected SUPABASE_SERVICE_ROLE_KEY —
+// same helper/rationale as docusign-webhook and create-docusign-envelope.
+function getServiceRoleKey(): string {
+  const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.default) return parsed.default as string;
+    } catch (_e) {
+      console.warn("[counter-sig-reminders] SUPABASE_SECRET_KEYS present but not valid JSON — falling back to legacy key");
+    }
+  }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+}
 
 // =============================================================================
 // CONSTANTS
@@ -629,7 +659,7 @@ serve(async (req) => {
   }
 
   const supabaseUrl   = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const serviceKey    = getServiceRoleKey();
   const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY")!;
   const mailgunDomain = Deno.env.get("MAILGUN_DOMAIN")!;
 

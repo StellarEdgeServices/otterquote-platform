@@ -46,6 +46,21 @@ function buildCorsHeaders(req) {
     "Vary": "Origin"
   };
 }
+// [D-274 / #631] Service-role-equivalent credential via the new secret-key
+// rotation pattern, NOT the legacy auto-injected SUPABASE_SERVICE_ROLE_KEY —
+// same helper/rationale as docusign-webhook/index.ts's getServiceRoleKey().
+function getServiceRoleKey() {
+  const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.default) return parsed.default;
+    } catch (_e) {
+      console.warn("[create-docusign-envelope] SUPABASE_SECRET_KEYS present but not valid JSON — falling back to legacy key");
+    }
+  }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+}
 // ========== GA4 MEASUREMENT PROTOCOL ==========
 async function sendGA4Event(eventName, params = {}) {
   const measurementId = Deno.env.get("GA4_MEASUREMENT_ID");
@@ -69,179 +84,27 @@ async function sendGA4Event(eventName, params = {}) {
     });
   } catch (_) {}
 }
-let cachedToken = null;
-// ========== JWT GENERATION & BASE64URL UTILITIES ==========
-function base64urlEncode(data) {
-  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
-  const binary = String.fromCharCode(...bytes);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-function base64urlDecode(str) {
-  const padded = str + "=".repeat((4 - str.length % 4) % 4);
-  const binary = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
-  return new Uint8Array(binary.split("").map((c)=>c.charCodeAt(0)));
-}
-// ASN.1 DER helper for PKCS#1 -> PKCS#8 wrapping
-function encodeAsn1TLV(tag, content) {
-  const len = content.length;
-  let header;
-  if (len < 128) {
-    header = new Uint8Array([
-      tag,
-      len
-    ]);
-  } else if (len < 256) {
-    header = new Uint8Array([
-      tag,
-      0x81,
-      len
-    ]);
-  } else {
-    header = new Uint8Array([
-      tag,
-      0x82,
-      len >> 8 & 0xff,
-      len & 0xff
-    ]);
+// ========== BOLDSIGN AUTH (D-274 / #631) ==========
+// Replaces ~175 lines of DocuSign JWT-grant machinery (base64url encoding,
+// PKCS#1->PKCS#8 ASN.1 wrapping, token fetch + caching, /oauth/userinfo
+// account-ID resolution) with a single header. BoldSign auth is a plain API
+// key (X-API-KEY) — no OAuth exchange, no token expiry/caching needed, no
+// "account ID" concept to resolve. BOLDSIGN_API is the confirmed-working
+// secret name (verified 2026-08-13 via a throwaway diagnostic EF against
+// GET /v1/senderIdentities/list — see the D-274 build report on #631).
+const BOLDSIGN_API_BASE = Deno.env.get("BOLDSIGN_API_BASE") || "https://api.boldsign.com";
+function getBoldSignApiKey() {
+  const key = Deno.env.get("BOLDSIGN_API");
+  if (!key) {
+    throw new Error("BOLDSIGN_API not configured.");
   }
-  const out = new Uint8Array(header.length + len);
-  out.set(header, 0);
-  out.set(content, header.length);
-  return out;
+  return key;
 }
-function wrapPkcs1InPkcs8(pkcs1Der) {
-  // AlgorithmIdentifier SEQUENCE { OID rsaEncryption, NULL }
-  const algId = new Uint8Array([
-    0x30,
-    0x0d,
-    0x06,
-    0x09,
-    0x2a,
-    0x86,
-    0x48,
-    0x86,
-    0xf7,
-    0x0d,
-    0x01,
-    0x01,
-    0x01,
-    0x05,
-    0x00
-  ]);
-  const version = new Uint8Array([
-    0x02,
-    0x01,
-    0x00
-  ]);
-  const octetString = encodeAsn1TLV(0x04, pkcs1Der);
-  const inner = new Uint8Array(version.length + algId.length + octetString.length);
-  inner.set(version, 0);
-  inner.set(algId, version.length);
-  inner.set(octetString, version.length + algId.length);
-  return encodeAsn1TLV(0x30, inner);
-}
-async function importRsaPrivateKey(pemBase64) {
-  const b64 = pemBase64.replace(/-----BEGIN[^-]*-----/g, "").replace(/-----END[^-]*-----/g, "").replace(/\s+/g, "");
-  const der = Uint8Array.from(atob(b64), (c)=>c.charCodeAt(0));
-  const algo = {
-    name: "RSASSA-PKCS1-v1_5",
-    hash: "SHA-256"
+function boldSignHeaders(extra = {}) {
+  return {
+    "X-API-KEY": getBoldSignApiKey(),
+    ...extra
   };
-  // Try PKCS#8 first; fall back to wrapping PKCS#1 (SP #5 — DocuSign key is PKCS#1 format)
-  try {
-    return await crypto.subtle.importKey("pkcs8", der, algo, false, [
-      "sign"
-    ]);
-  } catch  {
-    return await crypto.subtle.importKey("pkcs8", wrapPkcs1InPkcs8(der), algo, false, [
-      "sign"
-    ]);
-  }
-}
-async function createJwtAssertion(integrationKey, userId, baseUrl) {
-  const now = Math.floor(Date.now() / 1000);
-  const exp = now + 3600;
-  const aud = baseUrl.includes("demo") || baseUrl.includes("account-d") ? "account-d.docusign.com" : "account.docusign.com";
-  const payload = {
-    iss: integrationKey,
-    sub: userId,
-    aud,
-    iat: now,
-    exp,
-    scope: "signature impersonation"
-  };
-  const header = {
-    alg: "RS256",
-    typ: "JWT"
-  };
-  const headerEncoded = base64urlEncode(JSON.stringify(header));
-  const payloadEncoded = base64urlEncode(JSON.stringify(payload));
-  const signingInput = `${headerEncoded}.${payloadEncoded}`;
-  const rsaPrivateKeyB64 = Deno.env.get("DOCUSIGN_RSA_PRIVATE_KEY");
-  if (!rsaPrivateKeyB64) {
-    throw new Error("DOCUSIGN_RSA_PRIVATE_KEY not configured. Please set this environment variable with a base64-encoded RSA private key in PEM format.");
-  }
-  const cryptoKey = await importRsaPrivateKey(rsaPrivateKeyB64);
-  const signatureBuffer = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, new TextEncoder().encode(signingInput));
-  const signatureEncoded = base64urlEncode(new Uint8Array(signatureBuffer));
-  return `${signingInput}.${signatureEncoded}`;
-}
-// ========== TOKEN MANAGEMENT ==========
-async function getAccessToken(baseUrl) {
-  const now = Date.now();
-  if (cachedToken && cachedToken.expiresAt > now + 300000) {
-    console.log("Using cached DocuSign access token");
-    return cachedToken;
-  }
-  console.log("Fetching new DocuSign access token via JWT grant flow");
-  const integrationKey = Deno.env.get("DOCUSIGN_INTEGRATION_KEY");
-  const userId = Deno.env.get("DOCUSIGN_USER_ID");
-  if (!integrationKey || !userId) {
-    throw new Error("DocuSign JWT auth not configured. Set DOCUSIGN_INTEGRATION_KEY and DOCUSIGN_USER_ID.");
-  }
-  const jwtAssertion = await createJwtAssertion(integrationKey, userId, baseUrl);
-  const oauthHost = baseUrl.includes("demo") || baseUrl.includes("account-d") ? "https://account-d.docusign.com" : "https://account.docusign.com";
-  const tokenResponse = await fetch(`${oauthHost}/oauth/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwtAssertion}`
-  });
-  if (!tokenResponse.ok) {
-    const errorData = await tokenResponse.text();
-    console.error("DocuSign token request failed:", errorData);
-    throw new Error(`DocuSign token request failed: ${tokenResponse.status} ${errorData}`);
-  }
-  const tokenData = await tokenResponse.json();
-  const accessToken = tokenData.access_token;
-  if (!accessToken) {
-    throw new Error("No access_token in DocuSign response");
-  }
-  console.log("Fetching DocuSign account info via /oauth/userinfo");
-  const userInfoResponse = await fetch(`${oauthHost}/oauth/userinfo`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`
-    }
-  });
-  if (!userInfoResponse.ok) {
-    const errText = await userInfoResponse.text();
-    throw new Error(`DocuSign userinfo request failed: ${userInfoResponse.status} ${errText}`);
-  }
-  const userInfo = await userInfoResponse.json();
-  const account = userInfo.accounts?.find((a)=>a.is_default) || userInfo.accounts?.[0];
-  if (!account?.account_id) {
-    throw new Error(`Could not determine DocuSign account ID from userinfo: ${JSON.stringify(userInfo)}`);
-  }
-  const resolvedBaseUri = account.base_uri || baseUrl;
-  console.log(`DocuSign account ID: ${account.account_id}, base_uri: ${resolvedBaseUri}`);
-  cachedToken = {
-    accessToken,
-    accountId: account.account_id,
-    baseUri: resolvedBaseUri,
-    expiresAt: now + 3600000 - 300000
-  };
-  return cachedToken;
 }
 // ========== PDF RETRIEVAL ==========
 async function getTemplateFromStorage(supabase, contractorId, documentType) {
@@ -323,7 +186,14 @@ function base64EncodeBinary(bytes) {
   return btoa(binary);
 }
 // ========== IC 24-5-11 COMPLIANCE ADDENDUM PDF ==========
-function generateComplianceAddendumPdf(contractorName, homeownerName, contractDate) {
+// [D-274 / #631] homeownerSignerIndex added: BoldSign Text Tags bake the
+// signer index directly into the tag string (positional — see boldsign
+// helper header comments), and this document's two callers use OPPOSITE
+// signer orders (handleContractorSign: contractor=1,homeowner=2;
+// handleLegacyFlow: homeowner=1,contractor=2). DocuSign's original
+// anchorString-based tabs didn't care about order (role-named anchors), so
+// this parameter is new — callers MUST pass the correct index for their flow.
+function generateComplianceAddendumPdf(contractorName, homeownerName, contractDate, homeownerSignerIndex) {
   const lines = [];
   const objects = [];
   let currentOffset = 0;
@@ -354,6 +224,14 @@ function generateComplianceAddendumPdf(contractorName, homeownerName, contractDa
   function addText(x, y, fontSize, font, text) {
     const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
     contentLines.push(`BT /${font} ${fontSize} Tf ${x} ${y} Td (${escaped}) Tj ET`);
+  }
+  // [D-274 / #631] Render text in a chosen non-stroking gray (1.0 = white =
+  // invisible on white paper) — used to embed BoldSign Text Tags invisibly,
+  // same technique the retail Scope of Work generator already used for
+  // DocuSign anchors (see generateRetailScopeOfWorkPdf's addTextColored).
+  function addTextColored(x, y, fontSize, font, text, gray) {
+    const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+    contentLines.push(`BT ${gray} g /${font} ${fontSize} Tf ${x} ${y} Td (${escaped}) Tj ET 0 g`);
   }
   function addWrappedText(x, startY, fontSize, font, text, maxWidth) {
     const charWidth = fontSize * 0.5;
@@ -410,12 +288,26 @@ function generateComplianceAddendumPdf(contractorName, homeownerName, contractDa
   addText(50, y, 10, "F2", "I HEREBY CANCEL THIS TRANSACTION.");
   y -= 25;
   addText(50, y, 10, "F1", "Homeowner Signature: ___________________________________    Date: ________________");
+  // [D-274 / #631] Optional cancellation-acknowledgment sign field. DocuSign's
+  // version anchored on the visible "I HEREBY CANCEL..." prose text above —
+  // BoldSign cannot do that (no arbitrary-text anchoring, see file header of
+  // validate-contract-template/index.ts for the full explanation), so the tag
+  // is baked in here at generation time instead, positioned on the signature
+  // blank. Not required (this is an OPTIONAL cancellation, most homeowners
+  // never use it) — required:false via the tag's " " (space) segment.
+  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}| |Cancellation Acknowledgment|cancellation_acknowledgment_signature}}`, 1.0);
   y -= 20;
   addText(50, y, 10, "F1", `Homeowner Name (printed): ${homeownerName}`);
   y -= 30;
   contentLines.push(`50 ${y + 5} m 562 ${y + 5} l S`);
   y -= 15;
   addText(50, y, 12, "F2", "PLATFORM DISCLOSURE");
+  // [D-274 / #631, carried forward from D-123/D-269] Required acknowledgment
+  // field — homeowner confirms Otter Quotes is not a party to the contract.
+  // REQUIRED (the "*" segment). docusign-webhook's ack-verify.ts backstops
+  // this at completion per D-269 (#550) — same invariant as before, adapted
+  // to BoldSign's formFields shape instead of DocuSign's tab shape.
+  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}|*|Platform Disclosure Acknowledgment|otterquote_acknowledgment}}`, 1.0);
   y -= 20;
   y = addWrappedText(50, y, 10, "F1", `Otter Quotes is a technology platform that facilitates connections between homeowners and contractors. Otter Quotes is NOT a party to this contract and assumes no liability for work performed under this agreement. This contract is between the homeowner and the contractor named above.`, 512);
   y -= 10;
@@ -597,8 +489,9 @@ function generateRetailScopeOfWorkPdf(params) {
   function addText(x, yy, fontSize, font, text) {
     contentLines.push(`BT /${font} ${fontSize} Tf ${x} ${yy} Td (${esc(text)}) Tj ET`);
   }
-  // [D-225 Phase 2B / D-186] Render text in a chosen non-stroking gray (1.0 = white =
-  // invisible on white paper). Used to embed DocuSign anchor strings invisibly.
+  // [D-225 Phase 2B / D-186; re-tagged D-274 / #631] Render text in a chosen
+  // non-stroking gray (1.0 = white = invisible on white paper). Used to embed
+  // BoldSign Text Tags invisibly (was DocuSign anchor strings pre-D-274).
   function addTextColored(x, yy, fontSize, font, text, gray) {
     contentLines.push(`BT ${gray} g /${font} ${fontSize} Tf ${x} ${yy} Td (${esc(text)}) Tj ET 0 g`);
   }
@@ -1033,10 +926,14 @@ function generateRetailScopeOfWorkPdf(params) {
       y = addWrappedText(60, y, 9, "F1", pc.homeownerNotes, 500);
     }
   }
-  // [D-225 Phase 2B / D-186] Dual-party initials anchor row. The visible labels
-  // (Contractor / Homeowner) sit beside blank underscores; the /ContractorInitial/
-  // and /HomeownerInitial/ anchor strings are drawn in white at the same x so they
-  // are invisible on paper but findable by DocuSign's anchor parser.
+  // [D-225 Phase 2B / D-186; re-tagged D-274 / #631] Dual-party initials row.
+  // The visible labels (Contractor / Homeowner) sit beside blank underscores;
+  // BoldSign Text Tags are drawn in white at the same x so they are invisible
+  // on paper but auto-discovered by BoldSign's UseTextTags parser. This
+  // document (generateRetailScopeOfWorkPdf) has exactly one call site
+  // (handleContractorSign), which always sends contractor as signer 1 and
+  // homeowner as signer 2 — safe to hardcode here, unlike the compliance
+  // addendum which has two callers with opposite orders.
   ensure(46);
   y -= 18;
   hLine(y + 4);
@@ -1044,10 +941,10 @@ function generateRetailScopeOfWorkPdf(params) {
   addText(LEFT_X, y, 10, "F2", "Initials:");
   addText(115, y, 10, "F1", "Contractor:");
   addText(180, y, 10, "F1", "_________");
-  addTextColored(180, y, 10, "F1", "/ContractorInitial/", 1.0);
+  addTextColored(180, y, 10, "F1", "{{init|1|*|Contractor Initial|contractor_initial_sow}}", 1.0);
   addText(320, y, 10, "F1", "Homeowner:");
   addText(390, y, 10, "F1", "_________");
-  addTextColored(390, y, 10, "F1", "/HomeownerInitial/", 1.0);
+  addTextColored(390, y, 10, "F1", "{{init|2|*|Homeowner Initial|homeowner_initial_sow}}", 1.0);
   y -= 4;
   y -= 12;
   hLine(y + 4);
@@ -1110,164 +1007,38 @@ function generateRetailScopeOfWorkPdf(params) {
   return base64EncodeBinary(new TextEncoder().encode(pdfLines.join("\n")));
 }
 
-function buildTextTabs(fields, documentId, documentType) {
-  const fieldAnchors = {
-    customer_name: "Name",
-    customer_address: "Address:",
-    customer_city_zip: "City/Zip:",
-    customer_phone: "Phone",
-    customer_email: "Email:",
-    insurance_company: "Insurance Co",
-    claim_number: "Claim #",
-    deductible: "DEDUCTIBLE:",
-    contract_date: "Date:",
-    job_description: "Description:",
-    material_type: "Material:",
-    contract_price: "Contract Price:",
-    warranty_years: "Warranty:",
-    estimated_start: "Start Date:",
-    decking_per_sheet: "Decking/Sheet:",
-    full_redeck_price: "Full Redeck:",
-    contractor_name: "Contractor:",
-    contractor_phone: "Contractor Phone:",
-    contractor_email: "Contractor Email:",
-    contractor_address: "Contractor Address:",
-    contractor_license: "License #:",
-    shingle_manufacturer: "Single Manufacture",
-    shingle_type: "Shingle Type:",
-    shingle_color: "Shingle Color:",
-    drip_edge_color: "Drip Edge Color:",
-    vents: "Vents",
-    satellite: "Satellite",
-    skylights: "Skylights",
-    num_structures: "Structures:",
-    structure_names: "Structure Names:",
-    valley_type: "Valley Type:",
-    gutter_guards: "Gutter Guards:",
-    bad_decking: "Bad Decking:",
-    work_not_done: "Work Not Done:",
-    non_recoverable: "Non-Recoverable Dep:",
-    project_notes: "Project Notes:"
-  };
-  const tabs = [];
-  for (const [fieldName, fieldValue] of Object.entries(fields)){
-    const anchor = fieldAnchors[fieldName];
-    if (!anchor) {
-      continue;
-    }
-    // [2026-07-09 alignment fix] Per-field anchorXOffset, measured from the standard
-    // OtterQuote retail/insurance template geometry (label left-edge -> blank left-edge).
-    // The prior single 8px offset landed the value ON the label ("NameGregory Paulsen"):
-    // DocuSign positions the value at the LEFT edge of the matched anchor string, not the
-    // END, so the offset must span the full label width to reach the underscore blank.
-    // Anchor STRINGS are unchanged (a label that lacks a colon, e.g. "Name", must keep its
-    // exact deployed string or the value would stop matching and vanish). Offsets are capped
-    // well under the page width: max here is 66px, so even an anchor that also recurs in the
-    // right-margin prose (historic INVALID_USER_OFFSET risk at ~515px) lands at <=581 < 612.
-    const anchorXOffsets = {
-      customer_name: "30",
-      customer_address: "42",
-      customer_city_zip: "40",
-      customer_phone: "32",
-      customer_email: "32",
-      contract_price: "66",
-      estimated_start: "48",
-      job_description: "54",
-      material_type: "40",
-      decking_per_sheet: "66"
-    };
-    tabs.push({
-      anchorString: anchor,
-      anchorUnits: "pixels",
-      anchorXOffset: anchorXOffsets[fieldName] ?? "8",
-      anchorYOffset: "-5",
-      value: String(fieldValue),
-      locked: "true",
-      font: "helvetica",
-      fontSize: "size10",
-      documentId
-    });
-  }
-  return tabs;
-}
-function buildSignerTabs(documentId, signerType) {
-  const signAnchor = signerType === "homeowner" ? "Customer" : "Contractor";
-  const dateAnchor = `${signAnchor}_Date`;
-  return {
-    signHereTabs: [
-      {
-        anchorString: `/${signAnchor}/`,
-        anchorUnits: "pixels",
-        anchorXOffset: "0",
-        anchorYOffset: "0",
-        documentId
-      }
-    ],
-    dateSignedTabs: [
-      {
-        anchorString: `/${dateAnchor}/`,
-        anchorUnits: "pixels",
-        anchorXOffset: "0",
-        anchorYOffset: "0",
-        documentId
-      }
-    ]
-  };
-}
-// [D-225 Phase 2B / D-186] SOW initials tab builder. Binds /ContractorInitial/ or
-// /HomeownerInitial/ initialHere tab on the generated retail Exhibit A (documentId = sowDocId).
-// Routing order is inherited from the parent envelope: contractor recipient is order 1,
-// homeowner recipient is order 2 — consistent with D-152 + D-186.
-function buildSowInitialTabs(sowDocId, signerType) {
-  const anchor = signerType === "homeowner" ? "/HomeownerInitial/" : "/ContractorInitial/";
-  return {
-    initialHereTabs: [
-      {
-        anchorString: anchor,
-        anchorAllowWhiteSpaceInCharacters: "true",
-        anchorUnits: "pixels",
-        anchorXOffset: "0",
-        anchorYOffset: "-2",
-        documentId: sowDocId
-      }
-    ]
-  };
-}
-// ========== ADDENDUM SIGNER TABS ==========
-function buildAddendumTabs(documentId) {
-  return {
-    // D-123: signHere tab replaces prior checkboxTab for otterquote_acknowledgment.
-    // checkboxTab with required: "true" is unreliable in DocuSign embedded signing --
-    // the "Finish" button can fire before required-checkbox validation triggers.
-    // signHere is the only tab type DocuSign reliably enforces before completion.
-    // Approved: Dustin Stohler, 2026-05-25, task 86e1frafj.
-    signHereTabs: [
-      // Optional sign on the Notice of Cancellation (homeowner only)
-      {
-        anchorString: "I HEREBY CANCEL THIS TRANSACTION",
-        anchorUnits: "pixels",
-        anchorXOffset: "0",
-        anchorYOffset: "20",
-        tabLabel: "cancellation_acknowledgment_signature",
-        optional: "true",
-        documentId
-      },
-      // D-123 platform disclosure acknowledgment -- homeowner signs to confirm
-      // OtterQuote is not a party to the homeowner-contractor agreement.
-      // D-269 (#550): explicitly required (DocuSign default, stated for the
-      // audit trail) -- docusign-webhook backstops this at completion.
-      {
-        anchorString: "PLATFORM DISCLOSURE",
-        anchorUnits: "pixels",
-        anchorXOffset: "0",
-        anchorYOffset: "180",
-        tabLabel: "otterquote_acknowledgment",
-        optional: "false",
-        documentId
-      }
-    ]
-  };
-}
+// ========== [D-274 / #631] TAB-BUILDER FUNCTIONS RETIRED ==========
+// buildTextTabs, buildSignerTabs, buildSowInitialTabs, and buildAddendumTabs
+// (DocuSign anchor-tab descriptors, ~160 lines) are DELETED, not ported.
+// Under BoldSign, a "tab" is not a separate API object describing where to
+// find an anchor — it IS the literal `{{FieldType|SignerIndex|Required|
+// Label|FieldID}}` text already present in a document's content, discovered
+// automatically when the send request sets `useTextTags: true`. There is
+// nothing left for these functions to "build":
+//   - Signature/date fields on our own generated PDFs (compliance addendum,
+//     retail Scope of Work) are now baked directly into their content at
+//     generation time — see generateComplianceAddendumPdf's addTextColored
+//     calls (cancellation_acknowledgment_signature, otterquote_acknowledgment)
+//     and generateRetailScopeOfWorkPdf's initials row
+//     (contractor_initial_sow, homeowner_initial_sow).
+//   - Signature/date/initial fields on the CONTRACTOR'S OWN uploaded
+//     template are whatever tags the contractor typed into their PDF per
+//     the v3 D-199 manifest (validate-contract-template/index.ts) — nothing
+//     for this Edge Function to construct; BoldSign discovers them.
+//   - Auto-filled, LOCKED header text values (customer name, contract
+//     price, etc.) that buildTextTabs used to inject onto the contractor's
+//     template are NOT ported — see the D-274 build report on issue #631
+//     for the full explanation. In short: BoldSign can only prefill+lock a
+//     value via exact-pixel `Bounds`-based FormFields, never via an inline
+//     Text Tag, and this codebase has no coordinate data for arbitrary
+//     contractor-uploaded PDFs (DocuSign's anchorString matching never
+//     needed coordinates; BoldSign has no equivalent). This is a real,
+//     flagged capability gap for insurance-funded jobs specifically (retail
+//     jobs still get this data reliably via the Scope of Work's own baked
+//     header block, generated independently of any e-sign vendor).
+//     autoPopulateFields() below is UNCHANGED and still computes this data
+//     for that reason — it feeds the SOW header — but its output is no
+//     longer passed to a tab-builder for the contractor's own template.
 // ========== DOCUMENT LABEL HELPERS ==========
 function getDocumentLabel(documentType) {
   switch(documentType){
@@ -1283,42 +1054,32 @@ function getDocumentLabel(documentType) {
       return "Document";
   }
 }
-// ========== PER-ENVELOPE EVENT NOTIFICATION (D-211 P18 U5) ==========
-// Embeds the DocuSign Connect completion subscription directly on each envelope so the
-// platform-fee path (docusign-webhook -> create-payment-intent) is in-repo and self-healing,
-// independent of the account-level Connect config 21822232 and its manual "Include Data"
-// toggle (an empty toggle was the 0-fees-ever root cause).
+// ========== [D-274 / #631] PER-ENVELOPE EVENT NOTIFICATION — RETIRED, NO REPLACEMENT ==========
+// buildEventNotification() embedded a per-envelope DocuSign Connect webhook
+// subscription directly on each envelope (D-211 P18 U5), specifically so the
+// platform-fee path was self-healing and independent of the DocuSign
+// account's manual, easy-to-misconfigure "Include Data" dashboard toggle
+// (an empty toggle was the original "0 fees ever" root cause).
 //
-// includeHMAC:"true" is REQUIRED. Per-envelope eventNotification deliveries are otherwise
-// unsigned, and docusign-webhook enforces HMAC fail-closed (DOCUSIGN_REQUIRE_SIGNATURE=true) —
-// an unsigned delivery would 401. With includeHMAC the message is signed with the account's
-// configured Connect HMAC key (the same secret docusign-webhook reads as
-// DOCUSIGN_CONNECT_HMAC_KEY), so verification passes.
-//
-// eventData mirrors the account "Include Data = recipients" so docusign-webhook's parser sees
-// data.envelopeSummary/recipients. Completed-only; documents are not included.
-function buildEventNotification() {
-  const webhookUrl = `${Deno.env.get("SUPABASE_URL") ?? "https://yeszghaspzwwstvsrioa.supabase.co"}/functions/v1/docusign-webhook`;
-  return {
-    url: webhookUrl,
-    requireAcknowledgment: "true",
-    includeHMAC: "true",
-    loggingEnabled: "true",
-    includeDocuments: "false",
-    envelopeEvents: [
-      {
-        envelopeEventStatusCode: "completed"
-      }
-    ],
-    eventData: {
-      version: "restv2.1",
-      format: "json",
-      includeData: [
-        "recipients"
-      ]
-    }
-  };
-}
+// BoldSign has NO per-request equivalent. Confirmed against the live
+// OpenAPI spec (api.boldsign.com/swagger/v1/swagger.json — grepped in full
+// for "webhook" across every SendForSign-reachable schema): every webhook
+// hit in the spec describes the PAYLOAD BoldSign sends, never a per-send
+// callback-URL override field. BoldSign webhooks are configured ONCE,
+// account-wide, in the BoldSign dashboard (Settings -> Webhooks). This is a
+// real, unavoidable manual step, NOT something this Edge Function can
+// provision — see the D-274 build report on issue #631 for the exact
+// cutover checklist item (register
+// https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/docusign-webhook as
+// a BoldSign webhook, subscribed to at least the Completed/Declined/Revoked
+// events, and copy its per-webhook signing secret into
+// BOLDSIGN_WEBHOOK_HMAC_SECRET). Unlike the DocuSign toggle this replaces,
+// there is no equivalent "silently empty" failure mode to defend against
+// here — it either is or isn't configured, and if it isn't, EVERY BoldSign
+// envelope this function sends will simply never notify the platform at
+// all (a broader failure than a DocuSign misconfiguration would have been,
+// which is exactly why this is called out as a hard cutover prerequisite,
+// not an optional nice-to-have).
 // ========== AUTO-POPULATE FIELDS FROM DB ==========
 async function autoPopulateFields(supabase, claimId, contractorId, signerName, signerEmail, documentType) {
   const { data: claimData } = await supabase.from("claims").select("*").eq("id", claimId).single();
@@ -1386,7 +1147,7 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
   };
 }
 // ========== HANDLER: CONTRACTOR SIGN (new — Step A) ==========
-async function handleContractorSign(supabase, requestBody, tokenInfo, corsHeaders) {
+async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const { claim_id, contractor_id, signer, fields: providedFields, return_url, quote_id } = requestBody;
   let autoFields = providedFields || {};
   let claimData = null;
@@ -1482,7 +1243,10 @@ async function handleContractorSign(supabase, requestBody, tokenInfo, corsHeader
     homeownerFullName = "Homeowner";
   }
   const homeownerName = homeownerFullName;
-  const addendumBase64 = generateComplianceAddendumPdf(contractorName, homeownerName, contractDate);
+  // [D-274 / #631] homeownerSignerIndex=2 — this flow (handleContractorSign)
+  // always sends contractor as signer 1, homeowner as signer 2 (see the
+  // signers[] array built below).
+  const addendumBase64 = generateComplianceAddendumPdf(contractorName, homeownerName, contractDate, 2);
   const isRetail = fundingType !== "insurance";
   let scopeOfWorkBase64 = null;
   if (isRetail) {
@@ -1498,7 +1262,7 @@ async function handleContractorSign(supabase, requestBody, tokenInfo, corsHeader
           const parseResp = await fetch(parseUrl, {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
+              Authorization: `Bearer ${getServiceRoleKey()}`,
               "Content-Type": "application/json"
             },
             body: JSON.stringify({
@@ -1561,113 +1325,80 @@ async function handleContractorSign(supabase, requestBody, tokenInfo, corsHeader
       scopeOfWorkBase64 = null;
     }
   }
-  const { accessToken, accountId, baseUri } = tokenInfo;
-  const documentId = "1";
-  const sowDocId = "2";
-  const addendumDocId = isRetail && scopeOfWorkBase64 ? "3" : "2";
-  const textTabs = buildTextTabs(autoFields, documentId, "contractor_sign");
-  const contractorTabs = buildSignerTabs(documentId, "contractor");
   const docLabel = getDocumentLabel("contractor_sign");
-  const envelopeDefinition = {
-    emailSubject: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
-    documents: [
+  const files = [
+    `data:application/pdf;base64,${templateBase64}`,
+    ...scopeOfWorkBase64 ? [`data:application/pdf;base64,${scopeOfWorkBase64}`] : [],
+    `data:application/pdf;base64,${addendumBase64}`
+  ];
+  const sendBody = {
+    title: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
+    files,
+    signers: [
       {
-        documentBase64: templateBase64,
-        name: docLabel,
-        fileExtension: "pdf",
-        documentId
+        id: "contractor_1",
+        name: signer.name,
+        emailAddress: signer.email,
+        signerOrder: 1,
+        signerType: "Signer"
       },
-      ...scopeOfWorkBase64 ? [
-        {
-          documentBase64: scopeOfWorkBase64,
-          name: "Scope of Work",
-          fileExtension: "pdf",
-          documentId: sowDocId
-        }
-      ] : [],
       {
-        documentBase64: addendumBase64,
-        name: "IC 24-5-11 Compliance Addendum",
-        fileExtension: "pdf",
-        documentId: addendumDocId
+        id: "homeowner_1",
+        name: homeownerFullName,
+        emailAddress: homeownerEmail,
+        signerOrder: 2,
+        signerType: "Signer"
       }
     ],
-    recipients: {
-      signers: [
-        {
-          email: signer.email,
-          name: signer.name,
-          recipientId: "1",
-          routingOrder: "1",
-          clientUserId: "contractor_1",
-          tabs: {
-            textTabs,
-            ...contractorTabs,
-            // [D-225 Phase 2B / D-186] Contractor initial on the generated retail Exhibit A.
-            // Bound only when isRetail AND SOW generation succeeded (scopeOfWorkBase64 truthy);
-            // insurance envelopes have no Exhibit A per D-201, so no initials.
-            ...scopeOfWorkBase64 ? buildSowInitialTabs(sowDocId, "contractor") : {}
-          }
-        },
-        {
-          email: homeownerEmail,
-          name: homeownerFullName,
-          recipientId: "2",
-          routingOrder: "2",
-          clientUserId: "homeowner_1",
-          tabs: {
-            ...buildSignerTabs(documentId, "homeowner"),
-            ...buildAddendumTabs(addendumDocId),
-            // [D-225 Phase 2B / D-186] Homeowner initial on the generated retail Exhibit A.
-            ...scopeOfWorkBase64 ? buildSowInitialTabs(sowDocId, "homeowner") : {}
-          }
-        }
-      ]
-    },
-    status: "sent",
-    // [D-211 P18 U5] In-repo, self-healing fee-path completion subscription. See buildEventNotification.
-    eventNotification: buildEventNotification()
+    enableSigningOrder: true,
+    enableEmbeddedSigning: true,
+    // [D-274 / #631] BoldSign auto-discovers every {{...}} Text Tag across
+    // ALL documents in `files` when this is true — see the signature/
+    // initial/acknowledgment tags baked into generateComplianceAddendumPdf,
+    // generateRetailScopeOfWorkPdf, and (per the v3 D-199 manifest) whatever
+    // the contractor typed into their own uploaded template.
+    useTextTags: true,
+    isSandbox: Deno.env.get("BOLDSIGN_SANDBOX") === "true",
+    metaData: {
+      claim_id,
+      document_type: "contractor_sign"
+    }
   };
-  console.log("Creating DocuSign envelope (contractor_sign)");
-  const envelopeResponse = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes`, {
+  console.log("Creating BoldSign document (contractor_sign)");
+  const sendResponse = await fetch(`${BOLDSIGN_API_BASE}/v1/document/send`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+    headers: boldSignHeaders({
       "Content-Type": "application/json"
-    },
-    body: JSON.stringify(envelopeDefinition)
+    }),
+    body: JSON.stringify(sendBody)
   });
-  if (!envelopeResponse.ok) {
-    const errorData = await envelopeResponse.text();
-    console.error("DocuSign envelope creation failed:", errorData);
-    throw new Error(`Failed to create envelope: ${envelopeResponse.status} ${errorData}`);
+  if (!sendResponse.ok) {
+    const errorData = await sendResponse.text();
+    console.error("BoldSign document send failed:", errorData);
+    throw new Error(`Failed to create document: ${sendResponse.status} ${errorData}`);
   }
-  const envelopeData = await envelopeResponse.json();
-  const envelopeId = envelopeData.envelopeId;
-  if (!envelopeId) throw new Error("No envelopeId returned from DocuSign");
-  console.log(`Envelope created (contractor_sign): ${envelopeId}`);
+  const sendData = await sendResponse.json();
+  const envelopeId = sendData.documentId;
+  if (!envelopeId) throw new Error("No documentId returned from BoldSign");
+  console.log(`Document created (contractor_sign): ${envelopeId}`);
   const defaultReturnUrl = return_url || `https://otterquote.com/contractor-bid-form.html?claim_id=${claim_id}&signed=contractor`;
-  const recipientViewResponse = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes/${envelopeId}/views/recipient`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      returnUrl: defaultReturnUrl,
-      authenticationMethod: "none",
-      email: signer.email,
-      userName: signer.name,
-      clientUserId: "contractor_1"
-    })
-  });
-  if (!recipientViewResponse.ok) {
-    const errorData = await recipientViewResponse.text();
-    throw new Error(`Failed to generate contractor signing URL: ${recipientViewResponse.status} ${errorData}`);
+  const signLinkResponse = await fetch(
+    `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
+      DocumentId: envelopeId,
+      SignerEmail: signer.email,
+      RedirectUrl: defaultReturnUrl
+    }),
+    {
+      headers: boldSignHeaders()
+    }
+  );
+  if (!signLinkResponse.ok) {
+    const errorData = await signLinkResponse.text();
+    throw new Error(`Failed to generate contractor signing URL: ${signLinkResponse.status} ${errorData}`);
   }
-  const recipientViewData = await recipientViewResponse.json();
-  const signingUrl = recipientViewData.url;
-  if (!signingUrl) throw new Error("No URL returned from DocuSign recipient view endpoint");
+  const signLinkData = await signLinkResponse.json();
+  const signingUrl = signLinkData.signLink;
+  if (!signingUrl) throw new Error("No signLink returned from BoldSign getEmbeddedSignLink");
   const quoteUpdateFilter = quote_id ? supabase.from("quotes").update({
     docusign_envelope_id: envelopeId
   }).eq("id", quote_id) : supabase.from("quotes").update({
@@ -1697,7 +1428,7 @@ async function handleContractorSign(supabase, requestBody, tokenInfo, corsHeader
   });
 }
 // ========== HANDLER: HOMEOWNER SIGN (new — Step C) ==========
-async function handleHomeownerSign(supabase, requestBody, tokenInfo, corsHeaders) {
+async function handleHomeownerSign(supabase, requestBody, corsHeaders) {
   const { claim_id, contractor_id, signer, return_url, quote_id } = requestBody;
   let envelopeId = null;
   if (quote_id) {
@@ -1711,33 +1442,28 @@ async function handleHomeownerSign(supabase, requestBody, tokenInfo, corsHeaders
     envelopeId = quoteData?.docusign_envelope_id;
   }
   if (!envelopeId) {
-    throw new Error("No existing DocuSign envelope found for this quote. The contractor must sign first.");
+    throw new Error("No existing BoldSign document found for this quote. The contractor must sign first.");
   }
-  const { accessToken, accountId, baseUri } = tokenInfo;
   const defaultReturnUrl = return_url || `https://otterquote.com/contract-signing.html?claim_id=${claim_id}&signed=true`;
-  console.log(`Generating homeowner signing URL for envelope ${envelopeId}`);
-  const recipientViewResponse = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes/${envelopeId}/views/recipient`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      returnUrl: defaultReturnUrl,
-      authenticationMethod: "none",
-      email: signer.email,
-      userName: signer.name,
-      clientUserId: "homeowner_1"
-    })
-  });
-  if (!recipientViewResponse.ok) {
-    const errorData = await recipientViewResponse.text();
+  console.log(`Generating homeowner signing URL for document ${envelopeId}`);
+  const signLinkResponse = await fetch(
+    `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
+      DocumentId: envelopeId,
+      SignerEmail: signer.email,
+      RedirectUrl: defaultReturnUrl
+    }),
+    {
+      headers: boldSignHeaders()
+    }
+  );
+  if (!signLinkResponse.ok) {
+    const errorData = await signLinkResponse.text();
     console.error("Homeowner signing URL generation failed:", errorData);
-    throw new Error(`Failed to generate homeowner signing URL: ${recipientViewResponse.status} ${errorData}`);
+    throw new Error(`Failed to generate homeowner signing URL: ${signLinkResponse.status} ${errorData}`);
   }
-  const recipientViewData = await recipientViewResponse.json();
-  const signingUrl = recipientViewData.url;
-  if (!signingUrl) throw new Error("No URL returned from DocuSign recipient view endpoint");
+  const signLinkData = await signLinkResponse.json();
+  const signingUrl = signLinkData.signLink;
+  if (!signingUrl) throw new Error("No signLink returned from BoldSign getEmbeddedSignLink");
   console.log("Homeowner signing URL generated successfully");
   return new Response(JSON.stringify({
     success: true,
@@ -1755,7 +1481,7 @@ async function handleHomeownerSign(supabase, requestBody, tokenInfo, corsHeaders
   });
 }
 // ========== HANDLER: LEGACY CONTRACT / COLOR / PROJECT CONFIRMATION ==========
-async function handleLegacyFlow(supabase, requestBody, tokenInfo, corsHeaders) {
+async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const { claim_id, document_type, contractor_id, signer, fields: providedFields, return_url } = requestBody;
   let autoFields = providedFields || {};
   let claimData = null;
@@ -1767,7 +1493,15 @@ async function handleLegacyFlow(supabase, requestBody, tokenInfo, corsHeaders) {
     contractorData = result.contractorData;
   } else {
     if (document_type === "project_confirmation") {
-      const { data: fetchedClaim } = await supabase.from("claims").select("project_confirmation, property_address, selected_trades, funding_type, job_type").eq("id", claim_id).single();
+      // [#522 fix, carried into D-274] claims.selected_trades is a ghost
+      // column — the real column is claims.trades. The old select() below
+      // silently returned undefined for every row, so `trade` always fell
+      // through to the "roofing" default regardless of the claim's actual
+      // trade(s). Fixed here since this exact function is already being
+      // touched for the BoldSign rewrite; see the #522 comment on issue
+      // #522 for the full note (not fixed inside #522 itself per the D-274
+      // build brief's instruction not to silently absorb that issue's scope).
+      const { data: fetchedClaim } = await supabase.from("claims").select("project_confirmation, property_address, trades, funding_type, job_type").eq("id", claim_id).single();
       claimData = fetchedClaim;
       const { data: fetchedContractor } = await supabase.from("contractors").select("color_confirmation_template, company_name, email").eq("id", contractor_id).single();
       contractorData = fetchedContractor;
@@ -1779,7 +1513,9 @@ async function handleLegacyFlow(supabase, requestBody, tokenInfo, corsHeaders) {
       const { data } = await supabase.from("contractors").select("color_confirmation_template, company_name").eq("id", contractor_id).single();
       return data;
     })();
-    const trade = (claimData?.selected_trades?.[0] || autoFields?.trade_type)?.toLowerCase() || "roofing";
+    // [#522 fix, carried into D-274] claims.trades, not the ghost column
+    // claims.selected_trades — see the comment above.
+    const trade = (claimData?.trades?.[0] || autoFields?.trade_type)?.toLowerCase() || "roofing";
     const rawFunding = (claimData?.funding_type || claimData?.job_type || autoFields?.funding_type || "").toLowerCase();
     const fundingType = rawFunding.includes("insurance") ? "insurance" : "retail";
     const slot = selectPcTemplateSlot(templateContractor?.color_confirmation_template, trade, fundingType);
@@ -1791,83 +1527,73 @@ async function handleLegacyFlow(supabase, requestBody, tokenInfo, corsHeaders) {
   } else {
     templateBase64 = await getTemplateFromStorage(supabase, contractor_id, document_type);
   }
-  const { accessToken, accountId, baseUri } = tokenInfo;
-  const documentId = "1";
-  const textTabs = buildTextTabs(autoFields, documentId, document_type);
-  const homeownerTabs = buildSignerTabs(documentId, "homeowner");
-  const contractorTabs = buildSignerTabs(documentId, "contractor");
   let contractorEmail = autoFields.contractor_email || "contractor@example.com";
   let contractorName = autoFields.contractor_name || "Contractor";
   const docLabel = getDocumentLabel(document_type);
-  const documents = [
-    {
-      documentBase64: templateBase64,
-      name: docLabel,
-      fileExtension: "pdf",
-      documentId
-    }
+  const files = [
+    `data:application/pdf;base64,${templateBase64}`
   ];
   if (document_type === "contract") {
     const contractDate = new Date().toLocaleDateString("en-US");
-    const addendumBase64 = generateComplianceAddendumPdf(contractorName, autoFields.customer_name || signer.name || "Homeowner", contractDate);
-    documents.push({
-      documentBase64: addendumBase64,
-      name: "IC 24-5-11 Compliance Addendum",
-      fileExtension: "pdf",
-      documentId: "2"
-    });
+    // [D-274 / #631] homeownerSignerIndex=1 — this flow (handleLegacyFlow)
+    // sends homeowner as signer 1, contractor as signer 2 (OPPOSITE order
+    // from handleContractorSign — see the signers[] array below and the
+    // generateComplianceAddendumPdf header comment on why this parameter
+    // exists at all).
+    const addendumBase64 = generateComplianceAddendumPdf(contractorName, autoFields.customer_name || signer.name || "Homeowner", contractDate, 1);
+    files.push(`data:application/pdf;base64,${addendumBase64}`);
   }
-  const envelopeDefinition = {
-    emailSubject: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
-    documents,
-    recipients: {
-      signers: [
-        {
-          email: signer.email,
-          name: signer.name,
-          recipientId: "1",
-          routingOrder: "1",
-          clientUserId: "homeowner_1",
-          tabs: {
-            textTabs,
-            ...homeownerTabs,
-            ...document_type === "contract" ? buildAddendumTabs("2") : {}
-          }
-        },
-        {
-          email: contractorEmail,
-          name: contractorName,
-          recipientId: "2",
-          routingOrder: "2",
-          clientUserId: "contractor_1",
-          tabs: {
-            ...contractorTabs
-          }
-        }
-      ]
-    },
-    status: "sent",
-    // [D-211 P18 U5] In-repo, self-healing fee-path completion subscription. See buildEventNotification.
-    eventNotification: buildEventNotification()
+  // [D-274 / #631] No textTabs/homeownerTabs/contractorTabs equivalent —
+  // see the "TAB-BUILDER FUNCTIONS RETIRED" comment above buildTextTabs's
+  // old location for the full explanation. This legacy flow's own
+  // contractor-uploaded template (getTemplateFromStorage, a DIFFERENT
+  // storage convention from the D-199-manifest-validated contractor_sign
+  // templates) has the SAME auto-fill/lock gap as the contractor_sign flow.
+  const sendBody = {
+    title: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
+    files,
+    signers: [
+      {
+        id: "homeowner_1",
+        name: signer.name,
+        emailAddress: signer.email,
+        signerOrder: 1,
+        signerType: "Signer"
+      },
+      {
+        id: "contractor_1",
+        name: contractorName,
+        emailAddress: contractorEmail,
+        signerOrder: 2,
+        signerType: "Signer"
+      }
+    ],
+    enableSigningOrder: true,
+    enableEmbeddedSigning: true,
+    useTextTags: true,
+    isSandbox: Deno.env.get("BOLDSIGN_SANDBOX") === "true",
+    metaData: {
+      claim_id,
+      document_type
+    }
   };
-  console.log(`Creating DocuSign envelope (legacy: ${document_type})`);
-  const envelopeResponse = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes`, {
+  console.log(`Creating BoldSign document (legacy: ${document_type})`);
+  const sendResponse = await fetch(`${BOLDSIGN_API_BASE}/v1/document/send`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+    headers: boldSignHeaders({
       "Content-Type": "application/json"
-    },
-    body: JSON.stringify(envelopeDefinition)
+    }),
+    body: JSON.stringify(sendBody)
   });
-  if (!envelopeResponse.ok) {
-    const errorData = await envelopeResponse.text();
-    console.error("DocuSign envelope creation failed:", errorData);
-    throw new Error(`Failed to create envelope: ${envelopeResponse.status} ${errorData}`);
+  if (!sendResponse.ok) {
+    const errorData = await sendResponse.text();
+    console.error("BoldSign document send failed:", errorData);
+    throw new Error(`Failed to create document: ${sendResponse.status} ${errorData}`);
   }
-  const envelopeData = await envelopeResponse.json();
-  const envelopeId = envelopeData.envelopeId;
-  if (!envelopeId) throw new Error("No envelopeId returned from DocuSign");
-  console.log(`Envelope created (${document_type}): ${envelopeId}`);
+  const sendData = await sendResponse.json();
+  const envelopeId = sendData.documentId;
+  if (!envelopeId) throw new Error("No documentId returned from BoldSign");
+  console.log(`Document created (${document_type}): ${envelopeId}`);
   await sendGA4Event("envelope_sent", {
     document_type,
     envelope_id: envelopeId,
@@ -1875,27 +1601,23 @@ async function handleLegacyFlow(supabase, requestBody, tokenInfo, corsHeaders) {
   });
   const defaultReturnUrl = document_type === "project_confirmation" ? `https://otterquote.com/project-confirmation.html?claim_id=${claim_id}&signed=true` : "https://otterquote.com/contract-signing.html?signed=true";
   const signingReturnUrl = return_url || defaultReturnUrl;
-  const recipientViewResponse = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes/${envelopeId}/views/recipient`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      returnUrl: signingReturnUrl,
-      authenticationMethod: "none",
-      email: signer.email,
-      userName: signer.name,
-      clientUserId: "homeowner_1"
-    })
-  });
-  if (!recipientViewResponse.ok) {
-    const errorData = await recipientViewResponse.text();
-    throw new Error(`Failed to generate signing URL: ${recipientViewResponse.status} ${errorData}`);
+  const signLinkResponse = await fetch(
+    `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
+      DocumentId: envelopeId,
+      SignerEmail: signer.email,
+      RedirectUrl: signingReturnUrl
+    }),
+    {
+      headers: boldSignHeaders()
+    }
+  );
+  if (!signLinkResponse.ok) {
+    const errorData = await signLinkResponse.text();
+    throw new Error(`Failed to generate signing URL: ${signLinkResponse.status} ${errorData}`);
   }
-  const recipientViewData = await recipientViewResponse.json();
-  const signingUrl = recipientViewData.url;
-  if (!signingUrl) throw new Error("No URL returned from DocuSign recipient view endpoint");
+  const signLinkData = await signLinkResponse.json();
+  const signingUrl = signLinkData.signLink;
+  if (!signingUrl) throw new Error("No signLink returned from BoldSign getEmbeddedSignLink");
   const updateData = {
     contract_sent_at: new Date().toISOString()
   };
@@ -1934,7 +1656,7 @@ serve(async (req)=>{
     });
   }
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const supabaseKey = getServiceRoleKey();
   const supabase = createClient(supabaseUrl, supabaseKey);
   // ===== AUTH (86e1v6nnh) =====
   const authHeader = req.headers.get("Authorization");
@@ -2100,22 +1822,24 @@ serve(async (req)=>{
         });
       }
     }
-    const REST_API_BASE = Deno.env.get("DOCUSIGN_BASE_URI") || Deno.env.get("DOCUSIGN_BASE_URL") || "https://demo.docusign.net";
-    const INTEGRATION_KEY = Deno.env.get("DOCUSIGN_INTEGRATION_KEY");
-    if (!INTEGRATION_KEY) {
-      throw new Error("DocuSign credentials not configured. Set DOCUSIGN_INTEGRATION_KEY.");
+    // [D-274 / #631] No token-acquisition step — BoldSign auth is a plain
+    // API key, checked lazily by getBoldSignApiKey() the first time a
+    // handler actually calls out to BoldSign (so a request that fails
+    // earlier — bad input, auth, rate limit — never even touches the
+    // secret). This replaces the DocuSign JWT-grant token fetch that used
+    // to happen unconditionally here for every request.
+    if (!Deno.env.get("BOLDSIGN_API")) {
+      throw new Error("BoldSign credentials not configured. Set BOLDSIGN_API.");
     }
-    console.log("Acquiring DocuSign access token");
-    const tokenInfo = await getAccessToken(REST_API_BASE);
     switch(document_type){
       case "contractor_sign":
-        return await handleContractorSign(supabase, requestBody, tokenInfo, corsHeaders);
+        return await handleContractorSign(supabase, requestBody, corsHeaders);
       case "homeowner_sign":
-        return await handleHomeownerSign(supabase, requestBody, tokenInfo, corsHeaders);
+        return await handleHomeownerSign(supabase, requestBody, corsHeaders);
       case "contract":
       case "color_confirmation":
       case "project_confirmation":
-        return await handleLegacyFlow(supabase, requestBody, tokenInfo, corsHeaders);
+        return await handleLegacyFlow(supabase, requestBody, corsHeaders);
       default:
         throw new Error(`Unhandled document type: ${document_type}`);
     }

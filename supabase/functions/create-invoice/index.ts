@@ -244,18 +244,48 @@ serve(async (req: Request) => {
   // ── D-225 Phase 2C C3: JWT verification ──
   // Accepts service-role bearer (typical: docusign-webhook server-to-server)
   // or a valid end-user JWT (defense-in-depth if invoked from a client).
+  //
+  // [D-274 / #631] Operator-token gate added for the boldsign-webhook ->
+  // create-invoice server-to-server call. The JWT-key migration workstream is
+  // moving every Edge Function off SUPABASE_SERVICE_ROLE_KEY, and the old
+  // `token === serviceRoleKey` check below is exactly the "credential
+  // happens to be a valid JWT" pattern that migration is retiring — a plain
+  // service-role bearer is indistinguishable from a leaked one. This adds a
+  // DEDICATED shared secret (EF_OPERATOR_TOKEN), sent as its own header
+  // (never in Authorization, so it can never be confused with a JWT) and
+  // compared timing-safely (constantTimeEqual, same primitive as
+  // hover-webhook's query-token check). boldsign-webhook is the first,
+  // and so far only, caller using this path — see boldsign-webhook/index.ts
+  // for the sending side. The legacy isServiceRole path below is left in
+  // place for other callers until they are migrated individually; it is
+  // NOT removed by this change. DO NOT revert this block when migrating
+  // create-invoice off SUPABASE_SERVICE_ROLE_KEY — EF_OPERATOR_TOKEN is a
+  // separate secret from SUPABASE_SECRET_KEYS and must survive that migration.
+  const EF_OPERATOR_TOKEN = Deno.env.get("EF_OPERATOR_TOKEN") || "";
+  function constantTimeEqual(a: string, b: string): boolean {
+    const enc = new TextEncoder();
+    const ab = enc.encode(a);
+    const bb = enc.encode(b);
+    if (ab.length !== bb.length) return false;
+    let diff = 0;
+    for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+    return diff === 0;
+  }
+  const incomingOperatorToken = req.headers.get("X-Operator-Token") || "";
+  const isOperator = !!EF_OPERATOR_TOKEN && constantTimeEqual(incomingOperatorToken, EF_OPERATOR_TOKEN);
+
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
+  if (!isOperator && !authHeader) {
     return new Response(
       JSON.stringify({ error: "Missing Authorization header" }),
       { status: 401, headers: { "Content-Type": "application/json" } }
     );
   }
-  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const token = authHeader ? authHeader.replace(/^Bearer\s+/i, "") : "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  const isServiceRole = serviceRoleKey && token === serviceRoleKey;
+  const isServiceRole = !isOperator && !!serviceRoleKey && token === serviceRoleKey;
   let authedUserId: string | null = null;
-  if (!isServiceRole) {
+  if (!isOperator && !isServiceRole) {
     const supabaseAuth = createClient(supabaseUrl, serviceRoleKey);
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
     if (authError || !user) {
