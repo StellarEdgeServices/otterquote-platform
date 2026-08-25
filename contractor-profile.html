@@ -669,6 +669,20 @@
 
         <!-- Profile Content -->
         <div class="container">
+            <!-- Profile Status Card — gh-item-4: was a dead end with no status or way out -->
+            <div class="profile-card" id="profileStatusCard">
+                <h2><span class="card-icon">✅</span>Profile Status</h2>
+                <div id="profileStatusBody">
+                    <div class="info-box">Loading your profile status…</div>
+                </div>
+                <div style="display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-top: var(--sp-6);">
+                    <a href="/contractor-dashboard.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Save and Continue to Dashboard →</a>
+                    <a href="/contractor-opportunities.html" class="btn btn-secondary" style="text-decoration: none; display: inline-block;">View Opportunities</a>
+                    <a href="/contractor-settings.html" class="btn btn-secondary" style="text-decoration: none; display: inline-block;">Account Settings</a>
+                    <a href="/contractor-auto-bids.html" class="btn btn-secondary" style="text-decoration: none; display: inline-block;">Auto-Bid Settings</a>
+                </div>
+            </div>
+
             <!-- Company Info Card -->
             <div class="profile-card">
                 <h2><span class="card-icon">🏢</span>Company Information</h2>
@@ -797,14 +811,14 @@
                 <div id="photosView">
                     <div class="form-group">
                         <label class="form-label">Owner Photo</label>
-                        <div style="width: 200px; height: 200px; background-color: var(--light); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; color: var(--slate); margin-bottom: var(--sp-6);">
+                        <div id="ownerPhotoViewBox" style="width: 200px; height: 200px; background-color: var(--light); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; color: var(--slate); margin-bottom: var(--sp-6); overflow: hidden;">
                             📷 No photo
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Project Gallery (0 of 10 photos)</label>
-                        <div style="padding: var(--sp-6); text-align: center; color: var(--slate); background-color: var(--light); border-radius: var(--radius-md);">
+                        <label class="form-label" id="galleryCountLabel">Project Gallery (0 of 10 photos)</label>
+                        <div id="galleryViewBox" style="padding: var(--sp-6); text-align: center; color: var(--slate); background-color: var(--light); border-radius: var(--radius-md);">
                             No photos uploaded yet
                         </div>
                     </div>
@@ -825,7 +839,8 @@
 
                     <div class="form-group">
                         <label class="form-label">Project Gallery (up to 10 photos)</label>
-                        <div class="image-upload">
+                        <div class="gallery-grid" id="existingGalleryGrid"></div>
+                        <div class="image-upload" style="margin-top: var(--sp-4);">
                             <input type="file" id="galleryInput" accept="image/*" multiple>
                             <label for="galleryInput" class="upload-label">
                                 📸 Click to upload project photos or drag and drop
@@ -834,8 +849,10 @@
                         <div class="gallery-grid" id="galleryPreview"></div>
                     </div>
 
-                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-8);">
-                        <button class="btn btn-primary" onclick="saveProfile('photos')">Save Photos</button>
+                    <div id="photoUploadStatus" style="font-size: 0.85rem; min-height: 1.2em; margin-top: var(--sp-4);"></div>
+
+                    <div style="display: flex; gap: var(--sp-4); margin-top: var(--sp-4);">
+                        <button class="btn btn-primary" id="savePhotosBtn" onclick="saveProfile('photos')">Save Photos</button>
                         <button class="btn btn-secondary" onclick="toggleEdit('photos')">Cancel</button>
                     </div>
                 </div>
@@ -1065,42 +1082,77 @@
                 </div>
             </div>
 
-            <!-- Service Area Card -->
+            <!-- Service Area & Trades Card -->
             <div class="profile-card">
                 <h2><span class="card-icon">📍</span>Service Area & Trades</h2>
 
-                <!-- View Mode -->
-                <div id="serviceAreaView">
-                    <div class="view-field">
-                        <label>Primary Trades</label>
-                        <div class="view-field-value" id="viewTrades">Roofing, Gutters, Siding</div>
+                <!-- Trades subsection -->
+                <div style="margin-bottom: var(--sp-8); padding-bottom: var(--sp-8); border-bottom: 1px solid var(--light);">
+                    <div id="tradesView">
+                        <div class="view-field">
+                            <label>Primary Trades</label>
+                            <div class="view-field-value" id="viewTrades">—</div>
+                        </div>
+                        <div style="margin-top: var(--sp-6);">
+                            <button class="btn btn-primary" onclick="toggleEdit('trades')">Edit Trades</button>
+                        </div>
                     </div>
-
-                    <div class="view-field">
-                        <label>Preferred Shingle Brands</label>
-                        <div class="view-field-value" id="viewBrands">GAF, Owens Corning</div>
-                    </div>
-
-                    <div class="view-field">
-                        <label>Service Area</label>
-                        <div class="view-field-value" id="viewServiceArea">Hamilton, Hendricks, Boone, and surrounding counties</div>
-                    </div>
-
-                    <div style="margin-top: var(--sp-8);">
-                        <button class="btn btn-primary" onclick="toggleEdit('serviceArea')">Edit Service Area</button>
+                    <div id="tradesEdit" style="display: none;">
+                        <p style="font-size:0.85rem; color:var(--slate); margin-bottom:var(--sp-4);">Select every trade you offer. Homeowners filter contractors by trade, so an unchecked trade means you won't see those opportunities or bids.</p>
+                        <div id="tradesCheckboxGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-6);"></div>
+                        <div style="display:flex; gap:var(--sp-4);">
+                            <button class="btn btn-primary" onclick="saveProfile('trades')">Save Changes</button>
+                            <button class="btn btn-secondary" onclick="toggleEdit('trades')">Cancel</button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Edit Mode — D-192: checkbox style (state → Entire State / Specific Counties → county checkboxes) -->
-                <div id="serviceAreaEdit" style="display: none;">
-                    <p style="font-size:0.85rem; color:var(--slate); margin-bottom:var(--sp-4);">Select the states you serve. For each state, choose full state coverage or specific counties.</p>
-                    <!-- State selection grid (populated by SVC.buildGrid) -->
-                    <div id="svc-state-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--sp-2);max-height:210px;overflow-y:auto;border:1px solid var(--light);border-radius:var(--radius-md);padding:var(--sp-3);margin-bottom:var(--sp-4);background:#fff;"></div>
-                    <!-- Per-state county config panels (populated when states are checked) -->
-                    <div id="svc-county-configs" style="display:flex;flex-direction:column;gap:var(--sp-4);margin-bottom:var(--sp-6);"></div>
-                    <div style="display:flex; gap:var(--sp-4);">
-                        <button class="btn btn-primary" onclick="saveProfile('serviceArea')">Save Changes</button>
-                        <button class="btn btn-secondary" onclick="toggleEdit('serviceArea')">Cancel</button>
+                <!-- Preferred Shingle Brands subsection -->
+                <div style="margin-bottom: var(--sp-8); padding-bottom: var(--sp-8); border-bottom: 1px solid var(--light);">
+                    <div id="brandsView">
+                        <div class="view-field">
+                            <label>Preferred Shingle Brands</label>
+                            <div class="view-field-value" id="viewBrands">—</div>
+                        </div>
+                        <div style="margin-top: var(--sp-6);">
+                            <button class="btn btn-primary" onclick="toggleEdit('brands')">Edit Shingle Brands</button>
+                        </div>
+                    </div>
+                    <div id="brandsEdit" style="display: none;">
+                        <p style="font-size:0.85rem; color:var(--slate); margin-bottom:var(--sp-4);">Select the shingle manufacturers you install. This is separate from Manufacturer Certifications below — certifications unlock specific warranty tiers, this just tells homeowners which brands you work with.</p>
+                        <div id="brandsCheckboxGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-6);">
+                            <div style="color:var(--slate);font-size:0.85rem;">Loading manufacturers…</div>
+                        </div>
+                        <div style="display:flex; gap:var(--sp-4);">
+                            <button class="btn btn-primary" onclick="saveProfile('brands')">Save Changes</button>
+                            <button class="btn btn-secondary" onclick="toggleEdit('brands')">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Service Area subsection -->
+                <div>
+                    <div id="serviceAreaView">
+                        <div class="view-field">
+                            <label>Service Area</label>
+                            <div class="view-field-value" id="viewServiceArea">—</div>
+                        </div>
+                        <div style="margin-top: var(--sp-6);">
+                            <button class="btn btn-primary" onclick="toggleEdit('serviceArea')">Edit Service Area</button>
+                        </div>
+                    </div>
+
+                    <!-- Edit Mode — D-192: checkbox style (state → Entire State / Specific Counties → county checkboxes) -->
+                    <div id="serviceAreaEdit" style="display: none;">
+                        <p style="font-size:0.85rem; color:var(--slate); margin-bottom:var(--sp-4);">Select the states you serve. For each state, choose full state coverage or specific counties.</p>
+                        <!-- State selection grid (populated by SVC.buildGrid) -->
+                        <div id="svc-state-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--sp-2);max-height:210px;overflow-y:auto;border:1px solid var(--light);border-radius:var(--radius-md);padding:var(--sp-3);margin-bottom:var(--sp-4);background:#fff;"></div>
+                        <!-- Per-state county config panels (populated when states are checked) -->
+                        <div id="svc-county-configs" style="display:flex;flex-direction:column;gap:var(--sp-4);margin-bottom:var(--sp-6);"></div>
+                        <div style="display:flex; gap:var(--sp-4);">
+                            <button class="btn btn-primary" onclick="saveProfile('serviceArea')">Save Changes</button>
+                            <button class="btn btn-secondary" onclick="toggleEdit('serviceArea')">Cancel</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1210,12 +1262,33 @@
         // Companion ticket: 86e169f1y (complete)
         const INTRO_VIDEO_ENABLED = true;
 
+        // Project Confirmation Templates feature flag — turned OFF 2026-08-25.
+        // Business decision: OtterQuote now only signs contracts where the roof is
+        // already approved, so bidding is a one-step process (contract only) — the
+        // separate project-confirmation step from the old insurance/contingency
+        // workflow no longer applies. The card, its templates, and
+        // project-confirmation.html are all left in place; this flag just hides
+        // the UI. Flip back to true to restore it in one edit.
+        const SHOW_PROJECT_CONFIRMATION = false;
+
         const CURRENT_CPA_VERSION = 'v1-2026-04';
+
+        // Trades offered on the platform — mirrors TRADES in trade-selector.html
+        // and the profile-trade checkboxes in contractor-pre-approval.html (no
+        // shared js/ module exports this list; contractors.trades is a plain
+        // TEXT[] with no lookup table behind it).
+        const TRADE_OPTIONS = [
+            { value: 'roofing', label: 'Roofing' },
+            { value: 'siding',  label: 'Siding'  },
+            { value: 'gutters', label: 'Gutters' },
+            { value: 'windows', label: 'Windows' },
+        ];
 
         // State
         let currentUser = null;
         let contractorRecord = null;
         let contractorCertifications = [];
+        let _galleryPendingRemovals = [];
 
         // ── Service Area Checkbox UI — D-192 ──
         const SVC = {
@@ -1304,6 +1377,22 @@
 
         // ── Initialize: Load contractor data from Supabase ──
         async function initProfile() {
+            // gh-item-3: Project Confirmation Templates card — hidden but code intact.
+            const pcCard = document.getElementById('pc-templates');
+            if (pcCard) pcCard.style.display = SHOW_PROJECT_CONFIRMATION ? '' : 'none';
+
+            // gh-item-4: contractor-bid-form.html redirects here with
+            // ?incomplete=bid when the bid-eligibility gate fails, but this page
+            // never read the param — the banner markup existed and was permanently
+            // display:none. Surface it now that there's actually a message to show.
+            try {
+                const params = new URLSearchParams(window.location.search);
+                if (params.has('incomplete')) {
+                    const banner = document.getElementById('incompleteBanner');
+                    if (banner) banner.style.display = 'block';
+                }
+            } catch (e) { /* non-fatal */ }
+
             currentUser = await Auth.requireAuth('contractor');
             if (!currentUser && !CONFIG.DEMO_MODE) return;
 
@@ -1334,6 +1423,8 @@
 
                     populateViewFromData(contractorRecord);
                     populateEditFromData(contractorRecord);
+                    renderProfileStatus();
+                    try { await renderPhotosView(); } catch (e) { console.warn('renderPhotosView failed:', e); }
 
                     // Load certifications (isolated - a failure here must not skip the
                     // template grids below, which previously left "Loading templates" stuck)
@@ -1375,12 +1466,16 @@
                     // PC template grid (D-161): isolated per ADR-013 so a failure renders a
                     // visible retry state instead of leaving the "Loading templates" placeholder stuck.
                     // (Contract Templates relocated to contractor-settings.html, 2026-07-07.)
-                    try {
-                        await loadPcTemplates();
-                    } catch (e) {
-                        console.error('Error loading PC templates:', e);
-                        const g = document.getElementById('pcTemplatesGrid');
-                        if (g) g.innerHTML = '<div style="color: #991B1B; font-size: 0.875rem;">Unable to load project-confirmation templates — please refresh the page to retry.</div>';
+                    // gh-item-3: card is hidden while SHOW_PROJECT_CONFIRMATION is false —
+                    // skip the fetch too, there's nothing on screen to render it into.
+                    if (SHOW_PROJECT_CONFIRMATION) {
+                        try {
+                            await loadPcTemplates();
+                        } catch (e) {
+                            console.error('Error loading PC templates:', e);
+                            const g = document.getElementById('pcTemplatesGrid');
+                            if (g) g.innerHTML = '<div style="color: #991B1B; font-size: 0.875rem;">Unable to load project-confirmation templates — please refresh the page to retry.</div>';
+                        }
                     }
 
                     // D-204: render manufacturer cert verification badges
@@ -1394,6 +1489,7 @@
 
             renderCertifications();
             await renderIntroVideoCard();
+            renderProfileStatus();
         }
 
         // ── Populate view fields from contractor data ──
@@ -1416,21 +1512,26 @@
             document.getElementById('viewAboutUs').textContent = c.about_us || 'Not yet provided.';
             document.getElementById('viewWhyChoose').textContent = c.why_choose_us || 'Not yet provided.';
 
-            // Service area and trades
-            const trades = c.trades || [];
-            document.getElementById('viewTrades').textContent = trades.length
-                ? trades.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ')
-                : '—';
-            document.getElementById('viewBrands').textContent = c.preferred_brands ? c.preferred_brands.join(', ') : '—';
-            // D-192: display service area as state coverage summary
-            const svStates = c.service_states || [];
+            // Service area and trades — gh-item-2: was read-only and never shown
+            renderTradesChips(c.trades || []);
+            renderBrandsChips(c.preferred_brands || []);
+            // D-192: display service area as state coverage summary.
+            // `service_states` is NOT a real column on `contractors` (D4) — the
+            // states-grid flow (see contractor-pre-approval.html) persists the
+            // selected state codes into `service_area_description` as a plain
+            // comma-separated list instead, so that's what we parse back here.
+            const svStates = getSavedServiceStates(c);
             const svCounties = c.service_counties || [];
-            if (!svStates.length) {
-                document.getElementById('viewServiceArea').textContent = c.service_area_description || '—';
+            const viewServiceAreaEl = document.getElementById('viewServiceArea');
+            if (!svStates.length && !svCounties.length) {
+                viewServiceAreaEl.textContent = 'No service area selected yet — choose the states or counties you cover.';
+            } else if (!svStates.length) {
+                // Legacy rows with counties but no parseable state summary.
+                viewServiceAreaEl.textContent = svCounties.join(', ');
             } else if (!svCounties.length) {
-                document.getElementById('viewServiceArea').textContent = svStates.map(s => (SVC.NAMES[s] || s) + ' (full state)').join(', ');
+                viewServiceAreaEl.textContent = svStates.map(s => (SVC.NAMES[s] || s) + ' (full state)').join(', ');
             } else {
-                document.getElementById('viewServiceArea').textContent = svCounties.join(', ') + ' (' + svStates.join(', ') + ')';
+                viewServiceAreaEl.textContent = svCounties.join(', ') + ' (' + svStates.join(', ') + ')';
             }
 
             // Note: PC template grid (D-161) is rendered by loadPcTemplates()
@@ -1476,6 +1577,215 @@
             // Insurance checkboxes
             document.getElementById('editHasWorkersComp').checked = !!c.has_workers_comp;
             document.getElementById('editHasGeneralLiability').checked = !!c.has_general_liability;
+        }
+
+        // ── gh-item-2: Trades & Shingle Brands — view chips + editors ──
+        // Both were previously display-only (trades/brands showed as plain text if
+        // set, with no way to edit either), so "Edit Trades" / "Edit Shingle
+        // Brands" did not exist anywhere on the page.
+        function renderTradesChips(trades) {
+            const el = document.getElementById('viewTrades');
+            if (!el) return;
+            if (!trades || !trades.length) {
+                el.innerHTML = '<span style="color: var(--slate);">No trades selected yet — add the trades you offer so homeowners can find you.</span>';
+                return;
+            }
+            el.innerHTML = trades.map(t => {
+                const opt = TRADE_OPTIONS.find(o => o.value === t);
+                const label = opt ? opt.label : (t.charAt(0).toUpperCase() + t.slice(1));
+                return `<span class="badge badge-verified">${__d204EscHtml(label)}</span>`;
+            }).join('');
+        }
+
+        function renderBrandsChips(brands) {
+            const el = document.getElementById('viewBrands');
+            if (!el) return;
+            if (!brands || !brands.length) {
+                el.innerHTML = '<span style="color: var(--slate);">No preferred shingle brands selected yet — pick the manufacturers you install.</span>';
+                return;
+            }
+            el.innerHTML = brands.map(b => `<span class="badge badge-verified">${__d204EscHtml(b)}</span>`).join('');
+        }
+
+        function populateTradesEdit() {
+            const grid = document.getElementById('tradesCheckboxGrid');
+            if (!grid) return;
+            const saved = (contractorRecord && contractorRecord.trades) || [];
+            grid.innerHTML = TRADE_OPTIONS.map(opt => `
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;cursor:pointer;">
+                    <input type="checkbox" class="trade-cb" value="${opt.value}" style="accent-color:var(--amber);width:16px;height:16px;" ${saved.includes(opt.value) ? 'checked' : ''}>
+                    ${opt.label}
+                </label>
+            `).join('');
+        }
+
+        // Shingle brands reuse the same `warranty_options` table the Manufacturer
+        // Certifications card below already reads (__d204LoadWarrantyOptions) —
+        // that's the table the backend actually stores the manufacturer list
+        // against, so this avoids a second hardcoded brand list drifting from it.
+        async function populateBrandsEdit() {
+            const grid = document.getElementById('brandsCheckboxGrid');
+            if (!grid) return;
+            grid.innerHTML = '<div style="color:var(--slate);font-size:0.85rem;">Loading manufacturers…</div>';
+            const opts = await __d204LoadWarrantyOptions();
+            const brandNames = Array.from(new Set(opts.map(o => o.manufacturer))).sort();
+            if (!brandNames.length) {
+                grid.innerHTML = '<div style="color:#991B1B;font-size:0.85rem;">Unable to load shingle brands. Please refresh and try again.</div>';
+                return;
+            }
+            const saved = (contractorRecord && contractorRecord.preferred_brands) || [];
+            grid.innerHTML = brandNames.map(name => `
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;cursor:pointer;">
+                    <input type="checkbox" class="brand-cb" value="${__d204EscHtml(name)}" style="accent-color:var(--amber);width:16px;height:16px;" ${saved.includes(name) ? 'checked' : ''}>
+                    ${__d204EscHtml(name)}
+                </label>
+            `).join('');
+        }
+
+        // ── gh-item-1: Photos — signed-URL rendering + upload wiring ──
+        function sanitizeFileName(name) {
+            return (name || 'photo').replace(/[^A-Za-z0-9_.-]+/g, '_');
+        }
+
+        async function signedPhotoUrl(path) {
+            if (!sb || !path) return null;
+            try {
+                const { data, error } = await sb.storage.from('contractor-documents').createSignedUrl(path, 3600);
+                if (error || !data || !data.signedUrl) { console.warn('signedPhotoUrl error:', error); return null; }
+                return data.signedUrl;
+            } catch (e) { console.warn('signedPhotoUrl threw:', e); return null; }
+        }
+
+        async function renderPhotosView() {
+            const ownerBox = document.getElementById('ownerPhotoViewBox');
+            const galleryBox = document.getElementById('galleryViewBox');
+            const countLabel = document.getElementById('galleryCountLabel');
+            if (!ownerBox || !galleryBox) return;
+
+            const ownerPath = contractorRecord && contractorRecord.owner_photo_url;
+            if (ownerPath) {
+                const url = await signedPhotoUrl(ownerPath);
+                ownerBox.innerHTML = url
+                    ? `<img src="${url}" alt="Owner photo" style="width:100%;height:100%;object-fit:cover;">`
+                    : '<span style="color:#991B1B;font-size:0.85rem;padding:var(--sp-2);">Photo unavailable — try re-uploading.</span>';
+            } else {
+                ownerBox.textContent = '';
+                ownerBox.innerHTML = '📷 No photo';
+            }
+
+            const galleryPaths = (contractorRecord && contractorRecord.gallery_photo_urls) || [];
+            if (countLabel) countLabel.textContent = `Project Gallery (${galleryPaths.length} of 10 photos)`;
+            if (!galleryPaths.length) {
+                galleryBox.className = '';
+                galleryBox.style.cssText = 'padding: var(--sp-6); text-align: center; color: var(--slate); background-color: var(--light); border-radius: var(--radius-md);';
+                galleryBox.textContent = 'No photos uploaded yet — add photos of finished projects so homeowners can see your work.';
+            } else {
+                const urls = await Promise.all(galleryPaths.map(signedPhotoUrl));
+                galleryBox.className = 'gallery-grid';
+                galleryBox.removeAttribute('style');
+                galleryBox.innerHTML = urls.map(u => u
+                    ? `<div class="gallery-item"><img src="${u}" alt="Project photo"></div>`
+                    : ''
+                ).join('') || '<span style="color:#991B1B;">Photos unavailable — try re-uploading.</span>';
+            }
+        }
+
+        // Existing (already-saved) gallery photos shown inside the edit panel with
+        // a Remove control — removals only take effect once "Save Photos" runs.
+        function buildExistingGalleryEditor() {
+            const grid = document.getElementById('existingGalleryGrid');
+            if (!grid) return;
+            const kept = ((contractorRecord && contractorRecord.gallery_photo_urls) || [])
+                .filter(p => !_galleryPendingRemovals.includes(p));
+            grid.innerHTML = '';
+            kept.forEach(path => {
+                const item = document.createElement('div');
+                item.className = 'gallery-item';
+                const placeholder = document.createElement('div');
+                placeholder.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--slate);font-size:0.75rem;';
+                placeholder.textContent = 'Loading…';
+                item.appendChild(placeholder);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'gallery-item-remove';
+                removeBtn.textContent = 'Remove';
+                removeBtn.onclick = () => { _galleryPendingRemovals.push(path); buildExistingGalleryEditor(); };
+                item.appendChild(removeBtn);
+
+                grid.appendChild(item);
+                signedPhotoUrl(path).then(url => {
+                    if (!url) return;
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.alt = 'Project photo';
+                    item.insertBefore(img, item.firstChild);
+                    placeholder.remove();
+                });
+            });
+        }
+
+        // ── gh-item-4: Profile Status strip ──
+        // Mirrors the exact bid-eligibility gate in contractor-bid-form.html
+        // (hasCompanyName && hasPhone && hasTrades && (hasServiceCounties ||
+        // hasServiceStates)) so this strip never disagrees with what actually
+        // blocks a contractor from submitting bids. All fields come from the
+        // same `contractors` row this page already loads — nothing here is
+        // computed from data the page doesn't otherwise fetch.
+        function renderProfileStatus() {
+            const body = document.getElementById('profileStatusBody');
+            if (!body) return;
+
+            if (!contractorRecord) {
+                body.innerHTML = '<div class="info-box">We couldn\'t load your profile yet — refresh the page, or contact support if this continues.</div>';
+                return;
+            }
+
+            const c = contractorRecord;
+            const hasCompanyName = !!(c.company_name && c.company_name.trim());
+            const hasPhone = !!(c.phone && c.phone.trim());
+            const hasTrades = Array.isArray(c.trades) && c.trades.length > 0;
+            const hasServiceCounties = Array.isArray(c.service_counties) && c.service_counties.length > 0;
+            const hasServiceStates = !!(c.service_area_description && String(c.service_area_description).trim());
+            const hasServiceArea = hasServiceCounties || hasServiceStates;
+            const hasInsurance = !!(c.has_workers_comp || c.has_general_liability);
+            const hasBrands = Array.isArray(c.preferred_brands) && c.preferred_brands.length > 0;
+            const hasPhotos = Array.isArray(c.gallery_photo_urls) && c.gallery_photo_urls.length > 0;
+
+            const required = [
+                { label: 'Company name and phone number', done: hasCompanyName && hasPhone, link: '#companyView' },
+                { label: 'At least one trade selected', done: hasTrades, link: '#tradesView' },
+                { label: 'Service area selected', done: hasServiceArea, link: '#serviceAreaView' },
+            ];
+            const recommended = [
+                { label: 'Insurance on file', done: hasInsurance, link: '#credentialsView' },
+                { label: 'Preferred shingle brand selected', done: hasBrands, link: '#brandsView' },
+                { label: 'At least one project photo', done: hasPhotos, link: '#photosView' },
+            ];
+
+            const missingRequired = required.filter(r => !r.done);
+            const allRequiredDone = missingRequired.length === 0;
+
+            const row = (item) => `
+                <div style="display:flex; align-items:center; gap: var(--sp-3); padding: var(--sp-2) 0;">
+                    <span style="font-size:1.1rem;">${item.done ? '✅' : '⬜'}</span>
+                    ${item.link && !item.done
+                        ? `<a href="${item.link}" style="color: var(--amber); font-weight: 600; text-decoration: none;">${__d204EscHtml(item.label)} →</a>`
+                        : `<span style="color: ${item.done ? 'var(--navy)' : 'var(--slate)'};">${__d204EscHtml(item.label)}</span>`}
+                </div>
+            `;
+
+            let html = `<div class="alert ${allRequiredDone ? 'alert-success' : 'alert-warning'}" style="margin-bottom: var(--sp-6);">`;
+            html += allRequiredDone
+                ? '<span>✅ Your profile has everything required to submit bids. What happens next: Otter Quotes matches you to opportunities in your service area — check Opportunities regularly, and keep this profile current.</span>'
+                : `<span>⚠️ ${missingRequired.length} item${missingRequired.length === 1 ? '' : 's'} still needed before you can submit bids: ${missingRequired.map(r => __d204EscHtml(r.label)).join(', ')}.</span>`;
+            html += '</div>';
+            html += '<div style="font-weight:600; color: var(--navy); margin-bottom: var(--sp-2); font-size:0.85rem; text-transform:uppercase; letter-spacing:0.05em;">Required to submit bids</div>';
+            html += required.map(row).join('');
+            html += '<div style="font-weight:600; color: var(--navy); margin: var(--sp-6) 0 var(--sp-2); font-size:0.85rem; text-transform:uppercase; letter-spacing:0.05em;">Recommended</div>';
+            html += recommended.map(row).join('');
+
+            body.innerHTML = html;
         }
 
         // ── Render credentials from licenses data ──
@@ -1574,14 +1884,49 @@
 
                 // D-192: initialize service area checkbox UI when opening edit mode
                 if (section === 'serviceArea' && opening && contractorRecord) {
-                    const savedStates = contractorRecord.service_states || [];
+                    const savedStates = getSavedServiceStates(contractorRecord);
                     const savedCounties = contractorRecord.service_counties || [];
                     // Clear any previous state
                     const configs = document.getElementById('svc-county-configs');
                     if (configs) configs.innerHTML = '';
                     SVC.populate(savedStates, savedCounties);
                 }
+
+                // gh-item-2: pre-check the saved trades/brands when opening their editors
+                if (section === 'trades' && opening) {
+                    populateTradesEdit();
+                }
+                if (section === 'brands' && opening) {
+                    populateBrandsEdit();
+                }
+
+                // gh-item-1: reset the photo editor's transient state each time it opens
+                if (section === 'photos' && opening) {
+                    _galleryPendingRemovals = [];
+                    const ownerPhotoInputEl = document.getElementById('ownerPhotoInput');
+                    const galleryInputEl = document.getElementById('galleryInput');
+                    if (ownerPhotoInputEl) ownerPhotoInputEl.value = '';
+                    if (galleryInputEl) galleryInputEl.value = '';
+                    const ownerPreviewEl = document.getElementById('ownerPhotoPreview');
+                    const galleryPreviewEl = document.getElementById('galleryPreview');
+                    if (ownerPreviewEl) ownerPreviewEl.innerHTML = '';
+                    if (galleryPreviewEl) galleryPreviewEl.innerHTML = '';
+                    const statusEl = document.getElementById('photoUploadStatus');
+                    if (statusEl) statusEl.textContent = '';
+                    buildExistingGalleryEditor();
+                }
             }
+        }
+
+        // Parse the state codes persisted into `service_area_description` by the
+        // states-grid flow (contractor-pre-approval.html: `states.join(', ')`).
+        // `service_states` is not a real column — see D4 note above.
+        function getSavedServiceStates(c) {
+            if (!c || !c.service_area_description) return [];
+            return String(c.service_area_description)
+                .split(',')
+                .map(s => s.trim().toUpperCase())
+                .filter(s => s && SVC.NAMES[s]);
         }
 
         // ── Save profile changes to Supabase ──
@@ -1698,15 +2043,57 @@
                     console.error('Error saving insurance info:', err);
                     alert('Failed to save changes. Please try again.');
                 }
+            } else if (section === 'trades') {
+                const trades = Array.from(document.querySelectorAll('.trade-cb:checked')).map(cb => cb.value);
+                try {
+                    const { data, error } = await sb
+                        .from('contractors')
+                        .update({ trades, updated_at: new Date().toISOString() })
+                        .eq('id', contractorRecord.id)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    contractorRecord = data;
+                    renderTradesChips(contractorRecord.trades || []);
+                    toggleEdit('trades');
+                } catch (err) {
+                    console.error('Error saving trades:', err);
+                    alert('Failed to save trades. Please try again.');
+                }
+            } else if (section === 'brands') {
+                const preferred_brands = Array.from(document.querySelectorAll('.brand-cb:checked')).map(cb => cb.value);
+                try {
+                    const { data, error } = await sb
+                        .from('contractors')
+                        .update({ preferred_brands, updated_at: new Date().toISOString() })
+                        .eq('id', contractorRecord.id)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    contractorRecord = data;
+                    renderBrandsChips(contractorRecord.preferred_brands || []);
+                    toggleEdit('brands');
+                } catch (err) {
+                    console.error('Error saving preferred brands:', err);
+                    alert('Failed to save shingle brands. Please try again.');
+                }
             } else if (section === 'serviceArea') {
                 // D-192: collect from checkbox UI
-                // D4 fix: `service_states` is NOT a real column on `contractors`. Persist only
-                // `service_counties`; states are derived from the County-StateCode suffix at
-                // read time (see admin-contractors.html States row + bid-form filters).
-                const { service_counties } = SVC.collect();
+                // D4 fix: `service_states` is NOT a real column on `contractors`. Persist
+                // `service_counties` as before, and also persist the selected state codes
+                // into `service_area_description` (comma-joined) — the same convention
+                // contractor-pre-approval.html already uses for its states-grid flow —
+                // so a reload / re-opening the editor can recover which states were
+                // checked (previously always lost, gh-item-2).
+                const { service_states, service_counties } = SVC.collect();
 
                 const updates = {
                     service_counties: service_counties,
+                    service_area_description: service_states.length ? service_states.join(', ') : null,
                     updated_at: new Date().toISOString(),
                 };
 
@@ -1732,31 +2119,96 @@
                 // D-161: single-upload path retired — use uploadPcTemplateFile() per-slot instead
                 console.warn('saveProfile(confirmation-template) called — this path is deprecated (D-161). Use the PC template grid.');
             } else if (section === 'photos') {
-                // Handle photo uploads
+                // gh-item-1 fix: the gallery <input> was never read here at all (the
+                // actual root cause of "photo upload appears to do nothing" for
+                // project photos), and the owner-photo DB update below swallowed its
+                // own error and never re-rendered the view, so even a *successful*
+                // upload looked like nothing happened. Both are fixed below with a
+                // visible status message (matches the submitCertClaim() pattern).
+                const statusEl = document.getElementById('photoUploadStatus');
+                const saveBtn = document.getElementById('savePhotosBtn');
+                const setStatus = (msg, color) => { if (statusEl) { statusEl.textContent = msg; statusEl.style.color = color || 'var(--slate)'; } };
+
                 const ownerPhotoInput = document.getElementById('ownerPhotoInput');
-                if (ownerPhotoInput.files.length > 0) {
-                    try {
+                const galleryInputEl = document.getElementById('galleryInput');
+                const newGalleryFiles = Array.from((galleryInputEl && galleryInputEl.files) || []);
+                const keptExisting = (contractorRecord.gallery_photo_urls || [])
+                    .filter(p => !_galleryPendingRemovals.includes(p));
+                const remainingSlots = 10 - keptExisting.length;
+
+                if (newGalleryFiles.length > remainingSlots) {
+                    setStatus(`You can add ${Math.max(remainingSlots, 0)} more photo${remainingSlots === 1 ? '' : 's'} (10 max). Remove some existing photos or select fewer new ones.`, '#991B1B');
+                    return;
+                }
+
+                if (saveBtn) saveBtn.disabled = true;
+                setStatus('Uploading…', 'var(--slate)');
+
+                const updates = { updated_at: new Date().toISOString() };
+
+                try {
+                    if (ownerPhotoInput && ownerPhotoInput.files.length > 0) {
                         const file = ownerPhotoInput.files[0];
-                        const filePath = `${currentUser.id}/profile/${file.name}`;
+                        const filePath = `${currentUser.id}/profile/${Date.now()}-${sanitizeFileName(file.name)}`;
                         const { error: uploadError } = await sb.storage
                             .from('contractor-documents')
                             .upload(filePath, file, { contentType: file.type, upsert: true });
 
-                        if (uploadError) throw uploadError;
+                        if (uploadError) throw new Error('Owner photo upload failed: ' + uploadError.message);
 
                         // Store bare filePath — bucket is private; public URLs return 404.
                         // Signed URLs are generated on read (same pattern as contract templates — Session 266).
-                        await sb.from('contractors')
-                            .update({ owner_photo_url: filePath, updated_at: new Date().toISOString() })
-                            .eq('id', contractorRecord.id);
-
-                        contractorRecord.owner_photo_url = filePath;
-                    } catch (err) {
-                        console.error('Error uploading owner photo:', err);
-                        alert('Failed to upload photo. Please try again.');
+                        updates.owner_photo_url = filePath;
                     }
+
+                    const newPaths = [];
+                    for (let i = 0; i < newGalleryFiles.length; i++) {
+                        const file = newGalleryFiles[i];
+                        const filePath = `${currentUser.id}/gallery/${Date.now()}-${i}-${sanitizeFileName(file.name)}`;
+                        const { error: uploadError } = await sb.storage
+                            .from('contractor-documents')
+                            .upload(filePath, file, { contentType: file.type, upsert: true });
+
+                        if (uploadError) throw new Error('Project photo upload failed: ' + uploadError.message);
+                        newPaths.push(filePath);
+                    }
+
+                    if (newPaths.length || _galleryPendingRemovals.length) {
+                        updates.gallery_photo_urls = keptExisting.concat(newPaths);
+                    }
+
+                    if (updates.owner_photo_url || updates.gallery_photo_urls) {
+                        const { data, error } = await sb
+                            .from('contractors')
+                            .update(updates)
+                            .eq('id', contractorRecord.id)
+                            .select()
+                            .single();
+
+                        if (error) throw error;
+
+                        contractorRecord = data;
+                    }
+
+                    _galleryPendingRemovals = [];
+                    if (ownerPhotoInput) ownerPhotoInput.value = '';
+                    if (galleryInputEl) galleryInputEl.value = '';
+                    const ownerPreviewEl = document.getElementById('ownerPhotoPreview');
+                    const galleryPreviewEl = document.getElementById('galleryPreview');
+                    if (ownerPreviewEl) ownerPreviewEl.innerHTML = '';
+                    if (galleryPreviewEl) galleryPreviewEl.innerHTML = '';
+
+                    await renderPhotosView();
+                    setStatus('Saved.', '#065F46');
+                    toggleEdit('photos');
+                } catch (err) {
+                    console.error('Error saving photos:', err);
+                    setStatus('Failed to save photos — ' + (err && err.message ? err.message : 'please try again.'), '#991B1B');
+                    // Leave edit mode open on failure so the contractor can retry
+                    // without re-selecting files that already uploaded successfully.
+                } finally {
+                    if (saveBtn) saveBtn.disabled = false;
                 }
-                toggleEdit('photos');
             } else if (section === 'introVideo') {
                 if (!INTRO_VIDEO_ENABLED) {
                     alert('Intro video uploads aren\'t enabled yet. Check back soon.');
@@ -1779,7 +2231,7 @@
                     if (statusEl) { statusEl.style.color = '#DC2626'; statusEl.textContent = 'File too large. Maximum 200 MB.'; }
                     return;
                 }
-                if (statusEl) { statusEl.style.color = 'var(--slate)'; statusEl.textContent = 'Uploading\u2026'; }
+                if (statusEl) { statusEl.style.color = 'var(--slate)'; statusEl.textContent = 'Uploading…'; }
                 try {
                     const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
                     const filePath = `${currentUser.id}/intro-video/intro-${Date.now()}.${ext}`;
@@ -2410,6 +2862,42 @@
                 if (submitBtn) submitBtn.disabled = false;
             }
         }
+
+        // gh-item-1: local preview on file selection (the elements already exist
+        // above in the DOM since this script block runs at the end of the page).
+        (function wirePhotoPreviews() {
+            const ownerPhotoInputEl = document.getElementById('ownerPhotoInput');
+            if (ownerPhotoInputEl) {
+                ownerPhotoInputEl.addEventListener('change', function () {
+                    const preview = document.getElementById('ownerPhotoPreview');
+                    if (!preview) return;
+                    preview.innerHTML = '';
+                    if (this.files && this.files[0]) {
+                        const img = document.createElement('img');
+                        img.className = 'image-preview';
+                        img.src = URL.createObjectURL(this.files[0]);
+                        preview.appendChild(img);
+                    }
+                });
+            }
+
+            const galleryInputEl = document.getElementById('galleryInput');
+            if (galleryInputEl) {
+                galleryInputEl.addEventListener('change', function () {
+                    const preview = document.getElementById('galleryPreview');
+                    if (!preview) return;
+                    preview.innerHTML = '';
+                    Array.from(this.files || []).forEach(file => {
+                        const item = document.createElement('div');
+                        item.className = 'gallery-item';
+                        const img = document.createElement('img');
+                        img.src = URL.createObjectURL(file);
+                        item.appendChild(img);
+                        preview.appendChild(item);
+                    });
+                });
+            }
+        })();
 
         document.addEventListener('DOMContentLoaded', initProfile);
     </script>
