@@ -884,6 +884,28 @@
     <header id="site-header" data-auth="false"></header>
 
     <main>
+        <!-- gh-fix: moved to the top of the dashboard (was buried at the bottom
+             of the hero, under two other link sections). Hidden by default in
+             markup; shown by refreshAppInstallBanner() (bottom script) once we
+             know whether this partner already dismissed it — checking "I've
+             installed it" hides the box and persists that choice (see
+             persistAppInstalled()/isAppInstalledDismissed() below) so it stays
+             gone on future visits. "Need the app again?" at the foot of the
+             page (near the end of this document, before the closing main
+             element) clears the dismissal. -->
+        <div class="referral-link-section" id="appInstallBanner" style="display: none;">
+            <div class="referral-link-label">&#128241; Otter Quotes Partner App</div>
+            <p class="link-hint" style="margin-top: 0;">Put your referral tools one tap away &mdash; install the free partner app on your phone.</p>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+                <button class="copy-btn" id="installAppBtn">Install the App</button>
+                <a href="/partner-app.html" style="font-size: 0.85rem; color: var(--amber-2); font-weight: 600;">How to install</a>
+            </div>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 0.85rem; color: #5A6B7B; cursor: pointer;">
+                <input type="checkbox" id="appInstalledCheckbox" style="width: 16px; height: 16px; cursor: pointer;">
+                I've already installed it &mdash; don't show this again
+            </label>
+        </div>
+
         <!-- Hero Section -->
         <div class="dashboard-hero">
             <div class="hero-top">
@@ -955,14 +977,6 @@
                 <p class="link-hint">Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job.</p>
             </div>
 
-            <div class="referral-link-section" id="appInstallBanner" style="display: none;">
-                <div class="referral-link-label">&#128241; Otter Quotes Partner App</div>
-                <p class="link-hint" style="margin-top: 0;">Put your referral tools one tap away &mdash; install the free partner app on your phone.</p>
-                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
-                    <button class="copy-btn" id="installAppBtn">Install the App</button>
-                    <a href="/partner-app.html" style="font-size: 0.85rem; color: var(--amber-2); font-weight: 600;">How to install</a>
-                </div>
-            </div>
         </div>
 
         <!-- Stats Grid + W-9 (gh-881: "Get paid" tile — matches the issue's
@@ -1010,25 +1024,19 @@
              individually below, so there's no single [data-section] wrapper
              to hang one heading on. Each card carries its own title. -->
         <div class="quick-actions-grid">
-            <!-- Send to Client -->
+            <!-- Send to Client. Sends FROM THE PARTNER'S OWN PHONE/EMAIL ACCOUNT, never
+                 from our servers: primary path is the Web Share API (native share sheet,
+                 partner picks Messages/WhatsApp/email themselves); the sendClientFallback
+                 row (sms:/mailto:/copy) is shown instead on devices with no share sheet
+                 (most desktops). See initSendToClient() below for the wiring — no
+                 recipient field exists because neither path targets a specific contact:
+                 the share sheet and the deep links both hand recipient choice to the
+                 partner's own app. -->
             <div class="action-card" data-section="refer-client">
                 <h3 class="action-card-title">📬 Send to Client</h3>
                 <div class="form-group">
-                    <label class="form-label">Client Name</label>
+                    <label class="form-label">Client Name (optional)</label>
                     <input type="text" class="form-input" id="clientName" placeholder="e.g., John Smith">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Contact Method</label>
-                    <div class="toggle-group">
-                        <button class="toggle-btn active" data-method="sms">SMS</button>
-                        <button class="toggle-btn" data-method="email">Email</button>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" id="contactLabel">Phone Number</label>
-                    <input type="text" class="form-input" id="clientContact" placeholder="+1 (555) 123-4567">
                 </div>
 
                 <div class="message-preview" id="messagePreview">
@@ -1041,10 +1049,17 @@ Check it out: [YOUR_REFERRAL_LINK]
 Let me know if you have any questions!
                 </div>
 
-                <div class="btn-group">
-                    <button class="btn" id="sendBtn">Send</button>
+                <div class="btn-group" id="sendClientPrimary">
+                    <button class="btn" id="sendBtn">Share with Client</button>
+                </div>
+
+                <div class="btn-group" id="sendClientFallback" style="display: none;">
+                    <button class="btn" id="sendSmsBtn">Text (SMS)</button>
+                    <button class="btn secondary" id="sendEmailBtn">Email</button>
                     <button class="btn secondary" id="copyMessageBtn">Copy Message</button>
                 </div>
+
+                <p class="link-hint" id="sendClientStatus" role="status" style="display: none;"></p>
             </div>
 
             <!-- Get Your Widget -->
@@ -1282,6 +1297,12 @@ Let me know if you have any questions!
                 </div>
             </form>
         </div>
+
+        <!-- gh-fix: low-emphasis way back for a partner who dismissed the app
+             install box up top — checking that box is not a one-way door. -->
+        <p style="text-align: center; margin-top: var(--sp-8);">
+            <a href="#" id="showAppInstallBannerLink" style="font-size: 0.8rem; color: #5A6B7B;">Need the app again?</a>
+        </p>
     </main>
 
     <div id="qrModal" style="display: none; position: fixed; inset: 0; background: rgba(13, 27, 46, 0.72); z-index: 1000; align-items: center; justify-content: center; padding: 24px;">
@@ -1310,7 +1331,6 @@ Let me know if you have any questions!
         let currentPartner = null;
         let allReferrals = [];
         let allRecruits = [];
-        let contactMethod = 'sms';
         let widgetStyle = 'button';
 
         // Initialize
@@ -1322,6 +1342,13 @@ Let me know if you have any questions!
 
             if (!currentUser && !CONFIG.DEMO_MODE) {
                 return;
+            }
+
+            // gh-fix: reveal/hide the app-install box now that we know who's
+            // signed in (defined in the "Partner App v1" script below —
+            // exposed on window since that script runs before this one).
+            if (typeof window.refreshAppInstallBanner === 'function') {
+                window.refreshAppInstallBanner(currentUser ? currentUser.id : null);
             }
 
             // Load partner profile
@@ -2335,7 +2362,7 @@ Let me know if you have any questions!`;
             // page (the 10th, #profileForm's submit handler, was fixed by
             // #861/PR #890 and is deliberately left untouched). ──
 
-            // Control 1/9: copyLinkBtn
+            // Control 1/8: copyLinkBtn
             bind('copyLinkBtn', function () {
                 var link = linkFrom('referralLink');
                 if (!link) { toast('Your link is still loading — try again in a moment.'); return; }
@@ -2343,7 +2370,7 @@ Let me know if you have any questions!`;
                 copyTextToClipboard(link, document.getElementById('copyLinkBtn'));
             });
 
-            // Control 2/9: copyRecruitLinkBtn
+            // Control 2/8: copyRecruitLinkBtn
             bind('copyRecruitLinkBtn', function () {
                 var btn = document.getElementById('copyRecruitLinkBtn');
                 if (btn && btn.disabled) return;
@@ -2353,59 +2380,119 @@ Let me know if you have any questions!`;
                 copyTextToClipboard(link, btn);
             });
 
-            // Control 3/9: copyMessageBtn
+            // Control 3/8: copyMessageBtn
             bind('copyMessageBtn', function () {
                 var el = document.getElementById('messagePreview');
                 copyTextToClipboard(el ? el.textContent.trim() : '', document.getElementById('copyMessageBtn'));
             });
 
-            // Control 4/9: copyWidgetBtn (also revives the previously-dead
+            // Control 4/8: copyWidgetBtn (also revives the previously-dead
             // getWidgetCode())
             bind('copyWidgetBtn', function () {
                 var code = (typeof getWidgetCode === 'function') ? getWidgetCode() : '';
                 copyTextToClipboard(code, document.getElementById('copyWidgetBtn'));
             });
 
-            // Control 5/9: sendBtn (Send to Client, sms:/mailto: deep link)
-            bind('sendBtn', function () {
-                var contactEl = document.getElementById('clientContact');
-                var contact = (contactEl && contactEl.value || '').trim();
-                if (!contact) {
-                    toast(contactMethod === 'email' ? 'Enter an email address first.' : 'Enter a phone number first.');
-                    return;
-                }
-                var msgEl = document.getElementById('messagePreview');
-                var msg = msgEl ? msgEl.textContent.trim() : '';
-                gaEvent('partner_send_to_client', { method: contactMethod });
-                if (contactMethod === 'email') {
-                    window.location.href = 'mailto:' + encodeURIComponent(contact) +
-                        '?subject=' + encodeURIComponent('A recommendation for your project') +
-                        '&body=' + encodeURIComponent(msg);
-                } else {
-                    window.location.href = 'sms:' + encodeURIComponent(contact) + '?body=' + encodeURIComponent(msg);
-                }
-            });
+            // Control 5/8: Send to Client — rebuilt (gh-fix: "Send to Client does
+            // nothing"). The old control needed a phone/email typed into
+            // #clientContact, then unconditionally did
+            // `window.location.href = 'sms:' + contact + '?body=' + msg` on both
+            // mobile and desktop. On desktop (no registered sms: handler) that
+            // navigation silently no-ops — no error, no fallback, nothing visibly
+            // happens, which is the reported symptom. It also always originated
+            // from OUR server-rendered link/click, not the partner's own phone.
+            //
+            // New design sends FROM the partner's own device: the Web Share API
+            // (native share sheet — partner picks Messages/WhatsApp/email
+            // themselves) is the primary path where supported; a visible row of
+            // explicit sms:/mailto:/copy options is shown instead wherever
+            // navigator.share is unavailable (most desktops). Every path reads the
+            // same referral link already loaded onto the page (via #referralLink /
+            // linkFrom()) — nothing invents a new URL shape. Every failure path
+            // surfaces a real, visible status message; nothing here fails silently.
+            initSendToClient();
 
-            // Control 6/9: data-method SMS/Email toggle
-            document.querySelectorAll('.toggle-btn[data-method]').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    document.querySelectorAll('.toggle-btn[data-method]').forEach(function (b) { b.classList.remove('active'); });
-                    btn.classList.add('active');
-                    contactMethod = btn.getAttribute('data-method');
-                    var label = document.getElementById('contactLabel');
-                    var input = document.getElementById('clientContact');
-                    if (contactMethod === 'email') {
-                        if (label) label.textContent = 'Email Address';
-                        if (input) input.placeholder = 'client@example.com';
-                    } else {
-                        if (label) label.textContent = 'Phone Number';
-                        if (input) input.placeholder = '+1 (555) 123-4567';
+            function initSendToClient() {
+                var primaryRow = document.getElementById('sendClientPrimary');
+                var fallbackRow = document.getElementById('sendClientFallback');
+                var statusEl = document.getElementById('sendClientStatus');
+
+                function showStatus(msg, isError) {
+                    if (!statusEl) { toast(msg); return; }
+                    statusEl.textContent = msg;
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = isError ? '#dc2626' : '';
+                }
+
+                function currentMessage() {
+                    var link = linkFrom('referralLink');
+                    if (!link) return null;
+                    // updateMessagePreview() (top script) keeps #messagePreview in
+                    // sync with the Client Name field and the real referral link —
+                    // reuse its rendered text rather than rebuilding it here.
+                    var msgEl = document.getElementById('messagePreview');
+                    var msg = msgEl ? msgEl.textContent.trim() : '';
+                    return msg || null;
+                }
+
+                function revealFallback() {
+                    if (primaryRow) primaryRow.style.display = 'none';
+                    if (fallbackRow) fallbackRow.style.display = 'flex';
+                }
+
+                // Feature-detect once at load: on a device with no share sheet
+                // (most desktop browsers), show the explicit fallback row up
+                // front instead of waiting for a share attempt to fail.
+                if (!navigator.share) {
+                    revealFallback();
+                }
+
+                bind('sendBtn', function () {
+                    var msg = currentMessage();
+                    if (!msg) { showStatus('Your referral link is still loading — try again in a moment.', true); return; }
+                    if (!navigator.share) {
+                        // Defensive: browser advertised no share sheet, or it
+                        // disappeared (e.g. permissions policy). Fail visibly
+                        // and switch to the explicit options rather than
+                        // leaving the button looking broken.
+                        revealFallback();
+                        showStatus('Native sharing isn’t available on this device — use one of the options below.', true);
+                        return;
                     }
-                    if (typeof updateMessagePreview === 'function') updateMessagePreview();
+                    gaEvent('partner_send_to_client', { method: 'web_share' });
+                    navigator.share({ title: 'Otter Quotes', text: msg }).then(function () {
+                        showStatus('Shared.', false);
+                    }).catch(function (err) {
+                        if (err && err.name === 'AbortError') return; // partner cancelled — not an error
+                        console.error('navigator.share failed:', err);
+                        revealFallback();
+                        showStatus('Sharing failed (' + (err && err.message ? err.message : 'unknown error') + ') — use one of the options below.', true);
+                    });
                 });
-            });
 
-            // Control 7/9: data-widget Button/Card toggle (also revives the
+                bind('sendSmsBtn', function () {
+                    var msg = currentMessage();
+                    if (!msg) { showStatus('Your referral link is still loading — try again in a moment.', true); return; }
+                    gaEvent('partner_send_to_client', { method: 'sms' });
+                    // gh-fix: sms:?&body=... — no recipient. `sms:?body=` alone is
+                    // Android's convention and `sms:&body=` alone is iOS's; the
+                    // combined `?&` form is the one cross-platform-safe spelling
+                    // (Android reads up to `&`, iOS reads from `?` onward), so this
+                    // opens the partner's own Messages app with the body prefilled
+                    // and lets THEM pick the recipient — no server involved.
+                    window.location.href = 'sms:?&body=' + encodeURIComponent(msg);
+                });
+
+                bind('sendEmailBtn', function () {
+                    var msg = currentMessage();
+                    if (!msg) { showStatus('Your referral link is still loading — try again in a moment.', true); return; }
+                    gaEvent('partner_send_to_client', { method: 'email' });
+                    window.location.href = 'mailto:?subject=' + encodeURIComponent('A recommendation for your project') +
+                        '&body=' + encodeURIComponent(msg);
+                });
+            }
+
+            // Control 6/8: data-widget Button/Card toggle (also revives the
             // previously-dead updateWidgetPreview())
             document.querySelectorAll('.toggle-btn[data-widget]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
@@ -2425,7 +2512,7 @@ Let me know if you have any questions!`;
                 });
             }
 
-            // Control 8/9: dateRangeFilter
+            // Control 7/8: dateRangeFilter
             var dateRangeFilterEl = document.getElementById('dateRangeFilter');
             if (dateRangeFilterEl) {
                 dateRangeFilterEl.addEventListener('change', function () {
@@ -2433,7 +2520,7 @@ Let me know if you have any questions!`;
                 });
             }
 
-            // Control 9/9: profileToggle (collapse/expand Profile Settings)
+            // Control 8/8: profileToggle (collapse/expand Profile Settings)
             bind('profileToggle', function () {
                 var form = document.getElementById('profileForm');
                 var icon = document.querySelector('#profileToggle .toggle-icon');
@@ -2551,12 +2638,49 @@ Let me know if you have any questions!`;
                 });
             }
 
-            // Install banner
+            // Install banner (gh-fix: moved to top of dashboard + persisted
+            // dismissal). No referral_agents column exists yet for "app
+            // installed" (checked against sql/ — see
+            // handoffs/partner-dashboard-app-installed-FINDINGS.md for the
+            // migration to apply so this can move server-side); until then
+            // the dismissal is localStorage, keyed to the signed-in partner's
+            // user id so one browser can't silently suppress the reminder for
+            // a different partner who later signs in on the same device.
             function isStandalone() {
                 return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
             }
+
+            function installedFlagKey(userId) {
+                return 'oq_partner_app_installed_' + (userId || 'anon');
+            }
+
+            function isAppInstalledDismissed(userId) {
+                try { return window.localStorage.getItem(installedFlagKey(userId)) === '1'; } catch (_) { return false; }
+            }
+
+            function persistAppInstalled(userId, dismissed) {
+                try {
+                    if (dismissed) { window.localStorage.setItem(installedFlagKey(userId), '1'); }
+                    else { window.localStorage.removeItem(installedFlagKey(userId)); }
+                } catch (_) { /* private mode / blocked storage — box just reappears next visit, non-fatal */ }
+            }
+
             var banner = document.getElementById('appInstallBanner');
-            if (banner && !isStandalone()) { banner.style.display = 'block'; }
+            var appInstalledCheckbox = document.getElementById('appInstalledCheckbox');
+            var showAppInstallBannerLink = document.getElementById('showAppInstallBannerLink');
+            var appInstallUserId = null; // set by refreshAppInstallBanner() once auth resolves (top script)
+
+            // Exposed so init() (top script) can reveal/hide this once
+            // currentUser is known — this script block runs before that
+            // script's DOMContentLoaded-triggered init(), so the banner would
+            // otherwise flash visible (or stay wrongly hidden) before we know
+            // who's signed in.
+            window.refreshAppInstallBanner = function (userId) {
+                appInstallUserId = userId || null;
+                if (!banner) return;
+                banner.style.display = (isStandalone() || isAppInstalledDismissed(appInstallUserId)) ? 'none' : 'block';
+                if (appInstalledCheckbox) appInstalledCheckbox.checked = isAppInstalledDismissed(appInstallUserId);
+            };
 
             window.addEventListener('beforeinstallprompt', function (e) {
                 e.preventDefault();
@@ -2564,6 +2688,7 @@ Let me know if you have any questions!`;
             });
             window.addEventListener('appinstalled', function () {
                 gaEvent('app_installed', { page: 'partner-dashboard' });
+                persistAppInstalled(appInstallUserId, true);
                 if (banner) { banner.style.display = 'none'; }
             });
             bind('installAppBtn', function () {
@@ -2575,6 +2700,35 @@ Let me know if you have any questions!`;
                     window.location.href = '/partner-app.html';
                 }
             });
+
+            // Checking the box hides the banner and persists that choice —
+            // stays gone on future visits (until "Need the app again?" below
+            // clears it). Real, visible confirmation via toast(), not a
+            // silent state change.
+            if (appInstalledCheckbox) {
+                appInstalledCheckbox.addEventListener('change', function () {
+                    if (!appInstalledCheckbox.checked) return;
+                    gaEvent('app_install_checkbox_checked', { page: 'partner-dashboard' });
+                    persistAppInstalled(appInstallUserId, true);
+                    if (banner) { banner.style.display = 'none'; }
+                    toast('Got it. Bring it back anytime from "Need the app again?" at the bottom of the page.');
+                });
+            }
+
+            // Low-emphasis way back — checking the box above is not a
+            // one-way door.
+            if (showAppInstallBannerLink) {
+                showAppInstallBannerLink.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    gaEvent('app_install_banner_restored', { page: 'partner-dashboard' });
+                    persistAppInstalled(appInstallUserId, false);
+                    if (appInstalledCheckbox) appInstalledCheckbox.checked = false;
+                    if (banner) {
+                        banner.style.display = 'block';
+                        banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
+            }
 
             // App-shortcut deep links (?action=refer-homeowner|refer-partner)
             var action = new URLSearchParams(window.location.search).get('action');
