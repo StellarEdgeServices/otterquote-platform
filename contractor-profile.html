@@ -2231,7 +2231,7 @@
                     if (statusEl) { statusEl.style.color = '#DC2626'; statusEl.textContent = 'File too large. Maximum 200 MB.'; }
                     return;
                 }
-                if (statusEl) { statusEl.style.color = 'var(--slate)'; statusEl.textContent = 'Uploading…'; }
+                if (statusEl) { statusEl.style.color = 'var(--slate)'; statusEl.textContent = 'Uploading\u2026'; }
                 try {
                     const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
                     const filePath = `${currentUser.id}/intro-video/intro-${Date.now()}.${ext}`;

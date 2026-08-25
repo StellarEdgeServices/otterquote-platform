@@ -1829,7 +1829,7 @@
     // notification and sends admin a support email. Non-blocking; errors are caught.
     window.requestBidRenewal = async function(bidId) {
       const btn = document.getElementById('renewalBtnSigning');
-      if (btn) { btn.disabled = true; btn.textContent = 'Sending request…'; }
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending request\u2026'; }
 
       let notifOk = false, emailOk = false;
 
@@ -1857,7 +1857,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': CONFIG.SUPABASE_ANON },
           body: JSON.stringify({
-            subject: 'Bid Renewal Requested — ' + (state.contractor?.company_name || 'Unknown Contractor'),
+            subject: 'Bid Renewal Requested \u2014 ' + (state.contractor?.company_name || 'Unknown Contractor'),
             body: [
               'A homeowner has requested an updated bid (via contract-signing.html expired guard).',
               'Contractor: ' + (state.contractor?.company_name || 'N/A'),
@@ -1866,7 +1866,7 @@
               'Quote ID: ' + bidId,
               '',
               'The contractor has been notified via their dashboard' +
-                (notifOk ? '.' : ' (notification may have failed — check manually).'),
+                (notifOk ? '.' : ' (notification may have failed \u2014 check manually).'),
             ].join('\n'),
           }),
         });
@@ -1878,7 +1878,7 @@
       // Update button to reflect outcome
       if (btn) {
         if (notifOk || emailOk) {
-          btn.textContent = '✓ Request Sent';
+          btn.textContent = '\u2713 Request Sent';
           btn.style.background = '#059669';
           btn.style.cursor = 'default';
         } else {

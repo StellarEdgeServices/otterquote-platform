@@ -58,7 +58,7 @@ const Nav = {
     return file === 'partners.html' || file.startsWith('partner-');
   },
 
-  /* ═══════════════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════════════
      TWO-TIER NAVIGATION
      Row 1 — role switcher: Homeowner · Contractor · Referral Partner.
              Always visible, always clickable, on every page.
@@ -72,7 +72,7 @@ const Nav = {
        5. homeowner
      An AUTHENTICATED role always overrides all of the above once auth
      resolves — see _updateNavLinksForRole(), called from _renderAuthSlot().
-     ═══════════════════════════════════════════════════════════════════════ */
+     ══════════════════════════════════════════════════════════════════════ */
 
   /**
    * The referral_agents.agent_type values that mean "this account is a
@@ -308,6 +308,16 @@ const Nav = {
     const role = this._resolveRole();
     this._activeRole = role;
     const isContractor = (role === 'contractor');
+    // The sign-out slot is emitted from the PAGE's own role (its URL), never
+    // from the visitor's remembered role. Widening it to a bare `!showAuth`
+    // put a second "Log Out" on admin-referrals.html and
+    // admin-incomplete-profiles.html, which ship their own logout button:
+    // those pages are role-NEUTRAL by URL, so _resolveRole() had been
+    // answering with whatever role the visitor last browsed. Caught by this
+    // run's adversarial check, 2026-08-25.
+    const urlRoleForSlot = this._roleFromUrl();
+    const wantsSignOutSlot = !showAuth &&
+      (urlRoleForSlot === 'contractor' || urlRoleForSlot === 'partner');
     // Pre-auth render uses the guest link set; _updateNavLinksForRole()
     // re-renders row 2 the moment a real session resolves.
     const links = this._roleLinks(role, false);
@@ -324,11 +334,11 @@ const Nav = {
             <a href="${l.href}" class="nav-link ${active === l.id ? 'active' : ''}">${l.label}</a>
           `).join('')}
           ${showAuth ? '<div class="nav-mobile-auth" id="nav-mobile-auth-slot"></div>' : ''}
-          ${!showAuth ? '<span id="nav-mobile-signout-slot"></span>' : ''}
+          ${wantsSignOutSlot ? '<span id="nav-mobile-signout-slot"></span>' : ''}
         </div>
         <div class="nav-actions" id="nav-actions">
           ${showAuth ? '<div id="nav-auth-slot"></div>' : ''}
-          ${!showAuth ? '<span id="nav-signout-slot"></span>' : ''}
+          ${wantsSignOutSlot ? '<span id="nav-signout-slot"></span>' : ''}
         </div>
         <button class="nav-hamburger" id="nav-hamburger" aria-label="Menu">
           <span></span><span></span><span></span>
@@ -352,7 +362,7 @@ const Nav = {
     if (showAuth) {
       this._renderAuthSlot();
     } else {
-      // ── gh-2026-08-25 ─────────────────────────────────
+      // ── gh-2026-08-25 ────────────────────────────────────────────────
       // data-auth="false" pages were stuck on the GUEST link set forever.
       // _renderAuthSlot() was the ONLY caller of _updateNavLinksForRole(),
       // and it bails at `if (!slot && !mobileSlot) return;` — which is
@@ -363,6 +373,13 @@ const Nav = {
       // account. Same defect on partner-dashboard.html. Reported by
       // Dustin 2026-08-25. The role correction is now independent of
       // whether the page renders auth buttons.
+      //
+      // NARROWED after this run's adversarial check: the first version called
+      // _applyAuthRole() on EVERY data-auth="false" page, which regressed
+      // contractor-faq.html and contractor-how-it-works.html — a signed-in
+      // insurance agent reading the CONTRACTOR marketing pages was handed his
+      // own partner dashboard nav instead of the contractor nav belonging to
+      // the content in front of him. The guard now lives in _applyAuthRole().
       this._applyAuthRole();
       // data-auth="false" pages (contractor-faq, contractor-how-it-works) are
       // public marketing pages inside the contractor path. They used to render
@@ -386,6 +403,21 @@ const Nav = {
       const user = await Auth.getUser();
       if (!user) return;
       const role = await Auth.getRole();
+
+      // Correct row 2 only when the account role AGREES with the page's own
+      // URL role, or the page claims no role at all.
+      //
+      // contractor-profile.html (URL contractor + contractor account) and
+      // partner-dashboard.html (URL partner + partner account) are the pages
+      // this fix exists for, and both agree. contractor-faq.html and
+      // contractor-how-it-works.html are public CONTRACTOR marketing pages
+      // that any role may read; substituting a visitor's own dashboard nav
+      // there strands them mid-way through contractor content with no
+      // contractor navigation. Disagreement means "you are a guest in this
+      // part of the site", which is what the guest link set is for.
+      const urlRole = this._roleFromUrl();
+      if (urlRole && urlRole !== this._navRoleForAuthRole(role)) return;
+
       this._updateNavLinksForRole(role);
     } catch (_) { /* auth unavailable — the guest render already on screen is correct */ }
   },
