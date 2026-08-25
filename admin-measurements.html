@@ -270,6 +270,7 @@ var STORAGE_BUCKET = 'claim-documents';
 var state = { filter: 'awaiting_fulfillment', rows: [], catalog: {}, current: null, user: null };
 
 var _initFired = false;
+if (!sb) return;
 sb.auth.onAuthStateChange(async function (event, session) {
   if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
     _initFired = true;
