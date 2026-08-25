@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>How Insurance Agent Referrals Work | Otter Quotes</title>
+<meta name="description" content="See exactly how the Otter Quotes insurance agent referral program works — from sharing your link to earning $200 per completed job.">
+<link rel="canonical" href="https://otterquote.com/partner-insurance-how-it-works.html">
+<meta property="og:title" content="How Insurance Agent Referrals Work | Otter Quotes">
+<meta property="og:description" content="See exactly how the Otter Quotes insurance agent referral program works — from sharing your link to earning $200 per completed job.">
+<meta property="og:url" content="https://otterquote.com/partner-insurance-how-it-works.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: var(--navy); background-image: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.12) 0%, transparent 65%);
+}
+.page-hero h1 { margin-bottom: var(--sp-4); color: var(--white); }
+.page-hero p { max-width: 600px; margin: 0 auto; font-size: 1.1rem; color: var(--slate); }
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 32px;
+}
+
+.step-card {
+  background: var(--navy-3);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  border-radius: 16px;
+  padding: 40px 32px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.step-card:hover {
+  border-color: var(--amber);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(224, 123, 0, 0.15);
+}
+
+.step-number {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  background: var(--amber);
+  color: var(--navy);
+  border-radius: 50%;
+  line-height: 48px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.step-card h3 {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  color: var(--white);
+  margin-bottom: 16px;
+}
+
+.step-card p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-bottom {
+  text-align: center;
+  padding: var(--sp-16) 0 var(--sp-20);
+}
+.cta-bottom h2 { margin-bottom: var(--sp-4); color: var(--white); }
+.cta-bottom p { max-width: 500px; margin: 0 auto var(--sp-8); font-size: 1.1rem; }
+.cta-bottom-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.cta-bottom-links .btn { margin-bottom: var(--sp-2); }
+.cta-bottom-links a.secondary-link {
+  color: var(--amber);
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+.cta-bottom-links a.secondary-link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active=""></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>How It Works</h1>
+    <p>Three simple steps to start earning referral fees for the policyholders you already help every day.</p>
+  </div>
+</section>
+
+<section class="section" style="background: var(--navy-2);">
+  <div class="container">
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-number">1</div>
+        <h3>Sign Up & Get Your Link</h3>
+        <p>Free partner account, unique referral link in seconds. No approval wait, no setup fees.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">2</div>
+        <h3>Share With Your Policyholders</h3>
+        <p>When a client files a claim, send them your link. Otter Quotes walks them through gathering their estimate, getting measurements, and selecting materials. Contractors compete for the job.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">3</div>
+        <h3>Earn $200 Per Job</h3>
+        <p>When the job completes ($10,000 or more), you earn $200. Track everything in your dashboard. Bonus: recruit another agent to Otter Quotes and earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-bottom">
+  <div class="container">
+    <h2>Ready to Join?</h2>
+    <p>It takes about 2 minutes to create your free partner account.</p>
+    <div class="cta-bottom-links">
+      <a href="/partner-insurance.html#signup" class="btn btn-primary btn-lg">Become a Partner</a>
+      <a href="/partner-insurance.html" class="secondary-link">&larr; Back to Insurance Agent Partners</a>
+    </div>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+</body>
+</html>
