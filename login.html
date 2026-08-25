@@ -315,6 +315,7 @@
   </div>
 </div>
 
+<script src="js/agent-types.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 
@@ -410,8 +411,73 @@
   var fromAdminGate = new URLSearchParams(window.location.search).get('reason') === 'admin_required';
   if (!fromAdminGate) {
     Auth.getUser().then(async user => {
-      if (user) {
+      if (!user) return;
+
+      // ── 2026-08-25 ────────────────────────────────────────────────────
+      // This used to be an unconditional redirectToDashboard(). That is right
+      // for a homeowner returning to their own sign-in page, and wrong for
+      // anyone whose account carries a non-homeowner role: they arrive at the
+      // HOMEOWNER sign-in page, are thrown to a contractor or partner
+      // dashboard before they can touch anything, and reasonably report that
+      // "login doesn't work."
+      //
+      // Reported by Dustin 2026-08-25. His own account is the case that
+      // surfaced it: profiles.role='contractor', a contractors row
+      // (Stohler Roofing, LLC) AND an active referral_agents row
+      // (home_inspector) all on dustinstohler1@gmail.com. Sign-in was
+      // succeeding the whole time — auth.users.last_sign_in_at was stamped
+      // that same day — the page just never let him see it happen.
+      //
+      // A homeowner still goes straight through, unchanged. Everyone else is
+      // TOLD what is happening and given both doors.
+      var role = null;
+      try { role = await Auth.getRole(); } catch (_) { /* fall through to redirect */ }
+
+      var isHomeowner = !role || role === 'customer' || role === 'homeowner';
+      if (isHomeowner) {
         await Auth.redirectToDashboard();
+        return;
+      }
+
+      // gh-914: agent-type display strings come from js/agent-types.js, the
+      // single source. Do NOT re-declare a local label map here — the first
+      // draft of this block did, and tools/agent_type_labels_check.py caught
+      // it, which is exactly what that checker is for.
+      var label, dash;
+      if (role === 'contractor') {
+        label = 'a Contractor';
+        dash  = '/contractor-dashboard.html';
+      } else {
+        var display = (typeof AgentTypes !== 'undefined' && AgentTypes.PARTNER_DISPLAY_LABELS)
+          ? AgentTypes.PARTNER_DISPLAY_LABELS[role]
+          : null;
+        label = display ? (/^[AEIOU]/.test(display) ? 'an ' : 'a ') + display : 'a partner';
+        dash  = '/partner-dashboard.html';
+      }
+
+      var box = document.getElementById('form-error');
+      if (!box) { await Auth.redirectToDashboard(); return; }
+      box.style.display = 'block';
+      box.style.background = 'rgba(224,123,0,.10)';
+      box.style.border = '1px solid rgba(224,123,0,.35)';
+      box.style.color = '#E8EDF2';
+      box.style.padding = '0.9rem 1rem';
+      box.style.borderRadius = '8px';
+      box.style.lineHeight = '1.55';
+      box.innerHTML =
+        "You're already signed in as <strong>" + label + "</strong> (" +
+        (user.email || 'your account') + ").<br>" +
+        "This page is the <strong>homeowner</strong> sign-in. " +
+        '<a href="' + dash + '" style="color:#E07B00;font-weight:600;">Go to your dashboard</a>' +
+        ' &nbsp;·&nbsp; ' +
+        '<a href="#" id="login-switch-account" style="color:#E07B00;font-weight:600;">Sign out and use a different account</a>';
+
+      var switcher = document.getElementById('login-switch-account');
+      if (switcher) {
+        switcher.addEventListener('click', function (e) {
+          e.preventDefault();
+          Auth.signOut();
+        });
       }
     });
   }
