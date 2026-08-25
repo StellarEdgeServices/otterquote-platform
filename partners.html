@@ -243,15 +243,37 @@
  *
  * DESTINATIONS mirrors recruit.html's map deliberately — both route the six
  * chooser answers to the same five signup pages plus refer-a-friend.
+ *
+ * 'customer' is the one exception: it points at the homeowner homepage, not
+ * refer-a-friend.html. js/auth.js's PARTNER_SURFACE_FILE_RE (gh-807)
+ * classifies any `refer-a-friend*` filename as a "partner surface" page, so
+ * an anonymous visitor landing there hits refer-a-friend.html's
+ * Auth.requireAuth() call and gets bounced to /partner-login.html instead of
+ * a homeowner login — the exact "I'm a homeowner button goes to partner
+ * login" defect. Fixing that classification lives in js/auth.js, owned by
+ * another workstream; routing this card straight to the homeowner home page
+ * sidesteps it entirely and matches what the card actually promises.
  */
 const DESTINATIONS = {
     re_agent:        'partner-re.html',
     insurance_agent: 'partner-insurance.html',
     home_inspector:  'partner-inspectors.html',
     adjuster:        'partner-adjusters.html',
-    customer:        'refer-a-friend.html',
+    customer:        'index.html',
     other:           'partner-other.html',
 };
+
+/** Nav role values that correspond to each DESTINATIONS entry, mirroring
+ * js/nav.js's own role switcher (Nav._ROLE_STORAGE_KEY = 'oq_nav_role') so a
+ * homeowner who lands on index.html sees the homeowner nav immediately
+ * instead of the partner nav bleeding through from this page. Every other
+ * chooser answer lands on a partner-* signup page, which nav.js already
+ * classifies as role "partner" by URL — only 'customer' needs an explicit
+ * push. Do NOT read/write via the Nav object here: js/nav.js is owned by
+ * another writer fixing an unrelated auth bug, and this key is the only
+ * documented public contract of that module. */
+const NAV_ROLE_STORAGE_KEY = 'oq_nav_role';
+const NAV_ROLE_FOR_TYPE = { customer: 'homeowner' };
 
 
 /* Icons are named by SHAPE, not by agent type. A map keyed by agent_type
@@ -322,6 +344,10 @@ const GATE_OPTIONS = [
                     destination: destination,
                     recruit_code: recruit || null
                 });
+            }
+            const navRole = NAV_ROLE_FOR_TYPE[type];
+            if (navRole) {
+                try { window.localStorage.setItem(NAV_ROLE_STORAGE_KEY, navRole); } catch (_) { /* private mode / blocked storage — non-fatal */ }
             }
         });
 
