@@ -363,7 +363,7 @@ describe('help-measurements page — gh-951 resume after a full-page reload', ()
       order_id: 'o1',
       capture_link: null,
       placeholder: true,
-      message: 'Hover order creation failed. Please try again.',
+      message: 'Measurement order creation failed. Please try again.',
     });
 
     render(<HelpMeasurementsPage />);

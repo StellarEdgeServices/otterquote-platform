@@ -31,7 +31,7 @@ describe('constants (D-291 / D-181 parity values)', () => {
     expect(HOVER_AMOUNT_CENTS).toBe(1500);
     expect(HOVER_AMOUNT_DOLLARS).toBe(15.0);
     expect(HOVER_DELIVERABLE_TYPE_ID).toBe(3);
-    expect(HOVER_PAYMENT_DESCRIPTION).toBe('Hover Complete Property Data File');
+    expect(HOVER_PAYMENT_DESCRIPTION).toBe('Complete Property Report');
     expect(MEASUREMENTS_REQUEST_TYPE).toBe('measurements');
   });
 });
@@ -87,7 +87,7 @@ describe('buildHoverPaymentIntentParams', () => {
     expect(buildHoverPaymentIntentParams({ id: 'claim-1' })).toEqual({
       claim_id: 'claim-1',
       amount: 1500,
-      description: 'Hover Complete Property Data File',
+      description: 'Complete Property Report',
     });
   });
 });

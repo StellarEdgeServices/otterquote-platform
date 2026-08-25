@@ -73,7 +73,7 @@ export function HomePhotosCard({ claimId, isSiding }: { claimId: string; isSidin
   const jobUrl = payload?.hover_job_id ? 'https://hover.to/jobs/' + payload.hover_job_id : null;
 
   return (
-    <Card title="Home Photos" sub="Reference imagery from the Hover measurement for this property.">
+    <Card title="Home Photos" sub="Reference imagery from the measurement for this property.">
       {payload?.job_address && <div className="oqb-summary-k" style={{ marginBottom: '0.5rem' }}>{payload.job_address}</div>}
 
       {loading && <div className="oqb-summary-k">Loading photos…</div>}
@@ -97,10 +97,10 @@ export function HomePhotosCard({ claimId, isSiding }: { claimId: string; isSidin
 
       <div className="oqb-doclinks">
         {jobUrl && isSiding && (
-          <a className="oqb-doclink" href={jobUrl} target="_blank" rel="noreferrer">Open Hover 3D Design</a>
+          <a className="oqb-doclink" href={jobUrl} target="_blank" rel="noreferrer">Open 3D Property Design ↗</a>
         )}
         {jobUrl && (
-          <a className="oqb-doclink" href={jobUrl} target="_blank" rel="noreferrer">View on Hover</a>
+          <a className="oqb-doclink" href={jobUrl} target="_blank" rel="noreferrer">View property design ↗</a>
         )}
       </div>
 

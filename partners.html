@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Referral Partner Program | Otter Quotes</title>
+<meta name="description" content="Refer homeowners to Otter Quotes and get paid. Tell us what you do — real estate agent, insurance agent, home inspector, adjuster, or anything else that puts you in front of homeowners — and we'll show you the program built for your work.">
+<link rel="canonical" href="https://otterquote.com/partners.html">
+<meta property="og:title" content="Referral Partner Program &middot; Otter Quotes">
+<meta property="og:description" content="Refer homeowners to Otter Quotes and get paid. Tell us what you do and we'll show you the program built for your work.">
+<meta property="og:url" content="https://otterquote.com/partners.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Referral Partner Program &middot; Otter Quotes">
+<meta name="twitter:description" content="Refer homeowners to Otter Quotes and get paid. Tell us what you do and we'll show you the program built for your work.">
+<meta name="twitter:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.gate-hero {
+  padding: var(--sp-16) 0 var(--sp-10);
+  text-align: center;
+  background: var(--navy);
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.14) 0%, transparent 65%);
+}
+.gate-eyebrow {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+  margin-bottom: var(--sp-3);
+}
+.gate-hero h1 { margin-bottom: var(--sp-4); color: var(--white); }
+.gate-hero .gate-sub {
+  max-width: 620px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+
+.gate-section { padding: var(--sp-4) 0 var(--sp-16); background: var(--navy); }
+
+.gate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+  max-width: 960px;
+  margin: 0 auto;
+}
+@media (max-width: 860px) { .gate-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .gate-grid { grid-template-columns: 1fr; } }
+
+.gate-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  text-align: left;
+  width: 100%;
+  padding: var(--sp-6);
+  background: var(--navy-2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg);
+  color: var(--white);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+}
+.gate-card:hover,
+.gate-card:focus-visible {
+  border-color: var(--amber);
+  background: var(--navy-3);
+  transform: translateY(-2px);
+  outline: none;
+}
+.gate-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(224,123,0,0.12);
+  border: 1px solid rgba(224,123,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--amber);
+  margin-bottom: var(--sp-1);
+}
+.gate-card-title { font-size: 1.02rem; font-weight: 700; color: var(--white); }
+.gate-card-desc { font-size: 0.88rem; line-height: 1.55; color: var(--slate); }
+.gate-card-go {
+  margin-top: auto;
+  padding-top: var(--sp-3);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--amber);
+}
+
+.gate-reassure {
+  max-width: 860px;
+  margin: var(--sp-12) auto 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-6);
+  padding-top: var(--sp-10);
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+@media (max-width: 700px) { .gate-reassure { grid-template-columns: 1fr; gap: var(--sp-5); } }
+.gate-reassure h3 {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--white);
+  margin-bottom: var(--sp-2);
+}
+.gate-reassure p { font-size: 0.88rem; line-height: 1.6; color: var(--slate); }
+
+.gate-disclaimer {
+  max-width: 760px;
+  margin: var(--sp-10) auto 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #7C8FA3;
+  text-align: center;
+}
+
+.gate-existing {
+  text-align: center;
+  margin-top: var(--sp-8);
+  font-size: 0.92rem;
+  color: var(--slate);
+}
+.gate-existing a { color: var(--amber); }
+</style>
+</head>
+<body>
+
+<header id="site-header" data-role="partner" data-active="partners"></header>
+
+<section class="gate-hero">
+  <div class="container">
+    <span class="gate-eyebrow">Referral Partner Program</span>
+    <h1>What do you do?</h1>
+    <p class="gate-sub">
+      Pick the one that fits. Every profession that puts you in front of homeowners has its
+      own version of this program &mdash; different rules, different paperwork, different
+      way of getting paid. Tell us which is yours and we'll show you that one.
+    </p>
+  </div>
+</section>
+
+<section class="gate-section">
+  <div class="container">
+    <div class="gate-grid" id="gateGrid" role="list" aria-label="Choose your profession"></div>
+
+    <p class="gate-existing">
+      Already a partner? <a href="/partner-login.html">Sign in to your dashboard</a>
+      &middot; <a href="/partner-app.html">Get the partner app</a>
+    </p>
+
+    <div class="gate-reassure">
+      <div>
+        <h3>You get paid on results</h3>
+        <p>A referral fee is earned when the homeowner you sent us signs a contract with one of our contractors. Nothing to buy, no monthly cost, no quota.</p>
+      </div>
+      <div>
+        <h3>Your client is handled</h3>
+        <p>They get licensed, insured contractors competing on their project &mdash; and we stay with them through signing and installation. You keep the relationship.</p>
+      </div>
+      <div>
+        <h3>Two minutes to start</h3>
+        <p>Sign up, accept the partner agreement, and share your link. Everything after that runs from your dashboard or the partner app.</p>
+      </div>
+    </div>
+
+    <p class="gate-disclaimer">
+      Referral partners are independent contractors, not employees or agents of Otter Quotes.
+      Check your employment agreement and your governing licensing agency to make sure it is
+      lawful for you to accept referral fees.
+    </p>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/agent-types.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+/**
+ * Profession gate — the front door of the referral-partner path.
+ *
+ * Before this page existed, the only profession chooser on the site was
+ * recruit.html's fallback (noindex, only reachable from a /recruit?code=
+ * link with an unresolvable code) and a three-of-five list buried in the
+ * homepage. A visitor who arrived wanting to refer had no page that asked
+ * them who they were.
+ *
+ * Display labels come from AgentTypes.CHOOSER_LABELS (js/agent-types.js,
+ * gh-914 single source) — never hand-copied here. 'customer' keeps a local
+ * full-sentence string for the same reason recruit.html does: it is a
+ * prompt, not a short type label, and exists nowhere else.
+ *
+ * DESTINATIONS mirrors recruit.html's map deliberately — both route the six
+ * chooser answers to the same five signup pages plus refer-a-friend.
+ */
+const DESTINATIONS = {
+    re_agent:        'partner-re.html',
+    insurance_agent: 'partner-insurance.html',
+    home_inspector:  'partner-inspectors.html',
+    adjuster:        'partner-adjusters.html',
+    customer:        'refer-a-friend.html',
+    other:           'partner-other.html',
+};
+
+
+/* Icons are named by SHAPE, not by agent type. A map keyed by agent_type
+ * with string values is the exact shape tools/agent_type_labels_check.py
+ * flags as a re-introduced local label map (gh-914), so the association
+ * lives in the GATE_OPTIONS rows below instead of in a second keyed map. */
+const ICON_HOUSE     = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21v-7h6v7"/></svg>';
+const ICON_SHIELD    = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+const ICON_MAGNIFIER = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+const ICON_CLIPBOARD = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>';
+const ICON_HEART     = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
+const ICON_QUESTION  = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+/**
+ * [agent_type, headline, description, icon].
+ */
+const GATE_OPTIONS = [
+    ['re_agent',        AgentTypes.CHOOSER_LABELS.re_agent,
+     "Your buyer or seller needs repairs done before closing, and you need it handled fast.",
+     ICON_HOUSE],
+    ['insurance_agent', AgentTypes.CHOOSER_LABELS.insurance_agent,
+     "Your policyholder filed a claim and now has to find a contractor on their own.",
+     ICON_SHIELD],
+    ['home_inspector',  AgentTypes.CHOOSER_LABELS.home_inspector,
+     "You found the damage. Give your client a real answer about what happens next.",
+     ICON_MAGNIFIER],
+    ['adjuster',        AgentTypes.CHOOSER_LABELS.adjuster,
+     "You see the damage first, and the homeowner asks you who they should call.",
+     ICON_CLIPBOARD],
+    ['customer',        "I'm a homeowner",
+     "You used Otter Quotes yourself and want to send a friend our way.",
+     ICON_HEART],
+    ['other',           AgentTypes.CHOOSER_LABELS.other,
+     "Property manager, lender, contractor in another trade, anything else &mdash; if you talk to homeowners, this works.",
+     ICON_QUESTION],
+];
+
+(function renderGate() {
+    const grid = document.getElementById('gateGrid');
+    // Carry a recruiter code straight through to the signup page, so a
+    // partner who was recruited by another partner still gets attributed
+    // when they arrive here instead of on /recruit.
+    let recruit = '';
+    try {
+        const params = new URLSearchParams(window.location.search);
+        recruit = (params.get('recruit') || params.get('code') || '').trim();
+    } catch (_) { /* malformed query string — proceed without attribution */ }
+    const qs = recruit ? '?recruit=' + encodeURIComponent(recruit) : '';
+
+    GATE_OPTIONS.forEach(function (opt) {
+        const type = opt[0], title = opt[1], desc = opt[2], icon = opt[3];
+        const destination = DESTINATIONS[type];
+
+        const card = document.createElement('a');
+        card.className = 'gate-card';
+        card.setAttribute('role', 'listitem');
+        card.href = '/' + destination + qs;
+        card.innerHTML =
+            '<span class="gate-card-icon" aria-hidden="true">' + icon + '</span>' +
+            '<span class="gate-card-title">' + title + '</span>' +
+            '<span class="gate-card-desc">' + desc + '</span>' +
+            '<span class="gate-card-go">Continue &rarr;</span>';
+
+        card.addEventListener('click', function () {
+            if (typeof gtag === 'function') {
+                gtag('event', 'partner_gate_selected', {
+                    chosen_type: type,
+                    destination: destination,
+                    recruit_code: recruit || null
+                });
+            }
+        });
+
+        grid.appendChild(card);
+    });
+})();
+</script>
+</body>
+</html>

@@ -70,7 +70,7 @@ export const SIGN_COPY = {
   // ── (f) TIER-3 LEGAL — Step 3 signed-contract delivery note (contract-signing.html:1039-1041) ──
   signedContractTitle: '📋 Your Signed Contract',
   signedContractBody:
-    'DocuSign has emailed a copy of your fully signed contract to the address on your account. Keep it for your records.',
+    "We've emailed a copy of your fully signed contract to the address on your account. Keep it for your records.",
   signedContractSpam:
     "If you don't see it within a few minutes, check your spam folder or contact us at support@otterquote.com.",
 

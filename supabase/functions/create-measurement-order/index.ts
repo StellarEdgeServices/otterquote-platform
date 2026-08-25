@@ -1,0 +1,376 @@
+/**
+ * OtterQuote Edge Function: create-measurement-order
+ *
+ * Records a PAID, HUMAN-FULFILLED measurement order. It contacts no
+ * measurement vendor. It verifies that the buyer's Stripe PaymentIntent
+ * actually succeeded for the right amount, on the right claim, then writes a
+ * row in status 'awaiting_fulfillment' for an admin to work in
+ * admin-measurements.html.
+ *
+ * WHY THIS EXISTS (Dustin, 2026-08-24): "Make sure we are able to purchase
+ * measurements from [our vendor]. We have measurements mailed to us and
+ * entered manually for the first few runs." The pre-existing
+ * create-hover-order function calls a vendor API synchronously and has no
+ * way to express "paid, a human will order it." This does, and it is
+ * deliberately vendor-agnostic — swapping vendors, or automating fulfillment
+ * later, changes the admin tool, not this function or the money path.
+ *
+ * PRICING (Dustin's 2026-08-24 ruling): the homeowner pays for the condensed
+ * roof report only — "It should be enough to bid on for most jobs. If
+ * contractors need the full measurement, they can pay for it." SKUs, prices
+ * and expected vendor costs live in platform_settings.measurement_products
+ * so an operator can reprice without a deploy. This function NEVER trusts a
+ * price from the client; it reads the catalog and requires the PaymentIntent
+ * to match it exactly.
+ *
+ * Contractor-buyer SKUs (homeowner_price_cents = null) are NOT purchasable
+ * through this function. A contractor asking for a full report is a money
+ * flow Dustin has not priced; those arrive as unpriced requests instead
+ * (buyer_role='contractor', status='awaiting_quote') and an admin prices
+ * them by hand. Rejecting rather than guessing is the point.
+ *
+ * Environment variables:
+ *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
+ *   STRIPE_SECRET_KEY (+ STRIPE_SECRET_KEY_TEST for staging origins)
+ */
+
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const FUNCTION_NAME = "create-measurement-order";
+const STRIPE_API_BASE = "https://api.stripe.com/v1";
+
+/** PaymentIntent metadata.type this function will accept. */
+const PI_TYPE = "measurement_order";
+/** Legacy value still emitted by the older frontend payment path. */
+const PI_TYPE_LEGACY = "hover_measurement";
+
+const ALLOWED_ORIGINS = [
+  "https://otterquote.com",
+  "https://app.otterquote.com",
+  "https://app-staging.otterquote.com",
+  "https://jade-alpaca-b82b5e.netlify.app",
+  "https://staging--jade-alpaca-b82b5e.netlify.app",
+];
+
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  };
+}
+
+function json(body: unknown, status: number, corsHeaders: Record<string, string>) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * Verify the incoming JWT with Supabase Auth. The gateway check is disabled
+ * (--no-verify-jwt) across this project because of an ES256/HS256 mismatch,
+ * so this handler-level check is the only thing standing between an
+ * anonymous caller and a write. Same pattern as create-hover-order.
+ */
+async function verifyJwt(
+  req: Request,
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+  corsHeaders: Record<string, string>,
+): Promise<{ user: any } | Response> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return json({ error: "Unauthorized. A valid user session is required." }, 401, corsHeaders);
+  }
+  const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${authHeader.slice(7)}` } },
+  });
+  const { data: { user }, error } = await userClient.auth.getUser();
+  if (error || !user) {
+    return json({ error: "Unauthorized. Session invalid or expired." }, 401, corsHeaders);
+  }
+  return { user };
+}
+
+interface Product {
+  label?: string;
+  buyer?: string;
+  scope?: string;
+  homeowner_price_cents?: number | null;
+  expected_vendor_cost_cents?: number | null;
+  rebate_on_close?: boolean;
+  active?: boolean;
+}
+
+/** Read one SKU from the operator-editable catalog. */
+async function loadProduct(supabase: any, productCode: string): Promise<Product | null> {
+  const { data } = await supabase
+    .from("platform_settings")
+    .select("value")
+    .eq("key", "measurement_products")
+    .maybeSingle();
+  const catalog = (data?.value ?? {}) as Record<string, Product>;
+  const product = catalog[productCode];
+  if (!product || product.active === false) return null;
+  return product;
+}
+
+/**
+ * Guard against a two-source price split.
+ *
+ * create-payment-intent prices the charge from
+ * platform_settings.hover_measurement_price (D-181). This function prices the
+ * ORDER from platform_settings.measurement_products. Today both say 1500. If
+ * an operator edits one and not the other, every purchase would fail with the
+ * generic "amount does not match" 402 and nobody would know why.
+ *
+ * So: when the legacy key exists and disagrees with the catalog for the SKU
+ * the legacy key actually governs, refuse with a message that names the
+ * problem. A loud, specific failure is the point — silently preferring one
+ * source would let the two drift apart unnoticed, which is the failure this
+ * check exists to prevent.
+ *
+ * The follow-up that removes this guard is repointing create-payment-intent
+ * at the catalog. Until that ships, this is the seam.
+ */
+const LEGACY_PRICED_SKU = "roof_basic";
+
+async function detectPriceDrift(
+  supabase: any,
+  productCode: string,
+  catalogPrice: number,
+): Promise<string | null> {
+  if (productCode !== LEGACY_PRICED_SKU) return null;
+  const { data } = await supabase
+    .from("platform_settings")
+    .select("value")
+    .eq("key", "hover_measurement_price")
+    .maybeSingle();
+  if (data?.value === null || data?.value === undefined) return null;
+  const legacy = Number(data.value);
+  if (!Number.isFinite(legacy) || legacy === catalogPrice) return null;
+  console.error(`[${FUNCTION_NAME}] PRICE DRIFT`, {
+    product_code: productCode,
+    measurement_products_cents: catalogPrice,
+    hover_measurement_price_cents: legacy,
+  });
+  return "This report is temporarily unavailable — its price is misconfigured. Nothing has been charged. Please contact support.";
+}
+
+/**
+ * Confirm the buyer really paid, for this SKU, on this claim.
+ *
+ * Every check here is a "must be true," not a "should be": the expected
+ * amount comes from the catalog rather than the request body, so a client
+ * that lies about the price fails; the claim_id and type must match the
+ * PaymentIntent's own metadata, so a PaymentIntent from a different claim or
+ * a different kind of charge cannot be replayed into a free report.
+ */
+async function verifyPayment(
+  paymentIntentId: string,
+  expectedAmount: number,
+  claimId: string | null,
+  requestOrigin: string,
+): Promise<{ ok: true; amount: number; stripeChargeId: string | null } | { ok: false; status: number; error: string }> {
+  const isStaging = requestOrigin.includes("staging--") || requestOrigin.includes("app-staging.");
+  const stripeSecretKey = isStaging
+    ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
+    : Deno.env.get("STRIPE_SECRET_KEY");
+  if (!stripeSecretKey) {
+    return { ok: false, status: 500, error: "Payment processing is not configured." };
+  }
+
+  const basicAuth = btoa(`${stripeSecretKey}:`);
+  const piRes = await fetch(
+    `${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+    { headers: { Authorization: `Basic ${basicAuth}` } },
+  );
+  if (!piRes.ok) {
+    console.error(`[${FUNCTION_NAME}] Stripe PI retrieve failed:`, piRes.status, await piRes.text());
+    return {
+      ok: false,
+      status: 402,
+      error: "We could not verify your payment. Please try again or contact support.",
+    };
+  }
+  const pi = await piRes.json();
+
+  if (pi.status !== "succeeded") {
+    return {
+      ok: false,
+      status: 402,
+      error: `Payment must complete before we can order your report. Current payment status: ${pi.status}.`,
+    };
+  }
+  if (pi.amount !== expectedAmount) {
+    console.error(`[${FUNCTION_NAME}] PI amount mismatch:`, { got: pi.amount, expected: expectedAmount, pi: pi.id });
+    return { ok: false, status: 402, error: "Payment amount does not match the report price. Please contact support." };
+  }
+  if (claimId && pi.metadata?.claim_id && pi.metadata.claim_id !== claimId) {
+    console.error(`[${FUNCTION_NAME}] PI claim mismatch:`, { pi_claim: pi.metadata.claim_id, supplied: claimId });
+    return { ok: false, status: 402, error: "Payment does not belong to this project. Please contact support." };
+  }
+  if (pi.metadata?.type && pi.metadata.type !== PI_TYPE && pi.metadata.type !== PI_TYPE_LEGACY) {
+    console.error(`[${FUNCTION_NAME}] PI type mismatch:`, { pi_type: pi.metadata.type });
+    return { ok: false, status: 402, error: "Payment is not a measurement charge. Please contact support." };
+  }
+
+  return { ok: true, amount: pi.amount, stripeChargeId: pi.latest_charge ?? null };
+}
+
+serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed." }, 405, corsHeaders);
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  const jwtResult = await verifyJwt(req, supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, corsHeaders);
+  if (jwtResult instanceof Response) return jwtResult;
+  const authedUser = jwtResult.user;
+
+  try {
+    const body = await req.json();
+    const claimId: string | null = body.claim_id ?? null;
+    const productCode: string = body.product_code ?? "";
+    const paymentIntentId: string | undefined = body.payment_intent_id;
+    const buyerRole: string = body.buyer_role === "contractor" ? "contractor" : "homeowner";
+    const contractorId: string | null = body.contractor_id ?? null;
+    const note: string | null = typeof body.note === "string" ? body.note.slice(0, 2000) : null;
+
+    if (!claimId) return json({ error: "Missing claim_id." }, 400, corsHeaders);
+    if (!productCode) return json({ error: "Missing product_code." }, 400, corsHeaders);
+
+    const product = await loadProduct(supabase, productCode);
+    if (!product) {
+      return json({ error: "That report is not available." }, 400, corsHeaders);
+    }
+
+    // ── Contractor-requested reports are quoted by a human, never charged here ──
+    // The catalog marks these with homeowner_price_cents = null. Charging a
+    // contractor is a money flow that has not been priced; this function
+    // refuses to invent one and files an unpriced request instead.
+    const price = product.homeowner_price_cents;
+    const isQuoteOnly = price === null || price === undefined;
+
+    if (isQuoteOnly) {
+      if (buyerRole !== "contractor") {
+        return json({ error: "That report is not available for purchase." }, 400, corsHeaders);
+      }
+      // Idempotent on (claim, product, contractor) so a double-click files one request.
+      const { data: dupe } = await supabase
+        .from("hover_orders")
+        .select("id, status")
+        .eq("claim_id", claimId)
+        .eq("product_code", productCode)
+        .in("status", ["awaiting_quote", "awaiting_fulfillment"])
+        .maybeSingle();
+      if (dupe) {
+        return json({ order_id: dupe.id, status: dupe.status, idempotent: true }, 200, corsHeaders);
+      }
+
+      const { data: requested, error: reqErr } = await supabase
+        .from("hover_orders")
+        .insert({
+          claim_id: claimId,
+          user_id: authedUser.id,
+          status: "awaiting_quote",
+          product_code: productCode,
+          fulfillment_mode: "manual",
+          requested_by_role: "contractor",
+          requested_by_contractor_id: contractorId,
+          admin_notes: note,
+        })
+        .select("id, status")
+        .single();
+      if (reqErr) {
+        console.error(`[${FUNCTION_NAME}] request insert failed:`, reqErr);
+        return json({ error: "Could not file your request. Please try again." }, 500, corsHeaders);
+      }
+      return json({ order_id: requested.id, status: requested.status, quote_required: true }, 200, corsHeaders);
+    }
+
+    // ── Paid path ──
+    if (!paymentIntentId || typeof paymentIntentId !== "string") {
+      return json(
+        { error: "Missing payment_intent_id. A completed payment is required before we order your report." },
+        400,
+        corsHeaders,
+      );
+    }
+
+    // Idempotency FIRST, before touching Stripe: a retried request for a
+    // PaymentIntent we have already recorded returns the existing order
+    // rather than creating a second one the admin would fulfil twice.
+    const { data: existing } = await supabase
+      .from("hover_orders")
+      .select("id, status, product_code")
+      .eq("homeowner_stripe_payment_intent_id", paymentIntentId)
+      .maybeSingle();
+    if (existing) {
+      return json({ order_id: existing.id, status: existing.status, idempotent: true }, 200, corsHeaders);
+    }
+
+    const drift = await detectPriceDrift(supabase, productCode, price!);
+    if (drift) return json({ error: drift }, 409, corsHeaders);
+
+    const paid = await verifyPayment(paymentIntentId, price!, claimId, req.headers.get("Origin") || "");
+    if (!paid.ok) return json({ error: paid.error }, paid.status, corsHeaders);
+
+    const { data: order, error: insErr } = await supabase
+      .from("hover_orders")
+      .insert({
+        claim_id: claimId,
+        user_id: authedUser.id,
+        status: "awaiting_fulfillment",
+        product_code: productCode,
+        fulfillment_mode: "manual",
+        requested_by_role: buyerRole,
+        requested_by_contractor_id: buyerRole === "contractor" ? contractorId : null,
+        homeowner_stripe_payment_intent_id: paymentIntentId,
+        homeowner_charge_amount: paid.amount,
+        amount_charged: paid.amount / 100,
+        stripe_payment_id: paid.stripeChargeId,
+        rebate_due: product.rebate_on_close === true,
+        admin_notes: note,
+      })
+      .select("id, status")
+      .single();
+
+    if (insErr) {
+      // The buyer's money has already moved. Never tell them the order failed
+      // in a way that invites a second payment — this is a support case.
+      console.error(`[${FUNCTION_NAME}] order insert failed AFTER successful payment:`, {
+        payment_intent_id: paymentIntentId,
+        claim_id: claimId,
+        error: insErr,
+      });
+      return json({
+        error: "Your payment went through, but we could not record the order. Do not pay again — contact support and we will finish it by hand.",
+        payment_captured: true,
+      }, 500, corsHeaders);
+    }
+
+    console.log(`[${FUNCTION_NAME}] order queued for manual fulfillment:`, {
+      order_id: order.id,
+      claim_id: claimId,
+      product_code: productCode,
+      amount: paid.amount,
+    });
+
+    return json({
+      order_id: order.id,
+      status: order.status,
+      product_code: productCode,
+      rebate_due: product.rebate_on_close === true,
+    }, 200, corsHeaders);
+  } catch (err) {
+    console.error(`[${FUNCTION_NAME}] unhandled:`, err);
+    return json({ error: "Something went wrong recording your order." }, 500, corsHeaders);
+  }
+});

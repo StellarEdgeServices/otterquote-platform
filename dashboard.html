@@ -1250,7 +1250,7 @@
             <div id="retailFields" class="conditional-section" style="display:none;">
               <div class="form-group">
                 <label class="form-label">Roof Size (squares)</label>
-                <input type="number" step="0.1" name="roofSquares" class="form-input" placeholder="If known &mdash; Hover measurement will provide this">
+                <input type="number" step="0.1" name="roofSquares" class="form-input" placeholder="If known &mdash; your professional measurement will provide this">
               </div>
             </div>
 
@@ -2022,7 +2022,7 @@
           measurementsNote  = null;
           measurementsBtns  = [];
         } else if (hasHoverOrder) {
-          measurementsDesc  = 'Your Hover measurement link was sent. Awaiting your photos — check your email inbox.';
+          measurementsDesc  = 'Your measurement link was sent. Awaiting your photos — check your email inbox.';
           measurementsNote  = resendAvailable
             ? `Link sent to ${hoverOrder.capturing_user_email || 'your email'}. Didn't receive it? Resend below.`
             : 'Resend limit reached for today (3/3). Try again tomorrow or upload measurements manually.';
@@ -2042,7 +2042,7 @@
           ];
         } else if (isExplicitlyCash) {
           // Retail / cash — required, no hover order yet
-          measurementsDesc  = 'Required for retail projects. Upload measurement reports or use a Hover aerial measurement.';
+          measurementsDesc  = 'Required for retail projects. Upload measurement reports or use a professional aerial measurement.';
           measurementsNote  = 'Required — contractors need measurements to price your project accurately.';
           measurementsBtns  = [
             { label: 'Upload', action: 'upload',   data: 'measurements' },
@@ -2050,7 +2050,7 @@
           ];
         } else {
           // Job type not yet selected (funding_type = null) — treat as optional
-          measurementsDesc  = 'Optional — upload measurement reports or use a Hover aerial measurement for more accurate bids.';
+          measurementsDesc  = 'Optional — upload measurement reports or use a professional aerial measurement for more accurate bids.';
           measurementsNote  = 'Optional but recommended. Contractors use measurements to price your project accurately.';
           measurementsBtns  = [
             { label: 'Upload', action: 'upload',   data: 'measurements' },
@@ -2197,16 +2197,16 @@
           if (hoverRebateOrder.rebate_paid_at) {
             const d = new Date(hoverRebateOrder.rebate_paid_at);
             const dateStr = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            headerLine = 'Hover measurement fee rebated';
-            bodyLine = `Your ${amtLabel} Hover measurement fee was rebated to your original payment method on ${dateStr}. Refunds typically show on your statement within 5–10 business days.`;
+            headerLine = 'Measurement fee rebated';
+            bodyLine = `Your ${amtLabel} measurement fee was rebated to your original payment method on ${dateStr}. Refunds typically show on your statement within 5–10 business days.`;
             badgeColor = '#10B981'; // green
           } else if (hoverRebateOrder.rebate_due) {
-            headerLine = `Hover fee paid — ${amtLabel} rebate pending`;
-            bodyLine = `You've paid ${amtLabel} for your Hover measurement report. When your project closes with an Otter Quotes contractor, the full ${amtLabel} is rebated to your original payment method automatically.`;
+            headerLine = `Measurement fee paid — ${amtLabel} rebate pending`;
+            bodyLine = `You've paid ${amtLabel} for your measurement report. When your project is completed with an Otter Quotes contractor, the full ${amtLabel} is rebated to your original payment method automatically.`;
             badgeColor = 'var(--amber,#E07B00)';
           } else {
-            headerLine = `Hover fee paid — ${amtLabel}`;
-            bodyLine = `Your ${amtLabel} Hover measurement payment is on file.`;
+            headerLine = `Measurement fee paid — ${amtLabel}`;
+            bodyLine = `Your ${amtLabel} measurement payment is on file.`;
             badgeColor = '#64748B';
           }
 
@@ -2268,19 +2268,19 @@
                 <div style="font-size:2rem;flex-shrink:0;line-height:1;">🏠</div>
                 <div style="flex:1;">
                   <div style="font-weight:700;color:var(--amber,#E07B00);font-size:1rem;margin-bottom:0.5rem;">
-                    Design your siding on Hover
+                    Design your siding
                   </div>
                   <div style="font-size:0.875rem;color:rgba(255,255,255,0.85);margin-bottom:1rem;line-height:1.55;">
                     Siding pricing depends on <strong style="color:#fff;">manufacturer</strong>,
                     <strong style="color:#fff;">profile</strong>,
                     <strong style="color:#fff;">color</strong>, and
                     <strong style="color:#fff;">trim</strong>.
-                    Once you've chosen all four in Hover, your siding bids will be released to contractors.
+                    Once you've chosen all four in your property design, your siding bids will be released to contractors.
                   </div>
                   <a href="${hoverLink}" target="_blank" rel="noopener"
                      style="display:inline-block;background:var(--amber,#E07B00);color:#0D1B2E;font-size:0.875rem;font-weight:700;text-decoration:none;padding:8px 20px;border-radius:0.5rem;transition:opacity 0.2s;"
                      onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-                    Design Your Siding in Hover →
+                    Design Your Siding →
                   </a>
                 </div>
               </div>

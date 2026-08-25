@@ -237,7 +237,7 @@ const Services = {
         body: {
           amount,
           currency: 'usd',
-          description: description || 'Hover Complete Property Data File',
+          description: description || 'Complete Property Report',
           metadata: {
             claim_id,
             type: 'hover_measurement',
@@ -326,6 +326,61 @@ const Services = {
   // ================================================================
 
   /**
+   * Record a PAID, human-fulfilled measurement order.
+   *
+   * This does NOT contact a measurement vendor. Otter Quotes orders the
+   * report out-of-band and an admin delivers it from admin-measurements.html
+   * (Dustin, 2026-08-24: "We have measurements mailed to us and entered
+   * manually for the first few runs"). Deliberately vendor-agnostic — the
+   * vendor is an operational detail of fulfillment, not of this call.
+   *
+   * Price is NEVER sent from the client. The Edge Function reads it from
+   * platform_settings.measurement_products and requires the PaymentIntent to
+   * match exactly, so a tampered client cannot buy a report for a penny.
+   *
+   * @param {Object} params
+   * @param {string} params.claim_id
+   * @param {string} params.product_code — SKU key, e.g. 'roof_basic'
+   * @param {string} [params.payment_intent_id] — required for buyable SKUs
+   * @param {string} [params.buyer_role] — 'homeowner' (default) or 'contractor'
+   * @param {string} [params.contractor_id]
+   * @param {string} [params.note]
+   * @returns {Object} { order_id, status, quote_required? }
+   */
+  async createMeasurementOrder(params) {
+    const {
+      claim_id, product_code, payment_intent_id,
+      buyer_role = 'homeowner', contractor_id = null, note = null,
+    } = params || {};
+
+    if (!claim_id) throw new Error('Missing claim_id.');
+    if (!product_code) throw new Error('Missing product_code.');
+
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('You need to be signed in to order a report.');
+
+    const res = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/create-measurement-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: CONFIG.SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ claim_id, product_code, payment_intent_id, buyer_role, contractor_id, note }),
+    });
+
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // payment_captured means the money moved but the row did not write.
+      // Surface that distinctly: the one thing the buyer must not do is pay again.
+      const err = new Error(payload.error || 'Could not record your measurement order.');
+      err.paymentCaptured = payload.payment_captured === true;
+      throw err;
+    }
+    return payload;
+  },
+
+  /**
    * Create a Hover measurement order and get the photo capture link.
    * Uses OAuth-authenticated capture-requests API (v2).
    *
@@ -353,7 +408,7 @@ const Services = {
     } = params;
 
     if (!payment_intent_id) {
-      throw new Error('Missing payment_intent_id — Hover payment must complete before ordering (D-181).');
+      throw new Error('Missing payment_intent_id — payment must complete before ordering (D-181).');
     }
     // D-205: deliverable_type_id is required and must be 2 or 3. Fail loud at the client too.
     if (deliverable_type_id !== 2 && deliverable_type_id !== 3) {
@@ -401,7 +456,7 @@ const Services = {
           order_id: order.id,
           capture_link: null,
           placeholder: true,
-          message: 'Hover order creation failed. Please try again.',
+          message: 'Measurement order creation failed. Please try again.',
         };
       }
 

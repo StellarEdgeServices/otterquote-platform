@@ -50,11 +50,11 @@ export const MEASUREMENTS_COPY = {
   // ── Path A card — Hover, PAID (help-measurements.html:572-583) ──
   hoverBadge: 'Recommended for Most',
   hoverIcon: '📐',
-  hoverCardTitle: 'Hover Complete Property Data File',
+  hoverCardTitle: 'Complete Property Report',
   // D-291 price line (repriced from D-205's $150) — LOCKED, exact.
   hoverCardPrice: '$15 (rebated if you use an Otter Quotes contractor)',
   hoverCardDescription:
-    "Get a complete 3D model of your home — roof, walls, openings, and full measurements — by taking photos with your phone. Hover's technology builds the model from your photos. This is your best option for any full-replacement project.",
+    "Get a complete 3D model of your home — roof, walls, openings, and full measurements — by taking photos with your phone. Our measurement technology builds the model from your photos. This is your best option for any full-replacement project.",
   hoverCardFeatures: [
     'Precise, professional-grade measurements',
     '3D model of your property',
@@ -80,9 +80,9 @@ export const MEASUREMENTS_COPY = {
   cardSelectButton: 'Choose This Option',
 
   // ── Hover flow section (help-measurements.html:607-647) ──
-  hoverSectionTitle: 'Hover Complete Property Data File',
+  hoverSectionTitle: 'Complete Property Report',
   hoverSectionIntro:
-    'Hover uses advanced technology to build a complete 3D model of your home from photos you take with your phone — roof, walls, openings, and every measurement contractors need to bid accurately.',
+    'Our advanced technology builds a complete 3D model of your home from photos you take with your phone — roof, walls, openings, and every measurement contractors need to bid accurately.',
 
   // Rebate callout (help-measurements.html:611) — D-291 financial terms (repriced from D-205's $150), LOCKED.
   // "<strong>How the $15 works:</strong> …" flattened.
@@ -92,17 +92,17 @@ export const MEASUREMENTS_COPY = {
   // Hover steps (help-measurements.html:614-636).
   hoverStep1Title: 'Purchase Your Report',
   hoverStep1Text:
-    'Pay the $15 fee securely through Stripe. This covers your RoofScope Complete property data file.',
+    'Pay the $15 fee securely through Stripe. This covers your Complete Property Report.',
   hoverStep2Title: 'Take Photos of Your Home',
   hoverStep2Text:
-    "We'll send you a link to Hover's guided photo capture. Their app walks you through taking 8-10 photos from around your home — it checks photo quality as you go.",
+    "We'll send you a link to start your guided photo capture. The photo-capture app walks you through taking 8-10 photos from around your home — it checks photo quality as you go.",
   hoverStep3Title: 'Receive Your Report',
   hoverStep3Text:
-    "Hover processes your photos (usually 24-48 hours) and creates a detailed measurement report. We'll save it in your account — you'll get a notification when it's ready.",
+    "Our measurement service processes your photos (usually 24-48 hours) and creates a detailed measurement report. We'll save it in your account — you'll get a notification when it's ready.",
 
   // Info callout (help-measurements.html:639) — "<strong>What you'll need:</strong> …" flattened.
   hoverWhatYouNeed:
-    "What you'll need: A smartphone with a decent camera and the ability to walk around the outside of your home. Hover's guided process handles the rest.",
+    "What you'll need: A smartphone with a decent camera and the ability to walk around the outside of your home. Our guided process handles the rest.",
 
   // Hover purchase button (help-measurements.html:644).
   hoverPurchaseButton: 'Purchase Property Data File — $15',
@@ -119,19 +119,19 @@ export const MEASUREMENTS_COPY = {
 
   // ── Hover payment success (help-measurements.html:663-676) ──
   hoverSuccessIcon: '📐',
-  hoverSuccessTitle: 'Hover Report Ordered',
+  hoverSuccessTitle: 'Measurement Report Ordered',
   hoverSuccessText:
-    'Your Hover Complete property data file has been ordered. Check your email and text messages for a link to take photos of your home.',
+    'Your Complete Property Report has been ordered. Check your email and text messages for a link to take photos of your home.',
   // "<strong>Next steps:</strong> …" flattened (help-measurements.html:671).
   hoverSuccessNextSteps:
-    'Next steps: Open the Hover link on your phone, walk around the outside of your home, and follow the guided photo capture. The report is usually ready in 24-48 hours.',
+    'Next steps: Open the link on your phone, walk around the outside of your home, and follow the guided photo capture. The report is usually ready in 24-48 hours.',
   // Shared return-to-dashboard button (help-measurements.html:675/742).
   returnToDashboardButton: 'Return to Dashboard',
 
   // ── Adjuster flow section (help-measurements.html:683-725) ──
   adjusterSectionTitle: 'Request Measurements from Your Adjuster',
   adjusterIntro:
-    "If you're working with an insurance claim, we can request property measurements from your adjuster. Many adjusters take measurements during their inspection and can share them at no cost. (If you're paying out of pocket, Hover is your best option.)",
+    "If you're working with an insurance claim, we can request property measurements from your adjuster. Many adjusters take measurements during their inspection and can share them at no cost. (If you're paying out of pocket, the Complete Property Report is your best option.)",
   // "<strong>Good news:</strong> …" flattened (help-measurements.html:691).
   alreadySentEstimateNote:
     "Good news: We already sent an email to your adjuster requesting your insurance estimate. Since that email also requested measurements, you don't need to send another one. We'll capture any measurements they include in their response.",

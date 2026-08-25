@@ -29,7 +29,10 @@ const NAP = Object.freeze({
 });
 
 const Nav = {
-  /** Detect if current page is a contractor page */
+  /**
+   * Detect if current page is a contractor page (URL heuristic).
+   * Retained for renderFooter(), which chooses its column set by URL.
+   */
   _isContractorPage() {
     const path = window.location.pathname;
     // contractor-about.html is a homeowner-facing page (viewing a contractor's profile);
@@ -39,110 +42,230 @@ const Nav = {
   },
 
   /**
-   * Detect if current page is a partner entry/portal page. Matches only
-   * filenames starting with "partner-" — ref-*.html, recruit.html,
-   * refer-a-friend.html, and inspector-landing.html serve homeowner/mixed
-   * audiences and must keep the default nav.
+   * Detect if current page is a partner entry/portal page. Matches
+   * "partner-*" filenames plus partners.html (the profession gate, which is
+   * the referral-partner path's front door). ref-*.html, recruit.html,
+   * refer-a-friend.html serve homeowner/mixed audiences and are NOT partner
+   * pages for nav purposes.
    */
   _isPartnerPage() {
-    const path = window.location.pathname;
-    const file = path.substring(path.lastIndexOf('/') + 1);
-    return file.startsWith('partner-');
+    const file = this._currentFile();
+    return file === 'partners.html' || file.startsWith('partner-');
   },
 
-  /** "For Partners" dropdown links (#567) — non-contractor header only. */
-  _partnerLinks: [
-    { href: '/partner-re.html',         label: 'Real Estate Agents' },
-    { href: '/partner-insurance.html',  label: 'Insurance Agents' },
-    { href: '/partner-adjusters.html',  label: 'Adjusters' },
-    { href: '/partner-inspectors.html', label: 'Home Inspectors' },
-    { href: '/refer-a-friend.html',     label: 'Refer a Friend' },
-    { href: '/partner-other.html',      label: 'Other Industries' },
-    { href: '/partner-app.html',        label: '📱 Partner App' },
+  /* ══════════════════════════════════════════════════════════════════════
+     TWO-TIER NAVIGATION
+     Row 1 — role switcher: Homeowner · Contractor · Referral Partner.
+             Always visible, always clickable, on every page.
+     Row 2 — the nav for whichever role is active. Nothing from another
+             role's world appears here.
+     Role resolution order (first hit wins):
+       1. <header id="site-header" data-role="..."> — a page declaring itself
+       2. the URL (a contractor page is a contractor page)
+       3. ?role= on the query string (role-switcher deep links)
+       4. the visitor's last explicit choice (localStorage)
+       5. homeowner
+     An AUTHENTICATED role always overrides all of the above once auth
+     resolves — see _updateNavLinksForRole(), called from _renderAuthSlot().
+     ══════════════════════════════════════════════════════════════════════ */
+
+  /**
+   * The referral_agents.agent_type values that mean "this account is a
+   * referral partner." Declared ONCE here (the #851 defect class was this
+   * exact array hardcoded in three places); _renderAuthSlot() and
+   * _navRoleForAuthRole() both read it. 'customer' is deliberately absent —
+   * a homeowner who refers a friend is still a homeowner in the nav.
+   */
+  PARTNER_AUTH_ROLES: ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'],
+
+  _ROLE_TABS: [
+    { role: 'homeowner',  label: 'Homeowner',        href: '/index.html' },
+    { role: 'contractor', label: 'Contractor',       href: '/contractor-join.html' },
+    { role: 'partner',    label: 'Referral Partner', href: '/partners.html' },
   ],
 
-  _partnersDropdownHTML() {
+  /**
+   * Row-2 link sets, per role, split guest/authed. `id` values match the
+   * existing `data-active` attributes already written into every page's
+   * <header> — do not rename one without the other.
+   */
+  _ROLE_NAV: {
+    homeowner: {
+      logoHref: '/index.html',
+      guest: [
+        { href: '/index.html',            label: 'Home',            id: 'home' },
+        { href: '/how-it-works.html',     label: 'How It Works',    id: 'how-it-works' },
+        { href: '/help-measurements.html',label: 'Measurements',    id: 'measurements' },
+        { href: '/refer-a-friend.html',   label: 'Refer a Friend',  id: 'refer-a-friend' },
+        { href: '/faq.html',              label: 'FAQ',             id: 'faq' },
+      ],
+      authed: [
+        { href: '/dashboard.html',        label: 'My Project',      id: 'dashboard' },
+        { href: '/how-it-works.html',     label: 'How It Works',    id: 'how-it-works' },
+        { href: '/help-measurements.html',label: 'Measurements',    id: 'measurements' },
+        { href: '/refer-a-friend.html',   label: 'Refer a Friend',  id: 'refer-a-friend' },
+        { href: '/faq.html',              label: 'FAQ',             id: 'faq' },
+      ],
+    },
+    contractor: {
+      logoHref: '/contractor-join.html',
+      logoHrefAuthed: '/contractor-dashboard.html',
+      guest: [
+        { href: '/contractor-join.html',          label: 'Join',          id: 'contractor-join' },
+        { href: '/contractor-how-it-works.html',  label: 'How It Works',  id: 'how-it-works' },
+        { href: '/tools.html',                    label: 'Tools',         id: 'tools' },
+        { href: '/contractor-faq.html',           label: 'FAQ',           id: 'faq' },
+      ],
+      authed: [
+        { href: '/contractor-dashboard.html',     label: 'Home',          id: 'home' },
+        { href: '/contractor-opportunities.html', label: 'Opportunities', id: 'opportunities' },
+        { href: '/contractor-profile.html',       label: 'Profile',       id: 'profile' },
+        { href: '/contractor-settings.html',      label: 'Settings',      id: 'settings' },
+        { href: '/contractor-auto-bids.html',     label: 'Auto Bids',     id: 'auto-bids' },
+        { href: '/tools.html',                    label: 'Tools',         id: 'tools' },
+        { href: '/contractor-how-it-works.html',  label: 'How It Works',  id: 'how-it-works' },
+        { href: '/contractor-faq.html',           label: 'FAQ',           id: 'faq' },
+      ],
+    },
+    partner: {
+      logoHref: '/partners.html',
+      logoHrefAuthed: '/partner-dashboard.html',
+      guest: [
+        { href: '/partners.html',          label: 'Partner Programs', id: 'partners' },
+        { href: '/partner-app.html',       label: 'Partner App',      id: 'partner-app' },
+        { href: '/partner-agreement.html', label: 'Agreement',        id: 'partner-agreement' },
+        { href: '/faq.html',               label: 'FAQ',              id: 'faq' },
+      ],
+      authed: [
+        { href: '/partner-dashboard.html', label: 'Dashboard',        id: 'partner-dashboard' },
+        { href: '/partners.html',          label: 'Programs',         id: 'partners' },
+        { href: '/partner-app.html',       label: 'Get the App',      id: 'partner-app' },
+        { href: '/partner-agreement.html', label: 'Agreement',        id: 'partner-agreement' },
+        { href: '/faq.html',               label: 'FAQ',              id: 'faq' },
+      ],
+    },
+  },
+
+  _ROLE_STORAGE_KEY: 'oq_nav_role',
+
+  _currentFile() {
+    const path = window.location.pathname;
+    const file = path.substring(path.lastIndexOf('/') + 1);
+    // "/" and "/contractors/" style directory URLs resolve to their index
+    return file || 'index.html';
+  },
+
+  _readStoredRole() {
+    try {
+      const v = window.localStorage.getItem(this._ROLE_STORAGE_KEY);
+      return (v && this._ROLE_NAV[v]) ? v : null;
+    } catch (_) { return null; }   // private mode / blocked storage
+  },
+
+  _storeRole(role) {
+    if (!this._ROLE_NAV[role]) return;
+    try { window.localStorage.setItem(this._ROLE_STORAGE_KEY, role); } catch (_) { /* non-fatal */ }
+  },
+
+  /** Which role does the CURRENT page belong to, by URL? null = role-neutral. */
+  _roleFromUrl() {
+    const file = this._currentFile();
+    if (this._isPartnerPage()) return 'partner';
+    if (this._isContractorPage()) return 'contractor';
+    // Explicitly homeowner-owned surfaces (everything a referred or
+    // self-serve homeowner touches).
+    if (/^(index|how-it-works|faq|dashboard|landing|help-|ref\.|ref-|refer-a-friend|repair-intake|color-selection|project-confirmation|contract-signing|bids|trade-selector|onboarding-demo)/.test(file)) {
+      return 'homeowner';
+    }
+    // The tools-* family and the standalone product pages sell software TO
+    // contractors ("Contractor Tools", CRM, Voice AI, Online Management).
+    // They are reached from the contractor nav and belong to that role even
+    // though their filenames carry no "contractor" prefix.
+    if (/^(tools|oq-voice-ai|oqom-)/.test(file)) return 'contractor';
+    return null;   // admin-*, legal, stellar-edge, recruit — role-neutral
+  },
+
+  /** Map an authenticated account role onto a nav role. */
+  _navRoleForAuthRole(role) {
+    if (role === 'contractor') return 'contractor';
+    if (this.PARTNER_AUTH_ROLES.includes(role)) return 'partner';
+    return 'homeowner';
+  },
+
+  _resolveRole() {
+    const header = document.getElementById('site-header');
+    const declared = header && header.dataset.role;
+    if (declared && this._ROLE_NAV[declared]) return declared;
+
+    const fromUrl = this._roleFromUrl();
+    if (fromUrl) return fromUrl;
+
+    try {
+      const q = new URLSearchParams(window.location.search).get('role');
+      if (q && this._ROLE_NAV[q]) return q;
+    } catch (_) { /* ignore malformed query strings */ }
+
+    return this._readStoredRole() || 'homeowner';
+  },
+
+  /** Row 1 — the role switcher. Present on every page, for every visitor. */
+  _roleBarHTML(activeRole) {
     return `
-      <div class="nav-dropdown" id="nav-partners-dropdown">
-        <button type="button" class="nav-link nav-dropdown-toggle" id="nav-partners-toggle"
-                aria-haspopup="true" aria-expanded="false">
-          For Partners <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
-        </button>
-        <div class="nav-dropdown-menu" role="menu" aria-label="For Partners">
-          ${this._partnerLinks.map(l => `
-            <a href="${l.href}" class="nav-dropdown-item" role="menuitem">${l.label}</a>
-          `).join('')}
+      <div class="nav-roles">
+        <div class="container nav-roles-inner">
+          <span class="nav-roles-label">I'm a</span>
+          <nav class="nav-roles-tabs" aria-label="Choose your role">
+            ${this._ROLE_TABS.map(t => `
+              <a href="${t.href}" class="nav-role-tab ${t.role === activeRole ? 'active' : ''}"
+                 data-role="${t.role}"${t.role === activeRole ? ' aria-current="true"' : ''}>${t.label}</a>
+            `).join('')}
+          </nav>
         </div>
       </div>
     `;
   },
 
-  _wirePartnersDropdown() {
-    const dropdown = document.getElementById('nav-partners-dropdown');
-    if (!dropdown || dropdown.dataset.wired === 'true') return;
-    dropdown.dataset.wired = 'true';
-    const toggle = dropdown.querySelector('.nav-dropdown-toggle');
-    const setOpen = (open) => {
-      dropdown.classList.toggle('open', open);
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
-    // Click toggles — the mobile/hamburger expandable behavior, and the
-    // keyboard/touch fallback on desktop.
-    toggle.addEventListener('click', (e) => {
-      e.preventDefault();
-      setOpen(!dropdown.classList.contains('open'));
-    });
-    // Hover open/close only on devices that actually hover — on touch,
-    // mouseenter firing before click would immediately re-close the menu.
-    const hoverable = window.matchMedia('(hover: hover) and (pointer: fine)');
-    if (hoverable.matches) {
-      dropdown.addEventListener('mouseenter', () => setOpen(true));
-      dropdown.addEventListener('mouseleave', () => setOpen(false));
-    }
-    dropdown.addEventListener('focusin', () => setOpen(true));
-    dropdown.addEventListener('focusout', (e) => {
-      if (!dropdown.contains(e.relatedTarget)) setOpen(false);
-    });
-    dropdown.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { setOpen(false); toggle.focus(); }
-    });
-    document.addEventListener('click', (e) => {
-      if (!dropdown.contains(e.target)) setOpen(false);
+  /**
+   * Remember an explicitly-clicked role BEFORE the browser navigates, so a
+   * role-neutral destination (tools.html, terms.html) still shows the nav
+   * the visitor just asked for.
+   */
+  _wireRoleBar() {
+    document.querySelectorAll('.nav-role-tab').forEach(tab => {
+      if (tab.dataset.wired === 'true') return;
+      tab.dataset.wired = 'true';
+      tab.addEventListener('click', () => this._storeRole(tab.dataset.role));
     });
   },
 
-  /** Render the site header */
+  /** Row 2 — the inner links for one role. */
+  _roleLinks(role, isAuthed) {
+    const cfg = this._ROLE_NAV[role] || this._ROLE_NAV.homeowner;
+    return isAuthed ? cfg.authed : cfg.guest;
+  },
+
+  _roleLogoHref(role, isAuthed) {
+    const cfg = this._ROLE_NAV[role] || this._ROLE_NAV.homeowner;
+    return (isAuthed && cfg.logoHrefAuthed) ? cfg.logoHrefAuthed : cfg.logoHref;
+  },
+
+  /** Render the site header (role bar + role-scoped nav) */
   renderHeader(options = {}) {
     const { active = '', showAuth = true } = options;
     const nav = document.getElementById('site-header');
     if (!nav) return;
 
-    const isContractor = this._isContractorPage();
-    const isPartner = this._isPartnerPage();
-
-    const links = isContractor ? [
-      { href: '/contractor-dashboard.html',      label: 'Home',          id: 'home' },
-      { href: '/contractor-opportunities.html',  label: 'Opportunities', id: 'opportunities' },
-      { href: '/contractor-profile.html',        label: 'Profile',       id: 'profile' },
-      { href: '/contractor-settings.html',       label: 'Settings',      id: 'settings' },
-      { href: '/contractor-auto-bids.html',      label: 'Auto Bids',     id: 'auto-bids' },
-      { href: '/tools.html',                     label: 'Tools',         id: 'tools' },
-      { href: '/contractor-how-it-works.html',   label: 'How It Works',  id: 'how-it-works' },
-      { href: '/contractor-faq.html',            label: 'FAQ',           id: 'faq' },
-    ] : isPartner ? [
-      { href: '/index.html',              label: 'Home',              id: 'home' },
-      { href: '/partner-dashboard.html',  label: 'Partner Dashboard', id: 'partner-dashboard' },
-      { href: '/partner-app.html',        label: 'Get the App',       id: 'partner-app' },
-      { href: '/faq.html',                label: 'FAQ',               id: 'faq' },
-    ] : [
-      { href: '/index.html',         label: 'Home',              id: 'home' },
-      { href: '/how-it-works.html',  label: 'How It Works',      id: 'how-it-works' },
-      { href: '/faq.html',           label: 'FAQ',               id: 'faq' },
-    ];
+    const role = this._resolveRole();
+    this._activeRole = role;
+    const isContractor = (role === 'contractor');
+    // Pre-auth render uses the guest link set; _updateNavLinksForRole()
+    // re-renders row 2 the moment a real session resolves.
+    const links = this._roleLinks(role, false);
 
     nav.innerHTML = `
+      ${this._roleBarHTML(role)}
       <div class="nav-inner container">
-        <a href="${isContractor ? '/contractor-dashboard.html' : '/index.html'}" class="nav-logo">
+        <a href="${this._roleLogoHref(role, false)}" class="nav-logo">
           <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
           <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
         </a>
@@ -150,23 +273,20 @@ const Nav = {
           ${links.map(l => `
             <a href="${l.href}" class="nav-link ${active === l.id ? 'active' : ''}">${l.label}</a>
           `).join('')}
-          ${!isContractor ? this._partnersDropdownHTML() : ''}
           ${showAuth ? '<div class="nav-mobile-auth" id="nav-mobile-auth-slot"></div>' : ''}
-          ${isContractor && !showAuth ? `
-            <a href="#" class="nav-link nav-mobile-cta-secondary" onclick="Auth.signOut(); return false;">Log Out</a>
-          ` : ''}
+          ${isContractor && !showAuth ? '<span id="nav-mobile-signout-slot"></span>' : ''}
         </div>
         <div class="nav-actions" id="nav-actions">
           ${showAuth ? '<div id="nav-auth-slot"></div>' : ''}
-          ${isContractor && !showAuth ? `
-            <button class="btn btn-sm btn-ghost" onclick="Auth.signOut()">Log Out</button>
-          ` : ''}
+          ${isContractor && !showAuth ? '<span id="nav-signout-slot"></span>' : ''}
         </div>
         <button class="nav-hamburger" id="nav-hamburger" aria-label="Menu">
           <span></span><span></span><span></span>
         </button>
       </div>
     `;
+
+    this._wireRoleBar();
 
     // Mobile hamburger toggle
     const hamburger = document.getElementById('nav-hamburger');
@@ -178,91 +298,114 @@ const Nav = {
       });
     }
 
-    // "For Partners" dropdown behavior (#567) — non-contractor header only
-    if (!isContractor) {
-      this._wirePartnersDropdown();
-    }
-
     // Auth state
     if (showAuth) {
       this._renderAuthSlot();
+    } else if (isContractor) {
+      // data-auth="false" pages (contractor-faq, contractor-how-it-works) are
+      // public marketing pages inside the contractor path. They used to render
+      // an unconditional "Log Out" control, so a signed-OUT visitor arriving
+      // from the contractor nav was offered the one action they could not take.
+      // Now the control appears only when there is a session to end.
+      this._renderSignOutSlotIfSignedIn();
+    }
+  },
+
+  /** Fill the sign-out slots on data-auth="false" pages, but only for a real session. */
+  async _renderSignOutSlotIfSignedIn() {
+    const slot = document.getElementById('nav-signout-slot');
+    const mobileSlot = document.getElementById('nav-mobile-signout-slot');
+    if (!slot && !mobileSlot) return;
+    if (typeof Auth === 'undefined') return;   // auth.js absent — guest is the safe assumption
+    let user = null;
+    try { user = await Auth.getUser(); } catch (_) { return; }
+    if (!user) return;
+    if (slot) {
+      slot.innerHTML = '<button class="btn btn-sm btn-ghost" onclick="Auth.signOut()">Log Out</button>';
+    }
+    if (mobileSlot) {
+      mobileSlot.innerHTML = '<a href="#" class="nav-link nav-mobile-cta-secondary" onclick="Auth.signOut(); return false;">Log Out</a>';
     }
   },
 
   /**
-   * Patch nav links and logo href when the authenticated role does not match
-   * the URL-based contractor detection. This handles pages like
-   * contractor-about.html (homeowner page whose URL contains "contractor").
-   * Only fires when showAuth=true (i.e., pages that render the auth slot).
+   * Called once auth resolves. An authenticated account's real role beats
+   * every heuristic, so this re-renders row 2 and re-marks the role tab
+   * wholesale rather than patching individual anchors — the previous
+   * anchor-by-anchor patch left orphaned links whenever the corrected set
+   * was shorter than the rendered one.
    */
-  _updateNavLinksForRole(role) {
-    if (!role) return;
-    const isContractorByUrl  = this._isContractorPage();
-    const isContractorByRole = (role === 'contractor');
-    if (isContractorByUrl === isContractorByRole) return; // nothing to fix
+  _updateNavLinksForRole(authRole) {
+    if (!authRole) return;
+    const role = this._navRoleForAuthRole(authRole);
 
-    const links = isContractorByRole ? [
-      { href: '/contractor-dashboard.html',     label: 'Home' },
-      { href: '/contractor-opportunities.html', label: 'Opportunities' },
-      { href: '/contractor-profile.html',       label: 'Profile' },
-      { href: '/contractor-settings.html',      label: 'Settings' },
-      { href: '/contractor-auto-bids.html',     label: 'Auto Bids' },
-      { href: '/tools.html',                    label: 'Tools' },
-      { href: '/contractor-how-it-works.html',  label: 'How It Works' },
-      { href: '/contractor-faq.html',           label: 'FAQ' },
-    ] : [
-      { href: '/index.html',        label: 'Home' },
-      { href: '/how-it-works.html', label: 'How It Works' },
-      { href: '/faq.html',          label: 'FAQ' },
-    ];
-
-    // Rebuild nav links in-place to handle both role expansions and
-    // contractions. Simply patching existing anchors leaves orphaned
-    // links when switching from contractor to homeowner.
     const container = document.getElementById('nav-links');
     if (container) {
-      const anchors = Array.from(container.querySelectorAll(
-        'a.nav-link:not(.nav-mobile-cta):not(.nav-mobile-cta-secondary)'
-      ));
-      // Update anchors that have a corresponding corrected link; remove the rest
-      anchors.forEach((a, i) => {
-        if (links[i]) { a.href = links[i].href; a.textContent = links[i].label; }
-        else { a.remove(); }
-      });
-      // If corrected link set is larger than existing anchors, append the extras
-      if (links.length > anchors.length) {
-        const mobileAuthSlot = container.querySelector('#nav-mobile-auth-slot');
-        const extras = links.slice(anchors.length)
-          .map(l => `<a href="${l.href}" class="nav-link">${l.label}</a>`)
-          .join('');
-        if (mobileAuthSlot) {
-          mobileAuthSlot.insertAdjacentHTML('beforebegin', extras);
-        } else {
-          container.insertAdjacentHTML('beforeend', extras);
-        }
-      }
-    }
-
-    // #567: keep the "For Partners" dropdown consistent with the corrected
-    // role — contractors never see it; non-contractors always do.
-    const existingDropdown = document.getElementById('nav-partners-dropdown');
-    if (isContractorByRole) {
-      if (existingDropdown) existingDropdown.remove();
-    } else if (!existingDropdown && container) {
+      const active = (document.getElementById('site-header') || {}).dataset?.active || '';
       const mobileAuthSlot = container.querySelector('#nav-mobile-auth-slot');
-      if (mobileAuthSlot) {
-        mobileAuthSlot.insertAdjacentHTML('beforebegin', this._partnersDropdownHTML());
-      } else {
-        container.insertAdjacentHTML('beforeend', this._partnersDropdownHTML());
-      }
-      this._wirePartnersDropdown();
+      const linksHTML = this._roleLinks(role, true).map(l => `
+        <a href="${l.href}" class="nav-link ${active === l.id ? 'active' : ''}">${l.label}</a>
+      `).join('');
+      // Keep the mobile auth slot (it already holds rendered markup) and
+      // replace only the link anchors around it.
+      container.querySelectorAll('a.nav-link:not(.nav-mobile-cta):not(.nav-mobile-cta-secondary)')
+               .forEach(a => a.remove());
+      if (mobileAuthSlot) mobileAuthSlot.insertAdjacentHTML('beforebegin', linksHTML);
+      else container.insertAdjacentHTML('afterbegin', linksHTML);
     }
 
-    // Update logo href
-    const logo = document.querySelector('.nav-logo');
-    if (logo) {
-      logo.href = isContractorByRole ? '/contractor-dashboard.html' : '/index.html';
+    // Re-mark the active role tab.
+    if (role !== this._activeRole) {
+      this._activeRole = role;
+      document.querySelectorAll('.nav-role-tab').forEach(tab => {
+        const on = tab.dataset.role === role;
+        tab.classList.toggle('active', on);
+        if (on) tab.setAttribute('aria-current', 'true');
+        else tab.removeAttribute('aria-current');
+      });
+      const logo = document.querySelector('.nav-logo');
+      if (logo) logo.href = this._roleLogoHref(role, true);
+    } else {
+      const logo = document.querySelector('.nav-logo');
+      if (logo) logo.href = this._roleLogoHref(role, true);
     }
+  },
+
+  /**
+   * Guest (signed-out) call-to-action pair, scoped to the active role.
+   * Before the two-tier nav this was hardcoded to "Get Started /
+   * Contractor Login" on every page, which meant a real-estate agent on a
+   * partner page was offered a contractor login. Declared once and used by
+   * BOTH guest branches of _renderAuthSlot (the Auth-undefined defensive
+   * path and the no-session path) so the two cannot drift.
+   */
+  _GUEST_CTA: {
+    homeowner: {
+      primary:   { href: 'https://app.otterquote.com/get-started', label: 'Get Started' },
+      secondary: { href: '/login.html',                            label: 'Log In' },
+    },
+    contractor: {
+      primary:   { href: '/contractor-join.html',  label: 'Join as a Contractor' },
+      secondary: { href: '/contractor-login.html', label: 'Contractor Login' },
+    },
+    partner: {
+      primary:   { href: '/partners.html',      label: 'Become a Partner' },
+      secondary: { href: '/partner-login.html', label: 'Partner Login' },
+    },
+  },
+
+  _guestAuthHTML(role) {
+    const cta = this._GUEST_CTA[role] || this._GUEST_CTA.homeowner;
+    return {
+      desktop: `
+        <a href="${cta.primary.href}" class="btn btn-sm btn-primary">${cta.primary.label}</a>
+        <a href="${cta.secondary.href}" class="btn btn-sm btn-ghost">${cta.secondary.label}</a>
+      `,
+      mobile: `
+        <a href="${cta.primary.href}" class="nav-link nav-mobile-cta">${cta.primary.label}</a>
+        <a href="${cta.secondary.href}" class="nav-link nav-mobile-cta-secondary">${cta.secondary.label}</a>
+      `,
+    };
   },
 
   async _renderAuthSlot() {
@@ -274,16 +417,9 @@ const Nav = {
     // This prevents ReferenceError crashes on pages that include nav.js but
     // not auth.js (e.g. pure redirect pages). Guest state is correct fallback.
     if (typeof Auth === 'undefined') {
-      const guestDesktop = `
-        <a href="https://app.otterquote.com/get-started" class="btn btn-sm btn-primary">Get Started</a>
-        <a href="/contractor-login.html" class="btn btn-sm btn-ghost">Contractor Login</a>
-      `;
-      const guestMobile = `
-        <a href="https://app.otterquote.com/get-started" class="nav-link nav-mobile-cta">Get Started</a>
-        <a href="/contractor-login.html" class="nav-link nav-mobile-cta-secondary">Contractor Login</a>
-      `;
-      if (slot) slot.innerHTML = guestDesktop;
-      if (mobileSlot) mobileSlot.innerHTML = guestMobile;
+      const guest = this._guestAuthHTML(this._activeRole || this._resolveRole());
+      if (slot) slot.innerHTML = guest.desktop;
+      if (mobileSlot) mobileSlot.innerHTML = guest.mobile;
       return;
     }
 
@@ -298,8 +434,9 @@ const Nav = {
       // (e.g. homeowner on contractor-about.html, or contractor on a homeowner page)
       this._updateNavLinksForRole(role);
 
-      // Partner roles mirror the list auth.js uses for magic-link routing.
-      const partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+      // Single source: Nav.PARTNER_AUTH_ROLES (see its declaration — the #851
+      // defect class was this array hardcoded in three places).
+      const partnerRoles = this.PARTNER_AUTH_ROLES;
       const dashboardUrl = role === 'contractor'
         ? '/contractor-dashboard.html'
         : partnerRoles.includes(role)
@@ -319,14 +456,9 @@ const Nav = {
         <a href="#" class="nav-link nav-mobile-cta-secondary" onclick="Auth.signOut(); return false;">Sign Out</a>
       `;
     } else {
-      desktopHTML = `
-        <a href="https://app.otterquote.com/get-started" class="btn btn-sm btn-primary">Get Started</a>
-        <a href="/contractor-login.html" class="btn btn-sm btn-ghost">Contractor Login</a>
-      `;
-      mobileHTML = `
-        <a href="https://app.otterquote.com/get-started" class="nav-link nav-mobile-cta">Get Started</a>
-        <a href="/contractor-login.html" class="nav-link nav-mobile-cta-secondary">Contractor Login</a>
-      `;
+      const guest = this._guestAuthHTML(this._activeRole || this._resolveRole());
+      desktopHTML = guest.desktop;
+      mobileHTML = guest.mobile;
     }
 
     if (slot) slot.innerHTML = desktopHTML;

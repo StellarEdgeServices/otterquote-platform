@@ -898,7 +898,7 @@ function FormContent({
             <div className="oqpc-callout-icon">ℹ️</div>
             <div>
               <div className="oqpc-callout-title">Siding design already locked in</div>
-              <div className="oqpc-callout-body">Your manufacturer, profile, color, and trim selections were captured in Hover before bids were released. Contractors bid on those exact specifications — you don&apos;t need to re-enter them here.</div>
+              <div className="oqpc-callout-body">Your manufacturer, profile, color, and trim selections were captured during property design before bids were released. Contractors bid on those exact specifications — you don&apos;t need to re-enter them here.</div>
             </div>
           </div>
           <div className="oqpc-form-grid">
