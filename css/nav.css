@@ -222,9 +222,9 @@
   .footer-grid { grid-template-columns: 1fr; }
 }
 
-/* ═════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════
    NAV/FOOTER REFRESH — April 2026
-   ═════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════ */
 
 /* ── Better nav logo sizing for portrait otter icon ── */
 .nav-logo-icon {
@@ -357,12 +357,12 @@
 }
 
 
-/* ═════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════
    TWO-TIER NAVIGATION — role switcher (row 1)
    Row 1 answers "who are you"; row 2 answers "what can you do".
    The switcher is present on every page for every visitor, signed in or
    not, so changing roles is never more than one click away.
-   ═════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════ */
 
 /* Row 1 is a DIFFERENT surface from row 2, not a slightly darker version of
    it (Dustin, 2026-08-25: "Can we make the background on that different from
