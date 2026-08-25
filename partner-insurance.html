@@ -137,25 +137,6 @@
             line-height: 1.7;
         }
 
-        .hero .cta {
-            display: inline-block;
-            background: var(--amber);
-            color: var(--navy);
-            padding: 16px 40px;
-            border-radius: 10px;
-            font-weight: 700;
-            font-size: 1.05rem;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-
-        .hero .cta:hover {
-            background: var(--amber-2);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(224, 123, 0, 0.3);
-        }
-
         /* Container */
         .container {
             max-width: 1200px;
@@ -167,152 +148,35 @@
             padding: 96px 24px;
         }
 
-        /* How It Works */
-        .how-it-works {
+        /* Quick links to the split-out detail pages (How It Works / Why /
+           Referral Fee Details) — those sections used to live inline here;
+           they're now standalone pages, linked from this compact row. */
+        .quick-links-row {
             background: var(--navy);
-            padding: 96px 24px;
+            padding: 8px 24px 96px;
         }
 
-        .how-it-works h2 {
-            font-family: var(--font-heading);
-            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
-            text-align: center;
-            margin-bottom: 60px;
-            color: var(--white);
+        .quick-links-row .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 16px 40px;
+            padding: 32px 24px;
+            border-top: 1px solid rgba(224, 123, 0, 0.15);
+            border-bottom: 1px solid rgba(224, 123, 0, 0.15);
         }
 
-        .steps-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 32px;
-            margin-bottom: 0;
-        }
-
-        .step-card {
-            background: var(--navy-3);
-            border: 1px solid rgba(224, 123, 0, 0.2);
-            border-radius: 16px;
-            padding: 40px 32px;
-            text-align: center;
-            transition: all 0.3s ease;
-            position: relative;
-        }
-
-        .step-card:hover {
-            border-color: var(--amber);
-            transform: translateY(-4px);
-            box-shadow: 0 12px 32px rgba(224, 123, 0, 0.15);
-        }
-
-        .step-number {
-            display: inline-block;
-            width: 48px;
-            height: 48px;
-            background: var(--amber);
-            color: var(--navy);
-            border-radius: 50%;
-            line-height: 48px;
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 20px;
-        }
-
-        .step-card h3 {
-            font-family: var(--font-heading);
-            font-size: 1.5rem;
-            color: var(--white);
-            margin-bottom: 16px;
-        }
-
-        .step-card p {
-            color: var(--slate);
-            line-height: 1.7;
-        }
-
-        /* Value Cards */
-        .value-section {
-            background: var(--navy);
-            padding: 96px 24px;
-        }
-
-        .value-section h2 {
-            font-family: var(--font-heading);
-            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
-            text-align: center;
-            margin-bottom: 60px;
-            color: var(--white);
-        }
-
-        .value-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 32px;
-        }
-
-        .card {
-            background: var(--navy-2);
-            border: 1px solid rgba(224, 123, 0, 0.15);
-            border-left: 4px solid var(--amber);
-            border-radius: 12px;
-            padding: 32px;
-            transition: all 0.3s ease;
-        }
-
-        .card:hover {
-            border-color: var(--amber);
-            transform: translateY(-4px);
-            box-shadow: 0 12px 32px rgba(224, 123, 0, 0.15);
-        }
-
-        .card h3 {
-            font-family: var(--font-heading);
-            font-size: 1.4rem;
-            color: var(--white);
-            margin-bottom: 12px;
-        }
-
-        .card p {
-            color: var(--slate);
-            line-height: 1.7;
-        }
-
-        /* Commission Details */
-        .commission-section {
-            background: var(--navy-3);
-            border: 1px solid rgba(224, 123, 0, 0.2);
-            border-radius: 16px;
-            padding: 48px 40px;
-            margin-bottom: 60px;
-        }
-
-        .commission-section h3 {
-            font-family: var(--font-heading);
-            font-size: 1.8rem;
-            color: var(--white);
-            margin-bottom: 32px;
-        }
-
-        .commission-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 32px;
-        }
-
-        .commission-item {
-            text-align: center;
-        }
-
-        .commission-amount {
-            display: inline-block;
-            font-size: 2.5rem;
-            font-weight: 700;
+        .quick-links-row a {
             color: var(--amber);
-            margin-bottom: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            text-decoration: none;
         }
 
-        .commission-item p {
-            color: var(--slate);
-            line-height: 1.7;
+        .quick-links-row a:hover {
+            color: var(--amber-2);
+            text-decoration: underline;
         }
 
         /* Features Section */
@@ -370,7 +234,7 @@
         /* Form Section */
         .form-section {
             background: var(--navy);
-            padding: 96px 24px;
+            padding: 96px 24px 64px;
         }
 
         .form-section h2 {
@@ -400,17 +264,6 @@
             margin-bottom: 24px;
         }
 
-        .form-row {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            margin-bottom: 24px;
-        }
-
-        .form-row .form-group {
-            margin-bottom: 0;
-        }
-
         .form-label {
             display: block;
             font-weight: 600;
@@ -424,8 +277,7 @@
             color: var(--red);
         }
 
-        .form-input,
-        .form-select {
+        .form-input {
             width: 100%;
             padding: 12px 16px;
             border: 1px solid rgba(255, 255, 255, 0.15);
@@ -441,12 +293,15 @@
             color: rgba(255, 255, 255, 0.5);
         }
 
-        .form-input:focus,
-        .form-select:focus {
+        .form-input:focus {
             outline: none;
             border-color: var(--amber);
             background: rgba(255, 255, 255, 0.08);
             box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.15);
+        }
+
+        .form-input.error {
+            border-color: var(--red);
         }
 
         .form-input::-webkit-autofill {
@@ -460,59 +315,68 @@
             margin-top: 6px;
         }
 
+        /* Inline field-level validation errors — gh: this page previously
+           relied on alert()/hard failures with no per-field feedback. */
+        .field-error {
+            display: none;
+            font-size: 0.8rem;
+            color: var(--red);
+            margin-top: 6px;
+        }
+
+        .field-error.show { display: block; }
+
+        /* Submission-level error banner (network/RPC failures, distinct from
+           a single field being wrong). */
+        .form-alert {
+            display: none;
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            border-radius: 10px;
+            padding: 14px 16px;
+            color: #FECACA;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .form-alert.show { display: block; }
+
         .checkbox-group {
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 24px;
+            margin-bottom: 8px;
         }
 
-        .checkbox-item input[type="checkbox"] {
+        /* Used when the label text is long enough to wrap onto a second
+           line (e.g. two legal links) — keeps the checkbox pinned to the
+           first line instead of drifting to a vertical center. */
+        .checkbox-group.align-top {
+            align-items: flex-start;
+        }
+
+        .checkbox-group input[type="checkbox"] {
             width: 20px;
             height: 20px;
+            flex-shrink: 0;
             cursor: pointer;
             accent-color: var(--amber);
         }
 
-        .checkbox-item label {
+        .checkbox-group label {
             cursor: pointer;
             color: var(--slate);
             font-size: 0.95rem;
+            line-height: 1.5;
         }
 
-        .file-upload {
-            position: relative;
-        }
-
-        .file-upload input[type="file"] {
-            display: none;
-        }
-
-        .file-upload-label {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            padding: 24px;
-            border: 2px dashed rgba(224, 123, 0, 0.3);
-            border-radius: 10px;
-            background: rgba(224, 123, 0, 0.05);
-            cursor: pointer;
-            transition: all 0.3s ease;
+        .checkbox-group label a {
             font-weight: 600;
-            color: var(--slate);
-            text-align: center;
-        }
-
-        .file-upload-label:hover {
-            border-color: var(--amber);
-            background: rgba(224, 123, 0, 0.1);
-            color: var(--white);
         }
 
         .btn {
             display: inline-block;
-            padding: 12px 32px;
             border-radius: 10px;
             font-family: var(--font-body);
             font-weight: 700;
@@ -523,24 +387,73 @@
             text-align: center;
         }
 
-        .btn-primary {
-            background: var(--amber);
-            color: var(--navy);
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* Google OAuth — matches partner-login.html's button, adapted for
+           this page's dark card (Google's mark is always shown on a white
+           surface regardless of surrounding theme). */
+        .btn-google {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
             width: 100%;
-            padding: 16px 32px;
-            font-size: 1.05rem;
-            margin-top: 32px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            background: #fff;
+            color: #3c4043;
+            font-family: var(--font-body);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s, box-shadow 0.15s;
         }
 
-        .btn-primary:hover {
-            background: var(--amber-2);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(224, 123, 0, 0.3);
+        .btn-google:hover { background: #f8f9fa; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+        .btn-google:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-google svg { flex-shrink: 0; }
+
+        .oauth-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0;
+            color: var(--slate);
+            font-size: 0.85rem;
         }
 
-        .btn-primary:active {
-            transform: translateY(0);
+        .oauth-divider::before, .oauth-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.12);
         }
+
+        .btn-loading {
+            position: relative;
+            color: transparent !important;
+        }
+
+        .btn-loading::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(13, 27, 46, 0.3);
+            border-top-color: var(--navy);
+            border-radius: 50%;
+            animation: btnSpin 0.6s linear infinite;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        @keyframes btnSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
 
         /* Benefits Sidebar */
         .benefits-sidebar {
@@ -588,7 +501,7 @@
             font-size: 0.95rem;
         }
 
-        /* Success Message */
+        /* Success / Check-your-email Messages */
         .success-message {
             display: none;
             background: rgba(16, 185, 129, 0.1);
@@ -659,109 +572,6 @@
             color: var(--white);
         }
 
-        /* FAQ Section */
-        .faq-section {
-            background: var(--navy);
-            padding: 96px 24px;
-        }
-
-        .faq-section h2 {
-            font-family: var(--font-heading);
-            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
-            text-align: center;
-            margin-bottom: 60px;
-            color: var(--white);
-        }
-
-        .faq-container {
-            max-width: 700px;
-            margin: 0 auto;
-        }
-
-        .faq-item {
-            background: var(--navy-2);
-            border: 1px solid rgba(224, 123, 0, 0.15);
-            border-radius: 12px;
-            margin-bottom: 16px;
-            overflow: hidden;
-        }
-
-        .faq-question {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 24px;
-            cursor: pointer;
-            background: var(--navy-3);
-            transition: all 0.3s ease;
-            border-bottom: 1px solid rgba(224, 123, 0, 0.1);
-        }
-
-        .faq-question:hover {
-            background: rgba(224, 123, 0, 0.1);
-        }
-
-        .faq-question h4 {
-            font-family: var(--font-heading);
-            font-size: 1.1rem;
-            color: var(--white);
-            margin: 0;
-            flex: 1;
-        }
-
-        .faq-toggle {
-            display: inline-flex;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            background: rgba(224, 123, 0, 0.2);
-            align-items: center;
-            justify-content: center;
-            color: var(--amber);
-            font-weight: 700;
-            font-size: 1.2rem;
-            flex-shrink: 0;
-            margin-left: 20px;
-            transition: transform 0.3s ease;
-        }
-
-        .faq-item.active .faq-toggle {
-            transform: rotate(180deg);
-        }
-
-        .faq-answer {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.3s ease;
-            background: var(--navy-2);
-            padding: 0 24px;
-        }
-
-        .faq-item.active .faq-answer {
-            max-height: 500px;
-            padding: 24px;
-        }
-
-        .faq-answer p {
-            color: var(--slate);
-            line-height: 1.8;
-            margin-bottom: 12px;
-        }
-
-        .faq-answer p:last-child {
-            margin-bottom: 0;
-        }
-
-        .legal-flag {
-            background: rgba(239, 68, 68, 0.1);
-            border-left: 4px solid var(--red);
-            padding: 12px 16px;
-            border-radius: 6px;
-            margin-top: 16px;
-            font-size: 0.85rem;
-            color: rgba(239, 68, 68, 0.9);
-        }
-
         /* Responsive */
         @media (max-width: 768px) {
             .hero {
@@ -781,16 +591,15 @@
                 padding: 60px 20px;
             }
 
-            .how-it-works,
-            .value-section,
             .features-section,
-            .form-section,
-            .faq-section {
+            .form-section {
                 padding: 60px 20px;
             }
 
-            .steps-grid,
-            .value-cards,
+            .quick-links-row {
+                padding: 8px 20px 60px;
+            }
+
             .features-list {
                 gap: 20px;
             }
@@ -805,16 +614,6 @@
                 top: auto;
             }
 
-            .form-row {
-                grid-template-columns: 1fr;
-            }
-
-            .commission-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .step-card,
-            .card,
             .form-container {
                 padding: 24px;
             }
@@ -822,14 +621,13 @@
             h2 {
                 margin-bottom: 40px;
             }
+        }
 
-            .faq-question {
-                padding: 16px;
-            }
-
-            .faq-question h4 {
-                font-size: 1rem;
-            }
+        /* Never let the hero/header CTA pair wrap or crowd at very narrow
+           widths (down to 360px) — both buttons share height/padding via
+           the shared .btn system, so this only needs to manage layout. */
+        @media (max-width: 400px) {
+            .hero .btn { width: 100%; }
         }
     </style>
 </head>
@@ -841,97 +639,138 @@
         <section class="hero">
             <div class="container">
                 <h1>Give Your Policyholders a Better Claims Experience</h1>
-                <p>When your policyholders file a damage claim, Otter Quotes handles the contractor side — getting competing bids, managing paperwork, and delivering a fully executed contract. Your client gets a better outcome, and you look like a hero.</p>
-                <a href="#signup" class="cta">Become a Partner — It's Free</a>
+                <p>When contractors compete to do your client's job they offer better material, better warranties, and better service. Your client gets a better outcome, and you look like a hero.</p>
+                <a href="#signup" class="btn btn-primary btn-lg">Become a Partner — It's Free</a>
             </div>
         </section>
 
-        <!-- How It Works -->
-        <section class="how-it-works">
+        <!-- Signup Form — moved directly below the hero paragraph so it's
+             the first thing after the pitch, above every other section. -->
+        <section class="form-section" id="signup">
             <div class="container">
-                <h2>How It Works</h2>
-                <div class="steps-grid">
-                    <div class="step-card">
-                        <div class="step-number">1</div>
-                        <h3>Sign Up & Get Your Link</h3>
-                        <p>Free partner account, unique referral link in seconds. No approval wait, no setup fees.</p>
+                <h2>Join the Otter Quotes Partner Network</h2>
+
+                <div class="form-wrapper">
+                    <!-- Form -->
+                    <div>
+                        <div class="form-container">
+                            <div id="successMessage" class="success-message">
+                                <h3>Welcome to the Otter Quotes Network!</h3>
+                                <p>Your partner account has been created. Here's your unique referral link:</p>
+                                <div class="referral-link-box">
+                                    <div class="referral-link-label">Your Referral Link:</div>
+                                    <div class="referral-link-text" id="referralLink">Loading...</div>
+                                    <button class="copy-btn" id="copyBtn">Copy Link</button>
+                                </div>
+                                <p style="margin-top: 20px; color: var(--slate);">Share this link with your policyholders when they file a claim. You'll start earning $200 per completed job — plus a $50 recruit bonus for every job completed from a referral sent by an agent you personally recruit.</p>
+                                <div style="margin-top: 20px;">
+                                    <a href="/partner-dashboard.html" class="btn btn-primary">Go to Partner Dashboard</a>
+                                </div>
+                            </div>
+
+                            <div id="checkEmailMessage" class="success-message">
+                                <h3>Almost there — check your email</h3>
+                                <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then sign in to your new partner account.</p>
+                                <div style="margin-top: 20px;">
+                                    <a href="/partner-login.html" class="btn btn-primary">Go to Partner Login</a>
+                                </div>
+                            </div>
+
+                            <div id="formAlert" class="form-alert" role="alert"></div>
+
+                            <!-- Google OAuth — same signInWithGoogle() path partner-login.html
+                                 uses (D-207/gh-866); see the script block below for how a
+                                 brand-new signup completes the referral_agents record once
+                                 Google hands the session back to this page. -->
+                            <button type="button" class="btn-google" id="google-btn">
+                                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+                                    <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+                                    <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+                                    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+                                </svg>
+                                Continue with Google
+                            </button>
+                            <div class="oauth-divider"><span>or</span></div>
+
+                            <form id="insuranceAgentForm" novalidate>
+                                <div class="form-group">
+                                    <label for="fullName" class="form-label required">Full Name</label>
+                                    <input type="text" id="fullName" name="fullName" class="form-input" autocomplete="name" required>
+                                    <div class="field-error" id="fullNameError"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="phone" class="form-label required">Phone Number</label>
+                                    <input type="tel" id="phone" name="phone" class="form-input" autocomplete="tel" required>
+                                    <div class="field-error" id="phoneError"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="email" class="form-label required">Email</label>
+                                    <input type="email" id="email" name="email" class="form-input" autocomplete="email" required>
+                                    <div class="field-error" id="emailError"></div>
+                                </div>
+
+                                <!-- Password — Auth.signUpWithPassword() (the partner signup
+                                     credential path already used sitewide) requires one; there
+                                     is no password-less signup RPC to fall back to. -->
+                                <div class="form-group">
+                                    <label for="password" class="form-label required">Password</label>
+                                    <input type="password" id="password" name="password" class="form-input" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters">
+                                    <div class="field-error" id="passwordError"></div>
+                                </div>
+
+                                <div class="checkbox-group align-top">
+                                    <input type="checkbox" id="agreeToTerms" name="agreeToTerms" required>
+                                    <label for="agreeToTerms">I agree to the <a href="/partner-agreement.html">Partner Agreement</a> and <a href="/terms.html">Terms</a></label>
+                                </div>
+                                <div class="field-error" id="agreeError">You must agree to the Partner Agreement and Terms.</div>
+
+                                <button type="submit" class="btn btn-primary btn-lg btn-full" style="margin-top: 24px;">Create My Partner Account</button>
+                                <p class="referral-fee-disclaimer" style="color: var(--slate, #94A3B8); font-size: 0.85rem; text-align: center; margin-top: 0.75rem; line-height: 1.5;">
+                                    Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+                                </p>
+                            </form>
+                        </div>
                     </div>
-                    <div class="step-card">
-                        <div class="step-number">2</div>
-                        <h3>Share With Your Policyholders</h3>
-                        <p>When a client files a claim, send them your link. Otter Quotes walks them through gathering their estimate, getting measurements, and selecting materials. Contractors compete for the job.</p>
-                    </div>
-                    <div class="step-card">
-                        <div class="step-number">3</div>
-                        <h3>Earn $200 Per Job</h3>
-                        <p>When the job completes ($10,000 or more), you earn $200. Track everything in your dashboard. Bonus: recruit another agent to Otter Quotes and earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
+
+                    <!-- Benefits Sidebar -->
+                    <div class="benefits-sidebar">
+                        <h3>What You Get</h3>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Your clients get competing bids at zero cost</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Works with all policy types (RCV, ACV, retail)</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Track referrals and referral fees in real-time</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Takes 2 minutes to sign up</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Free to join, zero setup fees</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Why Insurance Agents Love Otter Quotes -->
-        <section class="value-section">
+        <!-- How It Works / Why / Referral Fee Details now live on their own
+             pages — this row replaces the three sections that used to be
+             inline here. -->
+        <section class="quick-links-row">
             <div class="container">
-                <h2>Why Insurance Agents Love Otter Quotes</h2>
-                <div class="value-cards">
-                    <div class="card">
-                        <h3>Better Client Retention</h3>
-                        <p>Clients who have a smooth claims experience stay with their agent. Otter Quotes makes you part of the solution, not just the policy.</p>
-                    </div>
-                    <div class="card">
-                        <h3>Zero Extra Work</h3>
-                        <p>You share a link. We handle everything else — estimate gathering, measurements, contractor matching, contracts, follow-up.</p>
-                    </div>
-                    <div class="card">
-                        <h3>Transparent Process</h3>
-                        <p>Your clients see competing bids side-by-side with pricing, warranties, and contractor credentials. No shady door-knockers.</p>
-                    </div>
-                    <div class="card">
-                        <h3>Works for All Claim Types</h3>
-                        <p>RCV, ACV, retail, and repair. Otter Quotes adapts the process to the policy type automatically.</p>
-                    </div>
-                    <div class="card">
-                        <h3>Increase Referral Value</h3>
-                        <p>Your policyholders can get competitive bids on additional out-of-pocket work — gutters, siding, exterior projects — while they're at it. That means higher job values, more referral fees, and stronger client relationships.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Commission Details -->
-        <section class="section">
-            <div class="container">
-                <h2 style="font-family: var(--font-heading); font-size: clamp(1.5rem, 3.5vw, 2.5rem); text-align: center; margin-bottom: 60px; color: var(--white);">Referral Fee Details</h2>
-
-                <div class="commission-section">
-                    <h3>Your Earnings</h3>
-                    <div class="commission-grid">
-                        <div class="commission-item">
-                            <div class="commission-amount">$200</div>
-                            <p>Per Completed Job of $10,000+</p>
-                        </div>
-                        <div class="commission-item">
-                            <div class="commission-amount">+ $50</div>
-                            <p>For Every Job From a Partner You Recruit</p>
-                        </div>
-                        <div class="commission-item">
-                            <div class="commission-amount">Paid</div>
-                            <p>After job completion</p>
-                        </div>
-                        <div class="commission-item">
-                            <div class="commission-amount">Tracked</div>
-                            <p>Real-time in your dashboard</p>
-                        </div>
-                    </div>
-                </div>
-
-                <p style="text-align: center; color: var(--slate); margin-bottom: var(--sp-4); font-size: 0.95rem; max-width: 720px; margin-left: auto; margin-right: auto;">Know another agent who'd benefit? Share your recruit link and earn $50 every time their referral completes a job of $10K or more. One level — simple, transparent, no MLM.</p>
-
-                <p style="text-align: center; color: var(--slate); margin-bottom: 0; font-size: 0.95rem;">For smaller jobs: your value is a better client experience, stronger retention, and a portfolio of wins.</p>
-                <p style="text-align: center; color: var(--slate); margin-top: 1rem; margin-bottom: 0; font-size: 0.85rem; opacity: 0.8;">A completed IRS Form W-9 is required before your first referral fee payment is issued.</p>
-                <!-- D-180: Approval process disclosure -->
-                <p style="text-align: center; color: var(--slate); margin-top: 0.5rem; margin-bottom: 0; font-size: 0.85rem; opacity: 0.8;">Commissions are paid after job completion and approval.</p>
+                <a href="/partner-insurance-how-it-works.html">How It Works &rarr;</a>
+                <a href="/partner-insurance-why.html">Why Insurance Agents Love Otter Quotes &rarr;</a>
+                <a href="/partner-insurance-fees.html">Referral Fee Details &rarr;</a>
             </div>
         </section>
 
@@ -985,223 +824,19 @@
                 </div>
             </div>
         </section>
-
-        <!-- Signup Form -->
-        <section class="form-section" id="signup">
-            <div class="container">
-                <h2>Join the Otter Quotes Partner Network</h2>
-
-                <div class="form-wrapper">
-                    <!-- Form -->
-                    <div>
-                        <div class="form-container">
-                            <div id="successMessage" class="success-message">
-                                <h3>Welcome to the Otter Quotes Network!</h3>
-                                <p>Your partner account has been created. Here's your unique referral link:</p>
-                                <div class="referral-link-box">
-                                    <div class="referral-link-label">Your Referral Link:</div>
-                                    <div class="referral-link-text" id="referralLink">Loading...</div>
-                                    <button class="copy-btn" id="copyBtn">Copy Link</button>
-                                </div>
-                                <p style="margin-top: 20px; color: var(--slate);">Share this link with your policyholders when they file a claim. You'll start earning $200 per completed job — plus a $50 recruit bonus for every job completed from a referral sent by an agent you personally recruit.</p>
-                                <div style="margin-top: 20px;">
-                                    <a href="/partner-dashboard.html" class="btn btn-primary">Go to Partner Dashboard</a>
-                                </div>
-                            </div>
-
-                            <form id="insuranceAgentForm">
-                                <!-- Personal Information -->
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="firstName" class="form-label required">First Name</label>
-                                        <input type="text" id="firstName" name="firstName" class="form-input" required>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="lastName" class="form-label required">Last Name</label>
-                                        <input type="text" id="lastName" name="lastName" class="form-input" required>
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="email" class="form-label required">Email</label>
-                                    <input type="email" id="email" name="email" class="form-input" required>
-                                </div>
-
-                                <!-- Password — gh-880 Half A: partner accounts now sign up with a
-                                     real credential instead of the password-less account
-                                     magic-link used to create implicitly. -->
-                                <div class="form-group">
-                                    <label for="password" class="form-label required">Password</label>
-                                    <input type="password" id="password" name="password" class="form-input" required minlength="8" placeholder="At least 8 characters">
-                                </div>
-                                <div class="form-group">
-                                    <label for="confirmPassword" class="form-label required">Confirm Password</label>
-                                    <input type="password" id="confirmPassword" name="confirmPassword" class="form-input" required placeholder="Re-enter your password">
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="phone" class="form-label required">Phone</label>
-                                    <input type="tel" id="phone" name="phone" class="form-input" required>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="agencyName" class="form-label required">Agency / Carrier Name</label>
-                                    <input type="text" id="agencyName" name="agencyName" class="form-input" required>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="licenseNumber" class="form-label">License Number (optional)</label>
-                                    <input type="text" id="licenseNumber" name="licenseNumber" class="form-input" placeholder="For credibility on your profile">
-                                    <div class="form-hint">Insurance license number (if comfortable sharing)</div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="serviceArea" class="form-label required">Service Area</label>
-                                    <input type="text" id="serviceArea" name="serviceArea" class="form-input" placeholder="e.g., Indiana, Illinois, Midwest" required>
-                                    <div class="form-hint">State(s) or region(s) you serve</div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="headshotUrl" class="form-label">Headshot (optional)</label>
-                                    <div class="file-upload">
-                                        <input type="file" id="headshotUrl" name="headshotUrl" accept="image/jpeg,image/png,image/jpg">
-                                        <label for="headshotUrl" class="file-upload-label">📷 Upload headshot</label>
-                                    </div>
-                                    <div class="form-hint">Professional photo for your partner profile</div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="websiteUrl" class="form-label">Website URL (optional)</label>
-                                    <input type="url" id="websiteUrl" name="websiteUrl" class="form-input" placeholder="https://example.com">
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="referredBy" class="form-label">Who Told You About Us? (optional)</label>
-                                    <input type="text" id="referredBy" name="referredBy" class="form-input" placeholder="Name or company of the person who recommended Otter Quotes">
-                                </div>
-
-                                <div class="checkbox-group">
-                                    <input type="checkbox" id="agreeToTerms" name="agreeToTerms" required>
-                                    <label for="agreeToTerms">I agree to Otter Quotes's <a href="partner-agreement.html">Partner Terms</a></label>
-                                </div>
-
-                                <button type="submit" class="btn btn-primary">Create My Partner Account</button>
-                                <p class="referral-fee-disclaimer" style="color: var(--slate, #94A3B8); font-size: 0.85rem; text-align: center; margin-top: 0.75rem; line-height: 1.5;">
-                                    Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
-                                </p>
-                            </form>
-                        </div>
-                    </div>
-
-                    <!-- Benefits Sidebar -->
-                    <div class="benefits-sidebar">
-                        <h3>What You Get</h3>
-                        <div class="benefit-item">
-                            <div class="benefit-check">✓</div>
-                            <p>Your clients get competing bids at zero cost</p>
-                        </div>
-                        <div class="benefit-item">
-                            <div class="benefit-check">✓</div>
-                            <p>Works with all policy types (RCV, ACV, retail)</p>
-                        </div>
-                        <div class="benefit-item">
-                            <div class="benefit-check">✓</div>
-                            <p>Track referrals and referral fees in real-time</p>
-                        </div>
-                        <div class="benefit-item">
-                            <div class="benefit-check">✓</div>
-                            <p>Takes 2 minutes to sign up</p>
-                        </div>
-                        <div class="benefit-item">
-                            <div class="benefit-check">✓</div>
-                            <p>Free to join, zero setup fees</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- FAQ -->
-        <section class="faq-section">
-            <div class="container">
-                <h2>Frequently Asked Questions</h2>
-                <div class="faq-container">
-                    <div class="faq-item">
-                        <div class="faq-question">
-                            <h4>How does my policyholder get started?</h4>
-                            <div class="faq-toggle">+</div>
-                        </div>
-                        <div class="faq-answer">
-                            <p>They click your link, enter their info, and Otter Quotes helps them gather their insurance estimate, measurements, and material preferences. Contractors then compete for the job. The entire process is digital and takes about 10-15 minutes for the homeowner.</p>
-                        </div>
-                    </div>
-
-                    <div class="faq-item">
-                        <div class="faq-question">
-                            <h4>Does Otter Quotes represent my client in their claim?</h4>
-                            <div class="faq-toggle">+</div>
-                        </div>
-                        <div class="faq-answer">
-                            <p>No. Otter Quotes is NOT a public adjuster. We don't file claims, negotiate with carriers, or handle settlements. We help homeowners get the best contractor after they've filed their own claim. Your clients remain in control throughout the entire process.</p>
-                        </div>
-                    </div>
-
-                    <div class="faq-item">
-                        <div class="faq-question">
-                            <h4>Will this create any compliance issues?</h4>
-                            <div class="faq-toggle">+</div>
-                        </div>
-                        <div class="faq-answer">
-                            <p>Otter Quotes's referral program is designed for transparency. Referral fees are paid for completed jobs, not for steering clients. However, we recommend reviewing the program terms with your compliance team.</p>
-                        </div>
-                    </div>
-
-                    <div class="faq-item">
-                        <div class="faq-question">
-                            <h4>What if my client doesn't have their insurance estimate yet?</h4>
-                            <div class="faq-toggle">+</div>
-                        </div>
-                        <div class="faq-answer">
-                            <p>No problem. Otter Quotes has a "Help Me" flow that assists homeowners in requesting their estimate from their adjuster. We guide them through the process so they can continue without waiting.</p>
-                        </div>
-                    </div>
-
-                    <div class="faq-item">
-                        <div class="faq-question">
-                            <h4>Do my clients pay anything?</h4>
-                            <div class="faq-toggle">+</div>
-                        </div>
-                        <div class="faq-answer">
-                            <p>Professional measurements are optional and paid upfront (rebated if they use an Otter Quotes contractor). The bidding and contract process is 100% free. Your clients pay nothing unless they choose to add measurements, which helps contractors provide more accurate bids.</p>
-                        </div>
-                    </div>
-
-                    <div class="faq-item">
-                        <div class="faq-question">
-                            <h4>What's the recruit bonus?</h4>
-                            <div class="faq-toggle">+</div>
-                        </div>
-                        <div class="faq-answer">
-                            <p>When you bring another agent to Otter Quotes using your recruit link, you earn $50 for every job of $10,000 or more that their referrals complete. It's one level only — you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on your partner dashboard.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
     </main>
 
-    
-<!-- Partner App promo (PWA v1, 2026-08-03) -->
-<section aria-label="Otter Quotes Partner App" style="max-width: 1100px; margin: 0 auto; padding: 48px 24px;">
-  <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap; background: #0D1B2E; border-radius: 16px; padding: 32px; border: 1px solid rgba(224, 123, 0, 0.35);">
-    <img src="/img/app/partner-icon-192.png" alt="Otter Quotes Partner App icon" width="72" height="72" style="border-radius: 16px; flex-shrink: 0;">
-    <div style="flex: 1; min-width: 220px;">
-      <div style="font-family: 'Rubik', sans-serif; font-weight: 700; font-size: 1.25rem; color: #FFFFFF; margin-bottom: 6px;">Get the Otter Quotes Partner App</div>
-      <div style="font-family: 'Rubik', sans-serif; font-size: 0.95rem; color: #94A3B8;">Refer homeowners, grow your partner network, and track your referrals — right from your phone. Free, installs in seconds.</div>
-    </div>
-    <a href="/partner-app.html" style="font-family: 'Rubik', sans-serif; display: inline-block; padding: 14px 28px; background: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 8px; font-weight: 600; flex-shrink: 0;">Get the App</a>
-  </div>
-</section>
+    <!-- Legal/disclaimer links — gh: the header partner nav's "Agreement"
+         link (js/nav.js, owned separately) is slated for removal; this
+         page-level link keeps the Partner Agreement reachable from here
+         regardless, right alongside Terms/Privacy. -->
+    <p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:32px 24px 8px;">
+        <a href="/partner-agreement.html" style="color:var(--amber);">Partner Agreement</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/terms.html" style="color:var(--amber);">Terms of Service</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/privacy.html" style="color:var(--amber);">Privacy Policy</a>
+    </p>
 
 <footer id="site-footer"></footer>
 
@@ -1211,14 +846,6 @@
     <script src="js/agent-types.js"></script>
 
     <script>
-        // FAQ Accordion
-        document.querySelectorAll('.faq-question').forEach(question => {
-            question.addEventListener('click', function() {
-                const faqItem = this.closest('.faq-item');
-                faqItem.classList.toggle('active');
-            });
-        });
-
         // Smooth scroll to signup
         document.querySelectorAll('a[href="#signup"]').forEach(link => {
             link.addEventListener('click', function(e) {
@@ -1239,8 +866,7 @@
          * gh-865: the visitor must see and explicitly confirm their partner
          * type before the account is created — the page they landed on (and
          * therefore this page's default) may not silently decide agent_type.
-         * Recruiter attribution (referredBy / recruit code) stays separate
-         * from this value.
+         * Recruiter attribution (recruit code) stays separate from this value.
          */
         function confirmAgentType(defaultType) {
             return new Promise((resolve) => {
@@ -1313,10 +939,11 @@
         }
 
         /**
-         * Detect whether this visitor arrived via a recruit link.
-         * Checks localStorage (set by recruit.html) first, then falls back to
-         * the ?recruit= URL param. If a valid active recruiter is found,
-         * pre-fills and locks the "Who Told You About Us?" field.
+         * Detect whether this visitor arrived via a recruit link. Checks
+         * localStorage (set by recruit.html) first, then falls back to the
+         * ?recruit= URL param. This only feeds attribution on submit
+         * (p_recruit_code) — the simplified form no longer has a visible
+         * "Who Told You About Us?" field to pre-fill.
          */
         async function detectRecruitCode() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -1338,20 +965,6 @@
                 if (!recruiter) return;
 
                 recruitContext = { recruitCode, recruiterId: recruiter.id };
-
-                const referredByInput = document.getElementById('referredBy');
-                if (referredByInput) {
-                    const displayName = `${recruiter.first_name || ''} ${recruiter.last_name || ''}`.trim()
-                        || recruiter.company
-                        || 'Otter Quotes Partner';
-                    referredByInput.value = displayName;
-                    referredByInput.readOnly = true;
-                    referredByInput.style.background = 'rgba(224, 123, 0, 0.08)';
-                    referredByInput.style.borderColor = 'var(--amber)';
-                    referredByInput.style.color = 'var(--amber)';
-                    referredByInput.style.cursor = 'not-allowed';
-                    referredByInput.title = 'You arrived via a recruit link — this field is locked.';
-                }
             } catch (err) {
                 console.warn('Recruit code lookup threw:', err);
             }
@@ -1377,66 +990,318 @@
             }
         })();
 
-        // Handle form submission
+        // ---------------------------------------------------------------
+        // Field-level validation helpers
+        // ---------------------------------------------------------------
+        const fullNameInput  = document.getElementById('fullName');
+        const phoneInput     = document.getElementById('phone');
+        const emailInput     = document.getElementById('email');
+        const passwordInput  = document.getElementById('password');
+        const agreeInput     = document.getElementById('agreeToTerms');
+        const formAlertEl    = document.getElementById('formAlert');
+
+        function isValidFullName(v) {
+            return v.trim().split(/\s+/).filter(Boolean).length >= 2;
+        }
+        function isValidPhone(v) {
+            return v.replace(/\D/g, '').length >= 7;
+        }
+        function isValidEmail(v) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+        }
+
+        function showFieldError(input, errorEl, message) {
+            if (input) input.classList.add('error');
+            if (errorEl) { errorEl.textContent = message; errorEl.classList.add('show'); }
+        }
+        function clearFieldError(input, errorEl) {
+            if (input) input.classList.remove('error');
+            if (errorEl) { errorEl.classList.remove('show'); }
+        }
+        function clearAllFieldErrors() {
+            clearFieldError(fullNameInput, document.getElementById('fullNameError'));
+            clearFieldError(phoneInput, document.getElementById('phoneError'));
+            clearFieldError(emailInput, document.getElementById('emailError'));
+            clearFieldError(passwordInput, document.getElementById('passwordError'));
+            document.getElementById('agreeError').classList.remove('show');
+        }
+        function showFormAlert(message) {
+            formAlertEl.textContent = message;
+            formAlertEl.classList.add('show');
+        }
+        function clearFormAlert() {
+            formAlertEl.textContent = '';
+            formAlertEl.classList.remove('show');
+        }
+
+        // Live validation: clear a field's error as soon as it becomes
+        // valid; only *show* an error on blur (never while still typing
+        // the first pass).
+        function wireLiveValidation(input, errorEl, validator, message) {
+            if (!input) return;
+            input.addEventListener('blur', () => {
+                const v = input.type === 'checkbox' ? input.checked : input.value;
+                if (!validator(v)) showFieldError(input, errorEl, message);
+                else clearFieldError(input, errorEl);
+            });
+            input.addEventListener('input', () => {
+                const v = input.value;
+                if (validator(v)) clearFieldError(input, errorEl);
+            });
+        }
+        wireLiveValidation(fullNameInput, document.getElementById('fullNameError'), isValidFullName, 'Please enter your first and last name.');
+        wireLiveValidation(phoneInput, document.getElementById('phoneError'), isValidPhone, 'Please enter a valid phone number.');
+        wireLiveValidation(emailInput, document.getElementById('emailError'), isValidEmail, 'Please enter a valid email address.');
+        wireLiveValidation(passwordInput, document.getElementById('passwordError'), (v) => v.length >= 8, 'Password must be at least 8 characters.');
+        agreeInput.addEventListener('change', () => {
+            const errorEl = document.getElementById('agreeError');
+            if (agreeInput.checked) errorEl.classList.remove('show');
+        });
+
+        function splitFullName(fullName) {
+            const parts = fullName.trim().split(/\s+/).filter(Boolean);
+            const firstName = parts[0] || fullName.trim();
+            const lastName = parts.slice(1).join(' ') || firstName;
+            return { firstName, lastName };
+        }
+
+        function fireDemoSuccess(agentType, method) {
+            const referralCode = Math.random().toString(36).substring(2, 9).toUpperCase();
+            const referralLink = `${window.location.origin}/claims?ref=${referralCode}`;
+
+            document.getElementById('referralLink').textContent = referralLink;
+            document.getElementById('successMessage').classList.add('show');
+            document.getElementById('insuranceAgentForm').style.display = 'none';
+            document.getElementById('google-btn').style.display = 'none';
+            document.querySelector('.oauth-divider').style.display = 'none';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            gtag('event', 'partner_signup', {
+                partner_type: agentType,
+                method: method,
+                source:   utmContext.source   || 'direct',
+                medium:   utmContext.medium   || undefined,
+                campaign: utmContext.campaign || undefined,
+                content:  utmContext.content  || undefined,
+            });
+        }
+
+        // ---------------------------------------------------------------
+        // Google OAuth signup
+        // ---------------------------------------------------------------
+        // register_partner() (v95/v97 RPCs) requires a first/last name and
+        // email up front — Google only hands us the email, and only *after*
+        // the OAuth redirect completes. So: validate + stash name/phone
+        // now, send the visitor to Google with the redirect pointed back at
+        // THIS page (not auth-callback.html), then finish registering once
+        // Supabase's client-side SDK parses the returned session on load
+        // (see finishGoogleSignupIfPending() below). This reuses the exact
+        // same register_partner + claim_partner_account (v97) pairing the
+        // magic-link/password paths already rely on to link a credential
+        // created after the fact to an unclaimed referral_agents row — it
+        // does not invent a second linking mechanism.
+        const googleBtn = document.getElementById('google-btn');
+        const GOOGLE_BTN_DEFAULT_HTML = googleBtn.innerHTML;
+        const PENDING_SIGNUP_KEY = 'cs_pending_partner_signup';
+
+        googleBtn.addEventListener('click', async () => {
+            clearFormAlert();
+            clearAllFieldErrors();
+
+            const fullName = fullNameInput.value.trim();
+            const phone = phoneInput.value.trim();
+            const agreed = agreeInput.checked;
+
+            let firstInvalid = null;
+            if (!isValidFullName(fullName)) {
+                showFieldError(fullNameInput, document.getElementById('fullNameError'), 'Please enter your first and last name.');
+                firstInvalid = firstInvalid || fullNameInput;
+            }
+            if (!isValidPhone(phone)) {
+                showFieldError(phoneInput, document.getElementById('phoneError'), 'Please enter a valid phone number.');
+                firstInvalid = firstInvalid || phoneInput;
+            }
+            if (!agreed) {
+                document.getElementById('agreeError').classList.add('show');
+                firstInvalid = firstInvalid || agreeInput;
+            }
+            if (firstInvalid) { firstInvalid.focus(); return; }
+
+            const agentType = await confirmAgentType('insurance_agent');
+
+            if (window.CONFIG && window.CONFIG.DEMO_MODE) {
+                fireDemoSuccess(agentType, 'google');
+                return;
+            }
+
+            googleBtn.disabled = true;
+            googleBtn.textContent = 'Redirecting to Google…';
+
+            try {
+                localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({
+                    fullName, phone, agentType,
+                    recruitCode: recruitContext.recruitCode || null,
+                    utm: utmContext,
+                }));
+                localStorage.setItem('cs_auth_role', agentType);
+                await Auth.signInWithGoogle('/partner-insurance.html?g=1');
+            } catch (err) {
+                console.error('Google sign-in error:', err);
+                localStorage.removeItem(PENDING_SIGNUP_KEY);
+                googleBtn.disabled = false;
+                googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
+                showFormAlert('Google sign-in failed. Please try again or use the form below.');
+            }
+        });
+
+        // Completes a Google-initiated signup once this page reloads with
+        // an authenticated session (Supabase's client parses the returned
+        // token on page load because detectSessionInUrl defaults to true —
+        // no dependency on auth-callback.html).
+        let finishingGoogleSignup = false;
+        async function finishGoogleSignupIfPending() {
+            if (finishingGoogleSignup) return;
+            let pending;
+            try { pending = JSON.parse(localStorage.getItem(PENDING_SIGNUP_KEY) || 'null'); } catch (e) { pending = null; }
+            if (!pending) return;
+
+            let user = null;
+            try { user = await Auth.getUser(); } catch (e) { user = null; }
+            if (!user || !user.email) return; // OAuth exchange not finished yet; onAuthStateChange below will retry.
+
+            finishingGoogleSignup = true;
+            localStorage.removeItem(PENDING_SIGNUP_KEY);
+
+            const { firstName, lastName } = splitFullName(pending.fullName);
+            const utm = pending.utm || {};
+
+            try {
+                const { error: agentError } = await sb.rpc('register_partner', {
+                    p_agent_type:   pending.agentType,
+                    p_first_name:   firstName,
+                    p_last_name:    lastName,
+                    p_email:        user.email,
+                    p_phone:        pending.phone,
+                    p_recruit_code: pending.recruitCode || null,
+                    p_utm_source:   utm.source   || null,
+                    p_utm_medium:   utm.medium   || null,
+                    p_utm_campaign: utm.campaign || null,
+                    p_utm_content:  utm.content  || null,
+                });
+
+                // partner_exists is expected/harmless here: it just means a
+                // row for this email already exists (e.g. the visitor
+                // clicked Google twice, or already has an unclaimed row
+                // from a prior attempt) — claim_partner_account below links
+                // this session to it regardless of which branch created it.
+                if (agentError && !(agentError.message || '').includes('partner_exists')) {
+                    throw agentError;
+                }
+
+                const { data: claim, error: claimError } = await sb.rpc('claim_partner_account');
+                if (claimError) throw claimError;
+
+                const claimed = claim && (claim.claimed || claim.reason === 'already_linked');
+                if (!claimed) {
+                    showFormAlert("We couldn't finish linking your Google account to a partner profile. If you already have a partner account under a different sign-in method, use Partner Login instead.");
+                    googleBtn.disabled = false;
+                    googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
+                    return;
+                }
+
+                localStorage.removeItem('cs_recruit_code');
+                localStorage.removeItem('cs_utm_context');
+
+                gtag('event', 'partner_signup', {
+                    partner_type: pending.agentType,
+                    method: 'google',
+                    source:   utm.source   || 'direct',
+                    medium:   utm.medium   || undefined,
+                    campaign: utm.campaign || undefined,
+                    content:  utm.content  || undefined,
+                });
+
+                window.location.replace('/partner-dashboard.html');
+            } catch (err) {
+                console.error('Google partner signup failed:', err);
+                showFormAlert('Something went wrong finishing your Google sign-up. Please try again or use the email form below, or email us at ' + (window.CONFIG ? CONFIG.SUPPORT_EMAIL : 'support') + '.');
+                googleBtn.disabled = false;
+                googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
+            } finally {
+                finishingGoogleSignup = false;
+            }
+        }
+
+        finishGoogleSignupIfPending();
+        // Guard spelled exactly as scripts/check-sb-auth-guards.py enforces
+        // (`if (!sb) return;` immediately before the registration). The first
+        // draft used an equivalent `if (typeof sb !== 'undefined' && sb)`
+        // wrapper, which is semantically the same but does not match the
+        // pattern the checker looks for — and a codebase-wide guard rule is
+        // worth more than a local stylistic preference.
+        (function registerAuthListener() {
+            if (typeof sb === 'undefined') return;
+            if (!sb) return;
+            sb.auth.onAuthStateChange((event) => {
+                if (event === 'SIGNED_IN') finishGoogleSignupIfPending();
+            });
+        })();
+
+        // ---------------------------------------------------------------
+        // Email + password signup
+        // ---------------------------------------------------------------
         document.getElementById('insuranceAgentForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            clearFormAlert();
+            clearAllFieldErrors();
+
+            const fullName = fullNameInput.value.trim();
+            const phone    = phoneInput.value.trim();
+            const email    = emailInput.value.trim();
+            const password = passwordInput.value;
+            const agreed   = agreeInput.checked;
+
+            let firstInvalid = null;
+            if (!isValidFullName(fullName)) {
+                showFieldError(fullNameInput, document.getElementById('fullNameError'), 'Please enter your first and last name.');
+                firstInvalid = firstInvalid || fullNameInput;
+            }
+            if (!isValidPhone(phone)) {
+                showFieldError(phoneInput, document.getElementById('phoneError'), 'Please enter a valid phone number.');
+                firstInvalid = firstInvalid || phoneInput;
+            }
+            if (!isValidEmail(email)) {
+                showFieldError(emailInput, document.getElementById('emailError'), 'Please enter a valid email address.');
+                firstInvalid = firstInvalid || emailInput;
+            }
+            if (!password || password.length < 8) {
+                showFieldError(passwordInput, document.getElementById('passwordError'), 'Password must be at least 8 characters.');
+                firstInvalid = firstInvalid || passwordInput;
+            }
+            if (!agreed) {
+                document.getElementById('agreeError').classList.add('show');
+                firstInvalid = firstInvalid || agreeInput;
+            }
+            if (firstInvalid) { firstInvalid.focus(); return; }
 
             // gh-865: explicit user confirmation — this, not the page
             // default, is what gets written to referral_agents.agent_type.
             const agentType = await confirmAgentType('insurance_agent');
+            const { firstName, lastName } = splitFullName(fullName);
 
-            const formData = new FormData(document.getElementById('insuranceAgentForm'));
-            const data = {
-                firstName: formData.get('firstName'),
-                lastName: formData.get('lastName'),
-                email: formData.get('email'),
-                password: formData.get('password'),
-                confirmPassword: formData.get('confirmPassword'),
-                phone: formData.get('phone'),
-                agencyName: formData.get('agencyName'),
-                licenseNumber: formData.get('licenseNumber') || null,
-                serviceArea: formData.get('serviceArea'),
-                websiteUrl: formData.get('websiteUrl') || null,
-                referredBy: (formData.get('referredBy') || '').toString().trim() || null,
-                agreeToTerms: formData.get('agreeToTerms') === 'on',
-                submittedAt: new Date().toISOString(),
-                agent_type: agentType
-            };
-
-            // gh-880 Half A: password replaces magic-link at signup.
-            if (!data.password || data.password.length < 8) {
-                alert('Password must be at least 8 characters.');
-                return;
-            }
-            if (data.password !== data.confirmPassword) {
-                alert('Passwords do not match.');
-                return;
-            }
+            const submitBtn = document.querySelector('#insuranceAgentForm button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.classList.add('btn-loading');
 
             try {
                 // Check if in demo mode
                 if (window.CONFIG && window.CONFIG.DEMO_MODE) {
-                    // Generate a demo referral link
-                    const referralCode = Math.random().toString(36).substring(2, 9).toUpperCase();
-                    const referralLink = `${window.location.origin}/claims?ref=${referralCode}`;
-
-                    document.getElementById('referralLink').textContent = referralLink;
-                    document.getElementById('successMessage').classList.add('show');
-                    document.getElementById('insuranceAgentForm').style.display = 'none';
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-
-                    // GA4 conversion event — partner funnel (demo mode)
-                    gtag('event', 'partner_signup', {
-                        partner_type: agentType,
-                        source:   utmContext.source   || 'direct',
-                        medium:   utmContext.medium   || undefined,
-                        campaign: utmContext.campaign || undefined,
-                        content:  utmContext.content  || undefined,
-                    });
+                    fireDemoSuccess(agentType, 'password');
                     return;
                 }
 
-                // Production mode: insert into referral_agents, then send magic link
+                // Production mode: insert into referral_agents, then create
+                // the credential.
                 if (!window.Auth) {
                     throw new Error('Auth module not loaded');
                 }
@@ -1444,23 +1309,19 @@
                 // #571 / v95: server-side register_partner RPC. referral_agents
                 // has no anon SELECT policy, so a direct .insert().select() can
                 // never read the trigger-generated code back. The SECURITY
-                // DEFINER RPC inserts (user_id NULL — linked after magic-link
-                // click), resolves the recruit code server-side (D-143), and
-                // returns {id, unique_code, recruit_code}. Client-side code
-                // generation is gone — codes are server-generated only.
+                // DEFINER RPC inserts (user_id NULL — linked after the
+                // credential above is created), resolves the recruit code
+                // server-side (D-143), and returns {id, unique_code,
+                // recruit_code}. Client-side code generation is gone — codes
+                // are server-generated only.
                 const { data: agentData, error: agentError } = await sb
                     .rpc('register_partner', {
                         p_agent_type:       agentType,
-                        p_first_name:       data.firstName,
-                        p_last_name:        data.lastName,
-                        p_email:            data.email,
-                        p_phone:            data.phone,
-                        p_company:          data.agencyName,
-                        p_website:          data.websiteUrl || null,
-                        p_service_area:     data.serviceArea,
-                        p_referred_by_note: data.referredBy,
+                        p_first_name:       firstName,
+                        p_last_name:        lastName,
+                        p_email:            email,
+                        p_phone:            phone,
                         p_recruit_code:     recruitContext.recruitCode || null,
-                        p_metadata:         { license_number: data.licenseNumber || null },
                         p_utm_source:       utmContext.source   || null,
                         p_utm_medium:       utmContext.medium   || null,
                         p_utm_campaign:     utmContext.campaign || null,
@@ -1473,7 +1334,7 @@
                         // sign-in with the password just typed on this signup
                         // form — it may not belong to whoever owns that account.
                         // Point them to login instead.
-                        alert("You're already a partner — sign in at otterquote.com/partner-login.html.");
+                        showFormAlert("You're already a partner — sign in at the Partner Login page.");
                         return;
                     }
                     throw agentError;
@@ -1491,9 +1352,9 @@
                     seoRefLink.href = `/ref-insurance.html?code=${finalCode}`;
                 }
 
-                // 3. Store data for post-auth linking
+                // Store data for post-auth linking
                 localStorage.setItem('cs_partner_signup', JSON.stringify({
-                    email: data.email,
+                    email: email,
                     unique_code: finalCode,
                 }));
                 localStorage.setItem('cs_auth_role', agentType);
@@ -1503,41 +1364,44 @@
                 localStorage.removeItem('cs_recruit_code');
                 localStorage.removeItem('cs_utm_context');
 
-                // 4. gh-880 Half A: sign up with the password just collected
+                // gh-880 Half A: sign up with the password just collected
                 // instead of sending a magic link. signUpResult.session is null
                 // when the Supabase project requires email confirmation before
-                // first sign-in — handled via an alert, same as the other
-                // partner_exists notice on this page.
-                const signUpResult = await Auth.signUpWithPassword(data.email, data.password, agentType);
-                if (!signUpResult || !signUpResult.session) {
-                    alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
-                }
+                // first sign-in — handled by the check-your-email state below,
+                // not an alert().
+                const signUpResult = await Auth.signUpWithPassword(email, password, agentType);
 
-                // 5. Show referral link in success message
-                const referralLinkEl = document.getElementById('referralLink');
-                if (referralLinkEl) referralLinkEl.textContent = finalLink;
-
-                // 6. Show success and hide form
-                document.getElementById('successMessage').classList.add('show');
-                document.getElementById('insuranceAgentForm').style.display = 'none';
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-
-                // GA4 conversion event — partner funnel. gh-846: previously
-                // read utm_source inline from the current URL (lost on a
-                // page bounce) and always dropped utm_content. Now sourced
-                // from the persisted utmContext, same data that just went
-                // into register_partner().
                 gtag('event', 'partner_signup', {
                     partner_type: agentType,
+                    method: 'password',
                     source:   utmContext.source   || 'direct',
                     medium:   utmContext.medium   || undefined,
                     campaign: utmContext.campaign || undefined,
                     content:  utmContext.content  || undefined,
                 });
 
+                if (signUpResult && signUpResult.session) {
+                    // Auto-confirmed session — go straight to the dashboard.
+                    window.location.href = '/partner-dashboard.html';
+                    return;
+                }
+
+                // Needs email confirmation — visible check-your-email state.
+                const referralLinkEl = document.getElementById('referralLink');
+                if (referralLinkEl) referralLinkEl.textContent = finalLink;
+                document.getElementById('checkEmailAddress').textContent = email;
+                document.getElementById('insuranceAgentForm').style.display = 'none';
+                document.getElementById('google-btn').style.display = 'none';
+                document.querySelector('.oauth-divider').style.display = 'none';
+                document.getElementById('checkEmailMessage').classList.add('show');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
             } catch (error) {
                 console.error('Error submitting application:', error);
-                alert('An error occurred. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL + ': ' + (error.message || 'Unknown error'));
+                showFormAlert('An error occurred. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL + ': ' + (error.message || 'Unknown error'));
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-loading');
             }
         });
 
@@ -1553,15 +1417,6 @@
                     btn.textContent = originalText;
                     btn.classList.remove('copied');
                 }, 2000);
-            });
-        });
-
-        // Handle file upload label display
-        document.querySelectorAll('.file-upload input[type="file"]').forEach(input => {
-            input.addEventListener('change', function() {
-                const label = this.nextElementSibling;
-                const fileName = this.files[0]?.name || 'File selected';
-                label.textContent = '✓ ' + fileName;
             });
         });
     </script>
