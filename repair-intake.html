@@ -90,6 +90,26 @@
             padding: 0 1rem 150px 1rem;
         }
 
+        /* gh-1276: payment-type banner, shared shape with project-info-rcv/
+           -acv/-cash.html (this page predates those; matched to them here
+           rather than the reverse, since this page's own styling is
+           otherwise untouched). */
+        .pi-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            background: rgba(224, 123, 0, 0.12);
+            border: 1px solid rgba(224, 123, 0, 0.35);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0 1.5rem;
+            flex-wrap: wrap;
+        }
+        .pi-banner p { margin: 0; color: white; font-size: 0.95rem; }
+        .pi-banner strong { color: white; }
+        .pi-banner a { color: white; font-weight: 600; text-decoration: underline; white-space: nowrap; }
+
         /* Disclaimer Banner */
         .disclaimer-banner {
             background: linear-gradient(135deg, var(--orange) 0%, #F97316 100%);
@@ -635,6 +655,12 @@
     <header id="site-header" data-active="dashboard" data-auth="true"></header>
 
     <main>
+        <!-- gh-1276: payment-type banner (all 4 project-info variants) -->
+        <div class="pi-banner">
+            <p>This job is being paid for via <strong>Insurance Claim (Repair Only)</strong>.</p>
+            <a href="/trade-selector.html">Change</a>
+        </div>
+
         <!-- Disclaimer Banner -->
         <div class="disclaimer-banner">
             <h2>
