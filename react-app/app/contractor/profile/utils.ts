@@ -80,7 +80,12 @@ export function buildInitialServiceConfigs(
   const counties = savedCounties ?? [];
   const out: SvcConfigs = {};
   for (const abbr of states) {
-    const countyList = states.length === 1 ? counties : [];
+    // gh-1253: saved counties may carry legacy bare names or the current "STATE:County"
+    // form (see collectServiceArea) — strip any "XX:" prefix so the county checkbox grid
+    // (bare Census county names) still shows the saved selection as checked.
+    const countyList = (states.length === 1 ? counties : []).map((c) =>
+      c.includes(':') ? c.split(':').slice(1).join(':') : c,
+    );
     out[abbr] = { mode: countyList.length > 0 ? 'specific' : 'entire', counties: countyList };
   }
   return out;
@@ -99,7 +104,10 @@ export function collectServiceArea(configs: SvcConfigs): { service_states: strin
     service_states.push(abbr);
     const cfg = configs[abbr];
     if (cfg.mode === 'specific') {
-      for (const c of cfg.counties) service_counties.push(c);
+      // gh-1253: persist "STATE:County" (e.g. "IN:Marion") so process-auto-bids'
+      // county.startsWith(`${state}:`) match works. Previously pushed the bare
+      // county name, which never matched.
+      for (const c of cfg.counties) service_counties.push(`${abbr}:${c}`);
     }
   }
   return { service_states, service_counties };
