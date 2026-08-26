@@ -1137,11 +1137,55 @@
           </button>
         </div>
 
-        <!-- Project Info Section -->
+        <style>
+      /* Payment-path banner (Bridge 2026-08-26) */
+      .payment-path-banner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--sp-3);
+        justify-content: space-between;
+        padding: var(--sp-3) var(--sp-4);
+        margin-bottom: var(--sp-4);
+        border: 1px solid rgba(224,123,0,0.35);
+        border-left: 3px solid #E07B00;
+        border-radius: 8px;
+        background: rgba(224,123,0,0.08);
+      }
+      .payment-path-text { font-size: 0.95rem; line-height: 1.4; }
+      .payment-path-text strong { color: #E07B00; }
+      .payment-path-change {
+        background: none;
+        border: 1px solid rgba(255,255,255,0.25);
+        border-radius: 6px;
+        color: inherit;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 4px 10px;
+        white-space: nowrap;
+      }
+      .payment-path-change:hover { border-color: #E07B00; color: #E07B00; }
+    </style>
+
+    <!-- Project Info Section -->
         <div class="dashboard-section">
           <div class="section-header">
             <h2>Project Information</h2>
             <button class="btn btn-sm btn-ghost" id="toggle-claim-edit">Edit</button>
+          </div>
+
+          <!-- Payment-path banner — Dustin 2026-08-26: "At the top of the project
+               information, there should be a statement of how the job is being paid
+               for with an option to change it if it is wrong." Full-width and ABOVE
+               the grid so it is genuinely first, not the third cell of a 3-up row.
+               Derived from job_type (not funding_type) so Repair Only stops
+               rendering as "Cash / Out-of-Pocket". -->
+          <div id="payment-path-banner" class="payment-path-banner" style="display:none;">
+            <span class="payment-path-text">
+              This job is being paid for by <strong id="payment-path-value"></strong>.
+            </span>
+            <button type="button" class="payment-path-change" id="payment-path-change">Not right? Change it</button>
           </div>
 
           <!-- Display mode -->
@@ -1493,6 +1537,7 @@
           measurements_filename: null,
           ready_for_bids: false,
         };
+        window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
       }
 
       // ── Main Initialization ──
@@ -1629,6 +1674,7 @@
 
           if (data) {
             currentClaim = data;
+            window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
             console.log('[Dashboard] Loaded existing claim:', { id: data.id, status: data.status, has_estimate: data.has_estimate, has_material_selection: data.has_material_selection });
 
             // Fetch the most recent active Hover order for this claim (link_sent or pending)
@@ -1713,6 +1759,7 @@
 
             if (!createError && newClaim) {
               currentClaim = newClaim;
+              window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
               console.log('[Dashboard] Created new claim:', newClaim.id);
             }
           }
@@ -1728,6 +1775,7 @@
               has_material_selection: false,
               ready_for_bids: false,
             };
+            window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
           }
 
           // Show submitted state if applicable
@@ -1747,6 +1795,7 @@
             has_material_selection: false,
             ready_for_bids: false,
           };
+          window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
         }
       }
 
@@ -1886,15 +1935,40 @@
         const trades = Array.isArray(currentClaim.trades) && currentClaim.trades.length
           ? currentClaim.trades.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ')
           : null;
-        const fundingLabel = currentClaim.funding_type === 'insurance'
-          ? (currentClaim.policy_type === 'acv' ? 'Insurance (ACV)' : 'Insurance (RCV)')
-          : currentClaim.funding_type === 'cash' ? 'Cash / Out-of-Pocket' : currentClaim.funding_type || null;
+        // Bridge 2026-08-26: derive from job_type FIRST. The save path writes
+        // funding_type='cash' for BOTH 'retail' and 'repair' (see the job-type
+        // collector below), so reading funding_type alone made every Repair Only
+        // job display as "Cash / Out-of-Pocket" — including insurance-funded
+        // repairs. job_type is already persisted; it just was never surfaced.
+        const JOB_TYPE_LABELS = {
+          insurance_rcv: 'Insurance (RCV)',
+          insurance_acv: 'Insurance (ACV)',
+          retail:        'Cash / Out-of-Pocket',
+          repair:        'Repair Only',
+        };
+        const fundingLabel = JOB_TYPE_LABELS[currentClaim.job_type]
+          || (currentClaim.funding_type === 'insurance'
+                ? (currentClaim.policy_type === 'acv' ? 'Insurance (ACV)' : 'Insurance (RCV)')
+                : currentClaim.funding_type === 'cash' ? 'Cash / Out-of-Pocket'
+                : currentClaim.funding_type || null);
         const propertyAddr = currentClaim.property_address || null;
 
+        // Banner above the grid — the statement Dustin asked for, with its own
+        // change control instead of relying on the generic section Edit button.
+        const banner = document.getElementById('payment-path-banner');
+        if (banner) {
+          if (fundingLabel) {
+            document.getElementById('payment-path-value').textContent = fundingLabel;
+            banner.style.display = 'flex';
+          } else {
+            banner.style.display = 'none';
+          }
+        }
+
+        // Funding is no longer duplicated in the grid — it is the banner now.
         const summaryRows = [
           { label: 'Property Address', value: propertyAddr },
           { label: 'Project Type', value: trades },
-          { label: 'Funding', value: fundingLabel },
         ].filter(r => r.value);
 
         const summaryHtml = summaryRows.length ? summaryRows.map(r => `
@@ -2541,6 +2615,18 @@
 
       // ── Event Handlers ──
       function setupEventListeners() {
+        // Bridge 2026-08-26: the banner's own "Not right? Change it" control —
+        // opens edit mode (reusing the existing toggle so pre-population runs)
+        // and scrolls the payment-path selector into view.
+        const pathChangeBtn = document.getElementById('payment-path-change');
+        if (pathChangeBtn) {
+          pathChangeBtn.addEventListener('click', () => {
+            if (!isEditingClaim) document.getElementById('toggle-claim-edit').click();
+            const sel = document.getElementById('jobTypeSelector');
+            if (sel) sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
+        }
+
         // Claim edit toggle
         document.getElementById('toggle-claim-edit').addEventListener('click', () => {
           isEditingClaim = !isEditingClaim;
@@ -2718,6 +2804,7 @@
 
             if (error) throw error;
             currentClaim = data;
+            window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
 
             // ── Adjuster Knowledge Base: upsert adjuster record (D-046) ──
             // Non-critical: fire and forget — a failure here must not block the save
@@ -3127,7 +3214,10 @@
         document.getElementById('switch-contractor-modal').classList.remove('active');
       }
 
-      async function submitSwitchSurvey() {
+      // gh-1276 follow-up (Bridge 2026-08-26): this lives inside the page IIFE,
+      // so the inline onclick= on the confirm button could never resolve it —
+      // ReferenceError on every click. Same defect class as selectJobType.
+      window.submitSwitchSurvey = async function submitSwitchSurvey() {
         const btn     = document.getElementById('submit-switch-btn');
         const reasons = Array.from(document.querySelectorAll('input[name="switch_reason"]:checked')).map(cb => cb.value);
         const notes   = document.getElementById('switch-notes').value.trim();
@@ -3158,12 +3248,14 @@
           btn.textContent = 'Submit Switch Request';
           alert('There was a problem submitting your request. Please try again or contact support.');
         }
-      }
+      };
 
-      function toggleReasonLabel(checkbox) {
+      // gh-1276 follow-up (Bridge 2026-08-26): same IIFE-scoping defect —
+      // all five switch-reason checkboxes threw ReferenceError on change.
+      window.toggleReasonLabel = function toggleReasonLabel(checkbox) {
         const label = checkbox.closest('.switch-reason-label');
         if (label) label.classList.toggle('selected', checkbox.checked);
-      }
+      };
 
       document.addEventListener('DOMContentLoaded', () => {
           // D-211 Phase 0: Use Auth.ready() which handles magic link timing internally
@@ -3177,24 +3269,28 @@
           });
       });
 
+      // W3-P4 / gh-1276 follow-up (Bridge 2026-08-26): moved INSIDE the IIFE.
+      // It was window-exposed but declared outside, so its body's reference to
+      // the IIFE-scoped `currentWarrantyUrl` threw ReferenceError on every click.
+      // W3-P4: Opens a 7-day signed URL to the homeowner's warranty document
+      // gh-1276: window-exposed, same IIFE-scoping issue as the cluster above.
+      window.openWarrantyDocUrl = async function() {
+          if (!currentWarrantyUrl) return;
+          try {
+              const bucketPath = currentWarrantyUrl.replace(/^contractor-documents\//, '');
+              const { data: urlData, error: urlError } = await sb.storage
+                  .from('contractor-documents')
+                  .createSignedUrl(bucketPath, 60 * 60 * 24 * 7);
+              if (urlError || !urlData?.signedUrl) throw new Error(urlError?.message || 'Could not generate link');
+              window.open(urlData.signedUrl, '_blank', 'noopener,noreferrer');
+          } catch (err) {
+              console.error('[Dashboard] Warranty signed URL error:', err);
+              alert('Unable to open the warranty document. Please try again or contact support.');
+          }
+      }
+
     })();
 
-        // W3-P4: Opens a 7-day signed URL to the homeowner's warranty document
-        // gh-1276: window-exposed, same IIFE-scoping issue as the cluster above.
-        window.openWarrantyDocUrl = async function() {
-            if (!currentWarrantyUrl) return;
-            try {
-                const bucketPath = currentWarrantyUrl.replace(/^contractor-documents\//, '');
-                const { data: urlData, error: urlError } = await sb.storage
-                    .from('contractor-documents')
-                    .createSignedUrl(bucketPath, 60 * 60 * 24 * 7);
-                if (urlError || !urlData?.signedUrl) throw new Error(urlError?.message || 'Could not generate link');
-                window.open(urlData.signedUrl, '_blank', 'noopener,noreferrer');
-            } catch (err) {
-                console.error('[Dashboard] Warranty signed URL error:', err);
-                alert('Unable to open the warranty document. Please try again or contact support.');
-            }
-        }
     </script>
 
 <!-- Messaging Thread UI Section for dashboard.html -->

@@ -416,6 +416,21 @@ const Nav = {
       // contractor navigation. Disagreement means "you are a guest in this
       // part of the site", which is what the guest link set is for.
       const urlRole = this._roleFromUrl();
+
+      // Bridge 2026-08-26: Auth.getRole() fails CLOSED — any RLS error, stale
+      // JWT, or network blip returns null, and _navRoleForAuthRole(null) is
+      // 'homeowner'. On contractor-profile.html that made urlRole ('contractor')
+      // disagree with 'homeowner', so this returned early and left a signed-in
+      // contractor stranded on the guest marketing line (Join · How It Works ·
+      // Tools · FAQ) with no route back into their own account — Dustin's
+      // "I can't get to any other part of my account" report. When we have a
+      // real session but no resolvable role, trust the page's own URL role
+      // rather than silently downgrading the user to a guest.
+      if (role === null || role === undefined) {
+        if (urlRole) { this._updateNavLinksForRole(urlRole); }
+        return;
+      }
+
       if (urlRole && urlRole !== this._navRoleForAuthRole(role)) return;
 
       this._updateNavLinksForRole(role);

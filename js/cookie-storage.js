@@ -329,6 +329,84 @@
     }
   };
 
+  /* ─────────────────────────────────────────────────────────────────────
+   * Referral attribution bridge — Bridge 2026-08-26 (P0)
+   *
+   * The referral chain was broken end-to-end and nothing surfaced it:
+   *   ref.html (otterquote.com)  writes oq_referral_id / _agent_id / _code
+   *                              to localStorage + sessionStorage
+   *   trade-selector.html        meta-refreshes to app.otterquote.com
+   *   react-app trade-selector   reads those keys from app-origin storage
+   *
+   * localStorage is ORIGIN-scoped, not domain-scoped, so the app origin read
+   * empty every time. `claims.referral_id` was therefore never written, and
+   * apply_referral_commission() walks exactly that column — meaning no partner
+   * could ever be paid for a referral that converted. The auth tokens already
+   * solved this same problem with .otterquote.com cookies (D-212); referral
+   * attribution just never got the same treatment.
+   *
+   * 90 days matches the attribution window the referrals table assumes.
+   * ───────────────────────────────────────────────────────────────────── */
+  var REFERRAL_KEYS      = ['oq_referral_id', 'oq_referral_agent_id', 'oq_referral_code'];
+  var REFERRAL_COOKIE    = 'oq-ref';           // one cookie, JSON payload — all three ids are short
+  var REFERRAL_MAX_AGE   = 60 * 60 * 24 * 90;  // 90 days
+
+  window.OtterQuoteReferral = {
+    /** Persist referral ids to localStorage, sessionStorage AND a
+     *  .otterquote.com cookie so app.otterquote.com can read them. */
+    write: function (ids) {
+      if (!ids) return;
+      var payload = {};
+      for (var i = 0; i < REFERRAL_KEYS.length; i++) {
+        var k = REFERRAL_KEYS[i];
+        var v = ids[k];
+        if (v === undefined || v === null || v === '') continue;
+        payload[k] = String(v);
+        try { window.localStorage.setItem(k, String(v)); } catch (e) {}
+        try { window.sessionStorage.setItem(k, String(v)); } catch (e) {}
+      }
+      if (!Object.keys(payload).length) return;
+      try {
+        writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), REFERRAL_MAX_AGE);
+      } catch (e) {}
+    },
+
+    /** Read referral ids, cookie FIRST so a cross-origin hop still resolves.
+     *  Returns an object with whichever of the three keys are available. */
+    read: function () {
+      var out = {};
+      try {
+        var raw = readCookie(REFERRAL_COOKIE);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          for (var k in parsed) {
+            if (Object.prototype.hasOwnProperty.call(parsed, k)) out[k] = parsed[k];
+          }
+        }
+      } catch (e) {}
+      // Same-origin storage fills any gap and wins only where the cookie is silent.
+      for (var i = 0; i < REFERRAL_KEYS.length; i++) {
+        var key = REFERRAL_KEYS[i];
+        if (out[key]) continue;
+        try { out[key] = window.sessionStorage.getItem(key) || window.localStorage.getItem(key) || undefined; } catch (e) {}
+        if (!out[key]) delete out[key];
+      }
+      return out;
+    },
+
+    /** Clear attribution once it has been stamped onto a claim. */
+    clear: function () {
+      for (var i = 0; i < REFERRAL_KEYS.length; i++) {
+        try { window.localStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
+        try { window.sessionStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
+      }
+      try { deleteCookie(REFERRAL_COOKIE); } catch (e) {}
+    },
+
+    _COOKIE: REFERRAL_COOKIE,
+    _KEYS:   REFERRAL_KEYS
+  };
+
   // Constants exposed for diagnostics + contract tests.
   window.OtterQuoteCookieStorage._COOKIE_ACCESS   = COOKIE_ACCESS;
   window.OtterQuoteCookieStorage._COOKIE_REFRESH  = COOKIE_REFRESH;

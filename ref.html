@@ -197,15 +197,29 @@
                     console.warn('Click tracking RPC failed:', clickError);
                 } else {
                     // 5a. Store referral IDs so get-started.html can attach them
-                    sessionStorage.setItem('oq_referral_agent_id', agent.id);
-                    sessionStorage.setItem('oq_referral_id', referralId);
-                    sessionStorage.setItem('oq_referral_code', code);
-                    // Also persist to localStorage so it survives magic-link redirect
-                    localStorage.setItem('oq_referral_id', referralId);
-                    // #567: agent id + code too — the claim writer needs all three
-                    // to stamp claims.referral_id / referral_agent_id / referral_code.
-                    localStorage.setItem('oq_referral_agent_id', agent.id);
-                    localStorage.setItem('oq_referral_code', code);
+                    // Bridge 2026-08-26 (P0): route through OtterQuoteReferral so the
+                    // ids ALSO land in a .otterquote.com cookie. localStorage is
+                    // ORIGIN-scoped, and this funnel hops to app.otterquote.com
+                    // (trade-selector meta-refresh) before the claim is written —
+                    // so every id written here used to die at the origin boundary
+                    // and claims.referral_id was never stamped. That column is the
+                    // only one apply_referral_commission() walks, i.e. no partner
+                    // could ever be paid. Falls back to the old writes if the
+                    // helper is somehow absent.
+                    if (window.OtterQuoteReferral) {
+                        window.OtterQuoteReferral.write({
+                            oq_referral_id: referralId,
+                            oq_referral_agent_id: agent.id,
+                            oq_referral_code: code
+                        });
+                    } else {
+                        sessionStorage.setItem('oq_referral_agent_id', agent.id);
+                        sessionStorage.setItem('oq_referral_id', referralId);
+                        sessionStorage.setItem('oq_referral_code', code);
+                        localStorage.setItem('oq_referral_id', referralId);
+                        localStorage.setItem('oq_referral_agent_id', agent.id);
+                        localStorage.setItem('oq_referral_code', code);
+                    }
                 }
 
                 // 5b. Store agent display info for personalization on landing pages

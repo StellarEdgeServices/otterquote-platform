@@ -364,7 +364,7 @@ const Services = {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.access_token}`,
-        apikey: CONFIG.SUPABASE_ANON_KEY,
+        apikey: CONFIG.SUPABASE_ANON,
       },
       body: JSON.stringify({ claim_id, product_code, payment_intent_id, buyer_role, contractor_id, note }),
     });

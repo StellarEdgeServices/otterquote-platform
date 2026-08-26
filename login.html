@@ -502,8 +502,25 @@
 
     } catch (err) {
       console.error('Login error:', err);
-      errorEl.textContent = 'Incorrect email or password. Please try again, or use "Forgot password?" below.';
+      // Bridge 2026-08-26: every account created before gh-1274 was created by
+      // magic link or Google — it has NO password, so Supabase returns the same
+      // generic `invalid_credentials` it returns for a wrong password. Telling
+      // those users "incorrect password" sends them to re-type a password that
+      // has never existed. Dustin hit exactly this at 14:53 ET on 2026-08-26.
+      // Offer the set-a-password path inline instead of burying it in a link.
+      errorEl.innerHTML =
+        'We couldn\'t sign you in with that password. ' +
+        '<strong>If you\'ve only ever signed in with Google or an email link, you don\'t have a password yet</strong> — ' +
+        '<a href="#" id="inline-set-password" style="color:#E07B00;font-weight:600;">set one now</a>, ' +
+        'or use the Google button above.';
       errorEl.style.display = 'block';
+      var inlineLink = document.getElementById('inline-set-password');
+      if (inlineLink) {
+        inlineLink.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          forgotLink.click();
+        });
+      }
     } finally {
       submitBtn.classList.remove('btn-loading');
       submitBtn.disabled = false;

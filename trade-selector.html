@@ -1397,14 +1397,22 @@
             // the id to oq_referral_id_for_claim after advancing the referral.
             // Without these, nothing ever writes claims.referral_id and the
             // commission trigger can never fire for real referrals.
-            const chainReferralId = sessionStorage.getItem('oq_referral_id')
+            // Bridge 2026-08-26 (P0): cookie FIRST. These keys are written on
+            // otterquote.com and read here; localStorage is origin-scoped, so
+            // whenever this page runs on app.otterquote.com the reads returned
+            // null and claims.referral_id was silently never written.
+            const refCookie = window.OtterQuoteReferral ? window.OtterQuoteReferral.read() : {};
+            const chainReferralId = refCookie.oq_referral_id
+              || sessionStorage.getItem('oq_referral_id')
               || localStorage.getItem('oq_referral_id')
               || localStorage.getItem('oq_referral_id_for_claim')
               || null;
-            const chainReferralAgentId = sessionStorage.getItem('oq_referral_agent_id')
+            const chainReferralAgentId = refCookie.oq_referral_agent_id
+              || sessionStorage.getItem('oq_referral_agent_id')
               || localStorage.getItem('oq_referral_agent_id')
               || null;
-            const chainReferralCode = sessionStorage.getItem('oq_referral_code')
+            const chainReferralCode = refCookie.oq_referral_code
+              || sessionStorage.getItem('oq_referral_code')
               || localStorage.getItem('oq_referral_code')
               || null;
 

@@ -118,8 +118,16 @@
             color: rgba(255, 255, 255, 0.9);
         }
 
-        /* Container */
-        .container {
+        /* Container — Bridge 2026-08-26: renamed from the shared `.container`.
+           js/nav.js injects the header as <div class="nav-inner container"> and
+           the footer as <div class="footer-inner container">. This page-level
+           rule loads after css/nav.css at equal specificity, so its 48px of
+           VERTICAL padding was applied inside .nav-inner's fixed 64px
+           border-box — collapsing the content box to 0 and rendering a ~263px
+           header with overflowing children. That is the "janky nav / I can't
+           get to any other part of my account" report. Same trap
+           contractor-join.html documented at gh-960. */
+        .profile-container {
             max-width: 1200px;
             margin: 0 auto;
             padding: var(--sp-12) var(--sp-6);
@@ -612,7 +620,7 @@
                 font-size: 1.75rem;
             }
 
-            .container {
+            .profile-container {
                 padding: var(--sp-8) var(--sp-4);
             }
 
@@ -661,14 +669,14 @@
 
         <!-- Header -->
         <section class="header-section">
-            <div class="container">
+            <div class="profile-container">
                 <h1>Your Contractor Profile</h1>
                 <p>This is what homeowners see when comparing bids.</p>
             </div>
         </section>
 
         <!-- Profile Content -->
-        <div class="container">
+        <div class="profile-container">
             <!-- Profile Status Card — gh-item-4: was a dead end with no status or way out -->
             <div class="profile-card" id="profileStatusCard">
                 <h2><span class="card-icon">✅</span>Profile Status</h2>

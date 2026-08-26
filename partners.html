@@ -273,6 +273,13 @@ const DESTINATIONS = {
  * another writer fixing an unrelated auth bug, and this key is the only
  * documented public contract of that module. */
 const NAV_ROLE_STORAGE_KEY = 'oq_nav_role';
+// Bridge 2026-08-26: js/nav.js's _explicitRoleChoice() requires BOTH keys
+// (Nav._ROLE_EXPLICIT_KEY) and returns null if the timestamp is missing — so
+// writing only 'oq_nav_role' here meant a signed-in partner who clicked
+// "I'm a homeowner" landed on index.html correctly but had the nav snap back
+// to the Partner links with "Referral Partner" re-highlighted. That is the
+// exact symptom the explicit-choice mechanism exists to prevent.
+const NAV_ROLE_EXPLICIT_KEY = 'oq_nav_role_at';
 const NAV_ROLE_FOR_TYPE = { customer: 'homeowner' };
 
 
@@ -347,7 +354,10 @@ const GATE_OPTIONS = [
             }
             const navRole = NAV_ROLE_FOR_TYPE[type];
             if (navRole) {
-                try { window.localStorage.setItem(NAV_ROLE_STORAGE_KEY, navRole); } catch (_) { /* private mode / blocked storage — non-fatal */ }
+                try {
+                    window.localStorage.setItem(NAV_ROLE_STORAGE_KEY, navRole);
+                    window.localStorage.setItem(NAV_ROLE_EXPLICIT_KEY, String(Date.now()));
+                } catch (_) { /* private mode / blocked storage — non-fatal */ }
             }
         });
 

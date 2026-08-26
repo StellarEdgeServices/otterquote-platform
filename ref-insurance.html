@@ -786,13 +786,27 @@
       } else {
         // Persist so the intake funnel can stamp the claim with attribution.
         // localStorage as well as sessionStorage — mirrors ref-inspector.html.
-        sessionStorage.setItem('oq_referral_id', referralId);
-        sessionStorage.setItem('oq_referral_code', ref);
-        localStorage.setItem('oq_referral_id', referralId);
-        localStorage.setItem('oq_referral_code', ref);
-        if (referralAgentData && referralAgentData.id) {
-          sessionStorage.setItem('oq_referral_agent_id', referralAgentData.id);
-          localStorage.setItem('oq_referral_agent_id', referralAgentData.id);
+        // Bridge 2026-08-26 (P0): route through OtterQuoteReferral so the ids
+        // ALSO land in a .otterquote.com cookie. localStorage is ORIGIN-scoped
+        // and this funnel hops to app.otterquote.com before the claim is
+        // written, so these ids used to die at the origin boundary and
+        // claims.referral_id was never stamped — the only column
+        // apply_referral_commission() walks. Mirrors ref.html.
+        if (window.OtterQuoteReferral) {
+          window.OtterQuoteReferral.write({
+            oq_referral_id: referralId,
+            oq_referral_code: ref,
+            oq_referral_agent_id: (referralAgentData && referralAgentData.id) || null
+          });
+        } else {
+          sessionStorage.setItem('oq_referral_id', referralId);
+          sessionStorage.setItem('oq_referral_code', ref);
+          localStorage.setItem('oq_referral_id', referralId);
+          localStorage.setItem('oq_referral_code', ref);
+          if (referralAgentData && referralAgentData.id) {
+            sessionStorage.setItem('oq_referral_agent_id', referralAgentData.id);
+            localStorage.setItem('oq_referral_agent_id', referralAgentData.id);
+          }
         }
       }
     } catch (err) {

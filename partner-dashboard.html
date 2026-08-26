@@ -487,12 +487,16 @@
             font-size: 0.9rem;
         }
 
+        /* Bridge 2026-08-26: see partner-insurance.html — `border: none`
+           stripped .btn-ghost's border on nav-injected header buttons. */
+        .btn:not(.btn-ghost):not(.btn-secondary):not(.btn-outline) {
+            border: none;
+        }
         .btn {
             display: inline-block;
             padding: var(--sp-3) var(--sp-6);
             background: var(--amber);
             color: var(--navy);
-            border: none;
             border-radius: var(--radius-md);
             font-family: var(--font-body);
             font-weight: 600;

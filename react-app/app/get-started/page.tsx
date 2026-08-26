@@ -1,13 +1,15 @@
 /**
  * Get Started — D-211 Phase 2
  *
- * Homeowner sign-up page (magic link email/password).
+ * Homeowner sign-up page (Google OAuth + email/password).
  * Feature-parity with static get-started.html.
  *
  * Auth flow:
  *   - If user is already logged in, redirect to appropriate dashboard.
- *   - New users: collect profile data → leads insert (non-fatal) →
- *     write localStorage (cs_signup) → signInWithOtp.
+ *   - New users choose one of two paths, both of which collect the same profile
+ *     data first: Google OAuth (primary, button at the top of the card) or
+ *     email + password. Either way we do leads insert (non-fatal) → write
+ *     localStorage (cs_signup) → hand off to Supabase auth.
  *   - HubSpot contact creation (D-189) no longer fires from this page —
  *     the user has no session/JWT yet at this point, and create-hubspot-contact's
  *     homeowner mode requires one (D-211 CODE-3 hardening, 86e1xdaxe #1), so the
@@ -16,23 +18,54 @@
  *     once a valid session JWT exists.
  *
  * References: D-189 (HubSpot), D-211 (React surface), #405 (post-auth HubSpot move)
- *   [D-207 Google OAuth removed pre-launch]
+ *
+ *   [D-207 Google OAuth removed pre-launch] — REVERSED for this page on
+ *   2026-08-26 by Dustin. His direction, verbatim: "The login for customers
+ *   still has a magic link. I'd like to remove that as an option for homeowners
+ *   if possible. I want it to be Oauth or set a password. I don't want to force
+ *   homeowners to leave the site as the first step." D-207's pre-launch removal
+ *   therefore no longer governs the homeowner sign-up surface: the Google button
+ *   is back above the form as the primary path, email + password is the
+ *   alternative, and magic link is gone from this page entirely (both the
+ *   signInWithOtp call and the "check your email" panel that only it could
+ *   reach). The reversal is recorded rather than deleted so nobody re-applies
+ *   D-207 here without a newer decision from Dustin. /login and /contractor/login
+ *   are untouched — this reversal is scoped to homeowner sign-up.
  */
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { formatPhoneValue, isValidEmail } from './utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const AUTH_CALLBACK_URL = 'https://app.otterquote.com/auth-callback';
+// Same target the magic link used, plus the homeowner intent marker the static
+// stack and /login already carry (see app/login/utils.ts GOOGLE_OAUTH_REDIRECT).
+// Declared locally rather than imported from the login page so /get-started
+// keeps owning its own redirect targets, as it always has.
+const GOOGLE_OAUTH_REDIRECT = `${AUTH_CALLBACK_URL}?intent=homeowner`;
 const DASHBOARD_URL = 'https://otterquote.com/dashboard.html';
 const CONTRACTOR_DASHBOARD_URL = 'https://otterquote.com/contractor-dashboard.html';
+const LOGIN_URL = 'https://otterquote.com/login.html';
 const SUPPORT_EMAIL = 'info@otterquote.com';
+
+const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * Shown when Supabase tells us the email already has an account. Dustin's
+ * 2026-08-26 direction makes password the fallback path, and a generic
+ * "something went wrong" on a duplicate email is the single most common way a
+ * returning homeowner gets stuck on a sign-up form — so this points at sign-in
+ * explicitly instead.
+ */
+const ALREADY_REGISTERED_MESSAGE =
+  'An account with that email already exists. Sign in instead — use the "Sign in here" link below, or reset your password from that page if you have forgotten it.';
 
 type ReferralSource = 'insurance_agent' | 'realtor' | 'friend' | 'web' | '';
 
@@ -44,6 +77,22 @@ function gtag(...args: unknown[]) {
   }
 }
 
+/**
+ * True when Supabase is telling us this email already has an account.
+ * GoTrue reports this two different ways depending on project settings, and
+ * both have to land on the same user-facing message (requirement from Dustin
+ * 2026-08-26): an outright "User already registered" error when email
+ * confirmation is off, or a 422 with code user_already_exists.
+ */
+function isAlreadyRegisteredError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  const code = (err as { code?: string } | null)?.code ?? '';
+  return (
+    /already\s+(registered|exists|been registered)/i.test(message) ||
+    code === 'user_already_exists'
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function GetStartedPage() {
@@ -53,6 +102,8 @@ export default function GetStartedPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [smsConsent, setSmsConsent] = useState(false);
@@ -62,14 +113,26 @@ export default function GetStartedPage() {
 
   // UI state
   const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [confirmEmailSent, setConfirmEmailSent] = useState(false);
   const [sentToEmail, setSentToEmail] = useState('');
+
+  /**
+   * Set the instant we begin our own post-sign-up navigation. When the Supabase
+   * project auto-confirms emails, signUp() hands back a live session right away,
+   * which would otherwise trip the "already logged in" redirect below and drop a
+   * brand-new homeowner on the dashboard before /auth-callback has run the
+   * post-auth HubSpot sync (#405) and the referral advance (#571). A ref, not
+   * state, because this must take effect without waiting for a re-render.
+   */
+  const signupNavigation = useRef(false);
 
   // ── Redirect if already logged in ──
   useEffect(() => {
     if (loading) return;
     if (!user) return;
+    if (signupNavigation.current) return;
     if (role === 'contractor') {
       window.location.href = CONTRACTOR_DASHBOARD_URL;
     } else {
@@ -87,18 +150,175 @@ export default function GetStartedPage() {
     setReferralSource(prev => (prev === val ? '' : val));
   }, []);
 
-  // ── Form submission ──
+  // ── Validation ──
+
+  /**
+   * Profile fields both paths need. Google hands us the email only after the
+   * round-trip, so email/password are validated separately by the form path —
+   * but everything else has to be on the clipboard before we leave the site,
+   * because register-time data cannot be recovered from an OAuth callback.
+   */
+  const validateProfile = (): string | null => {
+    if (!firstName.trim() || !lastName.trim() || !phone.trim() || !address.trim()) {
+      return 'Please fill in your name, phone, and property address before continuing.';
+    }
+    return null;
+  };
+
+  const validateEmailAndPassword = (): string | null => {
+    if (!email.trim()) return 'Please fill in all required fields.';
+    if (!isValidEmail(email.trim())) return 'Please enter a valid email address.';
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+    }
+    if (password !== confirmPassword) return 'Passwords do not match.';
+    return null;
+  };
+
+  // ── Shared pre-auth persistence ──
+
+  /**
+   * Everything that has to be on disk BEFORE we hand control to Supabase, used
+   * identically by the password path and the Google path.
+   *
+   * For Google this is the "stash the pending signup payload before navigating"
+   * step (same shape as the static partner-insurance.html cs_pending_partner_signup
+   * pattern), except there is no need for a second pending-payload key here:
+   * /auth-callback already reads cs_signup out of localStorage post-auth to fire
+   * the HubSpot contact (#405), and /trade-selector already reads it to upsert
+   * profiles. /get-started and /auth-callback are both on app.otterquote.com, so
+   * localStorage — which is origin-scoped — survives the Google round-trip intact.
+   * Reusing cs_signup keeps one mechanism instead of inventing a parallel one.
+   */
+  const persistSignupContext = (emailForLead: string | null) => {
+    // 1. Insert into leads table (non-fatal, fire-and-forget — no await).
+    //    Skipped when we have no email to attach: on the Google path the visitor
+    //    may leave the email field blank, and the real address only arrives with
+    //    the OAuth session.
+    if (emailForLead) {
+      supabase.from('leads').insert({
+        name: `${firstName.trim()} ${lastName.trim()}`,
+        email: emailForLead,
+        source: referralSource || 'web',
+        created_at: new Date().toISOString(),
+      }).then(({ error: leadErr }) => {
+        if (leadErr) console.warn('[get-started] leads insert failed (non-fatal):', leadErr);
+      });
+    }
+
+    // 2. Persist referral attribution.
+    // Bridge 2026-08-26 (P0): cookie FIRST. ref.html writes these on
+    // otterquote.com; this page is on app.otterquote.com and localStorage is
+    // ORIGIN-scoped, so both reads below were always null here. Also note the
+    // agent-id read had no localStorage fallback at all (unlike the id above),
+    // so it lost the value on a new tab even same-origin.
+    const refCookie = readReferralIds();
+    const storedReferralId =
+      refCookie.oq_referral_id ||
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('oq_referral_id')) ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('oq_referral_id')) ||
+      null;
+    const storedReferralAgentId =
+      refCookie.oq_referral_agent_id ||
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('oq_referral_agent_id')) ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('oq_referral_agent_id')) ||
+      null;
+
+    // 3. Write cs_signup to localStorage
+    localStorage.setItem(
+      'cs_signup',
+      JSON.stringify({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        referral_source:
+          referralSource || (storedReferralAgentId ? 'partner_link' : 'web'),
+        referring_agent_name: refName.trim() || null,
+        referring_agent_email: refEmail.trim() || null,
+        role: 'homeowner',
+        sms_consent_ts: smsConsent ? new Date().toISOString() : null,
+      }),
+    );
+
+    // 4. Persist referral_id so auth-callback can advance referral status.
+    // Written through the cookie bridge so it survives the app<->www hop —
+    // and, since 2026-08-26, the Google round-trip through accounts.google.com.
+    if (storedReferralId) {
+      writeReferralIds({
+        oq_referral_id: storedReferralId,
+        oq_referral_agent_id: storedReferralAgentId || undefined,
+        oq_referral_code: refCookie.oq_referral_code,
+      });
+    }
+
+    // 5. Store intended role for post-auth routing
+    localStorage.setItem('cs_auth_role', 'homeowner');
+  };
+
+  /** GA4 sign-up events — `method` distinguishes the two paths Dustin asked for. */
+  const fireSignupAnalytics = (method: 'google' | 'password') => {
+    const params = new URLSearchParams(
+      typeof window !== 'undefined' ? window.location.search : '',
+    );
+    gtag('event', 'sign_up', {
+      method,
+      referral_source: referralSource || 'web',
+    });
+    gtag('event', 'homeowner_signup', {
+      job_type: params.get('job_type') || null,
+      source: params.get('utm_source') || referralSource || 'direct',
+    });
+  };
+
+  // ── Google OAuth sign-up (primary path, Dustin 2026-08-26) ──
+  const handleGoogle = async () => {
+    setError('');
+
+    const problem = validateProfile();
+    if (problem) {
+      setError(problem);
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      const typedEmail = email.trim();
+      // Stash the profile payload BEFORE the browser leaves for Google —
+      // nothing in the OAuth callback can reconstruct it otherwise.
+      persistSignupContext(typedEmail && isValidEmail(typedEmail) ? typedEmail : null);
+      // Fired here rather than after the call because a successful
+      // signInWithOAuth unloads this page immediately.
+      fireSignupAnalytics('google');
+      signupNavigation.current = true;
+
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: GOOGLE_OAUTH_REDIRECT },
+      });
+      if (oauthError) throw oauthError;
+      // On success the browser navigates to Google; nothing else to do.
+    } catch (err: unknown) {
+      console.error('[get-started] Google sign-up error:', err);
+      signupNavigation.current = false;
+      setGoogleLoading(false);
+      setError('Google sign-up failed. Please try again, or create your account with an email and password below.');
+    }
+  };
+
+  // ── Email + password sign-up (alternative path) ──
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // Validation
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone.trim() || !address.trim()) {
-      setError('Please fill in all required fields.');
+    const profileProblem = validateProfile();
+    if (profileProblem) {
+      setError(profileProblem);
       return;
     }
-    if (!isValidEmail(email.trim())) {
-      setError('Please enter a valid email address.');
+    const credentialProblem = validateEmailAndPassword();
+    if (credentialProblem) {
+      setError(credentialProblem);
       return;
     }
     // SMS consent optional per TCR/CTIA rules — do not block on unchecked
@@ -108,108 +328,68 @@ export default function GetStartedPage() {
     try {
       const emailTrimmed = email.trim();
 
-      // D-189/#405: HubSpot contact creation moved post-auth — see auth-callback
-      // page. Firing it here (pre-auth) 401'd because create-hubspot-contact's
-      // homeowner mode requires a valid user JWT that doesn't exist until the
-      // magic link is clicked. The cs_signup payload written below (step 3)
-      // carries the same fields forward for that post-auth call.
+      // D-189/#405: HubSpot contact creation still runs post-auth in
+      // auth-callback, unchanged by the 2026-08-26 auth rework — the JWT that
+      // create-hubspot-contact's homeowner mode requires does not exist until
+      // Supabase establishes a session, which is true of the password path for
+      // exactly the same reason it was true of the magic link. cs_signup,
+      // written by persistSignupContext below, is what carries the fields over.
+      persistSignupContext(emailTrimmed);
 
-      // 1. Insert into leads table (non-fatal, fire-and-forget — no await)
-      supabase.from('leads').insert({
-        name: `${firstName.trim()} ${lastName.trim()}`,
+      // Password sign-up. Mirrors js/auth.js signUpWithPassword (the helper the
+      // static partner signup pages call) — same supabase.auth.signUp call with
+      // an emailRedirectTo pointed at our own callback. Not routed through that
+      // helper because it lives in the static stack's global Auth object, which
+      // the React app deliberately does not load; the React surfaces call
+      // `supabase.auth.*` directly (same convention as /login).
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email: emailTrimmed,
-        source: referralSource || 'web',
-        created_at: new Date().toISOString(),
-      }).then(({ error: leadErr }) => {
-        if (leadErr) console.warn('[get-started] leads insert failed (non-fatal):', leadErr);
-      });
-
-      // 2. Persist referral attribution from storage
-      const storedReferralId =
-        (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('oq_referral_id')) ||
-        (typeof localStorage !== 'undefined' && localStorage.getItem('oq_referral_id')) ||
-        null;
-      const storedReferralAgentId =
-        typeof sessionStorage !== 'undefined'
-          ? sessionStorage.getItem('oq_referral_agent_id')
-          : null;
-
-      // 3. Write cs_signup to localStorage
-      localStorage.setItem(
-        'cs_signup',
-        JSON.stringify({
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          phone: phone.trim(),
-          address: address.trim(),
-          referral_source:
-            referralSource || (storedReferralAgentId ? 'partner_link' : 'web'),
-          referring_agent_name: refName.trim() || null,
-          referring_agent_email: refEmail.trim() || null,
-          role: 'homeowner',
-          sms_consent_ts: smsConsent ? new Date().toISOString() : null,
-        }),
-      );
-
-      // 4. Persist referral_id so auth-callback can advance referral status
-      if (storedReferralId) {
-        localStorage.setItem('oq_referral_id', storedReferralId);
-      }
-
-      // 5. Store intended role for post-auth routing
-      localStorage.setItem('cs_auth_role', 'homeowner');
-
-      // 6. Send magic link
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: emailTrimmed,
+        password,
         options: {
           emailRedirectTo: AUTH_CALLBACK_URL,
           data: { role: 'homeowner' },
         },
       });
-      if (otpError) throw otpError;
+      if (signUpError) throw signUpError;
 
-      // 7. Show success state
+      // GoTrue's anti-enumeration behaviour: when email confirmation is ON, an
+      // email that already has an account comes back as a SUCCESS with an empty
+      // identities array rather than an error. Without this branch that user
+      // would sit on a "check your email" panel waiting for a mail that never
+      // arrives, which is precisely the dead end Dustin wanted removed.
+      const identities = data.user?.identities;
+      if (Array.isArray(identities) && identities.length === 0) {
+        setError(ALREADY_REGISTERED_MESSAGE);
+        return;
+      }
+
+      fireSignupAnalytics('password');
+
+      if (data.session) {
+        // Project auto-confirms email — session is live, so hand off to
+        // /auth-callback for the normal post-auth routing (HubSpot sync,
+        // referral advance, trade-selector vs dashboard).
+        signupNavigation.current = true;
+        window.location.href = AUTH_CALLBACK_URL;
+        return;
+      }
+
+      // No session means the project requires email confirmation first. This is
+      // a one-time account-confirmation mail, not a magic-link sign-in loop:
+      // the password they just set is what they use from here on.
       setSentToEmail(emailTrimmed);
-      setMagicLinkSent(true);
-
-      // 8. GA4 events
-      const params = new URLSearchParams(
-        typeof window !== 'undefined' ? window.location.search : '',
-      );
-      gtag('event', 'sign_up', {
-        method: 'magic_link',
-        referral_source: referralSource || 'web',
-      });
-      gtag('event', 'homeowner_signup', {
-        job_type: params.get('job_type') || null,
-        source: params.get('utm_source') || referralSource || 'direct',
-      });
+      setConfirmEmailSent(true);
     } catch (err: unknown) {
       console.error('[get-started] signup error:', err);
+      if (isAlreadyRegisteredError(err)) {
+        setError(ALREADY_REGISTERED_MESSAGE);
+        return;
+      }
       const msg =
         err instanceof Error ? err.message : 'An unexpected error occurred.';
       setError(`Something went wrong. Please try again or email us at ${SUPPORT_EMAIL}. (${msg})`);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  // ── Resend magic link ──
-  const handleResend = async (e: { preventDefault(): void }) => {
-    e.preventDefault();
-    if (!sentToEmail) return;
-    try {
-      await supabase.auth.signInWithOtp({
-        email: sentToEmail,
-        options: {
-          emailRedirectTo: AUTH_CALLBACK_URL,
-          data: { role: 'homeowner' },
-        },
-      });
-      alert('Magic link resent! Check your email.');
-    } catch {
-      alert('Could not resend. Please try again in a moment.');
     }
   };
 
@@ -293,6 +473,50 @@ export default function GetStartedPage() {
         .form-hint {
           font-size: 0.8rem;
           color: var(--slate, #94a3b8);
+        }
+        /* Google button + divider — same rules as /login's .btn-google so both
+           auth surfaces stay visually identical (Dustin 2026-08-26). */
+        .btn-google {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          width: 100%;
+          padding: 12px 20px;
+          border-radius: 8px;
+          border: 1.5px solid #dadce0;
+          background: #fff;
+          cursor: pointer;
+          font-size: 15px;
+          font-weight: 500;
+          color: #3c4043;
+          transition: box-shadow 0.15s, border-color 0.15s;
+          font-family: inherit;
+        }
+        .btn-google:hover:not(:disabled) {
+          box-shadow: 0 1px 4px rgba(0,0,0,.16);
+          border-color: #c6c9cd;
+        }
+        .btn-google:disabled { opacity: 0.7; cursor: not-allowed; }
+        .gs-oauth-hint {
+          font-size: 0.8rem;
+          color: var(--slate, #94a3b8);
+          text-align: center;
+          margin: 8px 0 0;
+        }
+        .oauth-divider {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin: 20px 0;
+          color: var(--gray, #64748b);
+          font-size: 13px;
+        }
+        .oauth-divider::before, .oauth-divider::after {
+          content: '';
+          flex: 1;
+          height: 1px;
+          background: rgba(255,255,255,0.12);
         }
         .referral-section {
           padding: var(--sp-4, 1rem);
@@ -419,22 +643,26 @@ export default function GetStartedPage() {
           margin-top: var(--sp-4, 1rem);
         }
         .text-sm-center a { color: var(--amber, #E07B00); font-weight: 600; text-decoration: none; }
-        .magic-link-sent {
+        /* Account-confirmation panel. Same visual treatment the magic-link
+           "check your email" panel used before 2026-08-26 — the panel survives
+           because Supabase can still require a one-time confirmation click on a
+           brand-new password account; only the magic-link sign-in loop is gone. */
+        .gs-confirm-sent {
           text-align: center;
           padding: var(--sp-8, 2rem) 0;
         }
-        .magic-link-icon { font-size: 3rem; margin-bottom: 1rem; }
-        .magic-link-sent h2 {
+        .gs-confirm-icon { font-size: 3rem; margin-bottom: 1rem; }
+        .gs-confirm-sent h2 {
           font-size: 1.5rem;
           color: var(--white, #fff);
           margin-bottom: 0.75rem;
         }
-        .magic-link-sent p {
+        .gs-confirm-sent p {
           color: var(--slate, #94a3b8);
           max-width: 340px;
           margin: 0 auto;
         }
-        .magic-link-email {
+        .gs-confirm-email {
           display: inline-block;
           background: rgba(224,123,0,0.12);
           color: var(--amber, #E07B00);
@@ -444,15 +672,6 @@ export default function GetStartedPage() {
           margin: 12px 0;
           font-family: monospace;
           font-size: 0.9rem;
-        }
-        .resend-link {
-          color: var(--amber, #E07B00);
-          text-decoration: underline;
-          cursor: pointer;
-          background: none;
-          border: none;
-          font-family: inherit;
-          font-size: inherit;
         }
         .gs-right {
           background: var(--navy-2, #0f2036);
@@ -520,25 +739,56 @@ export default function GetStartedPage() {
               Create your free account and start getting competitive quotes from qualified contractors.
             </p>
 
-            {/* ── Magic Link Sent State ── */}
-            {magicLinkSent ? (
-              <div className="magic-link-sent">
-                <div className="magic-link-icon">✉️</div>
-                <h2>Check Your Email</h2>
-                <p>We sent a secure login link to:</p>
-                <div className="magic-link-email">{sentToEmail}</div>
+            {/* ── Account-Confirmation State ── */}
+            {confirmEmailSent ? (
+              <div className="gs-confirm-sent">
+                <div className="gs-confirm-icon">✉️</div>
+                <h2>Confirm Your Email</h2>
+                <p>Your account is created. We sent a one-time confirmation link to:</p>
+                <div className="gs-confirm-email">{sentToEmail}</div>
                 <p style={{ marginTop: '1rem' }}>
-                  Click the link in your email to access your dashboard. The link expires in 1 hour.
+                  Click the link to activate your account. After that, sign in any time with
+                  the password you just set.
                 </p>
-                <p style={{ marginTop: '1.5rem' }}>
-                  <button className="resend-link" onClick={handleResend}>
-                    Didn&apos;t get it? Send again
-                  </button>
+                <p className="text-sm-center">
+                  <a href={LOGIN_URL}>Go to sign in</a>
                 </p>
               </div>
             ) : (
-              /* ── Email Sign-Up Form ── */
-              <form className="gs-form" onSubmit={handleSubmit} noValidate>
+              <>
+                {/*
+                  Google OAuth — primary path, restored 2026-08-26 on Dustin's
+                  direction (see the file header for the D-207 reversal). It sits
+                  above the form deliberately: he does not want the first step of
+                  a homeowner sign-up to be leaving the site for an inbox, and
+                  one Google click beats seven fields for most visitors. The
+                  profile fields below are still collected first — validateProfile()
+                  runs on click and persistSignupContext() stashes the payload
+                  before the browser leaves for Google.
+                */}
+                <button
+                  type="button"
+                  className="btn-google"
+                  onClick={handleGoogle}
+                  disabled={googleLoading || submitting}
+                >
+                  {googleLoading ? (
+                    'Redirecting to Google…'
+                  ) : (
+                    <>
+                      <GoogleIcon />
+                      Sign up with Google
+                    </>
+                  )}
+                </button>
+                <p className="gs-oauth-hint">
+                  Fill in your details below first — we carry them over to your new account.
+                </p>
+
+                <div className="oauth-divider"><span>or sign up with email</span></div>
+
+                {/* ── Email + Password Sign-Up Form ── */}
+                <form className="gs-form" onSubmit={handleSubmit} noValidate>
                 {/* Name row */}
                 <div className="form-row">
                   <div className="form-group">
@@ -582,7 +832,39 @@ export default function GetStartedPage() {
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                   />
-                  <span className="form-hint">We&apos;ll send you a secure login link — no password needed.</span>
+                  <span className="form-hint">This is how you&apos;ll sign in, and where bid alerts go.</span>
+                </div>
+
+                {/* Password + confirm — the alternative to Google, per Dustin 2026-08-26 */}
+                <div className="form-group">
+                  <label className="form-label" htmlFor="password">Password</label>
+                  <input
+                    type="password"
+                    id="password"
+                    className="form-input"
+                    required
+                    minLength={MIN_PASSWORD_LENGTH}
+                    autoComplete="new-password"
+                    placeholder="At least 8 characters"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                  />
+                  <span className="form-hint">Minimum {MIN_PASSWORD_LENGTH} characters.</span>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="confirm-password">Confirm Password</label>
+                  <input
+                    type="password"
+                    id="confirm-password"
+                    className="form-input"
+                    required
+                    minLength={MIN_PASSWORD_LENGTH}
+                    autoComplete="new-password"
+                    placeholder="Re-enter your password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                  />
                 </div>
 
                 {/* Phone */}
@@ -703,7 +985,7 @@ export default function GetStartedPage() {
                 <button
                   type="submit"
                   className="btn-primary-full"
-                  disabled={submitting}
+                  disabled={submitting || googleLoading}
                 >
                   {submitting ? (
                     <><span className="btn-loading-spinner" />Creating account…</>
@@ -720,14 +1002,15 @@ export default function GetStartedPage() {
 
                 <p className="text-sm-center">
                   Already have an account?{' '}
-                  <a href="https://otterquote.com/login.html">Sign in here</a>
+                  <a href={LOGIN_URL}>Sign in here</a>
                 </p>
 
                 <p className="text-sm-center">
                   Are you a contractor?{' '}
                   <a href="https://otterquote.com/contractor-join.html">Apply to join here</a>
                 </p>
-              </form>
+                </form>
+              </>
             )}
           </div>
         </div>
@@ -737,11 +1020,14 @@ export default function GetStartedPage() {
           <div className="gs-benefits">
             <h2>What Happens Next</h2>
 
+            {/* Copy updated 2026-08-26 with the auth rework — the old first step
+                described the magic-link inbox round-trip, which no longer exists
+                on this page. */}
             <div className="benefit-item">
-              <div className="benefit-icon">✉️</div>
+              <div className="benefit-icon">🔐</div>
               <div className="benefit-text">
-                <h4>Check your email</h4>
-                <p>We&apos;ll send a secure magic link. Click it to log in — no password to remember.</p>
+                <h4>Create your account</h4>
+                <p>Sign up with Google or set a password. You stay on the site — no waiting on an email to get started.</p>
               </div>
             </div>
 
@@ -772,5 +1058,17 @@ export default function GetStartedPage() {
         </div>
       </div>
     </>
+  );
+}
+
+// ─── Google "G" mark (same SVG as /login and the static login.html) ──────────
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
   );
 }

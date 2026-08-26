@@ -264,7 +264,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  *                   on a hand-entered report exactly as on a parsed one.
  *                   Getting these key names wrong is the silent failure here.
  */
-var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
 var STORAGE_BUCKET = 'claim-documents';
 
 var state = { filter: 'awaiting_fulfillment', rows: [], catalog: {}, current: null, user: null };

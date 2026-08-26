@@ -23,6 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { readReferralIds } from '@/lib/cookie-storage';
 import { isTestEmail } from '@/lib/test-signal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -504,16 +505,25 @@ export default function TradeSelectorPage() {
           // #567: ref.html click-chain carry-forward — mirrors the static
           // trade-selector. localStorage survives the magic-link redirect, and
           // auth re-keys the id to oq_referral_id_for_claim after advancing.
+          // Bridge 2026-08-26 (P0): cookie FIRST. These keys are written by
+          // ref.html on otterquote.com; this page runs on app.otterquote.com,
+          // and localStorage is ORIGIN-scoped — so every read below returned
+          // null and claims.referral_id was silently never written. That is the
+          // only column apply_referral_commission() walks.
+          const refCookie = readReferralIds();
           const chainReferralId =
+            refCookie.oq_referral_id ||
             sessionStorage.getItem('oq_referral_id') ||
             localStorage.getItem('oq_referral_id') ||
             localStorage.getItem('oq_referral_id_for_claim') ||
             null;
           const chainReferralAgentId =
+            refCookie.oq_referral_agent_id ||
             sessionStorage.getItem('oq_referral_agent_id') ||
             localStorage.getItem('oq_referral_agent_id') ||
             null;
           const chainReferralCode =
+            refCookie.oq_referral_code ||
             sessionStorage.getItem('oq_referral_code') ||
             localStorage.getItem('oq_referral_code') ||
             null;

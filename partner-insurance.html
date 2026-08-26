@@ -375,12 +375,20 @@
             font-weight: 600;
         }
 
+        /* Bridge 2026-08-26: `border: none` here loaded after
+           css/design-system.css at equal specificity and silently stripped
+           .btn-ghost's 1px border — which is what js/nav.js renders the
+           header "Partner Login" button as. It came out as a borderless
+           5%-white chip next to a solid amber button. Scoped off the
+           bordered variants. */
+        .btn:not(.btn-ghost):not(.btn-secondary):not(.btn-outline) {
+            border: none;
+        }
         .btn {
             display: inline-block;
             border-radius: 10px;
             font-family: var(--font-body);
             font-weight: 700;
-            border: none;
             cursor: pointer;
             transition: all 0.3s ease;
             text-decoration: none;
