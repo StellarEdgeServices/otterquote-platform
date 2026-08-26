@@ -1346,6 +1346,7 @@
 
         // Try to save to Supabase if authenticated
         const user = await Auth.getUser();
+        let savedClaimId = null;
         if (user && sb) {
           try {
             // Determine job type
@@ -1430,6 +1431,7 @@
                 .from('claims')
                 .update(claimData)
                 .eq('id', existingClaim.id);
+              savedClaimId = existingClaim.id;
             } else {
               // gh-397/#689: stamp is_test at the ONLY point in this flow that
               // creates the claim row — PR #714 stamped the COI-identity
@@ -1438,14 +1440,23 @@
               // test-homeowner@otterquote-internal.test still wrote an
               // unflagged "real" claim. Predicate matches the CEO-approved
               // contractor check (#543 / test-exclusion.ts).
-              await sb
+              const { data: insertedClaim } = await sb
                 .from('claims')
                 .insert({
                   user_id: user.id,
                   ...claimData,
                   is_test: Auth.isTestEmail(user.email),
                   created_at: new Date().toISOString()
-                });
+                })
+                .select('id')
+                .single();
+              // gh-1276: capture the new row's id — previously never captured
+              // anywhere, so repair-intake.html's `params.get('claim_id') ||
+              // sessionStorage.getItem('oq_claim_id')` fallback always found
+              // neither and unconditionally inserted a SECOND claim row for
+              // every repair-path homeowner. Fixed here at the source: pass
+              // it through the redirect below instead.
+              if (insertedClaim) savedClaimId = insertedClaim.id;
             }
 
             // #571: the claim_submitted advance now lives in the database —
@@ -1458,9 +1469,24 @@
           }
         }
 
-        // Determine redirect based on selections
+        // gh-1276: route to the dedicated project-information page for this
+        // payment path (mirrors the pre-existing repair-intake.html split —
+        // RCV/ACV/Cash previously all landed on the generic dashboard.html
+        // edit form instead of a guided page of their own). Derived the same
+        // way process this flow already derives job_type above, just outside
+        // that try block's scope.
         const hasRepair = selections.trades.some(t => t.intent === 'repair');
-        const redirectUrl = hasRepair ? '/repair-intake.html' : '/dashboard.html';
+        let redirectUrl;
+        if (state.fundingType === 'insurance') {
+          redirectUrl = hasRepair
+            ? '/repair-intake.html'
+            : (state.policyType === 'acv' ? '/project-info-acv.html' : '/project-info-rcv.html');
+        } else {
+          redirectUrl = '/project-info-cash.html';
+        }
+        if (savedClaimId) {
+          redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
+        }
 
         // Redirect
         setTimeout(() => {

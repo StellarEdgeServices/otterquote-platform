@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Insurance Claim Details (RCV) &mdash; Otter Quotes</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75'>&#129446;</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-D1Y1TLGEFY');
+</script>
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+
+<style>
+main.pi-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--sp-8) var(--sp-4) var(--sp-16);
+}
+
+/* gh-1276: payment-type banner, shared shape across all 4 project-info
+   variant pages (this one, -acv, -cash, and repair-intake.html). */
+.pi-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  background: rgba(224,123,0,0.08);
+  border: 1px solid rgba(224,123,0,0.25);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4) var(--sp-5);
+  margin-bottom: var(--sp-6);
+  flex-wrap: wrap;
+}
+.pi-banner p { margin: 0; color: var(--navy); font-size: 0.95rem; }
+.pi-banner strong { color: var(--amber-2, #A85C00); }
+.pi-banner a { color: var(--amber-2, #A85C00); font-weight: 600; white-space: nowrap; }
+
+.pi-card {
+  background: var(--white, #fff);
+  border: 1px solid var(--border, #E2E8F0);
+  border-radius: 12px;
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+.pi-card h2 { font-size: 1.25rem; margin-bottom: var(--sp-1); color: var(--navy); }
+.pi-card .pi-card-sub { color: var(--slate, #5A6B7B); font-size: 0.9rem; margin-bottom: var(--sp-5); }
+
+.pi-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+@media (max-width: 640px) { .pi-row { grid-template-columns: 1fr; } }
+
+#pi-error { color: var(--red, #DC2626); font-size: 0.9rem; margin: var(--sp-2) 0 0; display: none; }
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active="dashboard" data-auth="true"></header>
+
+<main class="pi-main">
+  <div class="pi-banner">
+    <p>This job is being paid for via <strong>Insurance Claim (Replacement Cost Value)</strong>.</p>
+    <a href="/trade-selector.html">Change</a>
+  </div>
+
+  <div class="pi-card">
+    <h2>Insurance Claim Details</h2>
+    <p class="pi-card-sub">This helps us match you with contractors experienced with your carrier and get your bids moving faster. Nothing here is required to submit &mdash; add what you have.</p>
+
+    <div class="form-group">
+      <label class="form-label" for="carrier_id">Insurance Carrier</label>
+      <select id="carrier_id" name="carrier_id" class="form-input">
+        <option value="">Select carrier&hellip;</option>
+      </select>
+    </div>
+    <div class="pi-row">
+      <div class="form-group">
+        <label class="form-label" for="claim_number">Insurance Claim #</label>
+        <input type="text" id="claim_number" name="claim_number" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="date_of_loss">Date of Loss</label>
+        <input type="date" id="date_of_loss" name="date_of_loss" class="form-input">
+      </div>
+    </div>
+    <div class="pi-row">
+      <div class="form-group">
+        <label class="form-label" for="damage_type">Damage Type</label>
+        <input type="text" id="damage_type" name="damage_type" class="form-input" placeholder="e.g. Wind, Hail">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="deductible_amount">Deductible Amount</label>
+        <input type="number" step="0.01" id="deductible_amount" name="deductible_amount" class="form-input" placeholder="0.00">
+      </div>
+    </div>
+    <h3 style="font-size: 1rem; margin: var(--sp-5) 0 var(--sp-3); color: var(--navy);">Adjuster Contact (optional)</h3>
+    <div class="form-group">
+      <label class="form-label" for="adjuster_name">Adjuster Name</label>
+      <input type="text" id="adjuster_name" name="adjuster_name" class="form-input">
+    </div>
+    <div class="pi-row">
+      <div class="form-group">
+        <label class="form-label" for="adjuster_email">Adjuster Email</label>
+        <input type="email" id="adjuster_email" name="adjuster_email" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="adjuster_phone">Adjuster Phone</label>
+        <input type="tel" id="adjuster_phone" name="adjuster_phone" class="form-input">
+      </div>
+    </div>
+  </div>
+
+  <div class="pi-card">
+    <h2>Timeline &amp; Notes</h2>
+    <div class="form-group">
+      <label class="form-label" for="urgency">When do you need this completed?</label>
+      <select id="urgency" name="urgency" class="form-input">
+        <option value="flexible">No rush &mdash; flexible timeline</option>
+        <option value="30_days">Within 30 days</option>
+        <option value="2_weeks">Within 2 weeks</option>
+        <option value="asap">ASAP &mdash; urgent</option>
+      </select>
+    </div>
+    <div id="urgency-details" style="display:none;">
+      <div class="pi-row">
+        <div class="form-group">
+          <label class="form-label" for="urgency_deadline">Deadline Date</label>
+          <input type="date" id="urgency_deadline" name="urgency_deadline" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="urgency_reason">Reason</label>
+          <input type="text" id="urgency_reason" name="urgency_reason" class="form-input" placeholder="e.g. Real estate closing, temporary repairs failing">
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="homeowner_notes">Notes for Contractors (optional)</label>
+      <textarea id="homeowner_notes" name="homeowner_notes" class="form-input" rows="3" maxlength="500" placeholder="Anything contractors should know &mdash; tree fell on north side, specific concerns, access instructions, etc."></textarea>
+    </div>
+    <p id="pi-error"></p>
+    <button type="button" class="btn btn-primary btn-lg" id="pi-submit">Save &amp; Continue</button>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+(function () {
+  // sb (Supabase instance) is declared globally in js/config.js as `var sb`;
+  // assigned in initPage() below, matching repair-intake.html's pattern.
+
+  async function initPage() {
+    const user = await Auth.requireAuth('homeowner');
+    if (!user) return;
+
+    sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
+      auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
+    });
+
+    Nav.renderHeader({ active: 'dashboard' });
+    Nav.renderFooter();
+
+    await loadCarriers();
+    wireEvents();
+  }
+
+  async function loadCarriers() {
+    try {
+      const { data, error } = await sb.from('carrier_profiles').select('id, carrier_name').order('carrier_name');
+      if (error || !data) return;
+      const sel = document.getElementById('carrier_id');
+      data.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.carrier_name;
+        sel.appendChild(opt);
+      });
+    } catch (err) {
+      console.warn('[project-info-rcv] loadCarriers failed:', err);
+    }
+  }
+
+  function wireEvents() {
+    document.getElementById('urgency').addEventListener('change', (e) => {
+      document.getElementById('urgency-details').style.display = e.target.value === 'asap' ? 'block' : 'none';
+    });
+    document.getElementById('pi-submit').addEventListener('click', submit);
+  }
+
+  // gh-1276: claim_id arrives via trade-selector.html's redirect (fixed
+  // alongside this page — see trade-selector.html completeSelection()).
+  // sessionStorage is a defensive fallback only, matching repair-intake.html;
+  // the most-recent-claim lookup below (NOT a blind insert, unlike
+  // repair-intake.html's pre-existing fallback) covers the case where
+  // someone reaches this page directly with neither.
+  async function resolveClaimId() {
+    const params = new URLSearchParams(window.location.search);
+    let claimId = params.get('claim_id') || sessionStorage.getItem('oq_claim_id');
+    if (claimId) return claimId;
+
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return null;
+    const { data } = await sb
+      .from('claims')
+      .select('id')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data ? data.id : null;
+  }
+
+  async function submit() {
+    const errEl = document.getElementById('pi-error');
+    const btn = document.getElementById('pi-submit');
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    try {
+      const claimId = await resolveClaimId();
+      if (!claimId) {
+        throw new Error('No project found for your account. Please start from the beginning.');
+      }
+
+      const val = (id) => document.getElementById(id).value.trim();
+      const updates = {
+        job_type: 'insurance_rcv',
+        funding_type: 'insurance',
+        policy_type: 'rcv',
+        carrier_id: val('carrier_id') || null,
+        claim_number: val('claim_number') || null,
+        date_of_loss: val('date_of_loss') || null,
+        damage_type: val('damage_type') || null,
+        deductible_amount: val('deductible_amount') ? parseFloat(val('deductible_amount')) : null,
+        adjuster_name: val('adjuster_name') || null,
+        adjuster_email: val('adjuster_email') || null,
+        adjuster_phone: val('adjuster_phone') || null,
+        urgency: val('urgency'),
+        urgency_deadline: val('urgency') === 'asap' ? (val('urgency_deadline') || null) : null,
+        urgency_reason: val('urgency') === 'asap' ? (val('urgency_reason') || null) : null,
+        homeowner_notes: val('homeowner_notes') || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await sb.from('claims').update(updates).eq('id', claimId);
+      if (error) throw error;
+
+      // Adjuster Knowledge Base upsert (D-046) — same non-critical,
+      // fire-and-forget pattern dashboard.html uses; a failure here must
+      // not block navigation.
+      if (updates.adjuster_name) {
+        try {
+          const { data: adjData } = await sb.rpc('upsert_adjuster_from_claim', {
+            p_claim_id: claimId,
+            p_adjuster_name: updates.adjuster_name,
+            p_adjuster_email: updates.adjuster_email,
+            p_adjuster_phone: updates.adjuster_phone,
+            p_carrier_id: updates.carrier_id,
+          });
+          if (adjData) await sb.from('claims').update({ adjuster_id: adjData }).eq('id', claimId);
+        } catch (adjErr) {
+          console.warn('[project-info-rcv] adjuster upsert failed (non-critical):', adjErr);
+        }
+      }
+
+      gtag('event', 'project_info_saved', { job_type: 'insurance_rcv' });
+      window.location.href = '/dashboard.html';
+    } catch (err) {
+      console.error('[project-info-rcv] submit failed:', err);
+      errEl.textContent = err.message || 'Something went wrong. Please try again.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Save & Continue';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', initPage);
+})();
+</script>
+</body>
+</html>

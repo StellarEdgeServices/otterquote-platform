@@ -1188,15 +1188,15 @@
                 We cannot process your repair without knowing what shingle is currently on your roof.
                 The more information you provide, the better pricing and faster service you'll receive.
               </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Squares Being Repaired (from estimate)</label>
-                  <input type="number" step="0.1" name="repairSquares" class="form-input" placeholder="e.g. 1.5">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Total Roof Size (squares)</label>
-                  <input type="number" step="0.1" name="totalRoofSquares" class="form-input" placeholder="e.g. 25">
-                </div>
+              <!-- gh-1277: total roof size dropped (self-reported homeowners
+                   don't know it and the real number comes from a professional
+                   measurement, per the Measurements checklist item). Squares
+                   being repaired stays — that's a small, localized estimate
+                   copied off the homeowner's own repair paperwork, not a
+                   self-reported whole-roof guess. -->
+              <div class="form-group">
+                <label class="form-label">Squares Being Repaired (from estimate)</label>
+                <input type="number" step="0.1" name="repairSquares" class="form-input" placeholder="e.g. 1.5">
               </div>
               <h4 style="margin: var(--sp-4) 0 var(--sp-2); color: var(--white);">Existing Shingle Information *</h4>
               <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-3);">
@@ -1246,13 +1246,12 @@
               </div>
             </div>
 
-            <!-- Retail fields -->
-            <div id="retailFields" class="conditional-section" style="display:none;">
-              <div class="form-group">
-                <label class="form-label">Roof Size (squares)</label>
-                <input type="number" step="0.1" name="roofSquares" class="form-input" placeholder="If known &mdash; your professional measurement will provide this">
-              </div>
-            </div>
+            <!-- Retail fields — gh-1277: self-reported roof size dropped (the
+                 real number comes from the Measurements checklist item, not
+                 a homeowner guess). Retail currently has no path-specific
+                 fields beyond the shared urgency/notes below; container kept
+                 (empty) since selectJobType() still toggles its display. -->
+            <div id="retailFields" class="conditional-section" style="display:none;"></div>
 
             <!-- Urgency field -->
             <div class="form-group">
@@ -2564,15 +2563,12 @@
               // Pre-populate conditional fields
               if (jobType === 'repair') {
                 if (currentClaim.repair_squares) document.querySelector('[name="repairSquares"]').value = currentClaim.repair_squares;
-                if (currentClaim.roof_squares) document.querySelector('[name="totalRoofSquares"]').value = currentClaim.roof_squares;
                 if (currentClaim.existing_shingle_brand) document.querySelector('[name="existingShingleBrand"]').value = currentClaim.existing_shingle_brand;
                 if (currentClaim.existing_shingle_product) document.querySelector('[name="existingShingleProduct"]').value = currentClaim.existing_shingle_product;
                 if (currentClaim.existing_shingle_color) document.querySelector('[name="existingShingleColor"]').value = currentClaim.existing_shingle_color;
               } else if (jobType === 'insurance_acv') {
                 if (currentClaim.acv_amount) document.querySelector('[name="acvAmount"]').value = currentClaim.acv_amount;
                 if (currentClaim.rcv_amount) document.querySelector('[name="rcvAmount"]').value = currentClaim.rcv_amount;
-              } else if (jobType === 'retail') {
-                if (currentClaim.roof_squares) document.querySelector('[name="roofSquares"]').value = currentClaim.roof_squares;
               }
             }
             // Pre-populate urgency
@@ -2679,12 +2675,10 @@
             // Conditional fields per job type
             if (selectedType === 'repair') {
               const repairSq = document.querySelector('[name="repairSquares"]')?.value;
-              const totalSq  = document.querySelector('[name="totalRoofSquares"]')?.value;
               const brand    = document.querySelector('[name="existingShingleBrand"]')?.value;
               const product  = document.querySelector('[name="existingShingleProduct"]')?.value;
               const color    = document.querySelector('[name="existingShingleColor"]')?.value;
               if (repairSq) updates.repair_squares = parseFloat(repairSq);
-              if (totalSq)  updates.roof_squares   = parseFloat(totalSq);
               if (brand)    updates.existing_shingle_brand   = brand;
               if (product)  updates.existing_shingle_product = product;
               if (color)    updates.existing_shingle_color   = color;
@@ -2693,9 +2687,6 @@
               const rcv = document.querySelector('[name="rcvAmount"]')?.value;
               if (acv) updates.acv_amount = parseFloat(acv);
               if (rcv) updates.rcv_amount = parseFloat(rcv);
-            } else if (selectedType === 'retail') {
-              const roofSq = document.querySelector('[name="roofSquares"]')?.value;
-              if (roofSq) updates.roof_squares = parseFloat(roofSq);
             }
           }
           // Urgency
