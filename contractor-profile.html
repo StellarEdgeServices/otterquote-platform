@@ -2865,6 +2865,14 @@
 
         // gh-item-1: local preview on file selection (the elements already exist
         // above in the DOM since this script block runs at the end of the page).
+        // accept="image/*" on the inputs is client-side-only and does not exclude
+        // image/svg+xml, so a selected SVG is rejected here before it ever reaches
+        // createObjectURL — an SVG can carry an embedded <script> that executes if
+        // the resulting blob: URL is later opened directly (CodeQL: DOM text
+        // reinterpreted as HTML).
+        function isSafeRasterImage(file) {
+            return !!file && typeof file.type === 'string' && file.type.startsWith('image/') && file.type !== 'image/svg+xml';
+        }
         (function wirePhotoPreviews() {
             const ownerPhotoInputEl = document.getElementById('ownerPhotoInput');
             if (ownerPhotoInputEl) {
@@ -2873,6 +2881,11 @@
                     if (!preview) return;
                     preview.innerHTML = '';
                     if (this.files && this.files[0]) {
+                        if (!isSafeRasterImage(this.files[0])) {
+                            this.value = '';
+                            preview.textContent = 'That file type isn\'t supported — please choose a JPG, PNG, GIF, or WEBP image.';
+                            return;
+                        }
                         const img = document.createElement('img');
                         img.className = 'image-preview';
                         img.src = URL.createObjectURL(this.files[0]);
@@ -2887,7 +2900,8 @@
                     const preview = document.getElementById('galleryPreview');
                     if (!preview) return;
                     preview.innerHTML = '';
-                    Array.from(this.files || []).forEach(file => {
+                    const rejected = Array.from(this.files || []).some(f => !isSafeRasterImage(f));
+                    Array.from(this.files || []).filter(isSafeRasterImage).forEach(file => {
                         const item = document.createElement('div');
                         item.className = 'gallery-item';
                         const img = document.createElement('img');
@@ -2895,6 +2909,12 @@
                         item.appendChild(img);
                         preview.appendChild(item);
                     });
+                    if (rejected) {
+                        const warn = document.createElement('div');
+                        warn.style.cssText = 'color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);';
+                        warn.textContent = 'One or more files were skipped — only JPG, PNG, GIF, or WEBP images are supported.';
+                        preview.appendChild(warn);
+                    }
                 });
             }
         })();
