@@ -1798,7 +1798,13 @@
       }
 
       /** Save or update the homeowner's expansion_waitlist row. Called by the gate card button. */
-      async function saveWaitlistSpot() {
+      // gh-1276: exposed on window — this whole script block is wrapped in an
+      // IIFE, so a plain top-level `function` declaration here is invisible
+      // to the inline onclick="..." attribute on the button that calls it
+      // (inline handlers resolve against the global scope only). Matches the
+      // window.foo = function(...) pattern already used elsewhere in this
+      // file (e.g. handleUpload, resendHoverLink) for the same reason.
+      window.saveWaitlistSpot = async function() {
         const btn      = document.getElementById('gate-save-btn');
         const optedIn  = document.getElementById('gate-optin-checkbox')?.checked ?? true;
         const confirm  = document.getElementById('gate-confirm');
@@ -2554,7 +2560,7 @@
                 : currentClaim.funding_type === 'cash' ? 'retail' : null
             );
             if (jobType) {
-              selectJobType(jobType);
+              window.selectJobType(jobType);
               // Pre-populate conditional fields
               if (jobType === 'repair') {
                 if (currentClaim.repair_squares) document.querySelector('[name="repairSquares"]').value = currentClaim.repair_squares;
@@ -3065,7 +3071,10 @@
 
 
       // ── Job Type Selection ────────────────────────────────────────────────────
-      function selectJobType(type) {
+      // gh-1276: window-exposed for the same reason as saveWaitlistSpot
+      // above (this and the next 4 functions are all called from an inline
+      // onclick="..." attribute, which needs global scope, not IIFE scope).
+      window.selectJobType = function(type) {
         window.selectedJobType = type;
         document.querySelectorAll('.job-type-btn').forEach(btn => {
           btn.classList.toggle('selected', btn.dataset.type === type);
@@ -3076,7 +3085,7 @@
         document.getElementById('jobTypeHelp').style.display   = 'block';
       }
 
-      function showJobTypeHelp() {
+      window.showJobTypeHelp = function() {
         document.getElementById('help-modal-title').textContent = 'Which payment type applies?';
         document.getElementById('help-modal-content').innerHTML = [
           '<p style="margin-bottom:1rem;">Not sure which option to pick? Here\'s a quick guide:</p>',
@@ -3091,7 +3100,7 @@
         document.getElementById('help-modal').classList.add('active');
       }
 
-      function showHelpModal(key) {
+      window.showHelpModal = function(key) {
         const helpContent = {
           estimate: {
             title: 'Your Insurance Estimate',
@@ -3114,7 +3123,7 @@
       }
 
       // ── Switch Contractor Modal (D-171) ───────────────────────────────────────
-      function openSwitchContractorModal() {
+      window.openSwitchContractorModal = function() {
         document.getElementById('switch-survey-step').classList.remove('hidden');
         document.getElementById('switch-success-step').classList.remove('visible');
         document.querySelectorAll('input[name="switch_reason"]').forEach(cb => { cb.checked = false; });
@@ -3123,7 +3132,7 @@
         document.getElementById('switch-contractor-modal').classList.add('active');
       }
 
-      function closeSwitchModal() {
+      window.closeSwitchModal = function() {
         document.getElementById('switch-contractor-modal').classList.remove('active');
       }
 
@@ -3180,7 +3189,8 @@
     })();
 
         // W3-P4: Opens a 7-day signed URL to the homeowner's warranty document
-        async function openWarrantyDocUrl() {
+        // gh-1276: window-exposed, same IIFE-scoping issue as the cluster above.
+        window.openWarrantyDocUrl = async function() {
             if (!currentWarrantyUrl) return;
             try {
                 const bucketPath = currentWarrantyUrl.replace(/^contractor-documents\//, '');
