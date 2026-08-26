@@ -50,8 +50,17 @@ describe('D-192 Census county selector', () => {
   });
   it('collect gathers states + only specific-mode counties; save persists counties only (D4)', () => {
     const cfg = { IN: { mode: 'specific' as const, counties: ['Boone County'] }, OH: { mode: 'entire' as const, counties: [] } };
-    expect(collectServiceArea(cfg)).toEqual({ service_states: ['IN', 'OH'], service_counties: ['Boone County'] });
-    expect(collectServiceCountiesForSave(cfg)).toEqual(['Boone County']);
+    // gh-1253: persisted counties are normalized to "STATE:County" (e.g. "IN:Boone County")
+    // so process-auto-bids' county.startsWith(`${state}:`) match works.
+    expect(collectServiceArea(cfg)).toEqual({ service_states: ['IN', 'OH'], service_counties: ['IN:Boone County'] });
+    expect(collectServiceCountiesForSave(cfg)).toEqual(['IN:Boone County']);
+  });
+  it('gh-1253: buildInitialServiceConfigs strips the "STATE:" prefix so a saved county round-trips as checked', () => {
+    expect(buildInitialServiceConfigs(['IN'], ['IN:Boone County', 'IN:Marion County']))
+      .toEqual({ IN: { mode: 'specific', counties: ['Boone County', 'Marion County'] } });
+    // legacy bare rows (pre-gh-1253) still round-trip unchanged
+    expect(buildInitialServiceConfigs(['IN'], ['Boone County']))
+      .toEqual({ IN: { mode: 'specific', counties: ['Boone County'] } });
   });
   it('view summary: fallback / full-state / counties+states', () => {
     expect(serviceAreaSummary([], [], 'Central IN')).toBe('Central IN');
