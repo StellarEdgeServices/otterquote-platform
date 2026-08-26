@@ -455,6 +455,42 @@
             font-style: italic;
         }
 
+        /* gh-1278: architectural shingle standards info panel */
+        .material-info-panel {
+            background-color: #fafafa;
+            border: 1px solid #e0e0e0;
+            border-left: 3px solid #b8860b;
+            border-radius: 8px;
+            padding: 1.5rem 1.75rem;
+            margin: 1.5rem 0 2rem;
+        }
+
+        .material-info-panel h4 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #0D1B2E;
+            margin-bottom: 0.75rem;
+        }
+
+        .material-info-panel ul {
+            margin: 0 0 0.75rem 1.1rem;
+            padding: 0;
+        }
+
+        .material-info-panel li {
+            font-size: 0.88rem;
+            color: #444;
+            line-height: 1.6;
+            margin-bottom: 0.4rem;
+        }
+
+        .material-info-panel p {
+            font-size: 0.85rem;
+            color: #666;
+            line-height: 1.6;
+            margin: 0;
+        }
+
         /* Confirmation Section */
         .confirmation-card {
             background: linear-gradient(135deg, #0D1B2E 0%, #003366 100%);
@@ -821,7 +857,7 @@
                             <h3 class="card-title">Architectural Shingle</h3>
                             <span class="card-badge">Most Popular</span>
                         </div>
-                        <p class="card-description">The most popular choice. Dimensional look, 130+ mph wind rating. Included in most insurance claims at no additional cost.</p>
+                        <p class="card-description">The most popular choice. Dimensional look, 130+ mph wind rating.</p>
                         <button class="card-button" onclick="selectShingleType('architectural')">Select Architectural</button>
                     </div>
 
@@ -842,6 +878,18 @@
                         <p class="card-description">Basic, flat appearance. Rarely used on new installations.</p>
                         <button class="card-button" onclick="selectShingleType('3-tab')">Select 3-Tab</button>
                     </div>
+                </div>
+
+                <!-- gh-1278: general architectural shingle standards info -->
+                <div class="material-info-panel">
+                    <h4>About Architectural Shingles</h4>
+                    <ul>
+                        <li><strong>Wind rating</strong> is tested to ASTM D3161 or ASTM D7158 — this page's "130+ mph" rating for architectural shingles is a minimum-standard qualification under those tests, not a marketing figure.</li>
+                        <li><strong>Impact/hail resistance</strong> is tested to UL 2218, rated Class 1 through Class 4 (Class 4 is the highest available rating — see the impact class step below).</li>
+                        <li>Some product lines also carry <strong>Miami-Dade County product approval (NOA)</strong> — a regional certification for Florida's high-wind building code, not a national minimum every architectural shingle has to meet.</li>
+                        <li>Manufacturer lines mainly differentiate on impact/hail class, wind rating, algae resistance, and warranty length.</li>
+                    </ul>
+                    <p>Color availability varies by manufacturer — expect a range of options, but not every color is offered by every product line.</p>
                 </div>
             </div>
 
@@ -952,7 +1000,13 @@
                 <div class="pricing-items">
                     <div class="pricing-item" id="pricingArchitectural">
                         <span class="pricing-item-name">Architectural Shingle</span>
-                        <span class="pricing-item-value">Included in most insurance claims at no additional cost</span>
+                        <!-- gh-1278: text set dynamically by updateArchitecturalPricingText()
+                             below — irrelevant on a cash job (no insurance claim exists), and
+                             the blanket "no additional cost" claim doesn't hold once a Class 3
+                             or Class 4 impact rating is selected (carrier/policy-dependent
+                             upgrade cost). Static fallback text below is the standard/
+                             unspecified-class case, same as before this change. -->
+                        <span class="pricing-item-value" id="pricingArchitecturalValue">Included in most insurance claims at no additional cost</span>
                     </div>
                     <div class="pricing-item" id="pricingDesigner" class="hidden">
                         <span class="pricing-item-name">Designer Shingle</span>
@@ -1010,7 +1064,9 @@
             metalMaterial: null,
             designerProduct: null,        // specific product name from catalog
             designerManufacturer: null,    // manufacturer name
-            designerCatalogId: null        // UUID from material_catalog
+            designerCatalogId: null,       // UUID from material_catalog
+            fundingType: null              // gh-1278: 'insurance' | 'cash' | null — drives the
+                                            // architectural pricing note in showPricing() below
         };
 
         let designerProducts = []; // loaded from Supabase
@@ -1026,6 +1082,24 @@
             }
 
             if (!currentUser) return;
+
+            // gh-1278: load funding_type up front so the architectural pricing
+            // note can be scoped correctly (irrelevant on a cash job) once the
+            // user reaches the pricing step. Best-effort — a lookup failure
+            // just leaves fundingType null, which showPricing() treats as the
+            // conservative "insurance" default (existing wording), not as cash.
+            try {
+                const { data: claimRow } = await sb
+                    .from('claims')
+                    .select('funding_type')
+                    .eq('user_id', currentUser.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (claimRow) state.fundingType = claimRow.funding_type;
+            } catch (err) {
+                console.warn('[help-materials] funding_type lookup failed (non-critical):', err);
+            }
 
             checkUrlParams();
         });
@@ -1273,6 +1347,7 @@
 
             // Show relevant pricing items
             if (state.category === 'shingles') {
+                updateArchitecturalPricingText();
                 document.getElementById('pricingArchitectural').classList.remove('hidden');
                 if (state.shingleType === 'designer') {
                     document.getElementById('pricingDesigner').classList.remove('hidden');
@@ -1284,6 +1359,31 @@
                     document.getElementById('pricingMetalStanding').classList.remove('hidden');
                 }
             }
+        }
+
+        // gh-1278: scope the architectural shingle pricing note to what's
+        // actually true for this claim — irrelevant on a cash job (no
+        // insurance claim exists to be "included in"), and the blanket
+        // "no additional cost" framing doesn't hold once a Class 3/4 impact
+        // rating is selected (upgrade cost varies by carrier/policy, not a
+        // blanket yes/no). Runs after impact class is chosen (this fires at
+        // the pricing/confirmation step, which is after Step 3 for shingles),
+        // so state.impactClass is reliably set by the time this reads it.
+        function updateArchitecturalPricingText() {
+            const item = document.getElementById('pricingArchitectural');
+            const valueEl = document.getElementById('pricingArchitecturalValue');
+            if (!item || !valueEl) return;
+
+            if (state.fundingType === 'cash') {
+                item.classList.add('hidden');
+                return;
+            }
+
+            const hasImpactUpgrade = state.impactClass === 'class-3' || state.impactClass === 'class-4' ||
+                state.impactClass === 'class3' || state.impactClass === 'class4';
+            valueEl.textContent = hasImpactUpgrade
+                ? 'Often included in insurance claims, but a Class 3/4 impact upgrade can carry an additional cost — varies by carrier and policy'
+                : 'Included in most insurance claims at no additional cost';
         }
 
         // Show Confirmation Section
