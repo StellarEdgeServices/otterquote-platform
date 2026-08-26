@@ -1270,3 +1270,63 @@ if (typeof window !== 'undefined' && window.Auth && typeof sb !== 'undefined') {
     });
   } catch (e) { /* non-fatal */ }
 }
+
+// #1290: on rejection GoTrue 303-redirects to the Site URL with the reason in
+// the URL fragment (e.g. #error=access_denied&error_code=otp_expired&
+// error_description=...) and nothing on the site ever read it — the user
+// landed on whatever page they redirected to with no explanation. Runs on
+// every page that loads auth.js since the failure can land on any of them.
+(function () {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  var hash = window.location.hash || '';
+  if (hash.indexOf('error=') === -1 && hash.indexOf('error_code=') === -1) return;
+
+  var params;
+  try {
+    params = new URLSearchParams(hash.replace(/^#/, ''));
+  } catch (e) { return; }
+  var errorCode = params.get('error_code');
+  var errorDescription = params.get('error_description');
+
+  // Clear the fragment so a refresh doesn't re-trigger this banner.
+  try {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  } catch (e) { /* non-fatal */ }
+
+  var message;
+  if (errorCode === 'otp_expired' || errorCode === 'access_denied') {
+    message = 'That link has already been used or has expired. Send yourself a new one.';
+  } else if (errorDescription) {
+    message = errorDescription.replace(/\+/g, ' ');
+  } else {
+    message = 'That link could not be verified. Please try again.';
+  }
+
+  try {
+    if (!document.body) return;
+    var banner = document.createElement('div');
+    banner.id = 'auth-link-error-banner';
+    banner.setAttribute('role', 'alert');
+    banner.style.cssText = 'position:relative;background:#FEF3C7;border:1px solid #F59E0B;' +
+      'border-radius:0.5rem;padding:0.875rem 1rem;margin:1rem auto;max-width:640px;' +
+      'font-size:0.9rem;color:#92400E;display:flex;align-items:center;' +
+      'justify-content:space-between;gap:1rem;font-family:inherit;';
+
+    var text = document.createElement('span');
+    text.textContent = message;
+    banner.appendChild(text);
+
+    var action = document.createElement('a');
+    action.href = 'login.html';
+    action.textContent = 'Go to sign in';
+    action.style.cssText = 'color:#92400E;font-weight:600;text-decoration:underline;' +
+      'white-space:nowrap;flex-shrink:0;';
+    banner.appendChild(action);
+
+    if (document.body.firstChild) {
+      document.body.insertBefore(banner, document.body.firstChild);
+    } else {
+      document.body.appendChild(banner);
+    }
+  } catch (e) { /* non-fatal — never block page load over a banner */ }
+})();
