@@ -594,7 +594,8 @@ const Nav = {
     if (mobileSlot) mobileSlot.innerHTML = mobileHTML;
   },
 
-  /** Inject support modal + floating button for contractor pages */
+  /** Inject support modal + persistent floating button (gh-1275: every page,
+   *  not just contractor pages — call site widened in renderFooter() below). */
   _renderSupportModal() {
     if (document.getElementById('support-modal-overlay')) return; // already rendered
 
@@ -674,18 +675,14 @@ const Nav = {
 
     document.body.appendChild(overlay);
 
-    // Floating help button
+    // Floating help button — base look lives in css/nav.css (#support-fab)
+    // so the mobile media query there can override it; a JS-set inline
+    // style would win over any external stylesheet rule regardless of
+    // selector specificity, which would defeat that override entirely.
     const fab = document.createElement('button');
     fab.id = 'support-fab';
     fab.setAttribute('aria-label', 'Contact Support');
-    fab.style.cssText = `
-      position:fixed;bottom:1.5rem;right:1.5rem;z-index:9998;
-      background:#E07B00;color:#fff;border:none;border-radius:50px;
-      padding:.65rem 1.1rem;font-size:.85rem;font-weight:600;
-      cursor:pointer;box-shadow:0 4px 16px rgba(224,123,0,.4);
-      display:flex;align-items:center;gap:.4rem;
-    `;
-    fab.innerHTML = `<span style="font-size:1rem;">💬</span> Contact Support`;
+    fab.innerHTML = `<span style="font-size:1rem;">💬</span><span class="support-fab-label">&nbsp;Contact Support</span>`;
     document.body.appendChild(fab);
 
     // Wire up open/close
@@ -870,10 +867,11 @@ const Nav = {
       </div>
     `;
 
-    // Contractor pages: inject support modal + FAB, wire footer link
+    // gh-1275: support modal + FAB on every page (was contractor-only).
+    this._renderSupportModal();
+    // Wire footer "Contact Support" link after DOM settles — only present in
+    // the contractor footer column set above; harmless no-op elsewhere.
     if (isContractor) {
-      this._renderSupportModal();
-      // Wire footer "Contact Support" link after DOM settles
       requestAnimationFrame(() => {
         const footerLink = document.getElementById('footer-support-link');
         if (footerLink) {

@@ -460,3 +460,41 @@
   .nav-roles-label { display: none; }
   .nav-role-tab { font-size: 0.78rem; padding: 5px var(--sp-2); }
 }
+
+/* gh-1275: persistent "Contact Support" FAB, site-wide (js/nav.js
+   _renderSupportModal). Base look lives here (a JS inline style would beat
+   the mobile override below regardless of selector specificity).
+   env(safe-area-inset-*) clears iOS Safari's bottom toolbar / home-indicator;
+   collapses to an icon-only circle under 480px so it doesn't crowd narrow
+   layouts or overlap other bottom-right fixed elements (e.g.
+   contractor-dashboard.html's error toast, bumped above it to compensate). */
+#support-fab {
+  position: fixed;
+  bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  right: calc(1.5rem + env(safe-area-inset-right, 0px));
+  z-index: 9998;
+  background: #E07B00;
+  color: #fff;
+  border: none;
+  border-radius: 50px;
+  padding: .65rem 1.1rem;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(224, 123, 0, .4);
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+@media (max-width: 480px) {
+  #support-fab {
+    padding: 0;
+    width: 3rem;
+    height: 3rem;
+    justify-content: center;
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    right: calc(1rem + env(safe-area-inset-right, 0px));
+  }
+  #support-fab .support-fab-label { display: none; }
+}
