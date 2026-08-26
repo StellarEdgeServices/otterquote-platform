@@ -110,6 +110,34 @@ Object.defineProperty(CONFIG, 'STRIPE_PK', {
 
 // ── Initialize Supabase Client ──
 var sb; // var (not let) — allows safe early-load in <head> of gated pages alongside redirect guard
-if (typeof supabase !== 'undefined') {
+
+function _oqCreateSupabaseClient() {
+  if (sb) return true;
+  if (typeof supabase === 'undefined') return false;
   sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage } });
+  return true;
+}
+
+// Bridge 2026-08-26 (P0): this used to be a bare `if (typeof supabase !== ...)`
+// with no retry, which silently did nothing on any page that loads the Supabase
+// UMD bundle AFTER this file. ELEVEN pages do exactly that — login.html, all five
+// partner signup pages, and three ref-* referral landing pages among them. On
+// those pages `sb` stayed undefined forever, so every Auth.* call died at its own
+// `if (!sb) throw new Error('Supabase not initialized')` guard BEFORE any network
+// request. That is why homeowner login reported "OAuth doesn't work, password
+// doesn't work, can't get in": the page could not construct a client at all.
+// The tell was that the failing clicks produced ZERO rows in the Supabase auth
+// logs — not an error, an absence.
+//
+// Retrying on DOMContentLoaded is the mechanism rather than the patch: every
+// synchronous <script src> on the page has executed by then, whatever order the
+// author put them in, and no user can click before that point. The page-level
+// script-order bug is still worth fixing on its own, but this makes it stop
+// being able to take auth down.
+if (!_oqCreateSupabaseClient() && typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!_oqCreateSupabaseClient()) {
+      console.error('[config] Supabase library never loaded — authentication is unavailable on this page.');
+    }
+  });
 }
