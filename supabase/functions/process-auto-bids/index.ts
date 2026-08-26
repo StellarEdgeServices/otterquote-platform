@@ -143,15 +143,20 @@ serve(async (req: Request) => {
         if (alreadyBid.has(contractor.id)) continue;
 
         // Service area match: any county in claim's state.
-        // Claims carry property_state; contractors store "STATE:County" in service_counties.
-        // State-level match is used until claims gain a property_county field (D-093).
+        // Claims carry property_state; contractors store "STATE:County" in service_counties
+        // (e.g. "IN:Marion"). State-level match is used until claims gain a property_county
+        // field (D-093).
         // Null/empty service_counties (e.g. #466 states-grid onboarding) falls through to
         // "include" — same conservative fallback as notify-contractors' county filter.
+        // gh-1253: some rows still carry the legacy bare county form (no "STATE:" prefix,
+        // predating the normalize-on-write fix) — those entries carry no state info, so
+        // treat them as a match rather than silently excluding the contractor from every
+        // claim. Prefixed entries keep the strict state-scoped match.
         const inServiceArea =
           !contractor.service_counties || contractor.service_counties.length === 0
             ? true
             : contractor.service_counties.some(
-                (county) => county.startsWith(`${claim.property_state}:`)
+                (county) => !county.includes(':') || county.startsWith(`${claim.property_state}:`)
               );
         if (!inServiceArea) continue;
 
