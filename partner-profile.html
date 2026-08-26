@@ -231,7 +231,28 @@
         // reading data-active/data-auth off #site-header (same pattern as
         // ref-re.html) — no manual Nav.renderHeader() call needed here.
         const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
+        let code = params.get('code');
+
+        // ── 2026-08-25 ────────────────────────────────────────────────────
+        // No ?code= used to be a dead end. That made this page unreachable
+        // from the partner's own nav — a partner had no way to look at the
+        // profile prospects actually see. Same complaint class Dustin
+        // reported on contractor-profile.html ("I can't get to any other
+        // part of my account"). A signed-in partner with no code in the URL
+        // now resolves their OWN unique_code and previews their own page.
+        if (!code && typeof Auth !== 'undefined') {
+            try {
+                const user = await Auth.getUser();
+                if (user) {
+                    const { data: mine } = await sb
+                        .from('referral_agents')
+                        .select('unique_code')
+                        .eq('user_id', user.id)
+                        .maybeSingle();
+                    if (mine && mine.unique_code) code = mine.unique_code;
+                }
+            } catch (_) { /* fall through to the missing-code message below */ }
+        }
 
         if (!code) {
             showError("This partner profile link is missing its code — please ask your partner for their link again.");

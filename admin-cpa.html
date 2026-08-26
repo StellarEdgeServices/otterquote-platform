@@ -25,6 +25,10 @@
 </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="js/cookie-storage.js"></script>
+    <!-- 2026-08-25: added so SUPABASE_ANON_KEY below resolves from the single
+         source (CONFIG.SUPABASE_ANON) instead of an inline literal. This page
+         was the last file in the repo carrying the legacy JWT inline. -->
+    <script src="js/config.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -333,10 +337,26 @@
 // CONFIG
 // =============================================================================
 const SUPABASE_URL     = 'https://yeszghaspzwwstvsrioa.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inllc3pnaGFzcHp3d3N0dnNyaW9hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMzczOTQsImV4cCI6MjA4ODkxMzM5NH0.rJylLGDUOP25xms5OLDa_tkUyj_ESHT9yzwVynZgiVI';
+// 2026-08-25: this page hardcoded the LEGACY JWT anon key, which Supabase
+// disabled on 2026-08-06T15:44:05Z — so every request from this page has
+// returned 401 "Legacy API keys are disabled" since then. It was the only
+// file in the repo still carrying that key inline; every other page reads
+// CONFIG.SUPABASE_ANON from js/config.js, which already holds the modern
+// publishable key. Hardcoding it here is what let it rot unnoticed, so it
+// now reads from the same single source as everything else.
+const SUPABASE_ANON_KEY = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON)
+  ? CONFIG.SUPABASE_ANON
+  : 'sb_publishable_mKmYIsRMc6dCG8ZrGGbyyw_l_MOTwZP';
 const ADMIN_EMAIL      = 'dustinstohler1@gmail.com';
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
+// `sb` is DECLARED by js/config.js (`var sb;`, which also creates a default
+// client). Re-declaring it here with `const` threw
+// "Identifier 'sb' has already been declared" — a SyntaxError that killed this
+// entire script block and took the whole admin page with it. Introduced and
+// caught in the same session (2026-08-25) by the headless render sweep, which
+// is the only reason it did not ship. Assign, do not re-declare; the
+// reassignment is deliberate and preserves this page's explicit storageKey.
+sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
 // =============================================================================
 // AUTH

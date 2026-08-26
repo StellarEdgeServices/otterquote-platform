@@ -21,9 +21,14 @@ const NAP = Object.freeze({
   addressRegion: 'IN',
   postalCode: '46224',
   addressCountry: 'US',
-  phoneDisplay: '844-875-3412',           // D-240 byte-exact visible form
-  phoneTelHref: 'tel:+18448753412',
-  phoneE164: '+1-844-875-3412',           // machine-readable schema.org telephone field (E.164-normalized)
+  // Phone changed 2026-08-25, Dustin-directed ("Change the 844 number to
+  // (317) 501-9215 for now"). Supersedes D-240's locked 844-875-3412 for
+  // every VISIBLE surface — footer NAP, JSON-LD, and every tel: href that
+  // renders from this object. The Twilio 844 line (CONFIG.TWILIO_PHONE)
+  // stays configured and in service; it simply stops being advertised.
+  phoneDisplay: '(317) 501-9215',
+  phoneTelHref: 'tel:+13175019215',
+  phoneE164: '+1-317-501-9215',           // machine-readable schema.org telephone field (E.164-normalized)
   email: 'info@otterquote.com',
   url: 'https://otterquote.com'
 });
@@ -133,20 +138,28 @@ const Nav = {
       guest: [
         { href: '/partners.html',          label: 'Partner Programs', id: 'partners' },
         { href: '/partner-app.html',       label: 'Partner App',      id: 'partner-app' },
-        { href: '/partner-agreement.html', label: 'Agreement',        id: 'partner-agreement' },
         { href: '/faq.html',               label: 'FAQ',              id: 'faq' },
       ],
       authed: [
         { href: '/partner-dashboard.html', label: 'Dashboard',        id: 'partner-dashboard' },
+        { href: '/partner-profile.html',   label: 'My Profile',       id: 'partner-profile' },
         { href: '/partners.html',          label: 'Programs',         id: 'partners' },
         { href: '/partner-app.html',       label: 'Get the App',      id: 'partner-app' },
-        { href: '/partner-agreement.html', label: 'Agreement',        id: 'partner-agreement' },
         { href: '/faq.html',               label: 'FAQ',              id: 'faq' },
       ],
     },
   },
 
   _ROLE_STORAGE_KEY: 'oq_nav_role',
+
+  /**
+   * When the visitor last clicked a role tab, as epoch ms. An EXPLICIT
+   * choice outranks the account role for a while — see _explicitRoleChoice().
+   */
+  _ROLE_EXPLICIT_KEY: 'oq_nav_role_at',
+
+  /** How long an explicit role-tab click outranks the account role. */
+  _ROLE_EXPLICIT_TTL_MS: 30 * 60 * 1000,
 
   _currentFile() {
     const path = window.location.pathname;
@@ -164,7 +177,35 @@ const Nav = {
 
   _storeRole(role) {
     if (!this._ROLE_NAV[role]) return;
-    try { window.localStorage.setItem(this._ROLE_STORAGE_KEY, role); } catch (_) { /* non-fatal */ }
+    try {
+      window.localStorage.setItem(this._ROLE_STORAGE_KEY, role);
+      window.localStorage.setItem(this._ROLE_EXPLICIT_KEY, String(Date.now()));
+    } catch (_) { /* non-fatal */ }
+  },
+
+  /**
+   * The role the visitor DELIBERATELY chose, if that choice is still fresh.
+   *
+   * Why this exists (Dustin, 2026-08-25): signed in as a contractor, he
+   * clicked "Homeowner" in row 1. The browser navigated to index.html — and
+   * then the orange highlight snapped back to Contractor and row 2 stayed on
+   * the contractor links, because _updateNavLinksForRole() treats the
+   * account role as absolute. Correct for a contractor who wandered onto a
+   * homeowner URL by accident; wrong for one who just asked to go there.
+   * Signing out "fixed" it only because there was no account role left to win.
+   *
+   * A click is a statement of intent and beats inference for 30 minutes.
+   * It never beats the URL: on contractor-profile.html you get the
+   * contractor nav no matter what you last clicked.
+   */
+  _explicitRoleChoice() {
+    try {
+      const role = window.localStorage.getItem(this._ROLE_STORAGE_KEY);
+      if (!role || !this._ROLE_NAV[role]) return null;
+      const at = parseInt(window.localStorage.getItem(this._ROLE_EXPLICIT_KEY) || '0', 10);
+      if (!at || (Date.now() - at) > this._ROLE_EXPLICIT_TTL_MS) return null;
+      return role;
+    } catch (_) { return null; }
   },
 
   /** Which role does the CURRENT page belong to, by URL? null = role-neutral. */
@@ -174,7 +215,16 @@ const Nav = {
     if (this._isContractorPage()) return 'contractor';
     // Explicitly homeowner-owned surfaces (everything a referred or
     // self-serve homeowner touches).
-    if (/^(index|how-it-works|faq|dashboard|landing|help-|ref\.|ref-|refer-a-friend|repair-intake|color-selection|project-confirmation|contract-signing|bids|trade-selector|onboarding-demo)/.test(file)) {
+    // `login` added 2026-08-25. login.html is the HOMEOWNER sign-in page, but
+    // it was missing from this list, so _roleFromUrl() returned null and the
+    // nav fell through to the visitor's last stored role. A visitor who had
+    // been on partner pages then arrived at the homeowner sign-in page and was
+    // shown the partner nav — "Referral Partner" highlighted in row 1, and a
+    // "Partner Login" button offered to a homeowner who was already on the
+    // right login page. Confirmed live in Dustin's browser 2026-08-25.
+    // partner-login.html and contractor-login.html are unaffected: the partner
+    // and contractor URL checks above run first and claim them.
+    if (/^(index|login|how-it-works|faq|dashboard|landing|help-|ref\.|ref-|refer-a-friend|repair-intake|color-selection|project-confirmation|contract-signing|bids|trade-selector|onboarding-demo)/.test(file)) {
       return 'homeowner';
     }
     // The tools-* family and the standalone product pages sell software TO
@@ -258,6 +308,16 @@ const Nav = {
     const role = this._resolveRole();
     this._activeRole = role;
     const isContractor = (role === 'contractor');
+    // The sign-out slot is emitted from the PAGE's own role (its URL), never
+    // from the visitor's remembered role. Widening it to a bare `!showAuth`
+    // put a second "Log Out" on admin-referrals.html and
+    // admin-incomplete-profiles.html, which ship their own logout button:
+    // those pages are role-NEUTRAL by URL, so _resolveRole() had been
+    // answering with whatever role the visitor last browsed. Caught by this
+    // run's adversarial check, 2026-08-25.
+    const urlRoleForSlot = this._roleFromUrl();
+    const wantsSignOutSlot = !showAuth &&
+      (urlRoleForSlot === 'contractor' || urlRoleForSlot === 'partner');
     // Pre-auth render uses the guest link set; _updateNavLinksForRole()
     // re-renders row 2 the moment a real session resolves.
     const links = this._roleLinks(role, false);
@@ -274,11 +334,11 @@ const Nav = {
             <a href="${l.href}" class="nav-link ${active === l.id ? 'active' : ''}">${l.label}</a>
           `).join('')}
           ${showAuth ? '<div class="nav-mobile-auth" id="nav-mobile-auth-slot"></div>' : ''}
-          ${isContractor && !showAuth ? '<span id="nav-mobile-signout-slot"></span>' : ''}
+          ${wantsSignOutSlot ? '<span id="nav-mobile-signout-slot"></span>' : ''}
         </div>
         <div class="nav-actions" id="nav-actions">
           ${showAuth ? '<div id="nav-auth-slot"></div>' : ''}
-          ${isContractor && !showAuth ? '<span id="nav-signout-slot"></span>' : ''}
+          ${wantsSignOutSlot ? '<span id="nav-signout-slot"></span>' : ''}
         </div>
         <button class="nav-hamburger" id="nav-hamburger" aria-label="Menu">
           <span></span><span></span><span></span>
@@ -301,14 +361,65 @@ const Nav = {
     // Auth state
     if (showAuth) {
       this._renderAuthSlot();
-    } else if (isContractor) {
+    } else {
+      // ── gh-2026-08-25 ────────────────────────────────────────────────
+      // data-auth="false" pages were stuck on the GUEST link set forever.
+      // _renderAuthSlot() was the ONLY caller of _updateNavLinksForRole(),
+      // and it bails at `if (!slot && !mobileSlot) return;` — which is
+      // always true when showAuth is false, because the slot markup above
+      // is never emitted. Net effect: a signed-in contractor on
+      // contractor-profile.html saw "Join · How It Works · Tools · FAQ",
+      // i.e. the recruitment nav, with no route to the rest of his own
+      // account. Same defect on partner-dashboard.html. Reported by
+      // Dustin 2026-08-25. The role correction is now independent of
+      // whether the page renders auth buttons.
+      //
+      // NARROWED after this run's adversarial check: the first version called
+      // _applyAuthRole() on EVERY data-auth="false" page, which regressed
+      // contractor-faq.html and contractor-how-it-works.html — a signed-in
+      // insurance agent reading the CONTRACTOR marketing pages was handed his
+      // own partner dashboard nav instead of the contractor nav belonging to
+      // the content in front of him. The guard now lives in _applyAuthRole().
+      this._applyAuthRole();
       // data-auth="false" pages (contractor-faq, contractor-how-it-works) are
       // public marketing pages inside the contractor path. They used to render
       // an unconditional "Log Out" control, so a signed-OUT visitor arriving
       // from the contractor nav was offered the one action they could not take.
       // Now the control appears only when there is a session to end.
+      // (Widened 2026-08-25 from contractor-only to every role: partner
+      // pages carry data-auth="false" too and had no sign-out at all.)
       this._renderSignOutSlotIfSignedIn();
     }
+  },
+
+  /**
+   * Resolve the signed-in account's role and correct row 2 to match, with
+   * no dependency on the auth-button slots existing. Safe to call on any
+   * page; a no-op for signed-out visitors and for pages without auth.js.
+   */
+  async _applyAuthRole() {
+    if (typeof Auth === 'undefined') return;
+    try {
+      const user = await Auth.getUser();
+      if (!user) return;
+      const role = await Auth.getRole();
+
+      // Correct row 2 only when the account role AGREES with the page's own
+      // URL role, or the page claims no role at all.
+      //
+      // contractor-profile.html (URL contractor + contractor account) and
+      // partner-dashboard.html (URL partner + partner account) are the pages
+      // this fix exists for, and both agree. contractor-faq.html and
+      // contractor-how-it-works.html are public CONTRACTOR marketing pages
+      // that any role may read; substituting a visitor's own dashboard nav
+      // there strands them mid-way through contractor content with no
+      // contractor navigation. Disagreement means "you are a guest in this
+      // part of the site", which is what the guest link set is for.
+      const urlRole = this._roleFromUrl();
+      if (urlRole && urlRole !== this._navRoleForAuthRole(role)) return;
+
+      this._updateNavLinksForRole(role);
+    } catch (_) { /* auth unavailable — the guest render already on screen is correct */ }
   },
 
   /** Fill the sign-out slots on data-auth="false" pages, but only for a real session. */
@@ -337,13 +448,31 @@ const Nav = {
    */
   _updateNavLinksForRole(authRole) {
     if (!authRole) return;
-    const role = this._navRoleForAuthRole(authRole);
+    const authNavRole = this._navRoleForAuthRole(authRole);
 
+    // A fresh, deliberate role-tab click outranks the account role — but only
+    // on a page that does not already belong to a role. See
+    // _explicitRoleChoice() for the reported symptom this fixes.
+    const chosen = this._explicitRoleChoice();
+    const urlRole = this._roleFromUrl();
+    if (chosen && chosen !== authNavRole && (!urlRole || urlRole === chosen)) {
+      // They are BROWSING another role's world, not managing an account in
+      // it, so render that role's guest links. The auth slot still shows
+      // their real dashboard button, which is their way back.
+      this._applyRoleLinks(chosen, false);
+      return;
+    }
+
+    this._applyRoleLinks(authNavRole, true);
+  },
+
+  /** Re-render row 2 (and the role tab + logo) for one role. */
+  _applyRoleLinks(role, isAuthed) {
     const container = document.getElementById('nav-links');
     if (container) {
       const active = (document.getElementById('site-header') || {}).dataset?.active || '';
       const mobileAuthSlot = container.querySelector('#nav-mobile-auth-slot');
-      const linksHTML = this._roleLinks(role, true).map(l => `
+      const linksHTML = this._roleLinks(role, isAuthed).map(l => `
         <a href="${l.href}" class="nav-link ${active === l.id ? 'active' : ''}">${l.label}</a>
       `).join('');
       // Keep the mobile auth slot (it already holds rendered markup) and
@@ -364,10 +493,10 @@ const Nav = {
         else tab.removeAttribute('aria-current');
       });
       const logo = document.querySelector('.nav-logo');
-      if (logo) logo.href = this._roleLogoHref(role, true);
+      if (logo) logo.href = this._roleLogoHref(role, isAuthed);
     } else {
       const logo = document.querySelector('.nav-logo');
-      if (logo) logo.href = this._roleLogoHref(role, true);
+      if (logo) logo.href = this._roleLogoHref(role, isAuthed);
     }
   },
 
@@ -645,7 +774,7 @@ const Nav = {
         document.getElementById('support-form-wrap').style.display = 'none';
         document.getElementById('support-success').style.display = 'block';
       } catch {
-        errEl.textContent = 'Something went wrong. Please email info@otterquote.com or call (844) 875-3412.';
+        errEl.textContent = 'Something went wrong. Please email info@otterquote.com or call (317) 501-9215.';
         errEl.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Send Message';
@@ -725,6 +854,14 @@ const Nav = {
             <h4 class="footer-heading">Legal</h4>
             <a href="/terms.html">Terms of Service</a>
             <a href="/privacy.html">Privacy Policy</a>
+            <!-- Moved out of the partner header nav 2026-08-25 (Dustin: "Does the
+                 agreement need its own button on our header or can it be in the
+                 disclaimers at the bottom?"). It is a reference document, not a
+                 destination — it was spending a header slot that the partner's
+                 actual account surfaces needed. Reachable from every page here,
+                 and linked again inline at the point of acceptance on the
+                 partner signup form, which is where it legally matters. -->
+            <a href="/partner-agreement.html">Partner Agreement</a>
           </div>
         </div>
         <div class="footer-bottom">

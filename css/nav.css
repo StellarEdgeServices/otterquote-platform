@@ -364,14 +364,29 @@
    not, so changing roles is never more than one click away.
    ═══════════════════════════════════════════════════ */
 
+/* Row 1 is a DIFFERENT surface from row 2, not a slightly darker version of
+   it (Dustin, 2026-08-25: "Can we make the background on that different from
+   the line below it?"). It was rgba(4,18,28,.92) against row 2's
+   rgba(10,30,44,.95) — a difference real enough to specify and too small to
+   see, so the two rows read as one 90px slab. Now: a solid, near-black band
+   with a defined edge, so "who am I" is visibly its own control strip sitting
+   above the page's navigation. */
 .nav-roles {
-  background: rgba(4, 18, 28, 0.92);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: #05121C;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.35);
 }
 
+/* The TABS are centred on the page, not the label+tabs group. Centring the
+   group left the tabs 23px right of centre (measured), because the "I'M A"
+   label is 60-odd px wide and only on one side. The label is taken out of
+   flow so it can sit at the left edge without pulling the tabs off centre —
+   which is what "center Homeowner / Contractor / Referral partner" means. */
 .nav-roles-inner {
+  position: relative;
   display: flex;
   align-items: center;
+  justify-content: center;   /* centered 2026-08-25, Dustin-directed */
   gap: var(--sp-3);
   min-height: 40px;
   padding-top: 4px;
@@ -379,12 +394,24 @@
 }
 
 .nav-roles-label {
+  position: absolute;
+  left: var(--sp-6, 1.5rem);
+  top: 50%;
+  transform: translateY(-50%);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #7C8FA3;
   flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* Below ~700px the absolute label would sit under the tabs; hide it early
+   rather than let it collide. (The 480px rule below already hid it; this
+   raises the threshold now that it no longer reserves its own space.) */
+@media (max-width: 700px) {
+  .nav-roles-label { display: none; }
 }
 
 .nav-roles-tabs {

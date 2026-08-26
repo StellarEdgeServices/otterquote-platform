@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Insurance Agent Referral Fee Details | Otter Quotes</title>
+<meta name="description" content="Insurance agent partners earn $200 per completed job of $10,000 or more, plus a $50 recruit bonus. See exactly how and when Otter Quotes pays referral fees.">
+<link rel="canonical" href="https://otterquote.com/partner-insurance-fees.html">
+<meta property="og:title" content="Insurance Agent Referral Fee Details | Otter Quotes">
+<meta property="og:description" content="Insurance agent partners earn $200 per completed job of $10,000 or more, plus a $50 recruit bonus. See exactly how and when Otter Quotes pays referral fees.">
+<meta property="og:url" content="https://otterquote.com/partner-insurance-fees.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: var(--navy); background-image: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.12) 0%, transparent 65%);
+}
+.page-hero h1 { margin-bottom: var(--sp-4); color: var(--white); }
+.page-hero p { max-width: 600px; margin: 0 auto; font-size: 1.1rem; color: var(--slate); }
+
+.commission-section {
+  background: var(--navy-3);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  border-radius: 16px;
+  padding: 48px 40px;
+  margin-bottom: 40px;
+}
+
+.commission-section h2 {
+  font-family: var(--font-heading);
+  font-size: 1.8rem;
+  color: var(--white);
+  margin-bottom: 32px;
+}
+
+.commission-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 32px;
+}
+
+.commission-item {
+  text-align: center;
+}
+
+.commission-amount {
+  display: inline-block;
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--amber);
+  margin-bottom: 12px;
+}
+
+.commission-item p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.fee-note {
+  text-align: center;
+  color: var(--slate);
+  margin-bottom: var(--sp-4);
+  font-size: 0.95rem;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cta-bottom {
+  text-align: center;
+  padding: var(--sp-16) 0 var(--sp-20);
+}
+.cta-bottom h2 { margin-bottom: var(--sp-4); color: var(--white); }
+.cta-bottom p { max-width: 500px; margin: 0 auto var(--sp-8); font-size: 1.1rem; }
+.cta-bottom-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.cta-bottom-links .btn { margin-bottom: var(--sp-2); }
+.cta-bottom-links a.secondary-link {
+  color: var(--amber);
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+.cta-bottom-links a.secondary-link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active=""></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Referral Fee Details</h1>
+    <p>Here's exactly how and when insurance agent partners get paid.</p>
+  </div>
+</section>
+
+<section class="section" style="background: var(--navy-2);">
+  <div class="container">
+    <div class="commission-section">
+      <h2>Your Earnings</h2>
+      <div class="commission-grid">
+        <div class="commission-item">
+          <div class="commission-amount">$200</div>
+          <p>Per Completed Job of $10,000+</p>
+        </div>
+        <div class="commission-item">
+          <div class="commission-amount">+ $50</div>
+          <p>For Every Job From a Partner You Recruit</p>
+        </div>
+        <div class="commission-item">
+          <div class="commission-amount">Paid</div>
+          <p>After job completion</p>
+        </div>
+        <div class="commission-item">
+          <div class="commission-amount">Tracked</div>
+          <p>Real-time in your dashboard</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="fee-note">Know another agent who'd benefit? Share your recruit link and earn $50 every time their referral completes a job of $10K or more. One level — simple, transparent, no MLM.</p>
+
+    <p class="fee-note" style="margin-bottom: 0;">For smaller jobs: your value is a better client experience, stronger retention, and a portfolio of wins.</p>
+    <p class="fee-note" style="margin-top: 1rem; margin-bottom: 0; font-size: 0.85rem; opacity: 0.8;">A completed IRS Form W-9 is required before your first referral fee payment is issued.</p>
+    <!-- D-180: Approval process disclosure -->
+    <p class="fee-note" style="margin-top: 0.5rem; margin-bottom: 0; font-size: 0.85rem; opacity: 0.8;">Commissions are paid after job completion and approval.</p>
+  </div>
+</section>
+
+<section class="cta-bottom">
+  <div class="container">
+    <h2>Ready to Join?</h2>
+    <p>It takes about 2 minutes to create your free partner account.</p>
+    <div class="cta-bottom-links">
+      <a href="/partner-insurance.html#signup" class="btn btn-primary btn-lg">Become a Partner</a>
+      <p class="referral-fee-disclaimer" style="color: var(--slate, #94A3B8); font-size: 0.85rem; text-align: center; margin-top: 0.75rem; line-height: 1.5;">
+        Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+      </p>
+      <a href="/partner-insurance.html" class="secondary-link">&larr; Back to Insurance Agent Partners</a>
+    </div>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+</body>
+</html>

@@ -313,7 +313,48 @@ async function handleRecruit() {
         return;
     }
 
-    const destination = DESTINATIONS[agentType];
+    // ── 2026-08-25, Dustin-directed ───────────────────────────────────────
+    // This used to redirect to DESTINATIONS[agentType] — the RECRUITER's own
+    // profession page. Reported symptom: "It seems like my partner link takes
+    // me to the home inspector partner page." Correct, and wrong: Dustin is a
+    // home_inspector, so every professional he recruited — insurance agents,
+    // realtors, adjusters — landed on partner-inspectors.html and had to
+    // work out that the page was not about them.
+    //
+    // The recruiter's type was never evidence of the RECRUIT's type. gh-865
+    // already established that the two are "fully decoupled" and made the
+    // UNRESOLVED path show an explicit chooser; the resolved path kept
+    // guessing anyway, which is the harder bug to see because it looks like
+    // it is working.
+    //
+    // Now every resolved recruit lands on partners.html — the profession
+    // gate — and picks their own world.
+    //
+    // Attribution is NOT lost by adding this hop, which was Dustin's
+    // question. Three independent carriers survive it:
+    //   1. cs_recruit_code in localStorage, written above before any redirect;
+    //   2. ?recruit= on this redirect, which partners.html reads
+    //      (`params.get('recruit') || params.get('code')`) and forwards to
+    //      the profession page it sends the visitor on to;
+    //   3. `register_partner(p_recruit_code => …)` resolving the recruiter and
+    //      storing them on the new row's `recruited_by_id` column.
+    //
+    // CORRECTION: an earlier draft of this comment said the value lands in
+    // `referral_agents.recruit_code`. It does not. That column holds the NEW
+    // agent's own freshly-generated code, written by the
+    // referral_agents_generate_recruit_code BEFORE INSERT trigger and
+    // unrelated to the inbound value. Attribution lands in `recruited_by_id`.
+    // Verified in supabase/migrations/20260101000000_v000_baseline_schema.sql
+    // (register_partner, and the trigger above it), not assumed.
+    // The `customer` recruiter type is EXEMPT and keeps its old destination.
+    // Dustin's instruction was about partners ("make sure the referral links
+    // send partners to this page"), and routing a homeowner-type recruit
+    // through partners.html sends them onward to index.html, which reads
+    // neither ?recruit= nor cs_recruit_code — so the attribution this run
+    // claimed was preserved would in fact have been dropped on that one path.
+    // Caught by this run's own adversarial check. refer-a-friend.html is the
+    // homeowner-referral surface and is where that path already went.
+    const destination = (agentType === 'customer') ? DESTINATIONS.customer : 'partners.html';
 
     // Track recruit link usage
     gtag('event', 'recruit_link_used', {

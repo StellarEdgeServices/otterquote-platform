@@ -80,39 +80,37 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: var(--font-body); color: var(--white); background-color: var(--navy); line-height: 1.6; }
         main { min-height: calc(100vh - 120px); }
-        .hero { background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%); padding: var(--sp-24) var(--sp-6); text-align: center; }
-        .hero h1 { font-family: var(--font-heading); font-size: 3.5rem; font-weight: 700; margin-bottom: var(--sp-6); line-height: 1.2; color: var(--white); }
-        .hero p { font-size: 1.25rem; max-width: 600px; margin: 0 auto; color: rgba(255,255,255,0.9); }
-        .container { max-width: 1000px; margin: 0 auto; padding: 0 var(--sp-6); }
-        .value-section { padding: var(--sp-24) var(--sp-6); background-color: var(--navy-2); }
-        .value-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--sp-8); margin-top: var(--sp-12); }
-        .value-card { background: rgba(255,255,255,0.04); padding: var(--sp-8); border-radius: var(--radius-lg); border-left: 4px solid var(--amber); border-top: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.06); box-shadow: 0 4px 20px rgba(0,0,0,0.2); transition: transform 0.3s ease, box-shadow 0.3s ease; }
-        .value-card:hover { transform: translateY(-4px); box-shadow: 0 8px 32px rgba(0,0,0,0.35); }
-        .value-card h3 { font-family: var(--font-heading); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-4); }
-        .value-card p { color: var(--slate); line-height: 1.6; }
-        .form-section { padding: var(--sp-24) var(--sp-6); background: var(--navy-2); }
-        .form-container { max-width: 640px; margin: 0 auto; background: rgba(255,255,255,0.03); padding: var(--sp-12); border-radius: var(--radius-lg); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 8px 40px rgba(0,0,0,0.3); }
-        .form-section h2 { font-family: var(--font-heading); font-size: 2.5rem; color: var(--white); text-align: center; margin-bottom: var(--sp-4); }
-        .step-badge { display: inline-block; background: rgba(224,123,0,0.15); border: 1px solid rgba(224,123,0,0.35); color: var(--amber); font-size: 0.8rem; font-weight: 600; padding: 0.25rem 0.75rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--sp-8); }
-        .form-group { margin-bottom: var(--sp-6); }
-        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-6); }
-        .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-2); font-size: 0.95rem; }
+        /* gh-960(g): hero + Get Started merged into one two-column section so both
+           are visible above the fold on desktop without scrolling (no page-scoped
+           `.container` here anymore -- it was colliding with the shared header's
+           `.container` class from css/design-system.css, see gh-960 nav wrap note below). */
+        .hero-section { background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%); padding: var(--sp-8) var(--sp-6); }
+        .hero-wrap { max-width: 1200px; margin: 0 auto; padding: 0 var(--sp-6); }
+        .hero-grid { display: grid; grid-template-columns: 1fr; gap: var(--sp-8); align-items: center; }
+        .hero-copy { text-align: center; }
+        .hero-copy h1 { font-family: var(--font-heading); font-size: 2.25rem; font-weight: 700; margin-bottom: var(--sp-3); line-height: 1.15; color: var(--white); }
+        .hero-copy p.hero-sub { font-size: 1rem; max-width: 520px; margin: 0 auto; color: rgba(255,255,255,0.9); }
+        .get-started-card { max-width: 640px; margin: 0 auto; background: rgba(255,255,255,0.03); padding: var(--sp-6); border-radius: var(--radius-lg); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 8px 40px rgba(0,0,0,0.3); }
+        .get-started-head { text-align: center; margin-bottom: var(--sp-4); }
+        .get-started-head h2 { font-family: var(--font-heading); font-size: 1.75rem; color: var(--white); margin-bottom: var(--sp-2); }
+        .get-started-head p { color: var(--slate); font-size: 0.95rem; }
+        .get-started-head p + p { margin-top: var(--sp-1); }
+        .form-group { margin-bottom: var(--sp-3); }
+        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); }
+        .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
         .form-label.required::after { content: ' *'; color: #EF4444; }
-        .form-input { width: 100%; padding: var(--sp-3) var(--sp-4); border: 1px solid rgba(255,255,255,0.12); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; background: rgba(255,255,255,0.06); color: var(--white); transition: border-color 0.3s ease; }
+        .form-input { width: 100%; padding: var(--sp-2) var(--sp-4); border: 1px solid rgba(255,255,255,0.12); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; background: rgba(255,255,255,0.06); color: var(--white); transition: border-color 0.3s ease; }
         .form-input::placeholder { color: rgba(255,255,255,0.35); }
         .form-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px rgba(224,123,0,0.1); }
-        .submit-btn { background-color: var(--amber); color: var(--navy); padding: var(--sp-4) var(--sp-12); border: none; border-radius: var(--radius-md); font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.3s ease; width: 100%; margin-top: var(--sp-8); font-family: var(--font-body); }
+        .submit-btn { background-color: var(--amber); color: var(--navy); padding: var(--sp-3) var(--sp-12); border: none; border-radius: var(--radius-md); font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.3s ease; width: 100%; margin-top: var(--sp-4); font-family: var(--font-body); }
         .submit-btn:hover { background-color: #C06900; color: var(--white); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(224,123,0,0.3); }
         .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
         .success-message { display: none; background-color: #D1FAE5; border: 1px solid #6EE7B7; color: #065F46; padding: var(--sp-8); border-radius: var(--radius-md); margin-bottom: var(--sp-8); text-align: center; }
         .success-message.show { display: block; }
-        .fee-box { background: rgba(224,123,0,0.07); border-left: 4px solid var(--amber); border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
-        /* gh-960(f): salvaged from inspector-landing.html's credibility-section
-           (padding tokens adapted to this file's --sp scale, which has no --sp-5/--sp-10). */
-        .credibility-section { padding: var(--sp-8) var(--sp-8); background: var(--navy); border-bottom: 1px solid rgba(255,255,255,0.06); text-align: center; }
-        .credibility-box { max-width: 700px; margin: 0 auto; padding: var(--sp-6) var(--sp-4); background: rgba(224, 123, 0, 0.06); border: 1px solid rgba(224, 123, 0, 0.15); border-radius: var(--radius-md); }
-        .credibility-box p { font-size: 0.95rem; color: var(--slate); line-height: 1.8; margin: 0; }
-        .credibility-highlight { color: var(--amber); font-weight: 600; }
+        @media (min-width: 980px) {
+            .hero-grid { grid-template-columns: 1.1fr 1fr; gap: var(--sp-12); align-items: center; }
+            .hero-copy, .hero-copy p.hero-sub { text-align: left; margin-left: 0; margin-right: 0; }
+        }
         .oauth-divider {
             display: flex;
             align-items: center;
@@ -159,7 +157,7 @@
             width: 18px;
             height: 18px;
         }
-        @media (max-width: 768px) { .hero h1 { font-size: 2.5rem; } .form-container { padding: var(--sp-6); } .form-section h2 { font-size: 1.75rem; } }
+        @media (max-width: 768px) { .hero-section { padding: var(--sp-12) var(--sp-6); } .hero-copy h1 { font-size: 2rem; } .get-started-card { padding: var(--sp-6); } }
     </style>
 </head>
 <body>
@@ -171,55 +169,22 @@
           <strong>No contractor account found for that Google sign-in.</strong>
           Apply below — once your application is approved, you'll be able to sign in with Google.
         </div>
-        <section class="hero">
-            <div class="container">
-                <h1>Signed contracts, delivered. Pay 5% only when you win.</h1>
-                <p>Homeowners sign your contract right here. No marketing expense, sales people, or sales expenses.</p>
-                <p style="margin-top: var(--sp-4); font-size: 0.95rem;">
-                    <a href="onboarding-demo.html" style="color: var(--amber); font-weight: 600; text-decoration: none;">👀 See a 2-minute walkthrough of the application →</a>
-                </p>
-            </div>
-        </section>
-
-        <!-- gh-960(f) SALVAGE: founder-credibility block, moved verbatim from
-             inspector-landing.html before that page's future retirement (Q9
-             hub consolidation, #969). Homepage + partner-hub placements deferred
-             to that build. -->
-        <section class="credibility-section">
-            <div class="credibility-box">
-                <p>
-                    Built by <span class="credibility-highlight">Dustin Stohler</span>, who grew Stay Dry Roofing from <span class="credibility-highlight">$0 to $10M</span> here in Indianapolis. He saw the problem from the contractor side — now he's fixing it.
-                </p>
-            </div>
-        </section>
-
-        <section class="value-section">
-            <div class="container">
-                <h2 style="font-family: var(--font-heading); font-size: 2rem; text-align: center; margin-bottom: var(--sp-8); color: var(--white);">Why Join Otter Quotes?</h2>
-                <div class="value-cards">
-                    <div class="value-card">
-                        <h3>Colors Selected</h3>
-                        <p>Customers can pick out colors online. All you have to do is install it!</p>
-                    </div>
-                    <div class="value-card">
-                        <h3>Everything in One Place</h3>
-                        <p>Estimates, contracts, measurements and details. All delivered to you without putting a single mile on your truck.</p>
-                    </div>
+        <section class="hero-section">
+            <div class="hero-wrap">
+                <div class="hero-grid">
+                <div class="hero-copy">
+                <h1>Signed Contracts. Pay only when you win.</h1>
+                <p class="hero-sub">Homeowners sign your contract right here. No marketing expense, sales people, or sales expenses.</p>
                 </div>
-            </div>
-        </section>
 
-        <!-- Step 1: Contact Info -->
-        <section class="form-section">
-            <div class="form-container">
-                <div style="text-align:center; margin-bottom: var(--sp-8);">
-                    <span class="step-badge">Step 1 of 4</span>
-                    <h2 style="margin-bottom: var(--sp-2);">Get Started</h2>
-                    <p style="color: var(--slate); font-size: 0.95rem;">
+                <div class="get-started-card">
+                <div class="get-started-head">
+                    <h2>Get Started</h2>
+                    <p>
                         Already have an account? <a href="contractor-login.html" style="color: var(--amber); font-weight: 600;">Sign in here</a>
                     </p>
                     <!-- D-242: Cross-role sibling link — contractor signup ↔ homeowner signup -->
-                    <p style="color: var(--slate); font-size: 0.95rem; margin-top: var(--sp-2);">
+                    <p>
                         Not a contractor? <a href="https://app.otterquote.com/get-started" style="color: var(--amber); font-weight: 600;">Get free quotes as a homeowner</a>
                     </p>
                 </div>
@@ -239,17 +204,6 @@
                         </ol>
                         <p style="font-size: 0.9rem; color: #065F46; margin-top: 0.75rem;">After step 4, your application goes to our team for review. Most applications are approved within <strong>2&ndash;5 business days</strong>.</p>
                     </div>
-                </div>
-
-                <!-- Platform Fee Disclosure -->
-                <div class="fee-box">
-                    <strong style="display: block; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--amber); margin-bottom: 0.4rem;">Platform Fee</strong>
-                    <p style="font-size: 0.95rem; color: var(--slate); margin: 0 0 0.5rem 0;">The platform fee is 5% of your accepted bid amount for all job types.</p>
-                    <ul style="margin: 0.5rem 0 0 1.25rem; padding: 0; color: var(--slate); font-size: 0.9rem; line-height: 1.8;">
-                        <li>No monthly fees</li>
-                        <li>No upfront costs</li>
-                        <li style="font-weight: 700; color: var(--amber);">No sales rep needed.</li>
-                    </ul>
                 </div>
 
                 <form id="contractorForm">
@@ -304,6 +258,8 @@
 
                     <button type="submit" id="submitBtn" class="submit-btn">Continue &mdash; Send My Login Link</button>
                 </form>
+                </div>
+                </div>
             </div>
         </section>
     </main>

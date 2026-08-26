@@ -50,6 +50,20 @@ VERTICAL_PAGES = [
 ]
 ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard"]
 
+# gh-1254: partner-insurance grew sibling pages (partner-insurance-fees.html,
+# partner-insurance-how-it-works.html, partner-insurance-why.html) that the
+# hardcoded ALL_PAGES/VERTICAL_PAGES lists above have no slot for, making them
+# structurally invisible to this script. Rather than hardcode each new sibling
+# by hand (repeating the exact defect this tool exists to catch), the D-266
+# disclaimer check discovers its own page set by globbing partner-insurance*.html
+# at the repo root and unioning it with the other non-insurance, non-login pages
+# from ALL_PAGES. Only the discovery mechanism for this one check changes; the
+# other checks keep using ALL_PAGES/VERTICAL_PAGES unchanged.
+D266_PAGES = sorted(
+    {p.stem for p in REPO_ROOT.glob("partner-insurance*.html")}
+    | {p for p in ALL_PAGES if p not in ("partner-insurance", "partner-login")}
+)
+
 D266_TEXT = (
     "Check your employment agreement and your governing licensing agency "
     "to make sure it is lawful for you to accept referral fees."
@@ -109,8 +123,21 @@ CHECKS = [
     },
     {
         "key": "get_the_app_promo",
+        # partner-insurance is exempt as of 2026-08-25, Dustin-directed:
+        # "Remove the 'Get the Otter Quotes Partner app'. That should be once
+        # they are in." The promo was competing with the signup form on a page
+        # whose only job is to convert a cold insurance agent, and the app is
+        # useless to someone who has no account yet.
+        #
+        # This is a ONE-PAGE exemption, not a policy change, because that is
+        # the only page the instruction covered. NOTE FOR WHOEVER READS THIS
+        # NEXT: the same argument applies verbatim to the other four vertical
+        # pages, which still carry the promo above the fold for logged-out
+        # visitors. If that is resolved, delete this exemption rather than
+        # widening it — a parity check with five exemptions is not a parity
+        # check.
         "description": "Get-the-App promo block",
-        "pages": VERTICAL_PAGES,
+        "pages": [p for p in VERTICAL_PAGES if p != "partner-insurance"],
         "test": check_get_the_app_promo,
     },
     {
@@ -131,19 +158,34 @@ def main() -> int:
             continue
         html = path.read_text(encoding="utf-8", errors="ignore")
         for check in CHECKS:
+            if check["key"] == "d266_disclaimer":
+                continue  # handled below via glob-discovered D266_PAGES (gh-1254)
             if page not in check["pages"]:
                 continue
             if not check["test"](html):
                 failures.append(f"{page}.html: missing {check['description']} ({check['key']})")
 
+    # D-266 disclaimer check uses its own glob-discovered page set (gh-1254)
+    # instead of the ALL_PAGES loop above, so newly-added partner-insurance
+    # siblings are visible without editing a hardcoded list.
+    for page in D266_PAGES:
+        path = REPO_ROOT / f"{page}.html"
+        if not path.is_file():
+            failures.append(f"{page}.html: MISSING FILE")
+            continue
+        html = path.read_text(encoding="utf-8", errors="ignore")
+        if not check_d266_disclaimer(html):
+            failures.append(f"{page}.html: missing D-266 disclaimer verbatim text (d266_disclaimer)")
+
+    checked_pages = sorted(set(ALL_PAGES) | set(D266_PAGES))
     if failures:
         print("Partner parity check: FAIL\n")
         for f in failures:
             print(f"  [FAIL] {f}")
-        print(f"\n{len(failures)} structural drift issue(s) found across {len(ALL_PAGES)} partner pages.")
+        print(f"\n{len(failures)} structural drift issue(s) found across {len(checked_pages)} partner pages.")
         return 1
 
-    print(f"Partner parity check: PASS -- {len(ALL_PAGES)} pages, {len(CHECKS)} checks, no drift.")
+    print(f"Partner parity check: PASS -- {len(checked_pages)} pages, {len(CHECKS)} checks, no drift.")
     return 0
 
 

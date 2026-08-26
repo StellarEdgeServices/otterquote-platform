@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Install on iPhone &amp; iPad &mdash; Otter Quotes Partner App</title>
+<meta name="description" content="Step-by-step guide to add the Otter Quotes Partner App to your iPhone or iPad home screen using Safari.">
+<link rel="canonical" href="https://otterquote.com/partner-app-install-ios.html">
+<meta property="og:title" content="Install on iPhone & iPad — Otter Quotes Partner App">
+<meta property="og:description" content="Step-by-step guide to add the Otter Quotes Partner App to your iPhone or iPad home screen using Safari.">
+<meta property="og:url" content="https://otterquote.com/partner-app-install-ios.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<!-- PWA -->
+<meta name="theme-color" content="#0D1B2E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<!-- GA4 -->
+<script async crossorigin="anonymous" src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-D1Y1TLGEFY');
+</script>
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wwr7qlk8g5");
+</script>
+
+<!-- Supabase JS -->
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Design System & Navigation -->
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+    /* Mobile-first: base rules target the phone that just scanned the QR code. */
+    main.install-main {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: var(--sp-6) var(--sp-4) var(--sp-16);
+    }
+
+    .install-hero {
+        text-align: center;
+        padding: var(--sp-6) 0 var(--sp-5);
+    }
+
+    .install-hero img {
+        width: 84px;
+        height: 84px;
+        border-radius: 20px;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+        margin-bottom: var(--sp-4);
+    }
+
+    .install-hero h1 {
+        font-family: var(--font-heading);
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--navy);
+        line-height: 1.2;
+        margin-bottom: var(--sp-2);
+    }
+
+    .install-hero p {
+        font-family: var(--font-body);
+        font-size: 1rem;
+        color: var(--gray);
+    }
+
+    .browser-note {
+        display: flex;
+        gap: var(--sp-3);
+        align-items: flex-start;
+        background: var(--amber-glow);
+        border: 1px solid rgba(224, 123, 0, 0.35);
+        border-radius: var(--radius-lg);
+        padding: var(--sp-5);
+        margin-bottom: var(--sp-8);
+        font-family: var(--font-body);
+        font-size: 0.98rem;
+        line-height: 1.55;
+        color: var(--navy);
+    }
+
+    .browser-note .note-emoji { font-size: 1.4rem; flex-shrink: 0; }
+    .browser-note strong { color: var(--amber-2); }
+
+    .step-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-4);
+        margin-bottom: var(--sp-10);
+        padding: 0;
+        list-style: none;
+    }
+
+    .step-row {
+        display: flex;
+        gap: var(--sp-4);
+        align-items: flex-start;
+        background: #FFFFFF;
+        border: 1px solid var(--light);
+        border-radius: var(--radius-lg);
+        padding: var(--sp-5);
+    }
+
+    .step-num {
+        flex-shrink: 0;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--amber);
+        color: var(--navy);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-heading);
+        font-weight: 700;
+        font-size: 1.1rem;
+    }
+
+    .step-text {
+        font-family: var(--font-body);
+        font-size: 1.05rem;
+        line-height: 1.55;
+        color: var(--navy);
+        padding-top: 6px;
+    }
+
+    .step-text strong { color: var(--amber-2); }
+    .step-text .sub { display: block; margin-top: var(--sp-1); font-size: 0.92rem; color: var(--gray); }
+
+    .cta-btn {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 20px 24px;
+        background: var(--amber);
+        color: var(--navy);
+        font-family: var(--font-body);
+        font-weight: 700;
+        font-size: 1.15rem;
+        text-align: center;
+        border: none;
+        border-radius: var(--radius-md);
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    .cta-btn:hover { background: var(--amber-light); }
+
+    .cta-sub {
+        font-family: var(--font-body);
+        text-align: center;
+        font-size: 0.9rem;
+        color: var(--gray);
+        margin-top: var(--sp-4);
+    }
+
+    .cta-sub a { color: var(--amber-2); font-weight: 600; }
+
+    @media (min-width: 640px) {
+        .install-hero h1 { font-size: 2rem; }
+        .install-hero p { font-size: 1.05rem; }
+        .step-text { font-size: 1.1rem; }
+    }
+</style>
+</head>
+<body>
+    <header id="site-header" data-auth="false"></header>
+
+    <main class="install-main">
+        <div class="install-hero">
+            <img src="/img/app/partner-icon-192.png" alt="Otter Quotes Partner App icon" width="84" height="84">
+            <h1>Install on iPhone &amp; iPad</h1>
+            <p>Add the Partner App to your home screen in about 30 seconds &mdash; no App Store needed.</p>
+        </div>
+
+        <div class="browser-note">
+            <span class="note-emoji">&#9888;&#65039;</span>
+            <span>You must use <strong>Safari</strong> for this. Chrome, Firefox, and other browsers on iPhone and iPad can't add the app to your home screen &mdash; that's an Apple restriction, not something we can change. If this page didn't open in Safari, copy the link and paste it into Safari first.</span>
+        </div>
+
+        <ol class="step-list">
+            <li class="step-row">
+                <span class="step-num">1</span>
+                <span class="step-text">Make sure you're viewing this page in <strong>Safari</strong>.</span>
+            </li>
+            <li class="step-row">
+                <span class="step-num">2</span>
+                <span class="step-text">Tap the <strong>Share</strong> button <span class="sub">(the square with an arrow pointing up &mdash; usually at the bottom of the screen on iPhone, or the top-right on iPad)</span></span>
+            </li>
+            <li class="step-row">
+                <span class="step-num">3</span>
+                <span class="step-text">Scroll down the menu that pops up and tap <strong>Add to Home Screen</strong></span>
+            </li>
+            <li class="step-row">
+                <span class="step-num">4</span>
+                <span class="step-text">Tap <strong>Add</strong> in the top-right corner</span>
+            </li>
+            <li class="step-row">
+                <span class="step-num">5</span>
+                <span class="step-text">Find the <strong>OQ Partners</strong> icon on your home screen, tap it, and sign in to your partner account</span>
+            </li>
+        </ol>
+
+        <a class="cta-btn" href="/partner-app.html">Continue to the Partner App</a>
+        <p class="cta-sub">Already installed? Open the <strong>OQ Partners</strong> icon on your home screen instead.</p>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <script src="js/cookie-storage.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+</body>
+</html>
