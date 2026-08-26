@@ -191,7 +191,8 @@
     "profile_prompt_sent_at",
     "is_test",
     "carrier_name",
-    "hover_measurements"
+    "hover_measurements",
+    "project_confirmation_signed_at"
   ],
   "coming_soon_waitlist": [
     "id",
@@ -497,7 +498,16 @@
     "homeowner_charge_amount",
     "homeowner_stripe_payment_intent_id",
     "rebate_due",
-    "rebate_paid_at"
+    "rebate_paid_at",
+    "product_code",
+    "fulfillment_mode",
+    "vendor_order_ref",
+    "vendor_cost_cents",
+    "fulfilled_at",
+    "fulfilled_by",
+    "requested_by_role",
+    "requested_by_contractor_id",
+    "admin_notes"
   ],
   "hover_tokens": [
     "id",
