@@ -35,6 +35,7 @@ from __future__ import annotations
 import base64
 import glob
 import os
+import pathlib
 import sys
 import time
 from typing import Any
@@ -184,26 +185,61 @@ def _check_blob_sizes(blob_shas: dict[str, str],
     return truncated
 
 
+def _parse_pat_from_file(path: str) -> str | None:
+    """Parse a .env-style file for GITHUB_DEPLOY_PAT. Returns None on any read error."""
+    try:
+        with open(path) as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                if key.strip() == "GITHUB_DEPLOY_PAT":
+                    val = val.strip().strip('"').strip("'")
+                    if val and val != "YOUR_PAT_HERE":
+                        return val
+    except OSError:
+        return None
+    return None
+
+
 def _load_pat_from_secrets_file() -> str | None:
-    """Fallback: read GITHUB_DEPLOY_PAT from .deploy-secrets in the Tools directory."""
-    patterns = [
-        "/sessions/*/mnt/Claude Downloads/Stellar Edge Services/OtterQuote/Tools/.deploy-secrets",
+    """Fallback: read GITHUB_DEPLOY_PAT from .deploy-secrets in the Tools directory.
+
+    Tries candidate paths in order, platform-appropriate first:
+      1. Windows: resolved from the user's home directory. This is a fully
+         resolved literal path (not a glob pattern), so it is checked directly
+         with os.path.isfile() rather than run through glob.glob() -- a literal
+         backslash Windows path won't match glob's '*' wildcard semantics.
+      2. Linux/sessions mount: the sandboxed Wingman/session mount pattern,
+         matched via glob.glob() since the middle path segment is wildcarded.
+         Uses 'Otter Quotes' (with a space) to match the real folder name on
+         disk -- the previous 'OtterQuote' (no space) never matched.
+    """
+    home = os.environ.get("USERPROFILE") or str(pathlib.Path.home())
+    if home:
+        windows_candidate = os.path.join(
+            home, "Downloads", "Claude Downloads", "Stellar Edge Services",
+            "Otter Quotes", "Tools", ".deploy-secrets",
+        )
+        if os.path.isfile(windows_candidate):
+            pat = _parse_pat_from_file(windows_candidate)
+            if pat:
+                sys.stderr.write(
+                    f"[commit_via_api] loaded GITHUB_DEPLOY_PAT from {windows_candidate}\n"
+                )
+                return pat
+
+    glob_patterns = [
+        "/sessions/*/mnt/Claude Downloads/Stellar Edge Services/Otter Quotes/Tools/.deploy-secrets",
     ]
-    for pattern in patterns:
+    for pattern in glob_patterns:
         for path in glob.glob(pattern):
-            try:
-                with open(path) as fh:
-                    for line in fh:
-                        line = line.strip()
-                        if line.startswith("#") or "=" not in line:
-                            continue
-                        key, _, val = line.partition("=")
-                        if key.strip() == "GITHUB_DEPLOY_PAT":
-                            val = val.strip().strip('"').strip("'")
-                            if val and val != "YOUR_PAT_HERE":
-                                return val
-            except OSError:
-                continue
+            pat = _parse_pat_from_file(path)
+            if pat:
+                sys.stderr.write(f"[commit_via_api] loaded GITHUB_DEPLOY_PAT from {path}\n")
+                return pat
+
     return None
 
 
@@ -214,7 +250,7 @@ def _auth_headers() -> dict[str, str]:
         raise RuntimeError(
             "GITHUB_DEPLOY_PAT not found. Set the environment variable or add "
             "GITHUB_DEPLOY_PAT=<token> to "
-            "Stellar Edge Services/OtterQuote/Tools/.deploy-secrets"
+            "Stellar Edge Services/Otter Quotes/Tools/.deploy-secrets"
         )
     return {
         "Authorization": f"Bearer {pat}",
