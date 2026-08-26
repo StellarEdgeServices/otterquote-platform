@@ -23,6 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { readReferralIds } from '@/lib/cookie-storage';
 import { isTestEmail } from '@/lib/test-signal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -504,16 +505,25 @@ export default function TradeSelectorPage() {
           // #567: ref.html click-chain carry-forward — mirrors the static
           // trade-selector. localStorage survives the magic-link redirect, and
           // auth re-keys the id to oq_referral_id_for_claim after advancing.
+          // Bridge 2026-08-26 (P0): cookie FIRST. These keys are written by
+          // ref.html on otterquote.com; this page runs on app.otterquote.com,
+          // and localStorage is ORIGIN-scoped — so every read below returned
+          // null and claims.referral_id was silently never written. That is the
+          // only column apply_referral_commission() walks.
+          const refCookie = readReferralIds();
           const chainReferralId =
+            refCookie.oq_referral_id ||
             sessionStorage.getItem('oq_referral_id') ||
             localStorage.getItem('oq_referral_id') ||
             localStorage.getItem('oq_referral_id_for_claim') ||
             null;
           const chainReferralAgentId =
+            refCookie.oq_referral_agent_id ||
             sessionStorage.getItem('oq_referral_agent_id') ||
             localStorage.getItem('oq_referral_agent_id') ||
             null;
           const chainReferralCode =
+            refCookie.oq_referral_code ||
             sessionStorage.getItem('oq_referral_code') ||
             localStorage.getItem('oq_referral_code') ||
             null;
@@ -609,11 +619,19 @@ export default function TradeSelectorPage() {
       // Redirect — gh-1276: route to the dedicated project-information page
       // for this payment path (mirrors the pre-existing repair-intake.html
       // split; RCV/ACV/Cash previously all landed on DASHBOARD_URL directly).
+      // Bridge 2026-08-26: repair routes to repair-intake for BOTH funding
+      // types. Gating it on insurance sent a CASH repair-only job to the
+      // cash page, which never collects existing shingle brand/line/colour
+      // or squares being repaired — the fields a repair quote cannot be
+      // produced without. Mirrors the static trade-selector.html fix.
+      // Bridge 2026-08-26: repair-intake's payment-path banner falls back to
+      // this when it has no claim row to read yet.
+      try { sessionStorage.setItem('oq_funding_type', fundingType || ''); } catch { /* storage blocked */ }
       let redirectUrl: string;
-      if (fundingType === 'insurance') {
-        redirectUrl = hasRepair
-          ? REPAIR_INTAKE_URL
-          : (policyType === 'acv' ? PROJECT_INFO_ACV_URL : PROJECT_INFO_RCV_URL);
+      if (hasRepair) {
+        redirectUrl = REPAIR_INTAKE_URL;
+      } else if (fundingType === 'insurance') {
+        redirectUrl = policyType === 'acv' ? PROJECT_INFO_ACV_URL : PROJECT_INFO_RCV_URL;
       } else {
         redirectUrl = PROJECT_INFO_CASH_URL;
       }

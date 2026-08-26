@@ -30,6 +30,7 @@ import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
+import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 // ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
 
 /** Same payload shape create-hubspot-contact's homeowner mode always expected. */
@@ -135,6 +136,10 @@ export default function AuthCallbackPage() {
             localStorage.getItem('oq_referral_id')) ||
           (typeof sessionStorage !== 'undefined' &&
             sessionStorage.getItem('oq_referral_id')) ||
+          // Bridge 2026-08-26 (P0): cross-subdomain cookie fallback — the two
+          // origin-scoped reads above are blind to anything ref.html wrote on
+          // otterquote.com.
+          readReferralIds().oq_referral_id ||
           null;
         if (referralId) {
           const { error: advanceError } = await supabase.rpc(
@@ -150,6 +155,15 @@ export default function AuthCallbackPage() {
           if (typeof localStorage !== 'undefined') {
             localStorage.setItem('oq_referral_id_for_claim', referralId);
             localStorage.removeItem('oq_referral_id');
+          }
+          // Keep the cookie alive so the claim writer still sees it after a hop.
+          {
+            const kept = readReferralIds();
+            writeReferralIds({
+              oq_referral_id: referralId,
+              oq_referral_agent_id: kept.oq_referral_agent_id,
+              oq_referral_code: kept.oq_referral_code,
+            });
           }
           if (typeof sessionStorage !== 'undefined') {
             sessionStorage.removeItem('oq_referral_id');

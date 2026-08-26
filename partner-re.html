@@ -479,9 +479,13 @@
 }
 
 /* ── Button styles ── */
+/* Bridge 2026-08-26: see partner-insurance.html — `border: none` stripped
+   .btn-ghost's border on the nav-injected "Partner Login" button. */
+.btn:not(.btn-ghost):not(.btn-secondary):not(.btn-outline) {
+  border: none;
+}
 .btn {
   padding: var(--sp-3) var(--sp-6);
-  border: none;
   border-radius: var(--radius-md);
   font-family: var(--font-body);
   font-size: 0.95rem;

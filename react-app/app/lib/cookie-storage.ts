@@ -415,3 +415,66 @@ export function readValidCookieSession(now: number = Date.now()): ReconstructedC
 export const _COOKIE_ACCESS  = COOKIE_ACCESS;
 export const _COOKIE_REFRESH = COOKIE_REFRESH;
 export { getCookieMaxAge as _getCookieMaxAge }; // gh-867 test hook
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * Referral attribution bridge — Bridge 2026-08-26 (P0)
+ *
+ * TypeScript port of window.OtterQuoteReferral in js/cookie-storage.js.
+ * Must stay byte-compatible with it: the static stack writes the cookie on
+ * otterquote.com and this stack reads it on app.otterquote.com.
+ *
+ * Why it exists: ref.html wrote oq_referral_id / _agent_id / _code to
+ * localStorage, then the funnel hopped to app.otterquote.com. localStorage is
+ * ORIGIN-scoped, so every read here came back null and claims.referral_id was
+ * never written — the one column apply_referral_commission() walks. No partner
+ * could be paid for a referral that converted, and nothing surfaced it.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+export const REFERRAL_COOKIE = 'oq-ref';
+const REFERRAL_KEYS = ['oq_referral_id', 'oq_referral_agent_id', 'oq_referral_code'] as const;
+const REFERRAL_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
+
+export type ReferralIds = Partial<Record<(typeof REFERRAL_KEYS)[number], string>>;
+
+/** Read referral ids, cookie FIRST so a cross-origin hop still resolves. */
+export function readReferralIds(): ReferralIds {
+  const out: ReferralIds = {};
+  if (typeof document === 'undefined') return out;
+  try {
+    const raw = readCookie(REFERRAL_COOKIE);
+    if (raw) Object.assign(out, JSON.parse(raw) as ReferralIds);
+  } catch { /* malformed cookie — fall through to same-origin storage */ }
+  for (const key of REFERRAL_KEYS) {
+    if (out[key]) continue;
+    try {
+      const v = sessionStorage.getItem(key) || localStorage.getItem(key);
+      if (v) out[key] = v;
+    } catch { /* storage blocked */ }
+  }
+  return out;
+}
+
+/** Persist referral ids to storage AND the .otterquote.com cookie. */
+export function writeReferralIds(ids: ReferralIds): void {
+  if (typeof document === 'undefined' || !ids) return;
+  const payload: Record<string, string> = {};
+  for (const key of REFERRAL_KEYS) {
+    const v = ids[key];
+    if (!v) continue;
+    payload[key] = String(v);
+    try { localStorage.setItem(key, String(v)); } catch { /* storage blocked */ }
+    try { sessionStorage.setItem(key, String(v)); } catch { /* storage blocked */ }
+  }
+  if (!Object.keys(payload).length) return;
+  try { writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), REFERRAL_MAX_AGE); } catch { /* cookie blocked */ }
+}
+
+/** Clear attribution once it has been stamped onto a claim. */
+export function clearReferralIds(): void {
+  if (typeof document === 'undefined') return;
+  for (const key of REFERRAL_KEYS) {
+    try { localStorage.removeItem(key); } catch { /* storage blocked */ }
+    try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
+  }
+  try { deleteCookie(REFERRAL_COOKIE); } catch { /* cookie blocked */ }
+}

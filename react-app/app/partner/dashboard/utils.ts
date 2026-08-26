@@ -117,7 +117,9 @@ export function recruitLinkState(
   pendingMessage: string,
 ): RecruitLinkState {
   if (p.recruit_code) {
-    return { enabled: true, text: `otterquote.com/recruit.html?code=${p.recruit_code}` };
+    // Bridge 2026-08-26: scheme added — a schemeless URL does not linkify in most
+  // mail and SMS clients. Mirrors the static partner-dashboard.html fix.
+  return { enabled: true, text: `https://otterquote.com/recruit.html?code=${p.recruit_code}` };
   }
   return { enabled: false, text: pendingMessage };
 }

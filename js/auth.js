@@ -1089,7 +1089,14 @@ Log in to the admin panel to review and approve this contractor.`;
     // #571: v95 SECURITY DEFINER RPC — the direct UPDATE always no-opped
     // against RLS (authenticated has no SELECT policy on referrals). The RPC
     // also stamps homeowner_email server-side from the verified JWT.
-    const referralId = localStorage.getItem('oq_referral_id') || sessionStorage.getItem('oq_referral_id');
+    // Bridge 2026-08-26 (P0): read the cross-subdomain cookie first. This code
+    // also runs on app.otterquote.com, where the origin-scoped copies written
+    // by ref.html on otterquote.com are simply not visible.
+    const referralId = (window.OtterQuoteReferral
+        ? window.OtterQuoteReferral.read().oq_referral_id
+        : null)
+      || localStorage.getItem('oq_referral_id')
+      || sessionStorage.getItem('oq_referral_id');
     if (referralId && sb) {
       try {
         const { error: advanceError } = await sb
@@ -1101,6 +1108,16 @@ Log in to the admin panel to review and approve this contractor.`;
         // (trade-selector) can stamp claims.referral_id, then clear the
         // advance-scoped keys so this block never re-runs.
         localStorage.setItem('oq_referral_id_for_claim', referralId);
+        // Keep the cookie alive under the claim-scoped name so the claim
+        // writer can still see it after a cross-origin hop.
+        if (window.OtterQuoteReferral) {
+          const kept = window.OtterQuoteReferral.read();
+          window.OtterQuoteReferral.write({
+            oq_referral_id: referralId,
+            oq_referral_agent_id: kept.oq_referral_agent_id,
+            oq_referral_code: kept.oq_referral_code
+          });
+        }
         localStorage.removeItem('oq_referral_id');
         sessionStorage.removeItem('oq_referral_id');
       } catch (err) {

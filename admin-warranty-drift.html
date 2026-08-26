@@ -273,7 +273,7 @@ var pendingApproveEditOptionId = null;
 var currentUserToken = null;
 
 // ── Auth Guard ────────────────────────────────────────────────────────────────
-sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
+sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
 if (!sb) return;
 sb.auth.onAuthStateChange(async function(event, session) {

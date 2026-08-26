@@ -487,12 +487,16 @@
             font-size: 0.9rem;
         }
 
+        /* Bridge 2026-08-26: see partner-insurance.html — `border: none`
+           stripped .btn-ghost's border on nav-injected header buttons. */
+        .btn:not(.btn-ghost):not(.btn-secondary):not(.btn-outline) {
+            border: none;
+        }
         .btn {
             display: inline-block;
             padding: var(--sp-3) var(--sp-6);
             background: var(--amber);
             color: var(--navy);
-            border: none;
             border-radius: var(--radius-md);
             font-family: var(--font-body);
             font-weight: 600;
@@ -956,7 +960,10 @@
             <div class="referral-link-section" data-section="refer-client">
                 <div class="referral-link-label">Your Referral Link</div>
                 <div class="referral-link-display">
-                    <div class="referral-link-url" id="referralLink">https://otterquote.com/r/agent123</div>
+                    <!-- Bridge 2026-08-26: was "https://otterquote.com/r/agent123" — /r/ is a live
+                         404 (only /ref/ redirects), so any failure of the populate below
+                         handed the partner a dead link to send a client. -->
+                    <div class="referral-link-url" id="referralLink">Loading your link&hellip;</div>
                     <button class="copy-btn" id="copyLinkBtn">Copy Link</button>
                     <button class="copy-btn" id="shareLinkBtn">Share</button>
                     <button class="copy-btn" id="emailLinkBtn">Email</button>
@@ -968,7 +975,7 @@
             <div class="referral-link-section recruit-link-section" data-section="refer-partner">
                 <div class="referral-link-label">Your Recruit Link</div>
                 <div class="referral-link-display">
-                    <div class="referral-link-url" id="recruitLink">otterquote.com/recruit.html?code=&mdash;</div>
+                    <div class="referral-link-url" id="recruitLink">Loading your link&hellip;</div>
                     <button class="copy-btn" id="copyRecruitLinkBtn">Copy Link</button>
                     <button class="copy-btn" id="shareRecruitBtn">Share</button>
                     <button class="copy-btn" id="emailRecruitBtn">Email</button>
@@ -1494,7 +1501,10 @@ Let me know if you have any questions!
             const recruitLinkEl = document.getElementById('recruitLink');
             const copyRecruitBtn = document.getElementById('copyRecruitLinkBtn');
             if (currentPartner.recruit_code) {
-                recruitLinkEl.textContent = `otterquote.com/recruit.html?code=${currentPartner.recruit_code}`;
+                // Bridge 2026-08-26: scheme added — a schemeless URL does not
+                // linkify in most mail and SMS clients, so a recruit sent by text
+                // arrived as plain grey text the recipient had to retype.
+                recruitLinkEl.textContent = `https://otterquote.com/recruit.html?code=${currentPartner.recruit_code}`;
                 copyRecruitBtn.disabled = false;
                 copyRecruitBtn.style.opacity = '';
             } else {

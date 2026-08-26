@@ -656,8 +656,13 @@
 
     <main>
         <!-- gh-1276: payment-type banner (all 4 project-info variants) -->
+        <!-- Bridge 2026-08-26: this page now serves BOTH insurance and cash
+             repair-only jobs (trade-selector used to send cash repairs to
+             project-info-cash.html, which never asks for the existing shingle
+             brand/line/colour a repair quote needs). The banner therefore can't
+             hardcode "Insurance Claim" any more — it reads the claim. -->
         <div class="pi-banner">
-            <p>This job is being paid for via <strong>Insurance Claim (Repair Only)</strong>.</p>
+            <p>This job is being paid for via <strong id="pi-banner-funding">Repair Only</strong>.</p>
             <a href="/trade-selector.html">Change</a>
         </div>
 
@@ -904,7 +909,34 @@
             Nav.renderHeader({ active: 'dashboard' });
             Nav.renderFooter();
 
+            await renderFundingBanner();
+
             init();
+        }
+
+        /**
+         * Bridge 2026-08-26: the payment-path banner used to hardcode
+         * "Insurance Claim (Repair Only)". This page now also serves cash
+         * repairs, so read the claim and say what is actually true. Falls back
+         * to the funding choice trade-selector stashed, then to the generic
+         * "Repair Only" — never to an insurance assertion we cannot support.
+         */
+        async function renderFundingBanner() {
+            const el = document.getElementById('pi-banner-funding');
+            if (!el) return;
+            let funding = null;
+            try {
+                const params  = new URLSearchParams(window.location.search);
+                const claimId = params.get('claim_id') || sessionStorage.getItem('oq_claim_id');
+                if (claimId && sb) {
+                    const { data } = await sb.from('claims').select('funding_type').eq('id', claimId).maybeSingle();
+                    funding = data && data.funding_type;
+                }
+            } catch (_) { /* non-fatal — the fallback below is honest either way */ }
+            if (!funding) funding = sessionStorage.getItem('oq_funding_type');
+            if (funding === 'cash')      el.textContent = 'Cash / Out-of-Pocket (Repair Only)';
+            else if (funding === 'insurance') el.textContent = 'Insurance Claim (Repair Only)';
+            else                          el.textContent = 'Repair Only';
         }
 
         // State management
@@ -1270,7 +1302,11 @@
                         .insert({
                             user_id: user.id,
                             job_type: 'repair',
-                            funding_type: 'insurance',
+                            // Bridge 2026-08-26: was hardcoded 'insurance'. A cash
+                            // repair now reaches this page too, and stamping it
+                            // insurance here silently rewrote the homeowner's own
+                            // answer from the funding step.
+                            funding_type: (sessionStorage.getItem('oq_funding_type') === 'cash' ? 'cash' : 'insurance'),
                             status: 'draft',
                             trades: [selectedTrade || 'roofing'],
                             existing_shingle_brand: materialBrand,

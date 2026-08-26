@@ -78,7 +78,14 @@
             line-height: 1.6;
         }
 
-        .container {
+        /* Bridge 2026-08-26: renamed from the shared `.container`. js/nav.js
+           injects the header as <div class="nav-inner container"> and the
+           footer as <div class="footer-inner container">; this rule loads
+           after css/nav.css at equal specificity, so its 2rem of VERTICAL
+           padding was landing inside .nav-inner's fixed 64px border-box and
+           collapsing its content box to 0px. Same trap contractor-join.html
+           documented at gh-960. Page-scoped now. */
+        .help-container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 2rem;
@@ -701,7 +708,7 @@
 
         /* Mobile Responsive */
         @media (max-width: 768px) {
-            .container {
+            .help-container {
                 padding: 1.5rem;
             }
 
@@ -781,7 +788,7 @@
 
     <nav id="navbar"></nav>
 
-    <div class="container">
+    <div class="help-container">
         <!-- Header -->
         <div class="page-header">
             <div>
@@ -857,7 +864,7 @@
                             <h3 class="card-title">Architectural Shingle</h3>
                             <span class="card-badge">Most Popular</span>
                         </div>
-                        <p class="card-description">The most popular choice. Dimensional look, 130+ mph wind rating.</p>
+                        <p class="card-description">The most popular choice. Dimensional look, high wind and impact ratings available.</p>
                         <button class="card-button" onclick="selectShingleType('architectural')">Select Architectural</button>
                     </div>
 
@@ -884,7 +891,8 @@
                 <div class="material-info-panel">
                     <h4>About Architectural Shingles</h4>
                     <ul>
-                        <li><strong>Wind rating</strong> is tested to ASTM D3161 or ASTM D7158 — this page's "130+ mph" rating for architectural shingles is a minimum-standard qualification under those tests, not a marketing figure.</li>
+                        <li><strong>Baseline manufacturing standard.</strong> Asphalt architectural shingles are made to <strong>ASTM D3462</strong>, the standard specification for glass-mat asphalt shingles. It sets the minimum qualifications every compliant shingle has to meet — tear strength, fastener pull-through resistance, granule adhesion and dimensional tolerance. A shingle that does not meet D3462 is not a code-compliant roofing shingle.</li>
+                        <li><strong>Wind rating</strong> is tested to <strong>ASTM D3161</strong> (Class A = 60 mph, Class D = 90 mph, Class F = 110 mph) or <strong>ASTM D7158</strong> (Class D = 90 mph, Class G = 120 mph, Class H = 150 mph). Most architectural shingles carry Class F or Class H. Higher numbers you see advertised — "130 mph", "150 mph" — are <em>manufacturer limited-warranty</em> figures, not test classes, and they are conditional on a specified nailing pattern plus the matching starter and ridge products being installed.</li>
                         <li><strong>Impact/hail resistance</strong> is tested to UL 2218, rated Class 1 through Class 4 (Class 4 is the highest available rating — see the impact class step below).</li>
                         <li>Some product lines also carry <strong>Miami-Dade County product approval (NOA)</strong> — a regional certification for Florida's high-wind building code, not a national minimum every architectural shingle has to meet.</li>
                         <li>Manufacturer lines mainly differentiate on impact/hail class, wind rating, algae resistance, and warranty length.</li>
@@ -948,7 +956,7 @@
                                 <span class="option-circle"></span>
                                 Class 4
                             </div>
-                            <div class="option-description">Maximum hail protection with SBS polymer-modified asphalt. Withstands 2-inch impact. Often qualifies for insurance premium discounts.</div>
+                            <div class="option-description">Maximum hail protection — withstands a 2-inch steel ball under UL 2218. Usually achieved with SBS polymer-modified asphalt or a reinforced backing, depending on the manufacturer. Often qualifies for insurance premium discounts.</div>
                         </div>
                     </div>
                 </div>
@@ -1006,17 +1014,17 @@
                              or Class 4 impact rating is selected (carrier/policy-dependent
                              upgrade cost). Static fallback text below is the standard/
                              unspecified-class case, same as before this change. -->
-                        <span class="pricing-item-value" id="pricingArchitecturalValue">Included in most insurance claims at no additional cost</span>
+                        <span class="pricing-item-value" id="pricingArchitecturalValue">Cost depends on how the job is being paid for</span>
                     </div>
-                    <div class="pricing-item" id="pricingDesigner" class="hidden">
+                    <div class="pricing-item hidden" id="pricingDesigner">
                         <span class="pricing-item-name">Designer Shingle</span>
                         <span class="pricing-item-value">Premium upgrade — expect out-of-pocket cost</span>
                     </div>
-                    <div class="pricing-item" id="pricingMetalExposed" class="hidden">
+                    <div class="pricing-item hidden" id="pricingMetalExposed">
                         <span class="pricing-item-name">Exposed Fastener Metal</span>
                         <span class="pricing-item-value">Budget metal — typically an upgrade over architectural</span>
                     </div>
-                    <div class="pricing-item" id="pricingMetalStanding" class="hidden">
+                    <div class="pricing-item hidden" id="pricingMetalStanding">
                         <span class="pricing-item-name">Standing Seam Metal</span>
                         <span class="pricing-item-value">Premium metal — significant upgrade, 40+ year lifespan</span>
                     </div>
@@ -1347,8 +1355,14 @@
 
             // Show relevant pricing items
             if (state.category === 'shingles') {
+                // Bridge 2026-08-26 (P0): this line used to unconditionally
+                // remove 'hidden' AFTER updateArchitecturalPricingText() had
+                // deliberately added it for cash jobs — which re-showed the row
+                // still carrying its static "included in most insurance claims
+                // at no additional cost" default. On a cash job that statement
+                // is simply false. Visibility is now owned entirely by
+                // updateArchitecturalPricingText().
                 updateArchitecturalPricingText();
-                document.getElementById('pricingArchitectural').classList.remove('hidden');
                 if (state.shingleType === 'designer') {
                     document.getElementById('pricingDesigner').classList.remove('hidden');
                 }
@@ -1379,11 +1393,21 @@
                 return;
             }
 
+            // Bridge 2026-08-26: when funding type is unknown (lookup failed,
+            // no claim yet, demo mode) do not assert an insurance outcome —
+            // state the dependency instead of guessing in the carrier's favor.
+            if (state.fundingType !== 'insurance') {
+                valueEl.textContent = 'Cost depends on how the job is being paid for — see your project dashboard';
+                item.classList.remove('hidden');
+                return;
+            }
+
             const hasImpactUpgrade = state.impactClass === 'class-3' || state.impactClass === 'class-4' ||
                 state.impactClass === 'class3' || state.impactClass === 'class4';
             valueEl.textContent = hasImpactUpgrade
                 ? 'Often included in insurance claims, but a Class 3/4 impact upgrade can carry an additional cost — varies by carrier and policy'
                 : 'Included in most insurance claims at no additional cost';
+            item.classList.remove('hidden');
         }
 
         // Show Confirmation Section
