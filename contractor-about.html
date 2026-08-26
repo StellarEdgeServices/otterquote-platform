@@ -900,7 +900,11 @@
       if (c.service_area_description) {
         areaHtml += `<p style="color:var(--white);font-size:0.9rem;margin-bottom:var(--sp-3);">${esc(c.service_area_description)}</p>`;
       }
-      const counties = parseServiceCounties(c.service_counties);
+      // gh-1253: service_counties may now carry the normalized "STATE:County" form
+      // (e.g. "IN:Marion") — strip the state prefix for display so this public bio
+      // page still shows the bare county name.
+      const counties = parseServiceCounties(c.service_counties)
+        .map(cn => (typeof cn === 'string' && cn.includes(':')) ? cn.split(':').slice(1).join(':') : cn);
       if (counties.length > 0) {
         areaHtml += `
           <div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--slate);margin-bottom:var(--sp-2);">Counties Served</div>

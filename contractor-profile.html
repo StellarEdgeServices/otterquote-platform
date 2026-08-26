@@ -1276,7 +1276,11 @@
             box.innerHTML = '<div style="font-size:0.8rem;color:var(--slate);padding:var(--sp-2);">Loading counties…</div>';
             const counties = await this.fetchCounties(abbr);
             if (!counties.length) { box.innerHTML = '<div style="font-size:0.8rem;color:#991B1B;">Could not load counties. Check your connection and try again.</div>'; return; }
-            box.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:3px;max-height:190px;overflow-y:auto;border:1px solid var(--light);border-radius:var(--radius-sm);padding:var(--sp-2);background:#fff;">${counties.map(c=>`<label style="display:flex;align-items:center;gap:5px;font-size:0.78rem;cursor:pointer;"><input type="checkbox" class="svc-county-cb" data-state="${abbr}" value="${c}" style="accent-color:var(--amber);width:12px;height:12px;" ${selected.includes(c)?'checked':''}>${c}</label>`).join('')}</div><div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-3);"><button type="button" style="font-size:0.75rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;" onclick="SVC.selectAll('${abbr}',true)">Select All</button><button type="button" style="font-size:0.75rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;" onclick="SVC.selectAll('${abbr}',false)">Clear All</button></div>`;
+            // gh-1253: `selected` may carry legacy bare county names or the current
+            // "STATE:County" form (see collect()) — strip any "XX:" prefix before
+            // comparing so a saved county still shows checked after normalization.
+            const selectedBare = selected.map(s => (typeof s === 'string' && s.includes(':')) ? s.split(':').slice(1).join(':') : s);
+            box.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:3px;max-height:190px;overflow-y:auto;border:1px solid var(--light);border-radius:var(--radius-sm);padding:var(--sp-2);background:#fff;">${counties.map(c=>`<label style="display:flex;align-items:center;gap:5px;font-size:0.78rem;cursor:pointer;"><input type="checkbox" class="svc-county-cb" data-state="${abbr}" value="${c}" style="accent-color:var(--amber);width:12px;height:12px;" ${selectedBare.includes(c)?'checked':''}>${c}</label>`).join('')}</div><div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-3);"><button type="button" style="font-size:0.75rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;" onclick="SVC.selectAll('${abbr}',true)">Select All</button><button type="button" style="font-size:0.75rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;" onclick="SVC.selectAll('${abbr}',false)">Clear All</button></div>`;
           },
 
           selectAll(abbr, checked) { document.querySelectorAll(`.svc-county-cb[data-state="${abbr}"]`).forEach(cb => cb.checked = checked); },
@@ -1286,7 +1290,10 @@
             document.querySelectorAll('.svc-state-cb:checked').forEach(cb => {
               const abbr = cb.dataset.abbr; states.push(abbr);
               const mode = document.querySelector(`input[name="svc-mode-${abbr}"]:checked`)?.value;
-              if (mode === 'specific') document.querySelectorAll(`.svc-county-cb[data-state="${abbr}"]:checked`).forEach(c => counties.push(c.value));
+              // gh-1253: persist "STATE:County" (e.g. "IN:Marion") so process-auto-bids'
+              // county.startsWith(`${state}:`) match works. Previously wrote bare county
+              // names, which never matched.
+              if (mode === 'specific') document.querySelectorAll(`.svc-county-cb[data-state="${abbr}"]:checked`).forEach(c => counties.push(`${abbr}:${c.value}`));
             });
             return { service_states: states, service_counties: counties };
           },
