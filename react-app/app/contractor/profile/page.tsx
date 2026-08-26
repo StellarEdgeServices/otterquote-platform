@@ -473,10 +473,11 @@ function ServiceAreaCard({ record, onUpdate }: { record: ContractorRecord; onUpd
   const states = asArray(record.service_states);
   const counties = asArray(record.service_counties);
 
-  async function save(newCounties: string[]) {
+  async function save(area: { service_states: string[]; service_counties: string[] }) {
     setSaving(true);
-    // D4: persist ONLY service_counties (service_states is not a real column).
-    const ok = await onUpdate({ service_counties: newCounties });
+    // gh-1253: persist both columns — service_states is real (gh-749) and is what
+    // process-auto-bids now matches against; service_counties stays for display.
+    const ok = await onUpdate({ service_states: area.service_states, service_counties: area.service_counties });
     setSaving(false);
     if (ok) { setEditing(false); alert(T.serviceArea.saved); } else alert(T.serviceArea.saveError);
   }
