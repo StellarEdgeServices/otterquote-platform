@@ -29,6 +29,12 @@ import { isTestEmail } from '@/lib/test-signal';
 
 const DASHBOARD_URL = 'https://otterquote.com/dashboard.html';
 const REPAIR_INTAKE_URL = 'https://otterquote.com/repair-intake.html';
+// gh-1276: dedicated project-information page per payment path (mirrors the
+// pre-existing repair-intake.html split) — RCV/ACV/Cash previously all
+// landed on DASHBOARD_URL directly with no guided collection step.
+const PROJECT_INFO_RCV_URL = 'https://otterquote.com/project-info-rcv.html';
+const PROJECT_INFO_ACV_URL = 'https://otterquote.com/project-info-acv.html';
+const PROJECT_INFO_CASH_URL = 'https://otterquote.com/project-info-cash.html';
 const GET_STARTED_URL = '/get-started';
 
 type FundingType = 'insurance' | 'cash' | null;
@@ -453,6 +459,11 @@ export default function TradeSelectorPage() {
         jobType = 'retail';
       }
 
+      // gh-1276: captured below (existingClaim.id or the insert's returned
+      // id) and passed through the redirect URL — see the redirect logic
+      // near the end of this function.
+      let savedClaimId: string | null = null;
+
       // Read cs_signup profile data from localStorage
       let csSignup: Record<string, unknown> = {};
       try {
@@ -544,17 +555,30 @@ export default function TradeSelectorPage() {
               .from('claims')
               .update(claimPayload)
               .eq('id', existingClaim.id);
+            savedClaimId = existingClaim.id;
           } else {
             // gh-397/#689: stamp is_test on this React parity insert path —
             // PR #714 only fixed the COI-identity contractor insert, never
             // any claims insert. Predicate mirrors the CEO-approved
             // contractor check (#543 / test-exclusion.ts).
-            await supabase.from('claims').insert({
-              user_id: user.id,
-              ...claimPayload,
-              is_test: isTestEmail(user.email),
-              created_at: new Date().toISOString(),
-            });
+            const { data: insertedClaim } = await supabase
+              .from('claims')
+              .insert({
+                user_id: user.id,
+                ...claimPayload,
+                is_test: isTestEmail(user.email),
+                created_at: new Date().toISOString(),
+              })
+              .select('id')
+              .single();
+            // gh-1276: capture the new row's id — previously never captured
+            // here either (same gap as the static trade-selector.html this
+            // file keeps parity with), so repair-intake.html's
+            // `params.get('claim_id') || sessionStorage.getItem('oq_claim_id')`
+            // fallback always found neither and unconditionally inserted a
+            // SECOND claim row for every repair-path homeowner using this
+            // (the actually-live) React surface.
+            if (insertedClaim) savedClaimId = insertedClaim.id;
           }
 
           // #571: the claim_submitted advance now lives in the database —
@@ -582,8 +606,20 @@ export default function TradeSelectorPage() {
         sessionStorage.setItem('oq_trade_selections', JSON.stringify(tradeSelectionsMap));
       }
 
-      // Redirect
-      const redirectUrl = hasRepair ? REPAIR_INTAKE_URL : DASHBOARD_URL;
+      // Redirect — gh-1276: route to the dedicated project-information page
+      // for this payment path (mirrors the pre-existing repair-intake.html
+      // split; RCV/ACV/Cash previously all landed on DASHBOARD_URL directly).
+      let redirectUrl: string;
+      if (fundingType === 'insurance') {
+        redirectUrl = hasRepair
+          ? REPAIR_INTAKE_URL
+          : (policyType === 'acv' ? PROJECT_INFO_ACV_URL : PROJECT_INFO_RCV_URL);
+      } else {
+        redirectUrl = PROJECT_INFO_CASH_URL;
+      }
+      if (savedClaimId) {
+        redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
+      }
       setTimeout(() => {
         window.location.href = redirectUrl;
       }, 300);
