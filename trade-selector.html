@@ -1483,12 +1483,23 @@
         // edit form instead of a guided page of their own). Derived the same
         // way process this flow already derives job_type above, just outside
         // that try block's scope.
+        // Bridge 2026-08-26: repair routes to repair-intake for BOTH funding
+        // types. The previous shape gated repair-intake on insurance, so a CASH
+        // repair-only job landed on project-info-cash.html — which never asks
+        // for the existing shingle brand, product line, colour or the squares
+        // being repaired. Those are exactly the fields a repair quote is
+        // impossible without, and the page itself says so. Repair Only is one
+        // of the four payment paths Dustin named; it should behave like one
+        // regardless of who is paying.
         const hasRepair = selections.trades.some(t => t.intent === 'repair');
+        // Bridge 2026-08-26: repair-intake's payment-path banner falls back to
+        // this when it has no claim row to read yet.
+        try { sessionStorage.setItem('oq_funding_type', state.fundingType || ''); } catch (_) {}
         let redirectUrl;
-        if (state.fundingType === 'insurance') {
-          redirectUrl = hasRepair
-            ? '/repair-intake.html'
-            : (state.policyType === 'acv' ? '/project-info-acv.html' : '/project-info-rcv.html');
+        if (hasRepair) {
+          redirectUrl = '/repair-intake.html';
+        } else if (state.fundingType === 'insurance') {
+          redirectUrl = state.policyType === 'acv' ? '/project-info-acv.html' : '/project-info-rcv.html';
         } else {
           redirectUrl = '/project-info-cash.html';
         }

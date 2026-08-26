@@ -2142,11 +2142,25 @@
 
                 const ownerPhotoInput = document.getElementById('ownerPhotoInput');
                 const galleryInputEl = document.getElementById('galleryInput');
-                const newGalleryFiles = Array.from((galleryInputEl && galleryInputEl.files) || []);
+                // Bridge 2026-08-26: the gallery preview handler filters rejected
+                // files out of the PREVIEW but never clears input.files (unlike
+                // the owner-photo handler, which does `this.value = ''`). So a
+                // rejected SVG or PDF was still uploaded here and written into
+                // gallery_photo_urls. Apply the same guard at the upload site.
+                const allGalleryFiles = Array.from((galleryInputEl && galleryInputEl.files) || []);
+                const newGalleryFiles = allGalleryFiles.filter(isSafeRasterImage);
+                const droppedGalleryCount = allGalleryFiles.length - newGalleryFiles.length;
                 const keptExisting = (contractorRecord.gallery_photo_urls || [])
                     .filter(p => !_galleryPendingRemovals.includes(p));
                 const remainingSlots = 10 - keptExisting.length;
 
+                if (droppedGalleryCount > 0) {
+                    // The change handler's inline warning under the preview already
+                    // tells the user which files were skipped; this is the log trail
+                    // for the case where they save without looking at the preview.
+                    console.warn('[profile] skipped ' + droppedGalleryCount +
+                                 ' gallery file(s): unsupported type');
+                }
                 if (newGalleryFiles.length > remainingSlots) {
                     setStatus(`You can add ${Math.max(remainingSlots, 0)} more photo${remainingSlots === 1 ? '' : 's'} (10 max). Remove some existing photos or select fewer new ones.`, '#991B1B');
                     return;

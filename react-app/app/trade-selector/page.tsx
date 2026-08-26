@@ -619,11 +619,19 @@ export default function TradeSelectorPage() {
       // Redirect — gh-1276: route to the dedicated project-information page
       // for this payment path (mirrors the pre-existing repair-intake.html
       // split; RCV/ACV/Cash previously all landed on DASHBOARD_URL directly).
+      // Bridge 2026-08-26: repair routes to repair-intake for BOTH funding
+      // types. Gating it on insurance sent a CASH repair-only job to the
+      // cash page, which never collects existing shingle brand/line/colour
+      // or squares being repaired — the fields a repair quote cannot be
+      // produced without. Mirrors the static trade-selector.html fix.
+      // Bridge 2026-08-26: repair-intake's payment-path banner falls back to
+      // this when it has no claim row to read yet.
+      try { sessionStorage.setItem('oq_funding_type', fundingType || ''); } catch { /* storage blocked */ }
       let redirectUrl: string;
-      if (fundingType === 'insurance') {
-        redirectUrl = hasRepair
-          ? REPAIR_INTAKE_URL
-          : (policyType === 'acv' ? PROJECT_INFO_ACV_URL : PROJECT_INFO_RCV_URL);
+      if (hasRepair) {
+        redirectUrl = REPAIR_INTAKE_URL;
+      } else if (fundingType === 'insurance') {
+        redirectUrl = policyType === 'acv' ? PROJECT_INFO_ACV_URL : PROJECT_INFO_RCV_URL;
       } else {
         redirectUrl = PROJECT_INFO_CASH_URL;
       }
