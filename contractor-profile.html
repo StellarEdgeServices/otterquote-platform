@@ -2888,6 +2888,10 @@
                         }
                         const img = document.createElement('img');
                         img.className = 'image-preview';
+                        // codeql[js/xss-through-dom] blob: URL rendered via <img src>, not
+                        // innerHTML — SVG script does not execute in an <img> render context,
+                        // and the "attacker" is the same user picking their own local file
+                        // (isSafeRasterImage() above rejects image/svg+xml regardless).
                         img.src = URL.createObjectURL(this.files[0]);
                         preview.appendChild(img);
                     }
@@ -2905,6 +2909,10 @@
                         const item = document.createElement('div');
                         item.className = 'gallery-item';
                         const img = document.createElement('img');
+                        // codeql[js/xss-through-dom] blob: URL rendered via <img src>, not
+                        // innerHTML — SVG script does not execute in an <img> render context,
+                        // and the "attacker" is the same user picking their own local file
+                        // (isSafeRasterImage() above rejects image/svg+xml regardless).
                         img.src = URL.createObjectURL(file);
                         item.appendChild(img);
                         preview.appendChild(item);
