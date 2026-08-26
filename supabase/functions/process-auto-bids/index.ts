@@ -24,6 +24,7 @@ interface Contractor {
   email: string | null;
   notification_emails: string[] | null;
   contact_name: string | null;
+  service_states: string[] | null;
   service_counties: string[] | null;
   auto_bid_value_adds: Record<string, unknown> | null;
   default_auto_renew: boolean;
@@ -105,7 +106,7 @@ serve(async (req: Request) => {
     // ── Step 2: Active contractors with auto-bid enabled for roofing ──────────
     const { data: contractors, error: contractorsError } = await supabase
       .from('contractors')
-      .select('id, user_id, email, notification_emails, contact_name, service_counties, auto_bid_value_adds, default_auto_renew, address_state')
+      .select('id, user_id, email, notification_emails, contact_name, service_states, service_counties, auto_bid_value_adds, default_auto_renew, address_state')
       .eq('auto_bid_enabled', true)
       .eq('status', 'active')
       .contains('trades', ['roofing']);
@@ -142,17 +143,24 @@ serve(async (req: Request) => {
         // Dedup: skip if contractor already has any roofing quote for this claim
         if (alreadyBid.has(contractor.id)) continue;
 
-        // Service area match: any county in claim's state.
-        // Claims carry property_state; contractors store "STATE:County" in service_counties.
+        // Service area match: does contractor cover claim's state.
+        // Claims carry property_state. gh-749 added the structured `service_states`
+        // column (plain abbreviations, e.g. "IN") as the source of truth for this —
+        // prefer it. Fall back to legacy `service_counties` for any row that predates
+        // the gh-749 backfill (colon-prefixed entries, e.g. "IN:Marion", "IN:*"); a
+        // bare, unprefixed county name (gh-1253 — pre-fix profile-editor writes) never
+        // matches either check and is treated the same as "no service area recorded."
         // State-level match is used until claims gain a property_county field (D-093).
-        // Null/empty service_counties (e.g. #466 states-grid onboarding) falls through to
-        // "include" — same conservative fallback as notify-contractors' county filter.
+        // Null/empty on both falls through to "include" — same conservative fallback
+        // as notify-contractors' county filter.
+        const hasServiceStates = Array.isArray(contractor.service_states) && contractor.service_states.length > 0;
+        const hasServiceCounties = Array.isArray(contractor.service_counties) && contractor.service_counties.length > 0;
         const inServiceArea =
-          !contractor.service_counties || contractor.service_counties.length === 0
-            ? true
-            : contractor.service_counties.some(
-                (county) => county.startsWith(`${claim.property_state}:`)
-              );
+          hasServiceStates
+            ? contractor.service_states!.includes(claim.property_state as string)
+            : hasServiceCounties
+              ? contractor.service_counties!.some((county) => county.startsWith(`${claim.property_state}:`))
+              : true;
         if (!inServiceArea) continue;
 
         try {

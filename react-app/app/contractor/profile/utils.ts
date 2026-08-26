@@ -106,9 +106,10 @@ export function collectServiceArea(configs: SvcConfigs): { service_states: strin
 }
 
 /**
- * D4 fix (saveProfile('serviceArea')): service_states is NOT a real column on
- * contractors. Persist ONLY service_counties; states are derived from the
- * County-StateCode suffix at read time elsewhere.
+ * County list only, for callers that don't need service_states. gh-749 added
+ * `service_states` as a real column and it should be saved alongside this in
+ * any actual profile save (see ServiceAreaEditor's onSave, which sends both) —
+ * the D4-era premise that it "is not a real column" is stale (gh-1253).
  */
 export function collectServiceCountiesForSave(configs: SvcConfigs): string[] {
   return collectServiceArea(configs).service_counties;

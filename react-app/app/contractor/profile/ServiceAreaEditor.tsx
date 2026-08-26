@@ -6,14 +6,15 @@
  * (loaded live from the Census 2020 PL API, same endpoint as the static page).
  * Pure transforms (URL build, county parse, collect/populate) live in utils.ts.
  *
- * Persist parity (D4 fix): only service_counties is saved; service_states is NOT a
- * real contractors column. onSave receives the flat county list.
+ * onSave receives both service_states and service_counties (gh-1253 fix — the
+ * D4-era premise that service_states "is not a real column" was made stale by
+ * gh-749, which added it and backfilled it, but nothing kept saving it).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   STATE_ABBRS, STATE_NAMES, censusCountyUrl, parseCountyList,
-  buildInitialServiceConfigs, collectServiceCountiesForSave,
+  buildInitialServiceConfigs, collectServiceArea,
   type SvcConfigs, type SvcMode,
 } from './utils';
 import { PROFILE_COPY as T } from './copy';
@@ -22,7 +23,7 @@ interface ServiceAreaEditorProps {
   initialStates: string[];
   initialCounties: string[];
   saving: boolean;
-  onSave: (counties: string[]) => void;
+  onSave: (area: { service_states: string[]; service_counties: string[] }) => void;
   onCancel: () => void;
 }
 
@@ -182,7 +183,7 @@ export function ServiceAreaEditor({ initialStates, initialCounties, saving, onSa
       </div>
 
       <div className="oqp-actions">
-        <button type="button" className="oqp-btn oqp-btn-primary" disabled={saving} onClick={() => onSave(collectServiceCountiesForSave(configs))}>
+        <button type="button" className="oqp-btn oqp-btn-primary" disabled={saving} onClick={() => onSave(collectServiceArea(configs))}>
           {saving ? 'Saving…' : T.serviceArea.save}
         </button>
         <button type="button" className="oqp-btn oqp-btn-secondary" disabled={saving} onClick={onCancel}>{T.serviceArea.cancel}</button>

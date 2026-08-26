@@ -2083,15 +2083,18 @@
                 }
             } else if (section === 'serviceArea') {
                 // D-192: collect from checkbox UI
-                // D4 fix: `service_states` is NOT a real column on `contractors`. Persist
-                // `service_counties` as before, and also persist the selected state codes
-                // into `service_area_description` (comma-joined) — the same convention
-                // contractor-pre-approval.html already uses for its states-grid flow —
-                // so a reload / re-opening the editor can recover which states were
-                // checked (previously always lost, gh-item-2).
+                // gh-1253: persist `service_states` — it IS a real column (gh-749) and is
+                // what process-auto-bids now matches against; the D4-era premise that it
+                // wasn't real is stale. Also keep persisting the comma-joined state list into
+                // `service_area_description` (gh-item-2) — several other surfaces
+                // (contractor-bid-form.html, contractor-pre-approval.html, this page's own
+                // read-back at parseServiceAreaDescription) already treat that field as the
+                // recall/"hasServiceStates" signal, so it stays as a second, redundant-but-
+                // depended-on write rather than being replaced.
                 const { service_states, service_counties } = SVC.collect();
 
                 const updates = {
+                    service_states: service_states,
                     service_counties: service_counties,
                     service_area_description: service_states.length ? service_states.join(', ') : null,
                     updated_at: new Date().toISOString(),
