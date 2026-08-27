@@ -45,7 +45,7 @@ var CONFIG = {
   // (pk_test_...). It is not a secret — publishable keys are designed to ship
   // in the client. Until it is set, staging deliberately FAILS LOUDLY below
   // rather than quietly falling back to the live key.
-  STRIPE_PK_TEST: '',
+  STRIPE_PK_TEST: 'pk_test_51TCI2O0AJRnqIYPUgKku8lRifucMiKIBTdu8hkmBLjjXVR73eggMnqVuPPtlZF8thfGypv8UShBoLsoIgY4ELfRP009TrgSIxo',
 
   // NOTE: STRIPE_SECRET_KEY is server-side only (Edge Functions)
 
