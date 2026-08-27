@@ -134,10 +134,62 @@ function _oqCreateSupabaseClient() {
 // author put them in, and no user can click before that point. The page-level
 // script-order bug is still worth fixing on its own, but this makes it stop
 // being able to take auth down.
+// ── gh-1292: whenReady(cb) ──
+// The DOMContentLoaded retry above only covers code that runs AFTER
+// DOMContentLoaded fires. It does nothing for code that runs at PARSE TIME
+// (inline <script> blocks executed synchronously as the HTML parser reaches
+// them) — that code has already run and seen `sb` undefined by the time
+// DOMContentLoaded fires, and nothing ever re-runs it. That is the actual
+// defect behind #1292 (Google partner signup, recruit-code attribution,
+// parse-time session reads reporting a false "signed out").
+//
+// whenReady(cb) works from any point — parse time, post-DOMContentLoaded,
+// or never-quite-loaded. cb(sb) fires exactly once, synchronously if `sb`
+// already exists, otherwise as soon as it's created. If the Supabase UMD
+// bundle never loads at all (network failure, blocked script), cb(null)
+// fires after a bounded ~20s poll instead of hanging forever.
+var _oqReadyCallbacks = [];
+
+function _oqFlushReadyCallbacks(result) {
+  if (_oqReadyCallbacks.length === 0) return;
+  var cbs = _oqReadyCallbacks;
+  _oqReadyCallbacks = [];
+  cbs.forEach(function (cb) {
+    try { cb(result); } catch (e) { console.error('[config] whenReady callback threw:', e); }
+  });
+}
+
+CONFIG.whenReady = function (cb) {
+  if (_oqCreateSupabaseClient()) {
+    cb(sb);
+    return;
+  }
+  _oqReadyCallbacks.push(cb);
+};
+
 if (!_oqCreateSupabaseClient() && typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', function () {
-    if (!_oqCreateSupabaseClient()) {
+    if (_oqCreateSupabaseClient()) {
+      _oqFlushReadyCallbacks(sb);
+    } else {
       console.error('[config] Supabase library never loaded — authentication is unavailable on this page.');
     }
   });
+
+  // Also poll on a short interval. DOMContentLoaded only fires once and only
+  // covers a synchronous script-ordering bug; a `defer`/`async` Supabase UMD
+  // tag can resolve AFTER DOMContentLoaded already fired past the listener
+  // above. Polling is what actually catches that case.
+  var _oqReadyPollCount = 0;
+  var _oqReadyPollId = setInterval(function () {
+    _oqReadyPollCount++;
+    if (_oqCreateSupabaseClient()) {
+      clearInterval(_oqReadyPollId);
+      _oqFlushReadyCallbacks(sb);
+    } else if (_oqReadyPollCount > 100) { // ~20s at 200ms
+      clearInterval(_oqReadyPollId);
+      console.error('[config] Supabase library never loaded after 20s — whenReady callbacks resolving with null.');
+      _oqFlushReadyCallbacks(null);
+    }
+  }, 200);
 }

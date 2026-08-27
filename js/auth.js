@@ -123,7 +123,14 @@ window.Auth = {
    *       refreshSession() before giving up at 8 s.
    */
   async getSession() {
-    if (!sb) return null;
+    // gh-1292: a bare `if (!sb) return null` here reported every parse-time
+    // caller as signed-out, even an actually-signed-in user (login.html,
+    // ref-insurance.html, the partner pages' hasPartnerSession() calls) —
+    // wait for the client via CONFIG.whenReady instead of bailing.
+    if (!sb) {
+      const readySb = await new Promise((resolve) => CONFIG.whenReady(resolve));
+      if (!readySb) return null;
+    }
 
     var hasStoredSession = false;
     try {
@@ -1259,16 +1266,26 @@ Log in to the admin panel to review and approve this contractor.`;
 // D-211: Auto-wire sb_at cookie refresh on TOKEN_REFRESHED.
 // Auth.ready() sets it on initial session. This keeps it fresh across token rotations.
 // Replaces the _initCookieSync listener removed in D-211 Phase 0.
-if (typeof window !== 'undefined' && window.Auth && typeof sb !== 'undefined') {
-  try {
-    sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'TOKEN_REFRESHED' && session?.access_token) {
-        window.Auth._setSingleAuthCookie(session);
-      } else if (event === 'SIGNED_OUT') {
-        document.cookie = 'sb_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      }
-    });
-  } catch (e) { /* non-fatal */ }
+//
+// gh-1292: this guarded on `typeof sb !== 'undefined'` with no retry, so it
+// silently never registered on any page whose script order left `sb`
+// undefined at the moment this file was parsed (9 of 11 affected pages lack
+// js/supabase-client.js — only partner-profile.html and refer-a-friend.html
+// have it). Route through CONFIG.whenReady so it registers regardless of
+// script order or timing.
+if (typeof window !== 'undefined' && window.Auth && typeof CONFIG !== 'undefined') {
+  CONFIG.whenReady((readySb) => {
+    if (!readySb) return;
+    try {
+      readySb.auth.onAuthStateChange((event, session) => {
+        if (event === 'TOKEN_REFRESHED' && session?.access_token) {
+          window.Auth._setSingleAuthCookie(session);
+        } else if (event === 'SIGNED_OUT') {
+          document.cookie = 'sb_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        }
+      });
+    } catch (e) { /* non-fatal */ }
+  });
 }
 
 // #1290: on rejection GoTrue 303-redirects to the Site URL with the reason in

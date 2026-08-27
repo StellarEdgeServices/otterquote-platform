@@ -1240,20 +1240,22 @@
             }
         }
 
-        finishGoogleSignupIfPending();
-        // Guard spelled exactly as scripts/check-sb-auth-guards.py enforces
-        // (`if (!sb) return;` immediately before the registration). The first
-        // draft used an equivalent `if (typeof sb !== 'undefined' && sb)`
-        // wrapper, which is semantically the same but does not match the
-        // pattern the checker looks for — and a codebase-wide guard rule is
-        // worth more than a local stylistic preference.
-        (function registerAuthListener() {
-            if (typeof sb === 'undefined') return;
+        // gh-1292: both of these ran at PARSE TIME. js/config.js defers client
+        // creation to DOMContentLoaded (or later, via polling) and this page
+        // has zero DOMContentLoaded listeners of its own — the old
+        // `if (typeof sb === 'undefined') return;` guard just returned
+        // immediately, so the SIGNED_IN retry listener never registered and
+        // sb.rpc('register_partner') / sb.rpc('claim_partner_account') were
+        // unreachable. A Google partner signup could never complete.
+        // CONFIG.whenReady() runs this as soon as the client exists, whether
+        // that's now (post-DOMContentLoaded pages) or later.
+        CONFIG.whenReady(function (sb) {
             if (!sb) return;
+            finishGoogleSignupIfPending();
             sb.auth.onAuthStateChange((event) => {
                 if (event === 'SIGNED_IN') finishGoogleSignupIfPending();
             });
-        })();
+        });
 
         // ---------------------------------------------------------------
         // Email + password signup

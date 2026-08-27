@@ -1335,9 +1335,16 @@
     }
   }
 
-  // Kick off recruit detection immediately — the IIFE runs after DOMContentLoaded
-  // because this <script> tag sits at the end of the body.
-  detectRecruitCode();
+  // gh-1292: the comment this replaces was the bug — an end-of-body
+  // <script> tag does NOT run after DOMContentLoaded; it runs at PARSE TIME,
+  // in document order, same as any other synchronous script. detectRecruitCode()
+  // called `sb.rpc(...)` here before js/config.js's client existed, threw a
+  // TypeError swallowed by the try/catch above, and register_partner received
+  // p_recruit_code: null for every recruit-attributed signup. CONFIG.whenReady()
+  // runs it as soon as the client actually exists.
+  CONFIG.whenReady(function (sb) {
+    if (sb) detectRecruitCode();
+  });
   captureUtmContext();
 
   // #632: signed-in partners land straight on their dashboard instead of
