@@ -403,7 +403,7 @@ function generateRetailScopeOfWorkPdf(params) {
       .replace(/…/g, "...")
       .replace(/²/g, "2")
       .replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4")
-      .replace(/ /g, " ");
+      .replace(/\u00a0/g, " ");
     s = s.replace(/[^\x20-\x7E]/g, "");
     return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   }
