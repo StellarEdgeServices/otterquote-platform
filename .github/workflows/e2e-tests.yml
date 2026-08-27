@@ -1,5 +1,15 @@
 name: Playwright E2E Tests
 
+# gh-1261 / Dustin's CEO ruling 2026-08-26 ("strip"): this suite's "Run E2E
+# Tests" job has failed on every PR since 2026-06-23 -- 64 days of a
+# required check that every merge routes around (re-verified red one last
+# time: conclusion:failure on PR #1256, checks run 2026-08-26T00:14Z). It is
+# neutralized below with continue-on-error, NOT deleted, so its tests
+# remain available to run by hand. Its replacement is the
+# "5-Page Revenue-Path Smoke Check" (.github/workflows/e2e-smoke.yml).
+# Do not remove continue-on-error without first fixing what's actually
+# failing -- see hazard-register.md for the full history.
+
 on:
   push:
     branches:
@@ -88,6 +98,10 @@ jobs:
     name: Run E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # gh-1261: neutralized 2026-08-26, see header comment above -- 64 days
+    # red is not a signal, so this job no longer blocks a merge. Tests stay
+    # in place and still run; only their power to fail the workflow is cut.
+    continue-on-error: true
     # gh-689: DB traffic now targets the dedicated otterquote-ci-test project
     # (zsdvaqilfdclwosmiheh), not production — see the Seed/Run/Teardown steps
     # below. Concurrency serialization is KEPT for now: every run still shares
