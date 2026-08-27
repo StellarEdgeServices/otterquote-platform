@@ -2266,8 +2266,9 @@
             : 'Contractor details on file';
 
         // ── Back link ──
+        // gh-1293: explicit role= — this page is homeowner-only.
         document.getElementById('backToContractLink').href =
-          `/contract-signing.html?claim_id=${state.claimId}`;
+          `/contract-signing.html?claim_id=${state.claimId}&role=homeowner`;
 
         // ── Render structure cards (default: 1) ──
         const existingConf = claimData.project_confirmation;

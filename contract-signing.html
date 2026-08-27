@@ -1308,7 +1308,14 @@
                    && state.contractor.user_id === state.currentUser.id) {
           state.signRole = 'contractor';
         } else {
-          state.signRole = 'homeowner';
+          // gh-1293: a silent default here picked 'homeowner' for every caller
+          // that forgot ?role=, which is how bids.html's missing role= param
+          // stayed invisible. Surface an explicit error instead of guessing.
+          document.getElementById('pageLoading').style.display = 'none';
+          document.getElementById('pageErrorDetail').textContent =
+            'Unable to determine who is signing this contract (missing role). Please return to your bids page and try again, or contact support.';
+          document.getElementById('pageError').style.display = 'block';
+          return;
         }
 
         // ── Render the page ──

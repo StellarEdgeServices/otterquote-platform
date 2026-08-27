@@ -1272,10 +1272,10 @@
         const actionBtn = (function() {
           const cs = currentClaim ? currentClaim.status : null;
           if (cs === 'contract_signed') {
-            return `<a href="contract-signing.html?claim_id=${currentClaim.id}&contractor_id=${bid.contractor_id}&quote_id=${bid.id}" class="btn btn-sm btn-ghost" style="border:1px solid var(--green);color:var(--green);">✓ Contract Signed</a>`;
+            return `<a href="contract-signing.html?claim_id=${currentClaim.id}&contractor_id=${bid.contractor_id}&quote_id=${bid.id}&role=homeowner" class="btn btn-sm btn-ghost" style="border:1px solid var(--green);color:var(--green);">✓ Contract Signed</a>`;
           }
           if (cs === 'awarded' && currentClaim.selected_contractor_id === bid.contractor_id) {
-            return `<a href="contract-signing.html?claim_id=${currentClaim.id}&contractor_id=${bid.contractor_id}&quote_id=${bid.id}" class="btn btn-sm btn-primary">View Contract Status →</a>`;
+            return `<a href="contract-signing.html?claim_id=${currentClaim.id}&contractor_id=${bid.contractor_id}&quote_id=${bid.id}&role=homeowner" class="btn btn-sm btn-primary">View Contract Status →</a>`;
           }
           if (cs === 'awarded') {
             return `<button class="btn btn-sm btn-ghost" disabled style="opacity:0.4;cursor:not-allowed;">Not Selected</button>`;
@@ -2140,7 +2140,9 @@
         });
 
         // 5. Proceed to contract signing — contract distributed to both parties after selection
-        window.location.href = `contract-signing.html?claim_id=${encodeURIComponent(currentClaim.id)}&contractor_id=${encodeURIComponent(bid.contractor_id)}&quote_id=${encodeURIComponent(bidId)}`;
+        // gh-1293: explicit role= — this page only ever acts on behalf of the
+        // homeowner, and contract-signing.html no longer guesses when it's absent.
+        window.location.href = `contract-signing.html?claim_id=${encodeURIComponent(currentClaim.id)}&contractor_id=${encodeURIComponent(bid.contractor_id)}&quote_id=${encodeURIComponent(bidId)}&role=homeowner`;
 
       } catch (err) {
         console.error('Selection error:', err);

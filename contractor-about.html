@@ -989,8 +989,9 @@
         });
 
         // 4. Redirect to contract signing
+        // gh-1293: explicit role= — same homeowner accept-bid path as bids.html.
         window.location.href =
-          `contract-signing.html?claim_id=${encodeURIComponent(claimId)}&contractor_id=${encodeURIComponent(bid.contractor_id)}&quote_id=${encodeURIComponent(bid.id)}`;
+          `contract-signing.html?claim_id=${encodeURIComponent(claimId)}&contractor_id=${encodeURIComponent(bid.contractor_id)}&quote_id=${encodeURIComponent(bid.id)}&role=homeowner`;
 
       } catch (err) {
         console.error('Selection error:', err);
