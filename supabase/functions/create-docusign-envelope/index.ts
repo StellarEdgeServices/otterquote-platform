@@ -1334,16 +1334,20 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const sendBody = {
     title: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
     files,
+    // gh-1244: BoldSign's Signers[].Id must be a GUID -- confirmed live via
+    // the sandbox E2E run ("The field Id is invalid" from /v1/document/send
+    // for both signers when this was the string literal "contractor_1").
+    // DocuSign's recipientId accepted arbitrary strings; BoldSign does not.
     signers: [
       {
-        id: "contractor_1",
+        id: crypto.randomUUID(),
         name: signer.name,
         emailAddress: signer.email,
         signerOrder: 1,
         signerType: "Signer"
       },
       {
-        id: "homeowner_1",
+        id: crypto.randomUUID(),
         name: homeownerFullName,
         emailAddress: homeownerEmail,
         signerOrder: 2,
@@ -1382,11 +1386,18 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   if (!envelopeId) throw new Error("No documentId returned from BoldSign");
   console.log(`Document created (contractor_sign): ${envelopeId}`);
   const defaultReturnUrl = return_url || `https://otterquote.com/contractor-bid-form.html?claim_id=${claim_id}&signed=contractor`;
+  // gh-1244: BoldSign's documented query params are camelCase (documentId,
+  // signerEmail, redirectUrl), matching the official API docs. Fixed
+  // regardless of whether it's the full explanation for the "Invalid
+  // Document ID" 403 seen in the sandbox E2E run -- see gh-1244 comments for
+  // the open investigation (BOLDSIGN_SANDBOX confirmed unset; document
+  // creation confirmed succeeding with a real documentId moments before this
+  // call rejects that same ID).
   const signLinkResponse = await fetch(
     `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
-      DocumentId: envelopeId,
-      SignerEmail: signer.email,
-      RedirectUrl: defaultReturnUrl
+      documentId: envelopeId,
+      signerEmail: signer.email,
+      redirectUrl: defaultReturnUrl
     }),
     {
       headers: boldSignHeaders()
@@ -1448,11 +1459,13 @@ async function handleHomeownerSign(supabase, requestBody, corsHeaders) {
   // to homeowner when role= is missing — carry it through the return URL.
   const defaultReturnUrl = return_url || `https://otterquote.com/contract-signing.html?claim_id=${claim_id}&role=homeowner&signed=true`;
   console.log(`Generating homeowner signing URL for document ${envelopeId}`);
+  // gh-1244: camelCase param names -- see the matching fix + comment in
+  // handleContractorSign above.
   const signLinkResponse = await fetch(
     `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
-      DocumentId: envelopeId,
-      SignerEmail: signer.email,
-      RedirectUrl: defaultReturnUrl
+      documentId: envelopeId,
+      signerEmail: signer.email,
+      redirectUrl: defaultReturnUrl
     }),
     {
       headers: boldSignHeaders()
@@ -1554,16 +1567,18 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const sendBody = {
     title: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
     files,
+    // gh-1244: BoldSign's Signers[].Id must be a GUID, not a string label --
+    // see the matching fix + comment in handleContractorSign above.
     signers: [
       {
-        id: "homeowner_1",
+        id: crypto.randomUUID(),
         name: signer.name,
         emailAddress: signer.email,
         signerOrder: 1,
         signerType: "Signer"
       },
       {
-        id: "contractor_1",
+        id: crypto.randomUUID(),
         name: contractorName,
         emailAddress: contractorEmail,
         signerOrder: 2,
@@ -1603,11 +1618,13 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   });
   const defaultReturnUrl = document_type === "project_confirmation" ? `https://otterquote.com/project-confirmation.html?claim_id=${claim_id}&signed=true` : "https://otterquote.com/contract-signing.html?signed=true";
   const signingReturnUrl = return_url || defaultReturnUrl;
+  // gh-1244: camelCase param names -- see the matching fix + comment in
+  // handleContractorSign above.
   const signLinkResponse = await fetch(
     `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
-      DocumentId: envelopeId,
-      SignerEmail: signer.email,
-      RedirectUrl: signingReturnUrl
+      documentId: envelopeId,
+      signerEmail: signer.email,
+      redirectUrl: signingReturnUrl
     }),
     {
       headers: boldSignHeaders()
