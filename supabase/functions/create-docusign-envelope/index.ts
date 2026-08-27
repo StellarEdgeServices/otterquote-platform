@@ -295,7 +295,12 @@ function generateComplianceAddendumPdf(contractorName, homeownerName, contractDa
   // is baked in here at generation time instead, positioned on the signature
   // blank. Not required (this is an OPTIONAL cancellation, most homeowners
   // never use it) — required:false via the tag's " " (space) segment.
-  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}| |Cancellation Acknowledgment|cancellation_acknowledgment_signature}}`, 1.0);
+  // [gh-1244 fix] Position-4 Field label emptied — BoldSign's own log names
+  // a non-empty Placeholder (position 4) on a non-TextBox field type as the
+  // background-validation failure that made document/send return a
+  // documentId for a document that never actually gets created (see the
+  // gh-1244 root-cause comment). Field ID unchanged.
+  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}| ||cancellation_acknowledgment_signature}}`, 1.0);
   y -= 20;
   addText(50, y, 10, "F1", `Homeowner Name (printed): ${homeownerName}`);
   y -= 30;
@@ -307,7 +312,10 @@ function generateComplianceAddendumPdf(contractorName, homeownerName, contractDa
   // REQUIRED (the "*" segment). docusign-webhook's ack-verify.ts backstops
   // this at completion per D-269 (#550) — same invariant as before, adapted
   // to BoldSign's formFields shape instead of DocuSign's tab shape.
-  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}|*|Platform Disclosure Acknowledgment|otterquote_acknowledgment}}`, 1.0);
+  // [gh-1244 fix] Position-4 Field label emptied — see comment above the
+  // cancellation_acknowledgment_signature tag. Field ID unchanged: D-269's
+  // ack-verify.ts backstop (ACK_FIELD_ID) depends on it.
+  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}|*||otterquote_acknowledgment}}`, 1.0);
   y -= 20;
   y = addWrappedText(50, y, 10, "F1", `Otter Quotes is a technology platform that facilitates connections between homeowners and contractors. Otter Quotes is NOT a party to this contract and assumes no liability for work performed under this agreement. This contract is between the homeowner and the contractor named above.`, 512);
   y -= 10;
@@ -482,7 +490,7 @@ function generateRetailScopeOfWorkPdf(params) {
       .replace(/…/g, "...")
       .replace(/²/g, "2")
       .replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4")
-      .replace(/ /g, " ");
+      .replace(/\u00a0/g, " ");
     s = s.replace(/[^\x20-\x7E]/g, "");
     return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   }
@@ -941,10 +949,14 @@ function generateRetailScopeOfWorkPdf(params) {
   addText(LEFT_X, y, 10, "F2", "Initials:");
   addText(115, y, 10, "F1", "Contractor:");
   addText(180, y, 10, "F1", "_________");
-  addTextColored(180, y, 10, "F1", "{{init|1|*|Contractor Initial|contractor_initial_sow}}", 1.0);
+  // [gh-1244 fix] Position-4 Field label emptied — see the gh-1244 root-cause
+  // comment: a non-empty Placeholder (position 4) on an `init` field is what
+  // makes BoldSign's background document-creation validation fail silently.
+  // Field ID unchanged: D-186 dual-party initials depend on it.
+  addTextColored(180, y, 10, "F1", "{{init|1|*||contractor_initial_sow}}", 1.0);
   addText(320, y, 10, "F1", "Homeowner:");
   addText(390, y, 10, "F1", "_________");
-  addTextColored(390, y, 10, "F1", "{{init|2|*|Homeowner Initial|homeowner_initial_sow}}", 1.0);
+  addTextColored(390, y, 10, "F1", "{{init|2|*||homeowner_initial_sow}}", 1.0);
   y -= 4;
   y -= 12;
   hLine(y + 4);
