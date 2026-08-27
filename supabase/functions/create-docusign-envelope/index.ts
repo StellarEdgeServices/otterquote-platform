@@ -1444,7 +1444,9 @@ async function handleHomeownerSign(supabase, requestBody, corsHeaders) {
   if (!envelopeId) {
     throw new Error("No existing BoldSign document found for this quote. The contractor must sign first.");
   }
-  const defaultReturnUrl = return_url || `https://otterquote.com/contract-signing.html?claim_id=${claim_id}&signed=true`;
+  // gh-1293: contract-signing.html now errors instead of silently defaulting
+  // to homeowner when role= is missing — carry it through the return URL.
+  const defaultReturnUrl = return_url || `https://otterquote.com/contract-signing.html?claim_id=${claim_id}&role=homeowner&signed=true`;
   console.log(`Generating homeowner signing URL for document ${envelopeId}`);
   const signLinkResponse = await fetch(
     `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
