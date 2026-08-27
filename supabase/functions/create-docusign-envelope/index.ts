@@ -106,6 +106,36 @@ function boldSignHeaders(extra = {}) {
     ...extra
   };
 }
+// gh-1244: POST /v1/document/send returns a documentId once BoldSign accepts
+// the request, but document creation (Text Tag discovery/validation) happens
+// asynchronously afterward. Calling getEmbeddedSignLink (or properties)
+// before that finishes returns 403 {"error":"Invalid Document ID"} -- NOT a
+// permission/scope problem. Proven live on gh-1244: the identical documentId,
+// key, and endpoint 403'd 2.5s after send and returned a signing URL 4
+// minutes later. Poll properties until it settles instead of failing on the
+// first 403 -- do not delete this as a nonsense retry-on-403, see the
+// gh-1244 comment thread for the full proof.
+async function waitForBoldSignDocumentReady(documentId, { intervalMs = 200, ceilingMs = 15000 } = {}) {
+  const deadline = Date.now() + ceilingMs;
+  let lastStatus = null;
+  let lastBody = "";
+  while (Date.now() < deadline) {
+    const res = await fetch(
+      `${BOLDSIGN_API_BASE}/v1/document/properties?documentId=${encodeURIComponent(documentId)}`,
+      { headers: boldSignHeaders() }
+    );
+    if (res.ok) return;
+    lastStatus = res.status;
+    lastBody = await res.text().catch(() => "");
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(
+    `BoldSign document ${documentId} did not finish background creation within ${ceilingMs}ms ` +
+    `(last response: ${lastStatus} ${lastBody}). This is a wait timeout, not a permission or ` +
+    `scope problem -- see gh-1244: BoldSign returns 403 for a document that exists but has not ` +
+    `finished background validation yet.`
+  );
+}
 // ========== PDF RETRIEVAL ==========
 async function getTemplateFromStorage(supabase, contractorId, documentType) {
   const bucketName = "contractor-templates";
@@ -1397,6 +1427,9 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const envelopeId = sendData.documentId;
   if (!envelopeId) throw new Error("No documentId returned from BoldSign");
   console.log(`Document created (contractor_sign): ${envelopeId}`);
+  // gh-1244: bounded wait for BoldSign's async document creation to settle
+  // before asking for a signing link -- see waitForBoldSignDocumentReady().
+  await waitForBoldSignDocumentReady(envelopeId);
   const defaultReturnUrl = return_url || `https://otterquote.com/contractor-bid-form.html?claim_id=${claim_id}&signed=contractor`;
   // gh-1244: BoldSign's documented query params are camelCase (documentId,
   // signerEmail, redirectUrl), matching the official API docs. Fixed
@@ -1471,6 +1504,11 @@ async function handleHomeownerSign(supabase, requestBody, corsHeaders) {
   // to homeowner when role= is missing — carry it through the return URL.
   const defaultReturnUrl = return_url || `https://otterquote.com/contract-signing.html?claim_id=${claim_id}&role=homeowner&signed=true`;
   console.log(`Generating homeowner signing URL for document ${envelopeId}`);
+  // gh-1244: envelopeId here is an existing, already-created document (read
+  // from quotes.docusign_envelope_id), so this wait is normally a no-op --
+  // kept for consistency across all three call sites and as a defensive
+  // guard if this is ever called moments after the contractor's own send.
+  await waitForBoldSignDocumentReady(envelopeId);
   // gh-1244: camelCase param names -- see the matching fix + comment in
   // handleContractorSign above.
   const signLinkResponse = await fetch(
@@ -1628,6 +1666,9 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
     envelope_id: envelopeId,
     claim_id
   });
+  // gh-1244: bounded wait for BoldSign's async document creation to settle
+  // before asking for a signing link -- see waitForBoldSignDocumentReady().
+  await waitForBoldSignDocumentReady(envelopeId);
   const defaultReturnUrl = document_type === "project_confirmation" ? `https://otterquote.com/project-confirmation.html?claim_id=${claim_id}&signed=true` : "https://otterquote.com/contract-signing.html?signed=true";
   const signingReturnUrl = return_url || defaultReturnUrl;
   // gh-1244: camelCase param names -- see the matching fix + comment in
