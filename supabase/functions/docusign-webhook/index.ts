@@ -274,7 +274,7 @@ serve(async (req) => {
         (await verifyHmacSignature(rawBody, signatureHeader, hmacKey));
       if (!isValid) {
         console.error(
-          "HMAC signature verification failed (fail-closed: DOCUSIGN_REQUIRE_SIGNATURE=true)"
+          "HMAC signature verification failed (fail-closed: BOLDSIGN_REQUIRE_SIGNATURE=true)"
         );
         return new Response(
           JSON.stringify({ error: "Invalid signature" }),

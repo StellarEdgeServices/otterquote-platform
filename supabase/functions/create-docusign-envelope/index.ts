@@ -295,7 +295,12 @@ function generateComplianceAddendumPdf(contractorName, homeownerName, contractDa
   // is baked in here at generation time instead, positioned on the signature
   // blank. Not required (this is an OPTIONAL cancellation, most homeowners
   // never use it) — required:false via the tag's " " (space) segment.
-  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}| |Cancellation Acknowledgment|cancellation_acknowledgment_signature}}`, 1.0);
+  // [gh-1244 fix] Position-4 Field label emptied — BoldSign's own log names
+  // a non-empty Placeholder (position 4) on a non-TextBox field type as the
+  // background-validation failure that made document/send return a
+  // documentId for a document that never actually gets created (see the
+  // gh-1244 root-cause comment). Field ID unchanged.
+  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}| ||cancellation_acknowledgment_signature}}`, 1.0);
   y -= 20;
   addText(50, y, 10, "F1", `Homeowner Name (printed): ${homeownerName}`);
   y -= 30;
@@ -307,7 +312,10 @@ function generateComplianceAddendumPdf(contractorName, homeownerName, contractDa
   // REQUIRED (the "*" segment). docusign-webhook's ack-verify.ts backstops
   // this at completion per D-269 (#550) — same invariant as before, adapted
   // to BoldSign's formFields shape instead of DocuSign's tab shape.
-  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}|*|Platform Disclosure Acknowledgment|otterquote_acknowledgment}}`, 1.0);
+  // [gh-1244 fix] Position-4 Field label emptied — see comment above the
+  // cancellation_acknowledgment_signature tag. Field ID unchanged: D-269's
+  // ack-verify.ts backstop (ACK_FIELD_ID) depends on it.
+  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}|*||otterquote_acknowledgment}}`, 1.0);
   y -= 20;
   y = addWrappedText(50, y, 10, "F1", `Otter Quotes is a technology platform that facilitates connections between homeowners and contractors. Otter Quotes is NOT a party to this contract and assumes no liability for work performed under this agreement. This contract is between the homeowner and the contractor named above.`, 512);
   y -= 10;
@@ -482,7 +490,7 @@ function generateRetailScopeOfWorkPdf(params) {
       .replace(/…/g, "...")
       .replace(/²/g, "2")
       .replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4")
-      .replace(/ /g, " ");
+      .replace(/\u00a0/g, " ");
     s = s.replace(/[^\x20-\x7E]/g, "");
     return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   }
@@ -941,10 +949,14 @@ function generateRetailScopeOfWorkPdf(params) {
   addText(LEFT_X, y, 10, "F2", "Initials:");
   addText(115, y, 10, "F1", "Contractor:");
   addText(180, y, 10, "F1", "_________");
-  addTextColored(180, y, 10, "F1", "{{init|1|*|Contractor Initial|contractor_initial_sow}}", 1.0);
+  // [gh-1244 fix] Position-4 Field label emptied — see the gh-1244 root-cause
+  // comment: a non-empty Placeholder (position 4) on an `init` field is what
+  // makes BoldSign's background document-creation validation fail silently.
+  // Field ID unchanged: D-186 dual-party initials depend on it.
+  addTextColored(180, y, 10, "F1", "{{init|1|*||contractor_initial_sow}}", 1.0);
   addText(320, y, 10, "F1", "Homeowner:");
   addText(390, y, 10, "F1", "_________");
-  addTextColored(390, y, 10, "F1", "{{init|2|*|Homeowner Initial|homeowner_initial_sow}}", 1.0);
+  addTextColored(390, y, 10, "F1", "{{init|2|*||homeowner_initial_sow}}", 1.0);
   y -= 4;
   y -= 12;
   hLine(y + 4);
@@ -1334,16 +1346,20 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const sendBody = {
     title: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
     files,
+    // gh-1244: BoldSign's Signers[].Id must be a GUID -- confirmed live via
+    // the sandbox E2E run ("The field Id is invalid" from /v1/document/send
+    // for both signers when this was the string literal "contractor_1").
+    // DocuSign's recipientId accepted arbitrary strings; BoldSign does not.
     signers: [
       {
-        id: "contractor_1",
+        id: crypto.randomUUID(),
         name: signer.name,
         emailAddress: signer.email,
         signerOrder: 1,
         signerType: "Signer"
       },
       {
-        id: "homeowner_1",
+        id: crypto.randomUUID(),
         name: homeownerFullName,
         emailAddress: homeownerEmail,
         signerOrder: 2,
@@ -1382,11 +1398,18 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   if (!envelopeId) throw new Error("No documentId returned from BoldSign");
   console.log(`Document created (contractor_sign): ${envelopeId}`);
   const defaultReturnUrl = return_url || `https://otterquote.com/contractor-bid-form.html?claim_id=${claim_id}&signed=contractor`;
+  // gh-1244: BoldSign's documented query params are camelCase (documentId,
+  // signerEmail, redirectUrl), matching the official API docs. Fixed
+  // regardless of whether it's the full explanation for the "Invalid
+  // Document ID" 403 seen in the sandbox E2E run -- see gh-1244 comments for
+  // the open investigation (BOLDSIGN_SANDBOX confirmed unset; document
+  // creation confirmed succeeding with a real documentId moments before this
+  // call rejects that same ID).
   const signLinkResponse = await fetch(
     `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
-      DocumentId: envelopeId,
-      SignerEmail: signer.email,
-      RedirectUrl: defaultReturnUrl
+      documentId: envelopeId,
+      signerEmail: signer.email,
+      redirectUrl: defaultReturnUrl
     }),
     {
       headers: boldSignHeaders()
@@ -1448,11 +1471,13 @@ async function handleHomeownerSign(supabase, requestBody, corsHeaders) {
   // to homeowner when role= is missing — carry it through the return URL.
   const defaultReturnUrl = return_url || `https://otterquote.com/contract-signing.html?claim_id=${claim_id}&role=homeowner&signed=true`;
   console.log(`Generating homeowner signing URL for document ${envelopeId}`);
+  // gh-1244: camelCase param names -- see the matching fix + comment in
+  // handleContractorSign above.
   const signLinkResponse = await fetch(
     `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
-      DocumentId: envelopeId,
-      SignerEmail: signer.email,
-      RedirectUrl: defaultReturnUrl
+      documentId: envelopeId,
+      signerEmail: signer.email,
+      redirectUrl: defaultReturnUrl
     }),
     {
       headers: boldSignHeaders()
@@ -1554,16 +1579,18 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const sendBody = {
     title: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
     files,
+    // gh-1244: BoldSign's Signers[].Id must be a GUID, not a string label --
+    // see the matching fix + comment in handleContractorSign above.
     signers: [
       {
-        id: "homeowner_1",
+        id: crypto.randomUUID(),
         name: signer.name,
         emailAddress: signer.email,
         signerOrder: 1,
         signerType: "Signer"
       },
       {
-        id: "contractor_1",
+        id: crypto.randomUUID(),
         name: contractorName,
         emailAddress: contractorEmail,
         signerOrder: 2,
@@ -1603,11 +1630,13 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   });
   const defaultReturnUrl = document_type === "project_confirmation" ? `https://otterquote.com/project-confirmation.html?claim_id=${claim_id}&signed=true` : "https://otterquote.com/contract-signing.html?signed=true";
   const signingReturnUrl = return_url || defaultReturnUrl;
+  // gh-1244: camelCase param names -- see the matching fix + comment in
+  // handleContractorSign above.
   const signLinkResponse = await fetch(
     `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
-      DocumentId: envelopeId,
-      SignerEmail: signer.email,
-      RedirectUrl: signingReturnUrl
+      documentId: envelopeId,
+      signerEmail: signer.email,
+      redirectUrl: signingReturnUrl
     }),
     {
       headers: boldSignHeaders()
