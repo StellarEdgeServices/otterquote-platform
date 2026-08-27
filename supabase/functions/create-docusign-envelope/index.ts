@@ -215,196 +215,79 @@ function base64EncodeBinary(bytes) {
   }
   return btoa(binary);
 }
-// ========== IC 24-5-11 COMPLIANCE ADDENDUM PDF ==========
-// [D-274 / #631] homeownerSignerIndex added: BoldSign Text Tags bake the
-// signer index directly into the tag string (positional — see boldsign
-// helper header comments), and this document's two callers use OPPOSITE
-// signer orders (handleContractorSign: contractor=1,homeowner=2;
-// handleLegacyFlow: homeowner=1,contractor=2). DocuSign's original
-// anchorString-based tabs didn't care about order (role-named anchors), so
-// this parameter is new — callers MUST pass the correct index for their flow.
-function generateComplianceAddendumPdf(contractorName, homeownerName, contractDate, homeownerSignerIndex) {
-  const lines = [];
-  const objects = [];
-  let currentOffset = 0;
-  function write(s) {
-    lines.push(s);
-    currentOffset += s.length + 1;
-  }
-  function startObject(num) {
-    objects[num] = {
-      offset: currentOffset
-    };
-    write(`${num} 0 obj`);
-  }
-  const signDate = new Date(contractDate || new Date().toISOString());
-  let businessDays = 0;
-  const cancelDate = new Date(signDate);
-  while(businessDays < 3){
-    cancelDate.setDate(cancelDate.getDate() + 1);
-    const dow = cancelDate.getDay();
-    if (dow !== 0 && dow !== 6) businessDays++;
-  }
-  const cancelDateStr = cancelDate.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric"
-  });
-  const contentLines = [];
-  function addText(x, y, fontSize, font, text) {
-    const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-    contentLines.push(`BT /${font} ${fontSize} Tf ${x} ${y} Td (${escaped}) Tj ET`);
-  }
-  // [D-274 / #631] Render text in a chosen non-stroking gray (1.0 = white =
-  // invisible on white paper) — used to embed BoldSign Text Tags invisibly,
-  // same technique the retail Scope of Work generator already used for
-  // DocuSign anchors (see generateRetailScopeOfWorkPdf's addTextColored).
-  function addTextColored(x, y, fontSize, font, text, gray) {
-    const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-    contentLines.push(`BT ${gray} g /${font} ${fontSize} Tf ${x} ${y} Td (${escaped}) Tj ET 0 g`);
-  }
-  function addWrappedText(x, startY, fontSize, font, text, maxWidth) {
-    const charWidth = fontSize * 0.5;
-    const maxChars = Math.floor(maxWidth / charWidth);
-    const words = text.split(" ");
-    let currentLine = "";
-    let y = startY;
-    const lineSpacing = fontSize * 1.4;
-    for (const word of words){
-      if (currentLine.length + word.length + 1 > maxChars) {
-        addText(x, y, fontSize, font, currentLine.trim());
-        y -= lineSpacing;
-        currentLine = word + " ";
-      } else {
-        currentLine += word + " ";
-      }
+// ========== [C2 2026-08-27] CONTRACTOR-VOICE GUARD ==========
+// A prior run wrote assistant-authored prose into quotes.message_to_homeowner
+// in the contractor's voice -- "Thanks for the opportunity, Mr. Paulsen. Your
+// 9/12 pitch puts this in our steep-roof band..." -- and it rendered on
+// Exhibit A under the heading "Message from Contractor", inside a document
+// presented as a contract exhibit. Mitchel Dotson never wrote a word of it.
+//
+// Rule (Dustin, 2026-08-27): never synthesize contractor voice. Text that
+// renders as a party's own words must trace to a field that party typed.
+//
+// This is the mechanism, not the rule (R-148 -- a recurring defect closes on a
+// mechanism, never on a rule alone):
+//   1. ONLY the two contractor-entered columns are read. There is deliberately
+//      no fallback to anything derived, generated or summarised.
+//   2. A bid carrying is_test = true yields NOTHING unless
+//      value_adds.message_contractor_authored is explicitly true. Test and demo
+//      bids are exactly where fabricated prose gets introduced, and this is the
+//      gate that stops it reaching a signed document.
+//   3. Empty or whitespace-only yields null, so the render site omits the whole
+//      block rather than printing a heading over nothing.
+function contractorAuthoredMessage(bidData) {
+  if (!bidData) return null;
+  const raw = bidData.message_to_homeowner ?? bidData.contractor_message ?? null;
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) return null;
+  if (bidData.is_test === true) {
+    const va = bidData.value_adds || {};
+    if (va.message_contractor_authored !== true) {
+      console.warn(
+        "[C2] Suppressed message_to_homeowner on test bid " + (bidData.id ?? "?") +
+        ": not marked value_adds.message_contractor_authored. Exhibit A will omit " +
+        "the 'Message from Contractor' block rather than attribute unverified prose to the contractor."
+      );
+      return null;
     }
-    if (currentLine.trim()) {
-      addText(x, y, fontSize, font, currentLine.trim());
-      y -= lineSpacing;
-    }
-    return y;
   }
-  let y = 750;
-  addText(50, y, 14, "F2", "INDIANA HOME IMPROVEMENT CONTRACT ACT ADDENDUM");
-  y -= 20;
-  addText(50, y, 10, "F1", `IC 24-5-11 Compliance Addendum — Contract Date: ${contractDate || new Date().toLocaleDateString("en-US")}`);
-  y -= 10;
-  contentLines.push(`50 ${y} m 562 ${y} l S`);
-  y -= 20;
-  addText(50, y, 12, "F2", "STATEMENT OF RIGHT TO CANCEL");
-  y -= 20;
-  const statementText = `You may cancel this contract at any time before midnight on the third business day after the later of the following: (A) The date this contract is signed by you and ${contractorName}. (B) If applicable, the date you receive written notification from your insurance company of a final determination as to whether all or any part of your claim or this contract is a covered loss under your insurance policy. See attached notice of cancellation form for an explanation of this right.`;
-  y = addWrappedText(50, y, 10, "F2", statementText, 512);
-  y -= 15;
-  contentLines.push(`50 ${y + 5} m 562 ${y + 5} l S`);
-  y -= 15;
-  addText(50, y, 12, "F2", "NOTICE OF CANCELLATION");
-  y -= 20;
-  addText(50, y, 10, "F2", `Contract Date: ${contractDate || "_______________"}`);
-  y -= 16;
-  y = addWrappedText(50, y, 10, "F2", `You may CANCEL this transaction, without any penalty or obligation, within THREE (3) BUSINESS DAYS from the above date, or if applicable, within three (3) business days from the date you receive written notification from your insurance company of a final determination as to whether all or any part of your claim or this contract is a covered loss under your insurance policy.`, 512);
-  y -= 10;
-  y = addWrappedText(50, y, 10, "F2", `If you cancel, any property traded in, any payments made by you under the contract, and any negotiable instrument executed by you will be returned within TEN (10) BUSINESS DAYS following receipt by the contractor of your cancellation notice, and any security interest arising out of the transaction will be cancelled.`, 512);
-  y -= 10;
-  y = addWrappedText(50, y, 10, "F2", `If you cancel, you must make available to the contractor at your residence, in substantially as good condition as when received, any goods delivered to you under this contract. Or you may, if you wish, comply with the instructions of the contractor regarding the return shipment of the goods at the contractor's expense and risk.`, 512);
-  y -= 10;
-  y = addWrappedText(50, y, 10, "F1", `To cancel this transaction, mail, deliver, or email a signed and dated copy of this cancellation notice, or any other written notice to:`, 512);
-  y -= 5;
-  addText(70, y, 10, "F2", contractorName);
-  y -= 14;
-  addText(70, y, 10, "F1", "(Contractor name and contact information as provided in this contract)");
-  y -= 20;
-  addText(50, y, 10, "F2", "I HEREBY CANCEL THIS TRANSACTION.");
-  y -= 25;
-  addText(50, y, 10, "F1", "Homeowner Signature: ___________________________________    Date: ________________");
-  // [D-274 / #631] Optional cancellation-acknowledgment sign field. DocuSign's
-  // version anchored on the visible "I HEREBY CANCEL..." prose text above —
-  // BoldSign cannot do that (no arbitrary-text anchoring, see file header of
-  // validate-contract-template/index.ts for the full explanation), so the tag
-  // is baked in here at generation time instead, positioned on the signature
-  // blank. Not required (this is an OPTIONAL cancellation, most homeowners
-  // never use it) — required:false via the tag's " " (space) segment.
-  // [gh-1244 fix] Position-4 Field label emptied — BoldSign's own log names
-  // a non-empty Placeholder (position 4) on a non-TextBox field type as the
-  // background-validation failure that made document/send return a
-  // documentId for a document that never actually gets created (see the
-  // gh-1244 root-cause comment). Field ID unchanged.
-  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}| ||cancellation_acknowledgment_signature}}`, 1.0);
-  y -= 20;
-  addText(50, y, 10, "F1", `Homeowner Name (printed): ${homeownerName}`);
-  y -= 30;
-  contentLines.push(`50 ${y + 5} m 562 ${y + 5} l S`);
-  y -= 15;
-  addText(50, y, 12, "F2", "PLATFORM DISCLOSURE");
-  // [D-274 / #631, carried forward from D-123/D-269] Required acknowledgment
-  // field — homeowner confirms Otter Quotes is not a party to the contract.
-  // REQUIRED (the "*" segment). docusign-webhook's ack-verify.ts backstops
-  // this at completion per D-269 (#550) — same invariant as before, adapted
-  // to BoldSign's formFields shape instead of DocuSign's tab shape.
-  // [gh-1244 fix] Position-4 Field label emptied — see comment above the
-  // cancellation_acknowledgment_signature tag. Field ID unchanged: D-269's
-  // ack-verify.ts backstop (ACK_FIELD_ID) depends on it.
-  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}|*||otterquote_acknowledgment}}`, 1.0);
-  y -= 20;
-  y = addWrappedText(50, y, 10, "F1", `Otter Quotes is a technology platform that facilitates connections between homeowners and contractors. Otter Quotes is NOT a party to this contract and assumes no liability for work performed under this agreement. This contract is between the homeowner and the contractor named above.`, 512);
-  y -= 10;
-  addText(50, y, 10, "F1", `Down payment may not exceed $1,000 or 10% of contract price, whichever is less (IC 24-5-11-12).`);
-  y -= 30;
-  addText(50, y, 8, "F1", "This addendum is generated by Otter Quotes to comply with Indiana Code IC 24-5-11 (Home Improvement Contract Act).");
-  y -= 12;
-  addText(50, y, 8, "F1", `Generated: ${new Date().toISOString()}`);
-  const contentStream = contentLines.join("\n");
-  const contentBytes = new TextEncoder().encode(contentStream);
-  const pdfLines = [];
-  const pdfObjects = [];
-  let byteOffset = 0;
-  function pdfWrite(s) {
-    pdfLines.push(s);
-    byteOffset += s.length + 1;
-  }
-  function pdfStartObj(n) {
-    pdfObjects[n] = byteOffset;
-    pdfWrite(`${n} 0 obj`);
-  }
-  pdfWrite("%PDF-1.4");
-  pdfStartObj(1);
-  pdfWrite("<< /Type /Catalog /Pages 2 0 R >>");
-  pdfWrite("endobj");
-  pdfStartObj(2);
-  pdfWrite("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
-  pdfWrite("endobj");
-  pdfStartObj(3);
-  pdfWrite("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>");
-  pdfWrite("endobj");
-  pdfStartObj(4);
-  pdfWrite(`<< /Length ${contentStream.length} >>`);
-  pdfWrite("stream");
-  pdfWrite(contentStream);
-  pdfWrite("endstream");
-  pdfWrite("endobj");
-  pdfStartObj(5);
-  pdfWrite("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  pdfWrite("endobj");
-  pdfStartObj(6);
-  pdfWrite("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
-  pdfWrite("endobj");
-  const xrefOffset = byteOffset;
-  pdfWrite("xref");
-  pdfWrite(`0 7`);
-  pdfWrite("0000000000 65535 f ");
-  for(let i = 1; i <= 6; i++){
-    pdfWrite(String(pdfObjects[i]).padStart(10, "0") + " 00000 n ");
-  }
-  pdfWrite("trailer");
-  pdfWrite(`<< /Size 7 /Root 1 0 R >>`);
-  pdfWrite("startxref");
-  pdfWrite(String(xrefOffset));
-  pdfWrite("%%EOF");
-  const pdfContent = pdfLines.join("\n");
-  const pdfBytes = new TextEncoder().encode(pdfContent);
-  return base64EncodeBinary(pdfBytes);
+  return text;
 }
+
+// ========== [C1 2026-08-27] IC 24-5-11 COMPLIANCE ADDENDUM RETIRED ==========
+// generateComplianceAddendumPdf() is DELETED, not disabled. It generated the
+// envelope's Document 3: the Statement of Right to Cancel, the full Notice of
+// Cancellation form, the IC 24-5-11-12 down-payment cap notice, and the
+// PLATFORM DISCLOSURE block.
+//
+// Dustin's ruling, 2026-08-27, verbatim: "I don't want us adding the right to
+// cancel, the notice of cancellation form, the platform disclosure, or the
+// down payment cap. We shouldn't be adding terms to their contracts. We
+// shouldn't have our name on their contract. But we also aren't taking terms
+// out, either."
+//
+// Every line of that document was OURS -- none of it came from any
+// contractor's template. The contractor's own contract keeps whatever
+// cancellation terms it carries; we simply stop appending ours to it.
+//
+// TWO THINGS THAT MOVED RATHER THAN DIED, so nobody re-adds this function:
+//  1. The REQUIRED `otterquote_acknowledgment` field now lives at the bottom of
+//     the Scope of Work (generateRetailScopeOfWorkPdf, "PLATFORM
+//     ACKNOWLEDGMENT"). D-269 (#550) ack-verify.ts is unchanged and still
+//     fails closed on that exact field id. To keep it reachable on every
+//     envelope, the Scope of Work is now generated for INSURANCE jobs too --
+//     it used to be gated on `isRetail`.
+//  2. The optional `cancellation_acknowledgment_signature` field is gone with
+//     the Notice of Cancellation form it sat on. Nothing verifies it; it was
+//     optional by design.
+//
+// OPERATIONAL CONSEQUENCE, and it belongs to the contractor, not to us: a
+// contractor template whose terms cite "the attached Notice of Cancellation"
+// (Indy Rooftops' T&C section 11 does) now cites an attachment the envelope no
+// longer contains. IC 24-5-11-10 requires that notice be furnished. The fix is
+// that the contractor's own template carries his own notice -- which is what
+// the #1313 pre-tagged starter PDF should include a slot for.
+
 // ========== HOVER MEASUREMENTS FETCH ==========
 async function fetchHoverMeasurements(supabase, claimId) {
   const toNum = (v) => {
@@ -494,7 +377,7 @@ async function fetchHoverMeasurements(supabase, claimId) {
 
 // ========== RETAIL SCOPE OF WORK PDF ==========
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType } = params;
   const va = valueAdds || {};
   const pc = projectConfirmation || null;
   // ---- Page geometry ----
@@ -520,7 +403,7 @@ function generateRetailScopeOfWorkPdf(params) {
       .replace(/…/g, "...")
       .replace(/²/g, "2")
       .replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4")
-      .replace(/\u00a0/g, " ");
+      .replace(/ /g, " ");
     s = s.replace(/[^\x20-\x7E]/g, "");
     return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   }
@@ -594,8 +477,16 @@ function generateRetailScopeOfWorkPdf(params) {
   // ===== PAGE 1 HEADER =====
   addText(LEFT_X, y, 16, "F2", "SCOPE OF WORK");
   y -= 18;
-  addText(LEFT_X, y, 9, "F1", `Prepared by Otter Quotes on behalf of ${contractorName}`);
-  y -= 10;
+  // [C1 2026-08-27, Dustin-directed, verbatim: "Prepared by Otter Quotes on
+  // behalf of [homeowner] for the purpose of obtaining competitive bids".
+  // Attribution is to the HOMEOWNER, not the contractor: this document is
+  // prepared for the homeowner to solicit competitive bids, which is also what
+  // preserves the contractor's ability to dispute measurements he did not take
+  // (see the MEASUREMENT DISCLAIMER below). Previously read "on behalf of
+  // ${contractorName}". Wrapped rather than single-line because a long
+  // homeowner name overflows 512pt at 9pt.
+  y = addWrappedText(LEFT_X, y, 9, "F1", `Prepared by Otter Quotes on behalf of ${homeownerName} for the purpose of obtaining competitive bids`, 512);
+  y -= 2;
   hLine(y);
   y -= 16;
   addText(LEFT_X, y, 10, "F2", "PROJECT:");
@@ -622,7 +513,11 @@ function generateRetailScopeOfWorkPdf(params) {
   addText(160, y, 10, "F1", tradeLabel);
   y -= 14;
   addText(LEFT_X, y, 10, "F2", "Financing:");
-  addText(160, y, 10, "F1", "Retail / Homeowner-Financed");
+  // [C1 2026-08-27] Was hardcoded "Retail / Homeowner-Financed" because this
+  // document only ever rendered on retail jobs. Dustin ruled Exhibit A renders
+  // on ALL jobs, so an insurance-funded claim would otherwise carry a false
+  // statement about how it is paid for.
+  addText(160, y, 10, "F1", fundingType === "insurance" ? "Insurance-Funded (ACV / RCV)" : "Retail / Homeowner-Financed");
   y -= 14;
   addText(LEFT_X, y, 10, "F2", "Contract Price:");
   addText(160, y, 10, "F1", contractPrice ? fmt$(contractPrice) : "Per contractor agreement");
@@ -704,8 +599,6 @@ function generateRetailScopeOfWorkPdf(params) {
     const areaWaste = (sq != null) ? Math.ceil(sq * 1.1) : null; // area items + 10% waste (SQ)
     const iceWater = (vv != null && ev != null) ? (vv + ev) : null;   // valleys + eaves
     const starter = (ev != null && rk != null) ? (ev + rk) : null;    // eaves + rakes
-    const deckingTxt = (deckingPricePerSheet != null) ? `${fmt$(deckingPricePerSheet)}/sheet` : "per bid";
-    const redeckTxt = (fullRedeckPrice != null) ? fmt$(fullRedeckPrice) : "per bid";
     const rows = [
       { num: 1, item: "Tear off & dispose existing roofing (all layers)", qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Haul-off included" },
       { num: 2, item: `Architectural laminate shingles - ${bidBrand || "per bid"}`, qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Per mfr. spec" },
@@ -719,7 +612,9 @@ function generateRetailScopeOfWorkPdf(params) {
       { num: 10, item: "Headwall / apron flashing", qty: qtyStr(fl), unit: "LF", basis: `Flashing ${fl != null ? fl : "?"}`, notes: "Replace" },
       { num: 11, item: "Pipe boots / penetration flashings", qty: "field", unit: "EA", basis: "Field-verified", notes: "Count confirmed on site" },
       { num: 12, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
-      { num: 13, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: `${deckingTxt}; full re-deck ${redeckTxt}` },
+      // [C3 2026-08-27] Rates removed -- decking and full re-deck are stated once,
+      // in CONTINGENCIES AND CONDITIONAL PRICING, each beside its trigger.
+      { num: 13, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: "See Contingencies" },
     ];
     drawTableHeader();
     const lineH = 10;
@@ -785,7 +680,9 @@ function generateRetailScopeOfWorkPdf(params) {
       y -= 14;
     }
     if (va.ventilation) {
-      const ventDesc = va.ventilation.ridge_vent_included ? "Ridge Vent - Included" : va.ventilation.ridge_vent_oop ? `Ridge Vent - OOP ${fmt$(va.ventilation.ridge_vent_oop)}` : null;
+      // [C3 2026-08-27] Price removed -- the OOP amount is a contingency and is
+      // stated once, in CONTINGENCIES AND CONDITIONAL PRICING.
+      const ventDesc = va.ventilation.ridge_vent_included ? "Ridge Vent - Included" : va.ventilation.ridge_vent_oop ? "Ridge Vent - homeowner out-of-pocket, see Contingencies" : null;
       if (ventDesc) {
         ensure(14);
         addText(60, y, 10, "F2", "Ventilation:");
@@ -793,17 +690,24 @@ function generateRetailScopeOfWorkPdf(params) {
         y -= 14;
       }
     }
-    if (deckingPricePerSheet) {
-      const redeckTxt2 = fullRedeckPrice ? `${fmt$(deckingPricePerSheet)}/sheet if needed; Full redeck: ${fmt$(fullRedeckPrice)}` : `${fmt$(deckingPricePerSheet)}/sheet if needed`;
-      ensure(14);
-      addText(60, y, 10, "F2", "Decking:");
-      y = addWrappedText(160, y, 10, "F1", redeckTxt2, 380);
-    }
-    if (va.chimney_flashing?.option && va.chimney_flashing.option !== "na") {
-      const cfMap = { reuse: "Reuse existing", replace: "Replace - Included", replace_oop: `Replace OOP ${fmt$(va.chimney_flashing.oop_price)}` };
+    // [C3 2026-08-27] The decking rate moved to CONTINGENCIES AND CONDITIONAL
+    // PRICING. This block describes what IS included; a per-sheet rate that
+    // only applies if deteriorated decking is found is a contingency, and
+    // Dustin's instruction was that every price-changing condition live in one
+    // section with its trigger beside it.
+    // [C3 2026-08-27] BUG FIX, verified against contractor-bid-form.html:5254.
+    // This read `va.chimney_flashing`, which the bid form sets to a literal
+    // `null` and labels `deprecated -- replaced by chimney (86e10t28v)`. So the
+    // chimney line has rendered NOTHING for every bid submitted since that
+    // rename. The live shape is `va.chimney` = { type, option, oop_price }.
+    // Legacy shapes are still read so historical bids keep rendering.
+    const chim = va.chimney ?? va.chimney_flashing ?? va.chimney_reflash ?? null;
+    const chimOption = chim?.option && chim.option !== "na" ? String(chim.option) : null;
+    if (chimOption) {
+      const cfMap = { reuse: "Reuse existing", replace: "Replace - Included", included: "Included", oop: "Homeowner out-of-pocket option - see Contingencies", replace_oop: "Homeowner out-of-pocket option - see Contingencies" };
       ensure(14);
       addText(60, y, 10, "F2", "Chimney Flashing:");
-      addText(160, y, 10, "F1", cfMap[va.chimney_flashing.option] || String(va.chimney_flashing.option));
+      addText(160, y, 10, "F1", cfMap[chimOption] || chimOption);
       y -= 14;
     }
     if (va.skylights && va.skylights !== "na") {
@@ -833,19 +737,9 @@ function generateRetailScopeOfWorkPdf(params) {
     }
     y -= 8;
   }
-  const slc = va?.secondLayerContingency;
-  if (hasRoofing && slc) {
-    const slcAmount = slc.method === "flat_fee" && slc.flatFeeAlternative != null ? slc.flatFeeAlternative : slc.pricePerSquare;
-    if (slcAmount != null) {
-      const slcPhrase = slc.method === "flat_fee" ? "flat fee" : "per square";
-      const slcDisclaimer = `If the existing roof is found to contain more than one layer of shingles, the contract price will increase by ${fmt$(slcAmount)} ${slcPhrase}. ` + `Customer will be notified before work proceeds and has the right to accept the change order or cancel the Agreement per the Change Order Disclaimer.`;
-      ensure(28);
-      addText(LEFT_X, y, 11, "F2", "SECOND-LAYER TEAR-OFF CONTINGENCY");
-      y -= 14;
-      y = addWrappedText(60, y, 10, "F1", slcDisclaimer, 480);
-      y -= 8;
-    }
-  }
+  // [C3 2026-08-27] The standalone SECOND-LAYER TEAR-OFF CONTINGENCY heading is
+  // gone. It is now row 1 of CONTINGENCIES AND CONDITIONAL PRICING, which is
+  // where every price-changing condition lives.
   if (hasGutters) {
     ensure(20);
     addText(LEFT_X, y, 11, "F2", "GUTTERS");
@@ -855,8 +749,9 @@ function generateRetailScopeOfWorkPdf(params) {
       let gutterDesc = String(go);
       if (go === "5inch_included" || go === "5inch") gutterDesc = '5" Gutters - Included';
       else if (go === "6inch_included" || go === "6inch") gutterDesc = '6" Gutters - Included';
-      else if (go.includes("5inch") && go.includes("additional")) gutterDesc = `5" Gutters - OOP ${fmt$(va.gutters.additional_cost_5inch)}`;
-      else if (go.includes("6inch") && go.includes("additional")) gutterDesc = `6" Gutters - OOP ${fmt$(va.gutters.additional_cost_6inch)}`;
+      // [C3 2026-08-27] Amounts moved to CONTINGENCIES AND CONDITIONAL PRICING.
+      else if (go.includes("5inch") && go.includes("additional")) gutterDesc = '5" Gutters - homeowner out-of-pocket, see Contingencies';
+      else if (go.includes("6inch") && go.includes("additional")) gutterDesc = '6" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go === "none") gutterDesc = "No gutter work included";
       ensure(14);
       addText(60, y, 10, "F2", "Gutters:");
@@ -871,12 +766,10 @@ function generateRetailScopeOfWorkPdf(params) {
         addText(160, y, 10, "F1", "Available - pricing on request");
         y -= 14;
       } else if (gg.mesh_oop || gg.screw_in_oop) {
-        const parts = [];
-        if (gg.mesh_oop) parts.push(`Mesh OOP ${fmt$(gg.mesh_oop)}`);
-        if (gg.screw_in_oop) parts.push(`Screw-in OOP ${fmt$(gg.screw_in_oop)}`);
+        // [C3 2026-08-27] Amounts moved to CONTINGENCIES AND CONDITIONAL PRICING.
         ensure(14);
         addText(60, y, 10, "F2", "Gutter Guards:");
-        addText(160, y, 10, "F1", parts.join("; "));
+        addText(160, y, 10, "F1", "Available at homeowner cost - see Contingencies");
         y -= 14;
       }
     }
@@ -922,6 +815,118 @@ function generateRetailScopeOfWorkPdf(params) {
       y -= 4;
     }
   }
+  // ===== CONTINGENCIES AND CONDITIONAL PRICING =====
+  // [C3 2026-08-27, Dustin-directed] One section listing EVERY condition that
+  // can change the contract price, each with its trigger and its rate. These
+  // were previously scattered -- decking inside the roofing detail block,
+  // second-layer tear-off under its own heading, out-of-pocket options inline
+  // with their trades -- and several never rendered at all.
+  //
+  // Every key below was verified against contractor-bid-form.html's own
+  // valueAdds constructor (~line 5233) rather than assumed. Four of these had
+  // NEVER reached this document:
+  //   - va.drip_edge          (written at :5286, never read here)
+  //   - va.rotten_wood_pricing (written at :5318, never read here)
+  //   - va.siding_rotten_sheathing_pricing (written at :5328, never read here)
+  //   - va.num_stories         (written at :5303, never read here)
+  // and a fifth, va.chimney, was read under its deprecated name -- see the
+  // chimney fix above.
+  //
+  // A row with no value is OMITTED. Nothing renders as "TBD": a contract
+  // exhibit that says "TBD" next to a price trigger is worse than silence,
+  // because it implies a number exists somewhere that the homeowner has not
+  // been shown.
+  {
+    const rows = [];
+    const add = (name, trigger, price) => {
+      if (price == null || price === "") return;
+      rows.push({ name, trigger, price });
+    };
+    const slc = va?.secondLayerContingency;
+    if (hasRoofing && slc) {
+      const flat = slc.method === "flat_fee" && slc.flatFeeAlternative != null;
+      const amt = flat ? slc.flatFeeAlternative : slc.pricePerSquare;
+      if (amt != null) add("Second-layer tear-off", "More than one layer of existing shingles found at tear-off", flat ? `${fmt$(amt)} flat fee` : `${fmt$(amt)} per square`);
+    }
+    if (hasRoofing) {
+      add("Decking replacement", "Deteriorated roof decking found after tear-off", deckingPricePerSheet != null ? `${fmt$(deckingPricePerSheet)} per sheet` : null);
+      add("Full re-deck", "Entire roof deck requires replacement", fullRedeckPrice != null ? fmt$(fullRedeckPrice) : null);
+    }
+    add("Rotten wood / fascia / soffit", "Concealed rot found during the work", typeof va.rotten_wood_pricing === "string" && va.rotten_wood_pricing.trim() ? va.rotten_wood_pricing.trim() : null);
+    add("Rotten sheathing behind siding", "Concealed rot found behind removed siding", typeof va.siding_rotten_sheathing_pricing === "string" && va.siding_rotten_sheathing_pricing.trim() ? va.siding_rotten_sheathing_pricing.trim() : null);
+    {
+      const c = va.chimney ?? va.chimney_flashing ?? va.chimney_reflash ?? null;
+      if (c && (c.option === "oop" || c.option === "replace_oop") && c.oop_price != null) {
+        add("Chimney flashing", "Homeowner elects chimney flashing work (not included in base price)", fmt$(c.oop_price));
+      }
+    }
+    if (va.ventilation && !va.ventilation.ridge_vent_included && va.ventilation.ridge_vent_oop != null) {
+      add("Ridge vent", "Homeowner elects ridge vent (not included in base price)", fmt$(va.ventilation.ridge_vent_oop));
+    }
+    if (va.drip_edge?.option === "oop" && va.drip_edge.oop_price != null) {
+      add("Drip edge", "Homeowner elects drip edge (not included in base price)", fmt$(va.drip_edge.oop_price));
+    }
+    if (va.gutter_guards) {
+      const gg = va.gutter_guards;
+      if (gg.mesh_oop != null) add("Gutter guards - mesh", "Homeowner elects mesh gutter guards", fmt$(gg.mesh_oop));
+      if (gg.screw_in_oop != null) add("Gutter guards - screw-in", "Homeowner elects screw-in gutter guards", fmt$(gg.screw_in_oop));
+      if (gg.pricing_on_request && gg.mesh_oop == null && gg.screw_in_oop == null) {
+        add("Gutter guards", "Homeowner elects gutter guards", "Pricing on request");
+      }
+    }
+    if (va.gutters?.option) {
+      const go = String(va.gutters.option);
+      if (go.includes("5inch") && go.includes("additional") && va.gutters.additional_cost_5inch != null) add('Gutters - 5"', "Homeowner elects 5-inch gutters (not included in base price)", fmt$(va.gutters.additional_cost_5inch));
+      if (go.includes("6inch") && go.includes("additional") && va.gutters.additional_cost_6inch != null) add('Gutters - 6"', "Homeowner elects 6-inch gutters (not included in base price)", fmt$(va.gutters.additional_cost_6inch));
+    }
+    if (va.skylights && va.skylights !== "na") {
+      add("Skylights", "Skylight condition assessed on site", va.skylights === "reflash" ? "Reflash - per contractor bid" : "Replace - per contractor bid");
+    }
+    if (rows.length > 0) {
+      ensure(40);
+      hLine(y + 4);
+      y -= 12;
+      addText(LEFT_X, y, 12, "F2", "CONTINGENCIES AND CONDITIONAL PRICING");
+      y -= 12;
+      y = addWrappedText(LEFT_X, y, 8, "F1", "Every condition below can change the contract price. None is included in the price on page 1. Each states what triggers it and what it costs.", 512);
+      y -= 4;
+      const cName = 50, cTrig = 210, cPrice = 452;
+      const nameChars = 36, trigChars = 56, priceChars = 26;
+      const header = () => {
+        ensure(18);
+        addText(cName, y, 8, "F2", "Contingency");
+        addText(cTrig, y, 8, "F2", "Trigger");
+        addText(cPrice, y, 8, "F2", "Price");
+        y -= 3; hLine(y); y -= 11;
+      };
+      header();
+      const lineH = 10;
+      for (const row of rows) {
+        const nL = wrapToLines(row.name, nameChars);
+        const tL = wrapToLines(row.trigger, trigChars);
+        const pL = wrapToLines(row.price, priceChars);
+        const n = Math.max(nL.length, tL.length, pL.length);
+        const rowH = n * lineH + 3;
+        const pagesBefore = pages.length;
+        ensure(rowH);
+        if (pages.length > pagesBefore) header();
+        const topY = y;
+        nL.forEach((ln, k) => addText(cName, topY - k * lineH, 8, "F1", ln));
+        tL.forEach((ln, k) => addText(cTrig, topY - k * lineH, 8, "F1", ln));
+        pL.forEach((ln, k) => addText(cPrice, topY - k * lineH, 8, "F1", ln));
+        y = topY - rowH;
+      }
+      y -= 4;
+      hLine(y);
+      y -= 12;
+      // Conditions that carry no fixed rate because they come from the
+      // contractor's own terms, not from the bid form. Rendered as prose, not
+      // as priceless table rows -- an empty Price cell reads as an omission.
+      y = addWrappedText(LEFT_X, y, 8, "F1", "In addition, and without a fixed rate: permit and other governmental fees are excluded from the contract price unless expressly stated in the contractor's agreement; code-required work and damage concealed behind existing materials is not discoverable before the work begins; and either party may act on a measurement that proves more than 10% off, per the MEASUREMENT DISCLAIMER above. Any of these changes the price only through a written change order under the contractor's own agreement, which the homeowner may accept or decline.", 512);
+      y -= 8;
+    }
+  }
+
   const hasNotes = homeownerNotes || messageToHomeowner || va.other_offers || pc?.workNotBeingDone || pc?.homeownerNotes;
   if (hasNotes) {
     ensure(28);
@@ -964,6 +969,43 @@ function generateRetailScopeOfWorkPdf(params) {
       y = addWrappedText(60, y, 9, "F1", pc.homeownerNotes, 500);
     }
   }
+  // ===== PLATFORM ACKNOWLEDGMENT =====
+  // [C1 2026-08-27, Dustin-directed] Relocated here from the RETIRED IC 24-5-11
+  // compliance addendum (the old Document 3, deleted in this same change).
+  // Dustin, verbatim: "We shouldn't be adding terms to their contracts. We
+  // shouldn't have our name on their contract." This page IS ours -- it is
+  // prepared by Otter Quotes for the homeowner -- so the platform's own
+  // non-party disclaimer belongs here, and nowhere else in the envelope.
+  //
+  // THE FIELD ID IS LOAD-BEARING. D-269 (#550) docusign-webhook/ack-verify.ts
+  // fails CLOSED at envelope completion when it cannot find a formFields entry
+  // with id exactly `otterquote_acknowledgment` (ACK_FIELD_ID). Renaming it
+  // blocks every completed contract. It moved documents; it did not change id.
+  //
+  // It is now drawn on its own labelled signature line. Previously (#1314) it
+  // was drawn at (200,189) -- the same baseline as the visible "PLATFORM
+  // DISCLOSURE" heading at (50,189) -- so the homeowner was required to sign a
+  // box that sat on top of a heading and was identified as nothing at all.
+  //
+  // Signer index 2 = homeowner, matching the initials row below: this document
+  // has exactly one call site (handleContractorSign), which always sends
+  // contractor as signer 1 and homeowner as signer 2.
+  ensure(96);
+  y -= 12;
+  hLine(y + 4);
+  y -= 14;
+  addText(LEFT_X, y, 12, "F2", "PLATFORM ACKNOWLEDGMENT");
+  y -= 14;
+  y = addWrappedText(LEFT_X, y, 9, "F1", "Otter Quotes is a technology platform that connects homeowners with contractors. Otter Quotes is NOT a party to the contract between you and the contractor, is not the contractor, and assumes no liability for the work performed under that contract. The contract is between you and the contractor named above.", 512);
+  y -= 10;
+  ensure(34);
+  addText(LEFT_X, y, 9, "F2", "Homeowner acknowledgment:");
+  addText(205, y, 9, "F1", "_____________________________________");
+  addTextColored(205, y, 8, "F1", "{{sign|2|*||otterquote_acknowledgment}}", 1.0);
+  y -= 11;
+  addText(205, y, 8, "F1", "Sign here to confirm you have read the statement above.");
+  y -= 6;
+
   // [D-225 Phase 2B / D-186; re-tagged D-274 / #631] Dual-party initials row.
   // The visible labels (Contractor / Homeowner) sit beside blank underscores;
   // BoldSign Text Tags are drawn in white at the same x so they are invisible
@@ -1288,10 +1330,20 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   // [D-274 / #631] homeownerSignerIndex=2 — this flow (handleContractorSign)
   // always sends contractor as signer 1, homeowner as signer 2 (see the
   // signers[] array built below).
-  const addendumBase64 = generateComplianceAddendumPdf(contractorName, homeownerName, contractDate, 2);
-  const isRetail = fundingType !== "insurance";
+  // [C1 2026-08-27, Dustin-directed] The compliance addendum (Document 3) is
+  // retired -- see the tombstone above generateRetailScopeOfWorkPdf.
+  //
+  // The Scope of Work is no longer gated on `isRetail`. Dustin: "I think we do
+  // Exhibit A on all jobs." Two reasons it has to be unconditional now:
+  //   - it is the only document in the envelope carrying the REQUIRED
+  //     otterquote_acknowledgment field, so gating it would make D-269's
+  //     ack-verify fail closed on every insurance-funded contract; and
+  //   - the measurements, scope and disclaimers are just as true on an
+  //     insurance job.
+  // For ACV/RCV jobs the scope basis is the insurer's own estimate, already
+  // parsed onto claims.parsed_line_items by parse-loss-sheet.
   let scopeOfWorkBase64 = null;
-  if (isRetail) {
+  {
     try {
       // If the Hover report has not yet been parsed into claims.hover_measurements
       // but a source report PDF is on file, invoke parse-hover-measurements first
@@ -1355,11 +1407,14 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         bidBrand,
         deckingPricePerSheet: bidData?.decking_price_per_sheet ?? null,
         fullRedeckPrice: bidData?.full_redeck_price ?? null,
-        messageToHomeowner: bidData?.message_to_homeowner ?? bidData?.contractor_message ?? null,
+        // [C2 2026-08-27] Guarded: never attribute unverified prose to the
+        // contractor. See contractorAuthoredMessage() for the mechanism.
+        messageToHomeowner: contractorAuthoredMessage(bidData),
         homeownerNotes: claimData?.homeowner_notes ?? null,
         projectConfirmation: claimData?.project_confirmation ?? null,
         measurements,
-        contractDate
+        contractDate,
+        fundingType
       });
       console.log(`Retail Scope of Work PDF generated for claim ${claim_id}`);
     } catch (sowErr) {
@@ -1370,8 +1425,7 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const docLabel = getDocumentLabel("contractor_sign");
   const files = [
     `data:application/pdf;base64,${templateBase64}`,
-    ...scopeOfWorkBase64 ? [`data:application/pdf;base64,${scopeOfWorkBase64}`] : [],
-    `data:application/pdf;base64,${addendumBase64}`
+    ...scopeOfWorkBase64 ? [`data:application/pdf;base64,${scopeOfWorkBase64}`] : []
   ];
   const sendBody = {
     title: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
@@ -1598,16 +1652,16 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const files = [
     `data:application/pdf;base64,${templateBase64}`
   ];
-  if (document_type === "contract") {
-    const contractDate = new Date().toLocaleDateString("en-US");
-    // [D-274 / #631] homeownerSignerIndex=1 — this flow (handleLegacyFlow)
-    // sends homeowner as signer 1, contractor as signer 2 (OPPOSITE order
-    // from handleContractorSign — see the signers[] array below and the
-    // generateComplianceAddendumPdf header comment on why this parameter
-    // exists at all).
-    const addendumBase64 = generateComplianceAddendumPdf(contractorName, autoFields.customer_name || signer.name || "Homeowner", contractDate, 1);
-    files.push(`data:application/pdf;base64,${addendumBase64}`);
-  }
+  // [C1 2026-08-27] The `contract` document_type used to append the IC 24-5-11
+  // compliance addendum here. That addendum is retired (see the tombstone above
+  // generateRetailScopeOfWorkPdf). Nothing is appended in its place: this legacy
+  // flow sends the contractor's own uploaded template and nothing else.
+  //
+  // Verified 2026-08-27 before removing it: NO caller anywhere in the codebase
+  // sends document_type "contract". The live values are "contractor_sign"
+  // (contractor-bid-form.html:5928, react-app contractor/sign page) and
+  // "homeowner_sign" (contract-signing.html:1617, react-app contract-signing).
+  // This branch was unreachable, so its removal changes no live envelope.
   // [D-274 / #631] No textTabs/homeownerTabs/contractorTabs equivalent —
   // see the "TAB-BUILDER FUNCTIONS RETIRED" comment above buildTextTabs's
   // old location for the full explanation. This legacy flow's own
