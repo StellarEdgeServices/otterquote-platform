@@ -78,6 +78,13 @@ import * as pdfjsLib from "npm:pdfjs-dist@4.0.379/legacy/build/pdf.mjs";
 // EVERY validation failed 422 "Setting up fake worker failed" (E2E walk fix
 // 2026-07-07 — no real contractor template could ever validate).
 import "npm:pdfjs-dist@4.0.379/legacy/build/pdf.worker.mjs";
+import {
+  describeMissingMarkers,
+  detectFilledProposal,
+  cancellationNoticeState,
+  buildExecutionPagePdf,
+  appendExecutionPage,
+} from "./starter-template.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BoldSign Text Tag builder — matches the syntax create-docusign-envelope's
@@ -297,6 +304,17 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
+function base64FromBytes(bytes: Uint8Array): string {
+  // Chunked so a multi-megabyte template does not blow the argument limit on
+  // String.fromCharCode. btoa is the only base64 encoder available here.
+  let bin = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
 function jsonResponse(body: any, status = 200, corsHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -342,6 +360,9 @@ Deno.serve(async (req: Request) => {
     const { contractor_template_id } = body;
     // Use let so the admin path can clear this after role verification
     let manualOverrides = body.manualOverrides;
+    // Set by the assisted path below; reported on the validation result so the
+    // contractor is told his file was rewritten and where the original went.
+    let assistApplied: { archivedOriginalPath: string; pagesAdded: boolean } | null = null;
 
     if (!contractor_template_id) {
       return jsonResponse({ error: "Missing contractor_template_id" }, 400, corsHeaders);
@@ -367,6 +388,42 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(bearerToken);
     if (authErr || !user) {
       return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+    }
+
+    // ─── #1313 piece 1: the pre-tagged starter ──────────────────────────────
+    // "Rename the ask. 'Upload your blank contract template' - with a
+    // downloadable pre-tagged starter for each trade/funding slot, because most
+    // roofers will not hand-place 12 text tags in a PDF." (#1313)
+    //
+    // Generated FROM this file's own MANIFEST rather than kept beside it as a
+    // static asset, so the starter and the validator cannot drift: every marker
+    // the scan below requires is a marker the starter draws. A static PDF would
+    // have been correct on the day it was made and silently wrong at the next
+    // manifest revision, which is the whole reason v2 templates are all
+    // invalid today.
+    if (body.starter === true) {
+      const sTrade = String(body.trade || "").toLowerCase();
+      const sFunding = String(body.funding_type || "").toLowerCase();
+      const slot = MANIFEST.trades?.[sTrade]?.[sFunding];
+      if (!slot) {
+        return jsonResponse({ error: `No manifest for ${sTrade}/${sFunding}` }, 400, corsHeaders);
+      }
+      const { data: cRec } = await supabase
+        .from("contractors").select("company_name").eq("user_id", user.id).maybeSingle();
+      const pdf = await buildExecutionPagePdf({
+        trade: sTrade,
+        fundingType: sFunding,
+        requirements: slot.required,
+        companyName: cRec?.company_name ?? null,
+        standalone: true,
+        manifestVersion: MANIFEST.version,
+      });
+      return jsonResponse({
+        ok: true,
+        filename: `otterquote-${sTrade}-${sFunding}-template-${MANIFEST.version}.pdf`,
+        manifestVersion: MANIFEST.version,
+        pdf_base64: base64FromBytes(pdf),
+      }, 200, corsHeaders);
     }
 
     // Determine path: admin vs contractor
@@ -412,6 +469,68 @@ Deno.serve(async (req: Request) => {
     const tradeManifest = MANIFEST.trades?.[tmpl.trade]?.[tmpl.funding_type];
     if (!tradeManifest) {
       return jsonResponse({ error: `No manifest for ${tmpl.trade}/${tmpl.funding_type}` }, 400, corsHeaders);
+    }
+
+    // ─── #1313 piece 4: the assisted path ───────────────────────────────────
+    // "Offer the assisted path. For a contractor who cannot tag a PDF, take
+    // their contract and return a tagged version. That is what was done by hand
+    // here and it took about twenty minutes." (#1313)
+    //
+    // His pages are copied byte-for-byte and a tagged execution page is
+    // appended. Nothing of his is edited, reordered or removed - Dustin,
+    // 2026-08-27: "we also aren't taking terms out, either." The page carries
+    // no terms of ours; it carries the signature lines and the fields the
+    // platform auto-fills, all of which already exist in any contract.
+    //
+    // The slot path is canonical (<contractor_id>/<trade>/<funding>.pdf) and is
+    // read by BOTH contractor_templates.pdf_storage_path and the legacy
+    // contractors.contract_templates JSONB that create-docusign-envelope
+    // actually attaches. Writing back to the same path is what keeps those two
+    // from disagreeing - a new path would have updated one and left the
+    // envelope attaching the old untagged file. The original is archived first,
+    // so nothing the contractor uploaded is destroyed.
+    if (body.assist === true) {
+      if (isAdminPath) {
+        return jsonResponse({ error: "The assisted path runs as the contractor, not as admin." }, 400, corsHeaders);
+      }
+      const { data: origBlob, error: origErr } = await supabase.storage
+        .from("contractor-templates").download(tmpl.pdf_storage_path);
+      if (origErr || !origBlob) {
+        return jsonResponse({ error: "PDF not found in storage", path: tmpl.pdf_storage_path, details: origErr?.message }, 404, corsHeaders);
+      }
+      const origBytes = new Uint8Array(await origBlob.arrayBuffer());
+      let taggedBytes: Uint8Array;
+      try {
+        taggedBytes = await appendExecutionPage(origBytes, {
+          trade: tmpl.trade,
+          fundingType: tmpl.funding_type,
+          requirements: tradeManifest.required,
+          companyName: null,
+          manifestVersion: MANIFEST.version,
+        });
+      } catch (assistErr: any) {
+        // A PDF we cannot open is a PDF we must not silently replace.
+        return jsonResponse({
+          error: "Could not add the execution page to this PDF.",
+          details: assistErr?.message,
+          hint: "The file may be password-protected or damaged. Download the blank starter template instead and paste your terms into it.",
+        }, 422, corsHeaders);
+      }
+      const archivePath = tmpl.pdf_storage_path.replace(/\.pdf$/i, "") +
+        `-original-${new Date().toISOString().replace(/[:.]/g, "-")}.pdf`;
+      const archived = await supabase.storage.from("contractor-templates")
+        .upload(archivePath, origBytes, { contentType: "application/pdf", upsert: true });
+      if (archived.error) {
+        return jsonResponse({ error: "Could not archive your original before replacing it; nothing was changed.", details: archived.error.message }, 500, corsHeaders);
+      }
+      const written = await supabase.storage.from("contractor-templates")
+        .upload(tmpl.pdf_storage_path, taggedBytes, { contentType: "application/pdf", upsert: true });
+      if (written.error) {
+        return jsonResponse({ error: "Could not write the tagged template.", details: written.error.message, archived_original: archivePath }, 500, corsHeaders);
+      }
+      assistApplied = { archivedOriginalPath: archivePath, pagesAdded: true };
+      // Fall through: the scan below now reads the tagged file and reports the
+      // real outcome, rather than this endpoint asserting success.
     }
 
     // Download PDF from Supabase Storage
@@ -475,6 +594,47 @@ Deno.serve(async (req: Request) => {
     const requiredFoundCount = anchorResults.filter((a: any) => a.found).length;
     const allRequiredFound = requiredFoundCount === tradeManifest.required.length;
 
+    // ─── #1313 piece 3: make the failure legible ────────────────────────────
+    // "The validator already knows exactly which of the 13 markers are missing
+    // and where they belong. Say so, per marker, with an example." (#1313)
+    //
+    // It always knew. What it returned was the raw tag string with a red cross
+    // beside it, which describes the failure and not the fix. Indy Rooftops
+    // scored 0 of 12 and was told "Upload and validate it on your profile
+    // before bidding."
+    const missingMarkers = describeMissingMarkers(anchorResults);
+
+    // ─── #1313 piece 2: is this a template at all? ──────────────────────────
+    // The worse of the two problems. A tagless filled PROPOSAL and a tagless
+    // blank TEMPLATE failed identically, so the message never named the actual
+    // mistake - and a filled proposal that DID carry the tags would have sailed
+    // through to a homeowner asked to sign a contract naming somebody else's
+    // house and somebody else's price.
+    //
+    // Deliberately a warning, not a rejection. Blocking a legitimate template
+    // means a contractor who cannot onboard at all; a missed filled proposal
+    // means a warning he reads. Only the tag count decides auto_validated.
+    // The contractor's own letterhead address is passed in so his own address
+    // cannot be the thing that accuses him.
+    const { data: ownRec } = await supabase
+      .from("contractors")
+      .select("company_name, address_line1, address_city")
+      .eq("id", tmpl.contractor_id)
+      .maybeSingle();
+    const filledProposal = detectFilledProposal(pdfText, {
+      companyName: ownRec?.company_name ?? null,
+      addressLine1: ownRec?.address_line1 ?? null,
+      addressCity: ownRec?.address_city ?? null,
+    });
+
+    // IC 24-5-11-10 requires the Notice of Cancellation be furnished. Since C1
+    // retired the platform-generated Document 3 (Dustin, 2026-08-27: "I don't
+    // want us adding ... the notice of cancellation form"), it has to be in the
+    // contractor's own template - and a template whose terms cite "the attached
+    // Notice of Cancellation", as Indy Rooftops' section 11 does, now cites an
+    // attachment nothing carries. Reported, never supplied.
+    const cancellationNotice = cancellationNoticeState(pdfText);
+
     const validationResult = {
       manifestVersion: MANIFEST.version,
       trade: tmpl.trade,
@@ -484,6 +644,10 @@ Deno.serve(async (req: Request) => {
       allRequiredFound,
       anchors: anchorResults,
       optional: optionalResults,
+      missingMarkers,
+      filledProposal,
+      cancellationNotice,
+      assistApplied,
       validatedAt: new Date().toISOString(),
     };
 
