@@ -38,7 +38,12 @@
 <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
 
 <!-- PWA -->
+<link rel="manifest" href="/partner-app.webmanifest">
 <meta name="theme-color" content="#0D1B2E">
+<link rel="apple-touch-icon" href="/img/app/apple-touch-icon-partner.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OQ Partners">
 
 <!-- GA4 -->
 <script async crossorigin="anonymous" src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
@@ -250,5 +255,14 @@
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <script>
+        // gh-1338: iOS ignores the manifest's start_url, so a launch from the
+        // home-screen icon re-opens these instructions instead of the dashboard.
+        // Kept identical on the Android page for parity even though Android's
+        // install path already launches start_url correctly from the manifest.
+        if (window.navigator.standalone === true) {
+            location.replace('/partner-dashboard.html?source=pwa');
+        }
+    </script>
 </body>
 </html>
