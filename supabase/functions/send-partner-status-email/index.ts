@@ -72,6 +72,20 @@
  * named by first name + last initial only (formatReferralDisplayName in
  * templates.ts). See templates.ts header for the full rationale.
  *
+ * ── Homeowner consent gate (gh-1337, copy approved by Dustin on gh-1336) ──
+ * Nothing in this series is sent unless the homeowner's consent for referrer
+ * progress updates was affirmatively CAPTURED. Three states, fail-closed:
+ *   claims.referrer_updates_opt_out = false -> captured, not opted out -> SEND
+ *   claims.referrer_updates_opt_out = true  -> homeowner opted out    -> no send
+ *   NULL / column absent / lookup error     -> never asked            -> no send
+ * Fallback source referrals.metadata.referrer_updates_opt_out is read only when
+ * the claims column yields nothing, so the gate holds whichever surface the
+ * homeowner opt-out checkbox ends up writing to.
+ * The gate runs BEFORE any idempotency stamp is written, so a withheld-consent
+ * call burns no stage stamps and a later consented call still sends normally.
+ * The claims column is additive/nullable (Tier 3A) and is NOT applied by this
+ * PR — see supabase/migrations_drafts/gh1337_claims_referrer_updates_opt_out*.
+ *
  * ── Idempotency (#856 AC: "a state transition that fires twice sends one
  * email") ───────────────────────────────────────────────────────────────
  * Guarded via referrals.metadata.partner_status_series.stage{N}_sent_at,
@@ -190,6 +204,59 @@ async function sendMailgunEmail(
   }
 }
 
+type ReferrerConsent = "granted" | "withheld";
+
+/**
+ * gh-1337: resolves the homeowner's captured consent for sending claim-progress
+ * updates to the person who referred them. Fails CLOSED: anything other than an
+ * explicitly captured "did not opt out" returns "withheld".
+ *
+ * Tolerant of claims.referrer_updates_opt_out not existing yet — the Tier 3A
+ * migration that adds it is drafted but deliberately not applied, so a
+ * merged-but-unmigrated deploy must remain safe rather than throwing.
+ */
+async function resolveReferrerUpdatesConsent(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  claimId: string,
+  // deno-lint-ignore no-explicit-any
+  referralMetadata: Record<string, any> | null,
+): Promise<{ consent: ReferrerConsent; source: string }> {
+  try {
+    const { data, error } = await supabase
+      .from("claims")
+      .select("referrer_updates_opt_out")
+      .eq("id", claimId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(
+        `[${FUNCTION_NAME}] claims.referrer_updates_opt_out unavailable (${error.message}) — falling back to referrals.metadata`,
+      );
+    } else if (data && data.referrer_updates_opt_out !== null && data.referrer_updates_opt_out !== undefined) {
+      return {
+        consent: data.referrer_updates_opt_out === true ? "withheld" : "granted",
+        source: "claims.referrer_updates_opt_out",
+      };
+    }
+  } catch (err) {
+    console.warn(
+      `[${FUNCTION_NAME}] consent lookup threw — falling back to referrals.metadata:`,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  const metaValue = referralMetadata?.referrer_updates_opt_out;
+  if (metaValue === true) {
+    return { consent: "withheld", source: "referrals.metadata.referrer_updates_opt_out (opted out)" };
+  }
+  if (metaValue === false) {
+    return { consent: "granted", source: "referrals.metadata.referrer_updates_opt_out" };
+  }
+
+  return { consent: "withheld", source: "no captured consent value" };
+}
+
 serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
 
@@ -306,6 +373,32 @@ serve(async (req: Request) => {
     if (!claim) {
       // Referral exists but no claim linked yet — nothing to send.
       return jsonResponse({ ok: true, sent: [], skipped: [], reason: "no claim linked to this referral yet" }, 200, corsHeaders);
+    }
+
+    // ── gh-1337: homeowner consent gate ────────────────────────────────────
+    // Runs before ANY idempotency stamp is written, so a withheld-consent call
+    // burns no stage stamps — a later call, once consent is captured, still
+    // sends every stage normally.
+    const { consent, source: consentSource } = await resolveReferrerUpdatesConsent(
+      supabase,
+      claim.id,
+      referral.metadata,
+    );
+    if (consent === "withheld") {
+      console.log(
+        `[${FUNCTION_NAME}] consent withheld — nothing sent. referral=${referralId} claim=${claim.id} basis=${consentSource}`,
+      );
+      return jsonResponse(
+        {
+          ok: true,
+          referral_id: referralId,
+          sent: [],
+          skipped: [],
+          reason: `homeowner consent for referrer progress updates not captured or opted out (gh-1337) — basis: ${consentSource}`,
+        },
+        200,
+        corsHeaders,
+      );
     }
 
     const { data: bidRows, error: bidErr } = await supabase
