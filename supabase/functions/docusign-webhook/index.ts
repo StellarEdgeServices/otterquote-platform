@@ -42,6 +42,9 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parsePayload } from "./payload-parser.ts";
 import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
+// [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
+// for the same reason evaluateAcknowledgment is: it is a money check.
+import { evaluatePrice, extractSignedContractPrice } from "./price-verify.ts";
 
 // ── 86e1tz17j: best-effort Sentry reporter for swallowed audit-write failures ──
 // Inlined (not imported from _shared) because the EF body-deploy path does not
@@ -621,8 +624,14 @@ serve(async (req) => {
         // BoldSign's webhook payload never includes per-field formFields
         // (confirmed, see payload-parser.ts header comment). This always
         // calls the authoritative API.
+        // [#1314] Hoisted: GET /v1/document/properties is the only source of
+        // per-field data (BoldSign's webhook payload carries none), and both the
+        // D-269 acknowledgment backstop and the signed-price reconciliation below
+        // need it. One call, two checks.
+        let signerStatus: Awaited<ReturnType<typeof fetchDocumentSignerStatus>> | null = null;
         try {
-          let ackEval = evaluateAcknowledgment(await fetchDocumentSignerStatus(envelopeId));
+          signerStatus = await fetchDocumentSignerStatus(envelopeId);
+          let ackEval = evaluateAcknowledgment(signerStatus);
           if (ackEval.state === "indeterminate") {
             // The API answered but returned no field data at all — treat as
             // missing: acknowledgment cannot be demonstrated.
@@ -713,6 +722,131 @@ serve(async (req) => {
           await reportToSentry(ackErr, {
             fn: "docusign-webhook",
             op: "ack-backstop-verify",
+            extra: { envelope_id: envelopeId, claim_id: claim.id },
+          });
+        }
+
+        // ========== [#1314] SIGNED-PRICE RECONCILIATION ==========
+        // THE EXPOSURE THIS CLOSES: create-docusign-envelope sends the BoldSign
+        // document with no `formFields` and no prefill, so `contract_price` on
+        // Document 1 arrives empty and required and the contractor HAND-TYPES it
+        // inside the signing session. Nothing compared what he typed against
+        // `quotes.total_price` -- the number the homeowner actually accepted and
+        // the number the platform fee is charged on. A contractor could accept a
+        // $13,560 bid and sign a contract reading $15,000; the platform would
+        // record 13,560, invoice a fee on 13,560, and the binding instrument
+        // would say something else.
+        //
+        // This runs BEFORE the D-127 charge block on purpose: a mismatch must
+        // block the invoice, not be discovered after money moves.
+        //
+        // FAILURE DIRECTIONS, chosen deliberately and not symmetric:
+        //   - Mismatch  -> HALT. Money is provably wrong; a human decides.
+        //   - Field absent / unparseable -> FLAG, DO NOT HALT. ack-verify.ts's own
+        //     header records that the exact shape of a per-signer formFields entry
+        //     from GET /v1/document/properties is UNVERIFIED against a real
+        //     sandbox document. Halting on "absent" would therefore most likely
+        //     fire on a shape mismatch rather than a real defect, and would strand
+        //     every legitimately signed contract. Once the shape is confirmed
+        //     against a live document, absent SHOULD be promoted to a halt --
+        //     an unreconcilable price is the same exposure as a wrong one.
+        try {
+          if (signerStatus) {
+            const { data: envQuote } = await supabase
+              .from("quotes")
+              .select("id, total_price")
+              .eq("claim_id", claim.id)
+              .eq("docusign_envelope_id", envelopeId)
+              .maybeSingle();
+            let acceptedQuote = envQuote ?? null;
+            if (!acceptedQuote) {
+              const { data: selQuote } = await supabase
+                .from("quotes")
+                .select("id, total_price")
+                .eq("claim_id", claim.id)
+                .eq("status", "selected")
+                .maybeSingle();
+              acceptedQuote = selQuote ?? null;
+            }
+            const expected = acceptedQuote?.total_price != null ? Number(acceptedQuote.total_price) : null;
+
+            const rawSigned = extractSignedContractPrice(signerStatus);
+            const verdict = evaluatePrice(rawSigned, expected);
+
+            if (verdict.state === "unverified" && verdict.reason === "no_expected") {
+              console.warn(`[#1314] price reconciliation skipped: no accepted quote found for claim ${claim.id} / envelope ${envelopeId}`);
+            } else if (verdict.state === "unverified") {
+              console.warn(`[#1314] contract_price not reconcilable on envelope ${envelopeId} (reason=${verdict.reason}, raw=${JSON.stringify(verdict.raw)}) -- flagged, not halted`);
+              try {
+                await supabase.from("platform_alerts_log").insert({
+                  alert_type: "signed_price_unverified",
+                  function_name: "docusign-webhook",
+                  message:
+                    `#1314: could not reconcile contract_price from BoldSign for envelope ${envelopeId} ` +
+                    `(claim ${claim.id}, quote ${acceptedQuote?.id}; reason=${verdict.reason}, ` +
+                    `raw=${JSON.stringify(verdict.raw)}). Accepted bid was ${expected}. ` +
+                    `Completion proceeded; the signed price is UNVERIFIED. Check the document by hand.`,
+                });
+              } catch (alertErr) {
+                console.error("platform_alerts_log insert failed:", alertErr);
+              }
+            } else if (verdict.state === "mismatch") {
+              const { signed } = verdict;
+              console.error(`[#1314] PRICE MISMATCH on envelope ${envelopeId}: signed ${signed} vs accepted ${expected} (delta ${verdict.delta})`);
+              try {
+                await supabase.from("platform_alerts_log").insert({
+                  alert_type: "signed_price_mismatch",
+                  function_name: "docusign-webhook",
+                  message:
+                    `#1314: envelope ${envelopeId} (claim ${claim.id}, quote ${acceptedQuote?.id}) was signed at ` +
+                    `${signed} but the homeowner accepted ${expected}. Completion HALTED before charging: ` +
+                    `contract_signed not set, no platform fee charged, no invoice. Void/resend the envelope ` +
+                    `or record a disposition.`,
+                });
+              } catch (alertErr) {
+                console.error("platform_alerts_log insert failed:", alertErr);
+              }
+              await reportToSentry(
+                new Error(`#1314 signed-price mismatch: envelope ${envelopeId} signed ${signed} vs accepted ${expected}`),
+                { fn: "docusign-webhook", op: "price-reconciliation", extra: { envelope_id: envelopeId, claim_id: claim.id, signed, expected } }
+              );
+              try {
+                const { data: existingMismatch } = await supabase
+                  .from("notifications")
+                  .select("id")
+                  .eq("notification_type", "price_mismatch_pending")
+                  .like("message_preview", `envelope=${envelopeId};%`)
+                  .limit(1)
+                  .maybeSingle();
+                if (!existingMismatch) {
+                  await supabase.from("notifications").insert({
+                    claim_id: claim.id,
+                    channel: "system",
+                    notification_type: "price_mismatch_pending",
+                    recipient: "ops",
+                    message_preview: `envelope=${envelopeId};signed=${signed};accepted=${expected}`,
+                  });
+                }
+              } catch (recErr) {
+                console.error("notifications insert failed:", recErr);
+              }
+              // 200 so BoldSign does not retry forever. Remediation is manual by
+              // design -- same convention as the D-269 acknowledgment defect.
+              return new Response(
+                JSON.stringify({ received: true, defect: "contract_price_mismatch", claim_id: claim.id, signed, expected }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            } else {
+              console.log(`[#1314] signed price reconciled for envelope ${envelopeId}: ${verdict.signed} == accepted ${expected}`);
+            }
+          }
+        } catch (priceErr) {
+          // Reconciliation is a backstop, not the money path. An error here is
+          // loud but must not strand a signed contract.
+          console.error("[#1314] price reconciliation errored (proceeding, alerted):", priceErr);
+          await reportToSentry(priceErr, {
+            fn: "docusign-webhook",
+            op: "price-reconciliation",
             extra: { envelope_id: envelopeId, claim_id: claim.id },
           });
         }
