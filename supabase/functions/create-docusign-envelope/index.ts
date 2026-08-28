@@ -215,6 +215,105 @@ function base64EncodeBinary(bytes) {
   }
   return btoa(binary);
 }
+// ========== [C4 2026-08-27] SLOPE BANDS ==========
+// Dustin's ruling, 2026-08-27: "Per contractor band, but fall back to
+// exactimate if none is given."
+//
+// WHY PER-CONTRACTOR AND NOT A PLATFORM CONSTANT. Three authorities disagree
+// about where "steep" starts, and all three are real:
+//   - Indy Rooftops' own rate card: "STEEP CHARGES OVER 5/12", then a second
+//     band his document describes as "Roofs from 10/12 to 12/12".
+//   - Xactimate: applies its pitch modifier at 7/12 and steeper (confirmed).
+//   - RoofScope's own report: Flat 0:12-1:12, Low 2:12-3:12, Standard 4:12-6:12,
+//     Steep "7:12 or greater" -- i.e. Xactimate-aligned (read off a live
+//     RoofScope report, 2026-08-27).
+// A contractor bidding retail off 5/12 while supplementing insurance off 7/12
+// produces inconsistent numbers on the same roof. That is his commercial
+// choice to make, so the bands are HIS data. We store the raw per-pitch areas
+// and bucket at render time -- never store pre-bucketed totals, or changing a
+// band would silently rewrite history.
+//
+// FALLBACK. Only what could be confirmed from a primary source is encoded: the
+// 7/12 threshold. The commonly-cited upper Xactimate boundaries (7-9, 10-12,
+// over 12) could NOT be confirmed, so they are deliberately NOT invented here.
+// Two bands, not four. Check a live Xactimate price list before adding more.
+const XACTIMATE_FALLBACK_BANDS = [
+  { label: "Standard slope (6/12 and under)", max_over_12: 6 },
+  { label: "Steep slope (7/12 and greater)", min_over_12: 7 },
+];
+
+// Parse "10/12", "10:12" or "10" to its rise over 12. Returns null if the run
+// is not 12 -- we do not rescale, because a 6/6 pitch is not a 12/12 roof and
+// silently converting one to the other would misprice the job.
+function pitchOver12(pitch) {
+  if (pitch == null) return null;
+  const m = String(pitch).trim().match(/^(\d+(?:\.\d+)?)\s*[\/:]\s*(\d+(?:\.\d+)?)$/);
+  if (m) {
+    const rise = Number(m[1]), run = Number(m[2]);
+    if (!Number.isFinite(rise) || !Number.isFinite(run) || run === 0) return null;
+    return run === 12 ? rise : null;
+  }
+  const bare = Number(String(pitch).trim());
+  return Number.isFinite(bare) ? bare : null;
+}
+
+/**
+ * Bucket per-pitch areas into a contractor's priced slope bands.
+ *
+ * Returns { buckets, unbandedSquares, unparsedSquares }.
+ *   - buckets: one entry per band that actually has area, in band order.
+ *   - unbandedSquares: area whose pitch is ABOVE the top priced band. This is
+ *     surfaced, never folded into the last band. The reference RoofScope report
+ *     carries 2.80 SQ at 24:12 against a rate card whose top band stops at
+ *     12/12 -- quietly absorbing that is how a contractor ends up doing 63-degree
+ *     roof for free.
+ *   - unparsedSquares: rows whose pitch string could not be read at all.
+ */
+// Compact a bucket's pitch list for display: a single pitch renders as itself,
+// several render as a range. Long comma lists blew out the Basis column and told
+// the reader nothing the range does not.
+function pitchRangeLabel(pitches) {
+  const nums = pitches.map(pitchOver12).filter((n) => n !== null).sort((a, b) => a - b);
+  if (nums.length === 0) return pitches.join(", ");
+  if (nums.length === 1) return `${nums[0]}/12`;
+  return `${nums[0]}/12-${nums[nums.length - 1]}/12`;
+}
+
+function bucketByBands(areasByPitch, bands) {
+  const list = Array.isArray(areasByPitch) ? areasByPitch : [];
+  const useBands = (Array.isArray(bands) && bands.length > 0) ? bands : XACTIMATE_FALLBACK_BANDS;
+  const buckets = useBands.map((b) => ({ band: b, squares: 0, pitches: [] }));
+  let unbandedSquares = 0;
+  const unbandedPitches = [];
+  let unparsedSquares = 0;
+  for (const row of list) {
+    const sq = Number(row?.squares != null ? row.squares : (row?.area_sf != null ? row.area_sf / 100 : NaN));
+    if (!Number.isFinite(sq) || sq <= 0) continue;
+    const p = pitchOver12(row?.pitch);
+    if (p === null) { unparsedSquares += sq; continue; }
+    let placed = false;
+    for (const bucket of buckets) {
+      const lo = bucket.band.min_over_12 != null ? bucket.band.min_over_12 : -Infinity;
+      const hi = bucket.band.max_over_12 != null ? bucket.band.max_over_12 : Infinity;
+      if (p >= lo && p <= hi) {
+        bucket.squares += sq;
+        bucket.pitches.push(String(row.pitch));
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) { unbandedSquares += sq; unbandedPitches.push(String(row.pitch)); }
+  }
+  const round2 = (n) => Math.round(n * 100) / 100;
+  return {
+    buckets: buckets.filter((b) => b.squares > 0).map((b) => ({ ...b, squares: round2(b.squares) })),
+    unbandedSquares: round2(unbandedSquares),
+    unbandedPitches,
+    unparsedSquares: round2(unparsedSquares),
+    usedFallback: !(Array.isArray(bands) && bands.length > 0),
+  };
+}
+
 // ========== [C2 2026-08-27] CONTRACTOR-VOICE GUARD ==========
 // A prior run wrote assistant-authored prose into quotes.message_to_homeowner
 // in the contractor's voice -- "Thanks for the opportunity, Mr. Paulsen. Your
@@ -237,7 +336,18 @@ function base64EncodeBinary(bytes) {
 //      block rather than printing a heading over nothing.
 function contractorAuthoredMessage(bidData) {
   if (!bidData) return null;
-  const raw = bidData.message_to_homeowner ?? bidData.contractor_message ?? null;
+  // [2026-08-27] CORRECTION, caught while fixing #1314's phantom-column list:
+  // `quotes.message_to_homeowner` and `quotes.contractor_message` DO NOT EXIST.
+  // Verified against the live schema -- quotes' full column list has neither.
+  // Exhibit A has been reading both, so a real contractor message has never
+  // rendered in the "Message from Contractor" block since that block was written.
+  //
+  // The contractor's message to the homeowner is `quotes.notes`, written from
+  // the bid form's `homeownerMessage` input (contractor-bid-form.html:5376).
+  // That is the one contractor-typed field, so it is the only one read here.
+  // The two dead names are kept as a trailing fallback purely in case a future
+  // migration introduces them; they cost nothing and resolve to undefined today.
+  const raw = bidData.notes ?? bidData.message_to_homeowner ?? bidData.contractor_message ?? null;
   const text = typeof raw === "string" ? raw.trim() : "";
   if (!text) return null;
   if (bidData.is_test === true) {
@@ -325,7 +435,11 @@ async function fetchHoverMeasurements(supabase, claimId) {
           dripEdgeLf,
           stepFlashingLf: toNum(hm.step_flashing_lf),
           flashingLf: toNum(hm.flashing_lf),
-          predominantPitch: hm.predominant_pitch ?? null
+          predominantPitch: hm.predominant_pitch ?? null,
+          // [C4 2026-08-27] Per-pitch breakdown, additive and nullable. Absent on
+          // every claim measured before parse-hover-measurements started emitting
+          // it, and absent for RoofScope reports entirely (image-only PDFs).
+          areasByPitch: Array.isArray(hm.areas_by_pitch) ? hm.areas_by_pitch : null
         };
       }
     }
@@ -377,7 +491,7 @@ async function fetchHoverMeasurements(supabase, claimId) {
 
 // ========== RETAIL SCOPE OF WORK PDF ==========
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder } = params;
   const va = valueAdds || {};
   const pc = projectConfirmation || null;
   // ---- Page geometry ----
@@ -403,7 +517,7 @@ function generateRetailScopeOfWorkPdf(params) {
       .replace(/…/g, "...")
       .replace(/²/g, "2")
       .replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4")
-      .replace(/\u00a0/g, " ");
+      .replace(/\\u00a0/g, " ");
     s = s.replace(/[^\x20-\x7E]/g, "");
     return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   }
@@ -552,7 +666,11 @@ function generateRetailScopeOfWorkPdf(params) {
     m.stepFlashingLf != null || m.flashingLf != null));
   if (hasRoofing && hasRoofMeasurements) {
     ensure(34);
-    addText(LEFT_X, y, 12, "F2", "MEASUREMENT SUMMARY (from Hover)");
+    // [C4 2026-08-27] De-branded. The measurement report OtterQuote actually
+    // buys is RoofScope / RoofScope X (gh-1245 catalog: roof_basic is
+    // RoofScopeX), not Hover, and naming the wrong vendor on a contract exhibit
+    // is a statement about where the numbers came from.
+    addText(LEFT_X, y, 12, "F2", "MEASUREMENT SUMMARY");
     y -= 16;
     const sumRow = (label, value) => {
       if (value == null || value === "") return;
@@ -579,17 +697,22 @@ function generateRetailScopeOfWorkPdf(params) {
     // ---- LINE-ITEM SCOPE table (quantities only; no unit prices) ----
     addText(LEFT_X, y, 12, "F2", "LINE-ITEM SCOPE");
     y -= 8;
-    addText(LEFT_X, y, 8, "F1", "Quantities derived from Hover aerial measurements. Field-verified items confirmed on site. No unit pricing shown.");
+    addText(LEFT_X, y, 8, "F1", "Quantities derived from the aerial measurement report on file. Field-verified items confirmed on site. No unit pricing shown.");
     y -= 14;
     const colNum = 50, colItem = 66, colQty = 246, colUnit = 286, colBasis = 330, colNotes = 448;
-    const itemMaxChars = 44, notesMaxChars = 28;
+    // [C4 2026-08-27] basisMaxChars added. Basis was the one cell rendered with
+    // a bare addText and no wrap, which was invisible while every basis string
+    // was short ("Roof area +10%") and became a collision the moment the slope
+    // breakout started emitting "16.14 SQ +10% (1/12-5/12)". 8pt Helvetica at
+    // ~0.5em/char over the 118pt between colBasis and colNotes.
+    const itemMaxChars = 44, notesMaxChars = 28, basisMaxChars = 28;
     const drawTableHeader = () => {
       ensure(18);
       addText(colNum, y, 8, "F2", "#");
       addText(colItem, y, 8, "F2", "Work Item");
       addText(colQty, y, 8, "F2", "Qty");
       addText(colUnit, y, 8, "F2", "Unit");
-      addText(colBasis, y, 8, "F2", "Hover Basis");
+      addText(colBasis, y, 8, "F2", "Basis");
       addText(colNotes, y, 8, "F2", "Notes");
       y -= 3;
       hLine(y);
@@ -599,29 +722,82 @@ function generateRetailScopeOfWorkPdf(params) {
     const areaWaste = (sq != null) ? Math.ceil(sq * 1.1) : null; // area items + 10% waste (SQ)
     const iceWater = (vv != null && ev != null) ? (vv + ev) : null;   // valleys + eaves
     const starter = (ev != null && rk != null) ? (ev + rk) : null;    // eaves + rakes
-    const rows = [
-      { num: 1, item: "Tear off & dispose existing roofing (all layers)", qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Haul-off included" },
-      { num: 2, item: `Architectural laminate shingles - ${bidBrand || "per bid"}`, qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Per mfr. spec" },
-      { num: 3, item: "Synthetic underlayment", qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Full coverage" },
-      { num: 4, item: "Ice & water shield - valleys + eaves", qty: qtyStr(iceWater), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"} + eaves ${ev != null ? ev : "?"}`, notes: "Code / leak-prone areas" },
-      { num: 5, item: "Starter course", qty: qtyStr(starter), unit: "LF", basis: `Eaves ${ev != null ? ev : "?"} + rakes ${rk != null ? rk : "?"}`, notes: "Eaves & rakes" },
-      { num: 6, item: "Hip & ridge cap shingles", qty: qtyStr(rh), unit: "LF", basis: `Ridges/Hips ${rh != null ? rh : "?"}`, notes: "Matching profile" },
-      { num: 7, item: "Drip edge", qty: qtyStr(drip), unit: "LF", basis: `Perimeter ${drip != null ? drip : "?"}`, notes: "Eaves & rakes" },
-      { num: 8, item: "Closed-cut valley", qty: qtyStr(vv), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"}`, notes: "Per mfr." },
-      { num: 9, item: "Step flashing (roof-to-wall)", qty: qtyStr(st), unit: "LF", basis: `Step flashing ${st != null ? st : "?"}`, notes: "Replace" },
-      { num: 10, item: "Headwall / apron flashing", qty: qtyStr(fl), unit: "LF", basis: `Flashing ${fl != null ? fl : "?"}`, notes: "Replace" },
-      { num: 11, item: "Pipe boots / penetration flashings", qty: "field", unit: "EA", basis: "Field-verified", notes: "Count confirmed on site" },
-      { num: 12, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
+    // [C4 2026-08-27] Rows 1-3 break out by slope band when the measurement
+    // report carried a per-pitch table; otherwise they stay as the single lump
+    // "Roof area +10%" row they have always been.
+    //
+    // The fallback is deliberate and is the whole point of C4 step 4: with no
+    // per-pitch table, apportioning the roof by the PREDOMINANT pitch would be
+    // fabricating a slope split on a priced line item, which is worse than one
+    // honest lump row. We degrade and say why rather than invent.
+    const bandSplit = (m.areasByPitch && m.areasByPitch.length > 0)
+      ? bucketByBands(m.areasByPitch, pitchBands)
+      : null;
+    const useBandRows = !!(bandSplit && (bandSplit.buckets.length > 1 || bandSplit.unbandedSquares > 0));
+    const areaRows = [
+      { label: "Tear off & dispose existing roofing (all layers)", notes: "Haul-off included" },
+      { label: `Architectural laminate shingles - ${bidBrand || "per bid"}`, notes: "Per mfr. spec" },
+      { label: "Synthetic underlayment", notes: "Full coverage" },
+    ];
+    const rows = [];
+    let rowNum = 0;
+    if (useBandRows) {
+      const w = (sq) => Math.ceil(sq * 1.1);
+      for (const ar of areaRows) {
+        for (const b of bandSplit.buckets) {
+          rows.push({
+            num: ++rowNum,
+            item: `${ar.label} - ${b.band.label}`,
+            qty: String(w(b.squares)),
+            unit: "SQ",
+            basis: `${b.squares} SQ +10% (${pitchRangeLabel(b.pitches)})`,
+            notes: ar.notes,
+          });
+        }
+        if (bandSplit.unbandedSquares > 0) {
+          rows.push({
+            num: ++rowNum,
+            item: `${ar.label} - above priced slope bands`,
+            qty: String(w(bandSplit.unbandedSquares)),
+            unit: "SQ",
+            basis: `${bandSplit.unbandedSquares} SQ +10% (${pitchRangeLabel(bandSplit.unbandedPitches)})`,
+            notes: "Quote required - see Contingencies",
+          });
+        }
+      }
+    } else {
+      for (const ar of areaRows) {
+        rows.push({ num: ++rowNum, item: ar.label, qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: ar.notes });
+      }
+    }
+    rows.push(
+      { num: ++rowNum, item: "Ice & water shield - valleys + eaves", qty: qtyStr(iceWater), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"} + eaves ${ev != null ? ev : "?"}`, notes: "Code / leak-prone areas" },
+      { num: ++rowNum, item: "Starter course", qty: qtyStr(starter), unit: "LF", basis: `Eaves ${ev != null ? ev : "?"} + rakes ${rk != null ? rk : "?"}`, notes: "Eaves & rakes" },
+      { num: ++rowNum, item: "Hip & ridge cap shingles", qty: qtyStr(rh), unit: "LF", basis: `Ridges/Hips ${rh != null ? rh : "?"}`, notes: "Matching profile" },
+      { num: ++rowNum, item: "Drip edge", qty: qtyStr(drip), unit: "LF", basis: `Perimeter ${drip != null ? drip : "?"}`, notes: "Eaves & rakes" },
+      { num: ++rowNum, item: "Closed-cut valley", qty: qtyStr(vv), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"}`, notes: "Per mfr." },
+      { num: ++rowNum, item: "Step flashing (roof-to-wall)", qty: qtyStr(st), unit: "LF", basis: `Step flashing ${st != null ? st : "?"}`, notes: "Replace" },
+      { num: ++rowNum, item: "Headwall / apron flashing", qty: qtyStr(fl), unit: "LF", basis: `Flashing ${fl != null ? fl : "?"}`, notes: "Replace" },
+      { num: ++rowNum, item: "Pipe boots / penetration flashings", qty: "field", unit: "EA", basis: "Field-verified", notes: "Count confirmed on site" },
+      { num: ++rowNum, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
       // [C3 2026-08-27] Rates removed -- decking and full re-deck are stated once,
       // in CONTINGENCIES AND CONDITIONAL PRICING, each beside its trigger.
-      { num: 13, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: "See Contingencies" },
-    ];
+      { num: ++rowNum, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: "See Contingencies" },
+    );
+    if (!useBandRows) {
+      // Say WHY the scope is one lump row instead of a slope breakout, rather
+      // than leaving the reader to assume the roof is a single pitch.
+      ensure(12);
+      addText(LEFT_X, y, 8, "F1", m.areasByPitch ? "Slope breakout unavailable: the measurement report's pitch table did not resolve into priced bands." : "Slope breakout unavailable: the measurement report on file carries no per-pitch area table.");
+      y -= 12;
+    }
     drawTableHeader();
     const lineH = 10;
     for (const row of rows) {
       const itemLines = wrapToLines(row.item, itemMaxChars);
       const noteLines = wrapToLines(row.notes, notesMaxChars);
-      const nLines = Math.max(1, itemLines.length, noteLines.length);
+      const basisLines = wrapToLines(row.basis, basisMaxChars);
+      const nLines = Math.max(1, itemLines.length, noteLines.length, basisLines.length);
       const rowH = nLines * lineH + 2;
       const pagesBefore = pages.length;
       ensure(rowH);
@@ -631,7 +807,7 @@ function generateRetailScopeOfWorkPdf(params) {
       itemLines.forEach((ln, k) => addText(colItem, topY - k * lineH, 8, "F1", ln));
       addText(colQty, topY, 8, "F1", row.qty);
       addText(colUnit, topY, 8, "F1", row.unit);
-      addText(colBasis, topY, 8, "F1", row.basis);
+      basisLines.forEach((ln, k) => addText(colBasis, topY - k * lineH, 8, "F1", ln));
       noteLines.forEach((ln, k) => addText(colNotes, topY - k * lineH, 8, "F1", ln));
       y = topY - rowH;
     }
@@ -882,8 +1058,31 @@ function generateRetailScopeOfWorkPdf(params) {
     if (va.skylights && va.skylights !== "na") {
       add("Skylights", "Skylight condition assessed on site", va.skylights === "reflash" ? "Reflash - per contractor bid" : "Replace - per contractor bid");
     }
+    // [C4 2026-08-27] Slope and access adders. These come from the contractor's
+    // rate card, not from the bid form, so they render only when he has one on
+    // file -- and the "above the top priced band" row renders whenever measured
+    // area sits above every band he prices, WITH or WITHOUT a rate, because the
+    // homeowner needs to know that part of the roof is unpriced.
+    if (hasRoofing && Array.isArray(pitchBands) && pitchBands.length > 0 && m.areasByPitch) {
+      const split = bucketByBands(m.areasByPitch, pitchBands);
+      for (const b of split.buckets) {
+        if (b.band.rate_per_square != null) {
+          add(`Steep-slope charge - ${b.band.label}`, `${b.squares} SQ measured in this slope band`, `${fmt$(b.band.rate_per_square)} per square`);
+        }
+      }
+      if (split.unbandedSquares > 0) {
+        add("Slope above priced bands", `${split.unbandedSquares} SQ measured at ${split.unbandedPitches.join(", ")}, above every band on the contractor's rate card`, "Quote required before work begins");
+      }
+    }
+    if (hasRoofing && twoStoryAdder?.rate_per_square != null && String(va.num_stories || "").trim() && String(va.num_stories).trim() !== "1") {
+      add("Two-story access", `Structure is ${va.num_stories} stories`, `${fmt$(twoStoryAdder.rate_per_square)} per square`);
+    }
     if (rows.length > 0) {
-      ensure(40);
+      // [C4e 2026-08-27] 40 was enough for the heading and caption but not for
+      // the column header and a first data row, so a section starting near the
+      // foot of a page left an orphaned heading + empty header row behind and
+      // reprinted both overleaf. Budget the whole opening block.
+      ensure(78);
       hLine(y + 4);
       y -= 12;
       addText(LEFT_X, y, 12, "F2", "CONTINGENCIES AND CONDITIONAL PRICING");
@@ -1170,12 +1369,59 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
   const { data: contractorData } = await supabase.from("contractors").select("*").eq("id", contractorId).single();
   const { data: bidData } = await supabase.from("quotes").select("*").eq("claim_id", claimId).eq("contractor_id", contractorId).single();
   const homeownerProfile = await getHomeownerName(supabase, claimId);
+  // ========== [#1314 / Part B, 2026-08-27] PHANTOM COLUMN READS FIXED ==========
+  // Nine reads in this function targeted columns that DO NOT EXIST. Each one
+  // silently yielded undefined -> "". Verified against the live schema on
+  // yeszghaspzwwstvsrioa (information_schema.columns), not inferred:
+  //
+  //   bidData.amount                -> quotes.total_price
+  //   bidData.brand                 -> inside quotes.scope_summary (JSON string)
+  //   bidData.estimated_start_date  -> inside quotes.scope_summary (JSON string)
+  //   bidData.warranty_years        -> quotes.workmanship_warranty_years
+  //   claimData.material_product    -> no such column; the material is the bid's
+  //                                    brand (scope_summary) or quotes.material_selection
+  //   claimData.address_line1/_city/_state/_zip -> claims has only property_address;
+  //                                    city/state/zip live on profiles
+  //   claimData.phone               -> no such column; profiles.phone
+  //
+  // These were harmless only while the output was discarded (the D-274 tab
+  // builder was retired). #1314's point stands: the moment anyone restores
+  // prefill they wire seven blank fields and blame BoldSign. Fixed now so that
+  // does not happen.
+  //
+  // The homeowner's phone and city/state/zip come from `profiles`, which is
+  // where the homeowner's own address actually lives.
+  let homeownerProfileRow = null;
+  if (claimData?.user_id) {
+    const { data: hp } = await supabase
+      .from("profiles")
+      .select("phone, address_street, address_city, address_state, address_zip")
+      .eq("id", claimData.user_id)
+      .maybeSingle();
+    homeownerProfileRow = hp ?? null;
+  }
+  // quotes.scope_summary is a JSON *string* carrying the retail bid facts that
+  // have no columns of their own. Parsed defensively -- a malformed value must
+  // not take down envelope creation.
+  let scopeSummaryObj = null;
+  if (bidData?.scope_summary) {
+    try {
+      scopeSummaryObj = typeof bidData.scope_summary === "string"
+        ? JSON.parse(bidData.scope_summary)
+        : bidData.scope_summary;
+    } catch (_e) {
+      console.warn("autoPopulateFields: quotes.scope_summary is not valid JSON (non-fatal)");
+    }
+  }
   const fields = {};
   if (claimData) {
     fields.customer_name = homeownerProfile.fullName;
-    fields.customer_address = claimData.property_address || claimData.address_line1 || "";
-    fields.customer_city_zip = `${claimData.address_city || ""}, ${claimData.address_state || ""} ${claimData.address_zip || ""}`.trim();
-    fields.customer_phone = claimData.phone || "";
+    fields.customer_address = claimData.property_address || "";
+    fields.customer_city_zip = [
+      homeownerProfileRow?.address_city,
+      [homeownerProfileRow?.address_state, homeownerProfileRow?.address_zip].filter(Boolean).join(" "),
+    ].filter(Boolean).join(", ");
+    fields.customer_phone = homeownerProfileRow?.phone || "";
     fields.customer_email = signerEmail || "";
     // #514: claims has no `insurance_carrier` column — read carrier_name
     // (written by parse-loss-sheet), with the legacy name as a fallback.
@@ -1184,12 +1430,16 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
     fields.deductible = claimData.deductible_amount ? `$${Number(claimData.deductible_amount).toLocaleString()}` : "";
     fields.contract_date = new Date().toLocaleDateString("en-US");
     fields.job_description = claimData.damage_type ? `Roof ${claimData.damage_type}` : "Roof Replacement";
-    fields.material_type = claimData.material_product || bidData?.brand || "";
+    // No claims.material_product column exists. The material on a bid is the
+    // brand the contractor quoted.
+    fields.material_type = scopeSummaryObj?.brand || bidData?.material_selection || claimData.material_category || "";
   }
   if (bidData) {
-    fields.contract_price = bidData.amount ? `$${Number(bidData.amount).toLocaleString()}` : "";
-    fields.warranty_years = bidData.warranty_years ? `${bidData.warranty_years} years` : "";
-    fields.estimated_start = bidData.estimated_start_date || "";
+    // quotes.total_price, not quotes.amount -- total_price is the number the
+    // homeowner accepted and the number the platform fee is charged against.
+    fields.contract_price = bidData.total_price != null ? `$${Number(bidData.total_price).toLocaleString()}` : "";
+    fields.warranty_years = bidData.workmanship_warranty_years ? `${bidData.workmanship_warranty_years} years` : "";
+    fields.estimated_start = scopeSummaryObj?.estimated_start_date || "";
     fields.decking_per_sheet = bidData.decking_price_per_sheet ? `$${bidData.decking_price_per_sheet}` : "";
     fields.full_redeck_price = bidData.full_redeck_price ? `$${Number(bidData.full_redeck_price).toLocaleString()}` : "";
   }
@@ -1414,7 +1664,16 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         projectConfirmation: claimData?.project_confirmation ?? null,
         measurements,
         contractDate,
-        fundingType
+        fundingType,
+        // [C4 2026-08-27] The contractor's own priced slope bands. Absent today
+        // for every contractor -- `contractors.pitch_bands` is a Tier 3A
+        // migration drafted but NOT applied (see
+        // supabase/migrations_drafts/c4_contractor_pitch_bands*). Until it
+        // lands this resolves to undefined and bucketByBands falls back to the
+        // Xactimate-aligned 7/12 threshold, which is the documented behaviour,
+        // not a silent default.
+        pitchBands: contractorData?.pitch_bands?.bands ?? null,
+        twoStoryAdder: contractorData?.pitch_bands?.two_story_adder ?? null
       });
       console.log(`Retail Scope of Work PDF generated for claim ${claim_id}`);
     } catch (sowErr) {
