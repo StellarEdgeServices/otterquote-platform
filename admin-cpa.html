@@ -356,7 +356,15 @@ const ADMIN_EMAIL      = 'dustinstohler1@gmail.com';
 // caught in the same session (2026-08-25) by the headless render sweep, which
 // is the only reason it did not ship. Assign, do not re-declare; the
 // reassignment is deliberate and preserves this page's explicit storageKey.
-sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
+//
+// gh-1261: this ran unguarded at top-level scope -- a slow or blocked CDN
+// left `supabase` undefined, and referencing it threw a ReferenceError that
+// killed this entire script block (and every function defined below it) at
+// parse/first-run time. Guarded to match the house pattern already used in
+// admin-incomplete-profiles.html's init().
+if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
+}
 
 // =============================================================================
 // AUTH
