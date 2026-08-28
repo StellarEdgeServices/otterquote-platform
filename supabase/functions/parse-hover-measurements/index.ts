@@ -97,7 +97,7 @@ function parseRoofSummary(fullText: string | null | undefined): RoofSummary {
   // single space. unpdf joins page text with spaces/newlines; after this the
   // ROOF SUMMARY table cells read left-to-right as
   // "<label> <area> <count> <length>" (e.g. `Ridges / Hips - 7 91' 2"`).
-  const text = fullText.replace(/ /g, " ").replace(/[ \t\r\n\f\v]+/g, " ");
+  const text = fullText.replace(/ /g, " ").replace(/[ \t\r\n\f\v]+/g, " ");
 
   const round2 = (n: number) => Math.round(n * 100) / 100;
 
