@@ -1566,6 +1566,22 @@
           </div>
         </div>
 
+        <!-- Rotten Wood / Fascia / Soffit Contingency — cross-trade (roofing, gutters, siding).
+             Deliberately its own section, not nested inside deckingSection or gutterTradeSection
+             and not referenced by any trade-visibility toggle, so it stays shown for every trade
+             combination (gh-1318 -- previously gutter-only, so a roofing-only bid could never
+             state a rate here even though concealed rot is found on every trade). -->
+        <div class="form-section" id="rottenWoodSection" style="grid-column: 1 / -1;">
+          <div style="background:#FEF3C7;border:1px solid #E07B00;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
+            <p style="font-weight:700;color:#92400E;margin-bottom:var(--sp-1);">⚠️ Note — Rotten Wood</p>
+            <p style="font-size:0.9rem;color:#78350F;">Rotten wood found behind gutters, under siding, or in roof decking and fascia will need to be replaced at an additional charge.</p>
+          </div>
+          <div class="form-group" style="margin-bottom:var(--sp-8);">
+            <label class="form-label" for="rottenWoodPricing">Rotten Wood Replacement Pricing</label>
+            <textarea id="rottenWoodPricing" name="rottenWoodPricing" placeholder="e.g., Roof decking: $75/sheet. Fascia board: $8–12/LF. Soffit: $10–15/LF. Let the homeowner know what to expect if rotten wood is discovered during tear-off." style="min-height:100px;width:100%;padding:var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.875rem;resize:vertical;"></textarea>
+          </div>
+        </div>
+
         <!-- RCV Supplement Acknowledgment -->
         <div class="form-section" id="supplementSection" style="grid-column: 1 / -1;">
           <div style="background: #DBEAFE; border: 1px solid #93C5FD; border-radius: var(--radius-md); padding: var(--sp-4);">
@@ -2074,16 +2090,6 @@
             <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-4);">Add each gutter guard brand or type you can offer with its installed price. Leave empty if you don't offer gutter guards.</p>
             <div id="gutterGuardEntries" style="display:flex;flex-direction:column;gap:var(--sp-3);margin-bottom:var(--sp-4);"></div>
             <button type="button" class="btn-sm primary" onclick="addGutterGuardEntry()">+ Add Brand / Type</button>
-          </div>
-
-          <!-- Rotten Wood Notice -->
-          <div style="background:#FEF3C7;border:1px solid #E07B00;border-radius:var(--radius-md);padding:var(--sp-4);margin-bottom:var(--sp-4);">
-            <p style="font-weight:700;color:#92400E;margin-bottom:var(--sp-1);">⚠️ Note — Rotten Wood</p>
-            <p style="font-size:0.9rem;color:#78350F;">Rotten wood behind gutters will need to be replaced at an additional charge.</p>
-          </div>
-          <div class="form-group" style="margin-bottom:var(--sp-8);">
-            <label class="form-label" for="rottenWoodPricing">Rotten Wood Replacement Pricing</label>
-            <textarea id="rottenWoodPricing" name="rottenWoodPricing" placeholder="e.g., Fascia board: $8–12/LF. Soffit: $10–15/LF. Decking behind gutter: $75/sheet. Let the homeowner know what to expect if rotten wood is discovered during tear-off." style="min-height:100px;width:100%;padding:var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.875rem;resize:vertical;"></textarea>
           </div>
 
           <!-- Additional Notes -->
@@ -3854,11 +3860,13 @@
       // Other offers
       if (va.other_offers) setVal('valueAddsOtherOffers', va.other_offers);
 
+      // Rotten wood / fascia / soffit pricing — cross-trade, restored regardless of trade (gh-1318)
+      if (va.rotten_wood_pricing) setVal('rottenWoodPricing', va.rotten_wood_pricing);
+
       // Gutter trade fields (restored when editing an existing gutter bid)
       if (va.gutters?.linearFootage != null) setVal('gutterLinearFootage', va.gutters.linearFootage);
       if (va.gutter_5inch_price != null) setVal('gutter5InchPrice', va.gutter_5inch_price);
       if (va.gutter_6inch_price != null) setVal('gutter6InchPrice', va.gutter_6inch_price);
-      if (va.rotten_wood_pricing) setVal('rottenWoodPricing', va.rotten_wood_pricing);
       if (va.gutter_additional_notes) setVal('gutterAdditionalNotes', va.gutter_additional_notes);
       if (va.gutter_warranty) setVal('gutterWarrantyInfo', va.gutter_warranty);
       if (Array.isArray(va.gutter_guards_retail) && va.gutter_guards_retail.length > 0) {
@@ -5306,6 +5314,11 @@
 
             // Number of stories (roofing only — captured at bid form)
             num_stories: formData.get('numStories') || null,
+
+            // Rotten wood / fascia / soffit pricing — cross-trade (roofing, gutters, siding).
+            // Captured unconditionally: the field lives in its own always-visible section,
+            // not gated behind any single trade (gh-1318).
+            rotten_wood_pricing: document.getElementById('rottenWoodPricing')?.value?.trim() || null,
           };
 
           // Append gutter trade fields if this is a gutter bid
@@ -5315,7 +5328,6 @@
             valueAdds.gutter_5inch_price = parseFloat(document.getElementById('gutter5InchPrice')?.value) || null;
             valueAdds.gutter_6inch_price = parseFloat(document.getElementById('gutter6InchPrice')?.value) || null;
             valueAdds.gutter_guards_retail = collectGutterGuards();
-            valueAdds.rotten_wood_pricing = document.getElementById('rottenWoodPricing')?.value?.trim() || null;
             valueAdds.gutter_additional_notes = document.getElementById('gutterAdditionalNotes')?.value?.trim() || null;
             valueAdds.gutter_warranty = document.getElementById('gutterWarrantyInfo')?.value?.trim() || null;
           }
