@@ -25,8 +25,11 @@ reading every page's actual markup rather than assumed.
     magic-link form with no content a signed-in user would want to revisit,
     unlike the marketing/signup pages the escape exists for) and NOT
     partner-dashboard.html (it is the redirect destination).
-  - Get-the-App promo block + post-signup dashboard-access block: the 5
-    vertical signup pages ONLY.
+  - post-signup dashboard-access block: the 5 vertical signup pages ONLY.
+    (The Get-the-App promo block this check used to also require was removed
+    from all 5 vertical pages -- gh-1261 -- so that check was deleted rather
+    than widened to a five-page exemption; see check_get_the_app_promo's old
+    entry in git history if it needs reviving.)
 
 gh-634's 2026-08-11 adversarial review flagged partner-login.html's missing
 ?stay=1 escape as an open gap needing its own decision, tracked separately
@@ -94,10 +97,6 @@ def check_signed_in_redirect(html: str) -> bool:
     return STAY_ESCAPE_RE.search(html) is not None
 
 
-def check_get_the_app_promo(html: str) -> bool:
-    return "/partner-app.html" in html and "Get the App" in html
-
-
 def check_dashboard_access_block(html: str) -> bool:
     return "/partner-dashboard.html" in html and GO_TO_DASHBOARD_RE.search(html) is not None
 
@@ -120,25 +119,6 @@ CHECKS = [
         "description": "signed-in-partner redirect snippet (?stay=1 escape)",
         "pages": VERTICAL_PAGES + ["partner-app"],
         "test": check_signed_in_redirect,
-    },
-    {
-        "key": "get_the_app_promo",
-        # partner-insurance is exempt as of 2026-08-25, Dustin-directed:
-        # "Remove the 'Get the Otter Quotes Partner app'. That should be once
-        # they are in." The promo was competing with the signup form on a page
-        # whose only job is to convert a cold insurance agent, and the app is
-        # useless to someone who has no account yet.
-        #
-        # This is a ONE-PAGE exemption, not a policy change, because that is
-        # the only page the instruction covered. NOTE FOR WHOEVER READS THIS
-        # NEXT: the same argument applies verbatim to the other four vertical
-        # pages, which still carry the promo above the fold for logged-out
-        # visitors. If that is resolved, delete this exemption rather than
-        # widening it — a parity check with five exemptions is not a parity
-        # check.
-        "description": "Get-the-App promo block",
-        "pages": [p for p in VERTICAL_PAGES if p != "partner-insurance"],
-        "test": check_get_the_app_promo,
     },
     {
         "key": "dashboard_access_block",
