@@ -1,0 +1,66 @@
+name: 5-Page Revenue-Path Smoke Check
+
+# gh-1261 / Dustin's CEO ruling 2026-08-26 ("strip"): the Playwright E2E
+# suite (e2e-tests.yml, job "Run E2E Tests") has failed on every PR for 64
+# days and stopped being a usable gate. This is its replacement: five pages
+# picked for revenue-path coverage, each asserted for HTTP 200 + its own
+# visible <h1> + zero uncaught console errors. It serves the site locally
+# with a static file server rather than depending on staging being up, so it
+# has no seeded-fixture contention and no external dependency to go stale.
+# See hazard-register.md for the full history of the check it replaces.
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+  pull_request:
+    branches:
+      - staging
+      - main
+
+jobs:
+  smoke:
+    name: 5-Page Revenue-Path Smoke Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: 'tests/e2e/package.json'
+
+      - name: Install E2E test dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
+
+      - name: Install Playwright browser (chromium)
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run 5-page smoke check
+        working-directory: tests/e2e
+        run: npx playwright test --config=smoke/playwright.smoke.config.ts
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 14
