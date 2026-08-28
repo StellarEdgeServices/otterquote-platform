@@ -200,6 +200,8 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
   gtag('config', 'G-D1Y1TLGEFY');
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
 <script type="application/ld+json">{safe_jsonld(schema_org)}</script>
 <script type="application/ld+json">{safe_jsonld(breadcrumb)}</script>
 
@@ -272,12 +274,7 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
 </head>
 <body>
 
-<script>
-(function() {{
-  var navHtml = '<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-logo-inline.svg" alt="Otter Quotes" height="32"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/get-started.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
-  document.write(navHtml);
-}})();
-</script>
+<header id="site-header"></header>
 
 <main>
   <div class="profile-hero">
@@ -315,6 +312,10 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
   <p>&copy; {datetime.date.today().year} Stellar Edge Services, LLC &mdash; Otter Quotes</p>
   <p><a href="/terms.html" style="color:var(--amber)">Terms</a> &bull; <a href="/privacy.html" style="color:var(--amber)">Privacy</a></p>
 </footer>
+
+<script src="/js/config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/nav.js"></script>
 
 </body>
 </html>
@@ -388,6 +389,7 @@ def generate_directory_index(contractors_with_slugs: list[tuple], dry_run: bool)
 <link rel="canonical" href="{SITE_BASE}/contractors/">
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments)}}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/design-system.css">
@@ -405,9 +407,7 @@ def generate_directory_index(contractors_with_slugs: list[tuple], dry_run: bool)
 </style>
 </head>
 <body>
-<script>
-(function(){{var navHtml='<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-logo-inline.svg" alt="Otter Quotes" height="32"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/get-started.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';document.write(navHtml);}})();
-</script>
+<header id="site-header"></header>
 <main>
 <div class="dir-hero">
   <h1>Contractor Directory</h1>
@@ -421,6 +421,9 @@ def generate_directory_index(contractors_with_slugs: list[tuple], dry_run: bool)
 <footer style="text-align:center;padding:var(--sp-8);color:var(--gray);font-size:0.85rem;border-top:1px solid rgba(255,255,255,0.06);">
 <p>&copy; {datetime.date.today().year} Stellar Edge Services, LLC &mdash; Otter Quotes</p>
 </footer>
+<script src="/js/config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/nav.js"></script>
 </body>
 </html>"""
 
