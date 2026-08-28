@@ -1,5 +1,5 @@
--- Rollback: v113_derived_role_view_rollback.sql
--- Reverts: v113_derived_role_view.sql
+-- Rollback: 20260819224215_v113_derived_role_view_rollback.sql
+-- Reverts: 20260819224215_v113_derived_role_view.sql
 -- Author: Claude Code (automated, run-work rw-909-f22-b4vw)
 -- Date: 2026-08-19
 -- WARNING: This view is read-only and additive -- no data was written or

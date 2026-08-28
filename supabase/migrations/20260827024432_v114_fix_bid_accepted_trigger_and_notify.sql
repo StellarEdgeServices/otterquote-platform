@@ -1,9 +1,18 @@
--- Migration: v114_fix_bid_accepted_trigger_and_notify
+-- Migration: 20260827024432_v114_fix_bid_accepted_trigger_and_notify
 -- Author: Claude Code (automated, migration-author-code v1.1)
 -- Date: 2026-08-26
 -- D-numbers: D-182 (deploy tier 3), D-221 (path A deploy), D-261 (ALTER-class change)
--- Rollback: v114_fix_bid_accepted_trigger_and_notify_rollback.sql
--- Pre-flight: v114_fix_bid_accepted_trigger_and_notify_pre-flight.md
+-- Rollback: 20260827024432_v114_fix_bid_accepted_trigger_and_notify_rollback.sql
+-- Pre-flight: 20260827024432_v114_fix_bid_accepted_trigger_and_notify_pre-flight.md
+--
+-- gh-1307 (2026-08-27): filename backfilled with its actual applied
+-- timestamp prefix (20260827024432, per supabase_migrations.schema_migrations)
+-- -- the original filename lacked the YYYYMMDDHHMMSS_ prefix Supabase's
+-- migration runner requires, so PR #1297 merging this file did NOT deploy
+-- it (contra the PR body's "merging IS the deploy" claim). It was applied
+-- directly afterward; re-verified 2026-08-27 that pg_get_functiondef matches
+-- this file byte-for-byte. See gh-1307 for the full incident and the CI
+-- check that now prevents this.
 --
 -- Summary (gh-1293): log_bid_accepted() checked NEW.status = 'awarded', a
 -- value quotes_status_check has never permitted and that no code path ever
