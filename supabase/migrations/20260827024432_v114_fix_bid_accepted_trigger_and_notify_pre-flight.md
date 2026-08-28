@@ -1,6 +1,6 @@
-# Pre-Flight: v114_fix_bid_accepted_trigger_and_notify
+# Pre-Flight: 20260827024432_v114_fix_bid_accepted_trigger_and_notify
 
-**Migration**: v114_fix_bid_accepted_trigger_and_notify.sql
+**Migration**: 20260827024432_v114_fix_bid_accepted_trigger_and_notify.sql
 **Date**: 2026-08-26
 **Author**: Claude Code (migration-author-code v1.1)
 **D-numbers**: D-182 (Tier 3), D-221 (Path A), D-261 (ALTER-class change)
@@ -93,7 +93,7 @@ to this fix).
 
 - **D-182 Tier**: 3 (SQL migration — requires Dustin approval)
 - **D-221 Deploy Path**: GitHub PR → merge → Supabase migration auto-run
-- **Rollback pre-authorized**: Yes — run `v114_..._rollback.sql` if error rate spikes within 5 minutes post-deploy
+- **Rollback pre-authorized**: Yes — run `20260827024432_v114_fix_bid_accepted_trigger_and_notify_rollback.sql` if error rate spikes within 5 minutes post-deploy
 - **Monitoring**: watch for `bid_accepted` activity_log/notifications rows actually appearing on the next real bid acceptance; watch for any error surfaced from the trigger on the `quotes` UPDATE path
 
 ## Related, Not Fixed Here

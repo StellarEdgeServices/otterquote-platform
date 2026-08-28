@@ -1,6 +1,6 @@
-# Pre-Flight: v113_derived_role_view
+# Pre-Flight: 20260819224215_v113_derived_role_view
 
-**Migration**: v113_derived_role_view.sql
+**Migration**: 20260819224215_v113_derived_role_view.sql
 **Date**: 2026-08-19
 **Author**: Claude Code (run-work rw-909-f22-b4vw)
 **D-numbers**: D-182 (Tier 3), D-221 (Path A)
@@ -153,7 +153,7 @@ was written.
 - **Sequencing**: the call-site PR is intentionally blocked from merging
   until this migration is live in prod (the view must exist before
   `getRole()`/`resolveRole()` can query it) — see PR body.
-- **Rollback pre-authorized**: Yes — run `v113_derived_role_view_rollback.sql`
+- **Rollback pre-authorized**: Yes — run `20260819224215_v113_derived_role_view_rollback.sql`
   if anything downstream errors after cutover. Safe to run at any time
   before the call-site PR merges (nothing depends on the view yet); after
   the call-site PR merges, roll back the call-site code FIRST.
