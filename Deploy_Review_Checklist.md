@@ -1,2 +1,147 @@
 # OtterQuote Deploy Review Checklist
 
+Run this checklist before every push to staging or main. **CRITICAL items block always. HIGH items block absent an explicit written waiver from Dustin in the session.**
+
+Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable — explain why).
+
+---
+
+## CRITICAL — Always Blocks
+
+### Pre-Deploy Site Health
+- [ ] **Site is up.** `web_fetch https://otterquote.com` returns HTML with "Stop chasing contractors" in body. If down → halt and diagnose before doing anything.
+  - *Why: April 27, 2026 — Netlify billing pause caused 9.5-hour outage undetected by backend monitoring. Code pushing to a down site wastes the deploy slot and masks the real problem.*
+
+### D-196 Drift Check
+- [ ] **Drift check passed.** After rsync, ran `bash scripts/drift-check.sh "<intended files>"` in `$DEPLOY_DIR` and it exited 0. No unexpected files in `git status --short`.
+  - *Why: Local-repo drift (uncommitted changes not part of this deploy) can accidentally ride along on a push. D-196 makes this visible before it hits production.*
+
+### Tier Classification
+- [ ] **Tier correctly identified.** Determined Tier 1/2/3 per D-182 rules (see claude-memory.md). If any doubt, escalate to Tier 2+.
+
+### Tier 1 Legal / Brand Exclusions
+*(Skip if Tier 2 or 3 — those have their own review gates.)*
+- [ ] **No legally-sensitive copy touched.** Verified the changeset does NOT include:
+  - D-151 TOS provisions
+  - D-170 IC 24-5-11 attestation text
+  - D-147 HICA compliance text
+  - D-123 homeowner disclosure at signing
+  - D-166 background-check framing
+  - D-104 vetting language
+  - D-177 fee basis language
+  - D-175 brand claims or tone-altering copy
+  - D-168 marketing claim thresholds
+  - DocuSign templates or generated PDFs
+- [ ] **No use of prohibited terminology.** Verified no "leads," no "ClaimShield" (as a product name), and no "OtterQuote" (one word) in **user-facing copy** — the display name is "Otter Quotes," two words, per D-175. `OtterQuote` remains valid in internal identifiers, repo names, and code comments.
+
+### Large File Safety
+- [ ] **No banned-file edits via Cowork Edit tool.** If any of the following files were modified, confirmed that Python/bash patch was used — NOT the Cowork Edit tool:
+  - `contractor-profile.html`
+  - `contractor-bid-form.html`
+  - `supabase/functions/create-docusign-envelope/index.ts`
+  - `js/auth.js`
+  - Any file over ~1,500 lines (check: `wc -l <file>`)
+
+### JS Syntax Lint
+- [ ] **`bash scripts/pre-push-check.sh` returns FAIL: 0.** Runs `node --check` against every `js/**/*.js` file. Catches the silent-parse-failure class of bug.
+  - *Why: May 1–6, 2026 — `js/auth.js` had a SyntaxError at line 761 (commit 11b32d1e accidentally deleted an `sb.auth.onAuthStateChange((event, session) => { ... })` wrapper while leaving the body). `window.Auth` never got defined; every authenticated page silently broke. Eight CI runs failed before the cause was found because Chrome doesn't surface SyntaxErrors prominently in MCP tooling. `node --check` would have caught it in 50ms. See ADR-009.*
+
+### SQL Migration Gate
+*(Skip if no schema changes in this deploy.)*
+- [ ] **Companion rollback script committed.** Every SQL migration file (`sql/vN-*.sql`) has a corresponding `sql/vN-rollback-*.sql` committed alongside it.
+- [ ] **Migration classified Tier 3.** Any deploy touching the database is Tier 3 — confirmed 2-hour window or explicit Dustin approval exists.
+- [ ] **Schema snapshot updated if columns added/removed.** If the migration adds or removes columns, regenerate `sql/schema-snapshot.json` and commit it in the same PR. Otherwise `schema-column-lint` CI will false-positive on the new columns.
+
+### Schema Contract
+*(Check if any `.html`, `js/**`, or `supabase/functions/**` files were modified.)*
+- [ ] **`schema-column-lint` CI passes.** Run locally: `python3 scripts/schema-column-lint.py --root . --schema sql/schema-snapshot.json`. Zero FAIL lines. (ADR-010-schema-column-lint)
+- [ ] **New write calls use exact schema column names.** No `coi_document_url` vs `coi_file_url`-style typos. Cross-reference `sql/schema-snapshot.json` if in doubt.
+
+### Service-Role Key Containment
+*(Check if any file under `react-app/` or any client-side `.js`/`.html` was modified.)*
+- [ ] **No client-reachable file reads a service-role-shaped env var.** No file that a `'use client'` component imports — directly or transitively — references `SUPABASE_SERVICE_ROLE_KEY`, `SERVICE_ROLE_KEY`, or any `sb_secret_`-prefixed literal. Next.js inlines whatever the client graph touches at build time, so this leaks a full-privilege key into a public bundle with no runtime error and no CI signal. Check with:
+  `grep -rn "SERVICE_ROLE" react-app/app --include=*.ts --include=*.tsx | grep -v supabase-admin.ts`
+  Measured clean 2026-08-28 (CTO `cto-2026-08-28T19:45:25Z`): the only two hits are `react-app/app/lib/supabase-admin.ts`, which is server-only and carries its own "NEVER import this in a 'use client' component" header, and `react-app/app/lib/supabase.ts`, where the name appears solely inside a warning comment. **Zero real leaks today — this item exists so the first one is caught.** The mechanised version of this check is a lint rule and rides with the CI wiring on #1307.
+
+---
+
+## HIGH — Block Absent Explicit Waiver
+
+### Auth Pattern
+*(Check only if new authenticated pages added or auth code modified.)*
+- [ ] **F-007 pattern applied.** All new/modified authenticated pages use `onAuthStateChange` + `INITIAL_SESSION`/`SIGNED_IN` guard + `_initFired` boolean. No `DOMContentLoaded + sb.auth.getSession()` pattern introduced.
+- [ ] **`js/auth.js` parses cleanly.** `node --check js/auth.js` exits 0. (Covered automatically by the JS Syntax Lint CRITICAL item; restated here because auth.js is high-blast-radius — a parse failure silently breaks every authenticated page in the app.)
+- [ ] **Auth refactor → spec audit.** If auth code changed (js/auth.js, auth-callback.html, netlify/edge-functions/admin-gate.js), confirmed E2E test specs in tests/e2e/ have been audited for stale assumptions about cookie names, session shape, and Auth.ready() contract.
+- [ ] **React AuthProvider resolves independent of event timing.** Any change to `react-app/app/providers/auth-provider.tsx` (or a new React auth context) MUST flip `loading:false` even if `INITIAL_SESSION` never reaches the listener — pair `onAuthStateChange` with a proactive `supabase.auth.getSession()` on mount AND a ≤1.5s fallback timer. Verified by a WARM-reload probe (cold load alone does not catch this).
+  - *Why: 2026-06-01 (bug 86e1mrwrx) — the React provider resolved `loading` only inside the `onAuthStateChange` callback. On a warm reload Supabase emits `INITIAL_SESSION` synchronously from cached storage before React's useEffect attaches the listener, so the event was missed and `/get-started` hung blank for returning homeowners. Cold loads worked, so the original 86e1f6nud probe wrongly called it a false positive. See ADR-011.*
+
+### Async State Guards (classic pages)
+*(Check only if a classic HTML page reads async-loaded state — e.g. `contractorRecord`, `sb` — in an event handler or page-init routine.)*
+- [ ] **Async-loaded state guarded at point of use.** Every handler that dereferences module-level async-loaded state guards `if (!state || !sb) { <friendly message>; return; }` at the top (matching sibling handlers). No raw caught error (`'…' + err.message`) is shown to the user for a predictable not-loaded race. Controls that depend on loaded state ship `disabled` and enable only after the load is confirmed.
+- [ ] **Independent page-init loads isolated.** A page-init routine with multiple independent async loads wraps each in its own `try/catch` (the D-204 pattern) so one failure can't skip the others. No single outer `try/catch` that only `console.error`s guarding multiple user-visible sections.
+- [ ] **Every "Loading…" placeholder resolves.** Any element showing a "Loading…" placeholder has a path that replaces it with content or a visible error/retry state on failure — never a permanent placeholder. Verified by exercising the FAILURE path (throttle network / force an early load to throw), not just the happy path.
+  - *Why: 2026-07-07 — #467 (`initializeStripeSetup` deref'd `contractorRecord.id` with no guard; buttons clickable pre-fetch → raw "Setup error: Cannot read properties of null (reading 'id')" shown to the user) and #469 (Contract Templates ran after cert/lic/stats awaits in one try whose catch only logged; an early throw left "Loading templates…" stuck forever). See ADR-013.*
+
+### Config Scope
+*(Check only if config.js or any file referencing CONFIG/sb was modified.)*
+- [ ] **`var CONFIG` (not `const`/`let`).** `config.js` uses `var CONFIG` so `window.CONFIG` works across classic `<script>` tags.
+- [ ] **Bare `sb` used, not `window.sb`.** `let sb` is top-level accessible as `sb`, but `window.sb` is NOT defined. Verified no `window.sb` references added.
+
+### New Pages
+*(Check only if new HTML pages were added.)*
+- [ ] **`otterquote-pages.md` updated** with the new page's details (URL, auth requirements, tier, page purpose).
+
+### Edge Function Changes
+*(Check only if Edge Functions were modified.)*
+- [ ] **Edge Function tested in staging.** Verified function responds correctly before merging to main.
+- [ ] **No large-file truncation.** If `create-docusign-envelope/index.ts` or any large function was modified, confirmed Python/bash patch was used — not Cowork Edit tool.
+  - *Recovery if truncated: `supabase functions download <function-name> --project-ref yeszghaspzwwstvsrioa`*
+
+---
+
+## Standard — Document Failures, Don't Block
+
+### Smoke Tests (run against staging after push, before merging to main)
+- [ ] `https://staging--jade-alpaca-b82b5e.netlify.app` returns 200
+- [ ] Auth flow loads (login page renders without JS errors)
+- [ ] Changed pages render without console errors
+- [ ] If SQL migration: spot-check the migrated data or feature behavior in staging
+
+### Post-Deploy Verification (run against production after merging to main)
+- [ ] Production site returns 200 + "Stop chasing contractors" in body
+- [ ] Changed pages render correctly
+- [ ] No Sentry alerts triggered within 5 minutes of deploy
+- [ ] If Stripe/DocuSign/Supabase affected: verify integration still responds
+
+---
+
+
+## D-215 / Auth Gates (added 2026-05-07, ADR-010 + bug-killer session)
+
+**CRITICAL — D-215 UETA compliance (any change to contractor-bid-form.html bid submit flow)**
+- [ ] `fee_acceptances` INSERT runs AFTER `quotes` INSERT (so `insertedQuote.id` is available for `bid_id`)
+- [ ] All required NOT NULL fields present: `contractor_id`, `claim_id`, `bid_id`, `fee_pct`, `fee_basis`, `fee_amount`, `fee_text_displayed`, `accepted_at`
+- [ ] `quote_id` is NOT referenced (column does not exist on `fee_acceptances`)
+- [ ] INSERT error is non-fatal with `console.error` + Sentry capture
+
+**HIGH — nav.js / auth.js page hygiene (any new HTML page with a `site-header`)**
+- [ ] If page includes `nav.js`: either (a) `auth.js` is also included, or (b) `data-auth="false"` is set on `site-header`
+- [ ] Pure redirect / utility pages with no auth UI must have `data-auth="false"`
+
+## Checklist Completion
+
+```
+Deploy date:
+Tier:
+Files in changeset:
+Checklist run by: Claude (autonomous) / Dustin (manual review)
+CRITICAL items: all passed ✅ / waiver granted for: [item]
+HIGH items: all passed ✅ / waiver granted for: [item]
+Staging smoke test: passed / N/A
+Notes:
+```
+
+---
+
+*Last updated: May 1, 2026 — Created as part of D-196 project-rules enforcement.*
+*Referenced in claude-memory.md Base Deploy Steps, Step 5.*
