@@ -215,196 +215,189 @@ function base64EncodeBinary(bytes) {
   }
   return btoa(binary);
 }
-// ========== IC 24-5-11 COMPLIANCE ADDENDUM PDF ==========
-// [D-274 / #631] homeownerSignerIndex added: BoldSign Text Tags bake the
-// signer index directly into the tag string (positional — see boldsign
-// helper header comments), and this document's two callers use OPPOSITE
-// signer orders (handleContractorSign: contractor=1,homeowner=2;
-// handleLegacyFlow: homeowner=1,contractor=2). DocuSign's original
-// anchorString-based tabs didn't care about order (role-named anchors), so
-// this parameter is new — callers MUST pass the correct index for their flow.
-function generateComplianceAddendumPdf(contractorName, homeownerName, contractDate, homeownerSignerIndex) {
-  const lines = [];
-  const objects = [];
-  let currentOffset = 0;
-  function write(s) {
-    lines.push(s);
-    currentOffset += s.length + 1;
+// ========== [C4 2026-08-27] SLOPE BANDS ==========
+// Dustin's ruling, 2026-08-27: "Per contractor band, but fall back to
+// exactimate if none is given."
+//
+// WHY PER-CONTRACTOR AND NOT A PLATFORM CONSTANT. Three authorities disagree
+// about where "steep" starts, and all three are real:
+//   - Indy Rooftops' own rate card: "STEEP CHARGES OVER 5/12", then a second
+//     band his document describes as "Roofs from 10/12 to 12/12".
+//   - Xactimate: applies its pitch modifier at 7/12 and steeper (confirmed).
+//   - RoofScope's own report: Flat 0:12-1:12, Low 2:12-3:12, Standard 4:12-6:12,
+//     Steep "7:12 or greater" -- i.e. Xactimate-aligned (read off a live
+//     RoofScope report, 2026-08-27).
+// A contractor bidding retail off 5/12 while supplementing insurance off 7/12
+// produces inconsistent numbers on the same roof. That is his commercial
+// choice to make, so the bands are HIS data. We store the raw per-pitch areas
+// and bucket at render time -- never store pre-bucketed totals, or changing a
+// band would silently rewrite history.
+//
+// FALLBACK. Only what could be confirmed from a primary source is encoded: the
+// 7/12 threshold. The commonly-cited upper Xactimate boundaries (7-9, 10-12,
+// over 12) could NOT be confirmed, so they are deliberately NOT invented here.
+// Two bands, not four. Check a live Xactimate price list before adding more.
+const XACTIMATE_FALLBACK_BANDS = [
+  { label: "Standard slope (6/12 and under)", max_over_12: 6 },
+  { label: "Steep slope (7/12 and greater)", min_over_12: 7 },
+];
+
+// Parse "10/12", "10:12" or "10" to its rise over 12. Returns null if the run
+// is not 12 -- we do not rescale, because a 6/6 pitch is not a 12/12 roof and
+// silently converting one to the other would misprice the job.
+function pitchOver12(pitch) {
+  if (pitch == null) return null;
+  const m = String(pitch).trim().match(/^(\d+(?:\.\d+)?)\s*[\/:]\s*(\d+(?:\.\d+)?)$/);
+  if (m) {
+    const rise = Number(m[1]), run = Number(m[2]);
+    if (!Number.isFinite(rise) || !Number.isFinite(run) || run === 0) return null;
+    return run === 12 ? rise : null;
   }
-  function startObject(num) {
-    objects[num] = {
-      offset: currentOffset
-    };
-    write(`${num} 0 obj`);
-  }
-  const signDate = new Date(contractDate || new Date().toISOString());
-  let businessDays = 0;
-  const cancelDate = new Date(signDate);
-  while(businessDays < 3){
-    cancelDate.setDate(cancelDate.getDate() + 1);
-    const dow = cancelDate.getDay();
-    if (dow !== 0 && dow !== 6) businessDays++;
-  }
-  const cancelDateStr = cancelDate.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric"
-  });
-  const contentLines = [];
-  function addText(x, y, fontSize, font, text) {
-    const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-    contentLines.push(`BT /${font} ${fontSize} Tf ${x} ${y} Td (${escaped}) Tj ET`);
-  }
-  // [D-274 / #631] Render text in a chosen non-stroking gray (1.0 = white =
-  // invisible on white paper) — used to embed BoldSign Text Tags invisibly,
-  // same technique the retail Scope of Work generator already used for
-  // DocuSign anchors (see generateRetailScopeOfWorkPdf's addTextColored).
-  function addTextColored(x, y, fontSize, font, text, gray) {
-    const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-    contentLines.push(`BT ${gray} g /${font} ${fontSize} Tf ${x} ${y} Td (${escaped}) Tj ET 0 g`);
-  }
-  function addWrappedText(x, startY, fontSize, font, text, maxWidth) {
-    const charWidth = fontSize * 0.5;
-    const maxChars = Math.floor(maxWidth / charWidth);
-    const words = text.split(" ");
-    let currentLine = "";
-    let y = startY;
-    const lineSpacing = fontSize * 1.4;
-    for (const word of words){
-      if (currentLine.length + word.length + 1 > maxChars) {
-        addText(x, y, fontSize, font, currentLine.trim());
-        y -= lineSpacing;
-        currentLine = word + " ";
-      } else {
-        currentLine += word + " ";
+  const bare = Number(String(pitch).trim());
+  return Number.isFinite(bare) ? bare : null;
+}
+
+/**
+ * Bucket per-pitch areas into a contractor's priced slope bands.
+ *
+ * Returns { buckets, unbandedSquares, unparsedSquares }.
+ *   - buckets: one entry per band that actually has area, in band order.
+ *   - unbandedSquares: area whose pitch is ABOVE the top priced band. This is
+ *     surfaced, never folded into the last band. The reference RoofScope report
+ *     carries 2.80 SQ at 24:12 against a rate card whose top band stops at
+ *     12/12 -- quietly absorbing that is how a contractor ends up doing 63-degree
+ *     roof for free.
+ *   - unparsedSquares: rows whose pitch string could not be read at all.
+ */
+// Compact a bucket's pitch list for display: a single pitch renders as itself,
+// several render as a range. Long comma lists blew out the Basis column and told
+// the reader nothing the range does not.
+function pitchRangeLabel(pitches) {
+  const nums = pitches.map(pitchOver12).filter((n) => n !== null).sort((a, b) => a - b);
+  if (nums.length === 0) return pitches.join(", ");
+  if (nums.length === 1) return `${nums[0]}/12`;
+  return `${nums[0]}/12-${nums[nums.length - 1]}/12`;
+}
+
+function bucketByBands(areasByPitch, bands) {
+  const list = Array.isArray(areasByPitch) ? areasByPitch : [];
+  const useBands = (Array.isArray(bands) && bands.length > 0) ? bands : XACTIMATE_FALLBACK_BANDS;
+  const buckets = useBands.map((b) => ({ band: b, squares: 0, pitches: [] }));
+  let unbandedSquares = 0;
+  const unbandedPitches = [];
+  let unparsedSquares = 0;
+  for (const row of list) {
+    const sq = Number(row?.squares != null ? row.squares : (row?.area_sf != null ? row.area_sf / 100 : NaN));
+    if (!Number.isFinite(sq) || sq <= 0) continue;
+    const p = pitchOver12(row?.pitch);
+    if (p === null) { unparsedSquares += sq; continue; }
+    let placed = false;
+    for (const bucket of buckets) {
+      const lo = bucket.band.min_over_12 != null ? bucket.band.min_over_12 : -Infinity;
+      const hi = bucket.band.max_over_12 != null ? bucket.band.max_over_12 : Infinity;
+      if (p >= lo && p <= hi) {
+        bucket.squares += sq;
+        bucket.pitches.push(String(row.pitch));
+        placed = true;
+        break;
       }
     }
-    if (currentLine.trim()) {
-      addText(x, y, fontSize, font, currentLine.trim());
-      y -= lineSpacing;
-    }
-    return y;
+    if (!placed) { unbandedSquares += sq; unbandedPitches.push(String(row.pitch)); }
   }
-  let y = 750;
-  addText(50, y, 14, "F2", "INDIANA HOME IMPROVEMENT CONTRACT ACT ADDENDUM");
-  y -= 20;
-  addText(50, y, 10, "F1", `IC 24-5-11 Compliance Addendum — Contract Date: ${contractDate || new Date().toLocaleDateString("en-US")}`);
-  y -= 10;
-  contentLines.push(`50 ${y} m 562 ${y} l S`);
-  y -= 20;
-  addText(50, y, 12, "F2", "STATEMENT OF RIGHT TO CANCEL");
-  y -= 20;
-  const statementText = `You may cancel this contract at any time before midnight on the third business day after the later of the following: (A) The date this contract is signed by you and ${contractorName}. (B) If applicable, the date you receive written notification from your insurance company of a final determination as to whether all or any part of your claim or this contract is a covered loss under your insurance policy. See attached notice of cancellation form for an explanation of this right.`;
-  y = addWrappedText(50, y, 10, "F2", statementText, 512);
-  y -= 15;
-  contentLines.push(`50 ${y + 5} m 562 ${y + 5} l S`);
-  y -= 15;
-  addText(50, y, 12, "F2", "NOTICE OF CANCELLATION");
-  y -= 20;
-  addText(50, y, 10, "F2", `Contract Date: ${contractDate || "_______________"}`);
-  y -= 16;
-  y = addWrappedText(50, y, 10, "F2", `You may CANCEL this transaction, without any penalty or obligation, within THREE (3) BUSINESS DAYS from the above date, or if applicable, within three (3) business days from the date you receive written notification from your insurance company of a final determination as to whether all or any part of your claim or this contract is a covered loss under your insurance policy.`, 512);
-  y -= 10;
-  y = addWrappedText(50, y, 10, "F2", `If you cancel, any property traded in, any payments made by you under the contract, and any negotiable instrument executed by you will be returned within TEN (10) BUSINESS DAYS following receipt by the contractor of your cancellation notice, and any security interest arising out of the transaction will be cancelled.`, 512);
-  y -= 10;
-  y = addWrappedText(50, y, 10, "F2", `If you cancel, you must make available to the contractor at your residence, in substantially as good condition as when received, any goods delivered to you under this contract. Or you may, if you wish, comply with the instructions of the contractor regarding the return shipment of the goods at the contractor's expense and risk.`, 512);
-  y -= 10;
-  y = addWrappedText(50, y, 10, "F1", `To cancel this transaction, mail, deliver, or email a signed and dated copy of this cancellation notice, or any other written notice to:`, 512);
-  y -= 5;
-  addText(70, y, 10, "F2", contractorName);
-  y -= 14;
-  addText(70, y, 10, "F1", "(Contractor name and contact information as provided in this contract)");
-  y -= 20;
-  addText(50, y, 10, "F2", "I HEREBY CANCEL THIS TRANSACTION.");
-  y -= 25;
-  addText(50, y, 10, "F1", "Homeowner Signature: ___________________________________    Date: ________________");
-  // [D-274 / #631] Optional cancellation-acknowledgment sign field. DocuSign's
-  // version anchored on the visible "I HEREBY CANCEL..." prose text above —
-  // BoldSign cannot do that (no arbitrary-text anchoring, see file header of
-  // validate-contract-template/index.ts for the full explanation), so the tag
-  // is baked in here at generation time instead, positioned on the signature
-  // blank. Not required (this is an OPTIONAL cancellation, most homeowners
-  // never use it) — required:false via the tag's " " (space) segment.
-  // [gh-1244 fix] Position-4 Field label emptied — BoldSign's own log names
-  // a non-empty Placeholder (position 4) on a non-TextBox field type as the
-  // background-validation failure that made document/send return a
-  // documentId for a document that never actually gets created (see the
-  // gh-1244 root-cause comment). Field ID unchanged.
-  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}| ||cancellation_acknowledgment_signature}}`, 1.0);
-  y -= 20;
-  addText(50, y, 10, "F1", `Homeowner Name (printed): ${homeownerName}`);
-  y -= 30;
-  contentLines.push(`50 ${y + 5} m 562 ${y + 5} l S`);
-  y -= 15;
-  addText(50, y, 12, "F2", "PLATFORM DISCLOSURE");
-  // [D-274 / #631, carried forward from D-123/D-269] Required acknowledgment
-  // field — homeowner confirms Otter Quotes is not a party to the contract.
-  // REQUIRED (the "*" segment). docusign-webhook's ack-verify.ts backstops
-  // this at completion per D-269 (#550) — same invariant as before, adapted
-  // to BoldSign's formFields shape instead of DocuSign's tab shape.
-  // [gh-1244 fix] Position-4 Field label emptied — see comment above the
-  // cancellation_acknowledgment_signature tag. Field ID unchanged: D-269's
-  // ack-verify.ts backstop (ACK_FIELD_ID) depends on it.
-  addTextColored(200, y, 8, "F1", `{{sign|${homeownerSignerIndex}|*||otterquote_acknowledgment}}`, 1.0);
-  y -= 20;
-  y = addWrappedText(50, y, 10, "F1", `Otter Quotes is a technology platform that facilitates connections between homeowners and contractors. Otter Quotes is NOT a party to this contract and assumes no liability for work performed under this agreement. This contract is between the homeowner and the contractor named above.`, 512);
-  y -= 10;
-  addText(50, y, 10, "F1", `Down payment may not exceed $1,000 or 10% of contract price, whichever is less (IC 24-5-11-12).`);
-  y -= 30;
-  addText(50, y, 8, "F1", "This addendum is generated by Otter Quotes to comply with Indiana Code IC 24-5-11 (Home Improvement Contract Act).");
-  y -= 12;
-  addText(50, y, 8, "F1", `Generated: ${new Date().toISOString()}`);
-  const contentStream = contentLines.join("\n");
-  const contentBytes = new TextEncoder().encode(contentStream);
-  const pdfLines = [];
-  const pdfObjects = [];
-  let byteOffset = 0;
-  function pdfWrite(s) {
-    pdfLines.push(s);
-    byteOffset += s.length + 1;
-  }
-  function pdfStartObj(n) {
-    pdfObjects[n] = byteOffset;
-    pdfWrite(`${n} 0 obj`);
-  }
-  pdfWrite("%PDF-1.4");
-  pdfStartObj(1);
-  pdfWrite("<< /Type /Catalog /Pages 2 0 R >>");
-  pdfWrite("endobj");
-  pdfStartObj(2);
-  pdfWrite("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
-  pdfWrite("endobj");
-  pdfStartObj(3);
-  pdfWrite("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>");
-  pdfWrite("endobj");
-  pdfStartObj(4);
-  pdfWrite(`<< /Length ${contentStream.length} >>`);
-  pdfWrite("stream");
-  pdfWrite(contentStream);
-  pdfWrite("endstream");
-  pdfWrite("endobj");
-  pdfStartObj(5);
-  pdfWrite("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  pdfWrite("endobj");
-  pdfStartObj(6);
-  pdfWrite("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
-  pdfWrite("endobj");
-  const xrefOffset = byteOffset;
-  pdfWrite("xref");
-  pdfWrite(`0 7`);
-  pdfWrite("0000000000 65535 f ");
-  for(let i = 1; i <= 6; i++){
-    pdfWrite(String(pdfObjects[i]).padStart(10, "0") + " 00000 n ");
-  }
-  pdfWrite("trailer");
-  pdfWrite(`<< /Size 7 /Root 1 0 R >>`);
-  pdfWrite("startxref");
-  pdfWrite(String(xrefOffset));
-  pdfWrite("%%EOF");
-  const pdfContent = pdfLines.join("\n");
-  const pdfBytes = new TextEncoder().encode(pdfContent);
-  return base64EncodeBinary(pdfBytes);
+  const round2 = (n) => Math.round(n * 100) / 100;
+  return {
+    buckets: buckets.filter((b) => b.squares > 0).map((b) => ({ ...b, squares: round2(b.squares) })),
+    unbandedSquares: round2(unbandedSquares),
+    unbandedPitches,
+    unparsedSquares: round2(unparsedSquares),
+    usedFallback: !(Array.isArray(bands) && bands.length > 0),
+  };
 }
+
+// ========== [C2 2026-08-27] CONTRACTOR-VOICE GUARD ==========
+// A prior run wrote assistant-authored prose into quotes.message_to_homeowner
+// in the contractor's voice -- "Thanks for the opportunity, Mr. Paulsen. Your
+// 9/12 pitch puts this in our steep-roof band..." -- and it rendered on
+// Exhibit A under the heading "Message from Contractor", inside a document
+// presented as a contract exhibit. Mitchel Dotson never wrote a word of it.
+//
+// Rule (Dustin, 2026-08-27): never synthesize contractor voice. Text that
+// renders as a party's own words must trace to a field that party typed.
+//
+// This is the mechanism, not the rule (R-148 -- a recurring defect closes on a
+// mechanism, never on a rule alone):
+//   1. ONLY the two contractor-entered columns are read. There is deliberately
+//      no fallback to anything derived, generated or summarised.
+//   2. A bid carrying is_test = true yields NOTHING unless
+//      value_adds.message_contractor_authored is explicitly true. Test and demo
+//      bids are exactly where fabricated prose gets introduced, and this is the
+//      gate that stops it reaching a signed document.
+//   3. Empty or whitespace-only yields null, so the render site omits the whole
+//      block rather than printing a heading over nothing.
+function contractorAuthoredMessage(bidData) {
+  if (!bidData) return null;
+  // [2026-08-27] CORRECTION, caught while fixing #1314's phantom-column list:
+  // `quotes.message_to_homeowner` and `quotes.contractor_message` DO NOT EXIST.
+  // Verified against the live schema -- quotes' full column list has neither.
+  // Exhibit A has been reading both, so a real contractor message has never
+  // rendered in the "Message from Contractor" block since that block was written.
+  //
+  // The contractor's message to the homeowner is `quotes.notes`, written from
+  // the bid form's `homeownerMessage` input (contractor-bid-form.html:5376).
+  // That is the one contractor-typed field, so it is the only one read here.
+  // The two dead names are kept as a trailing fallback purely in case a future
+  // migration introduces them; they cost nothing and resolve to undefined today.
+  const raw = bidData.notes ?? bidData.message_to_homeowner ?? bidData.contractor_message ?? null;
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) return null;
+  if (bidData.is_test === true) {
+    const va = bidData.value_adds || {};
+    if (va.message_contractor_authored !== true) {
+      console.warn(
+        "[C2] Suppressed message_to_homeowner on test bid " + (bidData.id ?? "?") +
+        ": not marked value_adds.message_contractor_authored. Exhibit A will omit " +
+        "the 'Message from Contractor' block rather than attribute unverified prose to the contractor."
+      );
+      return null;
+    }
+  }
+  return text;
+}
+
+// ========== [C1 2026-08-27] IC 24-5-11 COMPLIANCE ADDENDUM RETIRED ==========
+// generateComplianceAddendumPdf() is DELETED, not disabled. It generated the
+// envelope's Document 3: the Statement of Right to Cancel, the full Notice of
+// Cancellation form, the IC 24-5-11-12 down-payment cap notice, and the
+// PLATFORM DISCLOSURE block.
+//
+// Dustin's ruling, 2026-08-27, verbatim: "I don't want us adding the right to
+// cancel, the notice of cancellation form, the platform disclosure, or the
+// down payment cap. We shouldn't be adding terms to their contracts. We
+// shouldn't have our name on their contract. But we also aren't taking terms
+// out, either."
+//
+// Every line of that document was OURS -- none of it came from any
+// contractor's template. The contractor's own contract keeps whatever
+// cancellation terms it carries; we simply stop appending ours to it.
+//
+// TWO THINGS THAT MOVED RATHER THAN DIED, so nobody re-adds this function:
+//  1. The REQUIRED `otterquote_acknowledgment` field now lives at the bottom of
+//     the Scope of Work (generateRetailScopeOfWorkPdf, "PLATFORM
+//     ACKNOWLEDGMENT"). D-269 (#550) ack-verify.ts is unchanged and still
+//     fails closed on that exact field id. To keep it reachable on every
+//     envelope, the Scope of Work is now generated for INSURANCE jobs too --
+//     it used to be gated on `isRetail`.
+//  2. The optional `cancellation_acknowledgment_signature` field is gone with
+//     the Notice of Cancellation form it sat on. Nothing verifies it; it was
+//     optional by design.
+//
+// OPERATIONAL CONSEQUENCE, and it belongs to the contractor, not to us: a
+// contractor template whose terms cite "the attached Notice of Cancellation"
+// (Indy Rooftops' T&C section 11 does) now cites an attachment the envelope no
+// longer contains. IC 24-5-11-10 requires that notice be furnished. The fix is
+// that the contractor's own template carries his own notice -- which is what
+// the #1313 pre-tagged starter PDF should include a slot for.
+
 // ========== HOVER MEASUREMENTS FETCH ==========
 async function fetchHoverMeasurements(supabase, claimId) {
   const toNum = (v) => {
@@ -442,7 +435,11 @@ async function fetchHoverMeasurements(supabase, claimId) {
           dripEdgeLf,
           stepFlashingLf: toNum(hm.step_flashing_lf),
           flashingLf: toNum(hm.flashing_lf),
-          predominantPitch: hm.predominant_pitch ?? null
+          predominantPitch: hm.predominant_pitch ?? null,
+          // [C4 2026-08-27] Per-pitch breakdown, additive and nullable. Absent on
+          // every claim measured before parse-hover-measurements started emitting
+          // it, and absent for RoofScope reports entirely (image-only PDFs).
+          areasByPitch: Array.isArray(hm.areas_by_pitch) ? hm.areas_by_pitch : null
         };
       }
     }
@@ -492,9 +489,91 @@ async function fetchHoverMeasurements(supabase, claimId) {
   }
 }
 
+// ========== EXHIBIT A MEASUREMENT SHAPES ==========
+// [Part 2 2026-08-28] Dustin's ruling 5, verbatim: "I think we need two exhibit
+// A shapes... I think we do Exhibit A on all jobs. But for ACV and RCV jobs, we
+// can use the insurance estimate to fill out exhibit A."
+//
+// The all-jobs half landed in C1 (the isRetail gate came off). This is the
+// other half. generateRetailScopeOfWorkPdf assumed exactly ONE measurement
+// shape -- a full report carrying linear measurements -- and gated BOTH the
+// MEASUREMENT SUMMARY and the entire LINE-ITEM SCOPE table on one
+// `hasRoofMeasurements` boolean. A claim with no parsed measurements therefore
+// shipped an Exhibit A with a header, a disclaimer, some bid selections and no
+// body at all, and nothing in the document said why.
+//
+// FOUR shapes, resolved from what is actually ON THE CLAIM rather than from a
+// vendor or product label we may not have:
+//
+//   full      Full RoofScope, or a Hover report. Carries linear measurements.
+//             MEASUREMENT SUMMARY + the full band-expanded LINE-ITEM SCOPE.
+//   basic     RoofScope X ($15 to the homeowner, $11 vendor cost; a contractor
+//             who wants the full report buys it himself). VERIFIED against a
+//             real report: it carries the complete per-pitch area table and
+//             total squares, and NO linear measurements whatsoever -- no eave,
+//             rake, ridge, hip, valley, step or headwall flashing. Rows 4-10 of
+//             the line-item table every one depend on LF and cannot be built.
+//   insurance ACV/RCV. parse-loss-sheet has ALREADY written
+//             claims.parsed_line_items (sectioned line items),
+//             contractor_scope_summary, rcv_amount, acv_amount and
+//             deductible_amount. No new parser is needed; the insurer's own
+//             scope is the line-item basis.
+//   none      No measurement report on file. The document says so, explicitly.
+//
+// The measurement shape and the line-item basis are resolved SEPARATELY and
+// deliberately. An insurance job can also carry a full RoofScope; when it does
+// both facts are true and both render -- the measured roof under MEASUREMENT
+// SUMMARY, the insurer's scope as the priced basis. One flat enum would have
+// thrown away whichever of the two arrived second.
+//
+// Detection is by CONTENT, not by product code. hover_orders.product_code
+// exists (gh-1245: roof_basic == RoofScope X) but the PDF-parse path is the
+// canonical one today and writes no product code at all, so keying off it would
+// mis-shape every claim measured through the path we actually use.
+function resolveMeasurementShape(measurements: any) {
+  const m = measurements || {};
+  const LINEAR = ["ridgeHipLf", "valleyLf", "rakeLf", "eaveLf", "dripEdgeLf", "stepFlashingLf", "flashingLf"];
+  if (LINEAR.some((k) => m[k] != null)) return "full";
+  const hasArea = m.roofAreaSf != null || m.squares != null ||
+    (Array.isArray(m.areasByPitch) && m.areasByPitch.length > 0);
+  return hasArea ? "basic" : "none";
+}
+
+// Flatten the insurer's parsed estimate (the parse-loss-sheet shape on
+// claims.parsed_line_items) into display rows. Returns null when nothing was
+// parsed, so the caller can distinguish "no loss sheet" from "an empty one".
+//
+// parse-loss-sheet strips PII at extraction time (its prompt names insured
+// name, address, policy and claim numbers, adjuster contact -- all excluded),
+// so nothing read here needs a second redaction pass. Unit prices ARE present
+// in the parsed data and are deliberately NOT rendered: the insurer's unit
+// price is not the contract price, and putting the two on one page invites
+// them to be read as the same number.
+function insurerScopeRows(insurance: any) {
+  const parsed = insurance?.parsedLineItems;
+  const sections = Array.isArray(parsed?.sections) ? parsed.sections : [];
+  const rows = [];
+  for (const section of sections) {
+    const label = [section?.section_name || section?.name, section?.area_name].filter(Boolean).join(" - ");
+    const items = section?.line_items || section?.items || [];
+    if (!Array.isArray(items)) continue;
+    for (const it of items) {
+      if (!it || !it.description) continue;
+      rows.push({
+        section: label || "",
+        description: String(it.description),
+        quantity: it.quantity != null ? String(it.quantity) : "per estimate",
+        unit: it.unit ? String(it.unit) : "",
+        notes: it.notes ? String(it.notes) : "",
+      });
+    }
+  }
+  return rows.length ? rows : null;
+}
+
 // ========== RETAIL SCOPE OF WORK PDF ==========
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears } = params;
   const va = valueAdds || {};
   const pc = projectConfirmation || null;
   // ---- Page geometry ----
@@ -520,8 +599,22 @@ function generateRetailScopeOfWorkPdf(params) {
       .replace(/…/g, "...")
       .replace(/²/g, "2")
       .replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4")
-      .replace(/\u00a0/g, " ");
-    s = s.replace(/[^\x20-\x7E]/g, "");
+      // [Part 2 2026-08-28] Was a regex literal matching the non-breaking space
+      // by its backslash-u escape. Rewritten to carry
+      // NO backslash-u escape sequence at all, because the MCP tool-call
+      // transport that lands changes in this repo REWRITES those sequences:
+      // a real U+00A0 sent as an argument arrives as a plain space, and the six
+      // characters of the escape arrive as a real U+00A0. That hazard cost two
+      // silently-corrupted landings on 2026-08-27 (In Flight/reports/
+      // int-mcp-unicode-escape-transport-20260827.md) and this line was one of
+      // the two sites. String.fromCharCode(160) is the same character, is pure
+      // ASCII in source, and cannot be rewritten in transit.
+      .replace(new RegExp(String.fromCharCode(160), "g"), " ");
+    // Literal space-to-tilde range rather than the backslash-x escapes it used
+    // to carry, for the same transport reason as the line above: the escape
+    // form is rewritable in transit, the literal characters are not. Same
+    // range, same behaviour -- drop anything outside printable ASCII.
+    s = s.replace(/[^ -~]/g, "");
     return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   }
   function addText(x, yy, fontSize, font, text) {
@@ -594,8 +687,16 @@ function generateRetailScopeOfWorkPdf(params) {
   // ===== PAGE 1 HEADER =====
   addText(LEFT_X, y, 16, "F2", "SCOPE OF WORK");
   y -= 18;
-  addText(LEFT_X, y, 9, "F1", `Prepared by Otter Quotes on behalf of ${contractorName}`);
-  y -= 10;
+  // [C1 2026-08-27, Dustin-directed, verbatim: "Prepared by Otter Quotes on
+  // behalf of [homeowner] for the purpose of obtaining competitive bids".
+  // Attribution is to the HOMEOWNER, not the contractor: this document is
+  // prepared for the homeowner to solicit competitive bids, which is also what
+  // preserves the contractor's ability to dispute measurements he did not take
+  // (see the MEASUREMENT DISCLAIMER below). Previously read "on behalf of
+  // ${contractorName}". Wrapped rather than single-line because a long
+  // homeowner name overflows 512pt at 9pt.
+  y = addWrappedText(LEFT_X, y, 9, "F1", `Prepared by Otter Quotes on behalf of ${homeownerName} for the purpose of obtaining competitive bids`, 512);
+  y -= 2;
   hLine(y);
   y -= 16;
   addText(LEFT_X, y, 10, "F2", "PROJECT:");
@@ -622,7 +723,11 @@ function generateRetailScopeOfWorkPdf(params) {
   addText(160, y, 10, "F1", tradeLabel);
   y -= 14;
   addText(LEFT_X, y, 10, "F2", "Financing:");
-  addText(160, y, 10, "F1", "Retail / Homeowner-Financed");
+  // [C1 2026-08-27] Was hardcoded "Retail / Homeowner-Financed" because this
+  // document only ever rendered on retail jobs. Dustin ruled Exhibit A renders
+  // on ALL jobs, so an insurance-funded claim would otherwise carry a false
+  // statement about how it is paid for.
+  addText(160, y, 10, "F1", fundingType === "insurance" ? "Insurance-Funded (ACV / RCV)" : "Retail / Homeowner-Financed");
   y -= 14;
   addText(LEFT_X, y, 10, "F2", "Contract Price:");
   addText(160, y, 10, "F1", contractPrice ? fmt$(contractPrice) : "Per contractor agreement");
@@ -643,7 +748,13 @@ function generateRetailScopeOfWorkPdf(params) {
   const hasSiding = (trades || []).some((t) => t.toLowerCase().includes("siding"));
   const hasGutters = (trades || []).some((t) => t.toLowerCase().includes("gutter"));
   const hasWindows = (trades || []).some((t) => t.toLowerCase().includes("window"));
-  // ===== MEASUREMENT SUMMARY (from Hover) + LINE-ITEM SCOPE (roofing) =====
+  // ===== MEASUREMENT SUMMARY + LINE-ITEM SCOPE =====
+  // [Part 2 2026-08-28] Restructured into the four shapes resolved by
+  // resolveMeasurementShape(). See the tombstone above that function for why.
+  // Previously this whole region was gated on a single `hasRoofMeasurements`
+  // boolean, so a claim with no parsed measurements shipped an Exhibit A with a
+  // header, a disclaimer, some bid selections and NO BODY AT ALL -- and nothing
+  // in the document said why.
   const m = measurements || {};
   const r0 = (n) => (n == null || Number.isNaN(Number(n))) ? null : Math.round(Number(n));
   const sq = (m.squares != null && !Number.isNaN(Number(m.squares)))
@@ -652,49 +763,235 @@ function generateRetailScopeOfWorkPdf(params) {
   const roofAreaSf = (m.roofAreaSf != null) ? Number(m.roofAreaSf) : (sq != null ? Math.round(sq * 100) : null);
   const rh = r0(m.ridgeHipLf), vv = r0(m.valleyLf), rk = r0(m.rakeLf), ev = r0(m.eaveLf),
         drip = r0(m.dripEdgeLf), st = r0(m.stepFlashingLf), fl = r0(m.flashingLf);
-  const hasRoofMeasurements = !!(m && (m.roofAreaSf != null || m.squares != null || m.ridgeHipLf != null ||
-    m.valleyLf != null || m.rakeLf != null || m.eaveLf != null || m.dripEdgeLf != null ||
-    m.stepFlashingLf != null || m.flashingLf != null));
-  if (hasRoofing && hasRoofMeasurements) {
-    ensure(34);
-    addText(LEFT_X, y, 12, "F2", "MEASUREMENT SUMMARY (from Hover)");
+
+  const measurementShape = resolveMeasurementShape(m);
+  const ins = insurance || null;
+  const insRows = insurerScopeRows(ins);
+  const hasInsurerBasis = !!(insRows || (ins && (ins.rcv != null || ins.acv != null || ins.deductible != null || ins.scopeSummary)));
+  // The insurer's own estimate is the priced basis whenever one has been
+  // parsed -- Dustin, verbatim: "for ACV and RCV jobs, we can use the insurance
+  // estimate to fill out exhibit A." Otherwise the basis is derived from the
+  // measurement report, and with neither there is no basis at all.
+  const lineItemBasis = insRows ? "insurer" : (measurementShape === "none" ? "none" : "derived");
+
+  // ---- Shared table helpers (used by both the derived and insurer tables) ----
+  // Height of a block of wrapped prose at a given font size. Exists so a
+  // table's OPENING BLOCK -- heading, caption, any explanatory note, the column
+  // header and the first data row -- can be budgeted as one unit before any of
+  // it is drawn. A section that budgets only its heading leaves the heading, or
+  // worse a bare column-header row, orphaned at the foot of a page and reprints
+  // it overleaf. C4e fixed exactly this for the contingencies heading; the two
+  // line-item tables still had it, and the `basic` shape (whose opening block
+  // carries a four-line note) hit it on the very first render.
+  //
+  // The arithmetic mirrors addWrappedText's, which is the function that will
+  // actually lay the prose out. If one changes, change both.
+  const proseHeight = (text: string, fontSize: number, maxWidth: number) => {
+    const maxChars = Math.max(1, Math.floor(maxWidth / (fontSize * 0.5)));
+    return wrapToLines(text, maxChars).length * (fontSize * 1.4);
+  };
+  const firstRowHeight = (cols: any[], rowsIn: any[]) => {
+    if (!rowsIn.length) return 0;
+    return Math.max(1, ...cols.map((c: any) => wrapToLines(rowsIn[0][c.key], c.chars).length)) * 10 + 2;
+  };
+  const drawRows = (cols: any[], rowsIn: any[], header: () => void) => {
+    const lineH = 10;
+    header();
+    for (const row of rowsIn) {
+      const cells = cols.map((c: any) => wrapToLines(row[c.key], c.chars));
+      const nLines = Math.max(1, ...cells.map((c: any) => c.length));
+      const rowH = nLines * lineH + 2;
+      const pagesBefore = pages.length;
+      ensure(rowH);
+      if (pages.length > pagesBefore) { header(); }
+      const topY = y;
+      cells.forEach((lines: any[], ci: number) => lines.forEach((ln: string, k: number) => addText(cols[ci].x, topY - k * lineH, 8, "F1", ln)));
+      y = topY - rowH;
+    }
+    y -= 4;
+    hLine(y);
     y -= 16;
-    const sumRow = (label, value) => {
+  };
+
+  // ================= A. MEASUREMENT SUMMARY =================
+  if (hasRoofing) {
+    if (measurementShape === "full" || measurementShape === "basic") {
+      ensure(34);
+      // [C4 2026-08-27] De-branded. The measurement report OtterQuote actually
+      // buys is RoofScope / RoofScope X (gh-1245 catalog: roof_basic is
+      // RoofScopeX), not Hover, and naming the wrong vendor on a contract
+      // exhibit is a statement about where the numbers came from.
+      addText(LEFT_X, y, 12, "F2", "MEASUREMENT SUMMARY");
+      y -= 16;
+      const sumRow = (label, value) => {
+        if (value == null || value === "") return;
+        ensure(13);
+        addText(LEFT_X, y, 10, "F2", label);
+        addText(250, y, 10, "F1", value);
+        y -= 13;
+      };
+      const areaVal = roofAreaSf != null
+        ? `${roofAreaSf.toLocaleString("en-US")} sf${sq != null ? ` (${sq} SQ)` : ""}`
+        : (sq != null ? `${sq} SQ` : null);
+      sumRow("Roof area:", areaVal);
+      if (measurementShape === "full") {
+        sumRow("Ridges / Hips:", m.ridgeHipLf != null ? `${m.ridgeHipLf} LF` : null);
+        sumRow("Valleys:", m.valleyLf != null ? `${m.valleyLf} LF` : null);
+        sumRow("Eaves:", m.eaveLf != null ? `${m.eaveLf} LF` : null);
+        sumRow("Rakes:", m.rakeLf != null ? `${m.rakeLf} LF` : null);
+        sumRow("Drip edge / perimeter:", m.dripEdgeLf != null ? `${m.dripEdgeLf} LF` : null);
+        sumRow("Step flashing:", m.stepFlashingLf != null ? `${m.stepFlashingLf} LF` : null);
+        sumRow("Headwall / apron flashing:", m.flashingLf != null ? `${m.flashingLf} LF` : null);
+      }
+      sumRow("Predominant pitch:", m.predominantPitch || null);
+      // Per-pitch area table. On a BASIC report this is the whole of the
+      // measurement content, so it is rendered as a table rather than folded
+      // into the line items. On a FULL report it is supplementary and the
+      // slope breakout in the line-item table carries it, so it is skipped
+      // there to avoid stating the same numbers twice on one page.
+      if (measurementShape === "basic" && Array.isArray(m.areasByPitch) && m.areasByPitch.length > 0) {
+        y -= 4;
+        ensure(30);
+        addText(LEFT_X, y, 10, "F2", "Area by pitch");
+        y -= 12;
+        const pitchRows = m.areasByPitch
+          .map((row: any) => {
+            const rowSq = Number(row?.squares != null ? row.squares : (row?.area_sf != null ? row.area_sf / 100 : NaN));
+            if (!Number.isFinite(rowSq) || rowSq <= 0) return null;
+            const pctNum = (sq != null && sq > 0) ? Math.round((rowSq / sq) * 100) : null;
+            return {
+              pitch: String(row?.pitch ?? "unstated"),
+              squares: `${Math.round(rowSq * 100) / 100} SQ`,
+              pct: pctNum != null ? `${pctNum}%` : "",
+            };
+          })
+          .filter(Boolean);
+        const pitchCols = [
+          { key: "pitch", x: 66, chars: 20 },
+          { key: "squares", x: 200, chars: 16 },
+          { key: "pct", x: 290, chars: 8 },
+        ];
+        drawRows(pitchCols, pitchRows, () => {
+          ensure(18);
+          addText(66, y, 8, "F2", "Pitch");
+          addText(200, y, 8, "F2", "Area");
+          addText(290, y, 8, "F2", "Share");
+          y -= 3; hLine(y); y -= 11;
+        });
+      } else {
+        y -= 6;
+        hLine(y);
+        y -= 16;
+      }
+      if (measurementShape === "basic") {
+        // Say exactly what this report does and does not carry. A homeowner
+        // comparing two Exhibit As should not have to guess why one has eight
+        // measurement rows and the other has one.
+        ensure(26);
+        y = addWrappedText(LEFT_X, y, 8, "F1", "The measurement report on file is a basic roof report. It carries roof area and the area of each pitch, and it carries NO linear measurements - no eave, rake, ridge, hip, valley, step flashing or headwall flashing lengths. The work items that depend on those lengths therefore cannot be quantified from it; they are named in full beneath the line-item scope below and are field-verified on site.", 512);
+        y -= 8;
+        hLine(y);
+        y -= 16;
+      }
+    } else {
+      // ---- measurementShape === "none" ----
+      // The whole point of this branch: say it out loud. The prior behaviour
+      // was to render nothing, which is indistinguishable from a roof with no
+      // work on it.
+      ensure(40);
+      addText(LEFT_X, y, 12, "F2", "MEASUREMENT SUMMARY");
+      y -= 14;
+      y = addWrappedText(LEFT_X, y, 9, "F1", hasInsurerBasis
+        ? "No measurement report is on file for this property. The scope below is taken from the insurance estimate rather than from an aerial measurement report; quantities are the insurer's, and all of them are subject to field verification before work begins."
+        : "No measurement report is on file for this property. No aerial or field measurements were available when this document was prepared, so no measured quantities and no line-item scope can be stated. Every quantity for this job is to be field-verified, and the MEASUREMENT DISCLAIMER above governs any measurement either party later takes.", 512);
+      y -= 8;
+      hLine(y);
+      y -= 16;
+    }
+  }
+
+  // ================= B. INSURANCE SETTLEMENT BASIS =================
+  // Rendered for any trade, not only roofing: an insurance siding job has a
+  // loss sheet too. parse-loss-sheet has already stripped PII from
+  // claims.parsed_line_items, so nothing here needs redaction.
+  if (hasInsurerBasis) {
+    ensure(40);
+    addText(LEFT_X, y, 12, "F2", "INSURANCE SETTLEMENT BASIS");
+    y -= 8;
+    addText(LEFT_X, y, 8, "F1", "From the carrier's own estimate on file. These are the insurer's figures, not the contract price.");
+    y -= 14;
+    const insRow = (label: string, value: any) => {
       if (value == null || value === "") return;
       ensure(13);
       addText(LEFT_X, y, 10, "F2", label);
       addText(250, y, 10, "F1", value);
       y -= 13;
     };
-    const areaVal = roofAreaSf != null
-      ? `${roofAreaSf.toLocaleString("en-US")} sf${sq != null ? ` (${sq} SQ)` : ""}`
-      : (sq != null ? `${sq} SQ` : null);
-    sumRow("Roof area:", areaVal);
-    sumRow("Ridges / Hips:", m.ridgeHipLf != null ? `${m.ridgeHipLf} LF` : null);
-    sumRow("Valleys:", m.valleyLf != null ? `${m.valleyLf} LF` : null);
-    sumRow("Eaves:", m.eaveLf != null ? `${m.eaveLf} LF` : null);
-    sumRow("Rakes:", m.rakeLf != null ? `${m.rakeLf} LF` : null);
-    sumRow("Drip edge / perimeter:", m.dripEdgeLf != null ? `${m.dripEdgeLf} LF` : null);
-    sumRow("Step flashing:", m.stepFlashingLf != null ? `${m.stepFlashingLf} LF` : null);
-    sumRow("Headwall / apron flashing:", m.flashingLf != null ? `${m.flashingLf} LF` : null);
-    sumRow("Predominant pitch:", m.predominantPitch || null);
+    insRow("Carrier:", ins?.carrier || null);
+    // The raw enum from parse-loss-sheet ("xactimate" | "corelogic_itel" |
+    // "carrier_proprietary" | "unknown"). Printing it raw put a lowercase
+    // machine token on a contract exhibit.
+    const FORMAT_LABELS: Record<string, string> = {
+      xactimate: "Xactimate",
+      corelogic_itel: "CoreLogic / ITEL",
+      carrier_proprietary: "Carrier proprietary",
+    };
+    insRow("Estimate format:", ins?.format ? (FORMAT_LABELS[String(ins.format)] || null) : null);
+    insRow("Pricing basis:", ins?.pricingDatabase || null);
+    insRow("Replacement cost value (RCV):", ins?.rcv != null ? fmt$(ins.rcv) : null);
+    insRow("Actual cash value (ACV):", ins?.acv != null ? fmt$(ins.acv) : null);
+    insRow("Deductible:", ins?.deductible != null ? fmt$(ins.deductible) : null);
     y -= 6;
     hLine(y);
     y -= 16;
-    // ---- LINE-ITEM SCOPE table (quantities only; no unit prices) ----
+  }
+
+  // ================= C. LINE-ITEM SCOPE =================
+  if (lineItemBasis === "insurer") {
+    const insCaption = "Quantities taken from the insurance estimate on file. Unit pricing is omitted: the insurer's unit prices are not the contract price and stating them here would invite the two to be read as the same number.";
+    const insCols = [
+      { key: "num", x: 50, chars: 4 },
+      { key: "description", x: 66, chars: 40 },
+      { key: "quantity", x: 262, chars: 12 },
+      { key: "unit", x: 312, chars: 8 },
+      { key: "section", x: 352, chars: 24 },
+      { key: "notes", x: 470, chars: 22 },
+    ];
+    const numbered = (insRows || []).map((r: any, i: number) => ({ ...r, num: String(i + 1) }));
+    ensure(22 + proseHeight(insCaption, 8, 512) + 24 + firstRowHeight(insCols, numbered));
     addText(LEFT_X, y, 12, "F2", "LINE-ITEM SCOPE");
     y -= 8;
-    addText(LEFT_X, y, 8, "F1", "Quantities derived from Hover aerial measurements. Field-verified items confirmed on site. No unit pricing shown.");
-    y -= 14;
+    y = addWrappedText(LEFT_X, y, 8, "F1", insCaption, 512);
+    y -= 6;
+    drawRows(insCols, numbered, () => {
+      ensure(18);
+      addText(50, y, 8, "F2", "#");
+      addText(66, y, 8, "F2", "Work Item (insurer)");
+      addText(262, y, 8, "F2", "Qty");
+      addText(312, y, 8, "F2", "Unit");
+      addText(352, y, 8, "F2", "Estimate Section");
+      addText(470, y, 8, "F2", "Notes");
+      y -= 3; hLine(y); y -= 11;
+    });
+  } else if (hasRoofing && lineItemBasis === "derived") {
+    // ---- LINE-ITEM SCOPE table (quantities only; no unit prices) ----
+    // NOTHING is drawn until the rows are built, because the opening block's
+    // height depends on which notes this shape emits -- see the single ensure()
+    // below.
     const colNum = 50, colItem = 66, colQty = 246, colUnit = 286, colBasis = 330, colNotes = 448;
-    const itemMaxChars = 44, notesMaxChars = 28;
+    // [C4 2026-08-27] basisMaxChars added. Basis was the one cell rendered with
+    // a bare addText and no wrap, which was invisible while every basis string
+    // was short ("Roof area +10%") and became a collision the moment the slope
+    // breakout started emitting "16.14 SQ +10% (1/12-5/12)". 8pt Helvetica at
+    // ~0.5em/char over the 118pt between colBasis and colNotes.
+    const itemMaxChars = 44, notesMaxChars = 28, basisMaxChars = 28;
     const drawTableHeader = () => {
       ensure(18);
       addText(colNum, y, 8, "F2", "#");
       addText(colItem, y, 8, "F2", "Work Item");
       addText(colQty, y, 8, "F2", "Qty");
       addText(colUnit, y, 8, "F2", "Unit");
-      addText(colBasis, y, 8, "F2", "Hover Basis");
+      addText(colBasis, y, 8, "F2", "Basis");
       addText(colNotes, y, 8, "F2", "Notes");
       y -= 3;
       hLine(y);
@@ -704,45 +1001,119 @@ function generateRetailScopeOfWorkPdf(params) {
     const areaWaste = (sq != null) ? Math.ceil(sq * 1.1) : null; // area items + 10% waste (SQ)
     const iceWater = (vv != null && ev != null) ? (vv + ev) : null;   // valleys + eaves
     const starter = (ev != null && rk != null) ? (ev + rk) : null;    // eaves + rakes
-    const deckingTxt = (deckingPricePerSheet != null) ? `${fmt$(deckingPricePerSheet)}/sheet` : "per bid";
-    const redeckTxt = (fullRedeckPrice != null) ? fmt$(fullRedeckPrice) : "per bid";
-    const rows = [
-      { num: 1, item: "Tear off & dispose existing roofing (all layers)", qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Haul-off included" },
-      { num: 2, item: `Architectural laminate shingles - ${bidBrand || "per bid"}`, qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Per mfr. spec" },
-      { num: 3, item: "Synthetic underlayment", qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: "Full coverage" },
-      { num: 4, item: "Ice & water shield - valleys + eaves", qty: qtyStr(iceWater), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"} + eaves ${ev != null ? ev : "?"}`, notes: "Code / leak-prone areas" },
-      { num: 5, item: "Starter course", qty: qtyStr(starter), unit: "LF", basis: `Eaves ${ev != null ? ev : "?"} + rakes ${rk != null ? rk : "?"}`, notes: "Eaves & rakes" },
-      { num: 6, item: "Hip & ridge cap shingles", qty: qtyStr(rh), unit: "LF", basis: `Ridges/Hips ${rh != null ? rh : "?"}`, notes: "Matching profile" },
-      { num: 7, item: "Drip edge", qty: qtyStr(drip), unit: "LF", basis: `Perimeter ${drip != null ? drip : "?"}`, notes: "Eaves & rakes" },
-      { num: 8, item: "Closed-cut valley", qty: qtyStr(vv), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"}`, notes: "Per mfr." },
-      { num: 9, item: "Step flashing (roof-to-wall)", qty: qtyStr(st), unit: "LF", basis: `Step flashing ${st != null ? st : "?"}`, notes: "Replace" },
-      { num: 10, item: "Headwall / apron flashing", qty: qtyStr(fl), unit: "LF", basis: `Flashing ${fl != null ? fl : "?"}`, notes: "Replace" },
-      { num: 11, item: "Pipe boots / penetration flashings", qty: "field", unit: "EA", basis: "Field-verified", notes: "Count confirmed on site" },
-      { num: 12, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
-      { num: 13, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: `${deckingTxt}; full re-deck ${redeckTxt}` },
+    // [C4 2026-08-27] Rows 1-3 break out by slope band when the measurement
+    // report carried a per-pitch table; otherwise they stay as the single lump
+    // "Roof area +10%" row they have always been.
+    //
+    // The fallback is deliberate and is the whole point of C4 step 4: with no
+    // per-pitch table, apportioning the roof by the PREDOMINANT pitch would be
+    // fabricating a slope split on a priced line item, which is worse than one
+    // honest lump row. We degrade and say why rather than invent.
+    const bandSplit = (m.areasByPitch && m.areasByPitch.length > 0)
+      ? bucketByBands(m.areasByPitch, pitchBands)
+      : null;
+    const useBandRows = !!(bandSplit && (bandSplit.buckets.length > 1 || bandSplit.unbandedSquares > 0));
+    const areaRows = [
+      { label: "Tear off & dispose existing roofing (all layers)", notes: "Haul-off included" },
+      { label: `Architectural laminate shingles - ${bidBrand || "per bid"}`, notes: "Per mfr. spec" },
+      { label: "Synthetic underlayment", notes: "Full coverage" },
     ];
-    drawTableHeader();
-    const lineH = 10;
-    for (const row of rows) {
-      const itemLines = wrapToLines(row.item, itemMaxChars);
-      const noteLines = wrapToLines(row.notes, notesMaxChars);
-      const nLines = Math.max(1, itemLines.length, noteLines.length);
-      const rowH = nLines * lineH + 2;
-      const pagesBefore = pages.length;
-      ensure(rowH);
-      if (pages.length > pagesBefore) { drawTableHeader(); }
-      const topY = y;
-      addText(colNum, topY, 8, "F1", String(row.num));
-      itemLines.forEach((ln, k) => addText(colItem, topY - k * lineH, 8, "F1", ln));
-      addText(colQty, topY, 8, "F1", row.qty);
-      addText(colUnit, topY, 8, "F1", row.unit);
-      addText(colBasis, topY, 8, "F1", row.basis);
-      noteLines.forEach((ln, k) => addText(colNotes, topY - k * lineH, 8, "F1", ln));
-      y = topY - rowH;
+    const rows = [];
+    let rowNum = 0;
+    if (useBandRows) {
+      const w = (s) => Math.ceil(s * 1.1);
+      for (const ar of areaRows) {
+        for (const b of bandSplit.buckets) {
+          rows.push({
+            num: ++rowNum,
+            item: `${ar.label} - ${b.band.label}`,
+            qty: String(w(b.squares)),
+            unit: "SQ",
+            basis: `${b.squares} SQ +10% (${pitchRangeLabel(b.pitches)})`,
+            notes: ar.notes,
+          });
+        }
+        if (bandSplit.unbandedSquares > 0) {
+          rows.push({
+            num: ++rowNum,
+            item: `${ar.label} - above priced slope bands`,
+            qty: String(w(bandSplit.unbandedSquares)),
+            unit: "SQ",
+            basis: `${bandSplit.unbandedSquares} SQ +10% (${pitchRangeLabel(bandSplit.unbandedPitches)})`,
+            notes: "Quote required - see Contingencies",
+          });
+        }
+      }
+    } else {
+      for (const ar of areaRows) {
+        rows.push({ num: ++rowNum, item: ar.label, qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: ar.notes });
+      }
     }
+    // [Part 2 2026-08-28] The seven LF-driven rows are built ONLY on a `full`
+    // report. A basic report (RoofScope X) carries no linear measurements at
+    // all, so every one of them would render "per bid / ?" -- seven rows of
+    // question marks on a contract exhibit, which reads as a defect rather than
+    // as an honest absence. They are replaced by one sentence that says so.
+    if (measurementShape === "full") {
+      rows.push(
+        { num: ++rowNum, item: "Ice & water shield - valleys + eaves", qty: qtyStr(iceWater), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"} + eaves ${ev != null ? ev : "?"}`, notes: "Code / leak-prone areas" },
+        { num: ++rowNum, item: "Starter course", qty: qtyStr(starter), unit: "LF", basis: `Eaves ${ev != null ? ev : "?"} + rakes ${rk != null ? rk : "?"}`, notes: "Eaves & rakes" },
+        { num: ++rowNum, item: "Hip & ridge cap shingles", qty: qtyStr(rh), unit: "LF", basis: `Ridges/Hips ${rh != null ? rh : "?"}`, notes: "Matching profile" },
+        { num: ++rowNum, item: "Drip edge", qty: qtyStr(drip), unit: "LF", basis: `Perimeter ${drip != null ? drip : "?"}`, notes: "Eaves & rakes" },
+        { num: ++rowNum, item: "Closed-cut valley", qty: qtyStr(vv), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"}`, notes: "Per mfr." },
+        { num: ++rowNum, item: "Step flashing (roof-to-wall)", qty: qtyStr(st), unit: "LF", basis: `Step flashing ${st != null ? st : "?"}`, notes: "Replace" },
+        { num: ++rowNum, item: "Headwall / apron flashing", qty: qtyStr(fl), unit: "LF", basis: `Flashing ${fl != null ? fl : "?"}`, notes: "Replace" },
+      );
+    }
+    rows.push(
+      { num: ++rowNum, item: "Pipe boots / penetration flashings", qty: "field", unit: "EA", basis: "Field-verified", notes: "Count confirmed on site" },
+      { num: ++rowNum, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
+      // [C3 2026-08-27] Rates removed -- decking and full re-deck are stated once,
+      // in CONTINGENCIES AND CONDITIONAL PRICING, each beside its trigger.
+      { num: ++rowNum, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: "See Contingencies" },
+    );
+    const derivedCols = [
+      { key: "num", x: colNum, chars: 4 },
+      { key: "item", x: colItem, chars: itemMaxChars },
+      // qty and unit are wide enough to hold their longest real value on one
+      // line ("as req'd", "SHEET"). Before Part 2 they were drawn with a bare
+      // addText and never wrapped; routing them through the shared drawRows
+      // wrapper reintroduced wrapping, and "as req'd" split across two lines on
+      // the first render. Caught by reading the PDF, not the code.
+      { key: "qty", x: colQty, chars: 12 },
+      { key: "unit", x: colUnit, chars: 8 },
+      { key: "basis", x: colBasis, chars: basisMaxChars },
+      { key: "notes", x: colNotes, chars: notesMaxChars },
+    ];
+    const derivedRows = rows.map((r: any) => ({ ...r, num: String(r.num) }));
+    const caption = "Quantities derived from the aerial measurement report on file. Field-verified items confirmed on site. No unit pricing shown.";
+    // Say WHY the scope is one lump row instead of a slope breakout, rather
+    // than leaving the reader to assume the roof is a single pitch.
+    const slopeNote = useBandRows ? null : (m.areasByPitch
+      ? "Slope breakout unavailable: the measurement report's pitch table did not resolve into priced bands."
+      : "Slope breakout unavailable: the measurement report on file carries no per-pitch area table.");
+    // [Part 2 2026-08-28] On a `basic` report the seven LF-driven rows are not
+    // in the table at all. Name them, so their absence reads as a stated fact
+    // rather than as an omission -- and say it BELOW the table it refers to,
+    // which is where the reader is when the question occurs to them.
+    const basicNote = measurementShape === "basic"
+      ? "Not itemised above, because the basic measurement report carries no linear measurements: ice & water shield, starter course, hip & ridge cap, drip edge, valley, step flashing and headwall / apron flashing. All seven are included in the work and their quantities are field-verified on site before installation."
+      : null;
+    ensure(22 + proseHeight(caption, 8, 512) + (slopeNote ? 12 : 0) + 24 + firstRowHeight(derivedCols, derivedRows));
+    addText(LEFT_X, y, 12, "F2", "LINE-ITEM SCOPE");
+    y -= 8;
+    y = addWrappedText(LEFT_X, y, 8, "F1", caption, 512);
     y -= 4;
-    hLine(y);
-    y -= 16;
+    if (slopeNote) {
+      addText(LEFT_X, y, 8, "F1", slopeNote);
+      y -= 12;
+    }
+    drawRows(derivedCols, derivedRows, drawTableHeader);
+    if (basicNote) {
+      ensure(proseHeight(basicNote, 8, 512) + 8);
+      y = addWrappedText(LEFT_X, y, 8, "F1", basicNote, 512);
+      y -= 10;
+    }
   }
   // ===== SCOPE OF WORK DETAILS (selections from the contractor bid) =====
   ensure(30);
@@ -785,7 +1156,9 @@ function generateRetailScopeOfWorkPdf(params) {
       y -= 14;
     }
     if (va.ventilation) {
-      const ventDesc = va.ventilation.ridge_vent_included ? "Ridge Vent - Included" : va.ventilation.ridge_vent_oop ? `Ridge Vent - OOP ${fmt$(va.ventilation.ridge_vent_oop)}` : null;
+      // [C3 2026-08-27] Price removed -- the OOP amount is a contingency and is
+      // stated once, in CONTINGENCIES AND CONDITIONAL PRICING.
+      const ventDesc = va.ventilation.ridge_vent_included ? "Ridge Vent - Included" : va.ventilation.ridge_vent_oop ? "Ridge Vent - homeowner out-of-pocket, see Contingencies" : null;
       if (ventDesc) {
         ensure(14);
         addText(60, y, 10, "F2", "Ventilation:");
@@ -793,17 +1166,24 @@ function generateRetailScopeOfWorkPdf(params) {
         y -= 14;
       }
     }
-    if (deckingPricePerSheet) {
-      const redeckTxt2 = fullRedeckPrice ? `${fmt$(deckingPricePerSheet)}/sheet if needed; Full redeck: ${fmt$(fullRedeckPrice)}` : `${fmt$(deckingPricePerSheet)}/sheet if needed`;
-      ensure(14);
-      addText(60, y, 10, "F2", "Decking:");
-      y = addWrappedText(160, y, 10, "F1", redeckTxt2, 380);
-    }
-    if (va.chimney_flashing?.option && va.chimney_flashing.option !== "na") {
-      const cfMap = { reuse: "Reuse existing", replace: "Replace - Included", replace_oop: `Replace OOP ${fmt$(va.chimney_flashing.oop_price)}` };
+    // [C3 2026-08-27] The decking rate moved to CONTINGENCIES AND CONDITIONAL
+    // PRICING. This block describes what IS included; a per-sheet rate that
+    // only applies if deteriorated decking is found is a contingency, and
+    // Dustin's instruction was that every price-changing condition live in one
+    // section with its trigger beside it.
+    // [C3 2026-08-27] BUG FIX, verified against contractor-bid-form.html:5254.
+    // This read `va.chimney_flashing`, which the bid form sets to a literal
+    // `null` and labels `deprecated -- replaced by chimney (86e10t28v)`. So the
+    // chimney line has rendered NOTHING for every bid submitted since that
+    // rename. The live shape is `va.chimney` = { type, option, oop_price }.
+    // Legacy shapes are still read so historical bids keep rendering.
+    const chim = va.chimney ?? va.chimney_flashing ?? va.chimney_reflash ?? null;
+    const chimOption = chim?.option && chim.option !== "na" ? String(chim.option) : null;
+    if (chimOption) {
+      const cfMap = { reuse: "Reuse existing", replace: "Replace - Included", included: "Included", oop: "Homeowner out-of-pocket option - see Contingencies", replace_oop: "Homeowner out-of-pocket option - see Contingencies" };
       ensure(14);
       addText(60, y, 10, "F2", "Chimney Flashing:");
-      addText(160, y, 10, "F1", cfMap[va.chimney_flashing.option] || String(va.chimney_flashing.option));
+      addText(160, y, 10, "F1", cfMap[chimOption] || chimOption);
       y -= 14;
     }
     if (va.skylights && va.skylights !== "na") {
@@ -833,19 +1213,9 @@ function generateRetailScopeOfWorkPdf(params) {
     }
     y -= 8;
   }
-  const slc = va?.secondLayerContingency;
-  if (hasRoofing && slc) {
-    const slcAmount = slc.method === "flat_fee" && slc.flatFeeAlternative != null ? slc.flatFeeAlternative : slc.pricePerSquare;
-    if (slcAmount != null) {
-      const slcPhrase = slc.method === "flat_fee" ? "flat fee" : "per square";
-      const slcDisclaimer = `If the existing roof is found to contain more than one layer of shingles, the contract price will increase by ${fmt$(slcAmount)} ${slcPhrase}. ` + `Customer will be notified before work proceeds and has the right to accept the change order or cancel the Agreement per the Change Order Disclaimer.`;
-      ensure(28);
-      addText(LEFT_X, y, 11, "F2", "SECOND-LAYER TEAR-OFF CONTINGENCY");
-      y -= 14;
-      y = addWrappedText(60, y, 10, "F1", slcDisclaimer, 480);
-      y -= 8;
-    }
-  }
+  // [C3 2026-08-27] The standalone SECOND-LAYER TEAR-OFF CONTINGENCY heading is
+  // gone. It is now row 1 of CONTINGENCIES AND CONDITIONAL PRICING, which is
+  // where every price-changing condition lives.
   if (hasGutters) {
     ensure(20);
     addText(LEFT_X, y, 11, "F2", "GUTTERS");
@@ -855,8 +1225,9 @@ function generateRetailScopeOfWorkPdf(params) {
       let gutterDesc = String(go);
       if (go === "5inch_included" || go === "5inch") gutterDesc = '5" Gutters - Included';
       else if (go === "6inch_included" || go === "6inch") gutterDesc = '6" Gutters - Included';
-      else if (go.includes("5inch") && go.includes("additional")) gutterDesc = `5" Gutters - OOP ${fmt$(va.gutters.additional_cost_5inch)}`;
-      else if (go.includes("6inch") && go.includes("additional")) gutterDesc = `6" Gutters - OOP ${fmt$(va.gutters.additional_cost_6inch)}`;
+      // [C3 2026-08-27] Amounts moved to CONTINGENCIES AND CONDITIONAL PRICING.
+      else if (go.includes("5inch") && go.includes("additional")) gutterDesc = '5" Gutters - homeowner out-of-pocket, see Contingencies';
+      else if (go.includes("6inch") && go.includes("additional")) gutterDesc = '6" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go === "none") gutterDesc = "No gutter work included";
       ensure(14);
       addText(60, y, 10, "F2", "Gutters:");
@@ -871,12 +1242,10 @@ function generateRetailScopeOfWorkPdf(params) {
         addText(160, y, 10, "F1", "Available - pricing on request");
         y -= 14;
       } else if (gg.mesh_oop || gg.screw_in_oop) {
-        const parts = [];
-        if (gg.mesh_oop) parts.push(`Mesh OOP ${fmt$(gg.mesh_oop)}`);
-        if (gg.screw_in_oop) parts.push(`Screw-in OOP ${fmt$(gg.screw_in_oop)}`);
+        // [C3 2026-08-27] Amounts moved to CONTINGENCIES AND CONDITIONAL PRICING.
         ensure(14);
         addText(60, y, 10, "F2", "Gutter Guards:");
-        addText(160, y, 10, "F1", parts.join("; "));
+        addText(160, y, 10, "F1", "Available at homeowner cost - see Contingencies");
         y -= 14;
       }
     }
@@ -904,14 +1273,53 @@ function generateRetailScopeOfWorkPdf(params) {
     y -= 14;
     y -= 8;
   }
-  if (Array.isArray(va.warranties) && va.warranties.length > 0) {
+  // ===== WARRANTIES =====
+  // [Part 2 item 4 2026-08-28] THIS SECTION HAS NEVER RENDERED FOR ANY CURRENT
+  // BID. It read `va.warranties`, and contractor-bid-form.html sets that key to
+  // a literal `null` -- commented, in the bid form itself, "D-202 Phase 2:
+  // superseded by quotes.warranty_option_id / warranty_snapshot (Session 463)".
+  // The read was left pointing at the old field when the field moved. Same
+  // defect class as the four C3 fixed: a dead read failing silently.
+  //
+  // Warranty terms are both a selling point and a contract term, so an Exhibit
+  // A that silently omits them is materially incomplete. The live source is
+  // quotes.warranty_snapshot -- TEXT, not JSON: a prose sentence captured at
+  // bid time, e.g. "GAF Silver Pledge - Material: 50 years (non-prorated);
+  // Labor: 10 years; Wind: 130 mph; Hail: Standard. ... OtterQuote is not the
+  // warrantor." It is a SNAPSHOT by design (D-202) and is rendered verbatim:
+  // reformatting it into rows would mean parsing prose whose shape is set by
+  // whoever wrote the warranty option, and getting that wrong on a contract
+  // exhibit misstates a warranty term.
+  //
+  // quotes.workmanship_warranty_years is the contractor's own labor warranty
+  // and is separate from the manufacturer program above.
+  //
+  // The legacy `va.warranties` array is still read so historical bids written
+  // before Session 463 keep rendering.
+  const legacyWarranties = Array.isArray(va.warranties) ? va.warranties.filter((w: any) => w && w.name) : [];
+  const warrantyText = (typeof warrantySnapshot === "string" && warrantySnapshot.trim()) ? warrantySnapshot.trim() : null;
+  const workmanshipYears = (workmanshipWarrantyYears != null && !Number.isNaN(Number(workmanshipWarrantyYears)))
+    ? Number(workmanshipWarrantyYears) : null;
+  if (warrantyText || workmanshipYears != null || legacyWarranties.length > 0) {
     ensure(28);
     hLine(y + 4);
     y -= 12;
     addText(LEFT_X, y, 12, "F2", "WARRANTIES");
     y -= 14;
-    for (const w of va.warranties) {
-      if (!w.name) continue;
+    if (warrantyText) {
+      ensure(24);
+      addText(60, y, 10, "F2", "Manufacturer / system warranty:");
+      y -= 12;
+      y = addWrappedText(70, y, 9, "F1", warrantyText, 480);
+      y -= 6;
+    }
+    if (workmanshipYears != null) {
+      ensure(16);
+      addText(60, y, 10, "F2", "Contractor workmanship warranty:");
+      addText(260, y, 10, "F1", `${workmanshipYears} year${workmanshipYears === 1 ? "" : "s"}`);
+      y -= 14;
+    }
+    for (const w of legacyWarranties) {
       ensure(24);
       addText(60, y, 10, "F2", w.name);
       y -= 12;
@@ -921,7 +1329,143 @@ function generateRetailScopeOfWorkPdf(params) {
       if (w.hail_damage?.years) { addText(70, y, 9, "F1", `Hail: ${w.hail_damage.years} yrs`); y -= 11; }
       y -= 4;
     }
+    y -= 4;
   }
+  // ===== CONTINGENCIES AND CONDITIONAL PRICING =====
+  // [C3 2026-08-27, Dustin-directed] One section listing EVERY condition that
+  // can change the contract price, each with its trigger and its rate. These
+  // were previously scattered -- decking inside the roofing detail block,
+  // second-layer tear-off under its own heading, out-of-pocket options inline
+  // with their trades -- and several never rendered at all.
+  //
+  // Every key below was verified against contractor-bid-form.html's own
+  // valueAdds constructor (~line 5233) rather than assumed. Four of these had
+  // NEVER reached this document:
+  //   - va.drip_edge          (written at :5286, never read here)
+  //   - va.rotten_wood_pricing (written at :5318, never read here)
+  //   - va.siding_rotten_sheathing_pricing (written at :5328, never read here)
+  //   - va.num_stories         (written at :5303, never read here)
+  // and a fifth, va.chimney, was read under its deprecated name -- see the
+  // chimney fix above.
+  //
+  // A row with no value is OMITTED. Nothing renders as "TBD": a contract
+  // exhibit that says "TBD" next to a price trigger is worse than silence,
+  // because it implies a number exists somewhere that the homeowner has not
+  // been shown.
+  {
+    const rows = [];
+    const add = (name, trigger, price) => {
+      if (price == null || price === "") return;
+      rows.push({ name, trigger, price });
+    };
+    const slc = va?.secondLayerContingency;
+    if (hasRoofing && slc) {
+      const flat = slc.method === "flat_fee" && slc.flatFeeAlternative != null;
+      const amt = flat ? slc.flatFeeAlternative : slc.pricePerSquare;
+      if (amt != null) add("Second-layer tear-off", "More than one layer of existing shingles found at tear-off", flat ? `${fmt$(amt)} flat fee` : `${fmt$(amt)} per square`);
+    }
+    if (hasRoofing) {
+      add("Decking replacement", "Deteriorated roof decking found after tear-off", deckingPricePerSheet != null ? `${fmt$(deckingPricePerSheet)} per sheet` : null);
+      add("Full re-deck", "Entire roof deck requires replacement", fullRedeckPrice != null ? fmt$(fullRedeckPrice) : null);
+    }
+    add("Rotten wood / fascia / soffit", "Concealed rot found during the work", typeof va.rotten_wood_pricing === "string" && va.rotten_wood_pricing.trim() ? va.rotten_wood_pricing.trim() : null);
+    add("Rotten sheathing behind siding", "Concealed rot found behind removed siding", typeof va.siding_rotten_sheathing_pricing === "string" && va.siding_rotten_sheathing_pricing.trim() ? va.siding_rotten_sheathing_pricing.trim() : null);
+    {
+      const c = va.chimney ?? va.chimney_flashing ?? va.chimney_reflash ?? null;
+      if (c && (c.option === "oop" || c.option === "replace_oop") && c.oop_price != null) {
+        add("Chimney flashing", "Homeowner elects chimney flashing work (not included in base price)", fmt$(c.oop_price));
+      }
+    }
+    if (va.ventilation && !va.ventilation.ridge_vent_included && va.ventilation.ridge_vent_oop != null) {
+      add("Ridge vent", "Homeowner elects ridge vent (not included in base price)", fmt$(va.ventilation.ridge_vent_oop));
+    }
+    if (va.drip_edge?.option === "oop" && va.drip_edge.oop_price != null) {
+      add("Drip edge", "Homeowner elects drip edge (not included in base price)", fmt$(va.drip_edge.oop_price));
+    }
+    if (va.gutter_guards) {
+      const gg = va.gutter_guards;
+      if (gg.mesh_oop != null) add("Gutter guards - mesh", "Homeowner elects mesh gutter guards", fmt$(gg.mesh_oop));
+      if (gg.screw_in_oop != null) add("Gutter guards - screw-in", "Homeowner elects screw-in gutter guards", fmt$(gg.screw_in_oop));
+      if (gg.pricing_on_request && gg.mesh_oop == null && gg.screw_in_oop == null) {
+        add("Gutter guards", "Homeowner elects gutter guards", "Pricing on request");
+      }
+    }
+    if (va.gutters?.option) {
+      const go = String(va.gutters.option);
+      if (go.includes("5inch") && go.includes("additional") && va.gutters.additional_cost_5inch != null) add('Gutters - 5"', "Homeowner elects 5-inch gutters (not included in base price)", fmt$(va.gutters.additional_cost_5inch));
+      if (go.includes("6inch") && go.includes("additional") && va.gutters.additional_cost_6inch != null) add('Gutters - 6"', "Homeowner elects 6-inch gutters (not included in base price)", fmt$(va.gutters.additional_cost_6inch));
+    }
+    if (va.skylights && va.skylights !== "na") {
+      add("Skylights", "Skylight condition assessed on site", va.skylights === "reflash" ? "Reflash - per contractor bid" : "Replace - per contractor bid");
+    }
+    // [C4 2026-08-27] Slope and access adders. These come from the contractor's
+    // rate card, not from the bid form, so they render only when he has one on
+    // file -- and the "above the top priced band" row renders whenever measured
+    // area sits above every band he prices, WITH or WITHOUT a rate, because the
+    // homeowner needs to know that part of the roof is unpriced.
+    if (hasRoofing && Array.isArray(pitchBands) && pitchBands.length > 0 && m.areasByPitch) {
+      const split = bucketByBands(m.areasByPitch, pitchBands);
+      for (const b of split.buckets) {
+        if (b.band.rate_per_square != null) {
+          add(`Steep-slope charge - ${b.band.label}`, `${b.squares} SQ measured in this slope band`, `${fmt$(b.band.rate_per_square)} per square`);
+        }
+      }
+      if (split.unbandedSquares > 0) {
+        add("Slope above priced bands", `${split.unbandedSquares} SQ measured at ${split.unbandedPitches.join(", ")}, above every band on the contractor's rate card`, "Quote required before work begins");
+      }
+    }
+    if (hasRoofing && twoStoryAdder?.rate_per_square != null && String(va.num_stories || "").trim() && String(va.num_stories).trim() !== "1") {
+      add("Two-story access", `Structure is ${va.num_stories} stories`, `${fmt$(twoStoryAdder.rate_per_square)} per square`);
+    }
+    if (rows.length > 0) {
+      // [C4e 2026-08-27] 40 was enough for the heading and caption but not for
+      // the column header and a first data row, so a section starting near the
+      // foot of a page left an orphaned heading + empty header row behind and
+      // reprinted both overleaf. Budget the whole opening block.
+      ensure(78);
+      hLine(y + 4);
+      y -= 12;
+      addText(LEFT_X, y, 12, "F2", "CONTINGENCIES AND CONDITIONAL PRICING");
+      y -= 12;
+      y = addWrappedText(LEFT_X, y, 8, "F1", "Every condition below can change the contract price. None is included in the price on page 1. Each states what triggers it and what it costs.", 512);
+      y -= 4;
+      const cName = 50, cTrig = 210, cPrice = 452;
+      const nameChars = 36, trigChars = 56, priceChars = 26;
+      const header = () => {
+        ensure(18);
+        addText(cName, y, 8, "F2", "Contingency");
+        addText(cTrig, y, 8, "F2", "Trigger");
+        addText(cPrice, y, 8, "F2", "Price");
+        y -= 3; hLine(y); y -= 11;
+      };
+      header();
+      const lineH = 10;
+      for (const row of rows) {
+        const nL = wrapToLines(row.name, nameChars);
+        const tL = wrapToLines(row.trigger, trigChars);
+        const pL = wrapToLines(row.price, priceChars);
+        const n = Math.max(nL.length, tL.length, pL.length);
+        const rowH = n * lineH + 3;
+        const pagesBefore = pages.length;
+        ensure(rowH);
+        if (pages.length > pagesBefore) header();
+        const topY = y;
+        nL.forEach((ln, k) => addText(cName, topY - k * lineH, 8, "F1", ln));
+        tL.forEach((ln, k) => addText(cTrig, topY - k * lineH, 8, "F1", ln));
+        pL.forEach((ln, k) => addText(cPrice, topY - k * lineH, 8, "F1", ln));
+        y = topY - rowH;
+      }
+      y -= 4;
+      hLine(y);
+      y -= 12;
+      // Conditions that carry no fixed rate because they come from the
+      // contractor's own terms, not from the bid form. Rendered as prose, not
+      // as priceless table rows -- an empty Price cell reads as an omission.
+      y = addWrappedText(LEFT_X, y, 8, "F1", "In addition, and without a fixed rate: permit and other governmental fees are excluded from the contract price unless expressly stated in the contractor's agreement; code-required work and damage concealed behind existing materials is not discoverable before the work begins; and either party may act on a measurement that proves more than 10% off, per the MEASUREMENT DISCLAIMER above. Any of these changes the price only through a written change order under the contractor's own agreement, which the homeowner may accept or decline.", 512);
+      y -= 8;
+    }
+  }
+
   const hasNotes = homeownerNotes || messageToHomeowner || va.other_offers || pc?.workNotBeingDone || pc?.homeownerNotes;
   if (hasNotes) {
     ensure(28);
@@ -964,6 +1508,43 @@ function generateRetailScopeOfWorkPdf(params) {
       y = addWrappedText(60, y, 9, "F1", pc.homeownerNotes, 500);
     }
   }
+  // ===== PLATFORM ACKNOWLEDGMENT =====
+  // [C1 2026-08-27, Dustin-directed] Relocated here from the RETIRED IC 24-5-11
+  // compliance addendum (the old Document 3, deleted in this same change).
+  // Dustin, verbatim: "We shouldn't be adding terms to their contracts. We
+  // shouldn't have our name on their contract." This page IS ours -- it is
+  // prepared by Otter Quotes for the homeowner -- so the platform's own
+  // non-party disclaimer belongs here, and nowhere else in the envelope.
+  //
+  // THE FIELD ID IS LOAD-BEARING. D-269 (#550) docusign-webhook/ack-verify.ts
+  // fails CLOSED at envelope completion when it cannot find a formFields entry
+  // with id exactly `otterquote_acknowledgment` (ACK_FIELD_ID). Renaming it
+  // blocks every completed contract. It moved documents; it did not change id.
+  //
+  // It is now drawn on its own labelled signature line. Previously (#1314) it
+  // was drawn at (200,189) -- the same baseline as the visible "PLATFORM
+  // DISCLOSURE" heading at (50,189) -- so the homeowner was required to sign a
+  // box that sat on top of a heading and was identified as nothing at all.
+  //
+  // Signer index 2 = homeowner, matching the initials row below: this document
+  // has exactly one call site (handleContractorSign), which always sends
+  // contractor as signer 1 and homeowner as signer 2.
+  ensure(96);
+  y -= 12;
+  hLine(y + 4);
+  y -= 14;
+  addText(LEFT_X, y, 12, "F2", "PLATFORM ACKNOWLEDGMENT");
+  y -= 14;
+  y = addWrappedText(LEFT_X, y, 9, "F1", "Otter Quotes is a technology platform that connects homeowners with contractors. Otter Quotes is NOT a party to the contract between you and the contractor, is not the contractor, and assumes no liability for the work performed under that contract. The contract is between you and the contractor named above.", 512);
+  y -= 10;
+  ensure(34);
+  addText(LEFT_X, y, 9, "F2", "Homeowner acknowledgment:");
+  addText(205, y, 9, "F1", "_____________________________________");
+  addTextColored(205, y, 8, "F1", "{{sign|2|*||otterquote_acknowledgment}}", 1.0);
+  y -= 11;
+  addText(205, y, 8, "F1", "Sign here to confirm you have read the statement above.");
+  y -= 6;
+
   // [D-225 Phase 2B / D-186; re-tagged D-274 / #631] Dual-party initials row.
   // The visible labels (Contractor / Homeowner) sit beside blank underscores;
   // BoldSign Text Tags are drawn in white at the same x so they are invisible
@@ -1128,12 +1709,59 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
   const { data: contractorData } = await supabase.from("contractors").select("*").eq("id", contractorId).single();
   const { data: bidData } = await supabase.from("quotes").select("*").eq("claim_id", claimId).eq("contractor_id", contractorId).single();
   const homeownerProfile = await getHomeownerName(supabase, claimId);
+  // ========== [#1314 / Part B, 2026-08-27] PHANTOM COLUMN READS FIXED ==========
+  // Nine reads in this function targeted columns that DO NOT EXIST. Each one
+  // silently yielded undefined -> "". Verified against the live schema on
+  // yeszghaspzwwstvsrioa (information_schema.columns), not inferred:
+  //
+  //   bidData.amount                -> quotes.total_price
+  //   bidData.brand                 -> inside quotes.scope_summary (JSON string)
+  //   bidData.estimated_start_date  -> inside quotes.scope_summary (JSON string)
+  //   bidData.warranty_years        -> quotes.workmanship_warranty_years
+  //   claimData.material_product    -> no such column; the material is the bid's
+  //                                    brand (scope_summary) or quotes.material_selection
+  //   claimData.address_line1/_city/_state/_zip -> claims has only property_address;
+  //                                    city/state/zip live on profiles
+  //   claimData.phone               -> no such column; profiles.phone
+  //
+  // These were harmless only while the output was discarded (the D-274 tab
+  // builder was retired). #1314's point stands: the moment anyone restores
+  // prefill they wire seven blank fields and blame BoldSign. Fixed now so that
+  // does not happen.
+  //
+  // The homeowner's phone and city/state/zip come from `profiles`, which is
+  // where the homeowner's own address actually lives.
+  let homeownerProfileRow = null;
+  if (claimData?.user_id) {
+    const { data: hp } = await supabase
+      .from("profiles")
+      .select("phone, address_street, address_city, address_state, address_zip")
+      .eq("id", claimData.user_id)
+      .maybeSingle();
+    homeownerProfileRow = hp ?? null;
+  }
+  // quotes.scope_summary is a JSON *string* carrying the retail bid facts that
+  // have no columns of their own. Parsed defensively -- a malformed value must
+  // not take down envelope creation.
+  let scopeSummaryObj = null;
+  if (bidData?.scope_summary) {
+    try {
+      scopeSummaryObj = typeof bidData.scope_summary === "string"
+        ? JSON.parse(bidData.scope_summary)
+        : bidData.scope_summary;
+    } catch (_e) {
+      console.warn("autoPopulateFields: quotes.scope_summary is not valid JSON (non-fatal)");
+    }
+  }
   const fields = {};
   if (claimData) {
     fields.customer_name = homeownerProfile.fullName;
-    fields.customer_address = claimData.property_address || claimData.address_line1 || "";
-    fields.customer_city_zip = `${claimData.address_city || ""}, ${claimData.address_state || ""} ${claimData.address_zip || ""}`.trim();
-    fields.customer_phone = claimData.phone || "";
+    fields.customer_address = claimData.property_address || "";
+    fields.customer_city_zip = [
+      homeownerProfileRow?.address_city,
+      [homeownerProfileRow?.address_state, homeownerProfileRow?.address_zip].filter(Boolean).join(" "),
+    ].filter(Boolean).join(", ");
+    fields.customer_phone = homeownerProfileRow?.phone || "";
     fields.customer_email = signerEmail || "";
     // #514: claims has no `insurance_carrier` column — read carrier_name
     // (written by parse-loss-sheet), with the legacy name as a fallback.
@@ -1142,12 +1770,16 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
     fields.deductible = claimData.deductible_amount ? `$${Number(claimData.deductible_amount).toLocaleString()}` : "";
     fields.contract_date = new Date().toLocaleDateString("en-US");
     fields.job_description = claimData.damage_type ? `Roof ${claimData.damage_type}` : "Roof Replacement";
-    fields.material_type = claimData.material_product || bidData?.brand || "";
+    // No claims.material_product column exists. The material on a bid is the
+    // brand the contractor quoted.
+    fields.material_type = scopeSummaryObj?.brand || bidData?.material_selection || claimData.material_category || "";
   }
   if (bidData) {
-    fields.contract_price = bidData.amount ? `$${Number(bidData.amount).toLocaleString()}` : "";
-    fields.warranty_years = bidData.warranty_years ? `${bidData.warranty_years} years` : "";
-    fields.estimated_start = bidData.estimated_start_date || "";
+    // quotes.total_price, not quotes.amount -- total_price is the number the
+    // homeowner accepted and the number the platform fee is charged against.
+    fields.contract_price = bidData.total_price != null ? `$${Number(bidData.total_price).toLocaleString()}` : "";
+    fields.warranty_years = bidData.workmanship_warranty_years ? `${bidData.workmanship_warranty_years} years` : "";
+    fields.estimated_start = scopeSummaryObj?.estimated_start_date || "";
     fields.decking_per_sheet = bidData.decking_price_per_sheet ? `$${bidData.decking_price_per_sheet}` : "";
     fields.full_redeck_price = bidData.full_redeck_price ? `$${Number(bidData.full_redeck_price).toLocaleString()}` : "";
   }
@@ -1288,10 +1920,20 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   // [D-274 / #631] homeownerSignerIndex=2 — this flow (handleContractorSign)
   // always sends contractor as signer 1, homeowner as signer 2 (see the
   // signers[] array built below).
-  const addendumBase64 = generateComplianceAddendumPdf(contractorName, homeownerName, contractDate, 2);
-  const isRetail = fundingType !== "insurance";
+  // [C1 2026-08-27, Dustin-directed] The compliance addendum (Document 3) is
+  // retired -- see the tombstone above generateRetailScopeOfWorkPdf.
+  //
+  // The Scope of Work is no longer gated on `isRetail`. Dustin: "I think we do
+  // Exhibit A on all jobs." Two reasons it has to be unconditional now:
+  //   - it is the only document in the envelope carrying the REQUIRED
+  //     otterquote_acknowledgment field, so gating it would make D-269's
+  //     ack-verify fail closed on every insurance-funded contract; and
+  //   - the measurements, scope and disclaimers are just as true on an
+  //     insurance job.
+  // For ACV/RCV jobs the scope basis is the insurer's own estimate, already
+  // parsed onto claims.parsed_line_items by parse-loss-sheet.
   let scopeOfWorkBase64 = null;
-  if (isRetail) {
+  {
     try {
       // If the Hover report has not yet been parsed into claims.hover_measurements
       // but a source report PDF is on file, invoke parse-hover-measurements first
@@ -1355,11 +1997,43 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         bidBrand,
         deckingPricePerSheet: bidData?.decking_price_per_sheet ?? null,
         fullRedeckPrice: bidData?.full_redeck_price ?? null,
-        messageToHomeowner: bidData?.message_to_homeowner ?? bidData?.contractor_message ?? null,
+        // [C2 2026-08-27] Guarded: never attribute unverified prose to the
+        // contractor. See contractorAuthoredMessage() for the mechanism.
+        messageToHomeowner: contractorAuthoredMessage(bidData),
         homeownerNotes: claimData?.homeowner_notes ?? null,
         projectConfirmation: claimData?.project_confirmation ?? null,
         measurements,
-        contractDate
+        contractDate,
+        fundingType,
+        // [C4 2026-08-27] The contractor's own priced slope bands. Absent today
+        // for every contractor -- `contractors.pitch_bands` is a Tier 3A
+        // migration drafted but NOT applied (see
+        // supabase/migrations_drafts/c4_contractor_pitch_bands*). Until it
+        // lands this resolves to undefined and bucketByBands falls back to the
+        // Xactimate-aligned 7/12 threshold, which is the documented behaviour,
+        // not a silent default.
+        pitchBands: contractorData?.pitch_bands?.bands ?? null,
+        twoStoryAdder: contractorData?.pitch_bands?.two_story_adder ?? null,
+        // [Part 2 2026-08-28] The insurer's own estimate, for the `insurance`
+        // Exhibit A shape. parse-loss-sheet writes all five of these; no new
+        // parser is needed. Every one is nullable and a retail claim carries
+        // none of them, which is exactly how resolveMeasurementShape /
+        // insurerScopeRows decide the shape.
+        insurance: {
+          parsedLineItems: claimData?.parsed_line_items ?? null,
+          scopeSummary: claimData?.contractor_scope_summary ?? null,
+          rcv: claimData?.rcv_amount ?? null,
+          acv: claimData?.acv_amount ?? null,
+          deductible: claimData?.deductible_amount ?? null,
+          carrier: claimData?.parsed_line_items?.carrier_name ?? null,
+          format: claimData?.parsed_line_items?.format_detected ?? null,
+          pricingDatabase: claimData?.parsed_line_items?.pricing_database ?? null
+        },
+        // [Part 2 item 4 2026-08-28] The WARRANTIES section read va.warranties,
+        // which contractor-bid-form.html sets to a literal null. Live source is
+        // quotes.warranty_snapshot (TEXT) + quotes.workmanship_warranty_years.
+        warrantySnapshot: bidData?.warranty_snapshot ?? null,
+        workmanshipWarrantyYears: bidData?.workmanship_warranty_years ?? null
       });
       console.log(`Retail Scope of Work PDF generated for claim ${claim_id}`);
     } catch (sowErr) {
@@ -1370,8 +2044,7 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const docLabel = getDocumentLabel("contractor_sign");
   const files = [
     `data:application/pdf;base64,${templateBase64}`,
-    ...scopeOfWorkBase64 ? [`data:application/pdf;base64,${scopeOfWorkBase64}`] : [],
-    `data:application/pdf;base64,${addendumBase64}`
+    ...scopeOfWorkBase64 ? [`data:application/pdf;base64,${scopeOfWorkBase64}`] : []
   ];
   const sendBody = {
     title: `${docLabel} — Otter Quotes (Job #${claim_id.slice(-8).toUpperCase()})`,
@@ -1598,16 +2271,16 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const files = [
     `data:application/pdf;base64,${templateBase64}`
   ];
-  if (document_type === "contract") {
-    const contractDate = new Date().toLocaleDateString("en-US");
-    // [D-274 / #631] homeownerSignerIndex=1 — this flow (handleLegacyFlow)
-    // sends homeowner as signer 1, contractor as signer 2 (OPPOSITE order
-    // from handleContractorSign — see the signers[] array below and the
-    // generateComplianceAddendumPdf header comment on why this parameter
-    // exists at all).
-    const addendumBase64 = generateComplianceAddendumPdf(contractorName, autoFields.customer_name || signer.name || "Homeowner", contractDate, 1);
-    files.push(`data:application/pdf;base64,${addendumBase64}`);
-  }
+  // [C1 2026-08-27] The `contract` document_type used to append the IC 24-5-11
+  // compliance addendum here. That addendum is retired (see the tombstone above
+  // generateRetailScopeOfWorkPdf). Nothing is appended in its place: this legacy
+  // flow sends the contractor's own uploaded template and nothing else.
+  //
+  // Verified 2026-08-27 before removing it: NO caller anywhere in the codebase
+  // sends document_type "contract". The live values are "contractor_sign"
+  // (contractor-bid-form.html:5928, react-app contractor/sign page) and
+  // "homeowner_sign" (contract-signing.html:1617, react-app contract-signing).
+  // This branch was unreachable, so its removal changes no live envelope.
   // [D-274 / #631] No textTabs/homeownerTabs/contractorTabs equivalent —
   // see the "TAB-BUILDER FUNCTIONS RETIRED" comment above buildTextTabs's
   // old location for the full explanation. This legacy flow's own

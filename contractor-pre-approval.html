@@ -435,12 +435,24 @@
 
                 <!-- Step 4: Contract Template (D-209: required, no fallback) -->
                 <div id="step4" style="display:none;" class="wizard-card">
-                    <h2>Upload Your Contract Template</h2>
-                    <p class="subtitle">Upload the contract you use with homeowners. This is the agreement they will sign on Otter Quotes &mdash; your contract, your terms. Upload is required to complete your application. You can add additional templates for other trade and funding-type combinations later in your profile.</p>
+                    <h2>Upload Your Blank Contract Template</h2>
+                    <p class="subtitle">Upload the <strong>blank</strong> contract you start every job from &mdash; not a filled-in proposal for a specific house. This is the agreement homeowners will sign on Otter Quotes: your contract, your terms. Upload is required to complete your application. You can add templates for other trade and funding-type combinations later in your profile.</p>
 
+                    <!-- [#1313, 2026-08-28] The first real contractor uploaded a filled
+                         sample proposal made out to himself, because the page asked for
+                         "your contract" and that is a reasonable answer to that question.
+                         The ask is now explicit, and the starter download is offered here
+                         rather than only after a failed validation. -->
                     <div class="info-box">
                         <strong>What to Upload</strong>
-                        <p style="margin-top: var(--sp-2);">Your standard contract PDF for your primary trade and funding type. Otter Quotes auto-fills the homeowner's name, address, project details, and your bid fields electronically &mdash; but the contract terms are yours, drafted or reviewed by your attorney. We do not draft or provide homeowner-contractor contracts.</p>
+                        <p style="margin-top: var(--sp-2);">Your standard <strong>blank</strong> contract PDF for your primary trade and funding type &mdash; no customer name, no property address, no prices filled in. Otter Quotes fills those in automatically from the bid the homeowner accepted, which is what stops a contract from ever stating a price the homeowner did not agree to.</p>
+                        <p style="margin-top: var(--sp-2);">The contract terms are yours, drafted or reviewed by your attorney. We do not draft or provide homeowner-contractor contracts.</p>
+                    </div>
+
+                    <div class="info-box" style="margin-top: var(--sp-4);">
+                        <strong>Don't have a template set up for e-signature?</strong>
+                        <p style="margin-top: var(--sp-2);">Download a blank starter for your trade. It already carries the signature lines and the fields Otter Quotes fills in &mdash; paste your own terms and your own Notice of Cancellation into the two marked blocks. If you would rather use the contract you already have, upload it and we will add the fields to it for you after this step.</p>
+                        <button type="button" class="btn-secondary" id="starterDownloadBtn" style="margin-top: var(--sp-3);" onclick="downloadStarterForSelection(this)">Download blank starter template</button>
                     </div>
 
                     <!-- Trade + funding type selectors -->
@@ -487,6 +499,19 @@
     <!-- #505: D-199 validation helpers — step 4 must create the contractor_templates
          row and validate it, or the quotes_enforce_bid_can_submit trigger blocks every bid. -->
     <script src="js/contract-template-validation.js"></script>
+    <script>
+      // [#1313, 2026-08-28] Starter download from the onboarding wizard. Uses
+      // the trade + funding selectors above; the Edge Function generates the
+      // PDF from the live v3 manifest, so it can never fall out of step with
+      // what the validator requires.
+      function downloadStarterForSelection(btn) {
+        var trade = document.getElementById('templateTrade').value;
+        var funding = document.getElementById('templateFunding').value;
+        if (!trade || !funding) { alert('Choose your trade and funding type first, so the starter carries the right fields.'); return; }
+        if (!window.D199 || !window.D199.downloadStarterTemplate) { alert('Starter templates are unavailable right now. Upload your own contract and we will add the fields to it.'); return; }
+        window.D199.downloadStarterTemplate(trade, funding, btn);
+      }
+    </script>
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>

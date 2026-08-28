@@ -67,6 +67,20 @@ interface RoofSummary {
   step_flashing_lf: number | null;
   flashing_lf: number | null;
   predominant_pitch: string | null;
+  // [C4 / Tier 3A, 2026-08-27] Per-pitch area breakdown. Additive and nullable:
+  // every existing consumer keeps working when this is absent.
+  //
+  // The parser ALREADY walked this table -- it scanned `<n>/<n> <area> ft <pct>%`
+  // rows to pick the highest-percentage pitch and threw the areas away. Keeping
+  // them is what lets Exhibit A break tear-off and install out by slope band
+  // instead of quoting one lump `Roof area +10%` row.
+  //
+  // NOTE ON SOURCE: this reads the HOVER report layout. RoofScope and RoofScope X
+  // -- which are the reports OtterQuote actually buys (see the gh-1245 catalog:
+  // roof_basic is RoofScopeX) -- are image-only PDFs with NO text layer at all,
+  // verified 2026-08-27 with unpdf, pdftotext and pypdf all returning 0 chars.
+  // No text parser can read them; that path needs the Scope Technologies API.
+  areas_by_pitch: Array<{ pitch: string; area_sf: number; squares: number; pct: number | null }> | null;
 }
 
 function parseRoofSummary(fullText: string | null | undefined): RoofSummary {
@@ -75,6 +89,7 @@ function parseRoofSummary(fullText: string | null | undefined): RoofSummary {
     ridge_hip_lf: null, valley_lf: null, rake_lf: null, eave_lf: null,
     drip_edge_perimeter_lf: null, step_flashing_lf: null, flashing_lf: null,
     predominant_pitch: null,
+    areas_by_pitch: null,
   };
   if (!fullText || typeof fullText !== "string") return out;
 
@@ -135,17 +150,33 @@ function parseRoofSummary(fullText: string | null | undefined): RoofSummary {
     }
   }
 
-  // Predominant pitch: "<n> / <n> <area> ft <pct>%" rows; highest pct wins.
-  const pitchRe = /(\d+)\s*\/\s*(\d+)\s+[\d,]+\s*ft\S*\s+([\d.]+)\s*%/gi;
+  // Pitch rows: "<n> / <n> <area> ft <pct>%". The area column is now CAPTURED
+  // (it used to be a non-capturing [\d,]+ and was discarded) so the same single
+  // pass yields both the predominant pitch and the full per-pitch breakdown.
+  const pitchRe = /(\d+)\s*\/\s*(\d+)\s+([\d,]+)\s*ft\S*\s+([\d.]+)\s*%/gi;
   let pm: RegExpExecArray | null;
   let best: { pitch: string; pct: number } | null = null;
+  const byPitch: Array<{ pitch: string; area_sf: number; squares: number; pct: number | null }> = [];
   while ((pm = pitchRe.exec(region)) !== null) {
-    const pct = parseFloat(pm[3]);
+    const pct = parseFloat(pm[4]);
+    const areaSf = parseInt(pm[3].replace(/,/g, ""), 10);
+    const pitch = `${pm[1]}/${pm[2]}`;
     if (!Number.isNaN(pct) && (best === null || pct > best.pct)) {
-      best = { pitch: `${pm[1]}/${pm[2]}`, pct };
+      best = { pitch, pct };
+    }
+    if (!Number.isNaN(areaSf) && areaSf > 0) {
+      byPitch.push({
+        pitch,
+        area_sf: areaSf,
+        squares: Math.round((areaSf / 100) * 100) / 100,
+        pct: Number.isNaN(pct) ? null : pct,
+      });
     }
   }
   if (best) out.predominant_pitch = best.pitch;
+  // Only emitted when more than nothing was found. An empty array would read as
+  // "measured, and the roof has no pitched area", which is not what null means.
+  if (byPitch.length > 0) out.areas_by_pitch = byPitch;
 
   return out;
 }
@@ -260,6 +291,7 @@ serve(async (req: Request) => {
       step_flashing_lf: parsed.step_flashing_lf,
       flashing_lf: parsed.flashing_lf,
       predominant_pitch: parsed.predominant_pitch,
+      areas_by_pitch: parsed.areas_by_pitch,
     };
 
     const { error: upErr } = await supabase
