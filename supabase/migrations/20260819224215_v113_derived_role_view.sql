@@ -1,9 +1,18 @@
--- Migration: v113_derived_role_view
+-- Migration: 20260819224215_v113_derived_role_view
 -- Author: Claude Code (automated, run-work rw-909-f22-b4vw)
 -- Date: 2026-08-19
 -- D-numbers: D-182 (deploy tier 3), D-221 (path A deploy)
--- Rollback: v113_derived_role_view_rollback.sql
--- Pre-flight: v113_derived_role_view_pre-flight.md
+-- Rollback: 20260819224215_v113_derived_role_view_rollback.sql
+-- Pre-flight: 20260819224215_v113_derived_role_view_pre-flight.md
+--
+-- gh-1307 (2026-08-27): filename backfilled with its actual applied
+-- timestamp prefix (20260819224215, per supabase_migrations.schema_migrations)
+-- -- the original filename lacked the YYYYMMDDHHMMSS_ prefix Supabase's
+-- migration runner requires, so the CLI-driven runner never picked this file
+-- up. The migration itself DID reach production, but only because it was
+-- applied directly (matching schema_migrations exactly, re-verified
+-- 2026-08-27: view definition + grants both match this file byte-for-byte).
+-- See gh-1307 for the full incident and the CI check that now prevents this.
 --
 -- Summary: Adds a read-only, auth-scoped VIEW that derives a user's
 -- functional role from fact tables (contractors, referral_agents, claims)

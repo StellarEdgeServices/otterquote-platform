@@ -1,5 +1,5 @@
--- Rollback: v114_fix_bid_accepted_trigger_and_notify_rollback.sql
--- Reverts: v114_fix_bid_accepted_trigger_and_notify.sql
+-- Rollback: 20260827024432_v114_fix_bid_accepted_trigger_and_notify_rollback.sql
+-- Reverts: 20260827024432_v114_fix_bid_accepted_trigger_and_notify.sql
 -- Author: Claude Code (automated, migration-author-code v1.1)
 -- Date: 2026-08-26
 --
