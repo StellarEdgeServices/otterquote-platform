@@ -1359,30 +1359,29 @@
         <div class="settings-card-title">Contract Templates</div>
 
         <div class="info-box" style="margin-bottom: var(--sp-6);">
-            Upload your contract template for each type of work. Otter Quotes will auto-populate your company details and get it signed by the homeowner. The contract is sent for e-signature.
+            Upload your <strong>blank</strong> contract template for each type of work &mdash; the document you start every job from, with no customer, property or price filled in. Otter Quotes fills those in from the bid the homeowner accepted and sends it for e-signature. Your terms are yours; we add nothing to them.
         </div>
 
+        <!-- [#1313, 2026-08-28] This block used to list the v2 DocuSign anchor
+             labels ("Name", "Address:", "Claim #", "Warranty:"). Those stopped
+             doing anything at the D-274 cutover to BoldSign on 2026-08-13:
+             BoldSign has no anchor-string mechanism at all, only literal
+             {{...}} text tags. The page was telling every contractor to put
+             labels in his contract that the validator no longer looks for and
+             the sender no longer uses. Replaced with what is actually true, and
+             with the two ways out that do not require him to edit a PDF. -->
         <div style="margin-bottom: var(--sp-6);">
-            <h3 style="font-size: 1rem; margin-bottom: var(--sp-3); color: var(--text-secondary);">Auto-Fill Fields Detected</h3>
+            <h3 style="font-size: 1rem; margin-bottom: var(--sp-3); color: var(--text-secondary);">How the fields get into your contract</h3>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--sp-3);">
-                Otter Quotes scans your contract for these labels and auto-fills the corresponding data:
+                Your template needs a small set of marker tags so the e-signature service knows where the homeowner signs and where each value goes. You have three ways to get them, and only the last one involves editing a PDF yourself:
             </p>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); font-size: 0.85rem;">
-                <div><strong>Name</strong> → Homeowner name</div>
-                <div><strong>Address:</strong> → Property address</div>
-                <div><strong>Phone</strong> → Homeowner phone</div>
-                <div><strong>Email:</strong> → Homeowner email</div>
-                <div><strong>Insurance Co</strong> → Insurance carrier</div>
-                <div><strong>Claim #</strong> → Claim number</div>
-                <div><strong>Deductible:</strong> → Deductible amount</div>
-                <div><strong>Contract Price:</strong> → Bid amount</div>
-                <div><strong>Material:</strong> → Shingle brand/type</div>
-                <div><strong>Warranty:</strong> → Warranty years</div>
-                <div><strong>Statement of Work:</strong> → Scope of work / SOW</div>
-                <div></div>
-            </div>
-            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: var(--sp-3);">
-                Tip: Include these exact labels in your contract to enable auto-fill. Fields not found will be left blank for manual entry. After uploading a template, click <strong>Review Mapping</strong> to customize which labels Otter Quotes looks for.
+            <ul style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 var(--sp-3) 18px;">
+                <li><strong>Upload your contract and let us add them.</strong> We append a signature-and-fields page to the end of your PDF. Your terms are not changed and nothing is removed. Use <strong>Add the fields for me</strong> on the slot below.</li>
+                <li><strong>Start from a blank starter.</strong> It already carries every marker for that trade and funding type, plus marked blocks for your own terms and your own Notice of Cancellation.</li>
+                <li><strong>Add them yourself.</strong> Upload your template and the slot below will list every marker that is missing, what it is for, and the exact text to paste.</li>
+            </ul>
+            <p style="font-size: 0.8rem; color: var(--text-muted);">
+                Indiana Code 24-5-11-10 requires a Notice of Cancellation be furnished with a home improvement contract. Otter Quotes does not supply one &mdash; it is a term of your agreement &mdash; so make sure your template carries yours.
             </p>
         </div>
 

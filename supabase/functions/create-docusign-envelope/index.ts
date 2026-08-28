@@ -489,9 +489,91 @@ async function fetchHoverMeasurements(supabase, claimId) {
   }
 }
 
+// ========== EXHIBIT A MEASUREMENT SHAPES ==========
+// [Part 2 2026-08-28] Dustin's ruling 5, verbatim: "I think we need two exhibit
+// A shapes... I think we do Exhibit A on all jobs. But for ACV and RCV jobs, we
+// can use the insurance estimate to fill out exhibit A."
+//
+// The all-jobs half landed in C1 (the isRetail gate came off). This is the
+// other half. generateRetailScopeOfWorkPdf assumed exactly ONE measurement
+// shape -- a full report carrying linear measurements -- and gated BOTH the
+// MEASUREMENT SUMMARY and the entire LINE-ITEM SCOPE table on one
+// `hasRoofMeasurements` boolean. A claim with no parsed measurements therefore
+// shipped an Exhibit A with a header, a disclaimer, some bid selections and no
+// body at all, and nothing in the document said why.
+//
+// FOUR shapes, resolved from what is actually ON THE CLAIM rather than from a
+// vendor or product label we may not have:
+//
+//   full      Full RoofScope, or a Hover report. Carries linear measurements.
+//             MEASUREMENT SUMMARY + the full band-expanded LINE-ITEM SCOPE.
+//   basic     RoofScope X ($15 to the homeowner, $11 vendor cost; a contractor
+//             who wants the full report buys it himself). VERIFIED against a
+//             real report: it carries the complete per-pitch area table and
+//             total squares, and NO linear measurements whatsoever -- no eave,
+//             rake, ridge, hip, valley, step or headwall flashing. Rows 4-10 of
+//             the line-item table every one depend on LF and cannot be built.
+//   insurance ACV/RCV. parse-loss-sheet has ALREADY written
+//             claims.parsed_line_items (sectioned line items),
+//             contractor_scope_summary, rcv_amount, acv_amount and
+//             deductible_amount. No new parser is needed; the insurer's own
+//             scope is the line-item basis.
+//   none      No measurement report on file. The document says so, explicitly.
+//
+// The measurement shape and the line-item basis are resolved SEPARATELY and
+// deliberately. An insurance job can also carry a full RoofScope; when it does
+// both facts are true and both render -- the measured roof under MEASUREMENT
+// SUMMARY, the insurer's scope as the priced basis. One flat enum would have
+// thrown away whichever of the two arrived second.
+//
+// Detection is by CONTENT, not by product code. hover_orders.product_code
+// exists (gh-1245: roof_basic == RoofScope X) but the PDF-parse path is the
+// canonical one today and writes no product code at all, so keying off it would
+// mis-shape every claim measured through the path we actually use.
+function resolveMeasurementShape(measurements: any) {
+  const m = measurements || {};
+  const LINEAR = ["ridgeHipLf", "valleyLf", "rakeLf", "eaveLf", "dripEdgeLf", "stepFlashingLf", "flashingLf"];
+  if (LINEAR.some((k) => m[k] != null)) return "full";
+  const hasArea = m.roofAreaSf != null || m.squares != null ||
+    (Array.isArray(m.areasByPitch) && m.areasByPitch.length > 0);
+  return hasArea ? "basic" : "none";
+}
+
+// Flatten the insurer's parsed estimate (the parse-loss-sheet shape on
+// claims.parsed_line_items) into display rows. Returns null when nothing was
+// parsed, so the caller can distinguish "no loss sheet" from "an empty one".
+//
+// parse-loss-sheet strips PII at extraction time (its prompt names insured
+// name, address, policy and claim numbers, adjuster contact -- all excluded),
+// so nothing read here needs a second redaction pass. Unit prices ARE present
+// in the parsed data and are deliberately NOT rendered: the insurer's unit
+// price is not the contract price, and putting the two on one page invites
+// them to be read as the same number.
+function insurerScopeRows(insurance: any) {
+  const parsed = insurance?.parsedLineItems;
+  const sections = Array.isArray(parsed?.sections) ? parsed.sections : [];
+  const rows = [];
+  for (const section of sections) {
+    const label = [section?.section_name || section?.name, section?.area_name].filter(Boolean).join(" - ");
+    const items = section?.line_items || section?.items || [];
+    if (!Array.isArray(items)) continue;
+    for (const it of items) {
+      if (!it || !it.description) continue;
+      rows.push({
+        section: label || "",
+        description: String(it.description),
+        quantity: it.quantity != null ? String(it.quantity) : "per estimate",
+        unit: it.unit ? String(it.unit) : "",
+        notes: it.notes ? String(it.notes) : "",
+      });
+    }
+  }
+  return rows.length ? rows : null;
+}
+
 // ========== RETAIL SCOPE OF WORK PDF ==========
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears } = params;
   const va = valueAdds || {};
   const pc = projectConfirmation || null;
   // ---- Page geometry ----
@@ -517,8 +599,22 @@ function generateRetailScopeOfWorkPdf(params) {
       .replace(/…/g, "...")
       .replace(/²/g, "2")
       .replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4")
-      .replace(/\u00a0/g, " ");
-    s = s.replace(/[^\x20-\x7E]/g, "");
+      // [Part 2 2026-08-28] Was a regex literal matching the non-breaking space
+      // by its backslash-u escape. Rewritten to carry
+      // NO backslash-u escape sequence at all, because the MCP tool-call
+      // transport that lands changes in this repo REWRITES those sequences:
+      // a real U+00A0 sent as an argument arrives as a plain space, and the six
+      // characters of the escape arrive as a real U+00A0. That hazard cost two
+      // silently-corrupted landings on 2026-08-27 (In Flight/reports/
+      // int-mcp-unicode-escape-transport-20260827.md) and this line was one of
+      // the two sites. String.fromCharCode(160) is the same character, is pure
+      // ASCII in source, and cannot be rewritten in transit.
+      .replace(new RegExp(String.fromCharCode(160), "g"), " ");
+    // Literal space-to-tilde range rather than the backslash-x escapes it used
+    // to carry, for the same transport reason as the line above: the escape
+    // form is rewritable in transit, the literal characters are not. Same
+    // range, same behaviour -- drop anything outside printable ASCII.
+    s = s.replace(/[^ -~]/g, "");
     return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   }
   function addText(x, yy, fontSize, font, text) {
@@ -652,7 +748,13 @@ function generateRetailScopeOfWorkPdf(params) {
   const hasSiding = (trades || []).some((t) => t.toLowerCase().includes("siding"));
   const hasGutters = (trades || []).some((t) => t.toLowerCase().includes("gutter"));
   const hasWindows = (trades || []).some((t) => t.toLowerCase().includes("window"));
-  // ===== MEASUREMENT SUMMARY (from Hover) + LINE-ITEM SCOPE (roofing) =====
+  // ===== MEASUREMENT SUMMARY + LINE-ITEM SCOPE =====
+  // [Part 2 2026-08-28] Restructured into the four shapes resolved by
+  // resolveMeasurementShape(). See the tombstone above that function for why.
+  // Previously this whole region was gated on a single `hasRoofMeasurements`
+  // boolean, so a claim with no parsed measurements shipped an Exhibit A with a
+  // header, a disclaimer, some bid selections and NO BODY AT ALL -- and nothing
+  // in the document said why.
   const m = measurements || {};
   const r0 = (n) => (n == null || Number.isNaN(Number(n))) ? null : Math.round(Number(n));
   const sq = (m.squares != null && !Number.isNaN(Number(m.squares)))
@@ -661,44 +763,221 @@ function generateRetailScopeOfWorkPdf(params) {
   const roofAreaSf = (m.roofAreaSf != null) ? Number(m.roofAreaSf) : (sq != null ? Math.round(sq * 100) : null);
   const rh = r0(m.ridgeHipLf), vv = r0(m.valleyLf), rk = r0(m.rakeLf), ev = r0(m.eaveLf),
         drip = r0(m.dripEdgeLf), st = r0(m.stepFlashingLf), fl = r0(m.flashingLf);
-  const hasRoofMeasurements = !!(m && (m.roofAreaSf != null || m.squares != null || m.ridgeHipLf != null ||
-    m.valleyLf != null || m.rakeLf != null || m.eaveLf != null || m.dripEdgeLf != null ||
-    m.stepFlashingLf != null || m.flashingLf != null));
-  if (hasRoofing && hasRoofMeasurements) {
-    ensure(34);
-    // [C4 2026-08-27] De-branded. The measurement report OtterQuote actually
-    // buys is RoofScope / RoofScope X (gh-1245 catalog: roof_basic is
-    // RoofScopeX), not Hover, and naming the wrong vendor on a contract exhibit
-    // is a statement about where the numbers came from.
-    addText(LEFT_X, y, 12, "F2", "MEASUREMENT SUMMARY");
+
+  const measurementShape = resolveMeasurementShape(m);
+  const ins = insurance || null;
+  const insRows = insurerScopeRows(ins);
+  const hasInsurerBasis = !!(insRows || (ins && (ins.rcv != null || ins.acv != null || ins.deductible != null || ins.scopeSummary)));
+  // The insurer's own estimate is the priced basis whenever one has been
+  // parsed -- Dustin, verbatim: "for ACV and RCV jobs, we can use the insurance
+  // estimate to fill out exhibit A." Otherwise the basis is derived from the
+  // measurement report, and with neither there is no basis at all.
+  const lineItemBasis = insRows ? "insurer" : (measurementShape === "none" ? "none" : "derived");
+
+  // ---- Shared table helpers (used by both the derived and insurer tables) ----
+  // Height of a block of wrapped prose at a given font size. Exists so a
+  // table's OPENING BLOCK -- heading, caption, any explanatory note, the column
+  // header and the first data row -- can be budgeted as one unit before any of
+  // it is drawn. A section that budgets only its heading leaves the heading, or
+  // worse a bare column-header row, orphaned at the foot of a page and reprints
+  // it overleaf. C4e fixed exactly this for the contingencies heading; the two
+  // line-item tables still had it, and the `basic` shape (whose opening block
+  // carries a four-line note) hit it on the very first render.
+  //
+  // The arithmetic mirrors addWrappedText's, which is the function that will
+  // actually lay the prose out. If one changes, change both.
+  const proseHeight = (text: string, fontSize: number, maxWidth: number) => {
+    const maxChars = Math.max(1, Math.floor(maxWidth / (fontSize * 0.5)));
+    return wrapToLines(text, maxChars).length * (fontSize * 1.4);
+  };
+  const firstRowHeight = (cols: any[], rowsIn: any[]) => {
+    if (!rowsIn.length) return 0;
+    return Math.max(1, ...cols.map((c: any) => wrapToLines(rowsIn[0][c.key], c.chars).length)) * 10 + 2;
+  };
+  const drawRows = (cols: any[], rowsIn: any[], header: () => void) => {
+    const lineH = 10;
+    header();
+    for (const row of rowsIn) {
+      const cells = cols.map((c: any) => wrapToLines(row[c.key], c.chars));
+      const nLines = Math.max(1, ...cells.map((c: any) => c.length));
+      const rowH = nLines * lineH + 2;
+      const pagesBefore = pages.length;
+      ensure(rowH);
+      if (pages.length > pagesBefore) { header(); }
+      const topY = y;
+      cells.forEach((lines: any[], ci: number) => lines.forEach((ln: string, k: number) => addText(cols[ci].x, topY - k * lineH, 8, "F1", ln)));
+      y = topY - rowH;
+    }
+    y -= 4;
+    hLine(y);
     y -= 16;
-    const sumRow = (label, value) => {
+  };
+
+  // ================= A. MEASUREMENT SUMMARY =================
+  if (hasRoofing) {
+    if (measurementShape === "full" || measurementShape === "basic") {
+      ensure(34);
+      // [C4 2026-08-27] De-branded. The measurement report OtterQuote actually
+      // buys is RoofScope / RoofScope X (gh-1245 catalog: roof_basic is
+      // RoofScopeX), not Hover, and naming the wrong vendor on a contract
+      // exhibit is a statement about where the numbers came from.
+      addText(LEFT_X, y, 12, "F2", "MEASUREMENT SUMMARY");
+      y -= 16;
+      const sumRow = (label, value) => {
+        if (value == null || value === "") return;
+        ensure(13);
+        addText(LEFT_X, y, 10, "F2", label);
+        addText(250, y, 10, "F1", value);
+        y -= 13;
+      };
+      const areaVal = roofAreaSf != null
+        ? `${roofAreaSf.toLocaleString("en-US")} sf${sq != null ? ` (${sq} SQ)` : ""}`
+        : (sq != null ? `${sq} SQ` : null);
+      sumRow("Roof area:", areaVal);
+      if (measurementShape === "full") {
+        sumRow("Ridges / Hips:", m.ridgeHipLf != null ? `${m.ridgeHipLf} LF` : null);
+        sumRow("Valleys:", m.valleyLf != null ? `${m.valleyLf} LF` : null);
+        sumRow("Eaves:", m.eaveLf != null ? `${m.eaveLf} LF` : null);
+        sumRow("Rakes:", m.rakeLf != null ? `${m.rakeLf} LF` : null);
+        sumRow("Drip edge / perimeter:", m.dripEdgeLf != null ? `${m.dripEdgeLf} LF` : null);
+        sumRow("Step flashing:", m.stepFlashingLf != null ? `${m.stepFlashingLf} LF` : null);
+        sumRow("Headwall / apron flashing:", m.flashingLf != null ? `${m.flashingLf} LF` : null);
+      }
+      sumRow("Predominant pitch:", m.predominantPitch || null);
+      // Per-pitch area table. On a BASIC report this is the whole of the
+      // measurement content, so it is rendered as a table rather than folded
+      // into the line items. On a FULL report it is supplementary and the
+      // slope breakout in the line-item table carries it, so it is skipped
+      // there to avoid stating the same numbers twice on one page.
+      if (measurementShape === "basic" && Array.isArray(m.areasByPitch) && m.areasByPitch.length > 0) {
+        y -= 4;
+        ensure(30);
+        addText(LEFT_X, y, 10, "F2", "Area by pitch");
+        y -= 12;
+        const pitchRows = m.areasByPitch
+          .map((row: any) => {
+            const rowSq = Number(row?.squares != null ? row.squares : (row?.area_sf != null ? row.area_sf / 100 : NaN));
+            if (!Number.isFinite(rowSq) || rowSq <= 0) return null;
+            const pctNum = (sq != null && sq > 0) ? Math.round((rowSq / sq) * 100) : null;
+            return {
+              pitch: String(row?.pitch ?? "unstated"),
+              squares: `${Math.round(rowSq * 100) / 100} SQ`,
+              pct: pctNum != null ? `${pctNum}%` : "",
+            };
+          })
+          .filter(Boolean);
+        const pitchCols = [
+          { key: "pitch", x: 66, chars: 20 },
+          { key: "squares", x: 200, chars: 16 },
+          { key: "pct", x: 290, chars: 8 },
+        ];
+        drawRows(pitchCols, pitchRows, () => {
+          ensure(18);
+          addText(66, y, 8, "F2", "Pitch");
+          addText(200, y, 8, "F2", "Area");
+          addText(290, y, 8, "F2", "Share");
+          y -= 3; hLine(y); y -= 11;
+        });
+      } else {
+        y -= 6;
+        hLine(y);
+        y -= 16;
+      }
+      if (measurementShape === "basic") {
+        // Say exactly what this report does and does not carry. A homeowner
+        // comparing two Exhibit As should not have to guess why one has eight
+        // measurement rows and the other has one.
+        ensure(26);
+        y = addWrappedText(LEFT_X, y, 8, "F1", "The measurement report on file is a basic roof report. It carries roof area and the area of each pitch, and it carries NO linear measurements - no eave, rake, ridge, hip, valley, step flashing or headwall flashing lengths. The work items that depend on those lengths therefore cannot be quantified from it; they are named in full beneath the line-item scope below and are field-verified on site.", 512);
+        y -= 8;
+        hLine(y);
+        y -= 16;
+      }
+    } else {
+      // ---- measurementShape === "none" ----
+      // The whole point of this branch: say it out loud. The prior behaviour
+      // was to render nothing, which is indistinguishable from a roof with no
+      // work on it.
+      ensure(40);
+      addText(LEFT_X, y, 12, "F2", "MEASUREMENT SUMMARY");
+      y -= 14;
+      y = addWrappedText(LEFT_X, y, 9, "F1", hasInsurerBasis
+        ? "No measurement report is on file for this property. The scope below is taken from the insurance estimate rather than from an aerial measurement report; quantities are the insurer's, and all of them are subject to field verification before work begins."
+        : "No measurement report is on file for this property. No aerial or field measurements were available when this document was prepared, so no measured quantities and no line-item scope can be stated. Every quantity for this job is to be field-verified, and the MEASUREMENT DISCLAIMER above governs any measurement either party later takes.", 512);
+      y -= 8;
+      hLine(y);
+      y -= 16;
+    }
+  }
+
+  // ================= B. INSURANCE SETTLEMENT BASIS =================
+  // Rendered for any trade, not only roofing: an insurance siding job has a
+  // loss sheet too. parse-loss-sheet has already stripped PII from
+  // claims.parsed_line_items, so nothing here needs redaction.
+  if (hasInsurerBasis) {
+    ensure(40);
+    addText(LEFT_X, y, 12, "F2", "INSURANCE SETTLEMENT BASIS");
+    y -= 8;
+    addText(LEFT_X, y, 8, "F1", "From the carrier's own estimate on file. These are the insurer's figures, not the contract price.");
+    y -= 14;
+    const insRow = (label: string, value: any) => {
       if (value == null || value === "") return;
       ensure(13);
       addText(LEFT_X, y, 10, "F2", label);
       addText(250, y, 10, "F1", value);
       y -= 13;
     };
-    const areaVal = roofAreaSf != null
-      ? `${roofAreaSf.toLocaleString("en-US")} sf${sq != null ? ` (${sq} SQ)` : ""}`
-      : (sq != null ? `${sq} SQ` : null);
-    sumRow("Roof area:", areaVal);
-    sumRow("Ridges / Hips:", m.ridgeHipLf != null ? `${m.ridgeHipLf} LF` : null);
-    sumRow("Valleys:", m.valleyLf != null ? `${m.valleyLf} LF` : null);
-    sumRow("Eaves:", m.eaveLf != null ? `${m.eaveLf} LF` : null);
-    sumRow("Rakes:", m.rakeLf != null ? `${m.rakeLf} LF` : null);
-    sumRow("Drip edge / perimeter:", m.dripEdgeLf != null ? `${m.dripEdgeLf} LF` : null);
-    sumRow("Step flashing:", m.stepFlashingLf != null ? `${m.stepFlashingLf} LF` : null);
-    sumRow("Headwall / apron flashing:", m.flashingLf != null ? `${m.flashingLf} LF` : null);
-    sumRow("Predominant pitch:", m.predominantPitch || null);
+    insRow("Carrier:", ins?.carrier || null);
+    // The raw enum from parse-loss-sheet ("xactimate" | "corelogic_itel" |
+    // "carrier_proprietary" | "unknown"). Printing it raw put a lowercase
+    // machine token on a contract exhibit.
+    const FORMAT_LABELS: Record<string, string> = {
+      xactimate: "Xactimate",
+      corelogic_itel: "CoreLogic / ITEL",
+      carrier_proprietary: "Carrier proprietary",
+    };
+    insRow("Estimate format:", ins?.format ? (FORMAT_LABELS[String(ins.format)] || null) : null);
+    insRow("Pricing basis:", ins?.pricingDatabase || null);
+    insRow("Replacement cost value (RCV):", ins?.rcv != null ? fmt$(ins.rcv) : null);
+    insRow("Actual cash value (ACV):", ins?.acv != null ? fmt$(ins.acv) : null);
+    insRow("Deductible:", ins?.deductible != null ? fmt$(ins.deductible) : null);
     y -= 6;
     hLine(y);
     y -= 16;
-    // ---- LINE-ITEM SCOPE table (quantities only; no unit prices) ----
+  }
+
+  // ================= C. LINE-ITEM SCOPE =================
+  if (lineItemBasis === "insurer") {
+    const insCaption = "Quantities taken from the insurance estimate on file. Unit pricing is omitted: the insurer's unit prices are not the contract price and stating them here would invite the two to be read as the same number.";
+    const insCols = [
+      { key: "num", x: 50, chars: 4 },
+      { key: "description", x: 66, chars: 40 },
+      { key: "quantity", x: 262, chars: 12 },
+      { key: "unit", x: 312, chars: 8 },
+      { key: "section", x: 352, chars: 24 },
+      { key: "notes", x: 470, chars: 22 },
+    ];
+    const numbered = (insRows || []).map((r: any, i: number) => ({ ...r, num: String(i + 1) }));
+    ensure(22 + proseHeight(insCaption, 8, 512) + 24 + firstRowHeight(insCols, numbered));
     addText(LEFT_X, y, 12, "F2", "LINE-ITEM SCOPE");
     y -= 8;
-    addText(LEFT_X, y, 8, "F1", "Quantities derived from the aerial measurement report on file. Field-verified items confirmed on site. No unit pricing shown.");
-    y -= 14;
+    y = addWrappedText(LEFT_X, y, 8, "F1", insCaption, 512);
+    y -= 6;
+    drawRows(insCols, numbered, () => {
+      ensure(18);
+      addText(50, y, 8, "F2", "#");
+      addText(66, y, 8, "F2", "Work Item (insurer)");
+      addText(262, y, 8, "F2", "Qty");
+      addText(312, y, 8, "F2", "Unit");
+      addText(352, y, 8, "F2", "Estimate Section");
+      addText(470, y, 8, "F2", "Notes");
+      y -= 3; hLine(y); y -= 11;
+    });
+  } else if (hasRoofing && lineItemBasis === "derived") {
+    // ---- LINE-ITEM SCOPE table (quantities only; no unit prices) ----
+    // NOTHING is drawn until the rows are built, because the opening block's
+    // height depends on which notes this shape emits -- see the single ensure()
+    // below.
     const colNum = 50, colItem = 66, colQty = 246, colUnit = 286, colBasis = 330, colNotes = 448;
     // [C4 2026-08-27] basisMaxChars added. Basis was the one cell rendered with
     // a bare addText and no wrap, which was invisible while every basis string
@@ -742,7 +1021,7 @@ function generateRetailScopeOfWorkPdf(params) {
     const rows = [];
     let rowNum = 0;
     if (useBandRows) {
-      const w = (sq) => Math.ceil(sq * 1.1);
+      const w = (s) => Math.ceil(s * 1.1);
       for (const ar of areaRows) {
         for (const b of bandSplit.buckets) {
           rows.push({
@@ -770,50 +1049,71 @@ function generateRetailScopeOfWorkPdf(params) {
         rows.push({ num: ++rowNum, item: ar.label, qty: qtyStr(areaWaste), unit: "SQ", basis: "Roof area +10%", notes: ar.notes });
       }
     }
+    // [Part 2 2026-08-28] The seven LF-driven rows are built ONLY on a `full`
+    // report. A basic report (RoofScope X) carries no linear measurements at
+    // all, so every one of them would render "per bid / ?" -- seven rows of
+    // question marks on a contract exhibit, which reads as a defect rather than
+    // as an honest absence. They are replaced by one sentence that says so.
+    if (measurementShape === "full") {
+      rows.push(
+        { num: ++rowNum, item: "Ice & water shield - valleys + eaves", qty: qtyStr(iceWater), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"} + eaves ${ev != null ? ev : "?"}`, notes: "Code / leak-prone areas" },
+        { num: ++rowNum, item: "Starter course", qty: qtyStr(starter), unit: "LF", basis: `Eaves ${ev != null ? ev : "?"} + rakes ${rk != null ? rk : "?"}`, notes: "Eaves & rakes" },
+        { num: ++rowNum, item: "Hip & ridge cap shingles", qty: qtyStr(rh), unit: "LF", basis: `Ridges/Hips ${rh != null ? rh : "?"}`, notes: "Matching profile" },
+        { num: ++rowNum, item: "Drip edge", qty: qtyStr(drip), unit: "LF", basis: `Perimeter ${drip != null ? drip : "?"}`, notes: "Eaves & rakes" },
+        { num: ++rowNum, item: "Closed-cut valley", qty: qtyStr(vv), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"}`, notes: "Per mfr." },
+        { num: ++rowNum, item: "Step flashing (roof-to-wall)", qty: qtyStr(st), unit: "LF", basis: `Step flashing ${st != null ? st : "?"}`, notes: "Replace" },
+        { num: ++rowNum, item: "Headwall / apron flashing", qty: qtyStr(fl), unit: "LF", basis: `Flashing ${fl != null ? fl : "?"}`, notes: "Replace" },
+      );
+    }
     rows.push(
-      { num: ++rowNum, item: "Ice & water shield - valleys + eaves", qty: qtyStr(iceWater), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"} + eaves ${ev != null ? ev : "?"}`, notes: "Code / leak-prone areas" },
-      { num: ++rowNum, item: "Starter course", qty: qtyStr(starter), unit: "LF", basis: `Eaves ${ev != null ? ev : "?"} + rakes ${rk != null ? rk : "?"}`, notes: "Eaves & rakes" },
-      { num: ++rowNum, item: "Hip & ridge cap shingles", qty: qtyStr(rh), unit: "LF", basis: `Ridges/Hips ${rh != null ? rh : "?"}`, notes: "Matching profile" },
-      { num: ++rowNum, item: "Drip edge", qty: qtyStr(drip), unit: "LF", basis: `Perimeter ${drip != null ? drip : "?"}`, notes: "Eaves & rakes" },
-      { num: ++rowNum, item: "Closed-cut valley", qty: qtyStr(vv), unit: "LF", basis: `Valleys ${vv != null ? vv : "?"}`, notes: "Per mfr." },
-      { num: ++rowNum, item: "Step flashing (roof-to-wall)", qty: qtyStr(st), unit: "LF", basis: `Step flashing ${st != null ? st : "?"}`, notes: "Replace" },
-      { num: ++rowNum, item: "Headwall / apron flashing", qty: qtyStr(fl), unit: "LF", basis: `Flashing ${fl != null ? fl : "?"}`, notes: "Replace" },
       { num: ++rowNum, item: "Pipe boots / penetration flashings", qty: "field", unit: "EA", basis: "Field-verified", notes: "Count confirmed on site" },
       { num: ++rowNum, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
       // [C3 2026-08-27] Rates removed -- decking and full re-deck are stated once,
       // in CONTINGENCIES AND CONDITIONAL PRICING, each beside its trigger.
       { num: ++rowNum, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: "See Contingencies" },
     );
-    if (!useBandRows) {
-      // Say WHY the scope is one lump row instead of a slope breakout, rather
-      // than leaving the reader to assume the roof is a single pitch.
-      ensure(12);
-      addText(LEFT_X, y, 8, "F1", m.areasByPitch ? "Slope breakout unavailable: the measurement report's pitch table did not resolve into priced bands." : "Slope breakout unavailable: the measurement report on file carries no per-pitch area table.");
+    const derivedCols = [
+      { key: "num", x: colNum, chars: 4 },
+      { key: "item", x: colItem, chars: itemMaxChars },
+      // qty and unit are wide enough to hold their longest real value on one
+      // line ("as req'd", "SHEET"). Before Part 2 they were drawn with a bare
+      // addText and never wrapped; routing them through the shared drawRows
+      // wrapper reintroduced wrapping, and "as req'd" split across two lines on
+      // the first render. Caught by reading the PDF, not the code.
+      { key: "qty", x: colQty, chars: 12 },
+      { key: "unit", x: colUnit, chars: 8 },
+      { key: "basis", x: colBasis, chars: basisMaxChars },
+      { key: "notes", x: colNotes, chars: notesMaxChars },
+    ];
+    const derivedRows = rows.map((r: any) => ({ ...r, num: String(r.num) }));
+    const caption = "Quantities derived from the aerial measurement report on file. Field-verified items confirmed on site. No unit pricing shown.";
+    // Say WHY the scope is one lump row instead of a slope breakout, rather
+    // than leaving the reader to assume the roof is a single pitch.
+    const slopeNote = useBandRows ? null : (m.areasByPitch
+      ? "Slope breakout unavailable: the measurement report's pitch table did not resolve into priced bands."
+      : "Slope breakout unavailable: the measurement report on file carries no per-pitch area table.");
+    // [Part 2 2026-08-28] On a `basic` report the seven LF-driven rows are not
+    // in the table at all. Name them, so their absence reads as a stated fact
+    // rather than as an omission -- and say it BELOW the table it refers to,
+    // which is where the reader is when the question occurs to them.
+    const basicNote = measurementShape === "basic"
+      ? "Not itemised above, because the basic measurement report carries no linear measurements: ice & water shield, starter course, hip & ridge cap, drip edge, valley, step flashing and headwall / apron flashing. All seven are included in the work and their quantities are field-verified on site before installation."
+      : null;
+    ensure(22 + proseHeight(caption, 8, 512) + (slopeNote ? 12 : 0) + 24 + firstRowHeight(derivedCols, derivedRows));
+    addText(LEFT_X, y, 12, "F2", "LINE-ITEM SCOPE");
+    y -= 8;
+    y = addWrappedText(LEFT_X, y, 8, "F1", caption, 512);
+    y -= 4;
+    if (slopeNote) {
+      addText(LEFT_X, y, 8, "F1", slopeNote);
       y -= 12;
     }
-    drawTableHeader();
-    const lineH = 10;
-    for (const row of rows) {
-      const itemLines = wrapToLines(row.item, itemMaxChars);
-      const noteLines = wrapToLines(row.notes, notesMaxChars);
-      const basisLines = wrapToLines(row.basis, basisMaxChars);
-      const nLines = Math.max(1, itemLines.length, noteLines.length, basisLines.length);
-      const rowH = nLines * lineH + 2;
-      const pagesBefore = pages.length;
-      ensure(rowH);
-      if (pages.length > pagesBefore) { drawTableHeader(); }
-      const topY = y;
-      addText(colNum, topY, 8, "F1", String(row.num));
-      itemLines.forEach((ln, k) => addText(colItem, topY - k * lineH, 8, "F1", ln));
-      addText(colQty, topY, 8, "F1", row.qty);
-      addText(colUnit, topY, 8, "F1", row.unit);
-      basisLines.forEach((ln, k) => addText(colBasis, topY - k * lineH, 8, "F1", ln));
-      noteLines.forEach((ln, k) => addText(colNotes, topY - k * lineH, 8, "F1", ln));
-      y = topY - rowH;
+    drawRows(derivedCols, derivedRows, drawTableHeader);
+    if (basicNote) {
+      ensure(proseHeight(basicNote, 8, 512) + 8);
+      y = addWrappedText(LEFT_X, y, 8, "F1", basicNote, 512);
+      y -= 10;
     }
-    y -= 4;
-    hLine(y);
-    y -= 16;
   }
   // ===== SCOPE OF WORK DETAILS (selections from the contractor bid) =====
   ensure(30);
@@ -973,14 +1273,53 @@ function generateRetailScopeOfWorkPdf(params) {
     y -= 14;
     y -= 8;
   }
-  if (Array.isArray(va.warranties) && va.warranties.length > 0) {
+  // ===== WARRANTIES =====
+  // [Part 2 item 4 2026-08-28] THIS SECTION HAS NEVER RENDERED FOR ANY CURRENT
+  // BID. It read `va.warranties`, and contractor-bid-form.html sets that key to
+  // a literal `null` -- commented, in the bid form itself, "D-202 Phase 2:
+  // superseded by quotes.warranty_option_id / warranty_snapshot (Session 463)".
+  // The read was left pointing at the old field when the field moved. Same
+  // defect class as the four C3 fixed: a dead read failing silently.
+  //
+  // Warranty terms are both a selling point and a contract term, so an Exhibit
+  // A that silently omits them is materially incomplete. The live source is
+  // quotes.warranty_snapshot -- TEXT, not JSON: a prose sentence captured at
+  // bid time, e.g. "GAF Silver Pledge - Material: 50 years (non-prorated);
+  // Labor: 10 years; Wind: 130 mph; Hail: Standard. ... OtterQuote is not the
+  // warrantor." It is a SNAPSHOT by design (D-202) and is rendered verbatim:
+  // reformatting it into rows would mean parsing prose whose shape is set by
+  // whoever wrote the warranty option, and getting that wrong on a contract
+  // exhibit misstates a warranty term.
+  //
+  // quotes.workmanship_warranty_years is the contractor's own labor warranty
+  // and is separate from the manufacturer program above.
+  //
+  // The legacy `va.warranties` array is still read so historical bids written
+  // before Session 463 keep rendering.
+  const legacyWarranties = Array.isArray(va.warranties) ? va.warranties.filter((w: any) => w && w.name) : [];
+  const warrantyText = (typeof warrantySnapshot === "string" && warrantySnapshot.trim()) ? warrantySnapshot.trim() : null;
+  const workmanshipYears = (workmanshipWarrantyYears != null && !Number.isNaN(Number(workmanshipWarrantyYears)))
+    ? Number(workmanshipWarrantyYears) : null;
+  if (warrantyText || workmanshipYears != null || legacyWarranties.length > 0) {
     ensure(28);
     hLine(y + 4);
     y -= 12;
     addText(LEFT_X, y, 12, "F2", "WARRANTIES");
     y -= 14;
-    for (const w of va.warranties) {
-      if (!w.name) continue;
+    if (warrantyText) {
+      ensure(24);
+      addText(60, y, 10, "F2", "Manufacturer / system warranty:");
+      y -= 12;
+      y = addWrappedText(70, y, 9, "F1", warrantyText, 480);
+      y -= 6;
+    }
+    if (workmanshipYears != null) {
+      ensure(16);
+      addText(60, y, 10, "F2", "Contractor workmanship warranty:");
+      addText(260, y, 10, "F1", `${workmanshipYears} year${workmanshipYears === 1 ? "" : "s"}`);
+      y -= 14;
+    }
+    for (const w of legacyWarranties) {
       ensure(24);
       addText(60, y, 10, "F2", w.name);
       y -= 12;
@@ -990,6 +1329,7 @@ function generateRetailScopeOfWorkPdf(params) {
       if (w.hail_damage?.years) { addText(70, y, 9, "F1", `Hail: ${w.hail_damage.years} yrs`); y -= 11; }
       y -= 4;
     }
+    y -= 4;
   }
   // ===== CONTINGENCIES AND CONDITIONAL PRICING =====
   // [C3 2026-08-27, Dustin-directed] One section listing EVERY condition that
@@ -1673,7 +2013,27 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         // Xactimate-aligned 7/12 threshold, which is the documented behaviour,
         // not a silent default.
         pitchBands: contractorData?.pitch_bands?.bands ?? null,
-        twoStoryAdder: contractorData?.pitch_bands?.two_story_adder ?? null
+        twoStoryAdder: contractorData?.pitch_bands?.two_story_adder ?? null,
+        // [Part 2 2026-08-28] The insurer's own estimate, for the `insurance`
+        // Exhibit A shape. parse-loss-sheet writes all five of these; no new
+        // parser is needed. Every one is nullable and a retail claim carries
+        // none of them, which is exactly how resolveMeasurementShape /
+        // insurerScopeRows decide the shape.
+        insurance: {
+          parsedLineItems: claimData?.parsed_line_items ?? null,
+          scopeSummary: claimData?.contractor_scope_summary ?? null,
+          rcv: claimData?.rcv_amount ?? null,
+          acv: claimData?.acv_amount ?? null,
+          deductible: claimData?.deductible_amount ?? null,
+          carrier: claimData?.parsed_line_items?.carrier_name ?? null,
+          format: claimData?.parsed_line_items?.format_detected ?? null,
+          pricingDatabase: claimData?.parsed_line_items?.pricing_database ?? null
+        },
+        // [Part 2 item 4 2026-08-28] The WARRANTIES section read va.warranties,
+        // which contractor-bid-form.html sets to a literal null. Live source is
+        // quotes.warranty_snapshot (TEXT) + quotes.workmanship_warranty_years.
+        warrantySnapshot: bidData?.warranty_snapshot ?? null,
+        workmanshipWarrantyYears: bidData?.workmanship_warranty_years ?? null
       });
       console.log(`Retail Scope of Work PDF generated for claim ${claim_id}`);
     } catch (sowErr) {
