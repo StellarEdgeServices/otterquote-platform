@@ -12,6 +12,7 @@ on:
       - 'supabase/migrations/**.sql'
       - 'sql/**.sql'
       - 'scripts/schema-secret-lint.py'
+      - 'scripts/migration-filename-lint.py'
   pull_request:
     branches: [main]
 
@@ -45,3 +46,14 @@ jobs:
       - name: Run hardcoded-secret function-body linter
         run: |
           python3 scripts/schema-secret-lint.py --root .
+
+      # FAIL-HARD MODE: guard added for gh-1307 (2026-08-28). A migration file
+      # without the YYYYMMDDHHMMSS_ prefix is skipped by the Supabase runner
+      # SILENTLY -- no error, no artifact -- so merged is indistinguishable from
+      # applied. v113 sat merged-and-unapplied for over a week. Second occurrence
+      # of the same defect, so per R-148 it closes on a mechanism, not a rule.
+      # The script landed in PR #1308; this step is the wiring that PR claimed
+      # and did not include (caught by CTO run cto-2026-08-28T19:45:25Z).
+      - name: Run migration filename prefix linter
+        run: |
+          python3 scripts/migration-filename-lint.py --root .
