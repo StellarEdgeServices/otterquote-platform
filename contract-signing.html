@@ -1002,6 +1002,18 @@
                 <button class="button button-primary" onclick="initDocuSign()">Retry</button>
               </div>
 
+              <!-- Waiting on Contractor (gh-1293 criterion 4): the homeowner reached this
+                   step before the contractor signed. state.contractorAlreadySigned was
+                   computed at init and never read anywhere, so this branch never existed
+                   and every homeowner here hit create-docusign-envelope's "contractor must
+                   sign first" error instead of a clear waiting state. -->
+              <div id="docusignWaitingOnContractor" style="display: none; text-align: center; padding: var(--sp-8); background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md);">
+                <div style="font-size: 2rem; margin-bottom: var(--sp-4);">&#x23F3;</div>
+                <p style="color: var(--amber); font-weight: 600; margin-bottom: var(--sp-2);">Waiting on your contractor to sign first</p>
+                <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-6);">Indiana law (IC 24-5-11) requires your contractor to sign before you can. We will let you know as soon as it is your turn &mdash; check back anytime.</p>
+                <button class="button button-primary" onclick="initDocuSign()">Check Again</button>
+              </div>
+
               <!-- DocuSign Embedded Signing iframe -->
               <div id="docusignContainer" style="display: none;">
                 <iframe id="docusignFrame" style="width: 100%; min-height: 600px; border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md); background: #fff;" allow="geolocation"></iframe>
@@ -1584,6 +1596,7 @@
       const errorEl = document.getElementById('docusignError');
       const containerEl = document.getElementById('docusignContainer');
       const signedEl = document.getElementById('docusignSigned');
+      const waitingEl = document.getElementById('docusignWaitingOnContractor');
 
       // If already signed, show signed state
       if (state.contractSigned) {
@@ -1594,10 +1607,25 @@
         return;
       }
 
+      // gh-1293 criterion 4: the homeowner cannot sign before the contractor
+      // (IC 24-5-11 routing order). state.contractorAlreadySigned was computed
+      // at init and never read anywhere, so every homeowner who reached this step
+      // first hit create-docusign-envelope's "contractor must sign first" error
+      // instead of a clear waiting state. "Check Again" re-runs this function.
+      if (state.signRole === 'homeowner' && !state.contractorAlreadySigned) {
+        loadingEl.style.display = 'none';
+        containerEl.style.display = 'none';
+        errorEl.style.display = 'none';
+        signedEl.style.display = 'none';
+        waitingEl.style.display = 'block';
+        return;
+      }
+
       // Show loading
       loadingEl.style.display = 'block';
       errorEl.style.display = 'none';
       containerEl.style.display = 'none';
+      waitingEl.style.display = 'none';
 
       try {
         // Verify user is authenticated before proceeding
