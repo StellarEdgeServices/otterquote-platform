@@ -988,6 +988,8 @@
                 coi_uploaded_at: new Date().toISOString(),
                 phone: profile.phone,
                 trades: profile.trades,
+                // gh-1253: also persist service_states (real column since gh-749; process-auto-bids matches it) -- this wizard path wrote only service_area_description, which nothing in the auto-bid matcher reads.
+                service_states: profile.states,
                 service_area_description: profile.states.join(', '),
                 onboarding_step: 2,
                 updated_at: new Date().toISOString()
