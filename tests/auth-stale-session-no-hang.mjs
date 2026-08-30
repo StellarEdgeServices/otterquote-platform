@@ -49,7 +49,16 @@ const sandbox = {
     OtterQuoteCookieStorage: { getItem: () => staleSession },
     OTTERQUOTE_AUTH_STORAGE_KEY: 'sb-otterquote-auth',
   },
-  CONFIG: { SUPABASE_URL: 'https://xyzsupabase.supabase.co' },
+  CONFIG: {
+    SUPABASE_URL: 'https://xyzsupabase.supabase.co',
+    // gh-1292 (PR #1299, merged 2026-08-26) routed js/auth.js's parse-time
+    // D-211 onAuthStateChange registration through CONFIG.whenReady. This
+    // sandbox stands in for js/config.js, which the vm context does not load,
+    // so without this the module throws at parse time and ZERO assertions run.
+    // Contract per js/config.js:162 — cb(sb) fires exactly once, synchronously
+    // when the client already exists, which in this fixture it always does.
+    whenReady(cb) { cb(sandbox.sb); },
+  },
   localStorage: { getItem: () => null, setItem() {}, removeItem() {}, length: 0, key: () => null },
   console,
   setTimeout,
