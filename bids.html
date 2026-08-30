@@ -2107,31 +2107,12 @@
         // Payment will be charged by docusign-webhook after contract signing (D-127)
         document.getElementById('modalBody').textContent = 'Awarding the project...';
 
-        // 1. Update claim status to 'awarded' and store winning contractor
-        const { error: claimErr } = await sb
-          .from('claims')
-          .update({
-            selected_contractor_id: bid.contractor_id,
-            selected_bid_amount: bid.total_price,
-            status: 'awarded',
-          })
-          .eq('id', currentClaim.id);
-        if (claimErr) throw claimErr;
-
-        // 3. Update winning quote status to 'selected' (DB constraint: ['draft','submitted','selected','declined','expired'])
-        const { error: winErr } = await sb
-          .from('quotes')
-          .update({ status: 'selected' })
-          .eq('id', bidId);
-        if (winErr) throw winErr;
-
-        // 4. Decline all other quotes for this claim
-        const { error: rejectErr } = await sb
-          .from('quotes')
-          .update({ status: 'declined' })
-          .eq('claim_id', currentClaim.id)
-          .neq('id', bidId);
-        if (rejectErr) throw rejectErr;
+        // 1-4. Atomic bid acceptance via SECURITY DEFINER RPC (gh-1293 criterion 5) --
+        // replaces three unbatched .update() calls that could leave a durable half-state
+        // between steps (see supabase/migrations/20260830192051_v116_accept_bid_rpc.sql).
+        const { error: acceptErr } = await sb
+          .rpc('accept_bid', { p_claim_id: currentClaim.id, p_quote_id: bidId });
+        if (acceptErr) throw acceptErr;
 
         gtag('event', 'contractor_selected', {
           bid_id: bidId,
