@@ -97,6 +97,42 @@ interface ServiceAccount {
 }
 
 /**
+ * Setup/configuration faults that are SAFE to describe to an (already
+ * authenticated, admin-only) caller, because every message below is static text
+ * authored here -- never an exception message, an upstream response body, or a
+ * stack frame.
+ *
+ * The indirection exists because CodeQL flagged the original handler for
+ * "information exposure through a stack trace": the catch forwarded
+ * `err.message` to the response, which taints the response with whatever any
+ * throw site happened to include (Google's token-endpoint body, among others).
+ * Carrying a CODE and looking the text up in this frozen map means nothing
+ * derived from the exception object can reach the client, while the operator
+ * still gets the one diagnostic that actually saves time here.
+ */
+const CONFIG_ERROR_MESSAGES: Record<string, string> = {
+  doppler_field_swap:
+    "GA4_SERVICE_ACCOUNT_JSON is empty but GA4_PROPERTY_ID contains JSON. This is the " +
+    "known Doppler field swap from gh-1331: the two values are transposed at the source. " +
+    "Fix them in Doppler rather than reading the swapped names here.",
+  missing_secret: "GA4_SERVICE_ACCOUNT_JSON is not set in this function's secrets.",
+  invalid_json: "GA4_SERVICE_ACCOUNT_JSON is set but is not valid JSON.",
+  incomplete_service_account:
+    "GA4_SERVICE_ACCOUNT_JSON is missing client_email or private_key.",
+};
+
+const GENERIC_ERROR =
+  "Internal error. Details were logged to this function's logs and are deliberately " +
+  "not returned in the response.";
+
+class ConfigError extends Error {
+  constructor(public readonly code: string) {
+    super(code);
+    this.name = "ConfigError";
+  }
+}
+
+/**
  * Read and parse the service account JSON.
  *
  * Deliberately detects the Doppler field swap Dustin found (gh-1331): there,
@@ -111,24 +147,17 @@ function loadServiceAccount(): ServiceAccount {
   const propertyEnv = (Deno.env.get("GA4_PROPERTY_ID") || "").trim();
 
   if (!raw) {
-    if (propertyEnv.startsWith("{")) {
-      throw new Error(
-        "GA4_SERVICE_ACCOUNT_JSON is empty but GA4_PROPERTY_ID contains JSON. This is " +
-          "the known Doppler field swap from gh-1331: the two values are transposed at " +
-          "the source. Fix them in Doppler rather than reading the swapped names here.",
-      );
-    }
-    throw new Error("GA4_SERVICE_ACCOUNT_JSON is not set in this function's secrets.");
+    throw new ConfigError(propertyEnv.startsWith("{") ? "doppler_field_swap" : "missing_secret");
   }
 
   let parsed: ServiceAccount;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("GA4_SERVICE_ACCOUNT_JSON is set but is not valid JSON.");
+    throw new ConfigError("invalid_json");
   }
   if (!parsed.client_email || !parsed.private_key) {
-    throw new Error("GA4_SERVICE_ACCOUNT_JSON is missing client_email or private_key.");
+    throw new ConfigError("incomplete_service_account");
   }
   return parsed;
 }
@@ -286,6 +315,13 @@ serve(async (req: Request) => {
     });
     const reportText = await reportRes.text();
 
+    if (!reportRes.ok) {
+      // Log the upstream body for the operator; never return it. It is an
+      // external response and forwarding it is the same exposure class CodeQL
+      // flagged on the catch below.
+      console.error(`[${FUNCTION_NAME}] GA4 ${reportRes.status}:`, reportText.slice(0, 600));
+    }
+
     if (reportRes.status === 403) {
       // gh-1331 predicted this exact case: a 403 means the service account's
       // Viewer grant is still on the old "Claim Shield" property rather than
@@ -302,7 +338,6 @@ serve(async (req: Request) => {
             "otterquote-ga4-reader@otterquote-analytics.iam.gserviceaccount.com as a Viewer " +
             "on \"Otter Quotes - Web\" in GA4 Admin > Property Access Management.",
           property_id: propertyId,
-          google_response: reportText.slice(0, 600),
         },
         403,
         cors,
@@ -314,7 +349,7 @@ serve(async (req: Request) => {
           ok: false,
           error: `GA4 Data API returned ${reportRes.status}`,
           property_id: propertyId,
-          google_response: reportText.slice(0, 600),
+          detail: "Upstream response body was logged, not returned.",
         },
         502,
         cors,
@@ -344,11 +379,17 @@ serve(async (req: Request) => {
       cors,
     );
   } catch (err) {
+    // Full detail (message + stack) goes to the function logs, which is where an
+    // operator looks. The RESPONSE carries only static text: either a message
+    // looked up by code from the frozen map above, or the generic fallback.
+    // Nothing derived from the exception object crosses this boundary.
     console.error(`[${FUNCTION_NAME}]`, err);
-    return jsonResponse(
-      { ok: false, error: err instanceof Error ? err.message : String(err) },
-      500,
-      cors,
-    );
+    if (err instanceof ConfigError) {
+      const message = CONFIG_ERROR_MESSAGES[err.code];
+      if (message) {
+        return jsonResponse({ ok: false, error: message, error_code: err.code }, 500, cors);
+      }
+    }
+    return jsonResponse({ ok: false, error: GENERIC_ERROR }, 500, cors);
   }
 });
