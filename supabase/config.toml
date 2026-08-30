@@ -217,3 +217,89 @@ verify_jwt = false
 # Pinned so that can't happen. No behavior change — matches live state.
 [functions.send-partner-status-email]
 verify_jwt = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gh-1295: pin verify_jwt for the remaining 20 unpinned functions.
+#
+# Generalizes the gh-916 AC1 block above, which pinned exactly one function for
+# exactly this reason. The 2026-08-28 full sweep on gh-1295 found 37 functions
+# pinned here and 20 with no block at all. A bare `supabase functions deploy
+# <slug>` defaults verify_jwt to TRUE, so any of these 20 could be flipped to
+# JWT-required by a routine deploy, silently breaking every caller — the same
+# trap gh-916 caught for send-partner-status-email.
+#
+# NO BEHAVIOR CHANGE. Every value below was read from production
+# (yeszghaspzwwstvsrioa) on 2026-08-30 via list_edge_functions and matches the
+# live setting exactly; all 20 run verify_jwt=false today. The same check
+# confirmed all 37 pre-existing pins also match production, so after this block
+# config.toml and production agree on all 57.
+#
+# verify_jwt=false does NOT mean unauthenticated. Each of these enforces auth
+# in-handler (service-role caller, a shared-secret header, a provider signature,
+# or auth.getUser on a user-scoped client) — the same pattern documented on the
+# blocks above. Pinning records the existing contract; it does not weaken it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[functions.admin-contractor-action]
+verify_jwt = false
+
+[functions.check-rate-limits]
+verify_jwt = false
+
+[functions.check-siding-design-completion]
+verify_jwt = false
+
+[functions.create-hover-order]
+verify_jwt = false
+
+[functions.create-hubspot-contact]
+verify_jwt = false
+
+[functions.create-measurement-order]
+verify_jwt = false
+
+[functions.create-setup-intent]
+verify_jwt = false
+
+# Provider callback: Hover posts here with no Supabase JWT.
+[functions.hover-webhook]
+verify_jwt = false
+
+[functions.notify-admin-new-contractor]
+verify_jwt = false
+
+[functions.notify-feature-request]
+verify_jwt = false
+
+[functions.parse-hover-measurements]
+verify_jwt = false
+
+[functions.platform-health-check]
+verify_jwt = false
+
+# Cron-invoked.
+[functions.process-coi-reminders]
+verify_jwt = false
+
+[functions.process-hover-rebate]
+verify_jwt = false
+
+[functions.record-warranty-upload]
+verify_jwt = false
+
+[functions.send-bid-confirmation]
+verify_jwt = false
+
+[functions.send-home-profile-prompt]
+verify_jwt = false
+
+[functions.send-message-notification]
+verify_jwt = false
+
+[functions.send-sms]
+verify_jwt = false
+
+# Provider callback: Stripe signs with a webhook secret and cannot present a
+# Supabase JWT. Flipping this to true would break every incoming Stripe event.
+[functions.stripe-webhook]
+verify_jwt = false

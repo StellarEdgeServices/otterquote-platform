@@ -1,0 +1,110 @@
+# Edge Function drift detector — gh-1295 step 2.
+#
+# "A merge is not a deploy, and this system has no mechanism that notices the
+# difference." Every instance so far was found by a human reading a narrative,
+# days or weeks late: create-docusign-envelope 23 days stale with the contract
+# path dead behind it (gh-1244); process-auto-bids 7 days stale while placing
+# live bids (gh-1253); gh-912 filed the same class and was closed not_planned
+# with its audit never run. This is the mechanism that fails loudly without
+# anyone's cooperation, per R-148.
+#
+# Runs on a SCHEDULE against `main`, not as a per-PR gate. Drift between a merge
+# and its deploy is normal for minutes; the thing worth alarming on is drift that
+# persists. Running this per-PR would alarm on every un-deployed PR by design and
+# would be trained away within a week.
+#
+# 09:00 UTC = 05:00 ET, inside the R-031 off-peak window (3 PM - 7 AM ET).
+
+name: Edge Function Drift
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    inputs:
+      allow_undeployed:
+        description: 'Do not fail on functions that are on main but never deployed'
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/edge-function-drift-check.py'
+      - 'scripts/edge-function-drift-check.test.py'
+      - '.github/workflows/edge-function-drift.yml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  SUPABASE_PROJECT_REF: yeszghaspzwwstvsrioa
+
+jobs:
+  drift:
+    name: Deployed source vs main
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The detector's own verdict logic is unit-tested with no network and no
+      # credentials, so a logic regression is caught even on a run where the
+      # fetch cannot happen. Its load-bearing case is the parse-hover-measurements
+      # U+00A0-vs-U+0020 pair, which any normalizing comparison reports as
+      # identical -- see gh-1295 rule 3.
+      - name: Self-test the detector
+        run: python3 scripts/edge-function-drift-check.test.py
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # NOT a soft skip when the token is absent. gh-1344 records that sec-sweep
+      # "has run blind since it was written" for exactly that reason. A detector
+      # for the defect class "looks shipped, isn't" must not be able to look green
+      # while measuring nothing -- the script exits 2 on a missing token, a missing
+      # CLI, any per-function fetch failure, and an empty result set.
+      #
+      # SUPABASE_ACCESS_TOKEN must be a Supabase Personal Access Token (sbp_...).
+      # The SUPABASE_SERVICE_ROLE_KEY this repo already holds is NOT sufficient --
+      # the Management API rejects it. Mint at
+      # https://supabase.com/dashboard/account/tokens
+      - name: Check deployed Edge Functions against main
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          python3 scripts/edge-function-drift-check.py \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --markdown-out drift-report.md \
+            --json-out drift-report.json \
+            ${{ inputs.allow_undeployed && '--allow-undeployed' || '' }}
+
+      # Runs even on failure -- the report is most useful precisely when the step
+      # above went red.
+      - name: Publish drift table to the job summary
+        if: always()
+        run: |
+          if [ -f drift-report.md ]; then
+            cat drift-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "# Edge Function drift"
+              echo
+              echo "No report produced — the detector could not measure."
+              echo "See the step log above. This is a failure, not a clean run."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-function-drift-report
+          path: |
+            drift-report.md
+            drift-report.json
+          if-no-files-found: ignore

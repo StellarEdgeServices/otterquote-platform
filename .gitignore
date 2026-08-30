@@ -27,6 +27,12 @@ __pycache__/
 !tools/
 !tools/*
 tools/__pycache__/
+# `!scripts/*` above un-ignores everything under scripts/, including bytecode.
+# Harmless until something in scripts/ is imported rather than executed --
+# scripts/edge-function-drift-check.test.py imports the checker (gh-1295), which
+# generates scripts/__pycache__/ and left it stageable. Same fix, same reason as
+# the tools/ line directly above.
+scripts/__pycache__/
 
 # Sensitive local auth snapshots — never commit
 .stohler_auth_snapshot.json
