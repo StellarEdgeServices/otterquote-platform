@@ -303,3 +303,10 @@ verify_jwt = false
 # Supabase JWT. Flipping this to true would break every incoming Stripe event.
 [functions.stripe-webhook]
 verify_jwt = false
+
+# gh-1331: new read-only GA4 Data API path. Auth enforced in-handler (service-role
+# key, or a Supabase JWT in the admin allow-list), same pattern as
+# approve-payout / get-payout-completion-status. Pinned at creation so it never
+# joins the 20 that gh-1295 found unpinned.
+[functions.ga4-report]
+verify_jwt = false
