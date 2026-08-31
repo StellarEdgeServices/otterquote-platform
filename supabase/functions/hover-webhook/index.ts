@@ -200,7 +200,7 @@ serve(async (req) => {
                 claim_id:          order.claim_id,
                 notification_type: "hover_complete",
                 channel:           "dashboard",
-                message_preview:   "Your property measurements from Hover are now available. You can proceed with submitting for contractor bids.",
+                message_preview:   "Your property measurements are now available. You can proceed with submitting for contractor bids.",
               });
             }
 

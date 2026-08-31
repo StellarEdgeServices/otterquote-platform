@@ -1,7 +1,7 @@
 /**
  * OtterQuote Edge Function: create-payment-intent
  * Creates a Stripe PaymentIntent for three use cases:
- *   - Hover measurement purchases ($79 — D-181, server-side priced from platform_settings)
+ *   - Measurement report purchases ($79 — D-181, server-side priced from platform_settings)
  *   - Deductible escrow
  *   - Contractor platform fees (5% of job value)
  *
@@ -109,7 +109,7 @@ serve(async (req) => {
       if (priceErr) {
         console.error("Failed to read hover_measurement_price:", priceErr);
         return new Response(JSON.stringify({
-          error: "Could not read Hover price from platform_settings.",
+          error: "Could not read measurement price from platform_settings.",
           detail: priceErr.message,
         }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }

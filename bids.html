@@ -410,7 +410,7 @@
               </p>
           </div>
 
-          <!-- Hover Property Design Panel (siding jobs only) -->
+          <!-- Property Design Panel (siding jobs only) -->
           <div id="hoverPropertyPanel" style="display:none;background:linear-gradient(135deg,#0C2A3A 0%,#0F3849 100%);border:1px solid rgba(224,123,0,0.3);border-radius:0.875rem;padding:1.5rem;margin-bottom:1.5rem;animation:fadeUp 0.5s ease both;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
               <div>
@@ -1003,7 +1003,7 @@
         document.getElementById('rcvDisclaimer').style.display = 'none';
       }
 
-      // Show Hover Property Design Panel for siding claims
+      // Show Property Design Panel for siding claims
       if (currentClaim) {
         const trades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
         const hasSiding = trades.some(t => (t || '').toLowerCase().includes('siding'));
@@ -1037,8 +1037,8 @@
       }
     }
 
-    // ── Hover Property Design Panel (homeowner view) ──────────────────
-    // Fetches siding design data from Hover and populates the panel on bids.html.
+    // ── Property Design Panel (homeowner view) ──────────────────
+    // Fetches siding design data from the measurement vendor and populates the panel on bids.html.
     // Non-blocking — errors are caught and displayed gracefully.
     let _hoverPropLoaded = false;
     async function loadHoverPropertyDesign() {
@@ -1069,7 +1069,7 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        // "View in Hover" link
+        // "View property design" link
         if (data.hover_job_id) {
           if (viewLink) {
             viewLink.href = 'https://hover.to/jobs/' + data.hover_job_id;
@@ -1082,7 +1082,7 @@
 
         // Rendered images gallery
         // Session 254: XSS hardening — build DOM instead of string-concatenated innerHTML
-        // so that Hover-supplied URLs can never inject markup or JS handlers.
+        // so that vendor-supplied URLs can never inject markup or JS handlers.
         if (data.design_images && data.design_images.length > 0 && imagesEl) {
           imagesEl.innerHTML = ''; // clear
           const grid = document.createElement('div');

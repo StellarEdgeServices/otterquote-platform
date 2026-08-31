@@ -270,7 +270,7 @@
       background: rgba(255,255,255,0.06);
     }
 
-    /* Hover link sent &mdash; amber/waiting state */
+    /* Measurement link sent &mdash; amber/waiting state */
     .checklist-icon.hover-pending {
       background: rgba(245,158,11,0.15);
       color: var(--amber);
@@ -1677,7 +1677,7 @@
             window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
             console.log('[Dashboard] Loaded existing claim:', { id: data.id, status: data.status, has_estimate: data.has_estimate, has_material_selection: data.has_material_selection });
 
-            // Fetch the most recent active Hover order for this claim (link_sent or pending)
+            // Fetch the most recent active measurement order for this claim (link_sent or pending)
             try {
               const { data: hoData } = await sb
                 .from('hover_orders')
@@ -1689,10 +1689,10 @@
                 .maybeSingle();
               hoverOrder = hoData || null;
               if (hoverOrder) {
-                console.log('[Dashboard] Hover order found:', { id: hoverOrder.id, status: hoverOrder.status });
+                console.log('[Dashboard] Measurement order found:', { id: hoverOrder.id, status: hoverOrder.status });
               }
             } catch (hoErr) {
-              console.warn('[Dashboard] Could not load hover order (non-fatal):', hoErr);
+              console.warn('[Dashboard] Could not load measurement order (non-fatal):', hoErr);
               hoverOrder = null;
             }
 
@@ -2083,7 +2083,7 @@
         const isInsurance      = currentClaim.funding_type === 'insurance';
         const isExplicitlyCash = currentClaim.funding_type === 'cash';
 
-        // Hover order state helpers
+        // Measurement order state helpers
         const hasHoverOrder = hoverOrder && (hoverOrder.status === 'link_sent' || hoverOrder.status === 'pending');
         const todayResendCount = (() => {
           if (!hoverOrder?.last_resend_at) return 0;
@@ -2120,7 +2120,7 @@
             { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' },
           ];
         } else if (isExplicitlyCash) {
-          // Retail / cash — required, no hover order yet
+          // Retail / cash — required, no measurement order yet
           measurementsDesc  = 'Required for retail projects. Upload measurement reports or use a professional aerial measurement.';
           measurementsNote  = 'Required — contractors need measurements to price your project accurately.';
           measurementsBtns  = [
@@ -2259,8 +2259,8 @@
         `; // end template literal
         }).join(''); // end items.map
 
-        // ── D-181: Hover Measurement Payment + Rebate Status ─────────────────
-        // Shown whenever the homeowner has paid the Hover fee. States:
+        // ── D-181: Measurement Payment + Rebate Status ─────────────────
+        // Shown whenever the homeowner has paid the measurement fee. States:
         //   1. Paid — rebate owed on project completion (rebate_due=true, no rebate_paid_at)
         //   2. Rebated on [date] (rebate_paid_at populated)
         //   3. Charge recorded but rebate flag cleared without timestamp — defensive display.
@@ -2319,14 +2319,14 @@
 
         // ── D-164: Siding Design Gate CTA ────────────────────────────────────
         // Retail siding bids are held until the homeowner completes their full
-        // Hover design (manufacturer + profile + color + trim).
+        // property design (manufacturer + profile + color + trim).
         const claimTrades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
         const claimHasSiding    = claimTrades.some(t => (t || '').toLowerCase().includes('siding'));
         const isRetailFunding   = currentClaim.funding_type === 'cash';
         const sidingReleased    = !!currentClaim.siding_bid_released_at;
 
         if (claimHasSiding && isRetailFunding) {
-          // Resolve Hover job link (hover.to/jobs/{id} — NOT app.hover.to per Session 238 fix)
+          // Resolve the design job link (vendor /jobs/{id} URL — NOT the app. subdomain per Session 238 fix)
           let hoverJobId = null;
           if (hoverOrder?.hover_job_id) {
             hoverJobId = hoverOrder.hover_job_id;
@@ -2858,7 +2858,7 @@
         input.click();
       };
 
-      // ── Resend Hover Capture Link ──
+      // ── Resend Measurement Capture Link ──
       window.resendHoverLink = async function(btn) {
         if (!currentClaim?.id || CONFIG.DEMO_MODE) return;
 
@@ -3079,7 +3079,7 @@
           // Fix (E2E walk 2026-07-07): the opportunities query + RLS both
           // require ready_for_bids=true — without it a submitted claim is
           // invisible to every contractor. D-165: release each non-siding
-          // trade at submit; siding stays gated on the D-164 Hover design
+          // trade at submit; siding stays gated on the D-164 property design
           // completion webhook.
           const submitUpdate = { status: 'active', ready_for_bids: true };
           const releasableTrades = ['roofing', 'gutters', 'windows'];

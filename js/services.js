@@ -221,7 +221,7 @@ const Services = {
   // ================================================================
 
   /**
-   * Create a payment intent for Hover measurement purchase.
+   * Create a payment intent for a measurement report purchase.
    *
    * @param {Object} params
    * @param {string} params.claim_id
@@ -322,7 +322,7 @@ const Services = {
 
 
   // ================================================================
-  // HOVER — Measurement Orders (D-036, D-047)
+  // MEASUREMENT ORDERS (D-036, D-047)
   // ================================================================
 
   /**
@@ -381,7 +381,7 @@ const Services = {
   },
 
   /**
-   * Create a Hover measurement order and get the photo capture link.
+   * Create a measurement order and get the photo capture link.
    * Uses OAuth-authenticated capture-requests API (v2).
    *
    * @param {Object} params
@@ -404,7 +404,7 @@ const Services = {
       address_line_1, address_city, address_state, address_zip,
       homeowner_name, homeowner_email, homeowner_phone,
       amount_charged, deliverable_type_id,
-      payment_intent_id,  // D-181: required — Stripe PaymentIntent for the Hover fee
+      payment_intent_id,  // D-181: required — Stripe PaymentIntent for the measurement fee
     } = params;
 
     if (!payment_intent_id) {
@@ -432,7 +432,7 @@ const Services = {
 
     if (error) throw error;
 
-    // Call Edge Function to create Hover capture request via OAuth API
+    // Call Edge Function to create the vendor capture request via OAuth API
     try {
       const { data: hoverData, error: hoverError } = await sb.functions.invoke('create-hover-order', {
         body: {
@@ -451,7 +451,7 @@ const Services = {
       });
 
       if (hoverError) {
-        console.warn('Hover order creation failed:', hoverError);
+        console.warn('Measurement order creation failed:', hoverError);
         return {
           order_id: order.id,
           capture_link: null,
@@ -468,7 +468,7 @@ const Services = {
         pending_job_id: hoverData.pending_job_id,
       };
     } catch (err) {
-      console.warn('Hover API call failed:', err);
+      console.warn('Measurement API call failed:', err);
       return { order_id: order.id, capture_link: null, placeholder: true };
     }
   },

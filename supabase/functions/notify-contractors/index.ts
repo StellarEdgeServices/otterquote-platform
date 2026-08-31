@@ -194,7 +194,7 @@ function newOpportunityEmailHtml(
     </table>
 
     <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
-    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">A new opportunity is available in your service area. The winning contractor receives a fully executed contract, Hover aerial measurements, and the homeowner&rsquo;s contact information &mdash; everything you need to schedule and start work.</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">A new opportunity is available in your service area. The winning contractor receives a fully executed contract, aerial measurements, and the homeowner&rsquo;s contact information &mdash; everything you need to schedule and start work.</p>
 
     ${emailButton({ href: OPPORTUNITIES_URL, label: "View Opportunity &rarr;" })}
 
@@ -226,7 +226,7 @@ function newOpportunityEmailText(
 
 New ${tradeLabel} project in ${city}, ${state} (${jLabel}).
 
-The winning contractor receives a fully executed contract, Hover aerial measurements, and the homeowner's contact information — ready to schedule and start work.
+The winning contractor receives a fully executed contract, aerial measurements, and the homeowner's contact information — ready to schedule and start work.
 
 View opportunity:
 ${OPPORTUNITIES_URL}
@@ -256,7 +256,7 @@ function contractSignedEmailHtml(contractorName: string, claimId: string): strin
         <table cellpadding="0" cellspacing="0" border="0">
           <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Fully executed contract</td></tr>
           <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Insurance loss sheet with AI-parsed summary</td></tr>
-          <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Trade-specific Hover aerial measurements</td></tr>
+          <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Trade-specific aerial measurements</td></tr>
           <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Material and color selections</td></tr>
           <tr><td style="padding:3px 0;color:#15803D;font-size:14px;">&#10003;&nbsp; Homeowner contact information (released now)</td></tr>
         </table>
@@ -284,7 +284,7 @@ Both parties have signed your contract. Your complete project package is ready i
 What's included:
 - Fully executed contract
 - Insurance loss sheet with AI-parsed summary
-- Trade-specific Hover aerial measurements
+- Trade-specific aerial measurements
 - Material and color selections
 - Homeowner contact information (released now)
 
@@ -1387,7 +1387,7 @@ async function notifyContractorsForSingleTrade(
  *       Look up the claim's selected_trades and per-trade release
  *       timestamps from the DB. Only fire for trades where
  *       {trade}_bid_released_at IS NOT NULL. Skip trades that are
- *       still held (e.g. siding on a retail claim awaiting Hover design).
+ *       still held (e.g. siding on a retail claim awaiting property design).
  */
 async function handleNewOpportunity(
   body: Record<string, any>,

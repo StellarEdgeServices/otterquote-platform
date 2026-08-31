@@ -73,14 +73,14 @@ function emailButton({ href, label }: { href: string; label: string }): string {
 function buildHtmlBody(homeownerName: string, propertyAddress: string, captureLink: string): string {
   const body = `
 <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">Hi ${homeownerName},</p>
-<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">Here&rsquo;s a reminder with your Hover measurement link for <strong>${propertyAddress}</strong>.</p>
-<p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">To get accurate bids from contractors, we need aerial measurements of your roof. Hover makes this easy &mdash; just use the button below to submit photos from your phone or computer, and Hover&rsquo;s technology will generate professional measurements automatically.</p>
-${emailButton({ href: captureLink, label: "Open Your Hover Measurement Link →" })}
+<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">Here&rsquo;s a reminder with your measurement link for <strong>${propertyAddress}</strong>.</p>
+<p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">To get accurate bids from contractors, we need aerial measurements of your roof. It&rsquo;s easy &mdash; just use the button below to submit photos from your phone or computer, and professional measurements will be generated automatically.</p>
+${emailButton({ href: captureLink, label: "Open Your Measurement Link →" })}
 <p style="margin:20px 0 8px;color:#374151;font-size:15px;font-weight:600;">What to do:</p>
 <ol style="margin:0 0 20px;padding-left:20px;color:#374151;font-size:15px;line-height:1.8;">
   <li>Click the button above</li>
   <li>Follow the on-screen instructions to submit photos</li>
-  <li>Hover will process your photos and generate measurements</li>
+  <li>Your photos will be processed to generate measurements</li>
   <li>You&rsquo;ll be notified when measurements are ready</li>
 </ol>
 <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">This usually takes less than 24 hours. Once complete, you&rsquo;ll be able to submit your project for contractor bids.</p>
@@ -200,8 +200,8 @@ serve(async (req) => {
     if (hoError || !hoverOrder) {
       return new Response(
         JSON.stringify({
-          error: "No active Hover order found for this claim.",
-          detail: "A measurement link can only be resent for claims with a pending or sent Hover order.",
+          error: "No active measurement order found for this claim.",
+          detail: "A measurement link can only be resent for claims with a pending or sent measurement order.",
         }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -290,17 +290,17 @@ serve(async (req) => {
 
     const emailText = `Hi ${homeownerName},
 
-Here's a reminder with your Hover measurement link for ${propertyAddress}.
+Here's a reminder with your measurement link for ${propertyAddress}.
 
-To get accurate bids from contractors, we need aerial measurements of your roof. Hover makes this easy — just use the link below to submit photos from your phone or computer, and Hover's technology will generate professional measurements automatically.
+To get accurate bids from contractors, we need aerial measurements of your roof. It's easy — just use the link below to submit photos from your phone or computer, and professional measurements will be generated automatically.
 
-Your Hover Measurement Link:
+Your Measurement Link:
 ${hoverOrder.capture_link}
 
 What to do:
 1. Click the link above
 2. Follow the on-screen instructions to submit photos
-3. Hover will process your photos and generate measurements
+3. Your photos will be processed to generate measurements
 4. You'll be notified when measurements are ready
 
 This usually takes less than 24 hours. Once complete, you'll be able to submit your project for contractor bids.
@@ -315,7 +315,7 @@ https://otterquote.com`;
     const formData = new URLSearchParams();
     formData.append("from", `Otter Quotes <notifications@${MAILGUN_DOMAIN}>`);
     formData.append("to", homeownerEmail);
-    formData.append("subject", "Your Hover Measurement Link — Action Required");
+    formData.append("subject", "Your Measurement Link — Action Required");
     formData.append("text", emailText);
     formData.append("html", emailHtml);
 
