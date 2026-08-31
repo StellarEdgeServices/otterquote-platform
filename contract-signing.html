@@ -972,6 +972,15 @@
               </label>
             </div>
 
+            <!-- gh-1395: contractor platform disclosure (R-120 approved verbatim,
+                 https://github.com/StellarEdgeServices/otterquote-platform/issues/1395#issuecomment-5483767165).
+                 Disclosure text only -- NOT a gate. No checkbox, no Proceed-button
+                 dependency; c25392a released that gate for contractors and it stays
+                 released. Populated by applyRoleCopy() for role=contractor only;
+                 stays empty and hidden otherwise, so the homeowner path is
+                 byte-identical. -->
+            <div class="checkbox-label-text" id="contractorAttestationDisclosure" style="display: none; margin-bottom: var(--sp-8);"></div>
+
             <!-- Step 1 Actions -->
             <div class="step-actions">
               <div class="step-actions-primary">
@@ -1579,22 +1588,26 @@
     //   would rely on if the platform's non-party status were challenged. A tick
     //   box that says the wrong thing is worse evidence than no tick box.
     //
-    //   FLAGGED OFF -- positive contractor-facing REPLACEMENT copy. There is no
-    //   Dustin-approved contractor attestation for contract signing (R-120:
-    //   legal wording gets a human read), so none is inlined here and none was
-    //   written by the Code lane. The flag stays false until approved text lands
-    //   on gh-1395. While it is false the homeowner path is byte-identical and
-    //   the contractor simply does not see the homeowner's words.
-    const CONTRACTOR_COPY_ENABLED = false;
+    //   POSITIVE contractor-facing REPLACEMENT copy, gated per-string. Each
+    //   entry in CONTRACTOR_COPY renders only once it is individually
+    //   non-null, so a partially-approved copy set renders only the parts
+    //   that were actually approved (R-120: legal wording gets a human read;
+    //   nothing here is invented by the Code lane). As of gh-1395's
+    //   2026-08-31 approval, only attestationLabel is filled in -- subtitle
+    //   and prefillPanel remain null pending their own approval and stay on
+    //   the homeowner's original wording until then.
+    const CONTRACTOR_COPY_ENABLED = true;
 
-    // Contractor-facing REPLACEMENT copy. Intentionally empty. The approved
-    // wording does not exist yet, and nothing in this object was written by the
-    // Code lane. When Dustin approves the text on gh-1395, inline it here
-    // verbatim and flip the flag above -- that is the whole change.
+    // Contractor-facing REPLACEMENT copy. Each string ships only once
+    // Dustin has approved that exact wording on the issue; nothing here is
+    // invented by the Code lane.
     const CONTRACTOR_COPY = {
       subtitle: null,
       prefillPanel: null,
-      attestationLabel: null, // R-120: Tier C, Dustin-approved verbatim or not at all
+      // R-120 approved verbatim by Dustin, 2026-08-31 -- ship byte-exact, no
+      // re-wording, no re-punctuation:
+      // https://github.com/StellarEdgeServices/otterquote-platform/issues/1395#issuecomment-5483767165
+      attestationLabel: 'I understand I am entering into a contract directly with the homeowner named above. Otter Quotes is not a party to this agreement.',
     };
 
     function applyRoleCopy() {
@@ -1616,10 +1629,18 @@
       if (CONTRACTOR_COPY_ENABLED) {
         const subtitle = document.getElementById('contractHeaderSubtitle');
         const prefill = document.getElementById('prefillPanelText');
+        const attestation = document.getElementById('contractorAttestationDisclosure');
         // Each guarded on its own value: a partially-approved copy set must
         // render only the parts that were actually approved.
         if (subtitle && CONTRACTOR_COPY.subtitle) subtitle.textContent = CONTRACTOR_COPY.subtitle;
         if (prefill && CONTRACTOR_COPY.prefillPanel) prefill.textContent = CONTRACTOR_COPY.prefillPanel;
+        // gh-1395: disclosure text only -- NOT a gate. No checkbox, no
+        // Proceed-button dependency; the homeowner attestation's gate stays
+        // released for contractors.
+        if (attestation && CONTRACTOR_COPY.attestationLabel) {
+          attestation.textContent = CONTRACTOR_COPY.attestationLabel;
+          attestation.style.display = '';
+        }
       }
 
       assertRoleCopyCoherent();
