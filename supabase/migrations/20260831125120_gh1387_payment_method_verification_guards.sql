@@ -50,7 +50,18 @@
 -- failure that nobody has explained yet. It stays, and the NOT VALID constraint
 -- is exactly the mechanism that lets it stay without licensing a repeat.
 --
--- ROLLBACK: 20260831130000_gh1387_payment_method_verification_guards_rollback.sql
+-- ROLLBACK: 20260831125120_gh1387_payment_method_verification_guards_rollback.sql
+--
+-- ALREADY APPLIED. Recorded in supabase_migrations.schema_migrations as version
+-- 20260831125120 -- which is why this file carries that stamp and not the
+-- 20260831130000 it was first written under. apply_migration assigns its own
+-- timestamp at execution time, and a filename that disagrees with the recorded
+-- version is not cosmetic: the runner would read this file as unapplied and
+-- re-run it, and the ADD CONSTRAINT statements below would fail with
+-- duplicate_object (42710), taking the whole migration run down with them.
+-- gh-1253 lost a backfill to the mirror image of this mismatch (a file whose
+-- version sorted BELOW the high-water mark was skipped in silence). Renamed to
+-- match reality; do not "restore" the original stamp.
 
 BEGIN;
 
