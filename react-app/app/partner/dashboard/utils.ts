@@ -20,6 +20,7 @@
 
 import type { PartnerRecord } from '@/lib/partner-record';
 import { PARTNER_DISPLAY_LABELS } from '@/lib/agent-types';
+import { RECRUIT_LINK_BASE } from './copy';
 
 // ── Data models ───────────────────────────────────────────────────────────────
 
@@ -119,7 +120,9 @@ export function recruitLinkState(
   if (p.recruit_code) {
     // Bridge 2026-08-26: scheme added — a schemeless URL does not linkify in most
   // mail and SMS clients. Mirrors the static partner-dashboard.html fix.
-  return { enabled: true, text: `https://otterquote.com/recruit.html?code=${p.recruit_code}` };
+  // gh-1383: sourced from RECRUIT_LINK_BASE (copy.ts) — single source of truth,
+  // no change to the emitted string (still https://otterquote.com/recruit.html?code=<code>).
+  return { enabled: true, text: `${RECRUIT_LINK_BASE}${p.recruit_code}` };
   }
   return { enabled: false, text: pendingMessage };
 }
