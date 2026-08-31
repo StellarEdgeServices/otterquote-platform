@@ -485,5 +485,3 @@ Append each finding to `Claude's Memories/key-findings-inbox.md`:
 
 If no findings this run:
 _None this run._
-
- 
