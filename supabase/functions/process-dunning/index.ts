@@ -53,9 +53,7 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── TIMEZONE UTILITIES ──
-// ═══════════════════════════════════════════════════════════
+// TIMEZONE UTILITIES
 
 /** State abbreviation → IANA timezone (most-common/majority zone per state). */
 const STATE_TIMEZONE: Record<string, string> = {
@@ -269,9 +267,7 @@ function nextHourlyReminder(now: Date, tz: string, warningAt: Date): Date {
   return sixAM;
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── EMAIL HELPER (Mailgun) ──
-// ═══════════════════════════════════════════════════════════
+// EMAIL HELPER (Mailgun)
 
 // #869 AC 5: this function sent HTML with no text/plain alternative to any of
 // its callers. Rather than hand-write a bespoke plain-text template for every
@@ -367,9 +363,7 @@ async function sendEmailToAll(addresses: string[], subject: string, html: string
   return count;
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── SMS HELPER (Twilio direct) ──
-// ═══════════════════════════════════════════════════════════
+// SMS HELPER (Twilio direct)
 
 async function sendSMS(to: string, message: string): Promise<boolean> {
   const sid    = Deno.env.get("TWILIO_ACCOUNT_SID");
@@ -422,9 +416,7 @@ async function sendSMSToAll(phones: string[], message: string): Promise<number> 
   return count;
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── COLLECT CONTRACTOR CONTACT INFO ──
-// ═══════════════════════════════════════════════════════════
+// COLLECT CONTRACTOR CONTACT INFO
 
 interface ContactInfo {
   emails: string[];
@@ -463,9 +455,7 @@ async function getContractorContacts(contractor: Record<string, any>, supabase: 
   return { emails, phones };
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── MESSAGE TEXT ──
-// ═══════════════════════════════════════════════════════════
+// MESSAGE TEXT
 
 const HOURLY_SMS =
   "You have a signed contract waiting for you, but your payment method has been " +
@@ -594,9 +584,7 @@ function adminAlertEmail(subject: string, body: string): string {
   return `<div style="font-family:monospace;padding:20px;"><h2>${subject}</h2>${body}</div>`;
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── SIMPLE HTML RESPONSE PAGE (for homeowner CTA clicks) ──
-// ═══════════════════════════════════════════════════════════
+// SIMPLE HTML RESPONSE PAGE (for homeowner CTA clicks)
 
 function homeownerResponsePage(title: string, message: string, isError = false): Response {
   const html = `<!DOCTYPE html>
@@ -634,9 +622,7 @@ function homeownerResponsePage(title: string, message: string, isError = false):
   });
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── MAIN HANDLER ──
-// ═══════════════════════════════════════════════════════════
+// MAIN HANDLER
 
 serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -661,9 +647,7 @@ serve(async (req) => {
 
   try {
 
-    // ─────────────────────────────────────────────────────
     // MODE: HOMEOWNER CHOICE  (GET ?mode=homeowner_choice)
-    // ─────────────────────────────────────────────────────
     const url    = new URL(req.url);
     const mode   = url.searchParams.get("mode");
     const choice = url.searchParams.get("choice");
@@ -799,9 +783,7 @@ serve(async (req) => {
       }
     }
 
-    // ─────────────────────────────────────────────────────
     // Parse request body (TRIGGER vs CRON)
-    // ─────────────────────────────────────────────────────
     let body: any = null;
     try {
       const text = await req.text();
@@ -810,9 +792,7 @@ serve(async (req) => {
       // No body or invalid JSON — CRON mode
     }
 
-    // ─────────────────────────────────────────────────────
     // MODE: TRIGGER — Payment just failed
-    // ─────────────────────────────────────────────────────
     if (body?.quote_id && body?.contractor_id) {
       console.log("TRIGGER mode: Attempting all payment methods before dunning for quote", body.quote_id);
 
@@ -1105,9 +1085,7 @@ serve(async (req) => {
       );
     }
 
-    // ─────────────────────────────────────────────────────
     // MODE: CRON — Process all active dunning records
-    // ─────────────────────────────────────────────────────
     console.log("CRON mode: Scanning active dunning records...");
     const now = new Date();
     let processed = 0;
@@ -1264,7 +1242,7 @@ serve(async (req) => {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("process-dunning error:", msg);
     return new Response(
-      JSON.stringify({ error: msg }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
