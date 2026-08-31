@@ -91,7 +91,7 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // ── Auth gate ──────────────────────────────────────────────────────────────
+  // Auth gate
   // This function performs service-role writes to warranty_manifest_drift and
   // triggers outbound manufacturer fetches + an admin email, so unauthenticated
   // callers MUST be rejected before any work (a {"force":true} POST would otherwise
@@ -135,7 +135,7 @@ Deno.serve(async (req: Request) => {
   const startedAt = new Date().toISOString();
 
   try {
-    // ── Dedup check ──────────────────────────────────────────────────────────
+    // Dedup check
     if (!forceRun) {
       const cutoff = new Date(
         Date.now() - DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000
@@ -181,7 +181,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ── Load active warranty_options ─────────────────────────────────────────
+    // Load active warranty_options
     const { data: options, error: optErr } = await sb
       .from("warranty_options")
       .select("*")
@@ -198,7 +198,7 @@ Deno.serve(async (req: Request) => {
       byManufacturer[opt.manufacturer].push(opt);
     }
 
-    // ── Check for existing open items per manufacturer ───────────────────────
+    // Check for existing open items per manufacturer
     const { data: existingOpen } = await sb
       .from("warranty_manifest_drift")
       .select("manufacturer")
@@ -208,7 +208,7 @@ Deno.serve(async (req: Request) => {
       (existingOpen ?? []).map((r: { manufacturer: string }) => r.manufacturer)
     );
 
-    // ── Build drift rows ─────────────────────────────────────────────────────
+    // Build drift rows
     const driftRows: DriftInsert[] = [];
     let gafProgrammatic = false;
 
@@ -263,7 +263,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ── Insert drift rows ────────────────────────────────────────────────────
+    // Insert drift rows
     let insertedCount = 0;
     if (driftRows.length > 0) {
       const { error: insertErr } = await sb
@@ -273,10 +273,10 @@ Deno.serve(async (req: Request) => {
       insertedCount = driftRows.length;
     }
 
-    // ── Log to cron_health ───────────────────────────────────────────────────
+    // Log to cron_health
     await logCronHealth(sb, "success", null);
 
-    // ── Send Mailgun notification ────────────────────────────────────────────
+    // Send Mailgun notification
     if (insertedCount > 0) {
       await sendMailgunNotification(insertedCount, driftRows, gafProgrammatic);
     }
@@ -300,13 +300,13 @@ Deno.serve(async (req: Request) => {
     console.error(`[refresh-warranty-manifest] Error: ${message}`);
     await logCronHealth(sb, "error", message);
     return new Response(
-      JSON.stringify({ error: message, run_id: runId }),
+      JSON.stringify({ error: "Internal server error", run_id: runId }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 });
 
-// ── GAF Programmatic Scrape ──────────────────────────────────────────────────
+// GAF Programmatic Scrape
 // Fetches GAF's warranty page and diffs tier names against active warranty_options.
 // Returns an array of drift rows, or null if the scrape failed/inconclusive.
 async function tryGafProgrammatic(
@@ -380,7 +380,7 @@ async function tryGafProgrammatic(
   }
 }
 
-// ── Cron Health Logger ───────────────────────────────────────────────────────
+// Cron Health Logger
 async function logCronHealth(
   sb: ReturnType<typeof createClient>,
   status: string,
@@ -397,7 +397,7 @@ async function logCronHealth(
   }
 }
 
-// ── Mailgun Notification ─────────────────────────────────────────────────────
+// Mailgun Notification
 async function sendMailgunNotification(
   count: number,
   rows: DriftInsert[],

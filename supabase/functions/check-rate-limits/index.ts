@@ -154,7 +154,7 @@ This is an automated alert from OtterQuote monitoring.
   } catch (error) {
     console.error("Error in check-rate-limits:", error);
     return new Response(
-      JSON.stringify({ error: String(error) }),
+      JSON.stringify({ error: "Internal server error" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }

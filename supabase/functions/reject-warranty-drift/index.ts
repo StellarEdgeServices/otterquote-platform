@@ -76,7 +76,8 @@ Deno.serve(async (req: Request) => {
     if (action !== "reject" && action !== "skip") throw new Error("action must be 'reject' or 'skip'");
     if (action === "reject" && !rejectionReason) throw new Error("rejection_reason required for reject action");
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error("[reject-warranty-drift] Invalid request:", e);
+    return new Response(JSON.stringify({ error: "Invalid request" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -141,7 +142,7 @@ Deno.serve(async (req: Request) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[reject-warranty-drift] Error: ${message}`);
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
