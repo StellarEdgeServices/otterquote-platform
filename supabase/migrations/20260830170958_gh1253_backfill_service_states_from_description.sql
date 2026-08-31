@@ -8,14 +8,22 @@
 -- Prescribed verbatim by the CTO ruling `cto-2026-08-30T14:10:10Z` on issue #1253.
 -- Tier 3A: additive data repair on a nullable column, fully reversible, zero real rows.
 --
--- !! NOT YET APPLIED -- this file is a PENDING change, not a historical record. !!
--- This deliberately differs from the gh-945 / gh-1028 / gh-1302 precedent in this
--- directory, where the migration was applied via apply_migration first and the file
--- committed afterwards as a trace. The session that authored this file (run-work
--- rw-f22-20260830T170846-a9da, remote Linux container) had its direct production
--- write blocked by the environment's write classifier, so the change is routed
--- through the normal D-221 Path A deploy chain instead: merging this PR APPLIES it.
--- Read the pre-flight note beside this file before merging.
+-- !! SUPERSEDED -- this version was silently skipped and WILL NEVER APPLY. !!
+-- Merged via PR #1366 (2026-08-31T03:21Z) expecting the normal D-221 Path A deploy
+-- chain to apply it (merging this PR APPLIES it, per the note that used to be here).
+-- It didn't: the Supabase migration runner tracks a high-water mark, and this file's
+-- version stamp (20260830170958, authored 17:09Z) is older than v116_accept_bid_rpc's
+-- (20260830192051, applied ~19:20Z that same day) -- so the runner treated this as
+-- already-superseded and never ran it. Confirmed absent from
+-- supabase_migrations.schema_migrations as of 2026-08-31T11:37Z; see issue #1253 for
+-- the full diagnosis (posted by rw-f22-20260830T170846-a9da, 2026-08-31T03:23:56Z).
+--
+-- The forward half below is kept verbatim as a historical record. The change it
+-- describes was actually applied via
+-- 20260831113959_gh1253_backfill_service_states_from_description_restamp.sql
+-- (applied directly via apply_migration, byte-identical SQL, rw-f22-20260831T113654-y93t).
+-- Do not re-run this file under this version stamp -- it is permanently below the
+-- high-water mark and the runner will keep skipping it.
 --
 -- Enumerated live against production yeszghaspzwwstvsrioa on 2026-08-30T17:09Z,
 -- before this file was written. 13 contractor rows total, all is_test = true, all
