@@ -28,7 +28,7 @@ var CONFIG = {
   TWILIO_PHONE:  '18448753412',
   // NOTE: TWILIO_SID and TWILIO_TOKEN are server-side only (Edge Functions)
 
-  // ── Stripe (payments: Hover fees, deductible escrow, contractor platform fees) ──
+  // ── Stripe (payments: measurement fees, deductible escrow, contractor platform fees) ──
   STRIPE_PK_LIVE: 'pk_live_51TCI2O0AJRnqIYPU4ybaUmt2FRxihUu4kMKXvjnrvfsWRHyoi8ptkVuyKsDs3Zq4dMrGniPGg5BxtAmZfukah5aI00K31rnCbk',
 
   // Bridge 2026-08-26: there was no test publishable key at all, and that made
@@ -54,11 +54,6 @@ var CONFIG = {
   DOCUSIGN_ACCOUNT_ID:      '0b57b777-5c6e-4650-80d3-14152257ca82',
   DOCUSIGN_BASE_URI:        'https://na3.docusign.net',
   // NOTE: DOCUSIGN_USER_ID is server-side only (Edge Functions)
-
-  // ── Hover ──
-  // Pending API partner approval
-  HOVER_API_KEY:  'PLACEHOLDER_hover_api_key',
-  HOVER_API_URL:  'https://api.hover.to/v1',
 
   // ── Platform Settings ──
   PLATFORM_FEE_PERCENT: 5,         // Starting at 5%, target 10%, test 15%
