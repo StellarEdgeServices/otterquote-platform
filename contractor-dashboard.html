@@ -1529,6 +1529,11 @@
             }
         }
 
+        // gh-1436: escape homeowner-supplied free text before rendering into innerHTML
+        function escapeHtml(text) {
+            return String(text).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]);
+        }
+
         function populateDashboard() {
             // Update completeness banner
             updateCompletenessBanner();
@@ -1560,7 +1565,7 @@
                   return `
                   <tr style="${isExpired ? 'opacity:0.85; background:#FFFBFB;' : ''}">
                     <td>${bid.location}</td>
-                    <td>${bid.damageType}</td>
+                    <td>${escapeHtml(bid.damageType)}</td>
                     <td style="font-weight: 700;">${bid.bidAmount}</td>
                     <td>${bid.submittedDate}</td>
                     <td>${statusBadge}</td>
@@ -1625,7 +1630,7 @@
                     <tr>
                         <td class="lead-id" title="${lead.fullId || ''}">${lead.id}</td>
                         <td>${lead.location}</td>
-                        <td>${lead.damageType}</td>
+                        <td>${escapeHtml(lead.damageType)}</td>
                         <td>${lead.material}</td>
                         <td>${lead.estimatedValue}</td>
                         <td><span class="status-badge status-${lead.status.toLowerCase()}">${lead.status}</span></td>
