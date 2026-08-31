@@ -23,7 +23,7 @@ Key differences vs. Cowork version:
 - REPO_ROOT = C:\Users\Dustin Stohler\otterquote-platform (local clone, first cloned 2026-05-18)
 - Handoff protocol added (writes to REPO_ROOT/handoffs/ at session end)
 - Sub-agents used for read-only inspection passes (Layer 1 sweep, Layer 7 production sync)
-  Sub-agents cannot modify memory files — parent handles all ClickUp writes
+  Sub-agents cannot modify memory files — parent handles all issue writes
 -->
 
 # Forge (Claude Code) — OtterQuote Site Compliance & Repair Loop
@@ -91,7 +91,7 @@ CODE_MAP_PATH    = CLAUDE_DOWNLOADS / "Stellar Edge Services" / "OtterQuote" / "
 
 ## Scout Mode — Scheduled Read-Only Scan (R-042)
 
-**R-042 mandate:** Scheduled Forge runs (via Windows Task Scheduler `run-forge.ps1`) MUST run in scout-only mode. They scan all 12 layers, file findings as ClickUp tasks, write done and handoff files — and make NO code changes and NO deploys.
+**R-042 mandate:** Scheduled Forge runs (via Windows Task Scheduler `run-forge.ps1`) MUST run in scout-only mode. They scan all 12 layers, file findings as GitHub issues, write done and handoff files — and make NO code changes and NO deploys.
 
 **Mode detection — read immediately on load:**
 
@@ -113,25 +113,41 @@ CODE_MAP_PATH    = CLAUDE_DOWNLOADS / "Stellar Edge Services" / "OtterQuote" / "
 
 | Color | Meaning | Scout Action |
 |-------|---------|-------------|
-| GREEN | Compliant — no action needed | Log in done file only (no ClickUp task) |
-| YELLOW | Gap exists, fix is non-blocking | File ClickUp task, priority: normal |
-| RED | Gap exists, fix is urgent | File ClickUp task, priority: urgent |
-| GRAY | Cannot verify without live credentials | Log in done file only (no ClickUp task) |
+| GREEN | Compliant — no action needed | Log in done file only (no issue) |
+| YELLOW | Gap exists, fix is non-blocking | File GitHub issue, `should` |
+| RED | Gap exists, fix is urgent | File GitHub issue, `must` |
+| GRAY | Cannot verify without live credentials | Log in done file only (no issue) |
 
-**Step 3 — File one ClickUp task per RED or YELLOW finding:**
+**Step 3 — File one GitHub issue per RED or YELLOW finding:**
+
+Findings from this skill are ENGINEERING findings, so they go to GitHub Issues on
+`StellarEdgeServices/otterquote-platform` and nowhere else. Filing them to ClickUp is
+prohibited by R-098 and R-157 — ClickUp has been personal/CEO-facing-only since
+2026-08-24 and has no engineering reader, so a task filed there accumulates unseen.
+This skill wrote to ClickUp list `901711730553` until gh-1362, where a Forge finding
+was cross-filed as `86e3186vw` and sat in a queue nobody reads. Only an item needing a
+Dustin decision or physical action belongs on the CEO board, and a compliance finding
+is not that.
 
 ```python
-# Task naming convention (mandatory):
-task_name = f"[FORGE SCOUT] [{severity}] — {description}"
+# Issue title convention (mandatory):
+issue_title = f"[FORGE SCOUT] [{severity}] — {description}"
 # Examples:
 # "[FORGE SCOUT] [RED] — D-087 'lead' copy violation in contractor-bid-form.html"
 # "[FORGE SCOUT] [YELLOW] — Layer 10: submit-bid Edge Function missing idempotency marker"
 
-# ClickUp create task fields:
-# list_id: "901711730553"
-# name: task_name (format above, mandatory)
-# priority: "urgent" if RED, "normal" if YELLOW
-# description: (
+# Search open issues FIRST and dedup — a repeat scan of an unfixed finding must
+# comment on the existing issue, not open a second one.
+#
+# GitHub issue fields:
+# repo:   StellarEdgeServices/otterquote-platform
+# title:  issue_title (format above, mandatory)
+# labels: ["env:code", "line:otterquotes", "forge-finding",
+#          "must" if RED else "should",
+#          size label, and an `exec:` owner — an issue filed with no `exec:`
+#          label is an ORPHAN and is invisible until an executive run sweeps
+#          for it (gh-1362 sat orphaned for 9 hours for exactly this reason).]
+# body: (
 #     f"**Layer {layer_num} — {layer_name}**\n\n"
 #     f"**Finding:** {detail}\n\n"
 #     f"**File(s):** {file_paths}\n\n"
@@ -164,14 +180,14 @@ Layer 10 (Latent Bugs): RED: N, YELLOW: N, GREEN: N
 Layer 11 (Arch Coherence): RED: N, YELLOW: N, GREEN: N
 Layer 12 (Post-Write Scan): RED: N, YELLOW: N, GREEN: N
 
-## ClickUp Tasks Filed
-[List task IDs and names — or "None"]
+## GitHub Issues Filed
+[List issue numbers and titles — or "None"]
 
 ## GRAY Items (unverifiable without live credentials)
 [List or "None"]
 
 ## Summary
-<one paragraph: layers scanned, total findings, ClickUp tasks created>
+<one paragraph: layers scanned, total findings, GitHub issues created>
 ```
 
 **Step 5 — Write handoff file** (same template as Phase 6, with `Run type: FORGE SCOUT` and no Commits section).
@@ -506,7 +522,7 @@ Run Layer 8 only for entries with `Status = in-progress`.
 
 5. **On GREEN:** Update the page's `Status` in `react-migration-parity.md` to `parity-verified`.
 
-6. **On RED:** Block Phase 2 cutover. Add ClickUp comment to relevant task with specific finding.
+6. **On RED:** Block Phase 2 cutover. Comment the specific finding on the relevant GitHub issue.
 
 ---
 
@@ -781,7 +797,9 @@ PERMANENTLY UNVERIFIABLE: DocuSign signing, Stripe payment, Twilio SMS, Hover OA
 ## Phase 6 — Final Deploy and Archive
 
 1. Run smoke tests one final time (all 4 must pass).
-2. Create ClickUp tasks for each blocked item: "Forge blocked: [description]" in list `901711730553`.
+2. Open a GitHub issue for each blocked item: "Forge blocked: [description]" on
+   `StellarEdgeServices/otterquote-platform` (R-098/R-157 — never ClickUp; see Step 3 of
+   Scout Mode for the label set, including the mandatory `exec:` owner).
 3. **Write done file (R-044)** to `In Flight/done/forge-code-<YYYY-MM-DD>.md`:
 
    ```python
@@ -805,7 +823,7 @@ PERMANENTLY UNVERIFIABLE: DocuSign signing, Stripe payment, Twilio SMS, Hover OA
    <list D-numbers and descriptions — or "none">
 
    ## Items Blocked: N
-   <list with ClickUp task IDs — or "none">
+   <list with GitHub issue numbers — or "none">
 
    ## Items Gray: N
    <see Known Forge Limitations section>
@@ -839,7 +857,7 @@ Forge is successful when:
 - Layer 10 reports no RED findings (no Edge Function lacks top-level try/catch; no raw user input flows into payment/signing/Supabase-write paths)
 - Layer 11 reports no YELLOW findings (architecture.md commit SHA matches HEAD; Edge Function count matches documented inventory)
 - Layer 12 reports no RED findings (no null bytes in working tree; no zero-byte tracked files; no >40% size regressions)
-- All blocked items documented in ClickUp
+- All blocked items documented as GitHub issues
 
 ---
 
@@ -888,7 +906,7 @@ handoff_content = f"""# Forge-Code Handoff — {ts}
 [List commit SHAs and descriptions]
 
 ## Blocked Items (Tier C / Undocumented)
-[List with ClickUp task IDs]
+[List with GitHub issue numbers]
 
 ## Memory Updates Required
 [Any otterquote-memory.md or other file updates for Cowork to apply]
@@ -931,12 +949,17 @@ _None this run._
 
 Before terminating, every run of this skill MUST complete the following steps:
 
-1. **Create ClickUp tasks** for all recommendations, findings, and action items not already tracked.
-   - Search ClickUp first (dedup). List 901711730553.
-   - Lane 2 tag if Dustin action required; standard task if Tier A-autonomous.
-2. **Write operational data** to designated log: ClickUp task comments on the active Forge task (post findings as a structured comment)
+1. **File GitHub issues** for all recommendations, findings, and action items not already
+   tracked, on `StellarEdgeServices/otterquote-platform`.
+   - Search open issues first (dedup) — a repeat finding comments on the existing issue.
+   - Apply `env:code`, `line:*`, `must`/`should`, a size label, and an `exec:` owner.
+   - **Never file engineering work to ClickUp** (R-098, R-157). Only an item that needs a
+     Dustin decision or a physical action goes to the ClickUp CEO board, and that is the
+     only ClickUp write this skill may make.
+2. **Write operational data** to designated log: as comments on the GitHub issue the run
+   is filed under (post findings as a structured comment).
 3. **Emit closing statement:** "All outputs stored. Thread safe to close."
-   - If any storage step failed, create a ClickUp task describing the failure instead.
+   - If any storage step failed, open a GitHub issue describing the failure instead.
 
 Never defer storage to the archive skill or any external process. Scheduled sessions have no archive pass.
 
