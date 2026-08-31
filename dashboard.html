@@ -2335,9 +2335,13 @@
 
         if (claimHasSiding && isRetailFunding) {
           // Resolve the design job link (vendor /jobs/{id} URL — NOT the app. subdomain per Session 238 fix)
+          // gh-1381 (CodeQL #11): hover_job_id is server-sourced (written only by
+          // create-hover-order from Hover's own API response), but constrain it to
+          // the numeric shape the filename fallback below already enforces before
+          // it is interpolated into the innerHTML link — defense-in-depth.
           let hoverJobId = null;
-          if (hoverOrder?.hover_job_id) {
-            hoverJobId = hoverOrder.hover_job_id;
+          if (hoverOrder?.hover_job_id && /^\d+$/.test(String(hoverOrder.hover_job_id))) {
+            hoverJobId = String(hoverOrder.hover_job_id);
           } else {
             const mf = currentClaim.measurements_filename || '';
             const mMatch = mf.match(/hover[_-](\d{6,})[_-]/) || mf.match(/job[_-](\d{6,})/i) || mf.match(/(\d{6,})/);
