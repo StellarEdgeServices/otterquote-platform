@@ -1,4 +1,4 @@
--- ROLLBACK for 20260831130000_gh1387_payment_method_verification_guards.sql
+-- ROLLBACK for 20260831125120_gh1387_payment_method_verification_guards.sql
 --
 -- Run this to undo the gh-1387 guards. Note what rollback does and does not
 -- restore, because the difference matters:
