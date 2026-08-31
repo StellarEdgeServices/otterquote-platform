@@ -1017,7 +1017,7 @@
                     + getTradeReleaseBadges(o)
                     + '<div style="margin-bottom:var(--sp-4)"></div>'
                     + '<div class="opportunity-main-info">'
-                    + '<div class="info-block"><span class="info-label">Damage Type</span><span class="info-value">' + o.damageType + ' &mdash; ' + o.damageDetail + '</span></div>'
+                    + '<div class="info-block"><span class="info-label">Damage Type</span><span class="info-value">' + escHtml(o.damageType) + ' &mdash; ' + escHtml(o.damageDetail) + '</span></div>'
                     + sourceBlock + matBlock
                     + '<div class="info-block"><span class="info-label">' + vd.label + '</span><span class="info-value">' + vd.value + '</span></div>'
                     + '</div>'
