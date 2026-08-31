@@ -2368,7 +2368,7 @@
                     <strong style="color:#fff;">trim</strong>.
                     Once you've chosen all four in your property design, your siding bids will be released to contractors.
                   </div>
-                  <a href="${hoverLink}" target="_blank" rel="noopener"
+                  <a href="https://hover.to" target="_blank" rel="noopener"
                      style="display:inline-block;background:var(--amber,#E07B00);color:#0D1B2E;font-size:0.875rem;font-weight:700;text-decoration:none;padding:8px 20px;border-radius:0.5rem;transition:opacity 0.2s;"
                      onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
                     Design Your Siding →
@@ -2376,6 +2376,9 @@
                 </div>
               </div>
             `;
+            // gh-1381 (CodeQL #11): set the job-specific link via the DOM property,
+            // never through innerHTML — no dynamic value enters the HTML parser.
+            ctaDiv.querySelector('a').href = hoverLink;
           } else {
             // ── Gate cleared: brief confirmation ─────────────────────────
             ctaDiv.style.cssText = 'margin-top:1rem;background:rgba(224,123,0,0.08);border:1px solid rgba(224,123,0,0.35);border-radius:0.75rem;padding:0.875rem 1.25rem;display:flex;align-items:center;gap:0.75rem;';
