@@ -376,7 +376,7 @@ function renderSummary() {
 
   var oldest = awaiting[0];
   document.getElementById('oldest-awaiting').textContent =
-    oldest ? 'oldest ' + daysAgo(oldest.created_at) : ' ';
+    oldest ? 'oldest ' + daysAgo(oldest.created_at) : ' ';
 
   // Margin counts only DELIVERED orders where we actually recorded a cost.
   // An order with no cost entered is excluded rather than counted as free —
