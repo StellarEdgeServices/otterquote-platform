@@ -5859,11 +5859,13 @@
       const icons = { roofing: '🏠', siding: '🧱', gutters: '🌧️', windows: '🪟' };
       const labels = { roofing: 'Roofing', siding: 'Siding', gutters: 'Gutters', windows: 'Windows' };
 
+      // gh-1381 (CodeQL #13): escape every dynamic value entering innerHTML —
+      // defense-in-depth behind the KNOWN_TRADES whitelist at the call site.
       checkboxContainer.innerHTML = trades.map(t =>
         '<label style="display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);background:var(--white);border:2px solid #E5E7EB;border-radius:var(--radius-md);cursor:pointer;transition:all 0.2s;">'
-        + '<input type="checkbox" class="trade-check" value="' + t + '" checked>'
+        + '<input type="checkbox" class="trade-check" value="' + escHtmlBid(t) + '" checked>'
         + '<span style="font-size:1.1rem;">' + (icons[t]||'') + '</span>'
-        + '<span style="font-weight:600;color:var(--navy);">' + (labels[t]||t) + '</span></label>'
+        + '<span style="font-weight:600;color:var(--navy);">' + escHtmlBid(labels[t]||t) + '</span></label>'
       ).join('');
 
       const tradeChecks = document.querySelectorAll('.trade-check');
@@ -5889,12 +5891,13 @@
 
         if (isBundled && selected.length >= 2) {
           breakdownCard.style.display = 'block';
+          // gh-1381 (CodeQL #10): same whitelist upstream; escape at the sink too.
           breakdownFields.innerHTML = selected.map(t =>
             '<div style="display:flex;align-items:center;gap:var(--sp-4);margin-bottom:var(--sp-4);">'
-            + '<span style="min-width:100px;font-weight:600;color:var(--navy);">' + (icons[t]||'') + ' ' + (labels[t]||t) + '</span>'
+            + '<span style="min-width:100px;font-weight:600;color:var(--navy);">' + (icons[t]||'') + ' ' + escHtmlBid(labels[t]||t) + '</span>'
             + '<div class="input-prefix" style="flex:1;">'
             + '<span>$</span>'
-            + '<input type="number" class="trade-price" data-trade="' + t + '" step="0.01" min="0" placeholder="Price for ' + (labels[t]||t).toLowerCase() + '">'
+            + '<input type="number" class="trade-price" data-trade="' + escHtmlBid(t) + '" step="0.01" min="0" placeholder="Price for ' + escHtmlBid((labels[t]||t).toLowerCase()) + '">'
             + '</div></div>'
           ).join('');
 
@@ -5954,9 +5957,16 @@
         }
 
         // Multi-trade project check (non-wizard path)
+        // gh-1381 (CodeQL #13/#10): the trades URL param is attacker-controllable —
+        // a crafted link could reflect script through it. Whitelist to the known
+        // trade keys before anything reaches an innerHTML sink.
+        const KNOWN_TRADES = ['roofing', 'siding', 'gutters', 'windows'];
         const tradesParam = urlParams.get('trades');
         if (tradesParam) {
-          try { initTradeSelection(JSON.parse(tradesParam)); } catch(e) {}
+          try {
+            const parsedTrades = JSON.parse(tradesParam);
+            initTradeSelection(Array.isArray(parsedTrades) ? parsedTrades.filter(t => KNOWN_TRADES.includes(t)) : []);
+          } catch(e) {}
         } else if (currentClaim && currentClaim.trades && currentClaim.trades.length > 1) {
           initTradeSelection(currentClaim.trades);
         }

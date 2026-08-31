@@ -1925,6 +1925,12 @@
         document.getElementById('user-address').textContent = address;
       }
 
+      // gh-1381 (CodeQL #7/#8/#9): claim fields are homeowner-entered free text;
+      // escape everything interpolated into innerHTML. Same idiom as PR #1442.
+      function escapeHtml(text) {
+        return String(text).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]);
+      }
+
       function renderClaimInfo() {
         if (!currentClaim) return;
 
@@ -1973,8 +1979,8 @@
 
         const summaryHtml = summaryRows.length ? summaryRows.map(r => `
           <div class="claim-field">
-            <div class="claim-field-label">${r.label}</div>
-            <div class="claim-field-value">${r.value}</div>
+            <div class="claim-field-label">${escapeHtml(r.label)}</div>
+            <div class="claim-field-value">${escapeHtml(r.value)}</div>
           </div>
         `).join('') : '';
 
@@ -1991,7 +1997,7 @@
         ];
 
         // Display mode
-        display.innerHTML = fields.map(field => {
+        const fieldsHtml = fields.map(field => {
           let value = currentClaim[field.key] || 'Not provided';
 
           // Special handling for carrier_id
@@ -2034,14 +2040,16 @@
 
           return `
             <div class="claim-field">
-              <div class="claim-field-label">${field.label}</div>
-              <div class="claim-field-value">${value}</div>
+              <div class="claim-field-label">${escapeHtml(field.label)}</div>
+              <div class="claim-field-value">${escapeHtml(value)}</div>
             </div>
           `;
         }).join('');
 
-        // Prepend summary rows (property address, trades, funding)
-        display.innerHTML = summaryHtml + display.innerHTML;
+        // Prepend summary rows (property address, trades, funding).
+        // gh-1381 (CodeQL #8): build the full string first — never read
+        // innerHTML back and re-assign it (DOM text re-interpreted as HTML).
+        display.innerHTML = summaryHtml + fieldsHtml;
 
         // Edit form
         form.innerHTML = fields.map(field => {
@@ -2053,14 +2061,14 @@
               <select class="form-select" name="${field.key}">
                 <option value="">Select carrier...</option>
                 ${carriers.map(c => `
-                  <option value="${c.id}" ${c.id === value ? 'selected' : ''}>${c.name}</option>
+                  <option value="${escapeHtml(c.id)}" ${c.id === value ? 'selected' : ''}>${escapeHtml(c.name)}</option>
                 `).join('')}
               </select>
             `;
           } else if (field.type === 'currency') {
-            input = `<input type="number" step="0.01" class="form-input" name="${field.key}" value="${value}" placeholder="0.00">`;
+            input = `<input type="number" step="0.01" class="form-input" name="${field.key}" value="${escapeHtml(value)}" placeholder="0.00">`;
           } else {
-            input = `<input type="${field.type}" class="form-input" name="${field.key}" value="${value}" placeholder="">`;
+            input = `<input type="${field.type}" class="form-input" name="${field.key}" value="${escapeHtml(value)}" placeholder="">`;
           }
 
           // Hide field if showIf function returns false
@@ -2068,7 +2076,7 @@
 
           return `
             <div class="form-group">
-              <label class="form-label">${field.label}</label>
+              <label class="form-label">${escapeHtml(field.label)}</label>
               ${input}
             </div>
           `;
