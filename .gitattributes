@@ -2,3 +2,7 @@
 # regardless of core.autocrlf, so editors can't reintroduce CRLF churn.
 supabase/functions/**/*.ts   text eol=lf
 supabase/functions/**/*.json text eol=lf
+
+# gh-1374: force LF on all HTML pages so line-ending flips can't smuggle
+# whole-file diffs into functional commits (see b7b83ee / bids.html).
+*.html text eol=lf
