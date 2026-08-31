@@ -107,6 +107,12 @@ export default function GetStartedPage() {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [smsConsent, setSmsConsent] = useState(false);
+  // gh-1337: homeowner opt-out for referrer progress-update emails. Copy
+  // approved by Dustin on #1336 (R-120) — do not reword. Default false
+  // (not null) so an unchecked box still records "shown, did not opt out",
+  // the only value that permits the send-partner-status-email consent gate
+  // to fire (see supabase/functions/send-partner-status-email/index.ts).
+  const [referrerOptOut, setReferrerOptOut] = useState(false);
   const [referralSource, setReferralSource] = useState<ReferralSource>('');
   const [refName, setRefName] = useState('');
   const [refEmail, setRefEmail] = useState('');
@@ -238,6 +244,11 @@ export default function GetStartedPage() {
         referring_agent_email: refEmail.trim() || null,
         role: 'homeowner',
         sms_consent_ts: smsConsent ? new Date().toISOString() : null,
+        // gh-1337: FALSE (not omitted/null) means "shown the checkbox, did not
+        // opt out" — the only value that permits send-partner-status-email's
+        // consent gate to fire. Read downstream by the claim-creation writer
+        // and persisted to claims.referrer_updates_opt_out.
+        referrer_updates_opt_out: referrerOptOut,
       }),
     );
 
@@ -907,6 +918,29 @@ export default function GetStartedPage() {
                         Terms of Service
                       </a>
                       .
+                    </span>
+                  </label>
+                </div>
+
+                {/* Referrer-updates opt-out — gh-1337, copy approved by Dustin on #1336 (R-120) */}
+                {/* Text source: referrer-disclosure-copy-2026-08-19.md § 2 — verbatim, do not reword */}
+                <div className="form-group">
+                  <label className="form-checkbox-wrapper">
+                    <input
+                      type="checkbox"
+                      id="referrer-updates-opt-out"
+                      className="form-checkbox"
+                      checked={referrerOptOut}
+                      onChange={e => setReferrerOptOut(e.target.checked)}
+                    />
+                    <span style={{ fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--slate, #94a3b8)' }}>
+                      <strong style={{ color: 'inherit' }}>Don&apos;t send project updates to the person who referred me</strong>
+                      <br />
+                      If someone referred you to Otter Quotes, we send them short updates as your project moves —
+                      claim submitted, bids in, contractor picked, agreement signed, job done — using your first
+                      name and last initial only. We never share your claim amount, your contractor&apos;s name, or
+                      damage details with them. Check this box if you&apos;d rather they not get these updates.
+                      Questions? Email support@otterquote.com.
                     </span>
                   </label>
                 </div>

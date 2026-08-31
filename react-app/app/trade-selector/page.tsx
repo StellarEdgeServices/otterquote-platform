@@ -558,6 +558,13 @@ export default function TradeSelectorPage() {
             ...(chainReferralId && { referral_id: chainReferralId }),
             ...(!referralAgentId && chainReferralAgentId && { referral_agent_id: chainReferralAgentId }),
             ...(chainReferralCode && { referral_code: chainReferralCode }),
+            // gh-1337: only write when get-started's checkbox actually ran —
+            // undefined (cs_signup absent/stale/pre-dates this change) must
+            // leave the column NULL ("never asked"), not FALSE ("did not opt
+            // out"). Read by send-partner-status-email's consent gate.
+            ...(typeof csSignup.referrer_updates_opt_out === 'boolean' && {
+              referrer_updates_opt_out: csSignup.referrer_updates_opt_out,
+            }),
           };
 
           if (existingClaim) {
