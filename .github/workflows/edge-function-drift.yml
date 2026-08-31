@@ -71,25 +71,43 @@ jobs:
       # Fetch one function directly and diff it against the repo copy so the
       # actual bytes (encoding, line endings, truncation, bundling) are visible
       # instead of guessed at. Read-only: this only downloads, never deploys.
+      #
+      # v1 of this step (2026-08-31 20:16 UTC run) assumed the CLI writes to
+      # `<cwd>/supabase/functions/<slug>/`, per the detector script's own
+      # comment -- but got "No such file or directory" there. The detector
+      # script survives that because it also `sudo chown -R`s the Docker-root
+      # output before touching it (see `_reclaim_tree` in
+      # edge-function-drift-check.py) and reads the path it itself computed;
+      # this step does neither, so v2 reclaims ownership and then searches for
+      # wherever the file actually landed instead of assuming.
       - name: Debug -- fetch one function source for byte comparison
         if: always()
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           mkdir -p debug-fetch
-          (cd debug-fetch && supabase functions download parse-hover-measurements --project-ref "$SUPABASE_PROJECT_REF") || echo "download failed, see above"
+          (cd debug-fetch && supabase functions download parse-hover-measurements --project-ref "$SUPABASE_PROJECT_REF")
+          echo "download exit code: $?"
+          sudo chown -R "$(id -u):$(id -g)" debug-fetch || true
+          echo "--- everything under debug-fetch/ (path, then ls -la) ---"
+          find debug-fetch -type f -exec echo {} \; -exec ls -la {} \; 2>&1
           REPO_FILE="supabase/functions/parse-hover-measurements/index.ts"
-          FETCHED_FILE="debug-fetch/supabase/functions/parse-hover-measurements/index.ts"
-          echo "--- sizes (bytes) ---"
-          wc -c "$REPO_FILE" "$FETCHED_FILE" 2>&1 || true
-          echo "--- sha256 ---"
-          sha256sum "$REPO_FILE" "$FETCHED_FILE" 2>&1 || true
-          echo "--- first 20 lines, repo (cat -A) ---"
-          head -20 "$REPO_FILE" | cat -A || true
-          echo "--- first 20 lines, fetched (cat -A) ---"
-          head -20 "$FETCHED_FILE" | cat -A || true
-          echo "--- byte-level diff (cmp -l), first 20 differing offsets ---"
-          cmp -l "$REPO_FILE" "$FETCHED_FILE" 2>&1 | head -20 || true
+          FETCHED_FILE="$(find debug-fetch -type f -name index.ts | head -1)"
+          if [ -z "$FETCHED_FILE" ]; then
+            echo "NO index.ts FOUND ANYWHERE UNDER debug-fetch/ -- download produced no readable file"
+          else
+            echo "fetched file resolved to: $FETCHED_FILE"
+            echo "--- sizes (bytes) ---"
+            wc -c "$REPO_FILE" "$FETCHED_FILE" 2>&1 || true
+            echo "--- sha256 ---"
+            sha256sum "$REPO_FILE" "$FETCHED_FILE" 2>&1 || true
+            echo "--- first 20 lines, repo (cat -A) ---"
+            head -20 "$REPO_FILE" | cat -A || true
+            echo "--- first 20 lines, fetched (cat -A) ---"
+            head -20 "$FETCHED_FILE" | cat -A || true
+            echo "--- byte-level diff (cmp -l), first 20 differing offsets ---"
+            cmp -l "$REPO_FILE" "$FETCHED_FILE" 2>&1 | head -20 || true
+          fi
 
       - name: Upload debug fetch artifact
         if: always()
