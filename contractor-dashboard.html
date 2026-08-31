@@ -732,6 +732,23 @@
             </div>
         </div>
 
+        <!-- Bid Accepted Notification Banner (gh-1293 criterion 3a: the `notifications` row
+             the log_bid_accepted() trigger writes on bid_accepted had no reader anywhere on
+             this page -- contractors never saw it). Mirrors bids.html's loadBidUpdatedNotifications
+             read/acknowledge idiom against the same `notifications` table. -->
+        <div id="bidAcceptedBanner" style="display:none; background:#DCFCE7; border:2px solid #15803D; border-radius:0.75rem; padding:1.25rem 1.5rem; margin-bottom:1.5rem;">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+                <div style="display:flex; align-items:flex-start; gap:0.75rem;">
+                    <span style="font-size:1.5rem; flex-shrink:0;">🎉</span>
+                    <div>
+                        <div style="font-weight:700; color:#15803D; font-size:1rem; margin-bottom:0.35rem;" id="bidAcceptedTitle">A homeowner accepted your bid!</div>
+                        <div style="font-size:0.875rem; color:#166534;" id="bidAcceptedDetail">Sign the contract in your dashboard to get started.</div>
+                    </div>
+                </div>
+                <button onclick="acknowledgeBidAcceptedNotifications()" style="background:transparent; border:2px solid #15803D; border-radius:0.5rem; color:#15803D; font-family:var(--font-body); font-size:0.85rem; font-weight:700; padding:0.4rem 1rem; cursor:pointer; white-space:nowrap; flex-shrink:0; transition:background 0.2s;" onmouseover="this.style.background='rgba(21,128,61,0.12)'" onmouseout="this.style.background='transparent'">Got It &mdash; Dismiss</button>
+            </div>
+        </div>
+
         <!-- Unsigned auto-bid section removed &mdash; contract signing now happens after homeowner selection -->
         <div id="unsignedAutoBidsSection" style="display:none;">
             <div id="unsignedAutoBidsList"></div>
@@ -1678,6 +1695,63 @@
             }
         }
 
+        // ── Bid Accepted Notifications (gh-1293 criterion 3a) ──
+        // The log_bid_accepted() trigger (v114, 20260827024432) inserts a `notifications`
+        // row with notification_type='bid_accepted' every time a homeowner accepts a bid,
+        // but no contractor-facing page ever read that table -- confirmed by grep across
+        // every contractor-*.html. This is the reader. Mirrors bids.html's
+        // loadBidUpdatedNotifications()/acknowledgeBidUpdatedNotifications() idiom
+        // (unread-filtered select, mark read_at on dismiss) against the same table.
+        let _bidAcceptedNotifIds = [];
+
+        async function loadBidAcceptedNotifications() {
+            if (!currentUser || !sb) return;
+            try {
+                const { data, error } = await sb
+                    .from('notifications')
+                    .select('id, message_preview, created_at')
+                    .eq('user_id', currentUser.id)
+                    .eq('notification_type', 'bid_accepted')
+                    .is('read_at', null)
+                    .order('created_at', { ascending: false });
+
+                if (error || !data || data.length === 0) return;
+
+                _bidAcceptedNotifIds = data.map(n => n.id);
+
+                const count = data.length;
+                const banner = document.getElementById('bidAcceptedBanner');
+                const titleEl = document.getElementById('bidAcceptedTitle');
+                const detailEl = document.getElementById('bidAcceptedDetail');
+
+                if (banner) {
+                    if (titleEl) titleEl.textContent = count === 1
+                        ? 'A homeowner accepted your bid!'
+                        : `${count} homeowners have accepted your bids!`;
+                    if (detailEl) detailEl.textContent = data[0].message_preview || 'Sign the contract in your dashboard to get started.';
+                    banner.style.display = 'block';
+                }
+            } catch (err) {
+                console.warn('[Dashboard] loadBidAcceptedNotifications error:', err);
+            }
+        }
+
+        window.acknowledgeBidAcceptedNotifications = async function() {
+            const banner = document.getElementById('bidAcceptedBanner');
+            if (banner) banner.style.display = 'none';
+
+            if (_bidAcceptedNotifIds.length === 0 || !sb) return;
+            try {
+                await sb
+                    .from('notifications')
+                    .update({ read_at: new Date().toISOString() })
+                    .in('id', _bidAcceptedNotifIds);
+                _bidAcceptedNotifIds = [];
+            } catch (err) {
+                console.warn('[Dashboard] Could not acknowledge bid-accepted notifications:', err);
+            }
+        };
+
         async function retryDunningPayment() {
             if (!activeDunningRecord || !sb) return;
             const btn = document.getElementById('dunningRetryBtn');
@@ -1712,15 +1786,16 @@
                     _initFired = true;
                     await init();
                     await checkDunningStatus();
+                    await loadBidAcceptedNotifications();
                     initMarkCompleteFlow();
                 }
             });
             setTimeout(async () => {
-                if (!_initFired) { _initFired = true; await init(); await checkDunningStatus(); initMarkCompleteFlow(); }
+                if (!_initFired) { _initFired = true; await init(); await checkDunningStatus(); await loadBidAcceptedNotifications(); initMarkCompleteFlow(); }
             }, 8000);
         });
 
-        // ── Mark Job Complete Flow ────────────────────────────────────────────────────────────────────
+        // ── Mark Job Complete Flow ────────────────────────────────────────────────────
         // Event delegation on the leads table body: catches clicks on
         // .mark-complete-btn buttons rendered in the Actions column.
         function initMarkCompleteFlow() {
@@ -1851,7 +1926,7 @@
             });
         }
 
-        // ── Warranty Upload Flow (W3-P4) ─────────────────────────────────────────────
+        // ── Warranty Upload Flow (W3-P4) ───────────────────────────────────────────────────────
         function openWarrantyModal(claimId, quoteId, triggerEl) {
             const wOverlay  = document.getElementById('warrantyUploadModalOverlay');
             const fileInput = document.getElementById('warrantyFileInput');
@@ -2337,4 +2412,3 @@
 })();
 </script>
 </body>
-</html>
