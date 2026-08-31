@@ -33,7 +33,7 @@ export const IRS_W9_URL = 'https://www.irs.gov/pub/irs-pdf/fw9.pdf';
 /** Public referral landing base — `ref.html?code=<unique_code|id>`. */
 export const REFERRAL_LINK_BASE = 'https://otterquote.com/ref.html?code=';
 /** Public recruit landing base — `recruit.html?code=<recruit_code>` (v36). */
-export const RECRUIT_LINK_BASE = 'otterquote.com/recruit.html?code=';
+export const RECRUIT_LINK_BASE = 'https://otterquote.com/recruit.html?code=';
 
 // ── submit-partner-w9 Edge Function contract — UNCHANGED (Tier-3) ──────────────
 /** EF name (POST ${SUPABASE_URL}/functions/v1/submit-partner-w9). */
