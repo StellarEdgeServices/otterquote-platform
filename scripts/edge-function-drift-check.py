@@ -451,7 +451,15 @@ def download_function(cli: str, project_ref: str, slug: str, dest_root: Path) ->
                 file=sys.stderr,
             )
             return False
-        _reclaim_tree(produced)
+        # Reclaim the WHOLE scratch tree, not just `produced`: removing or
+        # renaming a directory entry needs write permission on its PARENT, not
+        # on the entry itself. Reclaiming only the leaf (the first version of
+        # this fix, gh-1295) left `scratch/supabase/` and `scratch/supabase/
+        # functions/` root-owned, so os.rename and the rmtree fallback both
+        # still failed with EPERM -- reproduced live, second run, 2026-08-31 --
+        # and even TemporaryDirectory's own final cleanup of `scratch` died the
+        # same way. Reclaim from `scratch` down so every ancestor is covered.
+        _reclaim_tree(Path(scratch))
         dest = dest_root / slug
         if dest.exists():
             shutil.rmtree(dest)
