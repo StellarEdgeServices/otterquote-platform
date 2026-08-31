@@ -50,7 +50,7 @@ TMP_RUN_DIR.mkdir(parents=True, exist_ok=True)
 | Gmail | search_threads, get_thread | `mcp__c80ede65-ba2f-483c-bdfc-cc6848096f81__` |
 | Stripe | list_customers, retrieve_payment_intent | `mcp__6451a33c-3d36-49d8-8b0d-42998d328ae5__` |
 | DocuSign | REST via bash curl | N/A (bash) |
-| ClickUp | Halt protocol task creation | `mcp__bbfecab5-2116-4d6b-99d8-19a7d6db65c6__` |
+| GitHub | Halt protocol issue creation | `mcp__github__` |
 
 If any required connector is missing, surface the gap to Dustin and abort.
 
@@ -63,7 +63,7 @@ If any required connector is missing, surface the gap to Dustin and abort.
 - `mcp__dd6eed43-ceb7-4e5d-8818-e709abd589d2__execute_sql` — all Supabase queries (project_id: `yeszghaspzwwstvsrioa`)
 - `mcp__c80ede65-ba2f-483c-bdfc-cc6848096f81__search_threads` + `get_thread` — Gmail reads
 - `mcp__6451a33c-3d36-49d8-8b0d-42998d328ae5__list_customers` + `fetch_stripe_resources` — Stripe reads
-- `mcp__bbfecab5-2116-4d6b-99d8-19a7d6db65c6__clickup_create_task` — halt protocol task creation
+- `mcp__github__issue_write` — halt protocol issue creation (stale entry — see Changelog)
 
 ---
 
@@ -590,6 +590,8 @@ On every stage FAIL, execute these two steps automatically before the session en
 
 ### Step 1 — Create GitHub triage issue
 
+Search GitHub issues first (`search_issues`, repo `StellarEdgeServices/otterquote-platform`, open, title containing `[PFW FAIL] Stage {N} — {stage-name}`) to avoid filing a duplicate for the same stage/run. If none found, create:
+
 ```
 mcp__github__issue_write
   method: create
@@ -597,7 +599,7 @@ mcp__github__issue_write
   repo: otterquote-platform
   title: "[PFW FAIL] Stage {N} — {stage-name} | run pfw-{ts}"
   priority: high (Stages 1–5) / normal (Stages 6–14)   # note in body — GitHub has no native priority field
-  labels: ["env:code", "pre-flight-walk-blocker", "bug"]
+  labels: ["env:code", "pre-flight-walk-blocker", "bug", "exec:cto"]
   body: |
     Pre-flight-walk stage failure — auto-created by halt protocol.
 
@@ -707,5 +709,7 @@ Prohibited bash for this skill:
 <!-- Adaptations: Path constants (Windows), python3→python, MCP tool names explicit (mcp__Claude_in_Chrome__, mcp__dd6eed43-*, mcp__c80ede65-*, mcp__6451a33c-*, mcp__bbfecab5-*), bash tmp dir /tmp/{RUN_ID}/, handoff file protocol added, JWT signing via openssl explicit in bash -->
 
 ## Changelog
+
+**2026-08-31 — gh-1368 stale-reference cleanup (Code lane, rw-f22-20260831T1222-gh1368):** Step 1 of the Stage Failure Halt Protocol has filed to GitHub via `mcp__github__issue_write` since the 2026-08-13 escalation repoint below — it was never a live ClickUp writer. The Required-Connectors table and tool list, however, still named ClickUp/`clickup_create_task`, claiming a dependency the file didn't actually have; both corrected to GitHub. Also added a dedup-first `search_issues` check and an `exec:cto` label to Step 1's issue creation, matching the shape used elsewhere in this repo's skill trees.
 
 **2026-08-13 — R-098 escalation repoint (Overdrive Bridge, GitHub #775):** engineering task creation moved from retired ClickUp list 901711730553 to GitHub Issues.
