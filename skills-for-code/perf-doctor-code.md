@@ -1,6 +1,6 @@
 ---
 name: perf-doctor-code
-description: "Claude Code-native performance budget enforcement for OtterQuote. Runs the fixed 12-scenario performance matrix from CTO-OS Sec. 3 against staging or production, reports pass/fail per surface with traces for failures, files ClickUp tasks tagged perf-regression for each fail, and falls through to bug-killer for novel regressions. Direct analog of auth-doctor-code. Trigger phrases: 'run perf-doctor', 'perf check', 'performance audit', 'check performance', 'perf matrix', 'performance budget'. Invoke proactively: post-every-deploy (Forge Layer 9), weekly comprehensive sweep, before closing any task that touched critical-path HTML/JS/CSS files or Edge Functions."
+description: "Claude Code-native performance budget enforcement for OtterQuote. Runs the fixed 12-scenario performance matrix from CTO-OS Sec. 3 against staging or production, reports pass/fail per surface with traces for failures, files GitHub issues tagged perf-regression for each fail, and falls through to bug-killer for novel regressions. Direct analog of auth-doctor-code. Trigger phrases: 'run perf-doctor', 'perf check', 'performance audit', 'check performance', 'perf matrix', 'performance budget'. Invoke proactively: post-every-deploy (Forge Layer 9), weekly comprehensive sweep, before closing any task that touched critical-path HTML/JS/CSS files or Edge Functions."
 version: "1.0"
 tier: A
 sentinel: perf-doctor-code-v1.0-2026-05-18
@@ -8,7 +8,7 @@ sentinel: perf-doctor-code-v1.0-2026-05-18
 
 # [perf-doctor-code v1.0]
 
-Claude Code-native performance budget enforcement for OtterQuote. Runs the fixed 12-scenario performance matrix from CTO-OS §3 on demand against staging or production, reports pass/fail per surface, files regressions to ClickUp.
+Claude Code-native performance budget enforcement for OtterQuote. Runs the fixed 12-scenario performance matrix from CTO-OS §3 on demand against staging or production, reports pass/fail per surface, files regressions to GitHub Issues.
 
 **Tier: A** (auto-trigger required). Master lives at `Claude Downloads/Skills Output/perf-doctor-code-SKILL.md`.
 
@@ -253,7 +253,7 @@ def check_bundle_regression(current_js_kb: float) -> str:
     if drift > 10:
         return f"FAIL — {drift:.1f}% regression (CRITICAL: deploy blocker, page Dustin immediately)"
     elif drift > 5:
-        return f"FAIL — {drift:.1f}% regression (HIGH: file ClickUp task)"
+        return f"FAIL — {drift:.1f}% regression (HIGH: file GitHub issue)"
     else:
         return f"PASS — {drift:.1f}% drift from baseline ({baseline:.1f} KB → {current_js_kb:.1f} KB)"
 ```
@@ -310,8 +310,8 @@ Severity: [Critical | High | Medium] per:
   - Bundle regression >10%: Critical (blocks deploy)
   - Bundle regression 5-10%: High
   - CSS warning: Medium
-Action: [ClickUp task filed / escalate to bug-killer / defer to next PR review]
-ClickUp task: [task ID if filed]
+Action: [GitHub issue filed / escalate to bug-killer / defer to next PR review]
+GitHub issue: [issue URL if filed]
 ```
 
 If all pass:
@@ -321,20 +321,21 @@ If all pass:
 
 ---
 
-## Filing Regressions to ClickUp
+## Filing Regressions to GitHub
 
 For every FAIL (not WARNING):
 
-1. Search ClickUp list `901711730553` for an existing open task tagged `perf-regression` with a matching surface/scenario name (avoid duplicate tasks)
-2. If no existing task → create new ClickUp task:
-   - Name: `[PERF] [Surface] — [Scenario] regression — [measured value] vs [budget]`
-   - Tags: `perf-regression`
-   - Priority: High (or Urgent if bundle regression >10% and deploy is in-flight)
-   - Tier: `1` (High/Medium regressions with a clear fix); `2` (Critical, novel, or requires architectural decision)
-   - Model: `Sonnet` (default)
-   - Description:
+1. Search GitHub issues (`search_issues`, repo `StellarEdgeServices/otterquote-platform`, open, label `env:code`) for an existing issue tagged `perf-regression` with a matching surface/scenario name (avoid duplicate issues)
+2. If no existing issue → create new GitHub issue on `StellarEdgeServices/otterquote-platform`:
+   - Title: `[PERF] [Surface] — [Scenario] regression — [measured value] vs [budget]`
+   - Labels: `env:code`, `perf-regression`, `exec:cto` (an issue filed with no `exec:` label is an orphan)
+   - Priority: High (or Urgent if bundle regression >10% and deploy is in-flight) — note in the issue body
+   - Body:
      ```
      [Paste structured blocker block from output above]
+
+     **Tier**: 1 (High/Medium regressions with a clear fix) or 2 (Critical, novel, or requires architectural decision)
+     **Model**: Sonnet (default)
 
      ##Acceptance Criteria
      - [ ] Budget metric passes: [specific metric] < [budget threshold] (e.g. LCP < 1800ms, JS bundle < 200KB gzip)
@@ -344,14 +345,8 @@ For every FAIL (not WARNING):
      ##Files Touched
      [The HTML/JS/CSS/Edge Function file causing the regression — e.g. "index.html", "js/bundle.js", "netlify/functions/notify-contractors.js". Never empty — use "[REQUIRES INVESTIGATION — reason]" if indeterminate.]
      ```
-3. If existing task found → add comment with new measurement + timestamp
-4. Post task ID in perf-doctor output
-
-ClickUp custom field IDs:
-- Tier field: `57244247-cc68-4734-8d33-04e8ecadadc4` (option value: `0` = Tier 1, `1` = Tier 2, `2` = Tier 3)
-- Model field: `62f26b78-6f3d-4bde-b2e1-8d87f6734f09` (option value: `0` = Haiku, `1` = Sonnet, `2` = Opus)
-
-Set Tier and Model on every `clickup_create_task` call. Never leave them blank — Wingman cannot claim tasks without these fields.
+3. If existing issue found → add comment with new measurement + timestamp
+4. Post issue URL in perf-doctor output
 
 **Escalation to bug-killer:** If a regression is novel (first occurrence) AND High/Critical severity → immediately invoke `bug-killer` with the structured blocker as initial evidence. Do not wait for next scheduled sweep.
 
@@ -386,7 +381,7 @@ def write_baselines(measurements: dict) -> None:
 
 On first run: create this file with measured values as baselines. Tag each row `INITIAL`.
 
-On subsequent runs: compare vs. baseline. If passing but trending (>3% degradation from baseline, still under budget): add WARNING comment to ClickUp perf-regression task or create a new low-priority tracking task.
+On subsequent runs: compare vs. baseline. If passing but trending (>3% degradation from baseline, still under budget): add WARNING comment to the GitHub perf-regression issue or create a new low-priority tracking issue.
 
 ---
 
@@ -436,7 +431,7 @@ env: production
 scenarios_completed: [list]
 scenarios_pending: [list]
 partial_measurements: [dict]
-clickup_tasks_filed: [list]
+github_issues_filed: [list]
 resume_from: Scenario [N]
 """
 handoff_path.write_text(handoff_content, encoding='utf-8')
@@ -453,9 +448,9 @@ handoff_path.write_text(handoff_content, encoding='utf-8')
 
 **Post-deploy hook:** Any Wingman task that deploys to production should add the comment "perf-doctor validation pending" rather than marking the task fully complete. A subsequent perf-doctor sweep (within 30 min of deploy) closes the loop.
 
-**Weekly scheduled sweep:** Runs Fridays 8:00 AM ET. Results filed to `Stellar Edge Services/OtterQuote/Engineering/Perf-Reports/YYYY-WW.md` and posted as comment on a persistent "Weekly Perf Matrix" ClickUp task.
+**Weekly scheduled sweep:** Runs Fridays 8:00 AM ET. Results filed to `Stellar Edge Services/OtterQuote/Engineering/Perf-Reports/YYYY-WW.md` and posted as comment on a persistent "Weekly Perf Matrix" GitHub issue.
 
-**Escalation chain:** FAIL → ClickUp task filed → if novel High/Critical → bug-killer → if Sev1 latency or availability → immediate Dustin page (Tier C escalation).
+**Escalation chain:** FAIL → GitHub issue filed → if novel High/Critical → bug-killer → if Sev1 latency or availability → immediate Dustin page (Tier C escalation).
 
 ---
 
@@ -471,6 +466,7 @@ handoff_path.write_text(handoff_content, encoding='utf-8')
 
 <!-- v1.0 — 2026-05-18 — Claude Code port of perf-doctor-SKILL.md v1.0 (2026-05-12 / 86e1afqa0) -->
 <!-- Adaptations: removed request_cowork_directory, added Path constants (Windows), python→python, bash curl commands explicit, handoff protocol added, Claude in Chrome via mcp__Claude_in_Chrome__javascript_tool -->
+<!-- 2026-08-31 — gh-1368 ClickUp→GitHub conversion (Code lane, rw-f22-20260831T1222-gh1368): this file had diverged from the master perf-doctor-code twin and never received the "Filing Regressions to GitHub" port — description, Scenario 11 severity string, blocker template, "Filing Regressions" section, baseline-trend note, handoff field, and Integration section all converted from ClickUp task filing to mcp__github__issue_write (dedup-first via search_issues, labels env:code + perf-regression + exec:cto). Dropped the ClickUp custom-field-ID paragraph; Tier/Model now carried in the issue body instead, matching migration-author-code's pattern. -->
 
 ---
 
@@ -489,4 +485,3 @@ Append each finding to `Claude's Memories/key-findings-inbox.md`:
 
 If no findings this run:
 _None this run._
-
