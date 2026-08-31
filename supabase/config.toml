@@ -310,3 +310,9 @@ verify_jwt = false
 # joins the 20 that gh-1295 found unpinned.
 [functions.ga4-report]
 verify_jwt = false
+
+# gh-1387: authoritative server-side confirmation of a contractor payment method.
+# Auth enforced at the gateway AND in-handler (auth.getUser; caller must own the
+# contractor row), matching get-contractor-info. Pinned at creation.
+[functions.verify-payment-method]
+verify_jwt = true
