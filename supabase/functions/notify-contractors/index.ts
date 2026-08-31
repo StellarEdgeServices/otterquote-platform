@@ -298,6 +298,58 @@ support@otterquote.com | (844) 875-3412`;
 }
 
 /**
+ * Email 2b — Bid Accepted (gh-1293 criterion 3b)
+ *
+ * Sent to the winning contractor the moment a homeowner accepts their bid
+ * (log_bid_accepted() already writes a channel:'dashboard' `notifications`
+ * row for this same event -- this is the channel:'email' counterpart, the
+ * one contractor-settings.html's "Bid accepted by homeowner" toggle promised
+ * and nothing sent). Distinct from contractSignedEmailHtml (Email 2), which
+ * fires later, after BOTH parties have signed -- this one fires first, at
+ * selection, and its job is to prompt the contractor to go sign.
+ */
+function bidAcceptedEmailHtml(contractorName: string, address: string, amountStr: string | null): string {
+  const amountLine = amountStr
+    ? `<p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">Bid amount: <strong>${amountStr}</strong></p>`
+    : "";
+
+  const body = `
+    <p style="margin:0 0 6px;color:#15803D;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Bid Accepted</p>
+    <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">You Won the Bid</h2>
+
+    <p style="margin:0 0 6px;color:#374151;font-size:15px;">Hi ${contractorName},</p>
+    <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">The homeowner at <strong>${address}</strong> selected your bid.</p>
+    ${amountLine}
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#DCFCE7;border:1px solid #BBF7D0;border-radius:8px;margin-bottom:24px;">
+      <tr><td style="padding:14px 16px;">
+        <p style="margin:0;color:#15803D;font-size:14px;font-weight:600;">Next step: sign the contract</p>
+        <p style="margin:4px 0 0;color:#166534;font-size:13px;line-height:1.5;">You sign first. Once your signature is on file, the homeowner is prompted to countersign and the project moves forward.</p>
+      </td></tr>
+    </table>
+
+    ${emailButton({ href: DASHBOARD_URL, label: "Go to My Dashboard &rarr;" })}
+  `;
+
+  return buildEmail(body);
+}
+
+function bidAcceptedEmailText(contractorName: string, address: string, amountStr: string | null): string {
+  const amountLine = amountStr ? `Bid amount: ${amountStr}\n\n` : "";
+  return `Hi ${contractorName},
+
+The homeowner at ${address} selected your bid.
+
+${amountLine}Next step: sign the contract. You sign first — once your signature is on file, the homeowner is prompted to countersign and the project moves forward.
+
+Log in to sign:
+${DASHBOARD_URL}
+
+---
+support@otterquote.com | (844) 875-3412`;
+}
+
+/**
  * Email 3 — Bid Update Confirmed
  */
 function bidUpdateEmailHtml(contractorName: string): string {
@@ -477,6 +529,10 @@ support@otterquote.com | (844) 875-3412`;
  *
  * Key mapping — MUST match the keys written by contractor-settings.html:
  *   new_opportunity      → notification_preferences.new_opportunity
+ *   bid_accepted         → notification_preferences.bid_accepted (gh-1293 criterion 3b —
+ *                           contractor-settings.html:3124 has written this key since before
+ *                           this handler existed; "Bid accepted by homeowner" was a toggle
+ *                           for a notification that had no sender)
  *   contract_signed      → notification_preferences.contract_signed
  *   bid_update_confirmed → notification_preferences.bid_update_confirmed
  *   auto_bid_selected    → notification_preferences.auto_bid_placed
@@ -493,6 +549,7 @@ function shouldNotify(
 
   const keyMap: Record<string, string> = {
     new_opportunity: "new_opportunity",
+    bid_accepted: "bid_accepted",
     contract_signed: "contract_signed",
     bid_update_confirmed: "bid_update_confirmed",
     auto_bid_selected: "auto_bid_placed",
@@ -594,6 +651,135 @@ async function sendSmsViaEdgeFunction(
 // =============================================================================
 // HANDLER: contract_signed
 // =============================================================================
+// =============================================================================
+// HANDLER: bid_accepted (gh-1293 criterion 3b)
+// =============================================================================
+/**
+ * Called right after a homeowner's accept_bid RPC call succeeds (bids.html,
+ * contractor-about.html). Looks up the winning contractor via
+ * claims.selected_contractor_id -- same resolution shape as handleContractSigned
+ * below, since both fire off a claim-level state change to a specific
+ * contractor, not a payload-supplied contractor_id.
+ *
+ * This is the email channel. The 'dashboard' channel notifications row for
+ * this same event is written unconditionally by the log_bid_accepted() DB
+ * trigger (v114, 20260827024432) and is unaffected by this handler or by
+ * the contractor's notification_preferences.bid_accepted toggle.
+ */
+async function handleBidAccepted(
+  body: Record<string, any>,
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const { claim_id } = body;
+
+  if (!claim_id) {
+    return new Response(
+      JSON.stringify({ error: "bid_accepted requires claim_id" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const { data: claim, error: claimErr } = await supabase
+    .from("claims")
+    .select("id, selected_contractor_id, selected_bid_amount, property_address")
+    .eq("id", claim_id)
+    .single();
+
+  if (claimErr || !claim) {
+    console.error("bid_accepted: could not find claim", claim_id, claimErr?.message);
+    return new Response(
+      JSON.stringify({ error: "Claim not found", detail: claimErr?.message }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!claim.selected_contractor_id) {
+    console.warn("bid_accepted: claim has no selected_contractor_id", claim_id);
+    return new Response(
+      JSON.stringify({ error: "No winning contractor on this claim" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const { data: contractor, error: contractorErr } = await supabase
+    .from("contractors")
+    .select("id, user_id, email, contact_name, company_name, notification_emails, notification_preferences")
+    .eq("id", claim.selected_contractor_id)
+    .single();
+
+  if (contractorErr || !contractor) {
+    console.error("bid_accepted: could not find contractor", claim.selected_contractor_id, contractorErr?.message);
+    return new Response(
+      JSON.stringify({ error: "Contractor not found", detail: contractorErr?.message }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!shouldNotify(contractor, "bid_accepted")) {
+    console.log("Contractor", contractor.id, "opted out of bid_accepted notifications");
+    return new Response(
+      JSON.stringify({ notified: false, reason: "opt_out" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const emailRecipients: string[] =
+    contractor.notification_emails?.length > 0
+      ? contractor.notification_emails
+      : contractor.email ? [contractor.email] : [];
+
+  if (emailRecipients.length === 0) {
+    console.warn("bid_accepted: no email recipients for contractor", contractor.id);
+    return new Response(
+      JSON.stringify({ notified: false, reason: "no_recipients" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
+  const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
+  const address = claim.property_address || "your project";
+  const amountStr = claim.selected_bid_amount
+    ? "$" + Number(claim.selected_bid_amount).toLocaleString()
+    : null;
+
+  const emailSubject = `You won the bid — sign your contract to get started`;
+  const emailText = bidAcceptedEmailText(contractorName, address, amountStr);
+  const emailHtml = bidAcceptedEmailHtml(contractorName, address, amountStr);
+
+  let emailSent = false;
+
+  for (const recipientEmail of emailRecipients) {
+    try {
+      const ok = await sendMailgunEmail(
+        mailgunApiKey, mailgunDomain, recipientEmail, fromAddress, emailSubject, emailText, emailHtml
+      );
+      if (ok) {
+        emailSent = true;
+        await supabase.from("notifications").insert({
+          user_id: contractor.user_id,
+          claim_id,
+          channel: "email",
+          notification_type: "bid_accepted",
+          recipient: recipientEmail,
+          message_preview: `Bid accepted — sign your contract for ${address}`,
+        });
+        console.log("bid_accepted email sent to", recipientEmail, "for claim", claim_id);
+      }
+    } catch (err) {
+      console.error("Error sending bid_accepted email:", err);
+    }
+  }
+
+  return new Response(
+    JSON.stringify({ notified: true, email_sent: emailSent }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
 async function handleContractSigned(
   body: Record<string, any>,
   supabase: ReturnType<typeof createClient>,
@@ -1566,6 +1752,10 @@ serve(async (req) => {
     const event_type = body.event_type || "new_opportunity";
 
     console.log(`notify-contractors: event_type=${event_type}, claim_id=${body.claim_id}`);
+
+    if (event_type === "bid_accepted") {
+      return await handleBidAccepted(body, supabase, MAILGUN_API_KEY, MAILGUN_DOMAIN, corsHeaders);
+    }
 
     if (event_type === "contract_signed") {
       return await handleContractSigned(body, supabase, MAILGUN_API_KEY, MAILGUN_DOMAIN, supabaseUrl, supabaseKey, corsHeaders);
