@@ -1228,7 +1228,7 @@
                 <p class="section-subtitle">Confirm your siding project scope and acknowledge the disclosures below.</p>
               </div>
 
-              <!-- D-164/D-158 info callout: manufacturer/profile/color/trim captured pre-bid in Hover -->
+              <!-- D-164/D-158 info callout: manufacturer/profile/color/trim captured pre-bid in the property design flow -->
               <div class="callout callout-info" style="margin-bottom:var(--sp-5);">
                 <div class="callout-icon">ℹ️</div>
                 <div>
@@ -1814,7 +1814,7 @@
     // ── Siding conditional handlers ────────────────────────────────────────────
     function handleTrimColorChange() {
       const trimEl = document.getElementById('trimColorType');
-      if (!trimEl) return; // element not present (D-164: trim captured in Hover pre-bid)
+      if (!trimEl) return; // element not present (D-164: trim captured in pre-bid design)
       const val = trimEl.value;
       const otherGroup = document.getElementById('trimColorOtherGroup');
       if (otherGroup) otherGroup.style.display = val === 'Other' ? 'block' : 'none';
@@ -1933,7 +1933,7 @@
         // ── Siding (only populated when siding is an active trade) ──
         ...(hasSiding ? {
           // D-164/D-158 amendment: sidingMaterial, sidingProfile, sidingColor, trimColor
-          // are captured pre-bid in Hover and NOT re-entered on this form.
+          // are captured pre-bid in the property design flow and NOT re-entered on this form.
           soffitFascia:          getSelectVal('soffitFascia')          || '',
           windowWraps:           getSelectVal('windowWraps')           || '',
           windowWrapsColor:      getInputVal('windowWrapsColor')       || '',
@@ -2031,7 +2031,7 @@
       setInput('projectNotes',  data.projectNotes);
 
       // ── Siding ── (D-164/D-158 amendment: sidingMaterial/sidingProfile/sidingColor/trimColor
-      // are captured pre-bid in Hover — not on this form. Only restore scope + disclosure fields.)
+      // are captured pre-bid in the property design flow — not on this form. Only restore scope + disclosure fields.)
       if (data.soffitFascia || data.windowWraps || data.rottenSheathing) {
         const setSelectById = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
         setSelectById('soffitFascia',      data.soffitFascia);
