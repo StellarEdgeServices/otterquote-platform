@@ -412,22 +412,26 @@ mcp__github__issue_write
     DEFAULT TO PROCEED in 2 hours if no response (per D-182).
 ```
 
-**Tier 3B (destructive/irreversible — 24h risk brief per R-097):** DROP column/table, ALTER COLUMN type changes, RLS policy modifications, EFs with external side effects (Stripe/email/SMS/webhooks), migration rollbacks, any migration that could truncate or corrupt existing data. Do NOT open the lightweight 2-hour GitHub issue above — post a 24-hour risk brief to the ClickUp CEO board instead (list ID per claude-memory.md; never the retired Product and Tech list 901711730553 — R-098) and proceed after the window absent objection:
+**Tier 3B (destructive/irreversible — 24h risk brief per R-097):** DROP column/table, ALTER COLUMN type changes, RLS policy modifications, EFs with external side effects (Stripe/email/SMS/webhooks), migration rollbacks, any migration that could truncate or corrupt existing data. Do NOT open the lightweight 2-hour GitHub issue above — search GitHub issues first (`search_issues`, repo `StellarEdgeServices/otterquote-platform`, open, title containing `[24H RISK BRIEF — TIER 3B MIGRATION] v<NN>_<description>`) to avoid duplicates, then post a 24-hour risk brief GitHub issue instead and proceed after the window absent objection:
 
 ```
-mcp__bbfecab5-2116-4d6b-99d8-19a7d6db65c6__clickup_create_task — list_id: <ClickUp CEO board>
-Title: [24H RISK BRIEF — TIER 3B MIGRATION] v<NN>_<description>
-Description (business terms, not SQL):
-  **What changes**: <plain-language description of the change and why>
-  **What breaks if this is wrong**: <business impact — which users, flows, or data>
-  **How it gets undone**: <undo plan — v<NN>_rollback.sql; state plainly what is and is not recoverable>
-  **Window**: proceeds automatically at <timestamp + 24h> unless Dustin objects on this task
-  **Pre-flight**: all checks PASS | **Branch test**: Forward ✅ Rollback ✅
-  **Deploy**: D-221 Path A (GitHub PR merge) | **Rollback**: pre-authorized on >2x error rate
-Priority: urgent
+mcp__github__issue_write
+  method: create
+  owner: StellarEdgeServices
+  repo: otterquote-platform
+  title: "[24H RISK BRIEF — TIER 3B MIGRATION] v<NN>_<description>"
+  labels: [env:code, exec:cto]
+  body: |
+    **What changes**: <plain-language description of the change and why>
+    **What breaks if this is wrong**: <business impact — which users, flows, or data>
+    **How it gets undone**: <undo plan — v<NN>_rollback.sql; state plainly what is and is not recoverable>
+    **Window**: proceeds automatically at <timestamp + 24h> unless Dustin objects on this issue
+    **Pre-flight**: all checks PASS | **Branch test**: Forward ✅ Rollback ✅
+    **Deploy**: D-221 Path A (GitHub PR merge) | **Rollback**: pre-authorized on >2x error rate
+    **Priority**: Urgent (note in body — GitHub has no native priority field)
 ```
 
-After posting: hold the migration for the 24-hour window. Window passes with no objection → proceed to Step 9 and ship. Dustin objects → stop and revise per his comment. This is the ONLY migration artifact that touches ClickUp for this skill — the Tier 3A approval issue and all other engineering work items stay on GitHub Issues (R-098); the Tier 3B risk brief is the CEO-facing exception R-098 itself carves out.
+After posting: hold the migration for the 24-hour window. Window passes with no objection → proceed to Step 9 and ship. Dustin objects → stop and revise per his comment. Both the Tier 3A approval issue and the Tier 3B risk brief now live on GitHub Issues (R-098), each dedup-checked via `search_issues` and labeled `exec:cto` so it routes to the CTO as an SES engineering item rather than landing as an orphan.
 
 ---
 
@@ -446,7 +450,7 @@ Files written:
 Branch test: Forward ✅ Rollback ✅ (branch deleted)
 Danger patterns: None triggered
 
-Tier classification (D-261/R-097): <Tier 3A — GitHub approval issue: <github-issue-url> (2-hour window) | Tier 3B — 24h risk brief posted to CEO board: <clickup-task-url>, window expires <timestamp>>
+Tier classification (D-261/R-097): <Tier 3A — GitHub approval issue: <github-issue-url> (2-hour window) | Tier 3B — 24h risk brief posted to GitHub: <github-issue-url>, window expires <timestamp>>
 Deploy when approved / window closes: D-221 Path A — GitHub PR → merge → Supabase auto-run
 ```
 
@@ -479,7 +483,7 @@ migration-author
 - Branch test: Forward [PASS/FAIL] Rollback [PASS/FAIL]
 
 ## Tasks Completed
-- [ClickUp IDs and names of tasks closed, if any]
+- [GitHub issue numbers and titles closed, if any]
 
 ## Files Changed
 - supabase/migrations/v<NN>_<description>.sql
@@ -487,18 +491,18 @@ migration-author
 - supabase/migrations/v<NN>_<description>_pre-flight.md
 
 ## Approval Status
-- D-182 Tier 3 task: [ClickUp task URL or ID]
+- D-182 Tier 3 issue: [GitHub issue URL or number]
 - Status: [Awaiting approval / Approved / Deployed]
 
 ## Unresolved Items
 - [Anything pending — approval, deploy, follow-up]
 
 ## Next Session Should
-- [Check ClickUp for Dustin's approval before deploying]
+- [Check the GitHub issue for Dustin's approval before deploying]
 - [Or: approved — deploy via D-221 Path A]
 
-## ClickUp Tasks Closed
-[List task IDs and names — archive skill uses this for verification]
+## GitHub Issues Closed
+[List issue numbers and titles — archive skill uses this for verification]
 
 ## D-Number Candidates Flagged
 [Any new decisions that warrant a D-number — or "None"]
@@ -518,7 +522,7 @@ print(f"Handoff written: handoffs/{filename}")
 1. **No migration without a rollback.** Never. Rollback ships alongside the forward in the same commit.
 2. **No proposal without a branch test.** If Supabase branch creation fails, stop and log the blocker.
 3. **All 8 danger patterns must clear or have explicit override.** No exceptions.
-4. **D-261/R-097 tier classification always.** SQL migrations never self-deploy. Additive migrations (new nullable columns, tables, indexes, EFs with no external side effects) = Tier 3A — autonomous ship after checklist, behind a lightweight 2-hour GitHub approval issue. Destructive/irreversible migrations (DROP, ALTER type, RLS, EFs with external side effects, rollbacks) = Tier 3B — post the 24h risk brief to the ClickUp CEO board and proceed after the window absent objection. The Tier 3B risk brief is the ONLY migration artifact that touches ClickUp — all other migration work items live on GitHub Issues (R-098).
+4. **D-261/R-097 tier classification always.** SQL migrations never self-deploy. Additive migrations (new nullable columns, tables, indexes, EFs with no external side effects) = Tier 3A — autonomous ship after checklist, behind a lightweight 2-hour GitHub approval issue (dedup-first via `search_issues`). Destructive/irreversible migrations (DROP, ALTER type, RLS, EFs with external side effects, rollbacks) = Tier 3B — post the 24h risk brief as a GitHub issue (dedup-first via `search_issues`, labeled `exec:cto`) and proceed after the window absent objection. Both the Tier 3A approval issue and the Tier 3B risk brief live on GitHub Issues (R-098) — this skill no longer touches ClickUp.
 5. **D-221 Path A.** Migrations deploy via GitHub PR merge → GitHub Actions → Supabase auto-run. Never via bash or direct Supabase push from Claude.
 6. **CONCURRENTLY for all indexes on tables > 10K rows.** No exceptions. Index creation with CONCURRENTLY cannot be inside `BEGIN/COMMIT` — make it a separate migration file.
 7. **Idempotent where possible.** Use `IF NOT EXISTS`, `IF EXISTS`. Migrations that fail on re-run cause incidents.
@@ -527,6 +531,8 @@ print(f"Handoff written: handoffs/{filename}")
 ---
 
 ## Changelog
+
+**2026-08-31 — gh-1368 ClickUp→GitHub conversion (Code lane, rw-f22-20260831T1222-gh1368):** Tier 3B (destructive/irreversible) 24h risk brief converted from a ClickUp CEO-board task to a `mcp__github__issue_write` GitHub issue, dedup-checked via `search_issues` and labeled `exec:cto`, matching the shape already fixed on the Cowork twin (`migration-author`) and the Tier 3A block above it. Handoff-protocol template's "Tasks Completed" / "Approval Status" / "Next Session Should" / "ClickUp Tasks Closed" sections and Hard Rule 4 updated to reference GitHub issues instead of ClickUp tasks. This file no longer writes to ClickUp anywhere.
 
 **2026-08-19 — R-137/R-015 reconciliation (Bridge bridge-overdrive-20260819T1944Z):** Step 8 and Hard Rule 4 rewritten to bring this file into compliance with D-261/R-097 (registered 2026-07-05), which the Cowork twin (migration-author) already implemented and this file never received. Tier 3B (destructive/irreversible: DROP, ALTER COLUMN type, RLS policy changes, rollbacks) now gets a 24-hour ClickUp CEO-board risk brief before auto-proceeding, matching Cowork, instead of the same undifferentiated 2-hour GitHub-issue default-proceed window used for trivial additive changes. Tier 3A (additive) is unchanged — it keeps this file's existing 2-hour lightweight GitHub approval issue, which is stricter than Cowork's zero-gate Tier 3A; that half of the divergence was left alone per R-137 (tightening to an existing rule is compliance, loosening is a decision not made here).
 
