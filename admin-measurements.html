@@ -289,7 +289,21 @@ var STORAGE_BUCKET = 'claim-documents';
 var state = { filter: 'awaiting_fulfillment', rows: [], catalog: {}, current: null, user: null };
 
 var _initFired = false;
-if (!sb) return;
+// [gh-1376] A bare top-level `return` here is an "Illegal return statement"
+// SyntaxError in every real browser -- it is NOT inside a function, so the
+// parser rejects this entire inline <script> block and NOTHING in it runs,
+// including every function this page depends on (openDrawer, saveFulfillment,
+// the new per-pitch table code, etc.). `node --check` does not catch this: Node
+// wraps file content in a CommonJS function, which silently makes a top-level
+// `return` legal there, masking the bug. Confirmed live via the in-app Browser
+// pane (console: "Uncaught SyntaxError: Illegal return statement"), pre-existing
+// on main and unrelated to this issue's edits. supabase-js v2's createClient()
+// either returns a real client object or throws synchronously -- it does not
+// return a falsy value -- so this guard was unreachable dead code; removed
+// rather than wrapped, since wrapping the rest of the script in a function
+// would take every handler referenced by inline onclick="..." attributes
+// (openDrawer, closeDrawer, saveFulfillment, addPitchRow, ...) out of global
+// scope and break them.
 sb.auth.onAuthStateChange(async function (event, session) {
   if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
     _initFired = true;
