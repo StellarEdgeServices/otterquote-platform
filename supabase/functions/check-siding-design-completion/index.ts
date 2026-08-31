@@ -106,7 +106,7 @@ serve(async (req) => {
   } catch (_) { /* non-fatal */ }
 
   try {
-    // ── 1. Find qualifying retail siding claims ─────────────────
+    // ── 1. Find qualifying retail siding claims ─────────────
     let query = supabase
       .from("claims")
       .select("id, user_id, trades, property_address, measurements_filename, siding_bid_released_at")
@@ -154,7 +154,7 @@ serve(async (req) => {
     // ── 2. Get Hover access token (once for the whole batch) ─────
     const accessToken = await getValidAccessToken(supabase);
 
-    // ── 3. Evaluate each claim ───────────────────────────────────
+    // ── 3. Evaluate each claim ─────────────────────────
     for (const claim of sidingClaims) {
       try {
         const result = await evaluateClaim(claim, supabase, accessToken, serviceKey, selfBaseUrl);
@@ -183,14 +183,14 @@ serve(async (req) => {
   } catch (err) {
     console.error("[D-164] Unexpected error:", err);
     await writeCronHealth(supabase, "error", `unexpected: ${String(err)}`);
-    return new Response(JSON.stringify({ ok: false, error: String(err) }), {
+    return new Response(JSON.stringify({ ok: false, error: "Internal server error" }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────
 
 /**
  * Parse a US address string like "123 Main St, Springfield, IL 62704"
@@ -221,7 +221,7 @@ function parseAddress(addr: string): { claim_zip: string; claim_city: string; cl
   return { claim_zip, claim_city, claim_state, claim_county: "" };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────
 
 async function evaluateClaim(
   claim: any,
@@ -232,7 +232,7 @@ async function evaluateClaim(
 ): Promise<{ released: boolean; reason: string }> {
   const claimId = claim.id;
 
-  // ── Resolve hover_job_id ─────────────────────────────────────
+  // ── Resolve hover_job_id ─────────────────────
   let hoverId: number | null = null;
 
   const { data: order } = await supabase
@@ -263,7 +263,7 @@ async function evaluateClaim(
     return { released: false, reason: "no_hover_token" };
   }
 
-  // ── Fetch material list from Hover ───────────────────────────
+  // ── Fetch material list from Hover ───────────────
   let allSidingItems: any[] = [];
   let rawMaterialList: any[] = [];   // full list (all trades) — persisted to DB at gate release
 
@@ -294,7 +294,7 @@ async function evaluateClaim(
     return { released: false, reason: "hover_fetch_error" };
   }
 
-  // ── Evaluate four-field gate ─────────────────────────────────
+  // ── Evaluate four-field gate ─────────────────────
   const attrs = extractDesignAttributes(allSidingItems);
   console.log(`[D-164] Claim ${claimId}: manufacturer=${attrs.manufacturer}, profile=${attrs.profile}, color=${attrs.color}, trim=${attrs.trim}, complete=${attrs.complete}`);
 
@@ -302,7 +302,7 @@ async function evaluateClaim(
     return { released: false, reason: "design_incomplete" };
   }
 
-  // ── Gate cleared — release siding bids ──────────────────────
+  // ── Gate cleared — release siding bids ──────────────
   const now = new Date().toISOString();
 
   const { error: updateErr } = await supabase
@@ -334,7 +334,7 @@ async function evaluateClaim(
     }
   }
 
-  // ── Notify contractors (siding trade only) ───────────────────
+  // ── Notify contractors (siding trade only) ─────────────
   try {
     const notifyRes = await fetch(
       `${selfBaseUrl}/functions/v1/notify-contractors`,
@@ -360,7 +360,7 @@ async function evaluateClaim(
     console.warn(`[D-164] notify-contractors call failed (non-fatal) for claim ${claimId}:`, notifyErr);
   }
 
-  // ── Notify homeowner (dashboard notification) ───────────────
+  // ── Notify homeowner (dashboard notification) ───────────
   try {
     await supabase.from("notifications").insert({
       user_id:           claim.user_id,
@@ -376,7 +376,7 @@ async function evaluateClaim(
   return { released: true, reason: "design_complete" };
 }
 
-// ── Design attribute extraction (mirrors get-hover-siding-data) ──────────────
+// ── Design attribute extraction (mirrors get-hover-siding-data) ─────────────
 
 function extractDesignAttributes(sidingItems: any[]): {
   manufacturer: string | null;
@@ -431,7 +431,7 @@ function extractDesignAttributes(sidingItems: any[]): {
   return { manufacturer, profile, color, trim, complete: !!(manufacturer && profile && color && trim) };
 }
 
-// ── Token management ─────────────────────────────────────────────────────────
+// ── Token management ──────────────────────────────────────────────────────
 
 async function getValidAccessToken(supabase: any): Promise<string | null> {
   const { data: tokens, error } = await supabase
