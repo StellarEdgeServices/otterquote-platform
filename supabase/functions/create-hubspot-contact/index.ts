@@ -359,9 +359,16 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "unauthorized" }, 401, cors);
   }
 
-  // Basic input validation: strip control chars, enforce format + bounded lengths.
+  // gh-1381: written without any unicode escape sequence -- the push_files
+  // transport has twice corrupted the backslash count in this exact regex
+  // (once to a literal NUL byte, once to a doubled backslash that silently
+  // broke the character class). This charCodeAt form is functionally
+  // identical (strips codepoints 0-31 and 127) with zero backslash
+  // characters anywhere in it, so it cannot be mis-escaped.
   const stripControl = (v: unknown): string =>
-    typeof v === "string" ? v.replace(/[\\u0000-\\u001F\\u007F]/g, "").trim() : "";
+    typeof v === "string"
+      ? v.split("").filter((ch) => { const c = ch.charCodeAt(0); return c > 31 && c !== 127; }).join("").trim()
+      : "";
 
   const email     = stripControl(body.email);
   const firstname = stripControl(body.firstname);
