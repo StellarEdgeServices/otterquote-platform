@@ -1900,10 +1900,14 @@
             })
             .eq('id', contractorRecord.id);
         } else if (remaining.length === 0) {
-          // No methods left &mdash; clear legacy fields
+          // No methods left &mdash; clear legacy fields AND the has_payment_method flag together.
+          // The CHECK constraint (contractors_has_payment_method_requires_verified_method) forbids
+          // has_payment_method = true with a null stripe_payment_method_id, so these must land in
+          // one UPDATE (gh-1425 path 3).
           await sb
             .from('contractors')
             .update({
+              has_payment_method: false,
               stripe_payment_method_id: null,
               stripe_payment_method_last4: null,
               stripe_payment_method_brand: null,
