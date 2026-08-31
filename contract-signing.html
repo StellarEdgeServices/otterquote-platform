@@ -878,7 +878,7 @@
           <!-- Header -->
           <div class="contract-header">
             <h1>Contract Review & Signature</h1>
-            <p class="contract-header-subtitle">Review your contractor's agreement and sign electronically.</p>
+            <p class="contract-header-subtitle" id="contractHeaderSubtitle">Review your contractor's agreement and sign electronically.</p>
           </div>
 
           <!-- STEP 1: Review Contract -->
@@ -950,8 +950,12 @@
               </div>
             </div>
 
-            <!-- No-cost-to-homeowner disclosure (D-206) -->
-            <div class="callout callout-info" style="margin-bottom: var(--sp-6);">
+            <!-- No-cost-to-homeowner disclosure (D-206).
+                 gh-1395: HOMEOWNER-ONLY. Suppressed for role=contractor by
+                 applyRoleCopy() -- a contractor pays the 5% platform fee, so
+                 "Otter Quotes is 100% free" is the reverse of the truth for
+                 them, on the page where they sign. -->
+            <div class="callout callout-info" id="noCostCallout" style="margin-bottom: var(--sp-6);">
               <div class="callout-icon">&#x1F4B3;</div>
               <div class="callout-text">
                 <div class="callout-title">No Cost to You</div>
@@ -967,6 +971,15 @@
                 <span class="checkbox-label-hint">Required before signing.</span>
               </label>
             </div>
+
+            <!-- gh-1395: contractor platform disclosure (R-120 approved verbatim,
+                 https://github.com/StellarEdgeServices/otterquote-platform/issues/1395#issuecomment-5483767165).
+                 Disclosure text only -- NOT a gate. No checkbox, no Proceed-button
+                 dependency; c25392a released that gate for contractors and it stays
+                 released. Populated by applyRoleCopy() for role=contractor only;
+                 stays empty and hidden otherwise, so the homeowner path is
+                 byte-identical. -->
+            <div class="checkbox-label-text" id="contractorAttestationDisclosure" style="display: none; margin-bottom: var(--sp-8);"></div>
 
             <!-- Step 1 Actions -->
             <div class="step-actions">
@@ -985,7 +998,7 @@
           <div class="step-section" data-step="2">
             <div class="contract-section">
               <h2 class="contract-section-title">Electronic Signature</h2>
-              <p style="color: var(--slate); margin-bottom: var(--sp-6);">Your contractor's contract has been pre-filled with your project details. Review and sign the document below.</p>
+              <p style="color: var(--slate); margin-bottom: var(--sp-6);" id="prefillPanelText">Your contractor's contract has been pre-filled with your project details. Review and sign the document below.</p>
 
               <!-- DocuSign Loading State -->
               <div id="docusignLoading" style="text-align: center; padding: var(--sp-10);">
@@ -1334,6 +1347,9 @@
         await renderContractorCard();
         await loadContractTemplate();
         setupEventListeners();
+        // gh-1395: must run AFTER setupEventListeners(), which unconditionally
+        // disables the Proceed button pending the homeowner acknowledgment.
+        applyRoleCopy();
 
         // Show content, hide loading
         document.getElementById('pageLoading').style.display = 'none';
@@ -1554,6 +1570,110 @@
       }
     }
 
+    // ── gh-1395: role-aware copy ──
+    // This page serves BOTH signers, and every word on it was written for the
+    // homeowner. state.signRole has always resolved correctly -- only the
+    // template text was wrong -- so this is a rendering gap, not a
+    // state-resolution bug. Reads state.signRole ONLY, never oq_nav_role: the
+    // two role sources can disagree in the same browser at the same instant,
+    // and oq_nav_role is cosmetic.
+    //
+    // TWO HALVES, deliberately separated:
+    //
+    //   UNCONDITIONAL -- suppressing homeowner-specific copy that is false or
+    //   incoherent when served to a contractor. Removing a statement authors
+    //   nothing, and the attestation half is the `must`: a contractor who ticks
+    //   "I am signing a contract directly with <their own company>" has attested
+    //   to something incoherent, and that record is the consent artifact we
+    //   would rely on if the platform's non-party status were challenged. A tick
+    //   box that says the wrong thing is worse evidence than no tick box.
+    //
+    //   POSITIVE contractor-facing REPLACEMENT copy, gated per-string. Each
+    //   entry in CONTRACTOR_COPY renders only once it is individually
+    //   non-null, so a partially-approved copy set renders only the parts
+    //   that were actually approved (R-120: legal wording gets a human read;
+    //   nothing here is invented by the Code lane). As of gh-1395's
+    //   2026-08-31 approval, only attestationLabel is filled in -- subtitle
+    //   and prefillPanel remain null pending their own approval and stay on
+    //   the homeowner's original wording until then.
+    const CONTRACTOR_COPY_ENABLED = true;
+
+    // Contractor-facing REPLACEMENT copy. Each string ships only once
+    // Dustin has approved that exact wording on the issue; nothing here is
+    // invented by the Code lane.
+    const CONTRACTOR_COPY = {
+      subtitle: null,
+      prefillPanel: null,
+      // R-120 approved verbatim by Dustin, 2026-08-31 -- ship byte-exact, no
+      // re-wording, no re-punctuation:
+      // https://github.com/StellarEdgeServices/otterquote-platform/issues/1395#issuecomment-5483767165
+      attestationLabel: 'I understand I am entering into a contract directly with the homeowner named above. Otter Quotes is not a party to this agreement.',
+    };
+
+    function applyRoleCopy() {
+      if (state.signRole !== 'contractor') return; // homeowner path untouched
+
+      // --- UNCONDITIONAL: stop serving the homeowner attestation ---
+      // The checkbox gates the Proceed button, so removing it must also release
+      // that gate or the contractor cannot reach their own signature.
+      const ackBox = document.getElementById('acknowledgmentCheckbox');
+      const proceedBtn = document.getElementById('proceedToSignBtn');
+      if (ackBox) ackBox.style.display = 'none';
+      if (proceedBtn) proceedBtn.disabled = false;
+
+      // --- UNCONDITIONAL: suppress the homeowner-only fee disclosure ---
+      const noCost = document.getElementById('noCostCallout');
+      if (noCost) noCost.style.display = 'none';
+
+      // --- FLAGGED: positive contractor copy, pending approved wording ---
+      if (CONTRACTOR_COPY_ENABLED) {
+        const subtitle = document.getElementById('contractHeaderSubtitle');
+        const prefill = document.getElementById('prefillPanelText');
+        const attestation = document.getElementById('contractorAttestationDisclosure');
+        // Each guarded on its own value: a partially-approved copy set must
+        // render only the parts that were actually approved.
+        if (subtitle && CONTRACTOR_COPY.subtitle) subtitle.textContent = CONTRACTOR_COPY.subtitle;
+        if (prefill && CONTRACTOR_COPY.prefillPanel) prefill.textContent = CONTRACTOR_COPY.prefillPanel;
+        // gh-1395: disclosure text only -- NOT a gate. No checkbox, no
+        // Proceed-button dependency; the homeowner attestation's gate stays
+        // released for contractors.
+        if (attestation && CONTRACTOR_COPY.attestationLabel) {
+          attestation.textContent = CONTRACTOR_COPY.attestationLabel;
+          attestation.style.display = '';
+        }
+      }
+
+      assertRoleCopyCoherent();
+    }
+
+    // gh-1395 item 3: fail loudly when signRole and the served copy disagree,
+    // so this cannot regress silently the way it did between gh-1293 (which
+    // removed the role guessing) and today (the copy was never branched).
+    function assertRoleCopyCoherent() {
+      if (state.signRole !== 'contractor') return;
+      const problems = [];
+      const ackBox = document.getElementById('acknowledgmentCheckbox');
+      const noCost = document.getElementById('noCostCallout');
+      if (ackBox && ackBox.style.display !== 'none') {
+        problems.push('homeowner attestation checkbox is visible to a contractor');
+      }
+      if (noCost && noCost.style.display !== 'none') {
+        problems.push('homeowner-only "No Cost to You" fee callout is visible to a contractor');
+      }
+      if (problems.length) {
+        console.error('gh-1395 role/copy mismatch:', problems.join('; '));
+        // Guarded: an ad blocker can 503 gtag, and a telemetry failure must
+        // never be what stops a signer from reaching their contract.
+        if (typeof gtag === 'function') {
+          gtag('event', 'role_copy_mismatch', {
+            claim_id: state.claimId,
+            sign_role: state.signRole,
+            problems: problems.join('; '),
+          });
+        }
+      }
+    }
+
     // ── Setup Event Listeners ──
     function setupEventListeners() {
       // D-123: Acknowledgment checkbox controls Proceed button
@@ -1568,7 +1688,10 @@
 
       // Step 1 → 2 (triggers DocuSign envelope creation)
       proceedBtn.addEventListener('click', () => {
-        if (!ackCheckbox.checked) {
+        // gh-1395: the acknowledgment is the HOMEOWNER's attestation and is not
+        // served to contractors, so it cannot gate them -- applyRoleCopy() hides
+        // the box and releases the button for role=contractor.
+        if (state.signRole !== 'contractor' && !ackCheckbox.checked) {
           alert('Please check the acknowledgment box before proceeding.');
           return;
         }
