@@ -61,7 +61,10 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinned (gh-1295): `latest` let CI drift to a CLI whose `functions
+          # download` fetch differs from the local reproduction's, which is
+          # the suspected cause of CI's 58 DRIFTED vs local's ~27.
+          version: 2.116.0
 
       # NOT a soft skip when the token is absent. gh-1344 records that sec-sweep
       # "has run blind since it was written" for exactly that reason. A detector
