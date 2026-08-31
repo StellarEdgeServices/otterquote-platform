@@ -592,6 +592,8 @@ On every stage FAIL, execute these two steps automatically before the session en
 
 Search GitHub issues first (`search_issues`, repo `StellarEdgeServices/otterquote-platform`, open, title containing `[PFW FAIL] Stage {N} — {stage-name}`) to avoid filing a duplicate for the same stage/run. If none found, create:
 
+Search open issues first (dedup) — a repeat FAIL for the same stage on a later run must comment on the existing issue, not open a second one.
+
 ```
 mcp__github__issue_write
   method: create
