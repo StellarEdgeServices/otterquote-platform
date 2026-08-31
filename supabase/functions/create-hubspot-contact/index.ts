@@ -100,7 +100,7 @@ serve(async (req: Request) => {
     "Content-Type": "application/json",
   };
 
-  // ── BOOTSTRAP MODE ───────────────────────────────────────────────────────────────────────────
+  // BOOTSTRAP MODE
   // One-time admin action: adds correct D-218 enum options to wc_path and
   // license_path HubSpot Contact properties. Run once after initial deploy.
   // gh-435: key moved out of source into the HS_BOOTSTRAP_KEY Supabase Edge
@@ -172,7 +172,7 @@ serve(async (req: Request) => {
     return jsonResponse({ success: true, results }, 200, cors);
   }
 
-  // ── CONTRACTOR MODE (D-210 / D-218) ──────────────────────────────────
+  // CONTRACTOR MODE (D-210 / D-218)
   // Queries Supabase for WC and license state; updates all 4 HubSpot properties.
   // Non-fatal: HubSpot failures log and continue, do not block onboarding (D-189).
   if (body.mode === "contractor") {
@@ -202,7 +202,7 @@ serve(async (req: Request) => {
         "Content-Type": "application/json",
       };
 
-      // ── Step 1: Determine wc_path from contractors.wc_cert_file_ref ─────────
+      // Step 1: Determine wc_path from contractors.wc_cert_file_ref
       // Derivation rules (post-Temper fix commit 42db357 — WCE-1 path now stores
       // actual file ref instead of 'WCE-1-EXEMPT' sentinel):
       //   NULL / empty              -> null   (no WC info yet; omit from HubSpot)
@@ -234,7 +234,7 @@ serve(async (req: Request) => {
         console.warn("create-hubspot-contact (contractor): contractor query exception", err);
       }
 
-      // ── Step 2: Derive license_path, license_count, license_summary ───────────
+      // Step 2: Derive license_path, license_count, license_summary
       // license_uploaded = rows exist in contractor_licenses
       // not_provided     = no rows
       // license_summary  = sorted comma-separated municipality labels (NULL if zero rows)
@@ -263,7 +263,7 @@ serve(async (req: Request) => {
         console.warn("create-hubspot-contact (contractor): licenses query exception", err);
       }
 
-      // ── Step 3: Find HubSpot contact by email ────────────────────
+      // Step 3: Find HubSpot contact by email
       const searchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/search`, {
         method: "POST",
         headers: authHeaders,
@@ -290,7 +290,7 @@ serve(async (req: Request) => {
 
       const contactId = searchData.results[0].id;
 
-      // ── Step 4: PATCH all 4 properties on the HubSpot contact ──────────
+      // Step 4: PATCH all 4 properties on the HubSpot contact
       // wc_path and license_summary omitted when null (HubSpot ignores absent keys)
       const hsProps: Record<string, string | number> = {
         license_path,
@@ -337,7 +337,7 @@ serve(async (req: Request) => {
     }
   }
 
-  // ── HOMEOWNER MODE (D-189) ───────────────────────────────────────────────
+  // HOMEOWNER MODE (D-189)
   // D-211 CODE-3 hardening (86e1xdaxe #1): homeowner mode previously required only
   // a non-empty email — no JWT check, no validation → arbitrary contact creation.
   // Now requires a valid Supabase user JWT (auth.getUser() rejects anon-key-only
@@ -361,7 +361,7 @@ serve(async (req: Request) => {
 
   // Basic input validation: strip control chars, enforce format + bounded lengths.
   const stripControl = (v: unknown): string =>
-    typeof v === "string" ? v.replace(/[ -]/g, "").trim() : "";
+    typeof v === "string" ? v.replace(/[\\u0000-\\u001F\\u007F]/g, "").trim() : "";
 
   const email     = stripControl(body.email);
   const firstname = stripControl(body.firstname);
