@@ -1626,10 +1626,10 @@
           </div>
 
           <!-- ── Gutters ── -->
-          <div class="va-box">
+          <div class="va-box" id="gutterOptionRow">
             <h4>Gutters</h4>
             <div class="va-options">
-              <label class="va-option-row"><input type="radio" name="gutterOption" value="none" checked> Not included / N/A</label>
+              <label class="va-option-row"><input type="radio" name="gutterOption" value="none"> Not included / N/A</label>
               <label class="va-option-row"><input type="radio" name="gutterOption" value="5inch_included"> 5&quot; gutters included (no out-of-pocket for homeowner)</label>
               <label class="va-option-row"><input type="radio" name="gutterOption" value="6inch_included"> 6&quot; gutters included (no out-of-pocket for homeowner)</label>
               <label class="va-option-row">
@@ -1645,6 +1645,7 @@
                 <input type="text" id="gutterOtherText" name="gutterOtherText" placeholder="Describe your gutter offer…" style="margin-left:4px;flex:1;padding:2px 8px;border:1px solid var(--light);border-radius:4px;font-size:0.875rem;">
               </label>
             </div>
+            <div class="va-row-error" id="gutterOptionRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
           </div>
 
           <!-- ── Gutter Guards (moved under Gutters per spec) ── -->
@@ -1672,35 +1673,38 @@
           </div>
 
           <!-- ── Chimney Flashing / Reflash (merged — 86e10t28v) ── -->
-          <div class="va-box">
+          <div class="va-box" id="chimneyTypeRow">
             <h4>Chimney Flashing / Reflash</h4>
             <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Select the type of chimney work applicable to this project.</p>
             <div class="va-options" style="margin-bottom:var(--sp-3);">
-              <label class="va-option-row"><input type="radio" name="chimneyType" value="na" checked> N/A — no chimney</label>
+              <label class="va-option-row"><input type="radio" name="chimneyType" value="na"> N/A — no chimney</label>
               <label class="va-option-row"><input type="radio" name="chimneyType" value="new_flashing"> New flashing (chimney has no existing flashing)</label>
               <label class="va-option-row"><input type="radio" name="chimneyType" value="reflash"> Reflash only (reseal / step-flash existing chimney)</label>
               <label class="va-option-row"><input type="radio" name="chimneyType" value="both"> Both — new flashing &amp; reflash</label>
             </div>
+            <div class="va-row-error" id="chimneyTypeRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-bottom:var(--sp-3);font-weight:600;"></div>
             <div id="chimneyPricingOptions" style="display:none;margin-top:var(--sp-2);">
               <div class="va-options">
-                <label class="va-option-row"><input type="radio" name="chimneyOption" value="included" checked> Included in bid (no extra charge)</label>
+                <label class="va-option-row"><input type="radio" name="chimneyOption" value="included"> Included in bid (no extra charge)</label>
                 <label class="va-option-row"><input type="radio" name="chimneyOption" value="reuse"> Reuse / inspect existing flashing (if in good condition)</label>
                 <label class="va-option-row">
                   <input type="radio" name="chimneyOption" value="oop"> Out of pocket —
                   <span class="va-inline-dollar">$<input type="number" name="chimneyOopPrice" id="chimneyOopPrice" min="0" step="1" placeholder="0"></span>
                 </label>
               </div>
+              <div class="va-row-error" id="chimneyOptionRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
             </div>
           </div>
 
           <!-- ── Skylights ── -->
-          <div class="va-box">
+          <div class="va-box" id="skylightsRow">
             <h4>Skylights</h4>
             <div class="va-options">
-              <label class="va-option-row"><input type="radio" name="skylights" value="na" checked> N/A — no skylights</label>
+              <label class="va-option-row"><input type="radio" name="skylights" value="na"> N/A — no skylights</label>
               <label class="va-option-row"><input type="radio" name="skylights" value="reflash"> Reflash skylights (included)</label>
               <label class="va-option-row"><input type="radio" name="skylights" value="replace"> Replace skylights</label>
             </div>
+            <div class="va-row-error" id="skylightsRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
           </div>
 
           <!-- ── Other Shingles Available ── -->
@@ -1805,14 +1809,15 @@
           </div>
 
           <!-- ── Ice & Water Shield (86e10t28b) ── -->
-          <div class="va-box">
+          <div class="va-box" id="iceWaterShieldRow">
             <h4>Ice &amp; Water Shield</h4>
             <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Ice &amp; water shield is a self-adhering waterproof membrane installed at eaves, valleys, and other vulnerable areas.</p>
             <div class="va-options">
-              <label class="va-option-row"><input type="radio" name="iceWaterShield" value="not_applicable" checked> Not Applicable — climate or project type does not require</label>
+              <label class="va-option-row"><input type="radio" name="iceWaterShield" value="not_applicable"> Not Applicable — climate or project type does not require</label>
               <label class="va-option-row"><input type="radio" name="iceWaterShield" value="standard"> Standard — required coverage only (eaves &amp; valleys, code minimum)</label>
               <label class="va-option-row"><input type="radio" name="iceWaterShield" value="enhanced"> Enhanced — full-coverage application (entire roof deck)</label>
             </div>
+            <div class="va-row-error" id="iceWaterShieldRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
           </div>
 
           <!-- ── Ventilation ── -->
@@ -1845,11 +1850,11 @@
           </div>
 
           <!-- ── Drip Edge (86e10t28h) ── -->
-          <div class="va-box">
+          <div class="va-box" id="dripEdgeOptionRow">
             <h4>Drip Edge</h4>
             <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Drip edge is a metal flashing installed at the roof perimeter to direct water away from the fascia.</p>
             <div class="va-options">
-              <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="na" checked> N/A — not applicable to this project</label>
+              <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="na"> N/A — not applicable to this project</label>
               <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="included_black"> Included — Standard (Black)</label>
               <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="included_white"> Included — Standard (White)</label>
               <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="included_custom"> Included — Custom color / special order</label>
@@ -1858,6 +1863,7 @@
                 <span class="va-inline-dollar">$<input type="number" name="dripEdgeOopPrice" id="dripEdgeOopPrice" min="0" step="1" placeholder="0"></span>
               </label>
             </div>
+            <div class="va-row-error" id="dripEdgeOptionRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
           </div>
 
           <!-- ── Warranty Builder (D-202 Phase 2) ── -->
@@ -3729,7 +3735,9 @@
       }
 
       // Gutters
-      setRadio('gutterOption', va.gutters?.option || 'none');
+      // gh-1377: no fallback default — a legacy/undeclared bid must reload
+      // with nothing checked, not a silently re-asserted "none".
+      if (va.gutters?.option) setRadio('gutterOption', va.gutters.option);
       if (va.gutters?.additional_cost_5inch) setVal('gutter5Cost', va.gutters.additional_cost_5inch);
       if (va.gutters?.additional_cost_6inch) setVal('gutter6Cost', va.gutters.additional_cost_6inch);
       if (va.gutters?.other_text) setVal('gutterOtherText', va.gutters.other_text);
@@ -3775,7 +3783,8 @@
       }
 
       // Skylights
-      setRadio('skylights', va.skylights || 'na');
+      // gh-1377: no fallback default — see Gutters comment above.
+      if (va.skylights) setRadio('skylights', va.skylights);
 
       // Other shingles
       // Other Shingles — new array format ["GAF|Timberline HDZ", ...] or legacy object format
@@ -5112,6 +5121,223 @@
       return `Platform fee for this job: ${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} (${feePct.toFixed(2)}% of your bid). By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed. The fee is due upon contract execution and will be charged to your card on file. Submitting this bid constitutes your acceptance of this fee.`;
     }
 
+    // ── gh-1377 (D-317 cl.2) — Section 2 value-add declarations ──
+    // Every row below used to ship with a `checked` default (stripped above),
+    // so a contractor who never touched the section silently submitted a bid
+    // that declared gutters not-offered and chimney flashing included. Now
+    // "declared" == a radio in the row's group is checked; nothing is
+    // checked on load, so an untouched row is unambiguously undeclared.
+    //
+    // This gate applies ONLY where valueAddsSection actually renders today:
+    // retail (out-of-pocket) roofing bids (isRetailJob && roofing trade,
+    // wizard or non-wizard). It never renders for insurance-funded roofing,
+    // gutters-only, or siding-only bids, so those paths are unaffected.
+    const VALUE_ADD_DECLARATION_ROWS = [
+      {
+        key: 'gutters',
+        radioName: 'gutterOption',
+        rowLabel: 'Gutters',
+        errorElId: 'gutterOptionRowError',
+        containerId: 'gutterOptionRow',
+        // 'other' is a free-text offer — a real declaration, but neither
+        // "included" nor "extra" can be inferred from free text without
+        // guessing, so it is kept as its own state (never synthesise).
+        resolve(value) {
+          if (value === 'none') return { state: 'not_offered', rateField: null };
+          if (value === '5inch_included' || value === '6inch_included') return { state: 'included', rateField: null };
+          if (value === '5inch_additional') return { state: 'extra', rateField: 'gutter5Cost' };
+          if (value === '6inch_additional') return { state: 'extra', rateField: 'gutter6Cost' };
+          if (value === 'other') return { state: 'other', rateField: null };
+          return null;
+        },
+      },
+      {
+        key: 'chimney_type',
+        radioName: 'chimneyType',
+        rowLabel: 'Chimney flashing / reflash',
+        errorElId: 'chimneyTypeRowError',
+        containerId: 'chimneyTypeRow',
+        resolve(value) {
+          if (value === 'na') return { state: 'not_offered', rateField: null };
+          return { state: 'applicable', rateField: null }; // whether included/extra is the nested chimneyOption row
+        },
+      },
+      {
+        key: 'skylights',
+        radioName: 'skylights',
+        rowLabel: 'Skylights',
+        errorElId: 'skylightsRowError',
+        containerId: 'skylightsRow',
+        resolve(value) {
+          if (value === 'na') return { state: 'not_offered', rateField: null };
+          // 'reflash' and 'replace' both ship with no $ input anywhere in
+          // this form — there is no mechanism to charge extra for either,
+          // so both are declared included rather than guessed as extra.
+          return { state: 'included', rateField: null };
+        },
+      },
+      {
+        key: 'ice_water_shield',
+        radioName: 'iceWaterShield',
+        rowLabel: 'Ice & Water Shield',
+        errorElId: 'iceWaterShieldRowError',
+        containerId: 'iceWaterShieldRow',
+        resolve(value) {
+          if (value === 'not_applicable') return { state: 'not_offered', rateField: null };
+          return { state: 'included', rateField: null }; // standard/enhanced — no $ field exists for either
+        },
+      },
+      {
+        key: 'drip_edge',
+        radioName: 'dripEdgeOption',
+        rowLabel: 'Drip Edge',
+        errorElId: 'dripEdgeOptionRowError',
+        containerId: 'dripEdgeOptionRow',
+        resolve(value) {
+          if (value === 'na') return { state: 'not_offered', rateField: null };
+          if (value === 'oop') return { state: 'extra', rateField: 'dripEdgeOopPrice' };
+          return { state: 'included', rateField: null }; // included_black / included_white / included_custom
+        },
+      },
+    ];
+
+    function _valueAddsSectionVisible() {
+      const el = document.getElementById('valueAddsSection');
+      if (!el) return false;
+      return el.style.display !== 'none' && window.getComputedStyle(el).display !== 'none';
+    }
+
+    function _clearValueAddRowError(errorElId) {
+      const el = document.getElementById(errorElId);
+      if (el) { el.style.display = 'none'; el.textContent = ''; }
+    }
+
+    function _showValueAddRowError(errorElId, message) {
+      const el = document.getElementById(errorElId);
+      if (el) { el.style.display = 'block'; el.textContent = message; }
+    }
+
+    // Validates every visible Section 2 row is declared, and that any row
+    // declared "extra" carries a rate > 0 ($0 extra is a contradiction).
+    // Shows per-row inline messages — not one banner — and scrolls to the
+    // first offending row. Returns true/false.
+    function validateValueAddDeclarations() {
+      if (!_valueAddsSectionVisible()) return true; // gate applies only where this section renders
+
+      let firstBadEl = null;
+      let ok = true;
+
+      for (const row of VALUE_ADD_DECLARATION_ROWS) {
+        _clearValueAddRowError(row.errorElId);
+        const checkedEl = document.querySelector(`input[type="radio"][name="${row.radioName}"]:checked`);
+        if (!checkedEl) {
+          _showValueAddRowError(row.errorElId, `${row.rowLabel} — say Included, Extra, or Not offered.`);
+          ok = false;
+          firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          continue;
+        }
+        const resolved = row.resolve(checkedEl.value);
+        if (resolved && resolved.state === 'extra' && resolved.rateField) {
+          const rate = parseFloat(document.getElementById(resolved.rateField)?.value);
+          if (!(rate > 0)) {
+            _showValueAddRowError(row.errorElId, `${row.rowLabel} — enter a rate greater than $0 for the extra charge, or choose Included / Not offered instead.`);
+            ok = false;
+            firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          }
+        }
+      }
+
+      // Chimney's nested pricing row is only required once chimneyType !== 'na'.
+      const chimneyTypeChecked = document.querySelector('input[type="radio"][name="chimneyType"]:checked');
+      _clearValueAddRowError('chimneyOptionRowError');
+      if (chimneyTypeChecked && chimneyTypeChecked.value !== 'na') {
+        const chimneyOptionChecked = document.querySelector('input[type="radio"][name="chimneyOption"]:checked');
+        if (!chimneyOptionChecked) {
+          _showValueAddRowError('chimneyOptionRowError', 'Chimney work — say Included, Reuse/inspect, or Out of pocket.');
+          ok = false;
+          firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
+        } else if (chimneyOptionChecked.value === 'oop') {
+          const rate = parseFloat(document.getElementById('chimneyOopPrice')?.value);
+          if (!(rate > 0)) {
+            _showValueAddRowError('chimneyOptionRowError', 'Chimney out-of-pocket — enter a rate greater than $0, or choose Included / Reuse instead.');
+            ok = false;
+            firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
+          }
+        }
+      }
+
+      if (!ok && firstBadEl) {
+        firstBadEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return ok;
+    }
+
+    // Builds { row_key: { state, rate_cents } } from the CURRENT, already-
+    // validated radio state. Only ever called after validateValueAddDeclarations()
+    // returns true, so every value here reflects an explicit contractor
+    // choice — never a synthesised default. Returns null when valueAddsSection
+    // never rendered (gh-1377 item 5): the key is then simply absent from
+    // scope_summary, and every reader (gh-1378) must treat absence as
+    // "not declared", never as "not offered".
+    function buildValueAddDeclarations() {
+      if (!_valueAddsSectionVisible()) return null;
+
+      const declarations = {};
+      const centsFrom = (fieldId) => {
+        const v = parseFloat(document.getElementById(fieldId)?.value);
+        return (v > 0) ? Math.round(v * 100) : null;
+      };
+
+      for (const row of VALUE_ADD_DECLARATION_ROWS) {
+        if (row.key === 'chimney_type') continue; // folded into 'chimney' below
+        const checkedEl = document.querySelector(`input[type="radio"][name="${row.radioName}"]:checked`);
+        if (!checkedEl) continue; // should not happen post-validation; absence == not declared
+        const resolved = row.resolve(checkedEl.value);
+        if (!resolved) continue;
+        declarations[row.key] = {
+          state: resolved.state,
+          rate_cents: resolved.rateField ? centsFrom(resolved.rateField) : null,
+        };
+      }
+
+      const chimneyTypeChecked = document.querySelector('input[type="radio"][name="chimneyType"]:checked');
+      if (chimneyTypeChecked) {
+        if (chimneyTypeChecked.value === 'na') {
+          declarations.chimney = { state: 'not_offered', rate_cents: null };
+        } else {
+          const chimneyOptionChecked = document.querySelector('input[type="radio"][name="chimneyOption"]:checked');
+          if (chimneyOptionChecked) {
+            declarations.chimney = {
+              state: chimneyOptionChecked.value === 'oop' ? 'extra' : 'included', // 'included' or 'reuse' both -> included
+              rate_cents: chimneyOptionChecked.value === 'oop' ? centsFrom('chimneyOopPrice') : null,
+            };
+          }
+        }
+      }
+
+      return declarations;
+    }
+
+    // Clear a row's inline error the moment the contractor interacts with it,
+    // rather than only re-validating on the next submit attempt.
+    function initValueAddDeclarationErrorClearing() {
+      VALUE_ADD_DECLARATION_ROWS.forEach(row => {
+        document.querySelectorAll(`input[name="${row.radioName}"]`).forEach(el => {
+          el.addEventListener('change', () => _clearValueAddRowError(row.errorElId));
+        });
+      });
+      ['gutter5Cost', 'gutter6Cost', 'dripEdgeOopPrice', 'chimneyOopPrice'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', () => {
+          _clearValueAddRowError('gutterOptionRowError');
+          _clearValueAddRowError('dripEdgeOptionRowError');
+          _clearValueAddRowError('chimneyOptionRowError');
+        });
+      });
+      document.querySelectorAll('input[name="chimneyOption"]').forEach(el => {
+        el.addEventListener('change', () => _clearValueAddRowError('chimneyOptionRowError'));
+      });
+    }
+
     bidForm.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -5158,6 +5384,12 @@
 
       if (!bidForm.checkValidity()) {
         alert('Please fill in all required fields');
+        return;
+      }
+
+      // gh-1377 (D-317 cl.2) — block submit until every visible Section 2
+      // row is declared; per-row inline messages are shown by the function.
+      if (!validateValueAddDeclarations()) {
         return;
       }
 
@@ -5226,10 +5458,17 @@
           // charged another whenever bid ≠ RCV.
           const feeBase = totalPrice;
 
+          // gh-1377 (D-317 cl.2) — additive to the existing scope_summary write
+          // path; no schema change. Only present when valueAddsSection rendered
+          // (retail roofing) and was validated above — never back-filled, never
+          // present-but-empty for bids where the section didn't render.
+          const _valueAddDeclarations = buildValueAddDeclarations();
+
           const scopeSummary = JSON.stringify({
             brand: formData.get('brandProduct') || null,
             estimated_start_date: formData.get('startDate') || null,
             estimated_completion_time: formData.get('completionTime') || null,
+            ...(_valueAddDeclarations ? { declarations: _valueAddDeclarations } : {}),
           });
 
           if (!currentContractor) {
@@ -5685,6 +5924,9 @@
 
       // Wire up chimney type toggle (86e10t28v)
       initChimneyToggle();
+
+      // Wire up Section 2 declaration error-clearing (gh-1377)
+      initValueAddDeclarationErrorClearing();
 
       async function startUp() {
         await init();
