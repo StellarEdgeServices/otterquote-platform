@@ -316,3 +316,10 @@ verify_jwt = false
 # contractor row), matching get-contractor-info. Pinned at creation.
 [functions.verify-payment-method]
 verify_jwt = true
+
+# gh-1340 phase 1: business-lines admin dashboard read model. profiles/quotes/
+# referrals/activity_log carry no admin RLS, so this reads with the service
+# role behind the admin allow-list — same shape as get-payout-completion-status.
+# Auth performed in-handler. Pinned at creation.
+[functions.get-business-lines-dashboard]
+verify_jwt = false
