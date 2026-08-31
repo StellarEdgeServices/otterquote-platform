@@ -172,7 +172,6 @@ serve(async (req: Request) => {
       throw new Error("Missing required environment variables");
     }
 
-    // ── Auth: service role bearer only ──────────────────────────────────
     const authHeader  = req.headers.get("Authorization") || "";
     const bearerToken = authHeader.replace(/^Bearer\s+/i, "");
     if (!bearerToken || bearerToken !== serviceRoleKey) {
@@ -183,7 +182,6 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Parse payload ────────────────────────────────────────────
     const body = await req.json().catch(() => null);
     const contractorId = body?.contractor_id as string | undefined;
     if (!contractorId) {
@@ -195,7 +193,6 @@ serve(async (req: Request) => {
 
     const sb = createClient(supabaseUrl, serviceRoleKey);
 
-    // ── Load contractor ────────────────────────────────────────────
     const { data: contractor, error: cErr } = await sb
       .from("contractors")
       .select("id, user_id, company_name, contact_name, email, status, created_at")
@@ -210,7 +207,6 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Test account filter ──────────────────────────────────────
     const email = contractor.email || "";
     if (isTestAccount(email)) {
       console.log(`notify-admin-new-contractor: skipping test account ${email}`);
@@ -220,7 +216,6 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Idempotency: check if already notified ────────────────────────
     const { data: existing } = await sb
       .from("notifications")
       .select("id")
@@ -237,7 +232,6 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Build email content ──────────────────────────────────────
     const companyName  = contractor.company_name || "(unnamed company)";
     const contactName  = contractor.contact_name || "(no contact name)";
     const signupTs     = contractor.created_at
@@ -259,7 +253,6 @@ serve(async (req: Request) => {
 
     const htmlBody = buildEmailHtml(companyName, contactName, email, signupTs);
 
-    // ── Send via Mailgun ───────────────────────────────────────
     const formData = new FormData();
     formData.append("from",    `Otter Quotes <notifications@${mailgunDomain}>`);
     formData.append("to",      ADMIN_EMAIL);
@@ -284,7 +277,6 @@ serve(async (req: Request) => {
     const mgData = await mgRes.json();
     console.log(`notify-admin-new-contractor: sent for contractor_id=${contractorId} mailgun_id=${mgData.id}`);
 
-    // ── Log to notifications table ───────────────────────────────
     const { error: insertErr } = await sb.from("notifications").insert({
       user_id:          contractor.user_id,
       claim_id:         null,
