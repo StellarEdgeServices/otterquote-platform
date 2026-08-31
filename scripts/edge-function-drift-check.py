@@ -137,6 +137,34 @@ FAILING_VERDICTS = {DRIFTED, DEPLOYED_NOT_IN_REPO, IN_REPO_NEVER_DEPLOYED}
 # ---------------------------------------------------------------------------
 
 
+# gh-1295, 2026-08-31 (CTO cto-2026-08-31T11:56:50Z): a *.test.ts file lives in the
+# repo's function directory and is NEVER bundled into a deploy -- the Supabase CLI
+# ships what the entrypoint imports, and a test file is imported by nothing. Before
+# this, their absence read as `missing_in_deploy` and flipped the whole function to
+# DRIFTED.
+#
+# Measured on the first full 57-function run: 29 DRIFTED, of which **5 were this and
+# nothing else** -- create-docusign-envelope, docusign-webhook, hover-webhook,
+# validate-contract-template, and parse-hover-measurements, the last of which had been
+# deployed from `main` minutes earlier and was byte-identical on its only real file.
+# A detector that reports a just-deployed function as drifted is a detector nobody
+# will believe by the third run.
+#
+# The row is still PRINTED, only its verdict changes -- the same tightening
+# credential-sweep.py took on the sbp_ prefix (a narrowing that cannot hide a real
+# finding, because a test file that genuinely differs still reports `differs`).
+NON_DRIFT_STATUSES = frozenset({"same", "test_not_bundled"})
+
+
+def is_test_path(rel: str) -> bool:
+    """True for a repo file that is a test and therefore never deployed."""
+    name = rel.rsplit("/", 1)[-1]
+    return (
+        name.endswith((".test.ts", ".test.js", ".test.tsx", "_test.ts"))
+        or name.startswith("test_")
+    )
+
+
 def sha256_file(path: Path) -> str:
     """Raw SHA-256 of the file's bytes. No decoding, no newline translation,
     no whitespace stripping. See rule 3."""
@@ -175,7 +203,9 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path) -> dict:
         if repo_sha is None:
             status = "missing_in_repo"
         elif deployed_sha is None:
-            status = "missing_in_deploy"
+            status = (
+                "test_not_bundled" if is_test_path(rel) else "missing_in_deploy"
+            )
         elif repo_sha == deployed_sha:
             status = "same"
         else:
@@ -191,7 +221,7 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path) -> dict:
 
     if not repo_hashes:
         verdict = DEPLOYED_NOT_IN_REPO
-    elif all(f["status"] == "same" for f in files):
+    elif all(f["status"] in NON_DRIFT_STATUSES for f in files):
         verdict = IDENTICAL
     else:
         verdict = DRIFTED
