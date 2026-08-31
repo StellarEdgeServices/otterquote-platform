@@ -80,7 +80,7 @@ serve(async (req: Request) => {
   const result: ProcessResult = { claims_evaluated: 0, bids_submitted: 0, errors: [] };
 
   try {
-    // ── Step 1: Qualifying claims ─────────────────────────────────────────────
+    // ── Step 1: Qualifying claims ────────────────────────────────
     // D-093: insurance full replacement roofing, bid-released, RCV amount present
     const { data: claims, error: claimsError } = await supabase
       .from('claims')
@@ -103,7 +103,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Step 2: Active contractors with auto-bid enabled for roofing ──────────
+    // ── Step 2: Active contractors with auto-bid enabled for roofing ────────────
     const { data: contractors, error: contractorsError } = await supabase
       .from('contractors')
       .select('id, user_id, email, notification_emails, contact_name, service_states, service_counties, auto_bid_value_adds, default_auto_renew, address_state')
@@ -122,7 +122,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Step 3: Match and bid ─────────────────────────────────────────────────
+    // ── Step 3: Match and bid ───────────────────────────────────
     for (const claim of claims as Claim[]) {
       result.claims_evaluated++;
 
@@ -300,14 +300,15 @@ serve(async (req: Request) => {
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
+    console.error("[process-auto-bids] Error:", err);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
 });
 
-// ── Email template (text/plain) ─────────────────────────────────────────────
+// ── Email template (text/plain) ───────────────────────────────────
 // #869 AC 5: text/plain alternative for the HTML-only send below. Per AC 2,
 // bare URLs are correct — and required — in this text part.
 function buildEmailText(name: string, rcvAmount: number, feeAmount: number, feePct: number): string {
@@ -331,7 +332,7 @@ function buildEmailText(name: string, rcvAmount: number, feeAmount: number, feeP
   ].join('\n');
 }
 
-// ── Email template (HTML) ─────────────────────────────────────────────────────
+// ── Email template (HTML) ────────────────────────────────────────────────
 function buildEmailHtml(name: string, rcvAmount: number, feeAmount: number, feePct: number): string {
   const fmtUSD = (n: number) =>
     n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });

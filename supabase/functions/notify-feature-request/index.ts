@@ -59,7 +59,7 @@ serve(async (req: Request) => {
       ? new Date(record.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" })
       : new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
 
-    // ── Plain-text body ──────────────────────────────────────
+    // ── Plain-text body ────────────────────────
     const textBody = [
       "New feature request submitted on OtterQuote.",
       "",
@@ -67,15 +67,15 @@ serve(async (req: Request) => {
       `Email      : ${contractorEmail}`,
       `Submitted  : ${createdAt} (CT)`,
       "",
-      "─────────────────────────────────",
+      "─────────────────────",
       requestText,
-      "─────────────────────────────────",
+      "─────────────────────",
       "",
       "View all requests in your Supabase dashboard:",
       "https://app.supabase.com → Table Editor → feature_requests",
     ].join("\n");
 
-    // ── HTML body ────────────────────────────────────────────
+    // ── HTML body ───────────────────────────
     const htmlBody = `
       <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#0B1929;">
         <div style="background:#0B1929; padding:20px 24px; border-radius:8px 8px 0 0;">
@@ -106,7 +106,7 @@ serve(async (req: Request) => {
       </div>
     `;
 
-    // ── Send via Mailgun ──────────────────────────────────────
+    // ── Send via Mailgun ────────────────────────
     const fromAddress = `OtterQuote <notifications@${MAILGUN_DOMAIN}>`;
     const basicAuth   = btoa(`api:${MAILGUN_API_KEY}`);
 
@@ -142,13 +142,13 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error("notify-feature-request error:", err);
     return new Response(
-      JSON.stringify({ success: false, error: String(err) }),
+      JSON.stringify({ success: false, error: "Internal server error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 });
 
-// ── Utility ─────────────────────────────────────────────────
+// ── Utility ─────────────────────────────────
 function escapeHtml(str: string): string {
   return String(str)
     .replace(/&/g, "&amp;")
