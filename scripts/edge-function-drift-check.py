@@ -95,6 +95,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -391,6 +392,43 @@ def list_deployed_slugs(cli: str, project_ref: str) -> list:
     return slugs
 
 
+def _reclaim_tree(path: Path) -> None:
+    """Best-effort: make every entry under `path` owned by us and writable.
+
+    gh-1295's first live run (2026-08-31) crashed on function 1 of 57: `supabase
+    functions download` shells out to Docker, and on the hosted Ubuntu runner the
+    files it writes come back root-owned / read-only. `shutil.move`'s rename fails
+    with EPERM, its copy+rmtree fallback then fails too (rmtree's own permission
+    self-heal calls `os.chmod`, which itself raises EPERM on a file this process
+    does not own). Reclaiming ownership via `sudo chown` (passwordless on
+    GitHub-hosted runners) handles the ownership-mismatch case; the chmod pass
+    below handles the plainer read-only-without-ownership-mismatch case so this
+    also works unprivileged (e.g. local reproduction without sudo).
+    """
+    if hasattr(os, "getuid"):  # sudo/chown are POSIX-only; CI runs on Linux
+        subprocess.run(
+            ["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(path)],
+            capture_output=True,
+        )
+    for root, dirs, files in os.walk(path):
+        for name in dirs:
+            p = os.path.join(root, name)
+            try:
+                os.chmod(p, os.stat(p).st_mode | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRUSR)
+            except OSError:
+                pass
+        for name in files:
+            p = os.path.join(root, name)
+            try:
+                os.chmod(p, os.stat(p).st_mode | stat.S_IWUSR | stat.S_IRUSR)
+            except OSError:
+                pass
+    try:
+        os.chmod(path, os.stat(path).st_mode | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRUSR)
+    except OSError:
+        pass
+
+
 def download_function(cli: str, project_ref: str, slug: str, dest_root: Path) -> bool:
     """Download one deployed function into `dest_root/<slug>/`.
 
@@ -413,6 +451,7 @@ def download_function(cli: str, project_ref: str, slug: str, dest_root: Path) ->
                 file=sys.stderr,
             )
             return False
+        _reclaim_tree(produced)
         dest = dest_root / slug
         if dest.exists():
             shutil.rmtree(dest)
