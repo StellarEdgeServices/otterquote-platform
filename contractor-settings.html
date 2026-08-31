@@ -3248,6 +3248,14 @@
       }
     };
 
+    // gh-1381 (js/xss-through-dom #6, #5): free-text bid-preview fields (cleanup guarantee,
+    // "other offers", warranty descriptions, etc.) are read straight off form inputs and
+    // joined into the previewIncludesList / previewWarrantyList innerHTML below — escape
+    // each item before it goes back into the DOM.
+    function escHtml(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     function updateBidPreview() {
       // Company name
       const companyName = contractorRecord?.company_name || contractorRecord?.contact_name || 'Your Company';
@@ -3307,7 +3315,7 @@
       const selectedTrades = Array.from(document.querySelectorAll('input[name="abOtherTrades"]:checked')).map(el => tradeLabels[el.value] || el.value);
       if (selectedTrades.length) items.push('🏠 Other Trades (if covered by insurance): ' + selectedTrades.join(', '));
 
-      document.getElementById('previewIncludesList').innerHTML = items.length ? items.map(i => '<div>' + i + '</div>').join('') : '<div style="color:var(--slate);">No items configured yet &mdash; fill out the sections above.</div>';
+      document.getElementById('previewIncludesList').innerHTML = items.length ? items.map(i => '<div>' + escHtml(i) + '</div>').join('') : '<div style="color:var(--slate);">No items configured yet &mdash; fill out the sections above.</div>';
 
       // Reviews in bid preview
       const rvPlatforms = [
@@ -3335,7 +3343,7 @@
       const wSection = document.getElementById('previewWarrantySection');
       if (warrantyItems.length) {
         wSection.style.display = 'block';
-        document.getElementById('previewWarrantyList').innerHTML = warrantyItems.map(i => '<div>' + i + '</div>').join('');
+        document.getElementById('previewWarrantyList').innerHTML = warrantyItems.map(i => '<div>' + escHtml(i) + '</div>').join('');
         document.getElementById('previewWarrantyDisclaimer').textContent = '* Warranty terms apply only to ' + shingleName + '. Different warranty terms may apply to other shingles.';
       } else {
         wSection.style.display = 'none';
