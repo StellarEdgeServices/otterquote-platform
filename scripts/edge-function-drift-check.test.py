@@ -186,26 +186,35 @@ def main():
         check("carries the do-not-redeploy-everything warning",
               "Do not fix drift by redeploying everything" in md, True)
 
-        print("\nReclaiming a read-only download tree (gh-1295 first-live-run crash, 2026-08-31)")
+        print("\nReclaiming a read-only download tree (gh-1295 live-run crash, 2026-08-31)")
         # `supabase functions download` shells out to Docker; on the hosted runner
-        # the produced tree came back read-only (and, separately, root-owned —
-        # that half needs sudo and isn't reproducible in this unprivileged test),
-        # and shutil.move's rename-or-copy+rmtree fallback died with EPERM/EACCES
-        # trying to touch it. This proves the chmod half of the fix: a read-only
-        # nested tree becomes removable after `_reclaim_tree`, without needing root.
-        readonly_root = tmp / "readonly-download" / "some-function"
-        (readonly_root).mkdir(parents=True)
+        # the produced tree came back read-only (and, separately, root-owned --
+        # that half needs sudo and isn't reproducible in this unprivileged test).
+        # shutil.move's rename-or-copy+rmtree fallback died with EPERM/EACCES.
+        # The FIRST version of this fix reclaimed only the leaf slug directory
+        # and still failed live, second run: removing/renaming a directory entry
+        # needs write permission on its PARENT, not on the entry itself, and the
+        # parent chain (`scratch/supabase/`, `scratch/supabase/functions/`) was
+        # still read-only. This fixture mirrors that real shape -- read-only
+        # ancestors, not just the leaf -- and reclaims from the scratch-root
+        # equivalent, same as `download_function` now does.
+        scratch_root = tmp / "readonly-download"
+        readonly_root = scratch_root / "supabase" / "functions" / "some-function"
+        readonly_root.mkdir(parents=True)
         readonly_file = readonly_root / "index.ts"
         readonly_file.write_text("export default 1;\n", encoding="utf-8")
         os.chmod(readonly_file, stat.S_IRUSR)
         os.chmod(readonly_root, stat.S_IRUSR | stat.S_IXUSR)
-        drift._reclaim_tree(readonly_root)
+        os.chmod(scratch_root / "supabase" / "functions", stat.S_IRUSR | stat.S_IXUSR)
+        os.chmod(scratch_root / "supabase", stat.S_IRUSR | stat.S_IXUSR)
+        drift._reclaim_tree(scratch_root)
         removable = True
         try:
-            shutil.rmtree(readonly_root)
+            shutil.rmtree(scratch_root)
         except OSError:
             removable = False
-        check("read-only download tree removable after _reclaim_tree", removable, True)
+        check("read-only download tree (incl. ancestors) removable after _reclaim_tree",
+              removable, True)
 
         print()
         if FAILURES:
