@@ -999,7 +999,10 @@
                 <div style="font-size: 2rem; margin-bottom: var(--sp-4);">&#x26A0;&#xFE0F;</div>
                 <p style="color: #ef4444; font-weight: 600; margin-bottom: var(--sp-2);" id="docusignErrorTitle">Unable to load contract</p>
                 <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-6);" id="docusignErrorDetail">Please try again or contact support.</p>
-                <button class="button button-primary" onclick="initDocuSign()">Retry</button>
+                <!-- gh-1400: hidden by showRateLimited(). A 429 means the budget
+                     for this claim is spent, so Retry cannot succeed -- it just
+                     spends another call and returns the same error. -->
+                <button class="button button-primary" id="docusignRetryBtn" onclick="initDocuSign()">Retry</button>
               </div>
 
               <!-- Waiting on Contractor (gh-1293 criterion 4): the homeowner reached this
@@ -1590,6 +1593,62 @@
       window.addEventListener('message', handleDocuSignMessage);
     }
 
+    // gh-1400: supabase-js reduces every non-2xx to the string "Edge Function
+    // returned a non-2xx status code" and drops the response body. The Response
+    // itself survives on error.context, so the real payload -- including the
+    // 429's retry_at -- is recoverable. Without this the one error state a
+    // signer can actually act on is the one we hide from them.
+    async function readEdgeFunctionError(invokeError) {
+      const res = invokeError && invokeError.context;
+      if (!res || typeof res.status !== 'number') return { status: null, body: null };
+      let body = null;
+      try {
+        body = await res.clone().json();
+      } catch (e) {
+        body = null;
+      }
+      return { status: res.status, body: body };
+    }
+
+    // gh-1400: the sentence the contractor reads when the budget is spent.
+    // The Edge Function sends retry_at as an absolute instant plus a message
+    // rendered in UTC; re-rendering it here is the difference between naming a
+    // time on the signer's own clock and naming one in a timezone they do not
+    // live in. The Edge Function's message is the fallback when retry_at is
+    // missing or unparseable -- we never invent a time.
+    function rateLimitText(body) {
+      var opened = body && body.window === 'hour'
+        ? 'You have opened this contract several times in the last hour.'
+        : body && body.window === 'day'
+        ? 'You have opened this contract several times today.'
+        : body && body.window === 'month'
+        ? 'This contract has been opened many times this month.'
+        : 'This contract has been opened too many times recently.';
+      var when = body && body.retry_at ? new Date(body.retry_at) : null;
+      if (!when || isNaN(when.getTime())) {
+        return (body && body.message) || (opened + ' Please try again a little later.');
+      }
+      var stamp = when.toDateString() === new Date().toDateString()
+        ? when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+        : when.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      return opened + ' Please try again at ' + stamp + '.';
+    }
+
+    // gh-1400: render the refusal honestly and take away the button that made
+    // it worse. "Unable to load contract" over a Retry trained contractors to
+    // hammer Retry, and every press was another call against the same
+    // exhausted budget.
+    function showRateLimited(body) {
+      document.getElementById('docusignLoading').style.display = 'none';
+      document.getElementById('docusignContainer').style.display = 'none';
+      document.getElementById('docusignWaitingOnContractor').style.display = 'none';
+      document.getElementById('docusignError').style.display = 'block';
+      document.getElementById('docusignErrorTitle').textContent = 'Too many attempts';
+      document.getElementById('docusignErrorDetail').textContent = rateLimitText(body);
+      var retryBtn = document.getElementById('docusignRetryBtn');
+      if (retryBtn) retryBtn.style.display = 'none';
+    }
+
     // ── Initialize DocuSign: Create envelope and load signing iframe ──
     async function initDocuSign() {
       const loadingEl = document.getElementById('docusignLoading');
@@ -1668,7 +1727,20 @@
         });
 
         if (invokeError) {
-          throw new Error(invokeError.message || 'Failed to create signing envelope');
+          // gh-1400: a 429 here is not "the platform is broken" -- it is a
+          // budget that resets at a known time, and it is the only error state
+          // the signer can act on. Surface it as itself.
+          const edgeError = await readEdgeFunctionError(invokeError);
+          if (edgeError.status === 429) {
+            console.warn('Contract signing rate limited:', edgeError.body);
+            showRateLimited(edgeError.body);
+            return;
+          }
+          throw new Error(
+            (edgeError.body && edgeError.body.error) ||
+            invokeError.message ||
+            'Failed to create signing envelope'
+          );
         }
 
         state.envelopeId = result.envelope_id;
@@ -1688,6 +1760,11 @@
         console.error('DocuSign initialization error:', err);
         loadingEl.style.display = 'none';
         errorEl.style.display = 'block';
+        // gh-1400: restore the default presentation -- showRateLimited() may
+        // have retitled this panel and hidden its button on an earlier attempt.
+        document.getElementById('docusignErrorTitle').textContent = 'Unable to load contract';
+        const retryBtn = document.getElementById('docusignRetryBtn');
+        if (retryBtn) retryBtn.style.display = '';
         document.getElementById('docusignErrorDetail').textContent = err.message;
       }
     }

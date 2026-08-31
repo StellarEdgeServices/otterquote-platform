@@ -1823,6 +1823,21 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
 // ========== HANDLER: CONTRACTOR SIGN (new — Step A) ==========
 async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const { claim_id, contractor_id, signer, fields: providedFields, return_url, quote_id } = requestBody;
+  // gh-1400: never mint while a live envelope exists for this quote. The entry
+  // point already resolved it. Re-entering the page must return the contractor
+  // to the document they are partway through -- not create a second one, strand
+  // the first, and spend another unit of plan quota doing it.
+  if (requestBody.resolved_envelope_id) {
+    console.log(`contractor_sign: resuming existing document ${requestBody.resolved_envelope_id} (no mint)`);
+    return await issueContractorSignLink(supabase, {
+      claim_id,
+      envelopeId: requestBody.resolved_envelope_id,
+      signer,
+      return_url,
+      corsHeaders,
+      resumed: true
+    });
+  }
   let autoFields = providedFields || {};
   let claimData = null;
   let contractorData = null;
@@ -2100,34 +2115,13 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const envelopeId = sendData.documentId;
   if (!envelopeId) throw new Error("No documentId returned from BoldSign");
   console.log(`Document created (contractor_sign): ${envelopeId}`);
-  // gh-1244: bounded wait for BoldSign's async document creation to settle
-  // before asking for a signing link -- see waitForBoldSignDocumentReady().
-  await waitForBoldSignDocumentReady(envelopeId);
-  const defaultReturnUrl = return_url || `https://otterquote.com/contractor-bid-form.html?claim_id=${claim_id}&signed=contractor`;
-  // gh-1244: BoldSign's documented query params are camelCase (documentId,
-  // signerEmail, redirectUrl), matching the official API docs. Fixed
-  // regardless of whether it's the full explanation for the "Invalid
-  // Document ID" 403 seen in the sandbox E2E run -- see gh-1244 comments for
-  // the open investigation (BOLDSIGN_SANDBOX confirmed unset; document
-  // creation confirmed succeeding with a real documentId moments before this
-  // call rejects that same ID).
-  const signLinkResponse = await fetch(
-    `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
-      documentId: envelopeId,
-      signerEmail: signer.email,
-      redirectUrl: defaultReturnUrl
-    }),
-    {
-      headers: boldSignHeaders()
-    }
-  );
-  if (!signLinkResponse.ok) {
-    const errorData = await signLinkResponse.text();
-    throw new Error(`Failed to generate contractor signing URL: ${signLinkResponse.status} ${errorData}`);
-  }
-  const signLinkData = await signLinkResponse.json();
-  const signingUrl = signLinkData.signLink;
-  if (!signingUrl) throw new Error("No signLink returned from BoldSign getEmbeddedSignLink");
+  // gh-1400: persist the pointer BEFORE handing out a signing link. The old
+  // order asked BoldSign for the link first and only recorded the envelope id
+  // afterwards, so any failure in between left a real, paid-for document that
+  // no later page entry could find -- the next entry would mint again and the
+  // first became unreachable. That is exactly how 32e83466 was stranded.
+  // Recording first makes the resume lookup authoritative even on a partial
+  // failure: the signer retries and lands back on the same document.
   const quoteUpdateFilter = quote_id ? supabase.from("quotes").update({
     docusign_envelope_id: envelopeId
   }).eq("id", quote_id) : supabase.from("quotes").update({
@@ -2141,19 +2135,13 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
     contract_sent_at: new Date().toISOString(),
     docusign_envelope_id: envelopeId
   }).eq("id", claim_id);
-  return new Response(JSON.stringify({
-    success: true,
-    envelope_id: envelopeId,
-    signing_url: signingUrl,
-    status: "sent",
-    document_type: "contractor_sign",
-    signer_email: signer.email
-  }), {
-    status: 200,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json"
-    }
+  return await issueContractorSignLink(supabase, {
+    claim_id,
+    envelopeId,
+    signer,
+    return_url,
+    corsHeaders,
+    resumed: false
   });
 }
 // ========== HANDLER: HOMEOWNER SIGN (new — Step C) ==========
@@ -2393,6 +2381,181 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   });
 }
 // ========== MAIN HANDLER ==========
+// ========== gh-1400: OPERATION SPLIT + HONEST RATE-LIMIT SURFACE ==========
+// This endpoint has always done two jobs with wildly different costs, on one
+// budget:
+//
+//   MINT   POST /v1/document/send. Creates a real BoldSign document. Costs
+//          money and burns plan quota. Strict budget. Fails CLOSED.
+//   RESUME GET /v1/document/getEmbeddedSignLink for a document that already
+//          exists and that the authenticated caller is already a party to.
+//          Costs nothing. It is also the ONLY way any signer ever reaches the
+//          document, because enableEmbeddedSigning:true suppresses BoldSign's
+//          invitation emails. Generous budget. Fails OPEN.
+//
+// Before gh-1400 both ran on the mint key, whose caller_id is the CLAIM_ID --
+// so the budget was per claim, and a contractor who opened their contract and
+// came back to it was locked out of their own signature for an hour behind
+// "Edge Function returned a non-2xx status code".
+const RATE_KEY_MINT = FUNCTION_NAME;
+const RATE_KEY_RESUME = `${FUNCTION_NAME}:sign-link`;
+function rateLimitKeyFor(operation: any) {
+  return operation === "resume" ? RATE_KEY_RESUME : RATE_KEY_MINT;
+}
+// The whole defect in one function. Only the two signing document types can
+// resume; the legacy one-shot documents (contract / color_confirmation /
+// project_confirmation) have no resume semantics and always mint. A signing
+// type with an envelope id already on its quote is ALWAYS a resume -- there is
+// no condition under which we mint a second document for the same quote.
+function resolveOperation(documentType: any, existingEnvelopeId: any) {
+  if (documentType !== "contractor_sign" && documentType !== "homeowner_sign") return "mint";
+  return existingEnvelopeId ? "resume" : "mint";
+}
+// check_rate_limit() denies by default when no rate_limit_config row exists.
+// That default has produced this exact outage four times now (mark-job-complete,
+// send-message-notification, send-partner-status-email, and this function). The
+// RESUME key is brand new, so if its row is missing at deploy time the fetch
+// path would 429 100% of the time -- the very failure this change exists to
+// remove. Minting stays fail-closed; resuming spends nothing, so it fails open
+// and says so loudly in the logs.
+function isMissingConfigDenial(result: any) {
+  return typeof result?.reason === "string" && result.reason.startsWith("No rate limit config found for function:");
+}
+// The 429 the signer sees must name a time they can act on. check_rate_limit()
+// returns which ceiling was hit only in prose, and returns no reset instant at
+// all, so we recover the window from the reason and compute the reset from the
+// oldest still-counted call.
+function resolveRateLimitWindow(reason: any) {
+  const r = String(reason || "").toLowerCase();
+  if (r.includes("hourly limit")) return "hour";
+  if (r.includes("daily limit")) return "day";
+  if (r.includes("monthly limit") || r.includes("budget cap")) return "month";
+  return null;
+}
+// Mirrors Postgres interval arithmetic: '1 hour' and '1 day' are exact, and
+// '1 month' is a calendar month that clamps rather than rolling over (Jan 31 +
+// 1 month is Feb 28, not Mar 3).
+function computeRetryAt(oldestCalledAt: any, window: any) {
+  if (!oldestCalledAt || !window) return null;
+  const t = Date.parse(oldestCalledAt);
+  if (Number.isNaN(t)) return null;
+  if (window === "hour") return new Date(t + 3600000).toISOString();
+  if (window === "day") return new Date(t + 86400000).toISOString();
+  if (window !== "month") return null;
+  const d = new Date(t);
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d.toISOString();
+}
+// Start of the window check_rate_limit() is counting over, mirroring its
+// interval arithmetic exactly. Deliberately not widened: a lookback wider than
+// the real window would surface an older call and compute a retry_at that is
+// too EARLY, sending the signer back into another 429.
+function windowStartIso(window: any, now: any) {
+  const d = new Date(now);
+  if (window === "hour") return new Date(d.getTime() - 3600000).toISOString();
+  if (window === "day") return new Date(d.getTime() - 86400000).toISOString();
+  if (window !== "month") return null;
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  return d.toISOString();
+}
+// The reset instant, recovered from the oldest call still inside the exhausted
+// window. Matches check_rate_limit()'s own counting predicate: same key, same
+// caller bucket, not blocked, inside the window. Only ever runs on the 429
+// branch, so it costs nothing on the happy path.
+async function computeRetryAtForCaller(supabase: any, rateKey: any, callerId: any, window: any) {
+  const since = windowStartIso(window, Date.now());
+  if (!since) return null;
+  let q = supabase.from("rate_limits").select("called_at").eq("function_name", rateKey).eq("blocked", false).gt("called_at", since).order("called_at", {
+    ascending: true
+  }).limit(1);
+  q = callerId ? q.eq("caller_id", callerId) : q.is("caller_id", null);
+  const { data, error } = await q.maybeSingle();
+  if (error || !data?.called_at) return null;
+  return computeRetryAt(data.called_at, window);
+}
+// The sentence a signer actually reads. Kept here rather than on the page so
+// there is one source of truth and it is covered by tests; contract-signing.html
+// re-renders the clock time in the signer's own timezone and falls back to this
+// string verbatim when it cannot.
+function buildRateLimitMessage(window: any, retryAt: any, timeZone: any) {
+  const opened = window === "hour" ? "You have opened this contract several times in the last hour." : window === "day" ? "You have opened this contract several times today." : window === "month" ? "This contract has been opened many times this month." : "This contract has been opened too many times recently.";
+  const when = retryAt ? new Date(retryAt) : null;
+  if (!when || Number.isNaN(when.getTime())) {
+    return `${opened} Please try again a little later.`;
+  }
+  const opts: any = window === "hour" ? {
+    hour: "numeric",
+    minute: "2-digit"
+  } : {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  };
+  if (timeZone) opts.timeZone = timeZone;
+  const stamp = window === "hour" ? when.toLocaleTimeString("en-US", opts) : when.toLocaleString("en-US", opts);
+  return `${opened} Please try again at ${stamp}.`;
+}
+// Resolve the envelope this quote already has, if any. Same lookup the
+// homeowner path has always used -- by quote_id first, then the newest quote on
+// (claim_id, contractor_id) that carries one. maybeSingle() rather than
+// single(): "no rows" is an ordinary answer here, not an error.
+async function findExistingEnvelopeId(supabase: any, { quote_id, claim_id, contractor_id }: any) {
+  if (quote_id) {
+    const { data } = await supabase.from("quotes").select("docusign_envelope_id").eq("id", quote_id).maybeSingle();
+    if (data?.docusign_envelope_id) return data.docusign_envelope_id;
+  }
+  if (!claim_id || !contractor_id) return null;
+  const { data } = await supabase.from("quotes").select("docusign_envelope_id").eq("claim_id", claim_id).eq("contractor_id", contractor_id).not("docusign_envelope_id", "is", null).order("created_at", {
+    ascending: false
+  }).limit(1).maybeSingle();
+  return data?.docusign_envelope_id || null;
+}
+// Issue an embedded signing link for a contractor on an existing document.
+// Shared by the mint path (right after /v1/document/send) and the resume path
+// (which reaches it without touching /v1/document/send at all).
+async function issueContractorSignLink(supabase: any, { claim_id, envelopeId, signer, return_url, corsHeaders, resumed }: any) {
+  const defaultReturnUrl = return_url || `https://otterquote.com/contractor-bid-form.html?claim_id=${claim_id}&signed=contractor`;
+  // gh-1244: bounded wait for BoldSign's async document creation to settle
+  // before asking for a signing link -- see waitForBoldSignDocumentReady().
+  // On the resume path the document is long since settled and this is a no-op.
+  await waitForBoldSignDocumentReady(envelopeId);
+  // gh-1244: BoldSign's documented query params are camelCase (documentId,
+  // signerEmail, redirectUrl), matching the official API docs.
+  const signLinkResponse = await fetch(`${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
+    documentId: envelopeId,
+    signerEmail: signer.email,
+    redirectUrl: defaultReturnUrl
+  }), {
+    headers: boldSignHeaders()
+  });
+  if (!signLinkResponse.ok) {
+    const errorData = await signLinkResponse.text();
+    throw new Error(`Failed to generate contractor signing URL: ${signLinkResponse.status} ${errorData}`);
+  }
+  const signLinkData = await signLinkResponse.json();
+  const signingUrl = signLinkData.signLink;
+  if (!signingUrl) throw new Error("No signLink returned from BoldSign getEmbeddedSignLink");
+  return new Response(JSON.stringify({
+    success: true,
+    envelope_id: envelopeId,
+    signing_url: signingUrl,
+    status: "sent",
+    document_type: "contractor_sign",
+    signer_email: signer.email,
+    resumed: resumed === true
+  }), {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json"
+    }
+  });
+}
 serve(async (req)=>{
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
@@ -2534,30 +2697,66 @@ serve(async (req)=>{
     }
     // Replace request-body signer with server-derived identity.
     requestBody.signer = verifiedSigner;
-    if (document_type !== "homeowner_sign") {
+    // ===== gh-1400: resolve the OPERATION before spending any budget =====
+    // homeowner_sign has never minted -- it has always resumed the document the
+    // quote already points at. contractor_sign minted unconditionally, which is
+    // why re-entering the page produced a SECOND BoldSign document and orphaned
+    // the first (32e83466 on claim 82f5dff4). Both now resolve identically: if
+    // the quote already carries an envelope id, this is a resume.
+    //
+    // "Explicitly voided" is expressed as quotes.docusign_envelope_id = NULL.
+    // Clearing the pointer is what re-enables minting; nothing else does.
+    let resolvedEnvelopeId = null;
+    if (document_type === "homeowner_sign" || document_type === "contractor_sign") {
+      resolvedEnvelopeId = await findExistingEnvelopeId(supabase, {
+        quote_id: requestBody.quote_id,
+        claim_id,
+        contractor_id
+      });
+    }
+    const operation = resolveOperation(document_type, resolvedEnvelopeId);
+    // Server-derived, overwritten unconditionally -- never caller-supplied.
+    requestBody.resolved_envelope_id = resolvedEnvelopeId;
+    requestBody.operation = operation;
+    {
+      const rateKey = rateLimitKeyFor(operation);
       const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
-        p_function_name: FUNCTION_NAME,
+        p_function_name: rateKey,
         p_caller_id: claim_id || null
       });
       if (rlError) {
-        console.error("Rate limit check failed:", rlError);
-        return new Response(JSON.stringify({
-          error: "Rate limit check failed. Refusing to create envelope for safety.",
-          detail: rlError.message
-        }), {
-          status: 503,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json"
-          }
-        });
-      }
-      if (!rateLimitResult?.allowed) {
-        console.warn(`RATE LIMITED [${FUNCTION_NAME}]: ${rateLimitResult?.reason}`);
+        console.error(`Rate limit check failed [${rateKey}]:`, rlError);
+        // Minting is fail-closed: if the budget cannot be verified we do not
+        // spend money. Resuming is fail-open: it spends nothing, and refusing a
+        // signer entry to their own executed-but-unsigned contract is precisely
+        // the outage this change exists to remove.
+        if (operation === "mint") {
+          return new Response(JSON.stringify({
+            error: "Rate limit check failed. Refusing to create envelope for safety.",
+            detail: rlError.message
+          }), {
+            status: 503,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json"
+            }
+          });
+        }
+        console.warn(`RATE LIMIT UNAVAILABLE [${rateKey}]: allowing resume, no vendor cost.`);
+      } else if (!rateLimitResult?.allowed && operation === "resume" && isMissingConfigDenial(rateLimitResult)) {
+        console.error(`RATE LIMIT CONFIG MISSING [${rateKey}]: allowing resume anyway. Insert the rate_limit_config row for this key -- see gh-1400.`);
+      } else if (!rateLimitResult?.allowed) {
+        const limitWindow = resolveRateLimitWindow(rateLimitResult?.reason);
+        const retryAt = await computeRetryAtForCaller(supabase, rateKey, claim_id || null, limitWindow);
+        console.warn(`RATE LIMITED [${rateKey}] op=${operation}: ${rateLimitResult?.reason} retry_at=${retryAt}`);
         return new Response(JSON.stringify({
           error: "Rate limit exceeded",
           reason: rateLimitResult?.reason,
-          counts: rateLimitResult?.counts
+          counts: rateLimitResult?.counts,
+          operation,
+          window: limitWindow,
+          retry_at: retryAt,
+          message: buildRateLimitMessage(limitWindow, retryAt, "UTC")
         }), {
           status: 429,
           headers: {
