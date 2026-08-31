@@ -107,15 +107,24 @@ function measured(value: number) {
 }
 
 // ── activity_log, read whole ────────────────────────────────────────────
-// PostgREST caps rows server-side (db-max-rows, 1,000 by default) and a
-// truncated read does NOT error — it returns a smaller, entirely plausible
-// number of days on the one column this dashboard exists to produce. With no
-// ORDER BY, which rows survive a truncation is arbitrary. So: page it, ordered,
-// until a short page comes back, and REFUSE rather than silently return a
-// partial set if the page count runs away. Immune to the cap's value, which is
-// the property that matters — activity_log only grows. (gh-1340, CTO review.)
+// PostgREST caps rows server-side (db-max-rows) and a truncated read does NOT
+// error — it returns a smaller, entirely plausible number of days on the one
+// column this dashboard exists to produce. With no ORDER BY, which rows survive
+// a truncation is arbitrary. So: page it, ordered, until a page comes back
+// EMPTY, and REFUSE rather than silently return a partial set if the page count
+// runs away. (gh-1340, CTO review.)
+//
+// ⛔ The cursor advances by rows.length, NOT by a fixed page size, and the stop
+// test is rows.length === 0, NOT rows.length < ACTIVITY_PAGE. This is the whole
+// point and it is easy to "simplify" back into a bug: if the server's cap were
+// SMALLER than ACTIVITY_PAGE, a short-page test would fire on the very first
+// page and return early — silently dropping every row past the cap, which is
+// exactly the defect this function exists to remove, reintroduced inside its
+// own fix. Advancing by what the server actually returned is correct for ANY
+// cap, which is what "immune to the cap's value" has to mean.
+// (Caught by an adversarial refuter on the first version of this fix.)
 const ACTIVITY_PAGE = 1000;
-const ACTIVITY_MAX_PAGES = 200;
+const ACTIVITY_MAX_PAGES = 500;
 
 interface ActivityRow { user_id: string | null; created_at: string }
 
@@ -124,8 +133,8 @@ async function fetchAllActivity(
   db: any,
 ): Promise<{ data: ActivityRow[] | null; error: { message: string } | null }> {
   const all: ActivityRow[] = [];
+  let from = 0;
   for (let page = 0; page < ACTIVITY_MAX_PAGES; page++) {
-    const from = page * ACTIVITY_PAGE;
     const { data, error } = await db
       .from("activity_log")
       .select("user_id, created_at")
@@ -133,12 +142,13 @@ async function fetchAllActivity(
       .range(from, from + ACTIVITY_PAGE - 1);
     if (error) return { data: null, error };
     const rows = (data ?? []) as ActivityRow[];
+    if (rows.length === 0) return { data: all, error: null };
     all.push(...rows);
-    if (rows.length < ACTIVITY_PAGE) return { data: all, error: null };
+    from += rows.length;
   }
   return {
     data: null,
-    error: { message: `activity_log exceeded ${ACTIVITY_MAX_PAGES} pages (${ACTIVITY_MAX_PAGES * ACTIVITY_PAGE} rows) — refusing a silently truncated read` },
+    error: { message: `activity_log exceeded ${ACTIVITY_MAX_PAGES} pages — refusing a silently truncated read` },
   };
 }
 
