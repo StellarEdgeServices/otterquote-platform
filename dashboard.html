@@ -2347,7 +2347,10 @@
             const mMatch = mf.match(/hover[_-](\d{6,})[_-]/) || mf.match(/job[_-](\d{6,})/i) || mf.match(/(\d{6,})/);
             if (mMatch) hoverJobId = mMatch[1];
           }
-          const hoverLink = hoverJobId ? `https://hover.to/jobs/${hoverJobId}` : 'https://hover.to';
+          // gh-1381 (CodeQL #43): encodeURIComponent is the taint barrier CodeQL
+          // credits (same as the claim_id link below). hoverJobId is digits-only
+          // by the guards above, and digits are unreserved — zero behavior change.
+          const hoverLink = hoverJobId ? `https://hover.to/jobs/${encodeURIComponent(hoverJobId)}` : 'https://hover.to';
 
           const ctaDiv = document.createElement('div');
 
