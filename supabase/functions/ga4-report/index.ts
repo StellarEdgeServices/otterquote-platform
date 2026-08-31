@@ -133,7 +133,9 @@ class ConfigError extends Error {
 }
 
 /**
- * Read and parse the service account JSON.
+ * Pure core of loadServiceAccount: given the raw string values of the two env
+ * vars, decide whether we have a usable service account, the gh-1331 Doppler
+ * field swap, or some other config fault.
  *
  * Deliberately detects the Doppler field swap Dustin found (gh-1331): there,
  * GA4_PROPERTY_ID holds the service-account JSON and GA4_SERVICE_ACCOUNT_JSON is
@@ -141,10 +143,15 @@ class ConfigError extends Error {
  * but if it is ever synced from the swapped source, the failure would otherwise
  * be an opaque parse error. Naming the swap costs three lines and saves the next
  * person the hour it cost this one.
+ *
+ * Split out from env-reading (rather than calling Deno.env.get directly) so
+ * this logic runs under index.test.ts's zero-permission `deno test` in the CI
+ * pure-unit lane -- no --allow-env needed, and the real key material this
+ * guards is never read in a test, only synthetic strings.
  */
-function loadServiceAccount(): ServiceAccount {
-  const raw = (Deno.env.get("GA4_SERVICE_ACCOUNT_JSON") || "").trim();
-  const propertyEnv = (Deno.env.get("GA4_PROPERTY_ID") || "").trim();
+function parseServiceAccountEnv(rawJson: string, propertyEnvRaw: string): ServiceAccount {
+  const raw = rawJson.trim();
+  const propertyEnv = propertyEnvRaw.trim();
 
   if (!raw) {
     throw new ConfigError(propertyEnv.startsWith("{") ? "doppler_field_swap" : "missing_secret");
@@ -160,6 +167,14 @@ function loadServiceAccount(): ServiceAccount {
     throw new ConfigError("incomplete_service_account");
   }
   return parsed;
+}
+
+/** Reads the two env vars and delegates to parseServiceAccountEnv above. */
+function loadServiceAccount(): ServiceAccount {
+  return parseServiceAccountEnv(
+    Deno.env.get("GA4_SERVICE_ACCOUNT_JSON") || "",
+    Deno.env.get("GA4_PROPERTY_ID") || "",
+  );
 }
 
 // ---------------------------------------------------------------------------
