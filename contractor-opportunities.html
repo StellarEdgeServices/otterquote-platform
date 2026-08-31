@@ -973,13 +973,13 @@
 
                 let sourceBlock = o.jobType === 'retail'
                     ? '<div class="info-block"><span class="info-label">Job Type</span><span class="info-value">Retail / Cash</span></div>'
-                    : '<div class="info-block"><span class="info-label">Insurance Carrier</span><span class="info-value">' + (o.insuranceCarrier||'N/A') + '</span></div>';
+                    : '<div class="info-block"><span class="info-label">Insurance Carrier</span><span class="info-value">' + escHtml(o.insuranceCarrier||'N/A') + '</span></div>';
 
                 let matBlock = '';
                 if (o.jobType === 'repair' && o.existingShingle)
-                    matBlock = '<div class="info-block"><span class="info-label">Existing Shingle (must match)</span><span class="info-value">' + o.existingShingle + '</span></div>';
+                    matBlock = '<div class="info-block"><span class="info-label">Existing Shingle (must match)</span><span class="info-value">' + escHtml(o.existingShingle) + '</span></div>';
                 else if (o.material)
-                    matBlock = '<div class="info-block"><span class="info-label">Material Selected</span><span class="info-value">' + o.material + '</span></div>';
+                    matBlock = '<div class="info-block"><span class="info-label">Material Selected</span><span class="info-value">' + escHtml(o.material) + '</span></div>';
 
                 let notes = '';
                 if (o.homeownerNotes) {
@@ -1010,8 +1010,8 @@
 
                 return '<div class="opportunity-card' + (isUrgent?' urgent-card':'') + '" data-claim-id="' + escHtml(String(o.id)) + '">'
                     + '<div class="opportunity-header"><div>'
-                    + '<h2 class="opportunity-id">Project in ' + o.location + (o.zip ? ', IN ' + o.zip : '') + '</h2>'
-                    + '<p class="opportunity-location">' + o.location + ', ' + o.zip + (o.distance !== null ? ' &mdash; ~' + o.distance + ' mi away' : '') + '</p>'
+                    + '<h2 class="opportunity-id">Project in ' + escHtml(o.location) + (o.zip ? ', IN ' + escHtml(o.zip) : '') + '</h2>'
+                    + '<p class="opportunity-location">' + escHtml(o.location) + ', ' + escHtml(o.zip) + (o.distance !== null ? ' &mdash; ~' + o.distance + ' mi away' : '') + '</p>'
                     + '</div><div class="header-badges">' + getJobTypeBadge(o.jobType) + getMultiTradeBadge(o.trades) + getUrgentBadge(o) + getExpiryCountdownHtml(o) + '</div></div>'
                     + '<div class="badge-group" style="margin-bottom:4px">' + getTradeBadges(o.trades) + '</div>'
                     + getTradeReleaseBadges(o)

@@ -3469,7 +3469,7 @@
       return `
         <div style="margin-bottom: 12px; padding: 12px; background: ${isOwn ? "#EFF6FF" : "#F1F5F9"}; border-radius: 6px; border-left: 3px solid ${isOwn ? "var(--navy)" : "var(--amber)"};">
           <div style="font-weight: 600; font-size: 13px; color: var(--navy); margin-bottom: 4px;">
-            ${msg.profiles.full_name} ${isOwn ? "(You)" : ""}
+            ${escapeHtml(msg.profiles.full_name)} ${isOwn ? "(You)" : ""}
           </div>
           <div style="font-size: 13px; color: #333; margin-bottom: 8px; word-wrap: break-word;">
             ${escapeHtml(msg.body)}
@@ -3656,7 +3656,7 @@
       const isOwn = msg.sender_id === userId;
       const timestamp = new Date(msg.created_at).toLocaleString();
       return '<div style="margin-bottom:12px;padding:12px;background:' + (isOwn ? "#EFF6FF" : "#F1F5F9") + ';border-radius:6px;border-left:3px solid ' + (isOwn ? "var(--navy)" : "var(--amber)") + ';">' +
-        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + msg.profiles.full_name + (isOwn ? " (You)" : "") + '</div>' +
+        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + escapeHtml(msg.profiles.full_name) + (isOwn ? " (You)" : "") + '</div>' +
         '<div style="font-size:13px;color:#333;margin-bottom:8px;word-wrap:break-word;">' + escapeHtml(msg.body) + '</div>' +
         '<div style="font-size:11px;color:#94A3B8;">' + timestamp + '</div></div>';
     }).join("");
