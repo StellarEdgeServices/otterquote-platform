@@ -106,6 +106,42 @@ function measured(value: number) {
   return { value, kind: value === 0 ? "measured_zero" : "measured" };
 }
 
+// ── activity_log, read whole ────────────────────────────────────────────
+// PostgREST caps rows server-side (db-max-rows, 1,000 by default) and a
+// truncated read does NOT error — it returns a smaller, entirely plausible
+// number of days on the one column this dashboard exists to produce. With no
+// ORDER BY, which rows survive a truncation is arbitrary. So: page it, ordered,
+// until a short page comes back, and REFUSE rather than silently return a
+// partial set if the page count runs away. Immune to the cap's value, which is
+// the property that matters — activity_log only grows. (gh-1340, CTO review.)
+const ACTIVITY_PAGE = 1000;
+const ACTIVITY_MAX_PAGES = 200;
+
+interface ActivityRow { user_id: string | null; created_at: string }
+
+async function fetchAllActivity(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+): Promise<{ data: ActivityRow[] | null; error: { message: string } | null }> {
+  const all: ActivityRow[] = [];
+  for (let page = 0; page < ACTIVITY_MAX_PAGES; page++) {
+    const from = page * ACTIVITY_PAGE;
+    const { data, error } = await db
+      .from("activity_log")
+      .select("user_id, created_at")
+      .order("created_at", { ascending: false })
+      .range(from, from + ACTIVITY_PAGE - 1);
+    if (error) return { data: null, error };
+    const rows = (data ?? []) as ActivityRow[];
+    all.push(...rows);
+    if (rows.length < ACTIVITY_PAGE) return { data: all, error: null };
+  }
+  return {
+    data: null,
+    error: { message: `activity_log exceeded ${ACTIVITY_MAX_PAGES} pages (${ACTIVITY_MAX_PAGES * ACTIVITY_PAGE} rows) — refusing a silently truncated read` },
+  };
+}
+
 serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
 
@@ -188,9 +224,11 @@ serve(async (req: Request) => {
       supabase.from("referrals").select(
         "id, referral_agent_id, claim_id, commission_amount, commission_paid_at, created_at, is_test"
       ),
-      // Trimmed columns — only what feeds "days since movement". 1,000+ rows,
-      // one query, reduced in-memory to a per-user max() rather than N+1.
-      supabase.from("activity_log").select("user_id, created_at"),
+      // Trimmed columns — only what feeds "days since movement". Read WHOLE via
+      // fetchAllActivity's ordered pagination (see above): an unbounded
+      // .select() here is capped server-side by PostgREST and truncates
+      // silently. Reduced in-memory to a per-user max() rather than N+1.
+      fetchAllActivity(supabase),
       supabase.from("hover_orders").select("id", { count: "exact", head: true }),
     ]);
 
