@@ -1130,7 +1130,11 @@
             console.error('Step 2 submit error:', error);
             if (advBtn) { advBtn.dataset.submitting = 'false'; advBtn.disabled = false; advBtn.style.opacity = '1'; advBtn.textContent = 'Continue to Agreements →'; }
             showPanel('error');
-            document.getElementById('panelError').innerHTML = '<h3>Upload Failed</h3><p>' + error.message + '</p>';
+            // gh-1381 (CodeQL #12): error.message can echo user-supplied input
+            // (e.g. a license number inside a DB error) — set it as text, not HTML.
+            const panelErrorEl = document.getElementById('panelError');
+            panelErrorEl.innerHTML = '<h3>Upload Failed</h3><p></p>';
+            panelErrorEl.querySelector('p').textContent = error.message;
         }
     }
 
