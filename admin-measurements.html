@@ -144,9 +144,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
   <div class="info-banner">
     📐 <strong>Manual fulfillment.</strong> The homeowner has already paid. Order the report from the
     measurement vendor yourself, then come back here, upload the PDF and key in the numbers.
-    The homeowner sees the report the moment you save; the contractor sees the measurements on the
-    bid form. <strong>Enter what we paid the vendor</strong> — it is the only way real margin per
-    order is visible instead of estimated.
+    The homeowner is emailed the moment you deliver, and the measurements appear on their project;
+    the contractor sees the measurements on the bid form. The vendor PDF itself stays internal —
+    it is never served to a homeowner or contractor. <strong>Enter what we paid the vendor</strong> —
+    it is the only way real margin per order is visible instead of estimated.
   </div>
 
   <div class="summary-cards">
@@ -218,7 +219,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
       <div class="field">
         <label for="fReport">Report PDF</label>
         <input type="file" id="fReport" accept="application/pdf">
-        <div class="hint">Optional on save, but the homeowner has nothing to open without it.</div>
+        <div class="hint">Optional on save. Kept for internal records only — never served to the homeowner or contractor.</div>
       </div>
     </div>
 
@@ -282,6 +283,9 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  *                   reader (bid form, opportunity card, auto-bid math) works
  *                   on a hand-entered report exactly as on a parsed one.
  *                   Getting these key names wrong is the silent failure here.
+ *   [gh-1412] on delivery it also invokes send-measurement-ready (admin-gated
+ *   EF) which writes the 'measurement_order_fulfilled' activity_log row and
+ *   emails the homeowner. Idempotent per order — Edit re-saves do not re-send.
  */
 var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
 var STORAGE_BUCKET = 'claim-documents';
@@ -371,7 +375,13 @@ async function loadOrders() {
   // integration) are a different lifecycle and are not this queue's business.
   var res = await sb
     .from('hover_orders')
-    .select('id, claim_id, status, product_code, fulfillment_mode, vendor_order_ref, vendor_cost_cents, homeowner_charge_amount, requested_by_role, fulfilled_at, report_url, admin_notes, created_at, claims(id, address_line_1, address_city, address_state, address_zip, user_id)')
+    // [gh-1412] The embedded claims list previously asked for address_line_1 /
+    // address_city / address_state / address_zip — columns that do not exist on
+    // the live claims table (verified against production information_schema;
+    // live columns are property_address + property_state). PostgREST 400s the
+    // whole request on an unknown embedded column, so the queue rendered
+    // "Could not load orders" for every admin. Schema truth, not repo truth.
+    .select('id, claim_id, status, product_code, fulfillment_mode, vendor_order_ref, vendor_cost_cents, homeowner_charge_amount, requested_by_role, fulfilled_at, report_url, admin_notes, created_at, claims(id, property_address, property_state, user_id)')
     .eq('fulfillment_mode', 'manual')
     .order('created_at', { ascending: true });
 
@@ -429,7 +439,7 @@ function renderRows() {
   }
   tbody.innerHTML = list.map(function (r) {
     var c = r.claims || {};
-    var addr = [c.address_line_1, c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', ');
+    var addr = c.property_address || '';
     var product = state.catalog[r.product_code] || {};
     var canFulfil = r.status === 'awaiting_fulfillment' || r.status === 'awaiting_quote' || r.status === 'completed';
     return '<tr>' +
@@ -456,7 +466,7 @@ function openDrawer(orderId) {
   state.current = row;
 
   var c = row.claims || {};
-  var addr = [c.address_line_1, c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', ');
+  var addr = c.property_address || '';
   var product = state.catalog[row.product_code] || {};
   document.getElementById('drawerSub').textContent =
     (product.label || row.product_code || 'Measurement report') + ' · ' + (addr || 'no address on claim') +
@@ -590,7 +600,21 @@ async function saveFulfillment() {
     var file = document.getElementById('fReport').files[0];
     if (file) {
       if (file.type !== 'application/pdf') throw new Error('The report must be a PDF.');
-      var path = 'measurements/' + row.claim_id + '/' + row.id + '.pdf';
+      // [gh-1412] UID-first path — this is load-bearing on two axes, verified
+      // against the live storage.objects policies:
+      //   1. It is the ONLY prefix an authenticated admin can write: the sole
+      //      matching INSERT policy on claim-documents ("Users can upload to
+      //      own folder") requires foldername[1] = auth.uid(). The previous
+      //      'measurements/{claim_id}/...' path matched NO insert policy, so
+      //      every upload was RLS-rejected before any PDF ever landed.
+      //   2. It keeps the vendor PDF internal-only (D-317 cl. 7): the
+      //      "Contractors can view biddable claim docs" SELECT policy grants
+      //      any active contractor read on paths whose foldername[2] equals a
+      //      biddable claim's id — which 'measurements/{claim_id}/...' would
+      //      have satisfied. Here foldername[2] is 'measurements', never a
+      //      claim id, and foldername[1] is the admin's uid, never the
+      //      homeowner's — so neither contractors nor homeowners can read it.
+      var path = state.user.id + '/measurements/' + row.claim_id + '/' + row.id + '.pdf';
       var up = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: true, contentType: 'application/pdf' });
       if (up.error) throw new Error('Upload failed: ' + up.error.message);
       reportPath = path;
@@ -649,6 +673,32 @@ async function saveFulfillment() {
     if (anyNumber && row.claim_id) {
       var cUpd = await sb.from('claims').update({ hover_measurements: m }).eq('id', row.claim_id);
       if (cUpd.error) throw new Error('Order saved, but writing measurements to the claim failed: ' + cUpd.error.message);
+    }
+
+    // [gh-1412] Close the loop: on delivery, tell the homeowner their report
+    // is ready and write the fulfilment activity_log row. Called on EVERY
+    // delivering save deliberately — send-measurement-ready is idempotent per
+    // order (one email, one log row, ever), which makes Edit re-saves cheap
+    // server-side no-ops AND makes a failed first notification retryable by
+    // just re-saving the order. Admin-gated with this same session's JWT.
+    // A notification failure must not un-deliver the order — the save above
+    // already stands — so this is a warning, never a throw.
+    if (delivering) {
+      try {
+        var sess = await sb.auth.getSession();
+        var token = sess && sess.data && sess.data.session ? sess.data.session.access_token : null;
+        var nres = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-measurement-ready', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: row.id })
+        });
+        var njson = await nres.json().catch(function () { return {}; });
+        if (!nres.ok) {
+          alert('Order delivered, but the homeowner notification failed (' + (njson.error || nres.status) + '). Re-open the order and Save again to retry.');
+        }
+      } catch (notifyErr) {
+        alert('Order delivered, but the homeowner notification failed: ' + (notifyErr.message || notifyErr));
+      }
     }
 
     closeDrawer();
