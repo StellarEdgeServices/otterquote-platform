@@ -35,6 +35,17 @@ audit of what is and is not reconciled as of 2026-08-07, and why a fresh
 branch still will not reach parity with production until the remaining
 gap is closed.
 
+See `MIGRATIONS-RECONCILIATION-1438.md` in this directory for the
+2026-09-01 follow-up: `supabase/migrations_drafts/` reconciled against
+production (5 of 9 testable draft sets filed here as post-apply traces;
+several were not byte-identical to what actually ran and required
+reading the applied text back out of
+`supabase_migrations.schema_migrations` rather than moving the draft
+file), plus a re-measurement of the #385 gap (still ~104 applied
+migrations with no repo file as of that date). Building a CI check that
+keeps that number from growing is flagged there as follow-up work, not
+done in that pass.
+
 ## Naming convention (2026-08-14, #822)
 
 The `v<N>` integer scheme used in `sql/` (see `Docs/sql-migration-conventions.md`)
