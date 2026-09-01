@@ -1,0 +1,34 @@
+-- Migration: gh1070_revoke_anon_activity_log
+-- Filed by: gh-1438 migration reconciliation batch (Code lane)
+-- Date filed: 2026-09-01
+-- Original issue: #1070 (reopened round-4 finding on #1028; sibling defect to #1041)
+-- Rollback: not filed. REVOKE ALL is technically reversible via a matching
+--           GRANT, but restoring anon's original 7-privilege grant on
+--           public.activity_log (the vulnerability this revoke fixed) is
+--           almost certainly never the intended remediation for a broken
+--           dependency — a rollback file would be an attractive nuisance.
+-- Pre-flight: none filed (see PROVENANCE below for why).
+--
+-- STATUS: ALREADY APPLIED. This file is a post-apply trace added by the
+-- gh-1438 reconciliation (issue #1438) — it does NOT re-apply anything;
+-- merging this PR is a no-op against the database. Applied to production
+-- (yeszghaspzwwstvsrioa) 2026-08-24, recorded in
+-- supabase_migrations.schema_migrations as version 20260824183229,
+-- name "gh1070_revoke_anon_activity_log".
+--
+-- PROVENANCE — this is NOT the same SQL as the #1070 draft in
+-- supabase/migrations_drafts/: that draft
+-- (gh1070_activity_log_grants_revoke.sql, left in place untouched) is
+-- explicitly headed "Status: DRAFT ONLY — Tier 3B. NOT APPLIED" and
+-- proposes a broader, more heavily-annotated revoke design (with a
+-- documented R-097 24h notice-then-wait rail). What actually ran against
+-- production under the #1070 name is a distinct, much shorter migration —
+-- verified via a read-only query against
+-- supabase_migrations.schema_migrations.statements for this version,
+-- 2026-09-01, gh-1438 reconciliation, reproduced verbatim below. The two
+-- pieces of SQL achieve the same live end state (anon has zero privileges
+-- on public.activity_log — confirmed live via information_schema.
+-- role_table_grants, gh-1438 reconciliation) but are not the same text,
+-- so the draft file must not be represented as "the applied migration."
+
+REVOKE ALL PRIVILEGES ON public.activity_log FROM anon;
