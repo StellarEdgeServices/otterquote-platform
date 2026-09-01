@@ -222,6 +222,79 @@ async function verifyPayment(
   return { ok: true, amount: pi.amount, stripeChargeId: pi.latest_charge ?? null };
 }
 
+/**
+ * gh-1412: make the order visible the moment it exists.
+ *
+ * Two artifacts, neither of which may break the money path:
+ *   1. An activity_log row — the CTO's #1412 ruling put this first: "the log
+ *      row is the record that makes the order findable, auditable, and
+ *      reportable." Before this, a paid order's only trace anywhere was the
+ *      hover_orders row itself (measured live: the first real-looking order
+ *      sat 6h44m in awaiting_fulfillment with zero activity rows).
+ *   2. An invoke of notify-measurement-order (service-role bearer, same
+ *      machine-to-machine model as notify-admin-new-contractor), which sends
+ *      the admin the "Buy basic report — [address]" / "Buy detailed report —
+ *      [address]" purchase email per #1339's spec copy.
+ *
+ * Failures here are logged and swallowed: the buyer's order (and possibly
+ * their money) is already recorded, and a notification failure must never
+ * turn a recorded order into a 500.
+ */
+async function recordOrderCreated(
+  supabase: any,
+  supabaseUrl: string,
+  order: { id: string; status: string },
+  claimId: string,
+  productCode: string,
+  buyerRole: string,
+  buyerUserId: string,
+  amountCents: number | null,
+): Promise<void> {
+  try {
+    const { data: claim } = await supabase
+      .from("claims")
+      .select("is_test")
+      .eq("id", claimId)
+      .maybeSingle();
+    const { error: logErr } = await supabase.from("activity_log").insert({
+      event_type: "measurement_order_created",
+      title: "measurement_order_created",
+      user_id: buyerUserId,
+      is_test: claim?.is_test === true,
+      metadata: {
+        order_id: order.id,
+        claim_id: claimId,
+        product_code: productCode,
+        status: order.status,
+        requested_by_role: buyerRole,
+        amount_cents: amountCents,
+      },
+    });
+    if (logErr) console.error(`[${FUNCTION_NAME}] activity_log insert failed:`, logErr);
+  } catch (e) {
+    console.error(`[${FUNCTION_NAME}] activity_log write threw:`, e);
+  }
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/notify-measurement-order`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({ order_id: order.id }),
+    });
+    if (!res.ok) {
+      console.error(
+        `[${FUNCTION_NAME}] notify-measurement-order returned ${res.status}:`,
+        await res.text(),
+      );
+    }
+  } catch (e) {
+    console.error(`[${FUNCTION_NAME}] notify-measurement-order invoke failed:`, e);
+  }
+}
+
 serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -292,6 +365,8 @@ serve(async (req) => {
         console.error(`[${FUNCTION_NAME}] request insert failed:`, reqErr);
         return json({ error: "Could not file your request. Please try again." }, 500, corsHeaders);
       }
+      // gh-1412: log + admin email ("Buy detailed report — [address]").
+      await recordOrderCreated(supabase, supabaseUrl, requested, claimId, productCode, "contractor", authedUser.id, null);
       return json({ order_id: requested.id, status: requested.status, quote_required: true }, 200, corsHeaders);
     }
 
@@ -362,6 +437,9 @@ serve(async (req) => {
       product_code: productCode,
       amount: paid.amount,
     });
+
+    // gh-1412: log + admin email ("Buy basic report — [address]").
+    await recordOrderCreated(supabase, supabaseUrl, order, claimId, productCode, buyerRole, authedUser.id, paid.amount);
 
     return json({
       order_id: order.id,

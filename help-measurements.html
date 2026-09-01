@@ -44,7 +44,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
-    <!-- Stripe.js &mdash; required for card payment on Hover purchase -->
+    <!-- Stripe.js &mdash; required for card payment on measurement report purchase -->
     <script src="https://js.stripe.com/v3/"></script>
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
     <script>
@@ -274,7 +274,7 @@
             margin-bottom: 1rem;
         }
 
-        /* Hover Steps */
+        /* Purchase Steps */
         .hover-steps {
             display: flex;
             flex-direction: column;
@@ -580,7 +580,7 @@
             </div>
 
             <div class="path-cards">
-                <!-- Path A: Hover (PAID) — Primary for cash/retail customers -->
+                <!-- Path A: Measurement report (PAID) — Primary for cash/retail customers -->
                 <div class="path-card" onclick="selectPath('hover')">
                     <div class="path-card-badge">Recommended for Most</div>
                     <div class="path-card-icon">📐</div>
@@ -614,7 +614,7 @@
             </div>
         </div>
 
-        <!-- PATH A: Hover Purchase Flow -->
+        <!-- PATH A: Measurement Report Purchase Flow -->
         <div id="hoverSection" class="flow-section">
             <div class="section-card">
                 <h3>Roof Measurement Report</h3>
@@ -672,7 +672,7 @@
                 </div>
             </div>
 
-            <!-- Hover Payment Success -->
+            <!-- Measurement Payment Success -->
             <div id="hoverSuccessSection" class="flow-section">
                 <div class="section-card">
                     <div class="success-state">
@@ -936,7 +936,7 @@
                 // Create the PaymentIntent server-side — returns client_secret
                 const paymentResult = await Services.createHoverPaymentIntent({
                     claim_id: currentClaim?.id,
-                    amount: 1500, // gh-1063: $15 in cents, matches D-291 (RoofScope repricing, supersedes D-205's $150). Cosmetic — create-payment-intent enforces the real amount server-side from platform_settings.hover_measurement_price (see gh-1077 for that value's own drift).
+                    amount: 1500, // gh-1063: $15 in cents, matches D-291 (measurement repricing, supersedes D-205's $150). Cosmetic — create-payment-intent enforces the real amount server-side from platform_settings.hover_measurement_price (see gh-1077 for that value's own drift).
                     description: 'Complete Property Report',
                 });
 
@@ -970,14 +970,14 @@
                 document.getElementById('hoverPaymentForm').style.display = 'block';
 
             } catch (err) {
-                console.error('Hover payment init error:', err);
+                console.error('Measurement payment init error:', err);
                 showMessage('Could not initialize payment. Please try again.', 'error');
                 btn.disabled = false;
                 btn.innerHTML = originalText;
             }
         }
 
-        // Step 2 — Confirm card payment, then (and only then) create Hover order
+        // Step 2 — Confirm card payment, then (and only then) create the measurement order
         async function confirmHoverPayment() {
             const payBtn = document.getElementById('payHoverBtn');
             const originalText = payBtn.innerHTML;
@@ -1073,7 +1073,7 @@
             checkReady();
         }
 
-        // ── Cancel Hover payment form ───────────────────────────────
+        // ── Cancel measurement payment form ───────────────────────────────
         function cancelHoverPayment() {
             document.getElementById('hoverPaymentForm').style.display = 'none';
             const purchaseBtn = document.getElementById('purchaseHoverBtn');

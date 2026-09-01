@@ -465,10 +465,25 @@ def download_function(cli: str, project_ref: str, slug: str, dest_root: Path) ->
     The CLI writes to `<cwd>/supabase/functions/<slug>/`, so each download runs in
     its own scratch cwd and the result is moved into place. Returns False on
     failure — the caller records FETCH_FAILED rather than treating it as clean.
+
+    `--use-api` is load-bearing, not an optimization (gh-1295, 2026-08-31). The
+    CLI has TWO extraction paths for the downloaded eszip: a local Docker
+    edge-runtime container when Docker is reachable, and a server-side unbundle
+    (`--use-api`) when it is not. The Docker path returned transformed bytes for
+    EVERY function on the hosted ubuntu-latest runner — 58-59/59 DRIFTED with an
+    unstable split across runs on an unchanged `main`, including functions
+    independently proven byte-identical — while the non-Docker path is
+    byte-faithful (verified 2026-08-31: 41/60 IDENTICAL locally with CLI 2.116.0,
+    matching `main` blob-for-blob on just-deployed functions, and the same
+    `stripe-webhook` sha256 `de947265cb…` the repo side reports). Every trusted
+    manual run happened to lack a running Docker daemon and silently took the
+    server-side path; CI has Docker and silently took the broken one. Pinning
+    the CLI version (PR #1428) was tested and falsified as a fix — the variable
+    was Docker's presence, so force the server-side path everywhere.
     """
     with tempfile.TemporaryDirectory() as scratch:
         proc = subprocess.run(
-            [cli, "functions", "download", slug, "--project-ref", project_ref],
+            [cli, "functions", "download", slug, "--project-ref", project_ref, "--use-api"],
             capture_output=True,
             text=True,
             cwd=scratch,

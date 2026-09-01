@@ -40,7 +40,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { parsePayload } from "./payload-parser.ts";
+import { findCompletedContractSigner, parsePayload } from "./payload-parser.ts";
 import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
@@ -383,33 +383,39 @@ serve(async (req) => {
       })`
     );
 
-    // ========== SIGNER STATUS (D-274 / #631) ==========
+    // ========== SIGNER STATUS (D-274 / #631; matcher re-keyed gh-1446) ==========
     // BoldSign's webhook payload DOES carry per-signer status directly
     // (data.signerDetails — confirmed against developers.boldsign.com's
     // sample-event-data page, unlike the shorter event-metadata page which
     // only shows the bare `event` block). payload-parser.ts's `parsed.signerDetails`
     // is that array, normalized to { clientUserId, status: lowercase,
-    // signedDateTime: null, email } so the `s.clientUserId === "contractor_1"` /
-    // `"homeowner_1"` matching further down is UNCHANGED from the DocuSign
-    // implementation — create-docusign-envelope sets signers[].id to exactly
-    // those two strings at send time (see handleContractorSign), the same
-    // convention DocuSign's clientUserId used. No live API call needed for
-    // this coarse status (unlike the D-269 ack backstop below, which DOES need
-    // one — BoldSign's webhook payload never includes per-field formFields
-    // data, only signer-level status).
+    // signedDateTime: null, email, order }.
+    //
+    // [gh-1446] The original matching here required clientUserId ===
+    // "contractor_1" / "homeowner_1" — true under DocuSign, FALSE since
+    // gh-1244: BoldSign rejects string-label signer ids ("The field Id is
+    // invalid"), so create-docusign-envelope mints them as crypto.randomUUID().
+    // A GUID never equals those labels, so every signer-keyed branch below was
+    // dead code (measured live 2026-08-31: contractor Signed event delivered +
+    // HMAC-verified + 200, quotes.contractor_signed_at stayed NULL — #1446).
+    // Roles now resolve via findCompletedContractSigner (payload-parser.ts):
+    // legacy labels first (historical envelopes unchanged), then BoldSign
+    // signer `order` (1 = contractor, 2 = homeowner — handleContractorSign's
+    // convention, the only live mint site for contract envelopes). Unknown
+    // shapes resolve to no match: no write, no misattribution, no throw.
+    // No live API call needed for this coarse status (unlike the D-269 ack
+    // backstop below, which DOES need one — BoldSign's webhook payload never
+    // includes per-field formFields data, only signer-level status).
     const signerStatusList: any[] = parsed.signerDetails;
 
     // ========== CONTRACTOR SIGNING TRACKING ==========
     // On every contract envelope event, check signer status. If the contractor
-    // signer (clientUserId: "contractor_1") has completed, write contractor_signed_at
-    // to the matching quote. Covers both intermediate events (contractor signed,
-    // homeowner pending) and the final completed event (all signed). Idempotent
-    // via IS NULL guard.
+    // signer (role resolved per gh-1446 above) has completed, write
+    // contractor_signed_at to the matching quote. Covers both intermediate
+    // events (contractor signed, homeowner pending) and the final completed
+    // event (all signed). Idempotent via IS NULL guard.
     if (isContract) {
-      const allSigners: any[] = signerStatusList;
-      const contractorSigner = allSigners.find(
-        (s: any) => s.clientUserId === "contractor_1" && s.status === "completed"
-      );
+      const contractorSigner = findCompletedContractSigner(signerStatusList, "contractor");
       if (contractorSigner) {
         const { data: contractorQuote } = await supabase
           .from("quotes")
@@ -433,9 +439,43 @@ serve(async (req) => {
       }
     }
 
+    // ========== HOMEOWNER SIGNING TRACKING (gh-1446) ==========
+    // Symmetric to the contractor write above. Before gh-1446 this function had
+    // NO quotes.homeowner_signed_at write at all — the only writer was the
+    // client-side return bridge, exactly the path that failed in the #1351
+    // ceremony walk (homeowner_signed_at is NULL on the platform's first
+    // completed contract). Idempotent via IS NULL guard; non-fatal like every
+    // tracking write in this function.
+    if (isContract) {
+      const homeownerSigner = findCompletedContractSigner(signerStatusList, "homeowner");
+      if (homeownerSigner) {
+        const { data: homeownerQuote } = await supabase
+          .from("quotes")
+          .select("id, homeowner_signed_at")
+          .eq("docusign_envelope_id", envelopeId)
+          .is("homeowner_signed_at", null)
+          .maybeSingle();
+        if (homeownerQuote) {
+          const { error: hsErr } = await supabase
+            .from("quotes")
+            .update({
+              homeowner_signed_at: homeownerSigner.signedDateTime || new Date().toISOString(),
+            })
+            .eq("id", homeownerQuote.id);
+          if (hsErr) {
+            console.error(`Failed to write homeowner_signed_at for quote ${homeownerQuote.id}:`, hsErr);
+          } else {
+            console.log(`homeowner_signed_at written for quote ${homeownerQuote.id} (claim ${claim.id})`);
+          }
+        }
+      }
+    }
+
     // ========== D-149 COUNTER-SIGNATURE NUDGE (86e1gabf4) ==========
     // Immediate Mailgun nudge to the CONTRACTOR at the homeowner-signed
-    // transition: homeowner_1 completed while contractor_1 has not. The check
+    // transition: homeowner completed while the contractor has not (roles
+    // resolved per gh-1446, replacing the dead homeowner_1/contractor_1
+    // label match). The check
     // is routing-order-agnostic, so it covers both signer orderings used by
     // create-docusign-envelope. Runs AFTER HMAC verification and AFTER the
     // contractor_signed_at tracking write above — nothing upstream changes.
@@ -454,13 +494,8 @@ serve(async (req) => {
     // inserts (86e1tz17j audit-write class).
     if (isContract && status !== "completed" && status !== "declined" && status !== "voided") {
       try {
-        const nudgeSigners: any[] = signerStatusList;
-        const homeownerCompleted = nudgeSigners.find(
-          (s: any) => s.clientUserId === "homeowner_1" && s.status === "completed"
-        );
-        const contractorCompleted = nudgeSigners.find(
-          (s: any) => s.clientUserId === "contractor_1" && s.status === "completed"
-        );
+        const homeownerCompleted = findCompletedContractSigner(signerStatusList, "homeowner");
+        const contractorCompleted = findCompletedContractSigner(signerStatusList, "contractor");
 
         if (homeownerCompleted && !contractorCompleted) {
           // Idempotency: at most one pending-marker (and one immediate nudge)

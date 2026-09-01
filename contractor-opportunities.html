@@ -581,7 +581,7 @@
                     releasedTrades: releasedTrades,
                     bidWindowExpiresAt: claim.bid_window_expires_at || null,  // D-150 / 86e10t2bh
                     estimateFilename: claim.estimate_filename || null,         // 86e10t26y
-                    // gh-484: only expose a real storage path — never the Hover
+                    // gh-484: only expose a real storage path — never the
                     // completion sentinel (`hover_{job}_measurements.json`, written by
                     // hover-webhook, matches no storage object).
                     measurementsFilename: (claim.measurements_filename && !isHoverMeasurementsSentinel(claim.measurements_filename))
@@ -731,7 +731,7 @@
                 bidWindowExpiresAt: '2026-04-22T23:59:59Z', estimateFilename: null
             },
             {
-                // Demo: retail roofing + siding — siding held pending Hover design
+                // Demo: retail roofing + siding — siding held pending property design
                 id: 'OQ-2026-0043', location: 'Zionsville', zip: '46077', jobType: 'retail',
                 trades: ['roofing', 'siding'], damageType: 'Roof + Siding', damageDetail: 'Age / Wear', insuranceCarrier: null,
                 material: 'OC Duration STORM — Class 4', estimatedValue: null,
@@ -765,7 +765,7 @@
         /**
          * D-165: Per-trade release status badges.
          * Shows a status badge for each trade indicating whether bids are open
-         * or held pending a homeowner action (e.g. retail siding design in Hover).
+         * or held pending a homeowner action (e.g. retail siding property design).
          * Only renders when the opportunity has any unreleased trade OR multiple trades.
          */
         function getTradeReleaseBadges(opp) {
@@ -838,7 +838,7 @@
 
         // gh-484: hover-webhook stamps a synthesized `hover_{job}_measurements.json`
         // completion marker onto claims.measurements_filename that names no storage
-        // object (the real Hover artifact is served by get-hover-pdf, separately).
+        // object (the real measurement artifact is served by get-hover-pdf, separately).
         // Ported from contractor-bid-form.html's isHoverMeasurementsSentinel().
         function isHoverMeasurementsSentinel(filename) {
             return /^hover_\d+_measurements\.json$/i.test(filename || '');
@@ -852,7 +852,7 @@
             if (opp.estimateFilename) {
                 parts.push('<button class="doc-link-btn" id="loss-' + opp.id + '" onclick="openEstimatePdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4C4; Loss Sheet</button>');
             }
-            // gh-484: homeowner-uploaded measurement file — independent of the Hover
+            // gh-484: homeowner-uploaded measurement file — independent of the measurement-
             // PDF button / hover_orders row state below. Guarded by the sentinel above
             // so contractors never get a "View Measurements" link that can only fail.
             if (opp.measurementsFilename) {
@@ -914,7 +914,7 @@
                 if (!data?.url) throw new Error('No PDF URL returned');
                 window.open(data.url, '_blank');
             } catch (err) {
-                console.error('Failed to open Hover PDF:', err);
+                console.error('Failed to open measurement PDF:', err);
                 alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; Measurement PDF'; }
@@ -973,13 +973,13 @@
 
                 let sourceBlock = o.jobType === 'retail'
                     ? '<div class="info-block"><span class="info-label">Job Type</span><span class="info-value">Retail / Cash</span></div>'
-                    : '<div class="info-block"><span class="info-label">Insurance Carrier</span><span class="info-value">' + (o.insuranceCarrier||'N/A') + '</span></div>';
+                    : '<div class="info-block"><span class="info-label">Insurance Carrier</span><span class="info-value">' + escHtml(o.insuranceCarrier||'N/A') + '</span></div>';
 
                 let matBlock = '';
                 if (o.jobType === 'repair' && o.existingShingle)
-                    matBlock = '<div class="info-block"><span class="info-label">Existing Shingle (must match)</span><span class="info-value">' + o.existingShingle + '</span></div>';
+                    matBlock = '<div class="info-block"><span class="info-label">Existing Shingle (must match)</span><span class="info-value">' + escHtml(o.existingShingle) + '</span></div>';
                 else if (o.material)
-                    matBlock = '<div class="info-block"><span class="info-label">Material Selected</span><span class="info-value">' + o.material + '</span></div>';
+                    matBlock = '<div class="info-block"><span class="info-label">Material Selected</span><span class="info-value">' + escHtml(o.material) + '</span></div>';
 
                 let notes = '';
                 if (o.homeownerNotes) {
@@ -1010,14 +1010,14 @@
 
                 return '<div class="opportunity-card' + (isUrgent?' urgent-card':'') + '" data-claim-id="' + escHtml(String(o.id)) + '">'
                     + '<div class="opportunity-header"><div>'
-                    + '<h2 class="opportunity-id">Project in ' + o.location + (o.zip ? ', IN ' + o.zip : '') + '</h2>'
-                    + '<p class="opportunity-location">' + o.location + ', ' + o.zip + (o.distance !== null ? ' &mdash; ~' + o.distance + ' mi away' : '') + '</p>'
+                    + '<h2 class="opportunity-id">Project in ' + escHtml(o.location) + (o.zip ? ', IN ' + escHtml(o.zip) : '') + '</h2>'
+                    + '<p class="opportunity-location">' + escHtml(o.location) + ', ' + escHtml(o.zip) + (o.distance !== null ? ' &mdash; ~' + o.distance + ' mi away' : '') + '</p>'
                     + '</div><div class="header-badges">' + getJobTypeBadge(o.jobType) + getMultiTradeBadge(o.trades) + getUrgentBadge(o) + getExpiryCountdownHtml(o) + '</div></div>'
                     + '<div class="badge-group" style="margin-bottom:4px">' + getTradeBadges(o.trades) + '</div>'
                     + getTradeReleaseBadges(o)
                     + '<div style="margin-bottom:var(--sp-4)"></div>'
                     + '<div class="opportunity-main-info">'
-                    + '<div class="info-block"><span class="info-label">Damage Type</span><span class="info-value">' + o.damageType + ' &mdash; ' + o.damageDetail + '</span></div>'
+                    + '<div class="info-block"><span class="info-label">Damage Type</span><span class="info-value">' + escHtml(o.damageType) + ' &mdash; ' + escHtml(o.damageDetail) + '</span></div>'
                     + sourceBlock + matBlock
                     + '<div class="info-block"><span class="info-label">' + vd.label + '</span><span class="info-value">' + vd.value + '</span></div>'
                     + '</div>'

@@ -1603,7 +1603,7 @@
             For insurance jobs, homeowners often receive identical bids at the same RCV price. This is your chance to stand out. Tell homeowners exactly what's included in your proposal at no extra cost, and what's available as an add-on.
           </p>
 
-          <!-- ── Hover Roofing Measurements Panel (86e10t2cb — retail roofing only) ── -->
+          <!-- ── Roofing Measurements Panel (86e10t2cb — retail roofing only) ── -->
           <div id="hoverRoofingPanel" style="display:none;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-6);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-4);">
               <div>
@@ -2116,7 +2116,7 @@
           <h3 style="font-size:1.1rem;margin-bottom:var(--sp-2);">🧱 Siding Project Details</h3>
           <p style="font-size:0.85rem;color:#6B7280;margin-bottom:var(--sp-6);">This is a retail siding project. The homeowner designs their siding in our property design tool, so you can see exactly what product and color was selected before bidding.</p>
 
-          <!-- Hover Design Summary Panel -->
+          <!-- Design Summary Panel -->
           <div id="hoverDesignPanel" style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-8);">
 
             <!-- Panel header row -->
@@ -2431,7 +2431,7 @@
     let gutterTradeActive = false;
     let sidingTradeActive = false;
     let gutterGuardCount = 0;
-    let sidingWallSquares = null; // populated from Hover data; used by syncSidingTotal
+    let sidingWallSquares = null; // populated from measurement data; used by syncSidingTotal
 
     // ── Siding Total Sync (module-level so loadHoverSidingData + Change Bid can call it) ──
     // For siding-only retail jobs the fee calculator derives total from per-sq × wall_squares + fixed items.
@@ -2628,7 +2628,7 @@
         if (va) va.style.display = '';
         const slc = document.getElementById('secondLayerContingencySection');
         if (slc) slc.style.display = '';
-        // Show Hover roofing panel (86e10t2cb)
+        // Show roofing measurements panel (86e10t2cb)
         const hrp = document.getElementById('hoverRoofingPanel');
         if (hrp) hrp.style.display = 'block';
         loadHoverRoofingData();
@@ -2863,13 +2863,13 @@
       // Address line
       if (addrEl && payload.job_address) addrEl.textContent = payload.job_address;
 
-      // Hover job links
+      // Measurement job links
       if (payload.hover_job_id) {
         const jobUrl = 'https://hover.to/jobs/' + payload.hover_job_id;
         if (link3D) link3D.href = jobUrl;
         if (directLnk) directLnk.href = jobUrl;
 
-        // "Open Hover 3D Design" button — siding claims only
+        // "Open 3D Property Design" button — siding claims only
         const isSiding = currentClaim && Array.isArray(currentClaim.trades) && currentClaim.trades.includes('siding');
         if (isSiding && btn3D) btn3D.style.display = 'block';
       }
@@ -2969,7 +2969,7 @@
       if (e.key === 'ArrowRight')  _stepPhotoModal(1);
     }
 
-    // ── Hover Siding Data Loader ──
+    // ── Siding Design Data Loader ──
     async function loadHoverSidingData() {
       const btn        = document.getElementById('loadHoverSidingDataBtn');
       const content    = document.getElementById('hoverDesignContent');
@@ -2998,7 +2998,7 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        // ── "View in Hover" link ──────────────────────────────────────
+        // ── "View property design" link ──────────────────────────────────────
         if (data.hover_job_id) {
           const linkDiv = document.getElementById('hoverDesignLink');
           const linkEl  = document.getElementById('hoverJobLink');
@@ -3132,7 +3132,7 @@
       } catch (err) {
         console.warn('loadHoverSidingData error:', err);
         content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Use the "View property design" button above to view manually.</span>';
-        // Still show the Hover link even on failure so contractor isn't blocked
+        // Still show the design link even on failure so contractor isn't blocked
         const linkDiv = document.getElementById('hoverDesignLink');
         if (linkDiv) linkDiv.style.display = 'block';
         btn.textContent = 'Retry';
@@ -3284,7 +3284,7 @@
         // Second-layer tear-off contingency
         document.getElementById('secondLayerContingencySection')?.style.setProperty('display', 'block');
         _wireSlcListeners();
-        // Hover roofing panel (86e10t2cb — non-wizard retail roofing)
+        // Roofing measurements panel (86e10t2cb — non-wizard retail roofing)
         const hrp = document.getElementById('hoverRoofingPanel');
         if (hrp) hrp.style.display = 'block';
         loadHoverRoofingData();
@@ -3334,7 +3334,7 @@
       syncChimney();
     }
 
-    // ── Hover Roofing Measurements (86e10t2cb) ──
+    // ── Roofing Measurements Loader (86e10t2cb) ──
     async function loadHoverRoofingData() {
       const btn     = document.getElementById('loadHoverRoofingBtn');
       const content = document.getElementById('hoverRoofingContent');
@@ -3359,7 +3359,7 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        // Hover job link
+        // Measurement job link
         if (data.hover_job_id) {
           const linkDiv = document.getElementById('hoverRoofingLink');
           const linkEl  = document.getElementById('hoverRoofingJobLink');
@@ -3371,7 +3371,7 @@
           if (addrEl) addrEl.textContent = data.job_address;
         }
 
-        // Try to extract roofing-specific measurements from the Hover payload
+        // Try to extract roofing-specific measurements from the vendor payload
         const totalSquares  = data.total_squares  || data.roof_squares  || null;
         const ridgeLength   = data.ridge_length   || null;
         const hipLength     = data.hip_length     || null;
@@ -4157,7 +4157,7 @@
     }
 
     // ── Bid Form Document Links (86e10t26y) ───────────────────────────────────
-    // Called after currentClaim is loaded. Renders loss sheet + Hover PDF buttons.
+    // Called after currentClaim is loaded. Renders loss sheet + measurement PDF buttons.
     function renderBidFormDocLinks() {
       if (!currentClaim) return;
       const el = document.getElementById('bidFormDocLinks');
@@ -4167,16 +4167,16 @@
       if (currentClaim.estimate_filename) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormEstimatePdf()">&#x1F4C4; View Loss Sheet</button>');
       }
-      // Homeowner-uploaded measurement file — independent of Hover PDF / hover_orders state.
+      // Homeowner-uploaded measurement file — independent of the measurement PDF / hover_orders state.
       // gh-484: contractors previously had no way to open this even when has_measurements was true.
       // gh-484 follow-up: hover-webhook stamps a synthesized `hover_{job}_measurements.json`
       // sentinel on claims (see supabase/functions/hover-webhook/index.ts) that names no storage
-      // object — the real Hover artifact is a PDF served by the Hover button below. Rendering off
+      // object — the real measurement artifact is a PDF served by the measurement-PDF button below. Rendering off
       // a bare truthiness check therefore offers a link that can only fail. Guard on the sentinel.
       if (currentClaim.measurements_filename && !isHoverMeasurementsSentinel(currentClaim.measurements_filename)) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormMeasurementsPdf()">&#x1F4D0; View Measurements</button>');
       }
-      // Always offer Hover PDF — function handles gracefully if no Hover job exists
+      // Always offer the measurement PDF — function handles gracefully if no measurement job exists
       if (currentClaim.id && !CONFIG.DEMO_MODE) {
         parts.push('<button class="doc-link-btn-form" id="bidFormHoverBtn" onclick="openBidFormHoverPdf()">&#x1F4CF; View Measurement PDF</button>');
       }
@@ -4247,7 +4247,7 @@
         hoverPdfLink.click();
         document.body.removeChild(hoverPdfLink);
       } catch (err) {
-        console.error('Failed to open Hover PDF:', err);
+        console.error('Failed to open measurement PDF:', err);
         alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
       } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; View Measurement PDF'; }
@@ -5859,11 +5859,13 @@
       const icons = { roofing: '🏠', siding: '🧱', gutters: '🌧️', windows: '🪟' };
       const labels = { roofing: 'Roofing', siding: 'Siding', gutters: 'Gutters', windows: 'Windows' };
 
+      // gh-1381 (CodeQL #13): escape every dynamic value entering innerHTML —
+      // defense-in-depth behind the KNOWN_TRADES whitelist at the call site.
       checkboxContainer.innerHTML = trades.map(t =>
         '<label style="display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);background:var(--white);border:2px solid #E5E7EB;border-radius:var(--radius-md);cursor:pointer;transition:all 0.2s;">'
-        + '<input type="checkbox" class="trade-check" value="' + t + '" checked>'
+        + '<input type="checkbox" class="trade-check" value="' + escHtmlBid(t) + '" checked>'
         + '<span style="font-size:1.1rem;">' + (icons[t]||'') + '</span>'
-        + '<span style="font-weight:600;color:var(--navy);">' + (labels[t]||t) + '</span></label>'
+        + '<span style="font-weight:600;color:var(--navy);">' + escHtmlBid(labels[t]||t) + '</span></label>'
       ).join('');
 
       const tradeChecks = document.querySelectorAll('.trade-check');
@@ -5889,12 +5891,13 @@
 
         if (isBundled && selected.length >= 2) {
           breakdownCard.style.display = 'block';
+          // gh-1381 (CodeQL #10): same whitelist upstream; escape at the sink too.
           breakdownFields.innerHTML = selected.map(t =>
             '<div style="display:flex;align-items:center;gap:var(--sp-4);margin-bottom:var(--sp-4);">'
-            + '<span style="min-width:100px;font-weight:600;color:var(--navy);">' + (icons[t]||'') + ' ' + (labels[t]||t) + '</span>'
+            + '<span style="min-width:100px;font-weight:600;color:var(--navy);">' + (icons[t]||'') + ' ' + escHtmlBid(labels[t]||t) + '</span>'
             + '<div class="input-prefix" style="flex:1;">'
             + '<span>$</span>'
-            + '<input type="number" class="trade-price" data-trade="' + t + '" step="0.01" min="0" placeholder="Price for ' + (labels[t]||t).toLowerCase() + '">'
+            + '<input type="number" class="trade-price" data-trade="' + escHtmlBid(t) + '" step="0.01" min="0" placeholder="Price for ' + escHtmlBid((labels[t]||t).toLowerCase()) + '">'
             + '</div></div>'
           ).join('');
 
@@ -5954,9 +5957,16 @@
         }
 
         // Multi-trade project check (non-wizard path)
+        // gh-1381 (CodeQL #13/#10): the trades URL param is attacker-controllable —
+        // a crafted link could reflect script through it. Whitelist to the known
+        // trade keys before anything reaches an innerHTML sink.
+        const KNOWN_TRADES = ['roofing', 'siding', 'gutters', 'windows'];
         const tradesParam = urlParams.get('trades');
         if (tradesParam) {
-          try { initTradeSelection(JSON.parse(tradesParam)); } catch(e) {}
+          try {
+            const parsedTrades = JSON.parse(tradesParam);
+            initTradeSelection(Array.isArray(parsedTrades) ? parsedTrades.filter(t => KNOWN_TRADES.includes(t)) : []);
+          } catch(e) {}
         } else if (currentClaim && currentClaim.trades && currentClaim.trades.length > 1) {
           initTradeSelection(currentClaim.trades);
         }

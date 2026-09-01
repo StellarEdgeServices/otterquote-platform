@@ -972,6 +972,15 @@
               </label>
             </div>
 
+            <!-- gh-1395: contractor platform disclosure (R-120 approved verbatim,
+                 https://github.com/StellarEdgeServices/otterquote-platform/issues/1395#issuecomment-5483767165).
+                 Disclosure text only -- NOT a gate. No checkbox, no Proceed-button
+                 dependency; c25392a released that gate for contractors and it stays
+                 released. Populated by applyRoleCopy() for role=contractor only;
+                 stays empty and hidden otherwise, so the homeowner path is
+                 byte-identical. -->
+            <div class="checkbox-label-text" id="contractorAttestationDisclosure" style="display: none; margin-bottom: var(--sp-8);"></div>
+
             <!-- Step 1 Actions -->
             <div class="step-actions">
               <div class="step-actions-primary">
@@ -1018,7 +1027,7 @@
                 <div style="font-size: 2rem; margin-bottom: var(--sp-4);">&#x23F3;</div>
                 <p style="color: var(--amber); font-weight: 600; margin-bottom: var(--sp-2);">Waiting on your contractor to sign first</p>
                 <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-6);">Indiana law (IC 24-5-11) requires your contractor to sign before you can. We will let you know as soon as it is your turn &mdash; check back anytime.</p>
-                <button class="button button-primary" onclick="initDocuSign()">Check Again</button>
+                <button class="button button-primary" onclick="recheckSigningState()">Check Again</button>
               </div>
 
               <!-- DocuSign Embedded Signing iframe -->
@@ -1140,13 +1149,47 @@
      *   Step 3: Confirmation (deductible placeholder)
      */
 
+    // ── gh-1446 link (2): tolerant signed-flag parser ──
+    // BoldSign's redirect can mangle the return URL's nested query — e.g.
+    // appending "?event=Signed" onto a URL that already carries "?", leaving
+    // "...&signed=true?event=Signed" — so URLSearchParams alone misses the
+    // flag (measured live in the #1351 walk: the branch below never ran on
+    // either leg). Tokenize on every query/hash delimiter instead and accept
+    // the flag wherever it lands: clean query param, mangled tail, or hash.
+    // Pure function — exercised standalone by the gh-1446 parse harness.
+    function isSignedReturn(search, hash) {
+      const raw = String(search || '') + '#' + String(hash || '');
+      for (const chunk of [raw, _tryDecodeOnce(raw)]) {
+        if (!chunk) continue;
+        for (const token of chunk.split(/[?&#]/)) {
+          const eq = token.indexOf('=');
+          if (eq < 0) continue;
+          const key = token.slice(0, eq);
+          const value = token.slice(eq + 1);
+          if (key === 'signed' && value === 'true') return true;
+          if (key === 'event' && value === 'signing_complete') return true;
+        }
+      }
+      return false;
+    }
+    // Second tokenize pass over the percent-decoded string, in case the
+    // appending side re-encoded the query it was gluing onto. Returns null
+    // when decoding changes nothing (skip the redundant pass) or throws.
+    function _tryDecodeOnce(s) {
+      try {
+        const d = decodeURIComponent(s);
+        return d === s ? null : d;
+      } catch (_) {
+        return null;
+      }
+    }
+
     // ── Iframe Detection ──
     // If this page is loaded inside the DocuSign iframe (return URL redirect),
     // notify the parent window and stop.
     const _isInIframe = (window.self !== window.top);
     if (_isInIframe) {
-      const _p = new URLSearchParams(window.location.search);
-      if (_p.get('signed') === 'true' || _p.get('event') === 'signing_complete') {
+      if (isSignedReturn(window.location.search, window.location.hash)) {
         window.parent.postMessage(JSON.stringify({ type: 'session_end', event: 'signing_complete' }), '*');
         document.addEventListener('DOMContentLoaded', () => {
           document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#10b981;font-size:1.2rem;">Contract signed! Returning...</div>';
@@ -1192,9 +1235,8 @@
       const contractorIdParam = params.get('contractor_id');
       const quoteIdParam = params.get('quote_id');
 
-      // Check if returning from DocuSign signing (redirect-based completion)
-      const signed = params.get('signed');
-      const event = params.get('event');
+      // Returning-from-signing detection moved to isSignedReturn() (gh-1446):
+      // params.get('signed') missed the flag when BoldSign mangled the tail.
 
       try {
         // ── Resolve claim_id and contractor_id from URL params ──
@@ -1352,8 +1394,10 @@
         // Set back link
         document.getElementById('backToBidsLink').href = `/bids.html?claim_id=${state.claimId}`;
 
-        // If returning from DocuSign with signed=true, advance to done
-        if (signed === 'true' || event === 'signing_complete') {
+        // If returning from DocuSign with signed=true, advance to done.
+        // gh-1446: parsed tolerantly — BoldSign's redirect can corrupt the
+        // tail of the nested query (see isSignedReturn).
+        if (isSignedReturn(window.location.search, window.location.hash)) {
           state.contractSigned = true;
           await onSigningComplete();
         }
@@ -1582,22 +1626,30 @@
     //   would rely on if the platform's non-party status were challenged. A tick
     //   box that says the wrong thing is worse evidence than no tick box.
     //
-    //   FLAGGED OFF -- positive contractor-facing REPLACEMENT copy. There is no
-    //   Dustin-approved contractor attestation for contract signing (R-120:
-    //   legal wording gets a human read), so none is inlined here and none was
-    //   written by the Code lane. The flag stays false until approved text lands
-    //   on gh-1395. While it is false the homeowner path is byte-identical and
-    //   the contractor simply does not see the homeowner's words.
-    const CONTRACTOR_COPY_ENABLED = false;
+    //   POSITIVE contractor-facing REPLACEMENT copy, gated per-string. Each
+    //   entry in CONTRACTOR_COPY renders only once it is individually
+    //   non-null, so a partially-approved copy set renders only the parts
+    //   that were actually approved (R-120: legal wording gets a human read;
+    //   nothing here is invented by the Code lane). All three strings are now
+    //   approved on gh-1395: attestationLabel by Dustin (R-120, Tier C,
+    //   comment 5483767165) and subtitle + prefillPanel by the CEO (Tier B
+    //   "ship it" ruling, comment 5483028058). The per-string gating stays as
+    //   the mechanism for any future copy addition.
+    const CONTRACTOR_COPY_ENABLED = true;
 
-    // Contractor-facing REPLACEMENT copy. Intentionally empty. The approved
-    // wording does not exist yet, and nothing in this object was written by the
-    // Code lane. When Dustin approves the text on gh-1395, inline it here
-    // verbatim and flip the flag above -- that is the whole change.
+    // Contractor-facing REPLACEMENT copy. Each string ships only once
+    // Dustin has approved that exact wording on the issue; nothing here is
+    // invented by the Code lane.
     const CONTRACTOR_COPY = {
-      subtitle: null,
-      prefillPanel: null,
-      attestationLabel: null, // R-120: Tier C, Dustin-approved verbatim or not at all
+      // CEO-ruled Tier B ("ship it"), 2026-08-31 -- ship byte-exact, no
+      // re-wording, no re-punctuation:
+      // https://github.com/StellarEdgeServices/otterquote-platform/issues/1395#issuecomment-5483028058
+      subtitle: 'Review the agreement and sign electronically.',
+      prefillPanel: 'This contract has been pre-filled with the project details from the accepted bid.',
+      // R-120 approved verbatim by Dustin, 2026-08-31 -- ship byte-exact, no
+      // re-wording, no re-punctuation:
+      // https://github.com/StellarEdgeServices/otterquote-platform/issues/1395#issuecomment-5483767165
+      attestationLabel: 'I understand I am entering into a contract directly with the homeowner named above. Otter Quotes is not a party to this agreement.',
     };
 
     function applyRoleCopy() {
@@ -1615,14 +1667,22 @@
       const noCost = document.getElementById('noCostCallout');
       if (noCost) noCost.style.display = 'none';
 
-      // --- FLAGGED: positive contractor copy, pending approved wording ---
+      // --- FLAGGED: positive contractor-facing replacement copy ---
       if (CONTRACTOR_COPY_ENABLED) {
         const subtitle = document.getElementById('contractHeaderSubtitle');
         const prefill = document.getElementById('prefillPanelText');
+        const attestation = document.getElementById('contractorAttestationDisclosure');
         // Each guarded on its own value: a partially-approved copy set must
         // render only the parts that were actually approved.
         if (subtitle && CONTRACTOR_COPY.subtitle) subtitle.textContent = CONTRACTOR_COPY.subtitle;
         if (prefill && CONTRACTOR_COPY.prefillPanel) prefill.textContent = CONTRACTOR_COPY.prefillPanel;
+        // gh-1395: disclosure text only -- NOT a gate. No checkbox, no
+        // Proceed-button dependency; the homeowner attestation's gate stays
+        // released for contractors.
+        if (attestation && CONTRACTOR_COPY.attestationLabel) {
+          attestation.textContent = CONTRACTOR_COPY.attestationLabel;
+          attestation.style.display = '';
+        }
       }
 
       assertRoleCopyCoherent();
@@ -1641,6 +1701,18 @@
       }
       if (noCost && noCost.style.display !== 'none') {
         problems.push('homeowner-only "No Cost to You" fee callout is visible to a contractor');
+      }
+      // gh-1395 reopen: the guard must cover all four elements the issue
+      // enumerated, not just the two the first patch touched. A null entry in
+      // CONTRACTOR_COPY or a disabled flag leaves the homeowner wording in
+      // place, and that disagreement must be loud.
+      const subtitle = document.getElementById('contractHeaderSubtitle');
+      const prefill = document.getElementById('prefillPanelText');
+      if (subtitle && subtitle.textContent !== CONTRACTOR_COPY.subtitle) {
+        problems.push('homeowner subtitle is being served to a contractor');
+      }
+      if (prefill && prefill.textContent !== CONTRACTOR_COPY.prefillPanel) {
+        problems.push('homeowner pre-fill panel text is being served to a contractor');
       }
       if (problems.length) {
         console.error('gh-1395 role/copy mismatch:', problems.join('; '));
@@ -1751,6 +1823,47 @@
       if (retryBtn) retryBtn.style.display = 'none';
     }
 
+    // ── gh-1446 link (3): "Check Again" must see a landed signature ──
+    // state.contractorAlreadySigned was computed once at page init, so a
+    // contractor signature landing after load (webhook write or the
+    // contractor's client-side stamp) was invisible to the waiting homeowner
+    // without a full reload — "Check Again" re-ran initDocuSign() against the
+    // same stale state. Re-fetch the quote row first, refresh the signing
+    // state, then re-run initDocuSign() against fresh truth.
+    async function recheckSigningState() {
+      try {
+        let quoteQuery = sb.from('quotes')
+          .select('contractor_signed_at, homeowner_signed_at, docusign_envelope_id');
+        // Mirror the init-time quote lookup keys (and onSigningComplete's
+        // update keys): prefer the exact quote id, else claim + contractor.
+        quoteQuery = state.quoteId
+          ? quoteQuery.eq('id', state.quoteId).single()
+          : quoteQuery.eq('claim_id', state.claimId)
+              .eq('contractor_id', state.contractorId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single();
+        const { data: freshQuote, error: quoteErr } = await quoteQuery;
+        if (quoteErr) throw quoteErr;
+        if (freshQuote) {
+          state.contractorAlreadySigned = !!freshQuote.contractor_signed_at;
+          if (freshQuote.docusign_envelope_id) {
+            state.existingEnvelopeId = freshQuote.docusign_envelope_id;
+          }
+          if (state.bid) {
+            state.bid.contractor_signed_at = freshQuote.contractor_signed_at;
+            state.bid.homeowner_signed_at = freshQuote.homeowner_signed_at;
+            state.bid.docusign_envelope_id = freshQuote.docusign_envelope_id;
+          }
+        }
+      } catch (err) {
+        // Non-fatal: fall through to initDocuSign(), which shows the same
+        // waiting state the button showed before this refresh existed.
+        console.error('Error re-checking signing state:', err);
+      }
+      initDocuSign();
+    }
+
     // ── Initialize DocuSign: Create envelope and load signing iframe ──
     async function initDocuSign() {
       const loadingEl = document.getElementById('docusignLoading');
@@ -1814,13 +1927,21 @@
             document_type: docType,
             contractor_id: state.contractorId,
             quote_id: state.quoteId,
-            // #495: send the contractor back HERE (?signed=true) so the client
-            // completion fast-path (contractor_signed_at write + done screen)
-            // runs. The EF default returned contractors to contractor-bid-form.
-            ...(isContractorSigning ? {
-              return_url: window.location.origin + '/contract-signing.html?claim_id=' +
-                encodeURIComponent(state.claimId) + '&role=contractor&signed=true'
-            } : {}),
+            // #495: send the signer back HERE (?signed=true) so the client
+            // completion fast-path (signed_at write + done screen) runs. The
+            // EF's contractor default returned to contractor-bid-form; its
+            // homeowner default already points here, but minting the URL on
+            // this side lets us harden it (gh-1446) for both legs.
+            // gh-1446 link (2): BoldSign appends its own query to the redirect
+            // URL, which can glue "?event=..." onto a URL that already carries
+            // "?" and corrupt the FINAL param ("...&signed=true?event=Signed").
+            // The trailing _tail=1 param is sacrificial: appended junk corrupts
+            // it instead of signed=true. The parse side (isSignedReturn) stays
+            // tolerant so envelopes minted before this change still complete.
+            return_url: window.location.origin + '/contract-signing.html?claim_id=' +
+              encodeURIComponent(state.claimId) + '&role=' +
+              (isContractorSigning ? 'contractor' : 'homeowner') +
+              '&signed=true&_tail=1',
             signer: {
               email: signerEmail,
               name: signerName,

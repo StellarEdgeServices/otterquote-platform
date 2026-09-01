@@ -79,6 +79,14 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 .tile.measured-zero .tile-flag { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-weight: 700; color: #047857; background: #D1FAE5; padding: 0.1rem 0.4rem; border-radius: 0.3rem; vertical-align: middle; }
 .tile.not-measured { border-style: dashed; border-color: #CBD5E1; background: #F8FAFC; }
 .tile.not-measured .tile-value { color: var(--slate); font-size: 1.1rem; }
+.tile .tile-note { font-size: 0.7rem; color: #64748B; margin-top: 0.3rem; line-height: 1.35; }
+/* NOT RUN (gh-1340 phase 4) — a data source that EXISTS but did not answer
+   this request (Stripe read: key missing, HTTP error, refused pagination).
+   Fourth distinct treatment: red dashed, vs measured (white), measured-zero
+   (green) and not-measured (grey dashed). Never renders a number. */
+.tile.not-run { border-style: dashed; border-color: #FCA5A5; background: #FEF2F2; }
+.tile.not-run .tile-value { color: #B91C1C; font-size: 1.05rem; }
+.tile.not-run .tile-note { color: #991B1B; }
 
 /* ── Otter Quotes line page: audience cards ── */
 .audience-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
@@ -175,6 +183,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  * banner rather than fabricated content. CRM is the real phase-1 build: one
  * roster per audience, checklist ticked from get-business-lines-dashboard's
  * response, days-since-movement computed SERVER-SIDE by that EF (never here).
+ *
+ * Phase 4: Revenue MTD tile (top page OQ card + OQ line page) fed by the
+ * EF's server-side Stripe read — see revenueTileHtml() for the honest-state
+ * contract (measured / measured-zero / NOT RUN, never a fabricated $0).
  *
  * URL state: ?line=otterquotes&audience=homeowner|contractor|referral_partner&tab=crm|marketing
  * No params = top page. line=otterquotes, no audience = OQ line page.
@@ -284,6 +296,40 @@ function tileHtml(label, tileVal) {
     '<div class="tile-value">' + tileVal.value + flag + '</div></div>';
 }
 
+function fmtUsd(cents) {
+  return '$' + (Number(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * gh-1340 phase 4 — Revenue MTD, the one tile whose data source lives outside
+ * Supabase (server-side Stripe read inside the EF). Honest states:
+ *   measured       -> real dollars from a completed Stripe read
+ *   measured_zero  -> a real $0.00 Stripe actually answered (green flag)
+ *   not_run        -> the read did not complete (key missing / HTTP error /
+ *                     refused pagination). Prints NOT RUN with the query
+ *                     count and the EF's reason — NEVER $0.
+ * An absent field means the deployed EF predates the revenue read: also
+ * NOT RUN (0 queries), which is exactly true.
+ */
+function revenueTileHtml(rev) {
+  if (!rev || rev.kind === 'not_run') {
+    var queries = rev ? Number(rev.queries) || 0 : 0;
+    var reason = rev && rev.reason ? rev.reason : 'Deployed EF predates the revenue read — deploy owed.';
+    return '<div class="tile not-run"><div class="tile-label">Revenue MTD (Stripe)</div>' +
+      '<div class="tile-value">NOT RUN (' + queries + ' ' + (queries === 1 ? 'query' : 'queries') + ')</div>' +
+      '<div class="tile-note">' + esc(reason) + '</div></div>';
+  }
+  var cls = rev.kind === 'measured_zero' ? 'tile measured-zero' : 'tile';
+  var flag = rev.kind === 'measured_zero' ? '<span class="tile-flag">MEASURED ZERO</span>' : '';
+  var chargeCount = Number(rev.charge_count) || 0;
+  var note = 'Succeeded charges net of refunds since ' + esc(String(rev.window_start_iso || '').slice(0, 10)) +
+    ' (UTC) &middot; ' + chargeCount + ' charge' + (chargeCount === 1 ? '' : 's') +
+    (rev.non_usd_ignored ? ' &middot; ' + Number(rev.non_usd_ignored) + ' non-USD ignored' : '');
+  return '<div class="' + cls + '"><div class="tile-label">Revenue MTD (Stripe)</div>' +
+    '<div class="tile-value">' + fmtUsd(rev.value_cents) + flag + '</div>' +
+    '<div class="tile-note">' + note + '</div></div>';
+}
+
 function renderTopPage() {
   var lines = state.data.lines;
   var html = '<p class="breadcrumb">All Stellar Edge Services business lines</p>';
@@ -298,6 +344,7 @@ function renderTopPage() {
           tileHtml('Contractors', l.stats.contractors_total) +
           tileHtml('Referral partners', l.stats.referral_partners_total) +
           tileHtml('Measurement orders', l.stats.measurement_orders) +
+          revenueTileHtml(l.revenue_mtd) +
         '</div>' +
         '<a class="line-link" href="?line=' + esc(l.key) + '">View ' + esc(l.label) + ' &rarr;</a>' +
       '</div>';
@@ -318,7 +365,9 @@ function renderLinePage() {
   var d = state.data.audiences;
   var html = '<p class="breadcrumb"><a href="?">All business lines</a> &rsaquo; Otter Quotes</p>';
   html += '<div class="tile-grid">' +
-    tileHtml('Homeowners (total / non-test)', line.stats.homeowners_total) +
+    // Label fix (gh-1340 CTO review, minor): this tile shows ONLY the total;
+    // the non-test figure is its own tile, next.
+    tileHtml('Homeowners (total)', line.stats.homeowners_total) +
     tileHtml('Non-test homeowners', line.stats.homeowners_non_test) +
     tileHtml('Claims', line.stats.claims_total) +
     tileHtml('Non-test claims', line.stats.claims_non_test) +
@@ -327,6 +376,7 @@ function renderLinePage() {
     tileHtml('Referral partners', line.stats.referral_partners_total) +
     tileHtml('Non-test referral partners', line.stats.referral_partners_non_test) +
     tileHtml('Measurement orders (hover_orders)', line.stats.measurement_orders) +
+    revenueTileHtml(line.revenue_mtd) +
   '</div>';
 
   html += '<div class="audience-cards">';
@@ -409,7 +459,10 @@ function renderAudiencePage(audience, tab) {
 
 function checklistHtml(checklist) {
   return '<div class="checklist">' + checklist.map(function (c) {
-    var count = (c.count !== undefined) ? ' (' + c.count + ')' : '';
+    // gh-1381 (#42): count is meant to be numeric — constrain the shape
+    // before interpolation instead of trusting the EF response, same
+    // pattern as the hover_job_id taint barrier (#1451).
+    var count = (typeof c.count === 'number' && isFinite(c.count)) ? ' (' + c.count + ')' : '';
     return '<span class="check-item ' + (c.done ? 'done' : 'pending') + '">' + (c.done ? '✓' : '○') + ' ' + esc(c.label) + count + '</span>';
   }).join('') + '</div>';
 }
@@ -418,7 +471,16 @@ function movementHtml(m) {
   if (m.bucket === 'complete') return '<span class="movement-badge movement-complete">✅ Complete</span>';
   if (m.days === null) return '<span class="movement-badge movement-unknown">No movement recorded</span>';
   var icon = m.bucket === 'green' ? '🟢' : m.bucket === 'yellow' ? '🟡' : '🔴';
-  return '<span class="movement-badge movement-' + m.bucket + '">' + icon + ' ' + m.days + ' day' + (m.days === 1 ? '' : 's') + '</span>';
+  // gh-1381 (#42): m.bucket was interpolated straight into an HTML class
+  // attribute unescaped — an EF response value containing a `"` could
+  // break out of the attribute and inject markup/attributes. Constrain to
+  // the known bucket set before interpolation; the icon ternary above
+  // already only compares m.bucket (safe regardless of its content), so
+  // this only changes what reaches the DOM. m.days gets the same numeric
+  // shape constraint.
+  var safeBucket = (m.bucket === 'red' || m.bucket === 'yellow' || m.bucket === 'green' || m.bucket === 'unknown') ? m.bucket : 'unknown';
+  var days = (typeof m.days === 'number' && isFinite(m.days)) ? m.days : 0;
+  return '<span class="movement-badge movement-' + safeBucket + '">' + icon + ' ' + days + ' day' + (days === 1 ? '' : 's') + '</span>';
 }
 
 function detailHtml(r) {

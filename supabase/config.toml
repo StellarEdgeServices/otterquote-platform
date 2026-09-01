@@ -323,3 +323,17 @@ verify_jwt = true
 # Auth performed in-handler. Pinned at creation.
 [functions.get-business-lines-dashboard]
 verify_jwt = false
+
+# gh-1412: manual measurement-fulfilment loop notifications. Both do auth
+# in-handler (the project-wide ES256/HS256 gateway mismatch makes verify_jwt
+# unreliable for these callers) and are pinned at creation so a flagless
+# `functions deploy` (CLI default verify_jwt=true) can't silently flip them.
+# notify-measurement-order: machine-called by create-measurement-order with the
+#   service-role key as bearer — same model as notify-admin-new-contractor.
+# send-measurement-ready: called from admin-measurements.html with the admin's
+#   own JWT; in-handler admin gate matches approve-warranty-drift.
+[functions.notify-measurement-order]
+verify_jwt = false
+
+[functions.send-measurement-ready]
+verify_jwt = false
