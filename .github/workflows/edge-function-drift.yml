@@ -61,61 +61,26 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          # Pinned (gh-1295): `latest` let CI drift to a CLI whose `functions
-          # download` fetch differs from the local reproduction's, which is
-          # the suspected cause of CI's 58 DRIFTED vs local's ~27.
+          # Pinned (gh-1295) for reproducibility. The CLI version was tested and
+          # FALSIFIED as the cause of the 58-59/59 false-drift runs -- the real
+          # cause was the CLI's Docker eszip-extraction path, which returns
+          # transformed bytes when Docker is reachable. The detector now passes
+          # `--use-api` (PR #1447) to force the byte-faithful server-side
+          # unbundle, so the verdict no longer depends on Docker's presence.
+          # Keep the pin anyway: a tool whose output you hash should not float.
           version: 2.116.0
 
-      # Debug (gh-1295): pinning the CLI version did not fix the near-100% drift
-      # count -- that hypothesis is falsified by the 2026-08-31 20:04 UTC run.
-      # Fetch one function directly and diff it against the repo copy so the
-      # actual bytes (encoding, line endings, truncation, bundling) are visible
-      # instead of guessed at. Read-only: this only downloads, never deploys.
-      #
-      # v1 of this step (2026-08-31 20:16 UTC run) assumed the CLI writes to
-      # `<cwd>/supabase/functions/<slug>/`, per the detector script's own
-      # comment -- but got "No such file or directory" there. The detector
-      # script survives that because it also `sudo chown -R`s the Docker-root
-      # output before touching it (see `_reclaim_tree` in
-      # edge-function-drift-check.py) and reads the path it itself computed;
-      # this step does neither, so v2 reclaims ownership and then searches for
-      # wherever the file actually landed instead of assuming.
-      - name: Debug -- fetch one function source for byte comparison
-        if: always()
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: |
-          mkdir -p debug-fetch
-          (cd debug-fetch && supabase functions download parse-hover-measurements --project-ref "$SUPABASE_PROJECT_REF")
-          echo "download exit code: $?"
-          sudo chown -R "$(id -u):$(id -g)" debug-fetch || true
-          echo "--- everything under debug-fetch/ (path, then ls -la) ---"
-          find debug-fetch -type f -exec echo {} \; -exec ls -la {} \; 2>&1
-          REPO_FILE="supabase/functions/parse-hover-measurements/index.ts"
-          FETCHED_FILE="$(find debug-fetch -type f -name index.ts | head -1)"
-          if [ -z "$FETCHED_FILE" ]; then
-            echo "NO index.ts FOUND ANYWHERE UNDER debug-fetch/ -- download produced no readable file"
-          else
-            echo "fetched file resolved to: $FETCHED_FILE"
-            echo "--- sizes (bytes) ---"
-            wc -c "$REPO_FILE" "$FETCHED_FILE" 2>&1 || true
-            echo "--- sha256 ---"
-            sha256sum "$REPO_FILE" "$FETCHED_FILE" 2>&1 || true
-            echo "--- first 20 lines, repo (cat -A) ---"
-            head -20 "$REPO_FILE" | cat -A || true
-            echo "--- first 20 lines, fetched (cat -A) ---"
-            head -20 "$FETCHED_FILE" | cat -A || true
-            echo "--- byte-level diff (cmp -l), first 20 differing offsets ---"
-            cmp -l "$REPO_FILE" "$FETCHED_FILE" 2>&1 | head -20 || true
-          fi
-
-      - name: Upload debug fetch artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gh-1295-debug-fetch-parse-hover-measurements
-          path: debug-fetch
-          if-no-files-found: warn
+      # The former "Debug -- fetch one function source" step is REMOVED
+      # (gh-1295, 2026-08-31). It ran `supabase functions download` from a
+      # scratch subdirectory WITHOUT --use-api; the CLI walked up to this
+      # checkout's supabase/config.toml, resolved the repo itself as the
+      # project root, and extracted the Docker-path (transformed) bytes into
+      # `supabase/functions/parse-hover-measurements/` -- silently corrupting
+      # the checkout's repo side before the check step hashed it (run
+      # 33447971403: repo-side df91bcc3... vs true `main` blob 785ed507...,
+      # while the deployed side fetched via --use-api matched `main` exactly).
+      # That is also why the step's own debug-fetch/ directory was always
+      # empty despite exit 0. It has served its diagnostic purpose.
 
       # NOT a soft skip when the token is absent. gh-1344 records that sec-sweep
       # "has run blind since it was written" for exactly that reason. A detector
