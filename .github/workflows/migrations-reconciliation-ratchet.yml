@@ -1,0 +1,83 @@
+name: Migrations Reconciliation Ratchet
+
+# gh-1438 — supabase/migrations/ and production's schema_migrations disagree
+# in both directions (baseline snapshot: 105 applied migrations with no repo
+# file, 29 repo files never applied). The CTO's ruling on gh-1438
+# (issuecomment-5488058121, amended -5494363131) is explicit that a lint
+# failing on that pre-existing population "is disabled on day two" — this
+# ratchet's only job is to stop a PR from making the gap WORSE while a
+# separate, unscoped, oldest-first backfill effort burns it down. It does not
+# fail on the existing debt, and it does not attempt to fix any of it.
+#
+# What it gates: a PR deleting/renaming away the repo file for a migration
+# the checked-in baseline manifest recorded as already applied and already
+# documented. That is the one widening fully visible in a repo diff.
+#
+# What it deliberately does NOT gate (see the script's own docstring and the
+# baseline manifest's known_limitations for the full reasoning): new
+# not-yet-applied migrations added by this PR (normal mid-flight state per
+# this repo's D-221 Path A deploy chain), and — most importantly — a
+# migration applied directly to production outside any PR via the Supabase
+# MCP/dashboard with no file ever committed. That leak needs a live query
+# against the database on a schedule, not a per-PR repo-diff gate, and is not
+# built here; flagged as an explicit follow-up rather than silently dropped.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations-reconciliation-baseline.json'
+      - 'scripts/migrations-reconciliation-check.py'
+      - 'scripts/migrations-reconciliation-check.test.py'
+      - '.github/workflows/migrations-reconciliation-ratchet.yml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  reconciliation-ratchet:
+    name: Applied-vs-repo gap must not widen
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The verdict logic (compute_verdict) is unit-tested with no network and
+      # no credentials, proving both ratchet directions before the real check
+      # ever runs: the pre-existing baseline debt passes unchanged, and a
+      # deletion of a documented-applied migration's file fails. Same
+      # self-test-before-real-check pattern as edge-function-drift.yml.
+      - name: Self-test the ratchet's verdict logic
+        run: python3 scripts/migrations-reconciliation-check.test.py
+
+      # FAIL-HARD only on a WIDENING of the applied-vs-repo gap beyond the
+      # checked-in baseline manifest. Passes cleanly on the pre-existing
+      # 105/29 debt by design — see scripts/migrations-reconciliation-check.py
+      # for exactly what is and is not gated, and why.
+      - name: Run reconciliation ratchet
+        run: |
+          python3 scripts/migrations-reconciliation-check.py \
+            --root . \
+            --baseline supabase/migrations-reconciliation-baseline.json \
+            --markdown-out reconciliation-ratchet-report.md
+
+      - name: Publish report to the job summary
+        if: always()
+        run: |
+          if [ -f reconciliation-ratchet-report.md ]; then
+            cat reconciliation-ratchet-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "# gh-1438 migrations reconciliation ratchet"
+              echo
+              echo "No report produced — the check did not run to completion."
+              echo "See the step log above."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
