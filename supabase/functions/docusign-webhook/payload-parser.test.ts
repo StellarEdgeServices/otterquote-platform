@@ -8,7 +8,11 @@
 import {
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { parsePayload } from "./payload-parser.ts";
+import {
+  findCompletedContractSigner,
+  parsePayload,
+  resolveContractSignerRole,
+} from "./payload-parser.ts";
 
 function boldsignEvent(overrides: Record<string, unknown> = {}) {
   return {
@@ -106,4 +110,113 @@ Deno.test("completely malformed payload → unrecognized, no throw", () => {
 Deno.test("null/undefined payload → unrecognized, no throw", () => {
   assertEquals(parsePayload(null).recognized, false);
   assertEquals(parsePayload(undefined).recognized, false);
+});
+
+// ── gh-1446: signer-role matcher (GUID ids killed the label match) ──────────
+//
+// Production payloads carry random-GUID signer ids (gh-1244: BoldSign rejects
+// string labels), so the old `clientUserId === "contractor_1"` matching was
+// dead code — measured live 2026-08-31 (#1351/#1446): contractor Signed event
+// delivered + HMAC-verified, quotes.contractor_signed_at stayed NULL. Roles
+// now resolve legacy-label-first, then BoldSign signer order (1 = contractor,
+// 2 = homeowner — handleContractorSign's mint convention, the only live
+// contract mint site).
+
+/** The live v85 shape: GUID ids, orders 1/2 — what the label matcher could never match. */
+function guidSignedEvent(contractorStatus: string, homeownerStatus: string) {
+  const payload = boldsignEvent();
+  payload.data.signerDetails = [
+    {
+      signerName: "Video Walk Test Roofing 2 LLC",
+      signerEmail: "shared+fixture@example.com",
+      id: "0b8674f0-4a51-4d5a-9a2e-2f4c8f6d1e77",
+      status: contractorStatus,
+      order: 1,
+      signerType: "Signer",
+    },
+    {
+      signerName: "Homeowner Test",
+      signerEmail: "shared+fixture@example.com", // same email BOTH sides — the test-fixture reality
+      id: "c3a1f9d2-8e07-42bb-b6a4-5d2e9c0f7a13",
+      status: homeownerStatus,
+      order: 2,
+      signerType: "Signer",
+    },
+  ];
+  return payload;
+}
+
+Deno.test("gh-1446: contractor Signed event (GUID ids) — contractor resolves completed, homeowner does not", () => {
+  // The exact dead case from the live walk: contractor signed, homeowner
+  // pending — delivered as event=Signed with document status still Sent
+  // (function_logs 2026-08-31T22:21:10Z: "status=sent, event=Signed").
+  const payload = guidSignedEvent("Completed", "NotCompleted");
+  payload.event.eventType = "Signed";
+  payload.data.status = "Sent";
+  const parsed = parsePayload(payload);
+  assertEquals(parsed.status, "sent");
+  const contractor = findCompletedContractSigner(parsed.signerDetails, "contractor");
+  const homeowner = findCompletedContractSigner(parsed.signerDetails, "homeowner");
+  assertEquals(contractor?.order, 1);
+  assertEquals(contractor?.status, "completed");
+  assertEquals(homeowner, undefined); // drives contractor_signed_at, and ONLY that
+});
+
+Deno.test("gh-1446: homeowner Completed event (GUID ids) — homeowner resolves completed (drives homeowner_signed_at)", () => {
+  const parsed = parsePayload(guidSignedEvent("Completed", "Completed"));
+  const homeowner = findCompletedContractSigner(parsed.signerDetails, "homeowner");
+  const contractor = findCompletedContractSigner(parsed.signerDetails, "contractor");
+  assertEquals(homeowner?.order, 2);
+  assertEquals(homeowner?.status, "completed");
+  assertEquals(contractor?.order, 1);
+});
+
+Deno.test("gh-1446: shared signer email cannot misattribute — role keys on order, never email", () => {
+  const parsed = parsePayload(guidSignedEvent("Completed", "Completed"));
+  // Both fixture signers share one email; roles must still be distinct.
+  assertEquals(resolveContractSignerRole(parsed.signerDetails[0]), "contractor");
+  assertEquals(resolveContractSignerRole(parsed.signerDetails[1]), "homeowner");
+});
+
+Deno.test("gh-1446: legacy label ids still resolve without any order field (pre-gh-1244 envelopes unchanged)", () => {
+  assertEquals(resolveContractSignerRole({ clientUserId: "contractor_1", order: null }), "contractor");
+  assertEquals(resolveContractSignerRole({ clientUserId: "homeowner_1", order: null }), "homeowner");
+});
+
+Deno.test("gh-1446: legacy label outranks a conflicting order (resolution ladder is label-first)", () => {
+  assertEquals(resolveContractSignerRole({ clientUserId: "contractor_1", order: 2 }), "contractor");
+});
+
+Deno.test("gh-1446: unknown signer shape → null role, no match, no misattribution, no throw", () => {
+  // GUID id and no usable order: nothing should resolve, even when completed.
+  const payload = boldsignEvent();
+  // deno-lint-ignore no-explicit-any
+  (payload.data as any).signerDetails = [
+    { signerName: "X", signerEmail: "x@example.com", id: "9d3b1a2c-0000-4000-8000-000000000000", status: "Completed", signerType: "Signer" },
+    { signerName: "Y", signerEmail: "y@example.com", id: "9d3b1a2c-1111-4111-8111-111111111111", status: "Completed", order: 3, signerType: "Signer" },
+  ];
+  const parsed = parsePayload(payload);
+  assertEquals(parsed.recognized, true);
+  assertEquals(resolveContractSignerRole(parsed.signerDetails[0]), null); // order absent
+  assertEquals(resolveContractSignerRole(parsed.signerDetails[1]), null); // order 3 — not a contract party slot
+  assertEquals(findCompletedContractSigner(parsed.signerDetails, "contractor"), undefined);
+  assertEquals(findCompletedContractSigner(parsed.signerDetails, "homeowner"), undefined);
+});
+
+Deno.test("gh-1446: order normalization — numeric strings and send-side signerOrder accepted; garbage → null", () => {
+  const payload = boldsignEvent();
+  // deno-lint-ignore no-explicit-any
+  (payload.data as any).signerDetails = [
+    { id: "g-1", status: "Completed", order: "1" }, // numeric string
+    { id: "g-2", status: "Completed", signerOrder: 2 }, // send-side property name fallback
+    { id: "g-3", status: "Completed", order: true }, // boolean garbage
+    { id: "g-4", status: "Completed", order: 0 }, // non-positive
+    { id: "g-5", status: "Completed", order: "abc" }, // non-numeric string
+  ];
+  const parsed = parsePayload(payload);
+  assertEquals(parsed.signerDetails[0].order, 1);
+  assertEquals(parsed.signerDetails[1].order, 2);
+  assertEquals(parsed.signerDetails[2].order, null);
+  assertEquals(parsed.signerDetails[3].order, null);
+  assertEquals(parsed.signerDetails[4].order, null);
 });

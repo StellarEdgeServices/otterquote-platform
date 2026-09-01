@@ -49,13 +49,25 @@
  */
 
 export interface NormalizedSigner {
-  /** BoldSign signers[].id, as set at send time (e.g. "contractor_1" / "homeowner_1"). */
+  /**
+   * BoldSign signers[].id, as set at send time. [gh-1446] Since gh-1244 this is
+   * a random GUID (crypto.randomUUID()) — BoldSign rejects string labels like
+   * "contractor_1" ("The field Id is invalid"), so the legacy DocuSign-era
+   * label convention survives only for any historical envelope, not new mints.
+   */
   clientUserId: string;
   /** Lowercased BoldSign signer status ("completed" | "notcompleted" | "declined" | "revoked" | "expired" | "none"). */
   status: string;
   /** Always null — BoldSign's webhook payload carries no per-signer completion timestamp. */
   signedDateTime: string | null;
   email: string | null;
+  /**
+   * BoldSign signerDetails[].order (falling back to signerOrder if a payload
+   * ever carries the send-side property name). Positive integer or null.
+   * [gh-1446] This is the only stable role key the webhook payload carries now
+   * that signer ids are random GUIDs — see resolveContractSignerRole.
+   */
+  order: number | null;
 }
 
 export interface ParsedEnvelope {
@@ -102,6 +114,13 @@ function unixToIso(seconds: unknown): string | null {
   return new Date(n * 1000).toISOString();
 }
 
+/** Positive-integer parse for BoldSign's signer order; anything else → null. */
+function normalizeOrder(raw: unknown): number | null {
+  if (typeof raw !== "number" && typeof raw !== "string") return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 // deno-lint-ignore no-explicit-any
 function normalizeSigners(raw: any): NormalizedSigner[] {
   if (!Array.isArray(raw)) return [];
@@ -110,7 +129,54 @@ function normalizeSigners(raw: any): NormalizedSigner[] {
     status: String(s?.status ?? "").toLowerCase(),
     signedDateTime: null,
     email: s?.signerEmail ?? null,
+    order: normalizeOrder(s?.order ?? s?.signerOrder),
   }));
+}
+
+export type ContractSignerRole = "contractor" | "homeowner";
+
+/**
+ * [gh-1446] Resolve which contract party a normalized signer is.
+ *
+ * CONTRACT ENVELOPES ONLY. The order convention below is
+ * handleContractorSign's — the only live mint site for contract envelopes
+ * (the legacy `document_type: "contract"` branch was verified caller-less,
+ * 2026-08-27, and handleHomeownerSign never mints, it resumes). It sends
+ * signerOrder 1 = contractor, 2 = homeowner, with enableSigningOrder: true.
+ * handleLegacyFlow (color/project-confirmation envelopes) mints with the
+ * OPPOSITE ordering (1 = requesting signer, 2 = contractor), so this resolver
+ * must not be applied to non-contract envelopes.
+ *
+ * Resolution ladder:
+ *   1. Legacy DocuSign-era labels ("contractor_1" / "homeowner_1") — preserves
+ *      the pre-gh-1446 matching verbatim for any historical envelope.
+ *   2. BoldSign signer `order` (1 = contractor, 2 = homeowner) — the only role
+ *      key present since gh-1244 made signer ids random GUIDs. Signer email is
+ *      deliberately NOT used: both parties can share one email (test fixtures
+ *      do), so email can misattribute where order cannot.
+ *   3. Anything else → null (no match, no write, no misattribution).
+ */
+export function resolveContractSignerRole(
+  signer: Pick<NormalizedSigner, "clientUserId" | "order">,
+): ContractSignerRole | null {
+  if (signer.clientUserId === "contractor_1") return "contractor";
+  if (signer.clientUserId === "homeowner_1") return "homeowner";
+  if (signer.order === 1) return "contractor";
+  if (signer.order === 2) return "homeowner";
+  return null;
+}
+
+/**
+ * [gh-1446] The signer-tracking predicate index.ts uses for contract
+ * envelopes: the signer holding `role` iff that signer has completed.
+ * Pure so the dead-matcher class that shipped in D-274 (GUID vs
+ * "contractor_1", issue #1446) stays unit-testable here.
+ */
+export function findCompletedContractSigner(
+  signers: NormalizedSigner[],
+  role: ContractSignerRole,
+): NormalizedSigner | undefined {
+  return signers.find((s) => resolveContractSignerRole(s) === role && s.status === "completed");
 }
 
 // deno-lint-ignore no-explicit-any
