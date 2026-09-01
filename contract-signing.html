@@ -1592,18 +1592,22 @@
     //   entry in CONTRACTOR_COPY renders only once it is individually
     //   non-null, so a partially-approved copy set renders only the parts
     //   that were actually approved (R-120: legal wording gets a human read;
-    //   nothing here is invented by the Code lane). As of gh-1395's
-    //   2026-08-31 approval, only attestationLabel is filled in -- subtitle
-    //   and prefillPanel remain null pending their own approval and stay on
-    //   the homeowner's original wording until then.
+    //   nothing here is invented by the Code lane). All three strings are now
+    //   approved on gh-1395: attestationLabel by Dustin (R-120, Tier C,
+    //   comment 5483767165) and subtitle + prefillPanel by the CEO (Tier B
+    //   "ship it" ruling, comment 5483028058). The per-string gating stays as
+    //   the mechanism for any future copy addition.
     const CONTRACTOR_COPY_ENABLED = true;
 
     // Contractor-facing REPLACEMENT copy. Each string ships only once
     // Dustin has approved that exact wording on the issue; nothing here is
     // invented by the Code lane.
     const CONTRACTOR_COPY = {
-      subtitle: null,
-      prefillPanel: null,
+      // CEO-ruled Tier B ("ship it"), 2026-08-31 -- ship byte-exact, no
+      // re-wording, no re-punctuation:
+      // https://github.com/StellarEdgeServices/otterquote-platform/issues/1395#issuecomment-5483028058
+      subtitle: 'Review the agreement and sign electronically.',
+      prefillPanel: 'This contract has been pre-filled with the project details from the accepted bid.',
       // R-120 approved verbatim by Dustin, 2026-08-31 -- ship byte-exact, no
       // re-wording, no re-punctuation:
       // https://github.com/StellarEdgeServices/otterquote-platform/issues/1395#issuecomment-5483767165
@@ -1625,7 +1629,7 @@
       const noCost = document.getElementById('noCostCallout');
       if (noCost) noCost.style.display = 'none';
 
-      // --- FLAGGED: positive contractor copy, pending approved wording ---
+      // --- FLAGGED: positive contractor-facing replacement copy ---
       if (CONTRACTOR_COPY_ENABLED) {
         const subtitle = document.getElementById('contractHeaderSubtitle');
         const prefill = document.getElementById('prefillPanelText');
@@ -1659,6 +1663,18 @@
       }
       if (noCost && noCost.style.display !== 'none') {
         problems.push('homeowner-only "No Cost to You" fee callout is visible to a contractor');
+      }
+      // gh-1395 reopen: the guard must cover all four elements the issue
+      // enumerated, not just the two the first patch touched. A null entry in
+      // CONTRACTOR_COPY or a disabled flag leaves the homeowner wording in
+      // place, and that disagreement must be loud.
+      const subtitle = document.getElementById('contractHeaderSubtitle');
+      const prefill = document.getElementById('prefillPanelText');
+      if (subtitle && subtitle.textContent !== CONTRACTOR_COPY.subtitle) {
+        problems.push('homeowner subtitle is being served to a contractor');
+      }
+      if (prefill && prefill.textContent !== CONTRACTOR_COPY.prefillPanel) {
+        problems.push('homeowner pre-fill panel text is being served to a contractor');
       }
       if (problems.length) {
         console.error('gh-1395 role/copy mismatch:', problems.join('; '));
