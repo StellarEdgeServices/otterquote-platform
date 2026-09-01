@@ -73,7 +73,7 @@ serve(async (req) => {
     const { data: contractor, error: contractorError } = await supabase
       .from("contractors")
       .select(
-        "id, stripe_customer_id, company_name, contact_name, email, user_id"
+        "id, stripe_customer_id, company_name, contact_name, email, user_id, is_test"
       )
       .eq("id", contractor_id)
       .single();
@@ -98,6 +98,30 @@ serve(async (req) => {
       : Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeSecretKey) {
       throw new Error("Stripe secret key not configured.");
+    }
+
+    // ── Mode gate (gh-1425 path 2 interim mitigation) ──
+    // The Origin header that selects the test key is attacker-supplied, so
+    // "staging" can be claimed by any raw HTTP client. If the key actually
+    // selected is test-mode, refuse to mint for anyone but a seeded test
+    // contractor -- before a wrong-mode Stripe Customer or SetupIntent exists.
+    const isTestModeKey = /^(sk|rk)_test_/.test(stripeSecretKey);
+    if (isTestModeKey && contractor.is_test !== true) {
+      console.error(
+        `create-setup-intent: refusing test-mode key for non-test contractor ${contractor_id}`
+      );
+      return new Response(
+        JSON.stringify({
+          error: "payment_method_unverifiable",
+          message:
+            "Payment method setup is unavailable for this account on the staging " +
+            "environment. Please use the production site to add your card.",
+        }),
+        {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const basicAuth = btoa(`${stripeSecretKey}:`);

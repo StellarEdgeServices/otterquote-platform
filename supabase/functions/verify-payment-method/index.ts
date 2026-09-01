@@ -135,7 +135,7 @@ serve(async (req) => {
 
     const { data: contractor, error: contractorErr } = await sb
       .from("contractors")
-      .select("id, user_id, stripe_customer_id")
+      .select("id, user_id, stripe_customer_id, is_test")
       .eq("id", contractor_id)
       .single();
 
@@ -209,6 +209,28 @@ serve(async (req) => {
           `does not match requested contractor ${contractor_id}`,
       );
       return json({ error: "Forbidden" }, 403, corsHeaders);
+    }
+
+    // ── Mode gate (gh-1425 path 2 interim mitigation) ────────────────────
+    // Staging shares this database, so a test-mode SetupIntent is only ever
+    // legitimate for a seeded test contractor. The Origin header that selects
+    // the test key is attacker-supplied; si.livemode is not. Fail closed
+    // before anything is persisted, whatever the origin claimed.
+    if (si.livemode === false && contractor.is_test !== true) {
+      console.error(
+        `[${FN_NAME}] Refusing test-mode SetupIntent ${setup_intent_id} for ` +
+          `non-test contractor ${contractor_id} (livemode=false, is_test=${contractor.is_test})`,
+      );
+      return json(
+        {
+          error: "payment_method_unverifiable",
+          message:
+            "This payment method could not be verified with our payment processor. " +
+            "It was not saved. Please re-enter your card.",
+        },
+        409,
+        corsHeaders,
+      );
     }
 
     const pm = si.payment_method;
