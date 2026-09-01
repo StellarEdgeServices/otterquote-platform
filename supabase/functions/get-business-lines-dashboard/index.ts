@@ -23,10 +23,20 @@
  * "not measured" (a data source that does not exist yet, e.g. GA4 visits —
  * out of scope for phase 1, which is entirely Supabase-backed).
  *
+ * Phase 4 (gh-1340 scope item 4) adds ONE non-Supabase read: Revenue MTD via
+ * the server-side Stripe read path (read-only GET, live key, no side
+ * effects — Tier 3A). Its result carries its own honesty state: "measured" /
+ * "measured_zero" (a real $0 Stripe actually answered) / "not_run" (key
+ * missing, HTTP error, runaway pagination — with the query count and a
+ * reason). It NEVER fabricates $0, and a Stripe failure never takes the
+ * dashboard down: fetchRevenueMtd() cannot throw and sits outside the
+ * all-tables error gate.
+ *
  * Read-only. No writes, no schema change, no other EF touched.
  *
  * Input:  POST {}  (body currently unused — reserved for future filtering)
  * Output: { ok: true, generated_at, lines: [...], audiences: { homeowner, contractor, referral_partner } }
+ *         lines[key=otterquotes] additionally carries revenue_mtd (phase 4).
  *
  * Auth: requires a valid Supabase JWT with email in the admin allow-list.
  * verify_jwt = false (see supabase/config.toml) — auth is performed
@@ -152,6 +162,108 @@ async function fetchAllActivity(
   };
 }
 
+// ── Revenue MTD (gh-1340 phase 4) — server-side Stripe read path ─────────
+// Read-only GET against the Stripe API (house pattern: raw fetch on
+// api.stripe.com/v1, Basic auth, live STRIPE_SECRET_KEY — same base as
+// create-payment-intent / stripe-webhook, but no writes and no test-key
+// fallback: test-mode charges are not revenue).
+//
+// Revenue MTD = Σ(amount − amount_refunded) over charges with
+// status === "succeeded", created at/after the UTC month start. USD only;
+// any non-USD charge is counted separately, never silently mixed in.
+//
+// HONESTY CONTRACT (gh-1340 body, scope item 4): when the path is
+// unavailable — key not configured, HTTP error, runaway pagination — the
+// result is kind:"not_run" with the query count and a reason, NEVER a
+// fabricated $0. Pagination advances by Stripe's cursor (starting_after)
+// and refuses loudly past REVENUE_MAX_PAGES rather than returning a
+// possibly-truncated sum — same discipline as fetchAllActivity above.
+const STRIPE_API_BASE = "https://api.stripe.com/v1";
+const REVENUE_PAGE_LIMIT = 100; // Stripe's max page size
+const REVENUE_MAX_PAGES = 50;   // 5,000 charges MTD ≫ current volume; loud refusal past this
+
+interface RevenueMtd {
+  kind: "measured" | "measured_zero" | "not_run";
+  value_cents?: number;
+  currency?: string;
+  charge_count?: number;
+  non_usd_ignored?: number;
+  queries: number;
+  window_start_iso: string;
+  reason?: string;
+}
+
+async function fetchRevenueMtd(nowMs: number): Promise<RevenueMtd> {
+  const nowDate = new Date(nowMs);
+  const windowStart = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), 1));
+  const base = { queries: 0, window_start_iso: windowStart.toISOString() };
+
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!stripeKey) {
+    return { kind: "not_run", ...base, reason: "STRIPE_SECRET_KEY is not configured in this function's environment" };
+  }
+
+  const basicAuth = btoa(`${stripeKey}:`);
+  const createdGte = Math.floor(windowStart.getTime() / 1000);
+
+  let totalCents = 0;
+  let chargeCount = 0;
+  let nonUsdIgnored = 0;
+  let startingAfter: string | null = null;
+
+  try {
+    for (let page = 0; page < REVENUE_MAX_PAGES; page++) {
+      const params = new URLSearchParams({ limit: String(REVENUE_PAGE_LIMIT) });
+      params.set("created[gte]", String(createdGte));
+      if (startingAfter) params.set("starting_after", startingAfter);
+
+      const res = await fetch(`${STRIPE_API_BASE}/charges?${params.toString()}`, {
+        headers: { Authorization: `Basic ${basicAuth}` },
+      });
+      base.queries++;
+
+      if (!res.ok) {
+        // Status is enough to act on; never forward Stripe's error body.
+        console.error(`[${FUNCTION_NAME}] Stripe /charges returned ${res.status}`);
+        return { kind: "not_run", ...base, reason: `Stripe API returned HTTP ${res.status}` };
+      }
+
+      const body = await res.json();
+      const charges = (body?.data ?? []) as {
+        id: string; amount: number; amount_refunded: number; status: string; currency: string;
+      }[];
+
+      for (const ch of charges) {
+        if (ch.status !== "succeeded") continue;
+        if (ch.currency !== "usd") { nonUsdIgnored++; continue; }
+        totalCents += (ch.amount || 0) - (ch.amount_refunded || 0);
+        chargeCount++;
+      }
+
+      if (!body?.has_more) {
+        const result: RevenueMtd = {
+          kind: totalCents === 0 ? "measured_zero" : "measured",
+          value_cents: totalCents,
+          currency: "usd",
+          charge_count: chargeCount,
+          ...base,
+        };
+        if (nonUsdIgnored > 0) result.non_usd_ignored = nonUsdIgnored;
+        return result;
+      }
+      if (charges.length === 0) {
+        // has_more on an empty page should be impossible; refuse rather than spin.
+        return { kind: "not_run", ...base, reason: "Stripe returned has_more with an empty page — refusing" };
+      }
+      startingAfter = charges[charges.length - 1].id;
+    }
+    return { kind: "not_run", ...base, reason: `charges exceeded ${REVENUE_MAX_PAGES} pages — refusing a possibly-truncated sum` };
+  } catch (err) {
+    console.error(`[${FUNCTION_NAME}] Stripe read failed:`, err);
+    return { kind: "not_run", ...base, reason: "Stripe request failed before a sum could be computed" };
+  }
+}
+
 serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
 
@@ -188,6 +300,12 @@ serve(async (req: Request) => {
 
   try {
     const now = Date.now();
+
+    // Phase 4: Stripe read runs concurrently with the DB reads. It never
+    // throws (worst case: kind "not_run" with a reason) and is deliberately
+    // NOT in the all-tables error gate — a Stripe outage must degrade one
+    // tile, not 500 the dashboard.
+    const revenueMtdPromise = fetchRevenueMtd(now);
 
     // ── One query per table (no N+1) ──────────────────────────────────────
     const [
@@ -467,10 +585,16 @@ serve(async (req: Request) => {
     // ══════════════════════════════════════════════════════════════════════
     const nonTest = (rows: any[]) => rows.filter((r) => !r.is_test);
 
+    const revenueMtd = await revenueMtdPromise;
+
     const otterQuotesLine = {
       key: "otterquotes",
       label: "Otter Quotes",
       operational: true,
+      // Phase 4 — its own honesty state (measured / measured_zero / not_run),
+      // deliberately NOT inside stats: every stats value is a measured() DB
+      // count, and this one can legitimately be "not_run".
+      revenue_mtd: revenueMtd,
       stats: {
         homeowners_total: measured(profiles.length),
         homeowners_non_test: measured(nonTest(profiles as any[]).length),
