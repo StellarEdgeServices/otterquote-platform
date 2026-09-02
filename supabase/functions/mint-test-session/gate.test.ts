@@ -1,0 +1,149 @@
+// Deno unit tests for mint-test-session's R-174 gate logic (gh-1513).
+// Run: deno test supabase/functions/mint-test-session/gate.test.ts
+//
+// Exercises resolveAndMint against a fake DbAdapter — no live Supabase
+// client, no network access, no network listener (index.ts's serve() is
+// never imported here; same source-split pattern as
+// notify-contractors/test-exclusion.test.ts).
+
+import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { type DbAdapter, MAGIC_LINK_EXPIRES_IN, resolveAndMint } from "./gate.ts";
+
+const ACTOR_EMAIL = "dustinstohler1@gmail.com";
+
+function fakeDb(overrides: Partial<DbAdapter> = {}): DbAdapter {
+  return {
+    getContractorById: async () => ({ data: null, error: null }),
+    getClaimsByUserId: async () => ({ data: null, error: null }),
+    getAuthUserById: async () => ({ data: null, error: null }),
+    generateMagicLink: async () => ({
+      data: { action_link: "https://stub.supabase.co/auth/v1/verify?token=stub" },
+      error: null,
+    }),
+    insertActivityLog: async () => ({ error: null }),
+    ...overrides,
+  };
+}
+
+Deno.test("403 on a non-test contractor", async () => {
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: { id: "c1", user_id: "u1", email: "real-contractor@example.com", is_test: false },
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint({ contractor_id: "c1" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 403);
+  assertEquals(typeof result.body.error, "string");
+});
+
+Deno.test("403 on a homeowner with a non-test claim", async () => {
+  const db = fakeDb({
+    getClaimsByUserId: async () => ({
+      data: [
+        { id: "claim1", is_test: true },
+        { id: "claim2", is_test: false },
+      ],
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint({ user_id: "u2" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 403);
+});
+
+Deno.test("403 on a homeowner who owns no claims", async () => {
+  const db = fakeDb({ getClaimsByUserId: async () => ({ data: [], error: null }) });
+  const result = await resolveAndMint({ user_id: "u3" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 403);
+});
+
+Deno.test("200 shape on a test contractor (auth admin stubbed)", async () => {
+  let generateLinkCalledWith: string | null = null;
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: {
+        id: "c4",
+        user_id: "u4",
+        email: "test-contractor@otterquote-internal.test",
+        is_test: true,
+      },
+      error: null,
+    }),
+    generateMagicLink: async (email: string) => {
+      generateLinkCalledWith = email;
+      return {
+        data: { action_link: "https://stub.supabase.co/auth/v1/verify?token=stub4" },
+        error: null,
+      };
+    },
+  });
+  const result = await resolveAndMint({ contractor_id: "c4" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 200);
+  assertEquals(result.body.ok, true);
+  assertEquals(result.body.action_link, "https://stub.supabase.co/auth/v1/verify?token=stub4");
+  assertEquals(result.body.user_id, "u4");
+  assertEquals(result.body.email, "test-contractor@otterquote-internal.test");
+  assertEquals(result.body.is_test, true);
+  assertEquals(result.body.expires_in, MAGIC_LINK_EXPIRES_IN);
+  assertEquals(generateLinkCalledWith, "test-contractor@otterquote-internal.test");
+});
+
+Deno.test("activity_log write asserted (event_type, target user_id, actor)", async () => {
+  const insertedLogs: Array<Record<string, unknown>> = [];
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: {
+        id: "c5",
+        user_id: "u5",
+        email: "test-contractor-5@otterquote-internal.test",
+        is_test: true,
+      },
+      error: null,
+    }),
+    insertActivityLog: async (row) => {
+      insertedLogs.push(row);
+      return { error: null };
+    },
+  });
+  const result = await resolveAndMint({ contractor_id: "c5" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 200);
+  assertEquals(insertedLogs.length, 1);
+  assertEquals(insertedLogs[0].event_type, "test_session_minted");
+  assertEquals(insertedLogs[0].user_id, "u5");
+  assertEquals(insertedLogs[0].is_test, true);
+  assertEquals(
+    (insertedLogs[0].metadata as Record<string, unknown>).actor,
+    ACTOR_EMAIL,
+  );
+  assertEquals(
+    (insertedLogs[0].metadata as Record<string, unknown>).target_user_id,
+    "u5",
+  );
+});
+
+Deno.test("400 when neither contractor_id nor user_id is provided", async () => {
+  const db = fakeDb();
+  const result = await resolveAndMint({}, db, ACTOR_EMAIL);
+  assertEquals(result.status, 400);
+});
+
+Deno.test("400 when both contractor_id and user_id are provided", async () => {
+  const db = fakeDb();
+  const result = await resolveAndMint(
+    { contractor_id: "c1", user_id: "u1" },
+    db,
+    ACTOR_EMAIL,
+  );
+  assertEquals(result.status, 400);
+});
+
+Deno.test("404 when contractor is is_test but has no linked auth user", async () => {
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: { id: "c6", user_id: null, email: "orphan@example.com", is_test: true },
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint({ contractor_id: "c6" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 404);
+});

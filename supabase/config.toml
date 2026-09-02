@@ -337,3 +337,13 @@ verify_jwt = false
 
 [functions.send-measurement-ready]
 verify_jwt = false
+
+# gh-1513, R-174: mints a Supabase magic link for is_test-only fixtures so
+# the Code lane (no service-role key, no auth-admin MCP tool in its own env)
+# can obtain a signed-in session for E2E verification. Auth is enforced BOTH
+# at the gateway (verify_jwt = true, unlike admin-contractor-action's false)
+# AND in-handler via the same single-admin allow-list pattern
+# (dustinstohler1@gmail.com) — defense in depth for a function whose entire
+# purpose is minting sessions. Pinned at creation per spec.
+[functions.mint-test-session]
+verify_jwt = true
