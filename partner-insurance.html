@@ -26,6 +26,7 @@
 </script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
 <script src="js/cookie-storage.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=partner-insurance&persona=partner');}})()</script>
     <meta charset="UTF-8">
@@ -58,9 +59,6 @@
         y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
     })(window, document, "clarity", "script", "wwr7qlk8g5");
 </script>
-
-    <!-- Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -979,7 +977,13 @@
         }
 
         // Kick off recruit detection on load
-        detectRecruitCode();
+        // gh-1535: detectRecruitCode() reads `sb` inside its async body but was
+        // being called directly at parse time, racing the Supabase client's
+        // construction. CONFIG.whenReady() runs it as soon as the client
+        // actually exists (same fix already applied on partner-re.html).
+        CONFIG.whenReady(function (sb) {
+            if (sb) detectRecruitCode();
+        });
         captureUtmContext();
 
         // #632: signed-in partners land straight on their dashboard instead of
