@@ -573,7 +573,7 @@ function insurerScopeRows(insurance: any) {
 
 // ========== RETAIL SCOPE OF WORK PDF ==========
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, declarations, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears } = params;
   const va = valueAdds || {};
   const pc = projectConfirmation || null;
   // ---- Page geometry ----
@@ -1331,33 +1331,104 @@ function generateRetailScopeOfWorkPdf(params) {
     }
     y -= 4;
   }
-  // ===== CONTINGENCIES AND CONDITIONAL PRICING =====
-  // [C3 2026-08-27, Dustin-directed] One section listing EVERY condition that
-  // can change the contract price, each with its trigger and its rate. These
-  // were previously scattered -- decking inside the roofing detail block,
-  // second-layer tear-off under its own heading, out-of-pocket options inline
-  // with their trades -- and several never rendered at all.
+  // ===== INCLUDED IN YOUR PRICE / EXTRA CHARGES IF NEEDED (gh-1378, D-317 cl.3) =====
+  // [gh-1378 2026-09-02] Was "CONTINGENCIES AND CONDITIONAL PRICING", reading
+  // bidData.value_adds directly for chimney/drip-edge/gutters/skylights.
+  // Those five rows are now repointed onto quotes.scope_summary.declarations
+  // -- the same per-row {state, rate_cents} object gh-1377 writes on the
+  // contractor bid form and bids.html's renderDeclarationsSummary() already
+  // reads (bids.html ~2407-2515). DECLARATION_ROW_META and the two headings
+  // below are copied from there verbatim, key-for-key and string-for-string,
+  // so this document and the bid card cannot disagree about what a homeowner
+  // was shown as included vs extra -- that disagreement is the defect #1378
+  // exists to close, and this PDF is the copy that ends up in a dispute.
   //
-  // Every key below was verified against contractor-bid-form.html's own
-  // valueAdds constructor (~line 5233) rather than assumed. Four of these had
-  // NEVER reached this document:
-  //   - va.drip_edge          (written at :5286, never read here)
-  //   - va.rotten_wood_pricing (written at :5318, never read here)
-  //   - va.siding_rotten_sheathing_pricing (written at :5328, never read here)
-  //   - va.num_stories         (written at :5303, never read here)
-  // and a fifth, va.chimney, was read under its deprecated name -- see the
-  // chimney fix above.
+  // Rows the contractor entered directly on the bid form as fixed-rate
+  // conditions -- second-layer tear-off, decking, rotten wood/sheathing,
+  // ridge vent, gutter guards, slope/two-story adders -- are NOT part of
+  // gh-1377's declarations set (bids.html doesn't render them from
+  // declarations either; it folds decking/second-layer/rotten-wood in from
+  // value_adds too, see bids.html ~2473-2485) and are read from value_adds
+  // unchanged, same as before this change.
   //
   // A row with no value is OMITTED. Nothing renders as "TBD": a contract
   // exhibit that says "TBD" next to a price trigger is worse than silence,
   // because it implies a number exists somewhere that the homeowner has not
   // been shown.
+  const DECLARATION_ROW_META: Record<string, { label: string; extraTrigger: string | null }> = {
+    gutters:          { label: "Gutters",            extraTrigger: "Homeowner elects gutters upgrade (not included in base price)" },
+    chimney:          { label: "Chimney Flashing",   extraTrigger: "Homeowner elects chimney flashing work (not included in base price)" },
+    skylights:        { label: "Skylights",          extraTrigger: null },
+    ice_water_shield: { label: "Ice & Water Shield", extraTrigger: null },
+    drip_edge:        { label: "Drip Edge",          extraTrigger: "Homeowner elects drip edge (not included in base price)" },
+  };
+  const TRADE_SCOPE_LABEL = {
+    roofing: "Complete roofing installation",
+    siding:  "Complete siding installation",
+    gutters: "Complete gutter installation",
+  };
   {
-    const rows = [];
-    const add = (name, trigger, price) => {
+    const declValid = declarations && typeof declarations === "object";
+    // includedLines / declExtra hold ONLY the five DECLARATION_ROW_META rows,
+    // exactly mirroring bids.html: includedItems/extraItems there are built
+    // from nothing else, and the scope-label bullet is appended to the
+    // Included block only when at least one row was actually declared
+    // "included" (bids.html gates that render on includedItems.length > 0,
+    // not on the trade being present) -- reproduced here, not re-decided.
+    const includedLines: string[] = [];
+    const declExtra: Record<string, { name: string; trigger: string; price: string }> = {};
+    if (declValid) {
+      for (const key of Object.keys(DECLARATION_ROW_META)) {
+        const decl = declarations[key];
+        if (!decl || typeof decl !== "object") continue; // absent key == not declared -- omit, never "not_offered"
+        const meta = DECLARATION_ROW_META[key];
+        if (decl.state === "included") {
+          includedLines.push(`${meta.label} - included at no extra cost`);
+        } else if (decl.state === "extra") {
+          const cents = Number(decl.rate_cents);
+          if (!(cents > 0)) continue; // no rate == omitted, never "TBD"
+          if (!meta.extraTrigger) continue; // this row has no extra-cost mechanism on the form
+          declExtra[key] = { name: meta.label, trigger: meta.extraTrigger, price: fmt$(cents / 100) };
+        }
+        // "not_offered" -> struck entirely (D-272), omitted from both lists.
+        // "other" (free-text offer) -> cannot be placed as included or extra
+        // without guessing which it is, so it is omitted from both, too.
+      }
+    }
+    if (includedLines.length > 0) {
+      const scopeLabels = [];
+      if (hasRoofing) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      if (hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
+      if (hasGutters) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
+      if (scopeLabels.length === 0) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      ensure(20 + (scopeLabels.length + includedLines.length) * 11);
+      addText(LEFT_X, y, 12, "F2", "Included in Your Price - $" + Number(contractPrice || 0).toLocaleString("en-US"));
+      y -= 14;
+      for (const line of scopeLabels.concat(includedLines)) {
+        addText(60, y, 9, "F1", line);
+        y -= 11;
+      }
+      y -= 6;
+    } else if (!declValid) {
+      // Mirrors bids.html's fallback note exactly. Legacy value_adds
+      // contingencies below (decking, second-layer tear-off, etc.) still
+      // render even when declarations is absent -- they predate gh-1377 and
+      // are real, priced contract terms independent of this feature.
+      ensure(16);
+      addText(LEFT_X, y, 9, "F1", "This contractor's included / extra breakdown is not yet available for this bid.");
+      y -= 16;
+    }
+    const rows: { name: string; trigger: string; price: string }[] = [];
+    const add = (name: string, trigger: string, price: string | null) => {
       if (price == null || price === "") return;
       rows.push({ name, trigger, price });
     };
+    // Declaration-sourced extra rows, in the same key order bids.html
+    // iterates (gutters, chimney, drip_edge -- skylights/ice_water_shield
+    // never reach declExtra since their extraTrigger is null above).
+    if (declExtra.gutters) add(declExtra.gutters.name, declExtra.gutters.trigger, declExtra.gutters.price);
+    if (declExtra.chimney) add(declExtra.chimney.name, declExtra.chimney.trigger, declExtra.chimney.price);
+    if (declExtra.drip_edge) add(declExtra.drip_edge.name, declExtra.drip_edge.trigger, declExtra.drip_edge.price);
     const slc = va?.secondLayerContingency;
     if (hasRoofing && slc) {
       const flat = slc.method === "flat_fee" && slc.flatFeeAlternative != null;
@@ -1370,17 +1441,8 @@ function generateRetailScopeOfWorkPdf(params) {
     }
     add("Rotten wood / fascia / soffit", "Concealed rot found during the work", typeof va.rotten_wood_pricing === "string" && va.rotten_wood_pricing.trim() ? va.rotten_wood_pricing.trim() : null);
     add("Rotten sheathing behind siding", "Concealed rot found behind removed siding", typeof va.siding_rotten_sheathing_pricing === "string" && va.siding_rotten_sheathing_pricing.trim() ? va.siding_rotten_sheathing_pricing.trim() : null);
-    {
-      const c = va.chimney ?? va.chimney_flashing ?? va.chimney_reflash ?? null;
-      if (c && (c.option === "oop" || c.option === "replace_oop") && c.oop_price != null) {
-        add("Chimney flashing", "Homeowner elects chimney flashing work (not included in base price)", fmt$(c.oop_price));
-      }
-    }
     if (va.ventilation && !va.ventilation.ridge_vent_included && va.ventilation.ridge_vent_oop != null) {
       add("Ridge vent", "Homeowner elects ridge vent (not included in base price)", fmt$(va.ventilation.ridge_vent_oop));
-    }
-    if (va.drip_edge?.option === "oop" && va.drip_edge.oop_price != null) {
-      add("Drip edge", "Homeowner elects drip edge (not included in base price)", fmt$(va.drip_edge.oop_price));
     }
     if (va.gutter_guards) {
       const gg = va.gutter_guards;
@@ -1389,14 +1451,6 @@ function generateRetailScopeOfWorkPdf(params) {
       if (gg.pricing_on_request && gg.mesh_oop == null && gg.screw_in_oop == null) {
         add("Gutter guards", "Homeowner elects gutter guards", "Pricing on request");
       }
-    }
-    if (va.gutters?.option) {
-      const go = String(va.gutters.option);
-      if (go.includes("5inch") && go.includes("additional") && va.gutters.additional_cost_5inch != null) add('Gutters - 5"', "Homeowner elects 5-inch gutters (not included in base price)", fmt$(va.gutters.additional_cost_5inch));
-      if (go.includes("6inch") && go.includes("additional") && va.gutters.additional_cost_6inch != null) add('Gutters - 6"', "Homeowner elects 6-inch gutters (not included in base price)", fmt$(va.gutters.additional_cost_6inch));
-    }
-    if (va.skylights && va.skylights !== "na") {
-      add("Skylights", "Skylight condition assessed on site", va.skylights === "reflash" ? "Reflash - per contractor bid" : "Replace - per contractor bid");
     }
     // [C4 2026-08-27] Slope and access adders. These come from the contractor's
     // rate card, not from the bid form, so they render only when he has one on
@@ -1425,7 +1479,7 @@ function generateRetailScopeOfWorkPdf(params) {
       ensure(78);
       hLine(y + 4);
       y -= 12;
-      addText(LEFT_X, y, 12, "F2", "CONTINGENCIES AND CONDITIONAL PRICING");
+      addText(LEFT_X, y, 12, "F2", "Extra Charges If Needed");
       y -= 12;
       y = addWrappedText(LEFT_X, y, 8, "F1", "Every condition below can change the contract price. None is included in the price on page 1. Each states what triggers it and what it costs.", 512);
       y -= 4;
@@ -1987,11 +2041,19 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       // price is quotes.total_price; trades come from claims.trades.
       let bidBrand = null;
       let estimatedStartDate = null;
+      // [gh-1378 2026-09-02, D-317 cl.3] The per-row {state, rate_cents}
+      // declarations object gh-1377 writes on the contractor bid form -- the
+      // same key bids.html's renderDeclarationsSummary() reads (bids.html
+      // ~2407-2515). Read here, never re-derived from value_adds, so this
+      // document cannot disagree with the bid card about what a homeowner
+      // was shown as included vs extra.
+      let bidDeclarations = null;
       if (bidData?.scope_summary) {
         try {
           const parsedScope = typeof bidData.scope_summary === "string" ? JSON.parse(bidData.scope_summary) : bidData.scope_summary;
           bidBrand = parsedScope?.brand ?? null;
           estimatedStartDate = parsedScope?.estimated_start_date ?? null;
+          bidDeclarations = parsedScope?.declarations ?? null;
         } catch (scopeErr) {
           console.warn("Failed to parse quotes.scope_summary JSON (non-fatal):", scopeErr);
         }
@@ -2009,6 +2071,7 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         contractPrice,
         estimatedStartDate,
         valueAdds: bidData?.value_adds ?? null,
+        declarations: bidDeclarations,
         bidBrand,
         deckingPricePerSheet: bidData?.decking_price_per_sheet ?? null,
         fullRedeckPrice: bidData?.full_redeck_price ?? null,
