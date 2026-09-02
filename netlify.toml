@@ -65,6 +65,12 @@
   [headers.values]
     Cache-Control = "no-cache"
 
+# PWA — Admin App (gh-1479, 2026-09-02); same reasoning as partner-sw.js above.
+[[headers]]
+  for = "/admin-sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
 # gh-817: js/auth.js and js/nav.js gate every role-based redirect (contractor
 # vs partner vs homeowner dashboard). Neither was previously covered by a
 # cache rule, so a browser could keep serving a pre-fix copy across a deploy
