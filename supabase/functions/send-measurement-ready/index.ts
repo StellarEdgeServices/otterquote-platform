@@ -36,6 +36,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { logNotificationFailure } from "./notification-failure.ts";
 
 const FUNCTION_NAME = "send-measurement-ready";
 const NOTIFICATION_TYPE = "measurement_ready";
@@ -346,16 +347,40 @@ serve(async (req: Request) => {
     formData.append("text", textBody);
     formData.append("html", htmlBody);
 
-    const mgRes = await fetch(`https://api.mailgun.net/v3/${mailgunDomain}/messages`, {
-      method: "POST",
-      headers: { Authorization: `Basic ${btoa(`api:${mailgunKey}`)}` },
-      body: formData,
-    });
-    if (!mgRes.ok) {
-      const errText = await mgRes.text();
-      throw new Error(`Mailgun error ${mgRes.status}: ${errText}`);
+    let mgData: any;
+    try {
+      const mgRes = await fetch(`https://api.mailgun.net/v3/${mailgunDomain}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Basic ${btoa(`api:${mailgunKey}`)}` },
+        body: formData,
+      });
+      if (!mgRes.ok) {
+        const errText = await mgRes.text();
+        throw new Error(`Mailgun error ${mgRes.status}: ${errText}`);
+      }
+      mgData = await mgRes.json();
+    } catch (sendErr) {
+      // gh-1538: this used to bubble to the generic outer catch, which
+      // returned "Internal server error" with no durable trace anywhere —
+      // a paid $150 (or $25/$55) order's homeowner "report ready" email
+      // could fail with zero record of why. The order.status is already
+      // 'completed' and the #1412 fulfilment activity_log row is already
+      // written above; only the email send itself failed. Log it and
+      // return a specific error instead.
+      console.error(`[${FUNCTION_NAME}] send failed for order=${orderId}:`, sendErr);
+      await logNotificationFailure(
+        (row) => sb.from("activity_log").insert(row),
+        sendErr,
+        {
+          functionName: FUNCTION_NAME,
+          recipientRole: order.requested_by_role || "homeowner",
+          isTest: isTestClaim,
+          userId: claim?.user_id ?? order.user_id,
+          extra: { order_id: orderId, claim_id: order.claim_id },
+        },
+      );
+      return json({ error: "Failed to send notification" }, 502, corsHeaders);
     }
-    const mgData = await mgRes.json();
     console.log(`[${FUNCTION_NAME}] sent for order=${orderId} to=${homeownerEmail} mailgun_id=${mgData.id}`);
 
     const { error: insertErr } = await sb.from("notifications").insert({
