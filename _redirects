@@ -46,6 +46,19 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # this keeps a bare /partners working for anything typed, printed, or spoken.
 /partners /partners.html 301
 
+# gh-1540 (source #1505): the recruit link went to ~50 people on 09-01 and at
+# least one recipient's client mangled the path. 200-rewrite (not 301, so the
+# address bar and any query string the recipient's client kept are preserved)
+# every variant of the recruit link onto recruit.html itself -- cheap
+# insurance against link-mangling by messaging/PWA clients. Netlify forwards
+# the incoming query string on rewrites by default, so ?code= survives.
+# recruit.html's own client-side router then reads ?code= and routes to
+# partners.html -- that JS routing is unchanged by this rule set.
+/recruit       /recruit.html   200
+/recruit/      /recruit.html   200
+/Recruit.html  /recruit.html   200
+/recruit.htm   /recruit.html   200
+
 # gh-1261: landing.html is an orphaned page -- nothing in the repo links to
 # it. Kept on disk (not deleted) so any inbound links survive; force-flagged
 # because Netlify serves a matching static file ahead of a redirect
