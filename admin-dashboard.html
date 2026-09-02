@@ -27,6 +27,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
 <title>Admin - Business Lines Dashboard | Otter Quotes</title>
+
+<!-- PWA (Admin App v1, gh-1479) -->
+<link rel="manifest" href="/admin-app.webmanifest">
+<meta name="theme-color" content="#E07B00">
+<link rel="apple-touch-icon" href="/img/app/apple-touch-icon-admin.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OQ Admin">
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
@@ -732,6 +741,32 @@ function toggleDetail(rowId) {
   if (!el) return;
   el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
 }
+</script>
+<script>
+// Service worker (admin surface only, gh-1479) -- same
+// register-once-and-reload-on-controllerchange pattern as partner-sw.js
+// (gh-831), so a reopen after a new worker activates never races the
+// initial fetch of an auth-critical asset under the old controller.
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+  var swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    window.location.reload();
+  });
+  window.addEventListener('load', function () {
+    // Explicit narrow scope, not the /admin-sw.js default of "/": partner-sw.js
+    // also registers at the site root (its own default scope), and only one
+    // worker can control a given scope. A root-scoped admin-sw would displace
+    // partner-sw as the controller for the whole site (and vice versa on the
+    // next partner page load) -- and since both workers call clients.claim()
+    // and both pages reload on controllerchange, that displacement becomes a
+    // cross-tab reload loop. "/admin-" prefix-matches every ADMIN_PAGES entry
+    // in admin-sw.js and nothing partner-owned, so the two workers coexist.
+    navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin-' }).catch(function () { /* non-fatal */ });
+  });
+})();
 </script>
 </body>
 </html>
