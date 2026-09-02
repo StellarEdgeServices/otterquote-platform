@@ -41,6 +41,12 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { type DbAdapter, resolveAndMint } from "./gate.ts";
 
+// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
+// do not edit without updating that file too (deploy path does not resolve imports).
+// This function has only ever gated on the single primary email, not the full
+// ADMIN_EMAILS allow-list — do not widen without an explicit decision (see gh-1534).
+const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
+
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
   "https://app.otterquote.com",
@@ -87,7 +93,7 @@ serve(async (req) => {
 
     // ── Caller gate: admin allow-list (same single-admin pattern as admin-contractor-action) ──
     const { data: callerData, error: callerError } = await supabase.auth.getUser(token);
-    if (callerError || !callerData?.user || callerData.user.email !== "dustinstohler1@gmail.com") {
+    if (callerError || !callerData?.user || callerData.user.email !== PRIMARY_ADMIN_EMAIL) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },

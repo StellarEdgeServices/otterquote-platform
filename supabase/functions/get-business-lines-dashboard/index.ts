@@ -70,6 +70,8 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const FUNCTION_NAME = "get-business-lines-dashboard";
+// gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
+// edit this array without updating that file too (deploy path does not resolve imports).
 const ADMIN_EMAILS  = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
 
 const ALLOWED_ORIGINS = [

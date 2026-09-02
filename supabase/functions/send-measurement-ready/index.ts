@@ -40,6 +40,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 const FUNCTION_NAME = "send-measurement-ready";
 const NOTIFICATION_TYPE = "measurement_ready";
 const DASHBOARD_URL = "https://otterquote.com/dashboard.html";
+// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
+// do not edit without updating that file too (deploy path does not resolve imports).
+// This function has only ever gated on the single primary email (plus the DB
+// template_review_role fallback below), not the full ADMIN_EMAILS allow-list —
+// do not widen the email fast-path without an explicit decision (see gh-1534).
+const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
 
 // CORS — origin-allowlisted per project standard (Session 254).
 const ALLOWED_ORIGINS = [
@@ -196,7 +202,7 @@ serve(async (req: Request) => {
 
     const sb = createClient(supabaseUrl, serviceRoleKey);
 
-    let isAdmin = user.email === "dustinstohler1@gmail.com";
+    let isAdmin = user.email === PRIMARY_ADMIN_EMAIL;
     if (!isAdmin) {
       const { data: adminRow } = await sb
         .from("contractors")
