@@ -2854,25 +2854,11 @@
       const moreEl    = document.getElementById('hoverPhotosMore');
       const emptyEl   = document.getElementById('hoverPhotosEmpty');
       const addrEl    = document.getElementById('hoverPhotosAddress');
-      const btn3D     = document.getElementById('hoverPhotos3DBtn');
-      const link3D    = document.getElementById('hoverPhotos3DLink');
-      const directLnk = document.getElementById('hoverPhotosDirectLink');
 
       if (loadingEl) loadingEl.style.display = 'none';
 
       // Address line
       if (addrEl && payload.job_address) addrEl.textContent = payload.job_address;
-
-      // Measurement job links
-      if (payload.hover_job_id) {
-        const jobUrl = 'https://hover.to/jobs/' + payload.hover_job_id;
-        if (link3D) link3D.href = jobUrl;
-        if (directLnk) directLnk.href = jobUrl;
-
-        // "Open 3D Property Design" button — siding claims only
-        const isSiding = currentClaim && Array.isArray(currentClaim.trades) && currentClaim.trades.includes('siding');
-        if (isSiding && btn3D) btn3D.style.display = 'block';
-      }
 
       const images = payload.images || [];
 
@@ -2997,14 +2983,6 @@
 
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
-
-        // ── "View property design" link ──────────────────────────────────────
-        if (data.hover_job_id) {
-          const linkDiv = document.getElementById('hoverDesignLink');
-          const linkEl  = document.getElementById('hoverJobLink');
-          if (linkDiv) linkDiv.style.display = 'block';
-          if (linkEl)  linkEl.href = 'https://hover.to/jobs/' + data.hover_job_id;
-        }
 
         // ── Address line ──────────────────────────────────────────────
         if (data.job_address) {
@@ -3131,10 +3109,7 @@
         btn.disabled = false;
       } catch (err) {
         console.warn('loadHoverSidingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Use the "View property design" button above to view manually.</span>';
-        // Still show the design link even on failure so contractor isn't blocked
-        const linkDiv = document.getElementById('hoverDesignLink');
-        if (linkDiv) linkDiv.style.display = 'block';
+        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Please try again.</span>';
         btn.textContent = 'Retry';
         btn.disabled = false;
       }
@@ -3359,13 +3334,6 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        // Measurement job link
-        if (data.hover_job_id) {
-          const linkDiv = document.getElementById('hoverRoofingLink');
-          const linkEl  = document.getElementById('hoverRoofingJobLink');
-          if (linkDiv) linkDiv.style.display = 'block';
-          if (linkEl)  linkEl.href = 'https://hover.to/jobs/' + data.hover_job_id;
-        }
         if (data.job_address) {
           const addrEl = document.getElementById('hoverRoofingAddressLine');
           if (addrEl) addrEl.textContent = data.job_address;
@@ -3403,9 +3371,7 @@
         btn.disabled = false;
       } catch (err) {
         console.warn('loadHoverRoofingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load roofing measurements. Try the View measurements link above.</span>';
-        const linkDiv = document.getElementById('hoverRoofingLink');
-        if (linkDiv) linkDiv.style.display = 'block';
+        content.innerHTML = '<span style="color:#DC2626;">Could not load roofing measurements. Please try again.</span>';
         btn.textContent = 'Retry';
         btn.disabled = false;
       }

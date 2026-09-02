@@ -1049,7 +1049,6 @@
       const imagesEl   = document.getElementById('hoverPropImages');
       const measureEl  = document.getElementById('hoverPropMeasurements');
       const matEl      = document.getElementById('hoverPropMaterials');
-      const viewLink   = document.getElementById('hoverPropViewLink');
       const addrEl     = document.getElementById('hoverPropAddress');
 
       if (!statusEl || !currentClaim) return;
@@ -1068,14 +1067,6 @@
 
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
-
-        // "View property design" link
-        if (data.hover_job_id) {
-          if (viewLink) {
-            viewLink.href = 'https://hover.to/jobs/' + data.hover_job_id;
-            viewLink.style.display = 'inline-block';
-          }
-        }
 
         // Address
         if (data.job_address && addrEl) addrEl.textContent = data.job_address;
@@ -1144,9 +1135,7 @@
           statusEl.style.display = 'none';
         } else if (data.wall_squares || data.design_images?.length > 0) {
           // Measurements available but no product selections
-          statusEl.innerHTML = '<span style="color:#64748B;">Measurements loaded. '
-            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#E07B00;">open your property design ↗</a> and create an Estimate.' : '')
-            + '</span>';
+          statusEl.innerHTML = '<span style="color:#64748B;">Measurements loaded. Product selections are not yet available.</span>';
         } else if (data.message) {
           statusEl.innerHTML = '<span style="color:#64748B;">' + data.message + '</span>';
         } else {
