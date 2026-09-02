@@ -137,7 +137,7 @@ test.describe('Flow A — Contractor Journey', () => {
   // ──────────────────────────────────────────────────────────────────────────
   // A1b: D-242 cross-role link + D-243 email-exists gate (contractor-join.html)
   // ──────────────────────────────────────────────────────────────────────────
-  test('A1b: contractor-join.html — D-242 cross-role link + D-243 email-exists banner (stub, does not block)', async ({ page }) => {
+  test('A1b: contractor-join.html — D-242 cross-role link + D-243/gh-1544 email-exists gate (live, blocks known email)', async ({ page }) => {
     await page.goto('/contractor-join.html');
     await page.waitForLoadState('load');
     await page.locator('#contractorForm').waitFor({ state: 'visible', timeout: 15_000 });
@@ -155,14 +155,12 @@ test.describe('Flow A — Contractor Journey', () => {
     await expect(existsMsg).toContainText('An account already exists for this email.');
     await expect(existsMsg.locator('a')).toHaveAttribute('href', 'contractor-login.html');
 
-    // checkEmailExists() is a documented STUB (contractor-join.html) that always
-    // resolves false until the check-email-exists Edge Function is approved and
-    // deployed (Tier 3, D-220). Submitting with the SEEDED, already-registered test
-    // contractor's email proves today's actual behavior: the gate never blocks, even
-    // for a known-existing account.
-    // TRIP-WIRE: once the real EF ships, this test must be updated to expect the
-    // banner to become visible and the magic link to NOT be sent for this email —
-    // update it alongside that change rather than deleting it.
+    // gh-1544: checkEmailExists() now calls the live check-email-exists Edge
+    // Function (RLS blocks the anon client from doing this lookup itself, so
+    // the EF runs it with the service role). Submitting with the SEEDED,
+    // already-registered test contractor's email must trip the gate: the
+    // banner appears and the magic link is never sent. This replaces the
+    // pre-gh-1544 stub assertion (checkEmailExists() always returning false).
     await page.fill('#businessEmail', state.contractorEmail);
     await page.fill('#businessName', 'D-243 Spec Co');
     await page.fill('#ownerFirstName', 'Spec');
@@ -171,10 +169,10 @@ test.describe('Flow A — Contractor Journey', () => {
 
     await page.locator('#submitBtn').click();
 
-    // Stub never blocks: the banner stays hidden and the form proceeds past the
-    // D-243 gate to the normal send-magic-link success state.
-    await expect(existsMsg).toBeHidden();
-    await expect(page.locator('#successMessage')).toHaveClass(/show/, { timeout: 15_000 });
+    // Live gate blocks: the banner becomes visible and the form never reaches
+    // the send-magic-link success state.
+    await expect(existsMsg).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#successMessage')).not.toHaveClass(/show/);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
