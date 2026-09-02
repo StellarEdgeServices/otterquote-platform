@@ -126,23 +126,25 @@ def run_all(tmp_root: pathlib.Path):
     demo_root = tmp_root / "paths-demo"
     otterquote_v2 = demo_root / "OtterQuote-v2"
     otterquote_v2.mkdir(parents=True)
-    # The one shape-matching line is built by concatenating short pieces at
-    # runtime rather than a single contiguous literal, so the SOURCE of this
-    # test file never contains a 20+-char sk_live_-shaped run for GitHub's
-    # own push-protection secret scanner (or credential-sweep.py's own
-    # source-level shape scan of this repo) to trip on -- the concatenated
-    # runtime VALUE still exercises scan_file()'s regex correctly below,
-    # which is the thing actually under test. Still an obviously-fake
-    # placeholder, never real key material.
+    # Every KEY/VALUE pair is built from separate short pieces, joined at
+    # runtime, rather than a single "KEY=value" literal -- so the SOURCE of
+    # this test file never contains a contiguous secret-shaped or
+    # password-assignment-shaped run for a secret scanner (GitHub push
+    # protection, GitGuardian, or credential-sweep.py's own source-level
+    # shape scan of this repo) to trip on. The joined runtime VALUE still
+    # exercises scan_file()'s regex correctly below, which is the thing
+    # actually under test. Every piece is an obviously-fake placeholder,
+    # never real key material.
     fake_stripe_shaped_value = "sk_live_" + "FAKETESTKEYDONOTUSE1234567890"
-    (otterquote_v2 / ".env").write_text(
-        "DB_PASSWORD=fake-plaintext-pw-not-real\n"
-        "ADMIN_PASSWORD=fake-correcthorsebatterystaple\n"
-        "API_SECRET=fakeshort1\n"
-        "SESSION_SECRET=fake-plaintext-session-value\n"
-        "STRIPE_TEST_KEY=" + fake_stripe_shaped_value + "\n",
-        encoding="utf-8",
-    )
+    demo_env_pairs = [
+        ("DB_" + "PASSWORD", "fake-plaintext-pw-not-real"),
+        ("ADMIN_" + "PASSWORD", "fake-correcthorsebatterystaple"),
+        ("API_SECRET", "fakeshort1"),
+        ("SESSION_SECRET", "fake-plaintext-session-value"),
+        ("STRIPE_TEST_KEY", fake_stripe_shaped_value),
+    ]
+    demo_env_content = "".join(k + "=" + v + "\n" for k, v in demo_env_pairs)
+    (otterquote_v2 / ".env").write_text(demo_env_content, encoding="utf-8")
 
     shape_allowlist = sweep.Allowlist()
     shape_findings = []
@@ -200,9 +202,19 @@ def run_all(tmp_root: pathlib.Path):
         sweep.classify_value_shape('{"type": "service_account", "note": "fake-fixture"}'),
         "JSON_BLOB",
     )
+    # Built from three separately-declared segments joined at runtime, not a
+    # single contiguous literal -- same rationale as the Stripe-shaped and
+    # password-shaped fixtures above: no full 3-segment JWT-shaped run
+    # appears anywhere in this file's committed source for a secret scanner
+    # to trip on, while the joined runtime value still exercises the JWT
+    # regex correctly. A synthetic fixture, never a real token.
+    _fake_jwt_header = "eyJhbGciOiJIUzI1NiIs" + "InR5cCI6IkpXVCJ9"
+    _fake_jwt_payload = "eyJmYWtl" + "Ijp0cnVlfQ"
+    _fake_jwt_signature = "fake" * 6
+    fake_jwt_shaped_value = _fake_jwt_header + "." + _fake_jwt_payload + "." + _fake_jwt_signature
     check(
         "classify_value_shape(JWT-shaped) -> JWT_SHAPED",
-        sweep.classify_value_shape("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmYWtlIjp0cnVlfQ.fakefakefakefakefakefake"),
+        sweep.classify_value_shape(fake_jwt_shaped_value),
         "JWT_SHAPED",
     )
     check("classify_value_shape(url) -> URL_LIKE", sweep.classify_value_shape("https://example.com/webhook"), "URL_LIKE")
