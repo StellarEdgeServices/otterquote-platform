@@ -285,10 +285,11 @@ const MANIFEST: any = {
 // CORS — D-211 Phase 16 Unit 4: matched-origin allow-list replaces wildcard "*".
 // Mirrors record-attestation (D-210). Only these production origins are echoed back;
 // any other Origin falls back to the canonical apex (effectively denied for browsers).
+// gh-1536: app-staging.otterquote.com removed — it is a Netlify DOMAIN ALIAS
+// on the PRODUCTION app site, not a staging environment.
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
   "https://app.otterquote.com",
-  "https://app-staging.otterquote.com",
   "https://jade-alpaca-b82b5e.netlify.app",
   "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];

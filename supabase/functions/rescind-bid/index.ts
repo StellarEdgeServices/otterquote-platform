@@ -8,10 +8,11 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // CORS allow-list. A comma-joined Access-Control-Allow-Origin is invalid and is
 // rejected by browsers, so a single origin must be chosen per request: echo the
 // request Origin when it is allow-listed, otherwise fall back to the first.
+// gh-1536: app-staging.otterquote.com removed — it is a Netlify DOMAIN ALIAS
+// on the PRODUCTION app site, not a staging environment.
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
   "https://app.otterquote.com",
-  "https://app-staging.otterquote.com",
   "https://jade-alpaca-b82b5e.netlify.app",
   "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];

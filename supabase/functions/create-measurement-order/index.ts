@@ -176,7 +176,12 @@ async function verifyPayment(
   claimId: string | null,
   requestOrigin: string,
 ): Promise<{ ok: true; amount: number; stripeChargeId: string | null } | { ok: false; status: number; error: string }> {
-  const isStaging = requestOrigin.includes("staging--") || requestOrigin.includes("app-staging.");
+  // gh-1536: exact-match, not substring — "app-staging." falsely matched
+  // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
+  // site (not staging), which selected Stripe TEST-mode keys against real
+  // production data. This must never match a production hostname.
+  const isStaging = requestOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
+    requestOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
   const stripeSecretKey = isStaging
     ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
     : Deno.env.get("STRIPE_SECRET_KEY");
