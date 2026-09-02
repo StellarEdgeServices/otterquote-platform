@@ -1379,6 +1379,35 @@ Let me know if you have any questions!
         let allReferrals = [];
         let allRecruits = [];
         let widgetStyle = 'button';
+        // D-319 (gh-1509 half A): platform_settings.w9_gate_retired — flag OFF
+        // (default) is today's behavior unchanged. See loadW9GateFlag() below.
+        let w9GateRetired = false;
+
+        // D-319 (gh-1509 half A): reads platform_settings.w9_gate_retired —
+        // same key/value config pattern as D204_HARD_FILTER in
+        // contractor-bid-form.html. NOTE: platform_settings' client-readable
+        // key allowlist RLS policy does not yet include 'w9_gate_retired'
+        // (only D204_HARD_FILTER / hover_measurement_price /
+        // platform_fee_percentage / skip_hover_in_test / measurement_products
+        // are whitelisted — see supabase/migrations/20260825113728_gh1245_
+        // admin_measurements_rls.sql), so this read is RLS-filtered to 0 rows
+        // until a follow-up migration adds the key. That failure mode already
+        // resolves to w9GateRetired = false below, i.e. today's W-9 copy stays
+        // visible — the safe direction — until that follow-up lands (flagged
+        // via Q: on gh-1509).
+        async function loadW9GateFlag() {
+            try {
+                const { data: flagRow } = await sb
+                    .from('platform_settings')
+                    .select('value')
+                    .eq('key', 'w9_gate_retired')
+                    .maybeSingle();
+                w9GateRetired = !!flagRow && flagRow.value === true;
+            } catch (e) {
+                console.warn('[D-319] w9_gate_retired flag fetch failed; defaulting to gate enforced:', e);
+                w9GateRetired = false;
+            }
+        }
 
         // Initialize
         async function init() {
@@ -1390,6 +1419,8 @@ Let me know if you have any questions!
             if (!currentUser && !CONFIG.DEMO_MODE) {
                 return;
             }
+
+            await loadW9GateFlag();
 
             // gh-fix: reveal/hide the app-install box now that we know who's
             // signed in (defined in the "Partner App v1" script below —
@@ -1657,6 +1688,12 @@ Let me know if you have any questions!
         function renderW9Card() {
             const card = document.getElementById('w9Upload');
             if (!card || !currentPartner) return;
+
+            // D-319 (gh-1509 half A): flag ON -> no W-9 gate copy at all.
+            if (w9GateRetired) {
+                card.innerHTML = '';
+                return;
+            }
 
             const { payments_blocked, w9_submitted_at, w9_verified_at } = currentPartner;
 
