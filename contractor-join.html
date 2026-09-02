@@ -288,10 +288,26 @@
         // Sends magic link with redirectTo=contractor-pre-approval.html.
         // All agreements and upload collected post-auth (pages 2-4).
 
-        // D-243: Stub for existing-account detection. Returns false until check-email-exists EF is
-        // approved (Tier 3 gate, D-220) and deployed. When wired: POST /functions/v1/check-email-exists.
-        async function checkEmailExists(_email) {
-            return false;
+        // D-243 / gh-1544: existing-account detection. Calls check-email-exists
+        // (verify_jwt=false — no auth session exists yet at this point in the
+        // funnel), which looks up `contractors` by case-insensitive email with
+        // the service role (RLS blocks an anon client from doing this itself).
+        // Fails OPEN on any network/EF error: a lookup failure must never block
+        // a legitimate new signup from reaching the magic-link step — the
+        // signup write path (contractor-pre-approval.html) re-checks before
+        // inserting, so this is a fast-path UX gate, not the only guard.
+        async function checkEmailExists(email) {
+            try {
+                if (!window.sb) return false;
+                const { data, error } = await window.sb.functions.invoke('check-email-exists', {
+                    body: { email },
+                });
+                if (error) throw error;
+                return !!(data && data.exists === true);
+            } catch (err) {
+                console.warn('[contractor-join] checkEmailExists failed (failing open):', err);
+                return false;
+            }
         }
 
         document.getElementById('contractorForm').addEventListener('submit', async (e) => {
