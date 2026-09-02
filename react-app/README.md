@@ -101,7 +101,7 @@ Required environment variables (copy from `.env.local.example`):
 
 Once the Netlify site is live, add CNAME records in Cloudflare:
 
-- **Staging**: `app-staging.otterquote.com` → Netlify staging site URL
+- **Staging**: `jade-alpaca-b82b5e.netlify.app` (and its `staging--` branch-deploy subdomain) — the actual Netlify staging site. (gh-1536: `app-staging.otterquote.com` is NOT staging — it is a Netlify domain alias on the PRODUCTION app site and is being retired.)
 - **Production** (after verification): `app.otterquote.com` → Netlify production site URL
 
 See the Netlify site settings → **Domain management** for the exact CNAME targets.

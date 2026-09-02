@@ -36,10 +36,11 @@
  * Allow:
  *   - https://otterquote.com
  *   - https://app.otterquote.com
- *   - https://app-staging.otterquote.com
  *   - https://jade-alpaca-b82b5e.netlify.app
  *   - https://staging--jade-alpaca-b82b5e.netlify.app
  *   - http://localhost:* (dev)
+ * gh-1536: app-staging.otterquote.com removed — it is a Netlify DOMAIN ALIAS
+ * on the PRODUCTION app site, not a staging environment.
  *
  * ── Returns ────────────────────────────────────────────────────────────────
  * {
@@ -63,10 +64,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 const FUNCTION_NAME = "record-attestation";
 
 // CORS allowlist
+// gh-1536: app-staging.otterquote.com removed — it is a Netlify DOMAIN ALIAS
+// on the PRODUCTION app site, not a staging environment.
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
   "https://app.otterquote.com",
-  "https://app-staging.otterquote.com",
   "https://jade-alpaca-b82b5e.netlify.app",
   "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];

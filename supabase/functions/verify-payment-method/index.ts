@@ -149,9 +149,14 @@ serve(async (req) => {
     // ── Stripe key selection ─────────────────────────────────────────────
     // Identical rule to create-setup-intent, so both halves of one card-add
     // always run against the same Stripe account and mode.
+    // gh-1536: exact-match, not substring — "app-staging." falsely matched
+    // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
+    // site (not staging), which selected Stripe TEST-mode keys against real
+    // production data. This must never match a production hostname.
     const reqOrigin = req.headers.get("Origin") || "";
     const isStaging =
-      reqOrigin.includes("staging--") || reqOrigin.includes("app-staging.");
+      reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
+      reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
     const stripeSecretKey = isStaging
       ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
       : Deno.env.get("STRIPE_SECRET_KEY");

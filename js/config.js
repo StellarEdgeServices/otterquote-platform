@@ -4,6 +4,17 @@
  * All environment-specific values in one place.
  */
 
+// gh-1536: exact-match against the two legitimate Netlify staging origins.
+// Previously SITE_URL / IS_STAGING used hostname.includes('staging'), which
+// falsely matched app-staging.otterquote.com — a Netlify DOMAIN ALIAS on the
+// PRODUCTION app site, not a staging environment — and caused production
+// traffic to select Stripe TEST-mode keys (and staging redirect URLs)
+// against real production data. app-staging.otterquote.com must NEVER
+// resolve as staging here.
+var _OQ_STAGING_HOSTS = ['jade-alpaca-b82b5e.netlify.app', 'staging--jade-alpaca-b82b5e.netlify.app'];
+var _oqIsStagingHost = (typeof window !== 'undefined') &&
+  _OQ_STAGING_HOSTS.indexOf(window.location.hostname) !== -1;
+
 var CONFIG = {
   // ── Supabase ──
   SUPABASE_URL:  'https://yeszghaspzwwstvsrioa.supabase.co',
@@ -37,9 +48,16 @@ var CONFIG = {
   //   - On PRODUCTION the browser uses pk_live and create-payment-intent uses
   //     STRIPE_SECRET_KEY. A walk-through moves REAL money.
   //   - On STAGING create-payment-intent already switches to
-  //     STRIPE_SECRET_KEY_TEST (it detects "staging--" / "app-staging." in the
-  //     request Origin), but the browser kept sending pk_live — so the modes
-  //     disagreed and the PaymentIntent could never be confirmed.
+  //     STRIPE_SECRET_KEY_TEST (it matches the request Origin against the
+  //     exact staging origin allow-list below), but the browser kept sending
+  //     pk_live — so the modes disagreed and the PaymentIntent could never be
+  //     confirmed.
+  //
+  // gh-1536: this used to be a hostname.includes('staging') substring check,
+  // which falsely matched app-staging.otterquote.com — a Netlify DOMAIN ALIAS
+  // on the PRODUCTION app site, not a staging environment — and caused real
+  // production traffic to select Stripe TEST-mode keys against production
+  // data. Fixed to an exact match against the two legitimate staging origins.
   //
   // Fill this in with the publishable TEST key from the Stripe dashboard
   // (pk_test_...). It is not a secret — publishable keys are designed to ship
@@ -70,10 +88,10 @@ var CONFIG = {
   // cookies are never set there). Production keeps the literal constant
   // unchanged. Database stays shared (SUPABASE_URL untouched) — see #696
   // for that separate, larger decision.
-  SITE_URL: (typeof window !== 'undefined' && window.location.hostname.includes('staging'))
+  SITE_URL: _oqIsStagingHost
     ? window.location.origin
     : 'https://otterquote.com',
-  IS_STAGING: (typeof window !== 'undefined' && window.location.hostname.includes('staging')),
+  IS_STAGING: _oqIsStagingHost,
   SUPPORT_EMAIL: 'support@otterquote.com',
 
   // ── Demo Mode ──
