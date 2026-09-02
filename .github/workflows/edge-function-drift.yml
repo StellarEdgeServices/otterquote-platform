@@ -25,6 +25,17 @@
 # guarantee -- GitHub does not promise scheduled-run delivery, and a detector
 # whose only trigger is `schedule` inherits that unreliability. See gh-1295
 # comment thread for the recommendation to add a separate liveness check.
+#
+# netlify-drift job (gh-1549, 2026-09-02): the static-site half of the same defect
+# class -- "a merge is not a deploy, and this system has no mechanism that notices
+# the difference" -- applied to the two Netlify-hosted sites instead of Edge
+# Functions. Filed after TWO same-shaped incidents in one day with no alarm on
+# either: otterquote.com production deploys silently erroring on "credit usage
+# exceeded" for 35+ minutes (#1548), and otter-crm sitting 22 days / 9 commits
+# behind main on cancelled builds (#1517). Wired into THIS file, on the same
+# schedule + workflow_dispatch, per the CTO's own filing instruction on #1549.
+# See scripts/netlify-deploy-drift.py's docstring for the two independent signals
+# it checks (BEHIND vs BUILD_FAILING) and the CROSS-REPO SCOPE GAP it documents.
 
 name: Edge Function Drift
 
@@ -42,6 +53,8 @@ on:
     paths:
       - 'scripts/edge-function-drift-check.py'
       - 'scripts/edge-function-drift-check.test.py'
+      - 'scripts/netlify-deploy-drift.py'
+      - 'scripts/netlify-deploy-drift.test.py'
       - '.github/workflows/edge-function-drift.yml'
 
 env:
@@ -137,4 +150,82 @@ jobs:
           path: |
             drift-report.md
             drift-report.json
+          if-no-files-found: ignore
+
+  netlify-drift:
+    name: Netlify production deploy vs main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # File an alarm comment on gh-1549 -- the alarm IS the comment (the #1295
+      # pattern). Not needed by the `drift` job above, so scoped to this job only.
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Same discipline as the Edge Function job above: a logic regression (e.g. a
+      # BUILD_FAILING check that stops firing when a still-matching published_deploy
+      # is present -- the exact #1548 shape) is caught even on a run where the
+      # Netlify/GitHub fetch cannot happen at all.
+      - name: Self-test the detector
+        run: python3 scripts/netlify-deploy-drift.test.py
+
+      # NOT a soft skip when NETLIFY_PAT is absent -- same fail-loud discipline as
+      # the Edge Function job: the script exits 3 (UNMEASURED) on a missing token,
+      # an unreachable API, or a malformed response, and UNMEASURED is never
+      # quieter than a measured BEHIND/BUILD_FAILING (gh-1419).
+      #
+      # GITHUB_PERSONAL_ACCESS_TOKEN here must have READ access to BOTH
+      # StellarEdgeServices/otterquote-platform AND StellarEdgeServices/otter-crm --
+      # the default `secrets.GITHUB_TOKEN` this job would otherwise get for free is
+      # scoped only to the repo the workflow runs in and 404s on a different private
+      # repo it cannot see at all. Confirmed live 2026-09-02 (gh-1549 build): the
+      # Code-lane fine-grained PAT available while writing this detector could read
+      # otterquote-platform but 404'd on otter-crm's `commits/main`. Provisioning a
+      # PAT scoped to both repos (or adding a second otter-crm-scoped secret and a
+      # second script invocation) is an owner/unblock item -- until then this job's
+      # otter-crm row will legitimately report UNMEASURED, which is the correct,
+      # loud, non-silent behavior for a scope gap, not a bug to silence.
+      #
+      # `--file-issue` posts to gh-1549 itself on any BEHIND/BUILD_FAILING site
+      # (never on UNMEASURED alone -- a measurement gap is not a drift finding).
+      # Combined into this one invocation (rather than a second run) so the check
+      # and the alarm comment share one set of API calls.
+      - name: Check Netlify production deploys against main
+        env:
+          NETLIFY_PAT: ${{ secrets.NETLIFY_PAT }}
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_PERSONAL_ACCESS_TOKEN }}
+        run: |
+          python3 scripts/netlify-deploy-drift.py --json --file-issue | tee netlify-drift-report.json
+
+      # Runs even on failure -- the report is most useful precisely when the step
+      # above went red.
+      - name: Publish drift table to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Netlify production deploy drift"
+            echo
+            if [ -s netlify-drift-report.json ]; then
+              echo '```json'
+              cat netlify-drift-report.json
+              echo '```'
+            else
+              echo "No report produced — the detector could not measure. This is a"
+              echo "failure, not a clean run. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netlify-deploy-drift-report
+          path: netlify-drift-report.json
           if-no-files-found: ignore
