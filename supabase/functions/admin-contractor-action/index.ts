@@ -19,7 +19,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 // CORS tightened Apr 15, 2026 (Session 181, ClickUp 86e0xhz2j): admin-only
 // function (requires dustinstohler1@gmail.com auth) — origin allowlisted.
