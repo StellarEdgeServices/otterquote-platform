@@ -27,6 +27,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isW9GateHeld, readW9GateFlag, w9GateHeldReason } from "./w9-gate.ts";
 
 const FUNCTION_NAME     = "approve-payout";
 // D-211 Phase 18 Unit 2: admin allow-list (was single ADMIN_EMAIL). Admit either operator email.
@@ -278,13 +279,19 @@ serve(async (req: Request) => {
       return heldResponse("Held — partner record not found; cannot verify W-9");
     }
 
-    if (agent.payments_blocked !== false || agent.w9_verified_at == null) {
-      console.log(`[${FUNCTION_NAME}] HELD ${payoutApprovalId} — partner ${approval.partner_id} payments_blocked=${agent.payments_blocked} w9_verified_at=${agent.w9_verified_at}`);
-      return heldResponse(
-        agent.payments_blocked !== false
-          ? "Held — partner payments are blocked (W-9 not on file)"
-          : "Held — partner W-9 not on file"
-      );
+    // D-319 (gh-1509 half A): platform_settings.w9_gate_retired — flag OFF
+    // (default; no row yet, this PR ships no seed/migration) is byte-identical
+    // to the pre-D-319 inline guard below. Flag ON retires ONLY the
+    // w9_verified_at condition; payments_blocked is still authoritative
+    // either way (see w9-gate.ts header comment for the reasoning).
+    const w9GateRetired = await readW9GateFlag(
+      async () => await supabase.from("platform_settings").select("value").eq("key", "w9_gate_retired").maybeSingle(),
+      (msg) => console.error(`[${FUNCTION_NAME}] ${msg}`)
+    );
+
+    if (isW9GateHeld(agent, w9GateRetired)) {
+      console.log(`[${FUNCTION_NAME}] HELD ${payoutApprovalId} — partner ${approval.partner_id} payments_blocked=${agent.payments_blocked} w9_verified_at=${agent.w9_verified_at} w9_gate_retired=${w9GateRetired}`);
+      return heldResponse(w9GateHeldReason(agent));
     }
 
     // ── Completion gate (D-139, #567) ────────────────────────────────────────
