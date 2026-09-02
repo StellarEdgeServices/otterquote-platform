@@ -45,6 +45,11 @@ import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
 import { evaluatePrice, extractSignedContractPrice } from "./price-verify.ts";
+import {
+  describeGuardVerdict,
+  evaluateLiveChargeGuard,
+  REFUSAL_CODE as GUARD_REFUSAL_CODE,
+} from "./live-charge-guard.ts";
 
 // ── 86e1tz17j: best-effort Sentry reporter for swallowed audit-write failures ──
 // Inlined (not imported from _shared) because the EF body-deploy path does not
@@ -356,7 +361,7 @@ serve(async (req) => {
       //              could never be found, let alone persisted.
       // Dropping either one silently breaks the thing it was added for.
       .select(
-        "id, status, docusign_envelope_id, color_confirmation_envelope_id, project_confirmation_envelope_id, contract_signed_at, is_test"
+        "id, status, docusign_envelope_id, color_confirmation_envelope_id, project_confirmation_envelope_id, contract_signed_at, is_test, live_charge_authorized_at"
       )
       .or(
         `docusign_envelope_id.eq.${envelopeId},color_confirmation_envelope_id.eq.${envelopeId},project_confirmation_envelope_id.eq.${envelopeId}`
@@ -970,6 +975,98 @@ serve(async (req) => {
               quote.total_price * (platformFeePercent / 100) * 100
             );
 
+            // ── #1467 GATE 1: live-charge authorization ──────────────────
+            // On 2026-08-31 a ceremony on a claim with is_test = true charged a
+            // real card $180.54, five seconds after the signature completed.
+            // The predicate is DELIBERATE HUMAN AUTHORIZATION, not is_test —
+            // live-charge-guard.ts records why a blanket is_test refusal was
+            // rejected (it would silently destroy the only proof the fee path
+            // works). This is an explicit branch BEFORE the fetch and never a
+            // throw: the catch below buckets every pre-charge throw as
+            // `signed_unbilled_no_method`, so a throw here would be swallowed
+            // and misread as a missing card.
+            const chargeGuard = evaluateLiveChargeGuard(claim);
+            if (!chargeGuard.allow) {
+              const guardMessage = describeGuardVerdict(
+                chargeGuard,
+                claim.id,
+                feeAmount
+              );
+              console.error(`[docusign-webhook] ${guardMessage}`);
+
+              // The signing is a FACT (#480 precedent) — record it. The fee is
+              // NOT charged, platform_fee_charged stays false, and dunning is
+              // deliberately NOT triggered: dunning is a retry queue and a
+              // retry is precisely what must not happen here.
+              await supabase
+                .from("claims")
+                .update({
+                  contract_signed_at: completedDateTime || new Date().toISOString(),
+                  contract_signed_by: recipientEmail || null,
+                  status: "contract_signed",
+                })
+                .eq("id", claim.id);
+
+              try {
+                await supabase.from("platform_alerts_log").insert({
+                  alert_type: "platform_fee_refused_unauthorized_test",
+                  function_name: "docusign-webhook",
+                  message: guardMessage,
+                  sent_at: new Date().toISOString(),
+                });
+              } catch (alertErr) {
+                await reportToSentry(alertErr, {
+                  fn: "docusign-webhook",
+                  op: "platform_alerts_log.insert",
+                  extra: {
+                    alert_type: "platform_fee_refused_unauthorized_test",
+                    claim_id: claim.id,
+                  },
+                });
+              }
+              try {
+                await supabase.from("activity_log").insert({
+                  event_type: "platform_fee_refused_unauthorized_test",
+                  is_test: claim.is_test ?? false,
+                  metadata: {
+                    claim_id: claim.id,
+                    quote_id: quote.id,
+                    contractor_id: quote.contractor_id,
+                    reason: chargeGuard.reason,
+                    amount_not_charged_cents: feeAmount,
+                    issue: "1467",
+                  },
+                });
+              } catch (activityErr) {
+                await reportToSentry(activityErr, {
+                  fn: "docusign-webhook",
+                  op: "activity_log.insert",
+                  extra: {
+                    event_type: "platform_fee_refused_unauthorized_test",
+                    claim_id: claim.id,
+                  },
+                });
+              }
+
+              return new Response(
+                JSON.stringify({
+                  received: true,
+                  envelope_id: envelopeId,
+                  status,
+                  claim_id: claim.id,
+                  platform_fee_charged: false,
+                  fee_charge_refused: chargeGuard.reason,
+                  message:
+                    "Contract signed. Platform fee NOT charged: this claim has no " +
+                    "live-charge authorization (#1467).",
+                }),
+                {
+                  status: 200,
+                  headers: { ...corsHeaders, "Content-Type": "application/json" },
+                }
+              );
+            }
+
             // Call create-payment-intent via internal function invocation
             console.log(
               `Charging contractor ${contractor.id} ${feeAmount} cents for platform fee...`
@@ -1007,6 +1104,55 @@ serve(async (req) => {
             let paymentResult: Record<string, unknown>;
             if (!paymentResponse.ok) {
               const paymentError = await paymentResponse.text();
+              // #1467: a 422 carrying the guard's refusal code is NOT a payment
+              // failure and must not enter dunning — dunning is a retry queue,
+              // it emails the contractor and the homeowner about a failed
+              // charge, and process-dunning charges Stripe DIRECTLY on retry.
+              // Routing a guard refusal there would recreate the defect this
+              // change exists to close, one hop downstream.
+              if (
+                paymentResponse.status === 422 &&
+                paymentError.includes(GUARD_REFUSAL_CODE)
+              ) {
+                console.error(
+                  `[docusign-webhook] platform fee REFUSED by create-payment-intent guard for claim ${claim.id}: ${paymentError.slice(0, 300)}`
+                );
+                await supabase
+                  .from("claims")
+                  .update({
+                    contract_signed_at: completedDateTime || new Date().toISOString(),
+                    contract_signed_by: recipientEmail || null,
+                    status: "contract_signed",
+                  })
+                  .eq("id", claim.id);
+                try {
+                  await supabase.from("platform_alerts_log").insert({
+                    alert_type: "platform_fee_refused_unauthorized_test",
+                    function_name: "docusign-webhook",
+                    message: `Claim ${claim.id}: downstream guard refused the live platform-fee charge (${feeAmount} cents NOT taken). Dunning deliberately NOT triggered. (#1467)`,
+                    sent_at: new Date().toISOString(),
+                  });
+                } catch (alertErr) {
+                  console.error("platform_alerts_log insert failed:", alertErr);
+                }
+                return new Response(
+                  JSON.stringify({
+                    received: true,
+                    envelope_id: envelopeId,
+                    status,
+                    claim_id: claim.id,
+                    platform_fee_charged: false,
+                    fee_charge_refused: "downstream_guard",
+                    message:
+                      "Contract signed. Platform fee NOT charged: refused by the " +
+                      "live-charge guard (#1467). Dunning not triggered.",
+                  }),
+                  {
+                    status: 200,
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                  }
+                );
+              }
               console.error(
                 `Payment function returned ${paymentResponse.status}: ${paymentError}`
               );

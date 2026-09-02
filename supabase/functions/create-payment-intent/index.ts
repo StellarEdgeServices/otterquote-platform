@@ -25,6 +25,12 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  describeGuardVerdict,
+  evaluateLiveChargeGuard,
+  GUARD_SELECT,
+  REFUSAL_CODE,
+} from "./live-charge-guard.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -158,6 +164,50 @@ serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      // ── #1467 GATE 2: live-charge authorization, independent of the caller ──
+      // Deliberately redundant with docusign-webhook's own gate. One gate is a
+      // code path; two gates is a property — and this one also covers every
+      // FUTURE caller of the platform_fee branch, which the upstream gate
+      // cannot. Fails CLOSED: if the claim row cannot be read, the charge is
+      // refused rather than attempted. See live-charge-guard.ts.
+      const { data: guardClaim } = await supabase
+        .from("claims")
+        .select(GUARD_SELECT)
+        .eq("id", metadata.claim_id)
+        .maybeSingle();
+      const chargeGuard = evaluateLiveChargeGuard(guardClaim);
+      if (!chargeGuard.allow) {
+        const guardMessage = describeGuardVerdict(
+          chargeGuard,
+          metadata.claim_id,
+          typeof amount === "number" ? amount : null
+        );
+        console.error(`[${FUNCTION_NAME}] ${guardMessage}`);
+        try {
+          await supabase.from("platform_alerts_log").insert({
+            alert_type: "platform_fee_refused_unauthorized_test",
+            function_name: FUNCTION_NAME,
+            message: guardMessage,
+            sent_at: new Date().toISOString(),
+          });
+        } catch (alertErr) {
+          console.error("platform_alerts_log insert failed:", alertErr);
+        }
+        // 422, not 400/403: distinguishable from every existing refusal in this
+        // function, so the caller's log says WHICH gate stopped the charge.
+        return new Response(
+          JSON.stringify({
+            error: guardMessage,
+            code: REFUSAL_CODE,
+            reason: chargeGuard.reason,
+          }),
+          {
+            status: 422,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
       // Re-derive fee amount from DB to prevent a compromised upstream EF from fabricating the charge.
       if (off_session && contractor_id) {
         const { data: quote, error: quoteErr } = await supabase

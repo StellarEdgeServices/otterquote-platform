@@ -28,6 +28,11 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  describeGuardVerdict,
+  evaluateLiveChargeGuard,
+  GUARD_SELECT,
+} from "./live-charge-guard.ts";
 
 const PLATFORM_URL = "https://otterquote.com";
 const SETTINGS_URL = `${PLATFORM_URL}/contractor-settings.html`;
@@ -846,6 +851,55 @@ serve(async (req) => {
             for (const m of cards) if (!defaultM || m.id !== defaultM.id) retryMethods.push({ stripe_pm_id: m.stripe_payment_method_id, payment_type: m.payment_type, cpm_id: m.id });
           } else if (cData.stripe_payment_method_id) {
             retryMethods.push({ stripe_pm_id: cData.stripe_payment_method_id, payment_type: "card", cpm_id: null });
+          }
+
+          // ── #1467 GATE 3: live-charge authorization, before ANY retry ────
+          // This function does not call create-payment-intent — it POSTs to
+          // api.stripe.com/v1/payment_intents itself, and it has a CRON mode
+          // that sweeps every dunning-status quote with no human in the loop.
+          // So the #1467 defect on this path needs nobody to fire it, which is
+          // a strictly worse shape than the ceremony path it was found on.
+          // Fails CLOSED: an unreadable claim refuses every retry.
+          {
+            const { data: guardClaim } = await supabase
+              .from("claims")
+              .select(GUARD_SELECT)
+              .eq("id", claim_id ?? "")
+              .maybeSingle();
+            const chargeGuard = evaluateLiveChargeGuard(guardClaim);
+            if (!chargeGuard.allow) {
+              const guardMessage = describeGuardVerdict(
+                chargeGuard,
+                claim_id,
+                amount_cents
+              );
+              console.error(`[process-dunning] ${guardMessage}`);
+              try {
+                await supabase.from("platform_alerts_log").insert({
+                  alert_type: "platform_fee_refused_unauthorized_test",
+                  function_name: "process-dunning",
+                  message: `${guardMessage} No retry attempted; dunning not initiated for quote ${quote_id}.`,
+                  sent_at: new Date().toISOString(),
+                });
+              } catch (alertErr) {
+                console.error("platform_alerts_log insert failed:", alertErr);
+              }
+              return new Response(
+                JSON.stringify({
+                  success: false,
+                  charge_refused: chargeGuard.reason,
+                  quote_id,
+                  claim_id,
+                  message:
+                    "Live charge refused by the #1467 guard. No payment method " +
+                    "was retried and no dunning sequence was started.",
+                }),
+                {
+                  status: 200,
+                  headers: { ...corsHeaders, "Content-Type": "application/json" },
+                }
+              );
+            }
           }
 
           // Skip the method that already failed (passed in stripe_error context)
