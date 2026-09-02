@@ -13,13 +13,24 @@
 # persists. Running this per-PR would alarm on every un-deployed PR by design and
 # would be trained away within a week.
 #
-# 09:00 UTC = 05:00 ET, inside the R-031 off-peak window (3 PM - 7 AM ET).
+# 09:17 UTC = 05:17 ET, inside the R-031 off-peak window (3 PM - 7 AM ET).
+#
+# Moved off :00 (gh-1295, 2026-09-01): GitHub documents that scheduled workflows
+# can be delayed under load, and the busiest minute on the busiest hour is the
+# worst-affected. Both scheduled fires observed on this workflow landed hours
+# late (run 33415036347 fired 2026-08-31T16:36Z against a 09:00 UTC target --
+# 7h15m late; run 33515902091 fired 2026-09-01T13:51Z -- 4h50m late). Neither
+# was dropped, but both were far enough off-target that a stricter SLA on
+# freshness would have alarmed. :17 is a mitigation for that delay, not a
+# guarantee -- GitHub does not promise scheduled-run delivery, and a detector
+# whose only trigger is `schedule` inherits that unreliability. See gh-1295
+# comment thread for the recommendation to add a separate liveness check.
 
 name: Edge Function Drift
 
 on:
   schedule:
-    - cron: '0 9 * * *'
+    - cron: '17 9 * * *'
   workflow_dispatch:
     inputs:
       allow_undeployed:
