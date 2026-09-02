@@ -3606,8 +3606,8 @@
             // D-202 Phase 2 — wire warranty dropdowns once contractor is known (Session 463)
             try { await initWarrantyDropdowns(null); } catch (e) { console.warn('[D-202] init wire failed:', e); }
 
-            // Render contract template card now that both claim + contractor are loaded (86e10t277)
-            renderContractTemplateCard();
+            // Render bid eligibility banner now that both claim + contractor are loaded (86e10t277, gh-1504)
+            await renderContractTemplateCard();
 
             // Re-render line items with contractor trades
             renderInsuranceLineItems();
@@ -4026,100 +4026,92 @@
         .replace(/"/g, '&quot;');
     }
 
-    // ── Contract Template Card (86e10t277) ────────────────────────────────────
+    // ── Bid Eligibility Banner (86e10t277, gh-1504) ────────────────────────────────────
+    // gh-1504: this used to read currentContractor.contract_templates -- a field
+    // nothing in this file ever populated -- so the "you cannot submit a bid"
+    // banner showed for every contractor regardless of real template status.
+    // Fix (CTO+CEO endorsed option 2): delete the client-side template lookup
+    // entirely and defer to the same server-side bid_can_submit RPC already
+    // enforced at submit time (D-199, see checkBidCanSubmitGate below), so the
+    // banner is incapable of contradicting the gate -- it IS the gate's verdict.
+
+    // gh-1504 copy check: bid_can_submit's `reason` strings were read live from
+    // the DB (pg_proc.prosrc). Most are already contractor-readable. Two are
+    // not: 'manual_mapping_pending' names internal DocuSign anchor-mapping
+    // terminology, and the input-validation failures (status: null -- missing
+    // contractor_id/trade/funding_type) are pure engineer-facing guard clauses
+    // that should never reach a contractor's screen. Keyed on `status` (a
+    // stable code) rather than the `reason` sentence, so a future copy tweak
+    // on the server can't silently break this map; any other status falls
+    // back to the RPC's own reason string verbatim.
+    const BID_CAN_SUBMIT_REASON_OVERRIDES = {
+      manual_mapping_pending: 'Your contract template needs a quick manual review from our team before it can be used for e-signature. We\'ll notify you once it\'s ready -- check your profile for status.',
+    };
+    function mapBidCanSubmitReason(result) {
+      if (!result) return 'You are not able to submit a bid right now. Please contact support.';
+      if (!result.status) {
+        // RPC-level input-validation guard clauses -- engineer-facing, never for a contractor.
+        return 'We couldn\'t verify your bidding eligibility. Please refresh the page or contact support if this continues.';
+      }
+      return BID_CAN_SUBMIT_REASON_OVERRIDES[result.status] || result.reason ||
+        'You are not able to submit a bid right now. Please contact support.';
+    }
+
     // Called after both currentClaim and currentContractor are loaded.
-    function renderContractTemplateCard() {
+    // can_submit: true  -> no banner, form fully usable.
+    // can_submit: false -> accurate banner with the (mapped) reason.
+    // RPC fails/errors  -> fail OPEN on the banner (render nothing, log it) --
+    //   the submit-time gate (checkBidCanSubmitGate) still protects actual
+    //   submission either way, so a transient RPC failure here should not
+    //   block or mislead a contractor who is otherwise eligible.
+    async function renderContractTemplateCard() {
       if (!currentClaim || !currentContractor) return;
       const cardEl = document.getElementById('contractTemplateCard');
       if (!cardEl) return;
+      if (!currentContractor.id) return;
 
-      // Determine slot key: {primaryTrade}/{fundingType}
       const claimTrades  = currentClaim.selected_trades || currentClaim.trades || [];
       const primaryTrade = (Array.isArray(claimTrades) ? (claimTrades[0] || 'roofing') : 'roofing').toLowerCase();
       const fundingRaw   = currentClaim.funding_type ||
                            (currentClaim.job_type?.startsWith('insurance') ? 'insurance' : 'retail');
       const fundingKey   = fundingRaw === 'insurance' ? 'insurance' : 'retail';
-      const slotKey      = primaryTrade + '/' + fundingKey;
 
-      // Friendly display label for this slot
-      const tradeLabel   = primaryTrade.charAt(0).toUpperCase() + primaryTrade.slice(1);
-      const fundingLabel = fundingKey === 'insurance' ? 'Insurance' : 'Retail';
-      const slotLabel    = tradeLabel + ' / ' + fundingLabel;
-
-      // Fix (#483, E2E walk 2026-07-08): this card was reading the PC-template
-      // field (color_confirmation_template) and told every contractor with a
-      // validated CONTRACT template that they could not bid. Resolve from
-      // contract_templates with the same normalized funding vocabulary as the
-      // envelope EF (insurance | retail).
-      const __normFunding = (f) => {
-        const s = String(f || '').toLowerCase();
-        if (s.includes('insurance')) return 'insurance';
-        if (s.includes('retail') || s.includes('cash')) return 'retail';
-        return s;
-      };
-      const template = (currentContractor.contract_templates || []).find(t =>
-        t && t.trade && String(t.trade).toLowerCase() === primaryTrade &&
-        __normFunding(t.funding_type) === fundingKey
-      ) || null;
-
-      let bodyHtml = '';
-      const templatePath = template && (template.path || template.file_url);
-      if (template && templatePath) {
-        bodyHtml = `
-          <div style="display:flex;align-items:center;gap:var(--sp-4);flex-wrap:wrap;margin-bottom:var(--sp-2);">
-            <span class="contract-template-slot-label">&#x1F4CB; ${escHtmlBid(slotLabel)} Template</span>
-            <button class="doc-link-btn-form" id="previewTemplateBtnBid" onclick="previewContractTemplateBid()">
-              &#x1F517; Preview Template
-            </button>
-          </div>
-          <p class="contract-template-note">This template will be sent to you and the homeowner after selection for e-signature.</p>
-        `;
-      } else {
-        bodyHtml = `
-          <p class="contract-template-no-upload">
-            &#x26A0;&#xFE0F; You haven't uploaded a contract template for <strong>${escHtmlBid(slotLabel)}</strong>.
-            You cannot submit a bid on this opportunity until your template is uploaded and validated.
-          </p>
-          <p class="contract-template-note">
-            Upload your contract in <a href="contractor-settings.html#contract-templates" style="color:var(--amber);">Settings &rarr; Contract Templates</a>. Otter Quotes does not draft or provide homeowner-contractor contracts &mdash; your contract is the agreement of record.
-          </p>
-        `;
+      let result;
+      try {
+        const { data, error } = await sb.rpc('bid_can_submit', {
+          p_contractor_id: currentContractor.id,
+          p_trade: primaryTrade,
+          p_funding_type: fundingKey,
+        });
+        if (error) {
+          console.error('[gh-1504] bid_can_submit RPC error on load (failing open, no banner):', error);
+          return;
+        }
+        result = data;
+      } catch (e) {
+        console.error('[gh-1504] bid_can_submit threw on load (failing open, no banner):', e);
+        return;
       }
 
+      if (!result || result.can_submit) {
+        cardEl.style.display = 'none';
+        cardEl.innerHTML = '';
+        return;
+      }
+
+      const msg = mapBidCanSubmitReason(result);
       cardEl.innerHTML = `
         <div class="contract-template-card">
           <div class="contract-template-card-title">&#x1F4CB; Contract Template</div>
-          ${bodyHtml}
+          <p class="contract-template-no-upload">
+            &#x26A0;&#xFE0F; ${escHtmlBid(msg)}
+          </p>
+          <p class="contract-template-note">
+            Manage your contract in <a href="contractor-settings.html#contract-templates" style="color:var(--amber);">Settings &rarr; Contract Templates</a>. Otter Quotes does not draft or provide homeowner-contractor contracts &mdash; your contract is the agreement of record.
+          </p>
         </div>
       `;
       cardEl.style.display = 'block';
-
-      // Store file_url for the preview handler
-      if (template?.file_url) {
-        cardEl.dataset.templatePath = templatePath;
-      } else {
-        delete cardEl.dataset.templatePath;
-      }
-    }
-
-    async function previewContractTemplateBid() {
-      const cardEl = document.getElementById('contractTemplateCard');
-      const filePath = cardEl?.dataset.templatePath;
-      if (!filePath) return;
-      const btn = document.getElementById('previewTemplateBtnBid');
-      if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
-      try {
-        const { data, error } = await sb.storage
-          .from('contractor-templates')
-          .createSignedUrl(filePath, 3600);
-        if (error || !data?.signedUrl) throw error || new Error('No URL');
-        window.open(data.signedUrl, '_blank');
-      } catch (err) {
-        console.error('Failed to preview template:', err);
-        alert('Unable to open template preview. Please try again.');
-      } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F517; Preview Template'; }
-      }
     }
 
     // ── Bid Form Document Links (86e10t26y) ───────────────────────────────────
