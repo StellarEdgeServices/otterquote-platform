@@ -36,6 +36,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { logNotificationFailure } from "./notification-failure.ts";
 
 const FUNCTION_NAME = "create-measurement-order";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -255,17 +256,29 @@ async function recordOrderCreated(
   buyerUserId: string,
   amountCents: number | null,
 ): Promise<void> {
+  // gh-1538: this lookup must never throw out of recordOrderCreated — a
+  // failure here must not turn an already-recorded (and possibly paid)
+  // order into a client-facing 500. Defaults is_test to false (fail toward
+  // "treat as real," matching this function's existing swallow-everything
+  // posture) rather than let the exception propagate.
+  let isTest = false;
   try {
     const { data: claim } = await supabase
       .from("claims")
       .select("is_test")
       .eq("id", claimId)
       .maybeSingle();
+    isTest = claim?.is_test === true;
+  } catch (e) {
+    console.error(`[${FUNCTION_NAME}] claim is_test lookup failed:`, e);
+  }
+
+  try {
     const { error: logErr } = await supabase.from("activity_log").insert({
       event_type: "measurement_order_created",
       title: "measurement_order_created",
       user_id: buyerUserId,
-      is_test: claim?.is_test === true,
+      is_test: isTest,
       metadata: {
         order_id: order.id,
         claim_id: claimId,
@@ -290,13 +303,26 @@ async function recordOrderCreated(
       body: JSON.stringify({ order_id: order.id }),
     });
     if (!res.ok) {
-      console.error(
-        `[${FUNCTION_NAME}] notify-measurement-order returned ${res.status}:`,
-        await res.text(),
-      );
+      const bodyText = await res.text();
+      throw new Error(`notify-measurement-order returned ${res.status}: ${bodyText}`);
     }
   } catch (e) {
+    // gh-1538: this was console.error-only, with no durable trace anywhere
+    // (no activity_log row, no Sentry, no notifications row). Never turn a
+    // notification failure into a client-facing throw here — the order is
+    // already recorded, and possibly paid for; log it instead.
     console.error(`[${FUNCTION_NAME}] notify-measurement-order invoke failed:`, e);
+    await logNotificationFailure(
+      (row) => supabase.from("activity_log").insert(row),
+      e,
+      {
+        functionName: FUNCTION_NAME,
+        recipientRole: buyerRole,
+        isTest,
+        userId: buyerUserId,
+        extra: { order_id: order.id, claim_id: claimId },
+      },
+    );
   }
 }
 
