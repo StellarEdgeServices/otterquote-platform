@@ -806,9 +806,14 @@ serve(async (req) => {
 
       // ── MULTI-METHOD RETRY: Try ALL payment methods before initiating dunning ──
       // This ensures dunning only triggers when every method on file has failed.
-      // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z)
+      // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z).
+      // gh-1536: exact-match, not substring — "app-staging." falsely matched
+      // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
+      // site (not staging), which selected Stripe TEST-mode keys against real
+      // production data. This must never match a production hostname.
       const _reqOrigin = req.headers.get("Origin") || "";
-      const isStaging = _reqOrigin.includes("staging--") || _reqOrigin.includes("app-staging.");
+      const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
+        _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
       const stripeSecretKey = isStaging
         ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
         : Deno.env.get("STRIPE_SECRET_KEY");
