@@ -32,17 +32,38 @@
  * dashboard down: fetchRevenueMtd() cannot throw and sits outside the
  * all-tables error gate.
  *
+ * Phase 2a (gh-1469) adds a 12-week weekly-bucketed marketing series to each
+ * audience: homeowner (signups, claims, measurement orders, leads by
+ * source), contractor (pre-approval → template → first-bid funnel),
+ * referral_partner (partner signups by agent_type and by UTM source, plus
+ * referral clicks). Every series is a real query result — the same
+ * measured/measured_zero honesty contract as the rest of this EF, carried
+ * per-series rather than per-scalar (buildWeeklySeries / buildGroupedWeekly
+ * Series below). None of the six named series lack a live source as of this
+ * phase, so "not_run" is reserved for a future series that genuinely has
+ * none (e.g. GA4 visits, phase 5) — it is still part of the contract and
+ * documented on WeeklySeries/GroupedWeeklySeries.
+ *
+ * The referral_clicks series carries the gh-1302 ~2x double-tracking caveat
+ * IN THE PAYLOAD (a `caveat` string on the series itself), not only in a
+ * future UI — gh-1302's fix (PR #1361, merged 2026-08-29T22:19:36Z) stops
+ * new double-counted rows but does not backfill rows created before that
+ * migration, and this series' 12-week trailing window spans that boundary.
+ *
  * Read-only. No writes, no schema change, no other EF touched.
  *
  * Input:  POST {}  (body currently unused — reserved for future filtering)
  * Output: { ok: true, generated_at, lines: [...], audiences: { homeowner, contractor, referral_partner } }
  *         lines[key=otterquotes] additionally carries revenue_mtd (phase 4).
+ *         audiences.{homeowner,contractor,referral_partner} additionally
+ *         carry `marketing` (phase 2a) — see buildWeeklySeries/
+ *         buildGroupedWeeklySeries for the shared shape.
  *
  * Auth: requires a valid Supabase JWT with email in the admin allow-list.
  * verify_jwt = false (see supabase/config.toml) — auth is performed
  * in-handler, same pattern as get-payout-completion-status / approve-payout.
  *
- * GitHub: #1340
+ * GitHub: #1340, #1469
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -114,6 +135,150 @@ function bucketFor(days: number): "green" | "yellow" | "red" {
 // A tile value that is always real — 0 is a MEASURED ZERO, never omitted.
 function measured(value: number) {
   return { value, kind: value === 0 ? "measured_zero" : "measured" };
+}
+
+// ── gh-1469 phase 2a: 12-week marketing series ──────────────────────────
+// Rolling 7-day windows ending NOW (not calendar Mon-Sun weeks) — window[11]
+// (the last one) always ends at the moment the function ran, so "this week"
+// is always a real, comparable 7-day slice no matter what day it is.
+// window[0] is the oldest, window[11] the newest — chronological order.
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const MARKETING_WEEKS = 12;
+
+interface WeekWindow { week_start: string; week_end: string }
+
+function buildWeekWindows(nowMs: number, weeks: number): WeekWindow[] {
+  const windows: WeekWindow[] = [];
+  for (let i = weeks; i >= 1; i--) {
+    const end = nowMs - (i - 1) * WEEK_MS;
+    const start = end - WEEK_MS;
+    windows.push({ week_start: new Date(start).toISOString(), week_end: new Date(end).toISOString() });
+  }
+  return windows;
+}
+
+// Every series carries its own honesty discriminant, same rule as measured()
+// above but for a 12-value array instead of a scalar: "measured_zero" means
+// the query ran and genuinely found nothing across all 12 weeks; "not_run"
+// (reserved — see file header) means there was no query to run at all. A
+// series is never a bare array standing in for either state.
+type SeriesKind = "measured" | "measured_zero" | "not_run";
+
+function kindForTotal(total: number): SeriesKind {
+  return total === 0 ? "measured_zero" : "measured";
+}
+
+interface DatedRow { iso: string | null }
+
+// Counts `rows` into the 12 windows by their `iso` timestamp. A row with no
+// timestamp (or an unparsable one) is dropped from the weekly buckets — it
+// cannot honestly be placed in a week it has no date for — but the caller is
+// responsible for surfacing that exclusion (see excluded_no_timestamp on the
+// pre-approval funnel series below) rather than letting the count silently
+// disagree with a scalar total computed elsewhere in this same response.
+function countByWeek(rows: DatedRow[], windows: WeekWindow[]): number[] {
+  const starts = windows.map((w) => new Date(w.week_start).getTime());
+  const ends = windows.map((w) => new Date(w.week_end).getTime());
+  const values = new Array(windows.length).fill(0);
+  for (const row of rows) {
+    if (!row.iso) continue;
+    const t = new Date(row.iso).getTime();
+    if (isNaN(t)) continue;
+    for (let w = 0; w < windows.length; w++) {
+      if (t >= starts[w] && t < ends[w]) {
+        values[w]++;
+        break;
+      }
+    }
+  }
+  return values;
+}
+
+interface WeeklySeries {
+  kind: SeriesKind;
+  unit: string;
+  windows: WeekWindow[];
+  values: number[];
+  total: number;
+  reason?: string; // present only when kind === "not_run"
+}
+
+function buildWeeklySeries(unit: string, rows: DatedRow[], windows: WeekWindow[]): WeeklySeries {
+  const values = countByWeek(rows, windows);
+  const total = values.reduce((a, b) => a + b, 0);
+  return { kind: kindForTotal(total), unit, windows, values, total };
+}
+
+// A series with no live data source at all — distinct from a series whose
+// query ran and returned zero (buildWeeklySeries above always returns that
+// as "measured_zero"). No caller in this phase uses this yet; kept because
+// the honesty contract is per-series and the shape has to exist before the
+// first genuinely-dark series (phase 5's GA4 visits) needs it.
+function notRunSeries(unit: string, windows: WeekWindow[], reason: string): WeeklySeries {
+  return { kind: "not_run", unit, windows, values: new Array(windows.length).fill(0), total: 0, reason };
+}
+
+interface GroupedRow extends DatedRow { group: string | null }
+
+interface WeeklySeriesGroup { key: string; values: number[]; total: number }
+
+interface GroupedWeeklySeries {
+  kind: SeriesKind;
+  unit: string;
+  windows: WeekWindow[];
+  groups: WeeklySeriesGroup[];
+  total: number;
+}
+
+// Same contract as buildWeeklySeries, split by an arbitrary string key
+// (agent_type, utm_source, lead source, ...). A row whose group value is
+// null/blank is bucketed under "(unspecified)" rather than dropped — an
+// unlabeled lead is still a real lead.
+const UNSPECIFIED_GROUP = "(unspecified)";
+
+function buildGroupedWeeklySeries(unit: string, rows: GroupedRow[], windows: WeekWindow[]): GroupedWeeklySeries {
+  const byGroup = new Map<string, DatedRow[]>();
+  for (const row of rows) {
+    const key = row.group && row.group.trim() ? row.group.trim() : UNSPECIFIED_GROUP;
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key)!.push({ iso: row.iso });
+  }
+  const groups = Array.from(byGroup.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, groupRows]) => {
+      const values = countByWeek(groupRows, windows);
+      return { key, values, total: values.reduce((a, b) => a + b, 0) };
+    });
+  const total = groups.reduce((sum, g) => sum + g.total, 0);
+  return { kind: kindForTotal(total), unit, windows, groups, total };
+}
+
+interface FirstEventRow { group: string; iso: string | null }
+interface FirstEventResult { firsts: DatedRow[]; excludedNoTimestamp: number }
+
+// First occurrence per group, by the earliest `iso` seen for that group key
+// — used for funnel stages where the event that matters is "first bid ever
+// submitted by this contractor", not every bid. Groups with no valid
+// timestamp anywhere are omitted (never invented) and their count is
+// returned separately so the caller can surface it rather than let a total
+// silently disagree with a scalar computed elsewhere in this response.
+function firstEventPerGroup(rows: FirstEventRow[]): FirstEventResult {
+  const earliest = new Map<string, number>();
+  const groupsSeen = new Set<string>();
+  let excludedNoTimestamp = 0;
+  for (const row of rows) {
+    groupsSeen.add(row.group);
+    if (!row.iso) continue;
+    const t = new Date(row.iso).getTime();
+    if (isNaN(t)) continue;
+    const prev = earliest.get(row.group);
+    if (prev === undefined || t < prev) earliest.set(row.group, t);
+  }
+  for (const g of groupsSeen) {
+    if (!earliest.has(g)) excludedNoTimestamp++;
+  }
+  const firsts: DatedRow[] = Array.from(earliest.values()).map((t) => ({ iso: new Date(t).toISOString() }));
+  return { firsts, excludedNoTimestamp };
 }
 
 // ── activity_log, read whole ────────────────────────────────────────────
@@ -319,6 +484,7 @@ serve(async (req: Request) => {
       referralsRes,
       activityLogRes,
       hoverOrdersRes,
+      leadsRes,
     ] = await Promise.all([
       // profiles.role holds 'homeowner' | 'contractor' (verified live, 2026-08-31) —
       // contractors and referral partners have their own dedicated tables with
@@ -357,7 +523,16 @@ serve(async (req: Request) => {
       // .select() here is capped server-side by PostgREST and truncates
       // silently. Reduced in-memory to a per-user max() rather than N+1.
       fetchAllActivity(supabase),
-      supabase.from("hover_orders").select("id", { count: "exact", head: true }),
+      // gh-1469: needs created_at to weekly-bucket "measurement orders", so
+      // this is no longer a head:true count — hoverOrdersCount below is
+      // derived from data.length instead (same real number, one query, not
+      // two: the count and the weekly series come from the same read).
+      // hover_orders has no is_test column (verified against
+      // information_schema, 2026-09-01) — every row here is counted as-is.
+      supabase.from("hover_orders").select("id, created_at"),
+      // leads has no is_test column either (same verification) — a raw
+      // top-of-funnel capture table, counted as-is.
+      supabase.from("leads").select("id, source, created_at"),
     ]);
 
     for (const [label, res] of [
@@ -365,6 +540,7 @@ serve(async (req: Request) => {
       ["contractors", contractorsRes], ["contractor_templates", contractorTemplatesRes],
       ["fee_acceptances", feeAcceptancesRes], ["referral_agents", referralAgentsRes],
       ["referrals", referralsRes], ["activity_log", activityLogRes], ["hover_orders", hoverOrdersRes],
+      ["leads", leadsRes],
     ] as const) {
       if (res.error) {
         console.error(`[${FUNCTION_NAME}] ${label} read failed:`, res.error.message);
@@ -383,7 +559,9 @@ serve(async (req: Request) => {
     const referralAgents = referralAgentsRes.data ?? [];
     const referrals = referralsRes.data ?? [];
     const activityLog = activityLogRes.data ?? [];
-    const hoverOrdersCount = hoverOrdersRes.count ?? 0;
+    const hoverOrders = hoverOrdersRes.data ?? [];
+    const hoverOrdersCount = hoverOrders.length;
+    const leads = leadsRes.data ?? [];
 
     // ── activity_log reduced to last-movement-per-user (no N+1 downstream) ──
     const lastActivityByUser = new Map<string, string>();
@@ -581,6 +759,126 @@ serve(async (req: Request) => {
     });
 
     // ══════════════════════════════════════════════════════════════════════
+    // gh-1469 phase 2a — 12-week marketing series, one block per audience.
+    // Every series is real; none of the six named in the issue title lacks a
+    // live source as of this phase (verified against information_schema,
+    // 2026-09-01). Non-test rows only, mirroring this EF's existing default
+    // (nonTest() below) — except leads and hover_orders, which have no
+    // is_test column at all and are counted as-is (documented at their
+    // query above).
+    // ══════════════════════════════════════════════════════════════════════
+    const weekWindows = buildWeekWindows(now, MARKETING_WEEKS);
+
+    const nonTestRows = <T extends { is_test?: boolean }>(rows: T[]) => rows.filter((r) => r.is_test !== true);
+
+    // ── Homeowner marketing ──────────────────────────────────────────────
+    const homeownerMarketing = {
+      signups: buildWeeklySeries(
+        "profiles",
+        nonTestRows(profiles as any[]).map((p) => ({ iso: p.created_at as string | null })),
+        weekWindows,
+      ),
+      claims: buildWeeklySeries(
+        "claims",
+        nonTestRows(claims as any[]).map((c) => ({ iso: c.created_at as string | null })),
+        weekWindows,
+      ),
+      measurement_orders: buildWeeklySeries(
+        "hover_orders",
+        (hoverOrders as any[]).map((h) => ({ iso: h.created_at as string | null })),
+        weekWindows,
+      ),
+      leads_by_source: buildGroupedWeeklySeries(
+        "leads",
+        (leads as any[]).map((l) => ({ iso: l.created_at as string | null, group: l.source as string | null })),
+        weekWindows,
+      ),
+    };
+
+    // ── Contractor marketing — funnel: pre-approval → template → first bid ─
+    // Each stage counts the FIRST time a contractor reached it, bucketed by
+    // when that first event happened — a funnel over time, not a raw event
+    // count (a contractor submitting 4 templates should not inflate
+    // "template" 4x in one week).
+    const nonTestContractors = nonTestRows(contractors as any[]);
+    const nonTestContractorIds = new Set(nonTestContractors.map((k: any) => k.id));
+
+    // Pre-approval's timestamp is approved_at; legacy_pre_approval-only
+    // contractors (approved via the pre-#1340 flow, no approved_at) have no
+    // date to bucket by — excluded from the weekly series and counted
+    // separately rather than silently missing from the total (see
+    // firstEventPerGroup's excludedNoTimestamp).
+    const preApproval = firstEventPerGroup(
+      nonTestContractors
+        .filter((k: any) => !!k.approved_at || k.legacy_pre_approval === true)
+        .map((k: any) => ({ group: k.id as string, iso: (k.approved_at as string | null) ?? null })),
+    );
+    const templateSubmitted = firstEventPerGroup(
+      (contractorTemplates as any[])
+        .filter((t: any) => nonTestContractorIds.has(t.contractor_id))
+        .map((t: any) => ({ group: t.contractor_id as string, iso: t.created_at as string | null })),
+    );
+    const firstBid = firstEventPerGroup(
+      (quotes as any[])
+        .filter((q: any) => q.contractor_id && nonTestContractorIds.has(q.contractor_id) && q.is_test !== true)
+        .map((q: any) => ({ group: q.contractor_id as string, iso: q.created_at as string | null })),
+    );
+
+    const contractorMarketing = {
+      funnel: {
+        pre_approval: {
+          ...buildWeeklySeries("contractors", preApproval.firsts, weekWindows),
+          excluded_no_timestamp: preApproval.excludedNoTimestamp,
+        },
+        template_submitted: {
+          ...buildWeeklySeries("contractor_templates", templateSubmitted.firsts, weekWindows),
+          excluded_no_timestamp: templateSubmitted.excludedNoTimestamp,
+        },
+        first_bid: {
+          ...buildWeeklySeries("quotes", firstBid.firsts, weekWindows),
+          excluded_no_timestamp: firstBid.excludedNoTimestamp,
+        },
+      },
+    };
+
+    // ── Referral partner marketing — signups by agent_type / UTM, clicks ──
+    const nonTestReferralAgents = nonTestRows(referralAgents as any[]);
+    const REFERRAL_CLICK_CAVEAT =
+      "gh-1302: one click could write two `referrals` rows (ref.html and its " +
+      "landing page both tracked the same click). Fixed 2026-08-29T22:19:36Z " +
+      "(PR #1361, RPC-side 10s dedupe) — rows created before that timestamp " +
+      "are NOT backfilled and may overcount clicks by roughly 2x. This " +
+      "series' 12-week window spans that boundary.";
+
+    const referralPartnerMarketing = {
+      partner_signups_by_agent_type: buildGroupedWeeklySeries(
+        "referral_agents",
+        nonTestReferralAgents.map((a: any) => ({
+          iso: a.created_at as string | null,
+          group: a.agent_type as string | null,
+        })),
+        weekWindows,
+      ),
+      partner_signups_by_utm_source: buildGroupedWeeklySeries(
+        "referral_agents",
+        nonTestReferralAgents.map((a: any) => ({
+          iso: a.created_at as string | null,
+          group: a.utm_source as string | null,
+        })),
+        weekWindows,
+      ),
+      referral_clicks: {
+        ...buildWeeklySeries(
+          "referrals",
+          nonTestRows(referrals as any[]).map((r: any) => ({ iso: r.created_at as string | null })),
+          weekWindows,
+        ),
+        caveat: REFERRAL_CLICK_CAVEAT,
+        caveat_ref: "https://github.com/StellarEdgeServices/otterquote-platform/issues/1302",
+      },
+    };
+
+    // ══════════════════════════════════════════════════════════════════════
     // Top page — all SES business lines.
     // ══════════════════════════════════════════════════════════════════════
     const nonTest = (rows: any[]) => rows.filter((r) => !r.is_test);
@@ -629,9 +927,9 @@ serve(async (req: Request) => {
       generated_at: new Date(now).toISOString(),
       lines,
       audiences: {
-        homeowner: { rows: homeownerRows },
-        contractor: { rows: contractorRows },
-        referral_partner: { rows: referralPartnerRows },
+        homeowner: { rows: homeownerRows, marketing: homeownerMarketing },
+        contractor: { rows: contractorRows, marketing: contractorMarketing },
+        referral_partner: { rows: referralPartnerRows, marketing: referralPartnerMarketing },
       },
     }, 200, corsHeaders);
 

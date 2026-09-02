@@ -1255,7 +1255,7 @@ function generateRetailScopeOfWorkPdf(params) {
     ensure(20);
     addText(LEFT_X, y, 11, "F2", "SIDING");
     y -= 14;
-    addText(60, y, 10, "F1", "Scope per contractor bid and Hover design specifications.");
+    addText(60, y, 10, "F1", "Scope per contractor bid and property design specifications.");
     y -= 14;
     if (measurements?.wallSqFt) {
       ensure(14);

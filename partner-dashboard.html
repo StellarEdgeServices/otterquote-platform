@@ -990,6 +990,9 @@
 
             <div class="referral-link-section" data-section="refer-client">
                 <div class="referral-link-label">Your Referral Link</div>
+                <!-- gh-1482 §2: state the destination in one line, matching the
+                     pattern already used on the Partner Profile Page card below. -->
+                <p class="link-hint destination-hint">Opens a page where your client requests a free quote from Otter Quotes' vetted contractors.</p>
                 <div class="referral-link-display">
                     <!-- Bridge 2026-08-26: was "https://otterquote.com/r/agent123" — /r/ is a live
                          404 (only /ref/ redirects), so any failure of the populate below
@@ -999,18 +1002,23 @@
                     <button class="copy-btn" id="shareLinkBtn">Share</button>
                     <button class="copy-btn" id="emailLinkBtn">Email</button>
                     <button class="copy-btn" id="qrLinkBtn">QR</button>
+                    <a href="#" class="copy-btn" id="previewLinkBtn" style="opacity: 0.5; pointer-events: none; text-decoration: none; display: inline-flex; align-items: center;" aria-disabled="true" target="_blank" rel="noopener">Preview</a>
                 </div>
                 <p class="link-hint referral-fee-disclaimer">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
             </div>
 
             <div class="referral-link-section recruit-link-section" data-section="refer-partner">
                 <div class="referral-link-label">Your Recruit Link</div>
+                <!-- gh-1482 §2: state the destination in one line, matching the
+                     pattern already used on the Partner Profile Page card below. -->
+                <p class="link-hint destination-hint">Opens a page where the person you send it to picks their profession and applies to become an Otter Quotes partner.</p>
                 <div class="referral-link-display">
                     <div class="referral-link-url" id="recruitLink">Loading your link&hellip;</div>
                     <button class="copy-btn" id="copyRecruitLinkBtn">Copy Link</button>
                     <button class="copy-btn" id="shareRecruitBtn">Share</button>
                     <button class="copy-btn" id="emailRecruitBtn">Email</button>
                     <button class="copy-btn" id="qrRecruitBtn">QR</button>
+                    <a href="#" class="copy-btn" id="recruitPreviewBtn" style="opacity: 0.5; pointer-events: none; text-decoration: none; display: inline-flex; align-items: center;" aria-disabled="true" target="_blank" rel="noopener">Preview</a>
                 </div>
                 <p class="link-hint">Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job.</p>
             </div>
@@ -1538,6 +1546,17 @@ Let me know if you have any questions!
             const referralLink = `https://otterquote.com/ref.html?code=${uniqueCode}`;
             document.getElementById('referralLink').textContent = referralLink;
 
+            // gh-1482 §2: Preview control equivalent to the Partner Profile
+            // Page card's — always resolvable once currentPartner is loaded,
+            // so it just gets enabled here alongside the link text itself.
+            const previewLinkBtn = document.getElementById('previewLinkBtn');
+            if (previewLinkBtn) {
+                previewLinkBtn.href = referralLink;
+                previewLinkBtn.style.opacity = '';
+                previewLinkBtn.style.pointerEvents = '';
+                previewLinkBtn.removeAttribute('aria-disabled');
+            }
+
             // gh-862, rebuilt: "Your Partner Profile Page" used to be
             // landingPageUrl === referralLink verbatim — a literal duplicate
             // of the Referral Link box above, with a dead href="#" Preview
@@ -1566,17 +1585,34 @@ Let me know if you have any questions!
             // show a graceful "being generated" message instead of the URL.
             const recruitLinkEl = document.getElementById('recruitLink');
             const copyRecruitBtn = document.getElementById('copyRecruitLinkBtn');
+            const recruitPreviewBtn = document.getElementById('recruitPreviewBtn');
             if (currentPartner.recruit_code) {
                 // Bridge 2026-08-26: scheme added — a schemeless URL does not
                 // linkify in most mail and SMS clients, so a recruit sent by text
                 // arrived as plain grey text the recipient had to retype.
-                recruitLinkEl.textContent = `https://otterquote.com/recruit.html?code=${currentPartner.recruit_code}`;
+                const recruitLink = `https://otterquote.com/recruit.html?code=${currentPartner.recruit_code}`;
+                recruitLinkEl.textContent = recruitLink;
                 copyRecruitBtn.disabled = false;
                 copyRecruitBtn.style.opacity = '';
+                // gh-1482 §2: Preview control equivalent to the Partner Profile
+                // Page card's — only enabled once a real recruit_code exists,
+                // same gate as the Copy Link button above.
+                if (recruitPreviewBtn) {
+                    recruitPreviewBtn.href = recruitLink;
+                    recruitPreviewBtn.style.opacity = '';
+                    recruitPreviewBtn.style.pointerEvents = '';
+                    recruitPreviewBtn.removeAttribute('aria-disabled');
+                }
             } else {
                 recruitLinkEl.textContent = 'Your recruit link is being generated. Refresh the page in a moment.';
                 copyRecruitBtn.disabled = true;
                 copyRecruitBtn.style.opacity = '0.5';
+                if (recruitPreviewBtn) {
+                    recruitPreviewBtn.href = '#';
+                    recruitPreviewBtn.style.opacity = '0.5';
+                    recruitPreviewBtn.style.pointerEvents = 'none';
+                    recruitPreviewBtn.setAttribute('aria-disabled', 'true');
+                }
             }
 
             // One-pager (gh-847): only re_agent and insurance_agent have a built asset today.
@@ -2372,7 +2408,7 @@ Let me know if you have any questions!`;
                     return 'Hi! I recommend Otter Quotes — a quick, free way to get competing bids from qualified contractors. Check it out: ' + link;
                 },
                 recruit: function (link) {
-                    return 'I partner with Otter Quotes — I share a link, they handle everything for the homeowner, and I earn a referral fee when jobs complete. They’re adding partners: ' + link;
+                    return 'I wanted to recommend using Otter Quotes when your friends and clients need a contractor for roofing, siding, gutters or windows. Otter Quotes helps homeowners get measurements, develop a scope of work, pick out materials and submit their job to multiple vetted contractors. They get competitive bids without sitting through multiple sales calls. They get better prices and better materials. I earn a referral fee when jobs complete. Use my link below to sign up and download the app: ' + link;
                 }
             };
 

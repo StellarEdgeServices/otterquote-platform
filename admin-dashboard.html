@@ -27,6 +27,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
 <title>Admin - Business Lines Dashboard | Otter Quotes</title>
+
+<!-- PWA (Admin App v1, gh-1479) -->
+<link rel="manifest" href="/admin-app.webmanifest">
+<meta name="theme-color" content="#E07B00">
+<link rel="apple-touch-icon" href="/img/app/apple-touch-icon-admin.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OQ Admin">
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
@@ -100,6 +109,34 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 .tab-btn { background: rgba(255,255,255,0.05); color: var(--slate); border: 1px solid rgba(255,255,255,0.1); padding: 0.6rem 1.2rem; border-radius: 0.5rem 0.5rem 0 0; cursor: pointer; font-size: 0.92rem; font-family: inherit; font-weight: 600; }
 .tab-btn.active { background: var(--white); color: var(--navy); border-color: var(--white); }
 .tab-btn.disabled { cursor: not-allowed; opacity: 0.6; }
+
+/* ── Marketing tab (gh-1470 / #1340 phase 2b) ── */
+.visits-dark-banner { background: rgba(148,163,184,0.10); border: 1px dashed rgba(148,163,184,0.4); color: var(--slate); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.88rem; line-height: 1.5; }
+.visits-dark-banner a { color: var(--teal); }
+.marketing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+.marketing-card { background: var(--white); border-radius: 0.75rem; padding: 1.25rem 1.4rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.marketing-card h4 { margin: 0 0 0.5rem; color: var(--navy); font-size: 1rem; }
+.metric-total { font-size: 1.5rem; font-weight: 700; color: var(--navy); }
+.metric-total.measured-zero { color: #047857; }
+.metric-unit { font-size: 0.76rem; color: var(--slate); margin-left: 0.45rem; font-weight: 500; }
+.sparkline { display: flex; align-items: flex-end; gap: 2px; height: 46px; margin: 0.7rem 0 0.3rem; }
+.sparkline.small { height: 22px; margin: 0.2rem 0; }
+.sparkline .spark-bar { flex: 1; background: var(--teal); border-radius: 2px 2px 0 0; min-height: 2px; }
+.sparkline .spark-bar.zero { background: var(--light); }
+.not-run-note { font-size: 0.8rem; color: #B91C1C; background: #FEF2F2; border: 1px dashed #FCA5A5; border-radius: 0.4rem; padding: 0.6rem 0.8rem; margin-top: 0.5rem; }
+.excluded-note { font-size: 0.74rem; color: #92400E; margin-top: 0.4rem; line-height: 1.4; }
+.click-caveat { margin-top: 0.65rem; background: #FEF3C7; border: 1px solid #FDE68A; color: #92400E; border-radius: 0.4rem; padding: 0.6rem 0.8rem; font-size: 0.78rem; line-height: 1.4; }
+.click-caveat a { color: #92400E; }
+.grouped-list { margin-top: 0.5rem; }
+.grouped-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0; border-top: 1px solid var(--light); }
+.grouped-row:first-child { border-top: none; }
+.grouped-key { flex: 0 0 130px; font-size: 0.8rem; color: var(--navy); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grouped-spark { flex: 1; }
+.grouped-total { flex: 0 0 auto; font-size: 0.82rem; color: #475569; font-weight: 600; min-width: 2.2rem; text-align: right; }
+.funnel-row { display: flex; align-items: center; gap: 1rem; padding: 0.65rem 0; border-top: 1px solid var(--light); }
+.funnel-row:first-child { border-top: none; }
+.funnel-label { flex: 0 0 170px; font-weight: 600; color: var(--navy); font-size: 0.85rem; }
+.funnel-body { flex: 1; }
 
 .controls-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; background: var(--white); border-radius: 0.6rem; padding: 0.85rem 1.1rem; }
 .controls-row label { color: var(--navy); font-size: 0.88rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
@@ -178,15 +215,26 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  * gh-1340 phase 1 — Business Lines Dashboard.
  *
  * Top page (all SES lines) -> Otter Quotes line page (high-level stats +
- * three audiences) -> audience page (Marketing | CRM tabs). Marketing is a
- * phase-2 stub gated on gh-1331 (GA4 read path) — it renders a NOT MEASURED
- * banner rather than fabricated content. CRM is the real phase-1 build: one
- * roster per audience, checklist ticked from get-business-lines-dashboard's
- * response, days-since-movement computed SERVER-SIDE by that EF (never here).
+ * three audiences) -> audience page (Marketing | CRM tabs). CRM is the
+ * phase-1 build: one roster per audience, checklist ticked from
+ * get-business-lines-dashboard's response, days-since-movement computed
+ * SERVER-SIDE by that EF (never here).
  *
  * Phase 4: Revenue MTD tile (top page OQ card + OQ line page) fed by the
  * EF's server-side Stripe read — see revenueTileHtml() for the honest-state
  * contract (measured / measured-zero / NOT RUN, never a fabricated $0).
+ *
+ * gh-1470 (#1340 phase 2b): Marketing tab renders the 12-week weekly-bucketed
+ * series gh-1469 added to the EF response (audiences.*.marketing) — signups,
+ * claims, measurement orders, leads by source (homeowner); the pre-approval
+ * -> template -> first-bid funnel (contractor); partner signups by
+ * agent_type/UTM and referral clicks (referral_partner). This file computes
+ * no counts and decides no honesty state itself — it renders exactly what
+ * the EF already decided (kind: measured / measured_zero / not_run), same
+ * contract as tileHtml()/revenueTileHtml() above. GA4 visits are not wired
+ * in yet (#1331, phase 5) — visitsDarkBannerHtml() says so on the tab rather
+ * than letting any figure here be read as a rate of visits. See
+ * renderMarketingSection() and its helpers below movementHtml().
  *
  * URL state: ?line=otterquotes&audience=homeowner|contractor|referral_partner&tab=crm|marketing
  * No params = top page. line=otterquotes, no audience = OQ line page.
@@ -394,18 +442,24 @@ function renderLinePage() {
 }
 
 function renderAudiencePage(audience, tab) {
+  var isMarketing = tab === 'marketing';
   var rows = state.data.audiences[audience].rows;
   var html = '<p class="breadcrumb"><a href="?">All business lines</a> &rsaquo; ' +
     '<a href="?line=otterquotes">Otter Quotes</a> &rsaquo; ' + esc(AUDIENCE_LABELS[audience]) + '</p>';
 
+  // audience is validated by render() (AUDIENCE_LABELS[audience] truthy)
+  // before this function is ever called, so it is one of a known-safe
+  // three-value set here — not free text from the EF response.
   html += '<div class="tabs">' +
-    '<button class="tab-btn disabled" title="Blocked on gh-1331 (GA4 read path) — phase 2" onclick="return false;">Marketing</button>' +
-    '<button class="tab-btn active">CRM</button>' +
+    '<button class="tab-btn' + (isMarketing ? ' active' : '') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audience + '\',tab:\'marketing\'})">Marketing</button>' +
+    '<button class="tab-btn' + (isMarketing ? '' : ' active') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audience + '\',tab:\'crm\'})">CRM</button>' +
   '</div>';
 
-  html += '<div class="not-measured-banner">📉 <strong>Marketing tab: NOT MEASURED.</strong> ' +
-    'Visits are dark on every channel — blocked on <a href="https://github.com/StellarEdgeServices/otterquote-platform/issues/1331" target="_blank" rel="noopener">gh-1331</a> ' +
-    '(GA4 read path). Phase 2 of gh-1340, not built here.</div>';
+  if (isMarketing) {
+    html += renderMarketingSection(audience);
+    document.getElementById('viewRoot').innerHTML = html;
+    return;
+  }
 
   var nonTestRows = rows.filter(function (r) { return !r.is_test; });
   var visibleRows = state.includeTest ? rows : nonTestRows;
@@ -483,6 +537,193 @@ function movementHtml(m) {
   return '<span class="movement-badge movement-' + safeBucket + '">' + icon + ' ' + days + ' day' + (days === 1 ? '' : 's') + '</span>';
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// gh-1470 (#1340 phase 2b) — Marketing tab.
+//
+// Consumes the `marketing` block gh-1469 added per audience to
+// get-business-lines-dashboard's response (WeeklySeries / GroupedWeeklySeries
+// — see that EF's index.ts header for the exact shape). This file is
+// render-only: every honesty discriminant (measured / measured_zero /
+// not_run) is decided by the EF, never recomputed or overridden here.
+//
+// XSS discipline (gh-1381 #42 was closed in THIS file, in
+// renderAudiencePage/movementHtml — same file, same rules): group keys
+// (leads.source, referral_agents.agent_type, referral_agents.utm_source)
+// are free-text-ish values that can carry vendor- or user-controlled
+// content, so every one is rendered via esc() and never used as a class
+// name or unescaped attribute. Numeric fields (values, totals,
+// excluded_no_timestamp) are shape-constrained via safeNum() before they
+// reach a template-literal-driven style or text position. caveat_ref is
+// constrained to a known-safe https://github.com/... prefix before it is
+// ever used as an href.
+// ══════════════════════════════════════════════════════════════════════════
+
+function safeNum(n) {
+  return (typeof n === 'number' && isFinite(n)) ? n : 0;
+}
+
+// The exact wording here is proposed copy pending the CTO ruling reserved on
+// gh-1470 (posted as a Q: comment on that issue) — ship default, swap on
+// ruling.
+function visitsDarkBannerHtml() {
+  return '<div class="visits-dark-banner">📉 <strong>Visits are dark this phase.</strong> ' +
+    'GA4 is not wired in yet (<a href="https://github.com/StellarEdgeServices/otterquote-platform/issues/1331" target="_blank" rel="noopener">gh-1331</a>), ' +
+    'so there is no visits denominator to compute a conversion rate from. Every figure below is a raw count, not a rate ' +
+    '&mdash; when GA4 lands (phase 5) these same tiles switch to showing a share &ldquo;of visits.&rdquo;</div>';
+}
+
+function fmtWeekLabel(w) {
+  var start = new Date(w && w.week_start);
+  var end = new Date(w && w.week_end);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return 'week';
+  var opts = { month: 'short', day: 'numeric' };
+  return start.toLocaleDateString('en-US', opts) + '–' + end.toLocaleDateString('en-US', opts);
+}
+
+// Renders a 12-bar sparkline from a WeeklySeries-shaped {kind, windows,
+// values} (or the not_run state). Bar heights are relative to the max value
+// in this series only, never compared across series.
+function sparklineHtml(series, small) {
+  if (!series || series.kind === 'not_run') {
+    var reason = series && series.reason ? series.reason : 'This series has no live data source yet.';
+    return '<div class="not-run-note">NOT RUN &mdash; ' + esc(reason) + '</div>';
+  }
+  var windows = Array.isArray(series.windows) ? series.windows : [];
+  var values = Array.isArray(series.values) ? series.values : [];
+  var max = 1;
+  for (var i = 0; i < values.length; i++) { var v0 = safeNum(values[i]); if (v0 > max) max = v0; }
+  var bars = '';
+  for (var j = 0; j < values.length; j++) {
+    var val = safeNum(values[j]);
+    var h = val === 0 ? 2 : Math.max(4, Math.round((val / max) * 100));
+    var label = esc(fmtWeekLabel(windows[j])) + ': ' + val;
+    bars += '<div class="spark-bar' + (val === 0 ? ' zero' : '') + '" style="height:' + h + '%" title="' + label + '"></div>';
+  }
+  return '<div class="sparkline' + (small ? ' small' : '') + '">' + bars + '</div>';
+}
+
+function seriesTotalHtml(series) {
+  if (!series || series.kind === 'not_run') return '';
+  var cls = series.kind === 'measured_zero' ? 'metric-total measured-zero' : 'metric-total';
+  var flag = series.kind === 'measured_zero' ? '<span class="tile-flag">MEASURED ZERO</span>' : '';
+  return '<span class="' + cls + '">' + safeNum(series.total) + '</span>' +
+    '<span class="metric-unit">' + esc(series.unit || '') + ' &middot; 12 wks' + flag + '</span>';
+}
+
+function weeklySeriesCardHtml(title, series, extraNote) {
+  return '<div class="marketing-card"><h4>' + esc(title) + '</h4>' +
+    '<div>' + seriesTotalHtml(series) + '</div>' +
+    sparklineHtml(series, false) +
+    (extraNote ? '<div class="excluded-note">' + extraNote + '</div>' : '') +
+  '</div>';
+}
+
+function groupedWeeklySeriesCardHtml(title, series) {
+  if (!series || series.kind === 'not_run') {
+    var reason = series && series.reason ? series.reason : 'No live data source yet.';
+    return '<div class="marketing-card"><h4>' + esc(title) + '</h4>' +
+      '<div class="not-run-note">NOT RUN &mdash; ' + esc(reason) + '</div></div>';
+  }
+  var groups = Array.isArray(series.groups) ? series.groups : [];
+  var totalCls = series.kind === 'measured_zero' ? 'metric-total measured-zero' : 'metric-total';
+  var flag = series.kind === 'measured_zero' ? '<span class="tile-flag">MEASURED ZERO</span>' : '';
+  var html = '<div class="marketing-card"><h4>' + esc(title) + '</h4>' +
+    '<div><span class="' + totalCls + '">' + safeNum(series.total) + '</span>' +
+    '<span class="metric-unit">' + esc(series.unit || '') + ' &middot; 12 wks' + flag + '</span></div>';
+  if (groups.length === 0) {
+    html += '<div class="not-run-note" style="color:#047857;background:#ECFDF5;border-color:#A7F3D0;">MEASURED ZERO &mdash; no rows in the last 12 weeks.</div>';
+  } else {
+    html += '<div class="grouped-list">' + groups.map(function (g) {
+      // g.key is free text sourced from a DB column (leads.source /
+      // agent_type / utm_source) — vendor- or user-controlled, never
+      // trusted raw. textContent via esc() only; never a class name or
+      // unescaped attribute.
+      var keyEsc = esc(g.key);
+      return '<div class="grouped-row">' +
+        '<span class="grouped-key" title="' + keyEsc + '">' + keyEsc + '</span>' +
+        '<span class="grouped-spark">' + sparklineHtml({ kind: series.kind, windows: series.windows, values: g.values }, true) + '</span>' +
+        '<span class="grouped-total">' + safeNum(g.total) + '</span>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+  return html;
+}
+
+function contractorFunnelHtml(funnel) {
+  if (!funnel) {
+    return '<div class="marketing-card"><h4>Contractor funnel (first event per contractor)</h4>' +
+      '<div class="not-run-note">NOT RUN &mdash; funnel series unavailable for this audience.</div></div>';
+  }
+  var stages = [
+    { key: 'pre_approval', label: 'Pre-approval' },
+    { key: 'template_submitted', label: 'Template submitted' },
+    { key: 'first_bid', label: 'First bid' },
+  ];
+  return '<div class="marketing-card"><h4>Contractor funnel (first event per contractor)</h4>' +
+    stages.map(function (s) {
+      var series = funnel[s.key];
+      var excluded = series ? safeNum(series.excluded_no_timestamp) : 0;
+      var note = excluded > 0
+        ? excluded + ' contractor' + (excluded === 1 ? '' : 's') + ' reached this stage with no timestamp to bucket by &mdash; excluded from the weekly count above, not silently dropped from the total.'
+        : '';
+      return '<div class="funnel-row"><span class="funnel-label">' + esc(s.label) + '</span>' +
+        '<div class="funnel-body">' + seriesTotalHtml(series) + sparklineHtml(series, false) +
+        (note ? '<div class="excluded-note">' + note + '</div>' : '') +
+        '</div></div>';
+    }).join('') +
+  '</div>';
+}
+
+function referralClicksCardHtml(series) {
+  if (!series) {
+    return '<div class="marketing-card"><h4>Referral clicks</h4>' +
+      '<div class="not-run-note">NOT RUN &mdash; series unavailable for this audience.</div></div>';
+  }
+  var html = '<div class="marketing-card"><h4>Referral clicks</h4>' +
+    '<div>' + seriesTotalHtml(series) + '</div>' +
+    sparklineHtml(series, false);
+  // gh-1302 caveat text/link come from the EF payload (series.caveat /
+  // series.caveat_ref, gh-1469) — never hardcoded here, so the two cannot
+  // drift apart. caveat_ref is shape-constrained to a known-safe
+  // https://github.com/... prefix before it is ever used as an href; if it
+  // doesn't match, the caveat text still renders, just without a link.
+  if (series.caveat) {
+    var ref = (typeof series.caveat_ref === 'string' && series.caveat_ref.indexOf('https://github.com/') === 0)
+      ? series.caveat_ref : null;
+    html += '<div class="click-caveat">⚠️ ' + esc(series.caveat) +
+      (ref ? ' <a href="' + esc(ref) + '" target="_blank" rel="noopener">Details &rarr;</a>' : '') +
+    '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderMarketingSection(audience) {
+  var aud = state.data.audiences[audience] || {};
+  var marketing = aud.marketing;
+  var html = visitsDarkBannerHtml();
+  if (!marketing) {
+    html += '<div class="not-measured-banner">Marketing series unavailable for this audience &mdash; the deployed EF ' +
+      'may predate gh-1469, or this response omitted the section. If this persists, a deploy is owed.</div>';
+    return html;
+  }
+  html += '<div class="marketing-grid">';
+  if (audience === 'homeowner') {
+    html += weeklySeriesCardHtml('Signups', marketing.signups);
+    html += weeklySeriesCardHtml('Claims', marketing.claims);
+    html += weeklySeriesCardHtml('Measurement orders', marketing.measurement_orders);
+    html += groupedWeeklySeriesCardHtml('Leads by source', marketing.leads_by_source);
+  } else if (audience === 'contractor') {
+    html += contractorFunnelHtml(marketing.funnel);
+  } else if (audience === 'referral_partner') {
+    html += groupedWeeklySeriesCardHtml('Partner signups by agent type', marketing.partner_signups_by_agent_type);
+    html += groupedWeeklySeriesCardHtml('Partner signups by UTM source', marketing.partner_signups_by_utm_source);
+    html += referralClicksCardHtml(marketing.referral_clicks);
+  }
+  html += '</div>';
+  return html;
+}
+
 function detailHtml(r) {
   var inputs = r.movement.inputs || [];
   var lines = inputs.map(function (inp) {
@@ -500,6 +741,32 @@ function toggleDetail(rowId) {
   if (!el) return;
   el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
 }
+</script>
+<script>
+// Service worker (admin surface only, gh-1479) -- same
+// register-once-and-reload-on-controllerchange pattern as partner-sw.js
+// (gh-831), so a reopen after a new worker activates never races the
+// initial fetch of an auth-critical asset under the old controller.
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+  var swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    window.location.reload();
+  });
+  window.addEventListener('load', function () {
+    // Explicit narrow scope, not the /admin-sw.js default of "/": partner-sw.js
+    // also registers at the site root (its own default scope), and only one
+    // worker can control a given scope. A root-scoped admin-sw would displace
+    // partner-sw as the controller for the whole site (and vice versa on the
+    // next partner page load) -- and since both workers call clients.claim()
+    // and both pages reload on controllerchange, that displacement becomes a
+    // cross-tab reload loop. "/admin-" prefix-matches every ADMIN_PAGES entry
+    // in admin-sw.js and nothing partner-owned, so the two workers coexist.
+    navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin-' }).catch(function () { /* non-fatal */ });
+  });
+})();
 </script>
 </body>
 </html>
