@@ -7,7 +7,12 @@
 // notify-contractors/test-exclusion.test.ts).
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { type DbAdapter, MAGIC_LINK_EXPIRES_IN, resolveAndMint } from "./gate.ts";
+import {
+  type ActivityLogRow,
+  type DbAdapter,
+  MAGIC_LINK_EXPIRES_IN,
+  resolveAndMint,
+} from "./gate.ts";
 
 const ACTOR_EMAIL = "dustinstohler1@gmail.com";
 
@@ -89,7 +94,7 @@ Deno.test("200 shape on a test contractor (auth admin stubbed)", async () => {
 });
 
 Deno.test("activity_log write asserted (event_type, target user_id, actor)", async () => {
-  const insertedLogs: Array<Record<string, unknown>> = [];
+  const insertedLogs: ActivityLogRow[] = [];
   const db = fakeDb({
     getContractorById: async () => ({
       data: {
