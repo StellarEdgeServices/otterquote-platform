@@ -272,6 +272,57 @@ def main():
     stale_text = rendered(iso_hours_ago(now, 100), stale_result, 36.0)
     check("STALE output carries its own loud banner", "STALE:" in stale_text, True)
 
+    # -------------------------------------------------------------------------------
+    print("\n--json banner field: loudness must not depend on output format (gh-1501 comment 5509656183, ruling 2c)")
+    # -------------------------------------------------------------------------------
+    def rendered_json(iso_val, result, threshold_val):
+        buf = io.StringIO()
+        real = sys.stdout
+        sys.stdout = buf
+        try:
+            age.print_report(iso_val, result, threshold_val, as_json=True)
+        finally:
+            sys.stdout = real
+        return json.loads(buf.getvalue())
+
+    fresh_json = rendered_json(iso_hours_ago(now, 1), fresh_result, 36.0)
+    check("FRESH --json verdict", fresh_json["verdict"], "FRESH")
+    check("FRESH --json banner is null (no warning to carry)", fresh_json["banner"], None)
+
+    unmeasured_json = rendered_json(None, unmeasured_result, 36.0)
+    check("UNMEASURED --json banner carries the same loud text as text mode",
+          "NOT A PASS" in (unmeasured_json["banner"] or ""), True)
+    check("UNMEASURED --json banner is byte-identical to the text-mode banner lines",
+          unmeasured_json["banner"], "\n".join(age._banner_lines(unmeasured_result, 36.0)))
+    check("UNMEASURED --json measured_by is null (no API request was ever attempted)",
+          unmeasured_json["measured_by"], None)
+    check("UNMEASURED --json run_id is null", unmeasured_json["run_id"], None)
+
+    stale_json = rendered_json(iso_hours_ago(now, 100), stale_result, 36.0)
+    check("STALE --json banner carries the same loud text as text mode",
+          "STALE:" in (stale_json["banner"] or ""), True)
+    check("STALE --json banner is byte-identical to the text-mode banner lines",
+          stale_json["banner"], "\n".join(age._banner_lines(stale_result, 36.0)))
+    check("STALE --json run_id extracted from detail ('actions-api run id=11')",
+          stale_json["run_id"], 11)
+    check("STALE --json measured_by is actions-api (a real API request was made)",
+          stale_json["measured_by"], "actions-api")
+    check("--json output carries every manifest-required field",
+          {"verdict", "age_hours", "threshold_hours", "run_id", "measured_by", "banner"}
+          <= set(stale_json.keys()), True)
+
+    # -------------------------------------------------------------------------------
+    print("\n_parse_detail: run_id / measured_by extraction feeding the --json fields")
+    # -------------------------------------------------------------------------------
+    check("_parse_detail on a success reason extracts the run id",
+          age._parse_detail("actions-api run id=33515902091"), (33515902091, "actions-api"))
+    check("_parse_detail on the no-token reason -> measured_by None (never attempted)",
+          age._parse_detail(age.NO_TOKEN_REASON), (None, None))
+    check("_parse_detail on an HTTP-error reason -> run_id None, measured_by actions-api",
+          age._parse_detail("GitHub API HTTP 401 (Unauthorized)"), (None, "actions-api"))
+    check("_parse_detail on empty/None detail -> (None, None), never raises",
+          age._parse_detail(None), (None, None))
+
     print()
     if FAILURES:
         print(f"FAILED — {len(FAILURES)} assertion(s): {', '.join(FAILURES)}")
