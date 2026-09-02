@@ -4,7 +4,7 @@
   "description": "Business-line metrics, payouts, contractor review, and admin tooling for Otter Quotes.",
   "id": "/admin-app",
   "start_url": "/admin-dashboard.html",
-  "scope": "/admin",
+  "scope": "/admin-",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#0D1B2E",

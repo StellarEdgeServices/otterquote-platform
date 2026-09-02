@@ -756,7 +756,15 @@ function toggleDetail(rowId) {
     window.location.reload();
   });
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/admin-sw.js').catch(function () { /* non-fatal */ });
+    // Explicit narrow scope, not the /admin-sw.js default of "/": partner-sw.js
+    // also registers at the site root (its own default scope), and only one
+    // worker can control a given scope. A root-scoped admin-sw would displace
+    // partner-sw as the controller for the whole site (and vice versa on the
+    // next partner page load) -- and since both workers call clients.claim()
+    // and both pages reload on controllerchange, that displacement becomes a
+    // cross-tab reload loop. "/admin-" prefix-matches every ADMIN_PAGES entry
+    // in admin-sw.js and nothing partner-owned, so the two workers coexist.
+    navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin-' }).catch(function () { /* non-fatal */ });
   });
 })();
 </script>
