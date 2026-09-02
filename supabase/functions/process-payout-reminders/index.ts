@@ -61,6 +61,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { readW9GateFlag, shouldSkipW9ReminderJob } from "./w9-gate.ts";
 
 const FUNCTION_NAME     = "process-payout-reminders";
 const ADMIN_EMAIL       = "dustinstohler1@gmail.com";
@@ -421,6 +422,20 @@ ${emailButton({ href: ADMIN_PAYOUTS_URL, label: "Review All Pending Approvals â†
     //
     // Idempotency: referral_agents.w9_notification_sent_at (added in v49,
     // unused until now). One request per partner, ever.
+    //
+    // D-319 (gh-1509 half A): platform_settings.w9_gate_retired â€” flag OFF
+    // (default; no row yet, this PR ships no seed/migration) runs JOB 3
+    // exactly as before. Flag ON skips the whole job â€” no query, no
+    // notify-partner-w9 calls, no stamps. See
+    // process-payout-reminders/w9-gate.ts for the flag-read.
+    const w9GateRetired = await readW9GateFlag(
+      async () => await supabase.from("platform_settings").select("value").eq("key", "w9_gate_retired").maybeSingle(),
+      (msg) => console.error(`[${FUNCTION_NAME}] ${msg}`)
+    );
+
+    if (shouldSkipW9ReminderJob(w9GateRetired)) {
+      console.log(`[${FUNCTION_NAME}] JOB 3 SKIPPED â€” w9_gate_retired flag is ON`);
+    } else {
     const { data: heldAccruals, error: heldErr } = await supabase
       .from("payout_approvals")
       .select("partner_id")
@@ -480,6 +495,7 @@ ${emailButton({ href: ADMIN_PAYOUTS_URL, label: "Review All Pending Approvals â†
           }
         }
       }
+    }
     }
 
     results.elapsedMs = Date.now() - startTime;

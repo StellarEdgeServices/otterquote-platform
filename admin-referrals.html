@@ -363,22 +363,30 @@
                     <div class="summary-card-label" style="color:#92400e;">⚠️ Payments Blocked</div>
                     <div class="summary-card-value" id="blockedCount" style="color:#d97706;">—</div>
                 </div>
-                <div class="summary-card" style="border-left:4px solid #93c5fd;">
+                <div class="summary-card w9-review-only" style="border-left:4px solid #93c5fd;">
                     <div class="summary-card-label" style="color:#1d4ed8;">📋 Pending Review</div>
                     <div class="summary-card-value" id="pendingReviewCount" style="color:#2563eb;">—</div>
                 </div>
-                <div class="summary-card" style="border-left:4px solid #86efac;">
+                <div class="summary-card w9-review-only" style="border-left:4px solid #86efac;">
                     <div class="summary-card-label" style="color:#166534;">✅ W-9 Verified</div>
                     <div class="summary-card-value" id="verifiedCount" style="color:#15803d;">—</div>
                 </div>
+            </div>
+            <!-- D-319 (gh-1509 half A): shown only when platform_settings.w9_gate_retired
+                 is ON. "marked retired" per the issue — the review workflow above
+                 (Pending Review / Verified cards + filter tabs, Verify/Unblock actions)
+                 is hidden/disabled, not deleted; payments_blocked is unaffected by the
+                 flag so that card + filter stay live. -->
+            <div id="w9GateRetiredBanner" style="display:none;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:0.85rem;color:#475569;">
+                ℹ️ W-9 payout gate retired (D-319) — review actions below are disabled. payments_blocked is unrelated to this flag and still governs payouts.
             </div>
 
             <!-- Filter Tabs -->
             <div class="filter-tabs">
                 <button class="filter-tab active" onclick="setFilter('all')">All Partners</button>
                 <button class="filter-tab" onclick="setFilter('blocked')" style="color:#92400e;">⚠️ Blocked</button>
-                <button class="filter-tab" onclick="setFilter('pending_review')" style="color:#1d4ed8;">📋 Pending Review</button>
-                <button class="filter-tab" onclick="setFilter('verified')" style="color:#15803d;">✅ Verified</button>
+                <button class="filter-tab w9-review-only" onclick="setFilter('pending_review')" style="color:#1d4ed8;">📋 Pending Review</button>
+                <button class="filter-tab w9-review-only" onclick="setFilter('verified')" style="color:#15803d;">✅ Verified</button>
             </div>
 
             <!-- Partners Table -->
@@ -464,11 +472,42 @@
         let currentFilter = 'all';
         let allPartners   = [];
         let currentUser   = null;
+        // D-319 (gh-1509 half A): platform_settings.w9_gate_retired — flag OFF
+        // (default) is today's behavior unchanged. See loadW9GateFlag() below.
+        let w9GateRetired = false;
         sb = null;
 
         function initSupabase() {
             if (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON) {
                 sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
+            }
+        }
+
+        // D-319 (gh-1509 half A): same key/value config pattern as
+        // D204_HARD_FILTER in contractor-bid-form.html. NOTE: platform_settings'
+        // client-readable key allowlist RLS policy does not yet include
+        // 'w9_gate_retired' (see supabase/migrations/20260825113728_gh1245_
+        // admin_measurements_rls.sql for the current whitelist), so this read
+        // is RLS-filtered to 0 rows until a follow-up migration adds the key.
+        // That failure mode already resolves to w9GateRetired = false below —
+        // the review UI stays visible, the safe direction — until that
+        // follow-up lands (flagged via Q: on gh-1509).
+        async function loadW9GateFlag() {
+            try {
+                const { data: flagRow } = await sb
+                    .from('platform_settings')
+                    .select('value')
+                    .eq('key', 'w9_gate_retired')
+                    .maybeSingle();
+                w9GateRetired = !!flagRow && flagRow.value === true;
+            } catch (e) {
+                console.warn('[D-319] w9_gate_retired flag fetch failed; defaulting to gate enforced:', e);
+                w9GateRetired = false;
+            }
+            if (w9GateRetired) {
+                document.querySelectorAll('.w9-review-only').forEach(el => el.style.display = 'none');
+                const banner = document.getElementById('w9GateRetiredBanner');
+                if (banner) banner.style.display = 'block';
             }
         }
 
@@ -481,6 +520,7 @@
                     return;
                 }
                 document.getElementById('adminContainer').style.display = 'block';
+                await loadW9GateFlag();
                 await loadPartners();
                 await loadReferrals();
             } catch (err) {
@@ -607,8 +647,12 @@
                 btns += `<button class="btn-sm btn-sm-view" onclick="viewW9('${escHtml(p.w9_file_url)}')">View W-9</button>`;
             }
 
-            // Verify W-9 (only if submitted and not yet verified)
-            if (p.w9_submitted_at && !p.w9_verified_at) {
+            // Verify W-9 (only if submitted and not yet verified).
+            // D-319 (gh-1509 half A): flag ON retires the w9_verified_at gate
+            // condition in approve-payout, so verifying no longer unblocks a
+            // payout — hide the now-inert action. payments_blocked is
+            // unaffected by the flag, so Unblock below stays available.
+            if (p.w9_submitted_at && !p.w9_verified_at && !w9GateRetired) {
                 btns += `<button class="btn-sm btn-sm-verify" onclick="verifyW9('${p.id}')">Verify W-9</button>`;
             }
 
