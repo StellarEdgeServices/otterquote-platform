@@ -6,15 +6,21 @@ that issue. Deliberately modelled on "In Flight/bin/backup-age.py", which solved
 identical shape for the memory backup (dead 80 days, nothing noticed, because the only
 thing that would have noticed was the unrun step itself).
 
+Corrected 2026-09-02 (CTO ruling comment 5509656183) for two claims below that had gone
+stale by the time they were re-read: see WHY THIS EXISTS (the 09:17 slot's actual fire
+time) and THRESHOLD DERIVATION (the 2026-08-31 delay figure, an ET/UTC conflation).
+
 WHY THIS EXISTS
 ----------------
 ".github/workflows/edge-function-drift.yml" (workflow id 346281499) is schedule-only for
 its purpose: its `push` trigger is path-filtered to the detector's OWN source files
 (scripts/edge-function-drift-check.py, its test, and the workflow file itself), so it does
 NOT fire when an Edge Function changes. When the daily cron (17 9 * * *) silently does not
-fire, the silence is indistinguishable from "62/62 IDENTICAL". gh-1501 observed exactly
-that: the 2026-09-02 09:17 UTC slot never ran and nobody noticed until a manual browser
-read three hours later.
+fire on time, the silence is indistinguishable from "62/62 IDENTICAL". gh-1501 observed
+exactly that: the 2026-09-02 09:17 UTC slot did not fire until 2026-09-02T13:38:08Z (run id
+33636924852, conclusion=failure on real drift) -- ~4h21m late -- and there was no automated
+way to know that at the time; the only signal available was a manual browser read at
+11:53Z, itself already 2h36m past the target with nothing yet queued.
 
 THE RULE IT OBEYS, same rule backup-age.py obeys, applied to this subject: a liveness
 check that shares a trigger with its subject is not a liveness check. So this script:
@@ -34,16 +40,21 @@ without re-reading that comment).
 
 THRESHOLD DERIVATION (--threshold-hours, default 36)
   cron period                                   = 24h
-  worst observed scheduler delay on this workflow = 7h15m (run 33415036347,
-      2026-08-31 target 09:00Z, fired 16:36Z -- see edge-function-drift.yml's own
-      header comment)
-  24h + 7h15m = 31h15m minimum before "late" can even be distinguished from "on time
+  worst observed scheduler delay on this workflow = 7h36m (run 33415036347,
+      2026-08-31 target 09:00Z, fired 2026-08-31T16:36:26Z per the Actions API --
+      7h36m precisely; the original delay table on gh-1501 read this as "+3h36m"
+      from an ET/UTC-conflated clock reading and was corrected in CTO comment
+      5509656183. edge-function-drift.yml's own header comment independently
+      records ~7h15m, a UI-rounded reading that roughly agrees)
+  24h + 7h36m = 31h36m minimum before "late" can even be distinguished from "on time
       but delayed like every prior observed fire". 36h is chosen deliberately above
       that floor -- comfortably past the observed delay distribution captured in the
-      workflow's history (both prior scheduled fires landed 4h50m-7h15m late and
-      neither was a dropped run), so this does not cry wolf on a delay shape that has
-      already happened twice and self-healed. Tightening it needs a bigger delay
-      sample, not arithmetic on today's one worst case.
+      workflow's history (scheduled fires have landed roughly 4h21m-7h36m late and
+      none has been a permanently dropped run), so this does not cry wolf on a delay
+      shape that keeps recurring and keeps self-healing. Tightening it needs a bigger
+      delay sample, not arithmetic on today's one worst case. Re-ruled KEEP 36h by
+      CTO comment 5509656183 after the 7h36m correction: 24h + 7h36m = 31h36m, still
+      comfortably under 36h.
 
 AUTH
   Reads GITHUB_PERSONAL_ACCESS_TOKEN from the environment (os.environ) only -- no file
@@ -58,6 +69,14 @@ USAGE
     python drift-detector-age.py                        # default 36h threshold
     python drift-detector-age.py --threshold-hours 36
     python drift-detector-age.py --json
+                  machine-readable verdict: {verdict, repo, workflow_id,
+                  newest_successful_run_created_at, age_hours, threshold_hours,
+                  detail, run_id, measured_by, banner}. `banner` carries the exact
+                  STALE/UNMEASURED warning text emitted in text mode (null on
+                  FRESH) -- per gh-1501 comment 5509656183 ruling 2c, "the loudness
+                  must not be a function of the output format," so a JSON consumer
+                  reading only `verdict` is fine, but one displaying the payload
+                  must not see a quieter warning than text mode gives.
 EXIT
     0 FRESH       newest successful scheduled/dispatched run <= threshold hours old
     2 STALE       newest successful run > threshold hours old
@@ -66,6 +85,7 @@ EXIT
 """
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -74,6 +94,7 @@ from datetime import datetime, timezone
 REPO = "StellarEdgeServices/otterquote-platform"
 WORKFLOW_ID = 346281499  # Edge Function Drift (.github/workflows/edge-function-drift.yml)
 DEFAULT_THRESHOLD_HOURS = 36.0  # see THRESHOLD DERIVATION above -- do not "round" this down
+NO_TOKEN_REASON = "no GITHUB_PERSONAL_ACCESS_TOKEN found in the environment"
 
 
 def _token():
@@ -89,7 +110,7 @@ def fetch_newest_successful_run(token, timeout=20):
     (missing token, network, auth, empty result, malformed response) is UNMEASURED, not
     a crash and not silently FRESH."""
     if not token:
-        return None, "no GITHUB_PERSONAL_ACCESS_TOKEN found in the environment"
+        return None, NO_TOKEN_REASON
 
     url = (
         "https://api.github.com/repos/%s/actions/workflows/%s/runs"
@@ -176,7 +197,56 @@ def parse_threshold_hours(argv):
     return DEFAULT_THRESHOLD_HOURS
 
 
+def _banner_lines(result, threshold_hours):
+    """Return the loud warning lines for STALE/UNMEASURED verdicts (each line already
+    carries its own leading indentation, matching the original hand-written banners), or
+    None for FRESH. Both text mode and --json mode build the banner from this single
+    source so the loudness is never a function of the output format -- gh-1501 comment
+    5509656183, ruling 2c: "the loudness must not be a function of the output format."
+    """
+    if result["verdict"] == "UNMEASURED":
+        return [
+            "  " + "!" * 70,
+            "  >> UNMEASURED IS NOT A PASS. <<",
+            "  This script could not determine whether the drift detector's schedule",
+            "  is alive -- that is the EXACT blind state that let a schedule slot run",
+            "  hours late on gh-1501 with no automated signal until this script",
+            "  existed. This is UNKNOWN, not verified-healthy. Fix the measurement",
+            "  (token/network/API), then re-run.",
+            "  " + "!" * 70,
+        ]
+    if result["verdict"] == "STALE":
+        return [
+            "  " + "#" * 70,
+            "  >> STALE: the drift detector has not completed successfully within",
+            "     the %.1fh threshold. Its schedule may have silently skipped a slot" % threshold_hours,
+            "     (gh-1501). Check the Actions UI for workflow %s and, if the" % WORKFLOW_ID,
+            "     scheduler is the fault, that is itself the thing to escalate --",
+            "     this script does NOT dispatch or repair anything by design.",
+            "  " + "#" * 70,
+        ]
+    return None
+
+
+def _parse_detail(detail):
+    """Best-effort structured view of the reason/source string (`result["detail"]`), for
+    --json consumers that want run_id/measured_by as their own fields instead of regex-
+    parsing `detail` text themselves. Never raises. measured_by is "actions-api" whenever
+    a GitHub Actions API request was actually attempted (every path except the
+    missing-token short-circuit); run_id is the run id embedded in a successful fetch's
+    source string (e.g. "actions-api run id=33515902091"), else None."""
+    if not detail:
+        return None, None
+    match = re.search(r"run id=(\d+)", detail)
+    run_id = int(match.group(1)) if match else None
+    measured_by = None if detail == NO_TOKEN_REASON else "actions-api"
+    return run_id, measured_by
+
+
 def print_report(iso, result, threshold_hours, as_json):
+    banner_lines = _banner_lines(result, threshold_hours)
+    run_id, measured_by = _parse_detail(result["detail"])
+
     if as_json:
         print(
             json.dumps(
@@ -190,6 +260,9 @@ def print_report(iso, result, threshold_hours, as_json):
                     else round(result["age_hours"], 2),
                     "threshold_hours": threshold_hours,
                     "detail": result["detail"],
+                    "run_id": run_id,
+                    "measured_by": measured_by,
+                    "banner": "\n".join(banner_lines) if banner_lines else None,
                 }
             )
         )
@@ -207,22 +280,9 @@ def print_report(iso, result, threshold_hours, as_json):
     )
     print("  detail                  : %s" % result["detail"])
 
-    if result["verdict"] == "UNMEASURED":
-        print("  " + "!" * 70)
-        print("  >> UNMEASURED IS NOT A PASS. <<")
-        print("  This script could not determine whether the drift detector's schedule")
-        print("  is alive -- that is the EXACT blind state that let a slot go silently")
-        print("  unrun on gh-1501. This is UNKNOWN, not verified-healthy. Fix the")
-        print("  measurement (token/network/API), then re-run.")
-        print("  " + "!" * 70)
-    elif result["verdict"] == "STALE":
-        print("  " + "#" * 70)
-        print("  >> STALE: the drift detector has not completed successfully within")
-        print("     the %.1fh threshold. Its schedule may have silently skipped a slot" % threshold_hours)
-        print("     (gh-1501). Check the Actions UI for workflow %s and, if the" % WORKFLOW_ID)
-        print("     scheduler is the fault, that is itself the thing to escalate --")
-        print("     this script does NOT dispatch or repair anything by design.")
-        print("  " + "#" * 70)
+    if banner_lines:
+        for line in banner_lines:
+            print(line)
 
 
 def main():
