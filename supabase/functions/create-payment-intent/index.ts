@@ -1,7 +1,8 @@
 /**
  * OtterQuote Edge Function: create-payment-intent
  * Creates a Stripe PaymentIntent for three use cases:
- *   - Measurement report purchases ($79 — D-181, server-side priced from platform_settings)
+ *   - Measurement report purchases (server-side priced from platform_settings —
+ *     gh-1537: the price is read live, never hardcoded here; see price-setting.ts)
  *   - Deductible escrow
  *   - Contractor platform fees (5% of job value)
  *
@@ -31,6 +32,7 @@ import {
   GUARD_SELECT,
   REFUSAL_CODE,
 } from "./live-charge-guard.ts";
+import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -112,22 +114,28 @@ serve(async (req) => {
         .select("value")
         .eq("key", "hover_measurement_price")
         .maybeSingle();
-      if (priceErr) {
-        console.error("Failed to read hover_measurement_price:", priceErr);
-        return new Response(JSON.stringify({
-          error: "Could not read measurement price from platform_settings.",
-          detail: priceErr.message,
-        }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      // platform_settings.value is JSONB — a raw number lands as a number.
-      // Default 7900 cents if unset (migration v54 seeds it).
-      const resolvedPrice = typeof priceRow?.value === "number"
-        ? priceRow.value
-        : Number(priceRow?.value ?? 7900);
-      if (!Number.isFinite(resolvedPrice) || resolvedPrice <= 0 || !Number.isInteger(resolvedPrice)) {
-        return new Response(JSON.stringify({
-          error: "platform_settings.hover_measurement_price is not a valid positive integer (cents).",
-        }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      // gh-1537: no defensive numeric default. The prior fallback (7900,
+      // "$79") was three price changes stale against the live price at audit
+      // time — a defensive default is a silent overcharge risk one deleted
+      // row away. Missing/invalid setting must fail closed, never guess.
+      let resolvedPrice: number;
+      try {
+        resolvedPrice = resolveRequiredPriceCents("hover_measurement_price", priceRow, priceErr);
+      } catch (err) {
+        const message = err instanceof PlatformSettingMissingError ? err.message : "platform_setting_missing: hover_measurement_price";
+        console.error(`[${FUNCTION_NAME}] ${message}`, priceErr ?? "");
+        try {
+          await supabase.from("platform_alerts_log").insert({
+            alert_type: "platform_setting_missing",
+            function_name: FUNCTION_NAME,
+            message,
+            sent_at: new Date().toISOString(),
+          });
+        } catch (alertErr) {
+          console.error("platform_alerts_log insert failed:", alertErr);
+        }
+        return new Response(JSON.stringify({ error: message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       amount = resolvedPrice;
       console.log("[hover_measurement] Server-side price enforced:", amount, "(client sent:", clientAmount, ")");
