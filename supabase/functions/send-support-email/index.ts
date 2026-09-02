@@ -16,7 +16,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const SUPPORT_DESTINATION = "dustinstohler1@gmail.com";
 const MAILGUN_TIMEOUT_MS  = 10_000; // 10s — defensive; Mailgun can be slow on cold calls

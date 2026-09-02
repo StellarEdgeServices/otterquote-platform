@@ -4,7 +4,7 @@
 // Idempotent: deduplication via existing quotes check per claim+contractor pair
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.114.0';
 
 const DEFAULT_PLATFORM_FEE_PCT = 5.00; // Fallback if platform_fee_config lookup returns no rows
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';

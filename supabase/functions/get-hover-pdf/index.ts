@@ -26,7 +26,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const HOVER_API_BASE = "https://hover.to";
 const FUNCTION_NAME = "get-hover-pdf";

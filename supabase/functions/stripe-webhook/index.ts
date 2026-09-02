@@ -29,7 +29,7 @@
 //   NOTE: this webhook subscription itself (Stripe Dashboard/API event selection)
 //   is NOT changed by this PR — see the PR body for the documented dashboard step.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 // ---------------------------------------------------------------------------
 // Constants
