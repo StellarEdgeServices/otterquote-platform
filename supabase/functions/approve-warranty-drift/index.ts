@@ -22,6 +22,12 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY")!;
 const MAILGUN_DOMAIN = "mail.otterquote.com";
+// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
+// do not edit without updating that file too (deploy path does not resolve imports).
+// checkAdminRole()'s email fast-path has only ever gated on this single primary
+// email (the DB template_review_role fallback below it is untouched by gh-1534) —
+// do not widen the fast-path without an explicit decision (see gh-1534).
+const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -221,7 +227,7 @@ Deno.serve(async (req: Request) => {
 });
 
 async function checkAdminRole(userId: string, email: string): Promise<boolean> {
-  if (email === "dustinstohler1@gmail.com") return true;
+  if (email === PRIMARY_ADMIN_EMAIL) return true;
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const { data } = await sb
     .from("contractors")

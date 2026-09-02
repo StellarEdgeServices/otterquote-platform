@@ -36,6 +36,8 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const FUNCTION_NAME = "ga4-report";
+// gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
+// edit this array without updating that file too (deploy path does not resolve imports).
 const ADMIN_EMAILS = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
 
 /**
@@ -276,7 +278,10 @@ serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
       );
       const { data: userData, error: userErr } = await supabase.auth.getUser();
-      const email = userData?.user?.email?.toLowerCase();
+      // gh-1534: case-sensitive exact match, no normalization — was the only one of
+      // eleven admin gates that lower-cased first; tightened to match the majority
+      // (case-sensitive is the strictest of the two observed behaviors, see PR body).
+      const email = userData?.user?.email;
       if (userErr || !email || !ADMIN_EMAILS.includes(email)) {
         return jsonResponse({ ok: false, error: "Forbidden" }, 403, cors);
       }

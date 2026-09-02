@@ -27,6 +27,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const FUNCTION_NAME = "reject-payout";
 // D-211 Phase 18 Unit 2: admin allow-list (was single ADMIN_EMAIL). Admit either operator email.
+// gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
+// edit this array without updating that file too (deploy path does not resolve imports).
 const ADMIN_EMAILS  = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
 
 const ALLOWED_ORIGINS = [
