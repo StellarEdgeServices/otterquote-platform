@@ -14,6 +14,8 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        exclude-patterns:
+          - "@sentry/nextjs"
 
   # Playwright E2E suite
   - package-ecosystem: "npm"
