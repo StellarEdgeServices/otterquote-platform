@@ -134,8 +134,9 @@ If GitHub MCP available:
   `otterquote-platform` only (GitHub #1380), so this call returns non-200. Do NOT treat that as
   "no findings" — a repo the sweep cannot see must never render the same as a clean repo. On any
   non-200 response for `otter-crm`, emit `otter-crm: NOT MEASURED (403, PAT scope)` as its own line
-  in the digest body and carry the same field on the `scanner-telemetry.md` row for this run. Per
-  gh-1419: UNMEASURED MUST FAIL AS LOUDLY AS STALE.
+  in the digest body and carry the same field on the `scanner-telemetry.md` row
+  (`Claude's Memories/scanner-telemetry.md`) for this run. Per gh-1419: UNMEASURED MUST FAIL AS
+  LOUDLY AS STALE.
 
 **Source 2: Snyk**
 
