@@ -512,7 +512,16 @@ function renderAudiencePage(audience, tab) {
       '<th>Member</th><th>Checklist</th><th>Days since movement</th>' +
     '</tr></thead><tbody>';
     sorted.forEach(function (r, i) {
-      var rowId = audience + '-' + i;
+      // gh-1562 alert #42 (CodeQL js/xss, live re-scan on merged main):
+      // this rowId built off the RAW `audience` parameter, not audienceEsc
+      // (defined above for the tab-button onclick handlers) — a second,
+      // independent unescaped interpolation of the same value, reachable
+      // only from this CRM branch, which is exactly why the marketing
+      // branch's innerHTML sink (~line 478) came back `fixed` on re-scan
+      // while this one (~line 527) did not. `i` is a plain loop index
+      // (always numeric, never external input) so audienceEsc alone
+      // closes it.
+      var rowId = audienceEsc + '-' + i;
       html += '<tr class="member-row' + (r.is_test ? ' is-test' : '') + '" onclick="toggleDetail(\'' + rowId + '\')">' +
         '<td><span class="member-label">' + esc(r.label) + '</span>' + (r.is_test ? '<span class="test-badge">TEST</span>' : '') + '</td>' +
         '<td>' + checklistHtml(r.checklist) + '</td>' +
