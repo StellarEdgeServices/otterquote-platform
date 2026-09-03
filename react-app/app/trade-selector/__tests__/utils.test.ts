@@ -98,4 +98,44 @@ describe('parseAddress (gh-1579)', () => {
       zip: null,
     });
   });
+
+  describe('gh-1579 follow-up: street-suffix abbreviation must not be captured as state', () => {
+    // A comma-less address ending in a common USPS street-suffix
+    // abbreviation + 5 digits used to satisfy TRAILING_STATE_ZIP_RE and get
+    // torn apart, with the suffix mis-captured as "state" (some of these,
+    // like "CT", are real state codes — worse than the NULL this PR set
+    // out to fix, since a wrong-but-valid state silently passes the
+    // downstream D-178 state gate). These must now fall through to the
+    // legacy comma-split fallback — same as any other regex miss — which
+    // returns the *entire* string as street and leaves city/state/zip
+    // null, rather than fabricating a state and truncating the street.
+    it.each([
+      '123 Oak Ct 12345',
+      '45 Elm Rd 60614',
+      '9 Bay Ln 30301',
+      '12 Sunset Dr 90210',
+      '500 Main Pl 10001',
+    ])('does not mangle "%s" into a fabricated state', (address) => {
+      expect(parseAddress(address)).toEqual({
+        street: address,
+        city: null,
+        state: null,
+        zip: null,
+      });
+    });
+
+    // "Ct" is both the Court street suffix AND a real state code
+    // (Connecticut), so it can't be resolved by the whitelist alone. When
+    // a comma has already separated a city segment, trust it as the state
+    // — this is the common "street, city ST zip" shape the PR targets, and
+    // a genuine Hartford, CT address must keep working.
+    it('still trusts "CT" as Connecticut when a comma marks a real city segment', () => {
+      expect(parseAddress('45 Main St, Hartford CT 06103')).toEqual({
+        street: '45 Main St',
+        city: 'Hartford',
+        state: 'CT',
+        zip: '06103',
+      });
+    });
+  });
 });
