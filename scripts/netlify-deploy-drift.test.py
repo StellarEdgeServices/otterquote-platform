@@ -118,7 +118,7 @@ def main():
     print("\nQUEUED_STALE -- third independent signal, priority vs BUILD_FAILING/BEHIND (gh-1549")
     print("CTO comment 5524997596, item 2b -- the #1517 shape neither other signal catches)")
     # -------------------------------------------------------------------------------
-    stale_build = {"id": "6a8759721a15470008234b70", "created_at": "2026-08-20T19:45:55Z",
+    stale_build = {"id": "test-queued-stale-build-1517", "created_at": "2026-08-20T19:45:55Z",
                     "_age_minutes": 20160.0}  # ~14 days, matches #1517's live evidence
 
     r = nd.evaluate_site(
@@ -534,7 +534,7 @@ def main():
         deploys_body=[{"state": "ready", "created_at": "2026-09-01T00:00:00Z", "error_message": None}],
         github_commit_body={"sha": same_sha},
         builds_body=[
-            {"id": "6a8759721a15470008234b70", "done": False, "error": None, "deploy_id": None,
+            {"id": "test-queued-stale-build-1517", "done": False, "error": None, "deploy_id": None,
              "created_at": "2026-08-20T19:45:55Z"},
         ],
     )
@@ -543,7 +543,7 @@ def main():
         check("check_site end-to-end QUEUED_STALE (matching sha, ready deploy, stuck build)",
               row["verdict"], nd.QUEUED_STALE)
         check("check_site end-to-end QUEUED_STALE carries the build id",
-              row["queued_stale_build_id"], "6a8759721a15470008234b70")
+              row["queued_stale_build_id"], "test-queued-stale-build-1517")
     finally:
         nd.urllib.request.urlopen = real_urlopen
 

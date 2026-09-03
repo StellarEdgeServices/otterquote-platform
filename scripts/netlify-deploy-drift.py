@@ -309,10 +309,13 @@ def find_queued_stale_build(builds, now, stale_minutes=DEFAULT_QUEUED_STALE_MINU
     (with an added "_age_minutes" key) or None. No network, no clock reads -- `now`
     is passed in so this is fully testable.
 
-    gh-1549 CTO comment 5524997596 (the live #1517 evidence):
-        6a8759721a15470008234b70  done=False  err=  2026-08-20T19:45:55Z  (14+ days)
-        6a84b513f9b1030008ca39a8  done=False  err=  2026-08-18T19:40:03Z
-        6a7e639d1ac7d40008c8492b  done=False  err=  2026-08-14T00:38:53Z
+    gh-1549 CTO comment 5524997596 (the live #1517 evidence -- build ids truncated
+    here to keep this comment out of the repo's own credential-shape sweep, which
+    treats a bare 20+ char hex run as a possible live secret; see the issue comment
+    for the full ids):
+        6a875972...4b70  done=False  err=  2026-08-20T19:45:55Z  (14+ days)
+        6a84b513...39a8  done=False  err=  2026-08-18T19:40:03Z
+        6a7e639d...492b  done=False  err=  2026-08-14T00:38:53Z
     "BUILD_FAILING reads the newest production deploy; these produced none, so it
     sees nothing to fail on."
     """
