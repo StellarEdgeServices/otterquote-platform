@@ -130,6 +130,12 @@ Pull from each available source. Collect raw findings; do not filter yet.
 If GitHub MCP available:
 - Query open Dependabot alerts for `StellarEdgeServices/otterquote-platform`
 - Extract: package name, severity (CVSS score if available), ecosystem, affected version, patched version, CVE ID, created date
+- Also query `StellarEdgeServices/otter-crm`. The `otterquote-sec-sweep-ro` PAT is scoped to
+  `otterquote-platform` only (GitHub #1380), so this call returns non-200. Do NOT treat that as
+  "no findings" — a repo the sweep cannot see must never render the same as a clean repo. On any
+  non-200 response for `otter-crm`, emit `otter-crm: NOT MEASURED (403, PAT scope)` as its own line
+  in the digest body and carry the same field on the `scanner-telemetry.md` row for this run. Per
+  gh-1419: UNMEASURED MUST FAIL AS LOUDLY AS STALE.
 
 **Source 2: Snyk**
 
