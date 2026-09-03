@@ -457,9 +457,16 @@ function renderAudiencePage(audience, tab) {
   // validated by render() via Object.prototype.hasOwnProperty.call, so it
   // can only be one of AUDIENCE_LABELS' three literal own keys here — not
   // free text from the EF response, and not an inherited Object.prototype
-  // property name either. esc() is kept as a second, independent layer so
-  // this string is never interpolated raw regardless of what render() lets
-  // through in the future.
+  // property name either. That hasOwnProperty gate is the real barrier for
+  // this specific onclick="navigate({...audience:'...'})" sink: the browser
+  // HTML-decodes an attribute's value before compiling it as the inline
+  // handler's JS, so esc()'s '&#39; encoding of a quote would decode back to
+  // a literal ' and would NOT stop a JS-string break-out on its own if this
+  // gate were ever weakened (correction per PR #1563 review — an earlier
+  // version of this comment overclaimed esc() as an independent layer here).
+  // esc() is still applied below, matching this file's house style and
+  // covering the surrounding HTML-attribute-quote boundary, but the
+  // hasOwnProperty constraint above is what actually makes this safe.
   var audienceEsc = esc(audience);
   html += '<div class="tabs">' +
     '<button class="tab-btn' + (isMarketing ? ' active' : '') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audienceEsc + '\',tab:\'marketing\'})">Marketing</button>' +

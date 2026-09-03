@@ -154,6 +154,117 @@ Deno.test("404 when contractor is is_test but has no linked auth user", async ()
   assertEquals(result.status, 404);
 });
 
+// gh-1562 fixup (PR #1563 review FAIL): resolveAndMint's own db-call error
+// branches — getContractorById, getClaimsByUserId, getAuthUserById,
+// generateMagicLink — used to return `jsonError(500, <adapter>.message)`,
+// shipping raw Supabase/PostgREST error text straight into the response
+// body. That is the same leak class the outer index.ts catch-all was fixed
+// for in the first pass of this PR, just reached via a returned `{ error }`
+// shape instead of a thrown exception. Each of the four sites below stubs a
+// DbAdapter call to fail with an adapter error carrying an obviously
+// sensitive string, and asserts the response body is the fixed generic
+// shape with no trace of that string anywhere in it.
+const SENSITIVE_DB_DETAIL =
+  'relation "contractors_internal_shadow" does not exist at pg driver line 42';
+
+Deno.test("getContractorById error: generic body, adapter detail not leaked", async () => {
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: null,
+      error: { message: SENSITIVE_DB_DETAIL },
+    }),
+  });
+  const result = await resolveAndMint({ contractor_id: "c7" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 500);
+  assertEquals(result.body, { error: "Internal server error" });
+  assertEquals(JSON.stringify(result.body).includes(SENSITIVE_DB_DETAIL), false);
+});
+
+Deno.test("getClaimsByUserId error: generic body, adapter detail not leaked", async () => {
+  const db = fakeDb({
+    getClaimsByUserId: async () => ({
+      data: null,
+      error: { message: SENSITIVE_DB_DETAIL },
+    }),
+  });
+  const result = await resolveAndMint({ user_id: "u7" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 500);
+  assertEquals(result.body, { error: "Internal server error" });
+  assertEquals(JSON.stringify(result.body).includes(SENSITIVE_DB_DETAIL), false);
+});
+
+Deno.test("getAuthUserById error: generic body, adapter detail not leaked", async () => {
+  const db = fakeDb({
+    getClaimsByUserId: async () => ({
+      data: [{ id: "claim7", is_test: true }],
+      error: null,
+    }),
+    getAuthUserById: async () => ({
+      data: null,
+      error: { message: SENSITIVE_DB_DETAIL },
+    }),
+  });
+  const result = await resolveAndMint({ user_id: "u8" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 500);
+  assertEquals(result.body, { error: "Internal server error" });
+  assertEquals(JSON.stringify(result.body).includes(SENSITIVE_DB_DETAIL), false);
+});
+
+Deno.test("generateMagicLink error: generic body, adapter detail not leaked", async () => {
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: {
+        id: "c8",
+        user_id: "u9",
+        email: "test-contractor-8@otterquote-internal.test",
+        is_test: true,
+      },
+      error: null,
+    }),
+    generateMagicLink: async () => ({
+      data: null,
+      error: { message: SENSITIVE_DB_DETAIL },
+    }),
+  });
+  const result = await resolveAndMint({ contractor_id: "c8" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 500);
+  assertEquals(result.body, { error: "Internal server error" });
+  assertEquals(JSON.stringify(result.body).includes(SENSITIVE_DB_DETAIL), false);
+});
+
+Deno.test("generateMagicLink no action_link, no error object: generic body, distinguishing detail still logged", async () => {
+  const loggedCalls: unknown[][] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => {
+    loggedCalls.push(args);
+  };
+
+  try {
+    const db = fakeDb({
+      getContractorById: async () => ({
+        data: {
+          id: "c9",
+          user_id: "u10",
+          email: "test-contractor-9@otterquote-internal.test",
+          is_test: true,
+        },
+        error: null,
+      }),
+      // Adapter reports success but with no action_link — an edge case
+      // distinct from a driver error, and worth its own log line rather
+      // than collapsing silently.
+      generateMagicLink: async () => ({ data: null, error: null }),
+    });
+    const result = await resolveAndMint({ contractor_id: "c9" }, db, ACTOR_EMAIL);
+    assertEquals(result.status, 500);
+    assertEquals(result.body, { error: "Internal server error" });
+    assertEquals(loggedCalls.length, 1);
+    assertStringIncludes(Deno.inspect(loggedCalls[0]), "no action_link");
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
 // gh-1562 (js/stack-trace-exposure): index.ts's outer catch calls
 // unexpectedErrorResponse for anything that escapes resolveAndMint's own
 // gating (e.g. a thrown Error from client construction). The response body
