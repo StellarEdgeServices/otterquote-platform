@@ -31,8 +31,21 @@
  * bid_submitted / measurement_order_created convention of carrying claim_id
  * in metadata — this stamps:
  *   { event_type: 'next_steps_nudge_sent',
- *     metadata: { claim_id, nudge_stage: '2h' | '48h' } }
+ *     metadata: { claim_id, nudge_stage: '2h' | '48h', system_generated: true } }
  * keyed by user_id, filtered by metadata.claim_id + nudge_stage per claim.
+ *
+ * metadata.system_generated = true is the OTHER thing this stamp must do:
+ * get-business-lines-dashboard's lastActivityByUser/firstActivityByUser
+ * (and any future consumer of activity_log-as-movement) must not treat this
+ * function acting on a stalled claim as the homeowner acting on it — that
+ * would flip first_activity_at from null and silently drop the claim from
+ * admin-dashboard.html's "NEW — no activity since signup" strip right after
+ * the system nudges it (PR #1601 review, comment 5532211463). Any future
+ * "we nagged you because nothing happened" event, in this function or a new
+ * one, must set the same flag — it is a convention, not an enforced schema
+ * column, because this repo's Edge Function deploy path does not resolve
+ * _shared/ imports (see send-home-profile-prompt's emailButton comment), so
+ * there is no shared constant to import and enforce this from.
  *
  * Test-account suppression: is_test=false at the query (gh-1028 propagated
  * claims.is_test / activity_log.is_test) — the claims-table equivalent of
@@ -383,28 +396,49 @@ serve(async (req: Request) => {
 
     const sentStages: NudgeStage[] = [];
     for (const stage of stagesToSend) {
-      if (mailgunApiKey) {
-        const sendResult = await sendMailgunEmail(mailgunApiKey, homeownerEmail, homeownerName, measurementsUrl, colorUrl);
-        if (!sendResult.ok) {
-          console.error(`[${FUNCTION_NAME}] Send failed for claim ${claim.id} stage ${stage}: ${sendResult.error}`);
-          continue; // don't stamp — retry next cron run
-        }
-        console.log(`[${FUNCTION_NAME}] Sent ${stage} nudge -> ${homeownerEmail} for claim ${claim.id}`);
-      } else {
-        console.warn(`[${FUNCTION_NAME}] MAILGUN_API_KEY not set — skipping send for claim ${claim.id} stage ${stage}`);
-      }
-
+      // gh-1580 review fix (PR #1601, comment 5532245612): stamp BEFORE
+      // sending, not after. The prior send-then-stamp order's own comment
+      // admitted the failure mode: if the stamp insert failed (or a run
+      // overlapped the next 30-min cron tick), the "already sent" gate
+      // stayed unset while the email had already gone out, so the next run
+      // would see no stamp and send AGAIN to a real homeowner. There is no
+      // unique constraint backing dedup here — checked pg_indexes on prod
+      // `activity_log`: only pkey + idx_activity_log_user_id +
+      // idx_activity_log_created_at + idx_activity_log_user_created, nothing
+      // on (user_id, event_type, metadata) — and adding one is a Tier 3B
+      // schema surface, not this PR's to add. So the row is claimed FIRST;
+      // if that claim fails, the send is skipped entirely THIS run (no
+      // stamp landed, so nothing went out, and the next cron run retries
+      // cleanly). This deliberately trades the opposite failure mode: if
+      // the stamp commits but the Mailgun send then fails, that claim does
+      // NOT auto-retry (the gate is now set) — logged as an ERROR below so
+      // it's visible for manual follow-up rather than silently swallowed.
+      // Skipping a nudge is recoverable; double-emailing a real homeowner
+      // is not — this function is asymmetric about that on purpose.
       const { error: stampError } = await supabase.from("activity_log").insert({
         user_id: claim.user_id,
         event_type: NUDGE_EVENT_TYPE,
         title: stage === "2h" ? "Next-steps nudge sent (+2h)" : "Next-steps nudge sent (+48h)",
-        metadata: { claim_id: claim.id, nudge_stage: stage },
+        metadata: { claim_id: claim.id, nudge_stage: stage, system_generated: true },
         is_test: false,
       });
       if (stampError) {
-        console.error(`[${FUNCTION_NAME}] Failed to stamp ${stage} nudge for claim ${claim.id}:`, stampError.message);
-        continue; // non-fatal: email was sent; next run will just re-send since the stamp didn't take
+        console.error(`[${FUNCTION_NAME}] Failed to stamp ${stage} nudge for claim ${claim.id} — skipping send this run, will retry next run:`, stampError.message);
+        continue; // fatal for this row this run: no stamp landed, so nothing was sent — safe to retry
       }
+
+      if (!mailgunApiKey) {
+        console.warn(`[${FUNCTION_NAME}] MAILGUN_API_KEY not set — stamp recorded, no email sent (dev/staging) for claim ${claim.id} stage ${stage}`);
+        sentStages.push(stage);
+        continue;
+      }
+
+      const sendResult = await sendMailgunEmail(mailgunApiKey, homeownerEmail, homeownerName, measurementsUrl, colorUrl);
+      if (!sendResult.ok) {
+        console.error(`[${FUNCTION_NAME}] STAMPED BUT SEND FAILED for claim ${claim.id} stage ${stage} — will NOT auto-retry (stamp already committed); needs manual follow-up: ${sendResult.error}`);
+        continue; // do not count as sent — the stamp is already committed, deliberately not reversed
+      }
+      console.log(`[${FUNCTION_NAME}] Sent ${stage} nudge -> ${homeownerEmail} for claim ${claim.id}`);
       sentStages.push(stage);
     }
 

@@ -401,7 +401,14 @@ function firstEventPerGroup(rows: FirstEventRow[]): FirstEventResult {
 const ACTIVITY_PAGE = 1000;
 const ACTIVITY_MAX_PAGES = 500;
 
-interface ActivityRow { user_id: string | null; created_at: string }
+interface ActivityRow {
+  user_id: string | null;
+  created_at: string;
+  // gh-1580 review fix (PR #1601, comment 5532211463): needed so this reducer
+  // can exclude system-generated absence nudges (metadata.system_generated)
+  // from movement/first-activity — see the exclusion below.
+  metadata: Record<string, unknown> | null;
+}
 
 async function fetchAllActivity(
   // deno-lint-ignore no-explicit-any
@@ -412,7 +419,7 @@ async function fetchAllActivity(
   for (let page = 0; page < ACTIVITY_MAX_PAGES; page++) {
     const { data, error } = await db
       .from("activity_log")
-      .select("user_id, created_at")
+      .select("user_id, created_at, metadata")
       .order("created_at", { ascending: false })
       .range(from, from + ACTIVITY_PAGE - 1);
     if (error) return { data: null, error };
@@ -671,13 +678,43 @@ serve(async (req: Request) => {
     const leads = leadsRes.data ?? [];
 
     // ── activity_log reduced to last-movement-per-user (no N+1 downstream) ──
+    //
+    // gh-1580 review fix (PR #1601, comment 5532211463): a system-generated
+    // "we nagged you because nothing happened" row (metadata.system_generated
+    // === true — see send-homeowner-next-steps' activity_log insert) must NOT
+    // count as movement here, or the feature undoes itself: sending the day-0
+    // nudge would stamp a fresh activity_log row, which would (a) make
+    // computeMovement/bucketFor read the claim as "green" again — the exact
+    // false-freshness bug gh-1580 exists to fix — and (b) flip
+    // first_activity_at from null to non-null, silently dropping the claim
+    // out of admin-dashboard.html's "NEW — no activity since signup" strip
+    // right after the system acts on it.
+    //
+    // This is a metadata FLAG, not a deny-list of specific event_type
+    // strings, deliberately: this repo's Edge Function deploy path does not
+    // resolve `_shared/` imports (see send-home-profile-prompt's emailButton
+    // comment), so a constant shared between this file and every future
+    // nudge-sending function cannot be enforced by import — only a shared
+    // naming CONVENTION can. A per-event-type deny-list would need this file
+    // updated every time any other Edge Function adds a new "system nagged
+    // about inactivity" event type, and nothing would catch a forgotten
+    // update (fails open). Requiring every such writer to set
+    // metadata.system_generated = true is exactly as opt-in, but the
+    // reader-side check here never needs to change again for a new event
+    // type — only the writer needs to remember the one flag, at the point
+    // where they're already choosing the event's semantics. (A real
+    // fail-safe — an `activity_log.system_generated` COLUMN the writer can't
+    // omit — would be stronger still, but that is a schema change: Tier 3 /
+    // D-182, its own migration, and a decision about every existing writer's
+    // default, which is out of scope for this fix.)
     const lastActivityByUser = new Map<string, string>();
     // gh-1580: also reduced to first-movement-per-user, so the CRM render can
     // show "no activity since signup" (null = never) without re-deriving it
     // client-side from a raw activity_log scan.
     const firstActivityByUser = new Map<string, string>();
-    for (const row of activityLog as { user_id: string | null; created_at: string }[]) {
+    for (const row of activityLog as ActivityRow[]) {
       if (!row.user_id) continue;
+      if ((row.metadata as { system_generated?: boolean } | null)?.system_generated === true) continue;
       const prevLast = lastActivityByUser.get(row.user_id);
       if (!prevLast || new Date(row.created_at).getTime() > new Date(prevLast).getTime()) {
         lastActivityByUser.set(row.user_id, row.created_at);
@@ -709,6 +746,29 @@ serve(async (req: Request) => {
       claimsByUserId.get(c.user_id)!.push(c);
     }
 
+    // gh-1580 review (PR #1601, comment 5532245612): homeownerRows is, and
+    // was before this PR, ONE ROW PER PROFILE — userClaims[0] below picks
+    // only the most-recently-updated claim; checklist/movement have always
+    // reflected that single claim, never a homeowner's full claim history.
+    // This PR's created_at/first_activity_at additions inherit that same
+    // per-profile granularity, but the EMAIL side (send-homeowner-next-
+    // steps) is per-CLAIM. The mismatch: for a homeowner with 2+ claims, an
+    // older claim's activity_log history makes first_activity_at non-null
+    // for the PROFILE, so a genuinely-stalled newer claim would correctly
+    // still receive the nudge email (claim-scoped) but would never earn the
+    // "NEW — no activity since signup" badge on admin-dashboard.html
+    // (profile-scoped) — the two halves of gh-1580 would disagree for that
+    // homeowner. Confirmed via Supabase MCP against prod (yeszghaspzwwstvsrioa)
+    // at review time: 0 real homeowners currently hold >1 claim, so this
+    // does not invalidate the closes-on artifact test today. Deliberately
+    // NOT fixed here: doing so means moving every homeownerRows field
+    // (checklist, movement, bidsReceived, all of it) to per-claim
+    // granularity — i.e. one CRM row per claim instead of per homeowner —
+    // which is a materially larger change than gh-1580's day-0/day-2 nudge
+    // + NEW strip, touches the meaning of every existing homeowner row, and
+    // is a product decision (does Dustin want one row or many per repeat
+    // homeowner?) that deserves its own issue rather than expanding this
+    // one. Bites again the day a second real homeowner claim exists.
     const homeownerRows = (profiles as any[]).map((p) => {
       const userClaims = (claimsByUserId.get(p.id) || []).slice().sort(
         (a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime()
