@@ -130,13 +130,27 @@ Pull from each available source. Collect raw findings; do not filter yet.
 If GitHub MCP available:
 - Query open Dependabot alerts for `StellarEdgeServices/otterquote-platform`
 - Extract: package name, severity (CVSS score if available), ecosystem, affected version, patched version, CVE ID, created date
-- Also query `StellarEdgeServices/otter-crm`. The `otterquote-sec-sweep-ro` PAT is scoped to
-  `otterquote-platform` only (GitHub #1380), so this call returns non-200. Do NOT treat that as
-  "no findings" — a repo the sweep cannot see must never render the same as a clean repo. On any
-  non-200 response for `otter-crm`, emit `otter-crm: NOT MEASURED (403, PAT scope)` as its own line
-  in the digest body and carry the same field on the `scanner-telemetry.md` row
-  (`Claude's Memories/scanner-telemetry.md`) for this run. Per gh-1419: UNMEASURED MUST FAIL AS
-  LOUDLY AS STALE.
+- Also query `StellarEdgeServices/otter-crm`. Do NOT assume a fixed cause for a non-200 response
+  (GitHub #1380). This repo has been observed to fail in more than one way — a real sweep run
+  recorded a 404 alongside separate 403s, and the CTO ruling on that thread (comment 5518451236)
+  explicitly retracted "PAT scope" as the blanket explanation: "the token works, the features are
+  switched off on the target repo... not a scope error" in that case. Do NOT treat any of this as
+  "no findings" — a repo the sweep cannot see, or cannot get a real answer from, must never render
+  the same as a clean repo. Classify the *observed* response and emit the matching line, never a
+  guessed one, in the digest body, carrying the same status code and cause on the
+  `scanner-telemetry.md` row (`Claude's Memories/scanner-telemetry.md`) for this run:
+  - `404` → `otter-crm: NOT MEASURED (404, repo not visible to this token — fine-grained PAT
+    scope, or repo does not exist)`
+  - `403` → `otter-crm: NOT MEASURED (403, repo visible but forbidden — token lacks the
+    permission, or SSO/authorization not granted)`
+  - `200` with Dependabot alerts disabled, or the alerts response empty/feature-off →
+    `otter-crm: NOT MEASURED (200, Dependabot alerts not enabled on repo — not a token problem)`
+  - anything else → `otter-crm: NOT MEASURED (<observed status>, <raw response body snippet,
+    unclassified>)` — report what was actually observed, never an assumed cause
+  Per gh-1419: UNMEASURED MUST FAIL AS LOUDLY AS STALE — and per PR #1603 review 5533662551, a
+  confidently wrong reason is worse than none, so the cause is always derived from the response
+  actually received (matching `scripts/drift-detector-age.py`'s `detail` field, which likewise
+  reports the HTTP status/reason it actually saw rather than assuming one), never hardcoded.
 
 **Source 2: Snyk**
 
