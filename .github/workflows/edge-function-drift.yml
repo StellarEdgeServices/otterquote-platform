@@ -83,7 +83,7 @@ jobs:
         run: python3 scripts/edge-function-drift-check.test.py
 
       - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
           # Pinned (gh-1295) for reproducibility. The CLI version was tested and
           # FALSIFIED as the cause of the 58-59/59 false-drift runs -- the real
