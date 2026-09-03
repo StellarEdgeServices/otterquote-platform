@@ -443,7 +443,19 @@ def report_exit_code(rows):
     does not get to report the others' clean results as if the whole run were
     trustworthy -- same ordering as edge-function-drift-check.py's
     report_exit_code() ("'Could not measure' outranks 'drift'").
+
+    An EMPTY rows list is UNMEASURED too, not a vacuous clean pass (gh-1569 fresh-
+    context review on PR #1569): `{r["verdict"] for r in []}` is the empty set,
+    which contains neither UNMEASURED nor any FAILING_VERDICTS member, so the
+    naive version of this function fell through to `return 0` for zero rows --
+    the same defect class this repo's other detectors already guard against
+    (an empty result set means "found nothing", never "found nothing wrong").
+    Guarded here as a backstop regardless of caller; resolve_site_rows() is the
+    primary fix and returns a descriptive UNMEASURED row explaining *why* there
+    were zero sites, so this branch should not fire in the normal CLI path.
     """
+    if not rows:
+        return 3
     verdicts = {r["verdict"] for r in rows}
     if UNMEASURED in verdicts:
         return 3
@@ -766,6 +778,54 @@ def check_site(site, netlify_token, github_token, now=None, queued_stale_minutes
 # ---------------------------------------------------------------------------
 
 
+_ENUMERATION_SITE = {
+    "key": "site-enumeration",
+    "label": "Netlify site enumeration (all sites)",
+    "repo": ISSUE_REPO,
+}
+
+
+def resolve_site_rows(netlify_token, github_token, queued_stale_minutes=DEFAULT_QUEUED_STALE_MINUTES):
+    """Enumerate sites and check each one -- or return a single explanatory
+    UNMEASURED row when there is nothing to check. Never returns an empty list.
+
+    gh-1569 fresh-context review (PR #1569): a SUCCESSFUL fetch whose org filter
+    matches zero sites was flowing straight into `report_exit_code([])`, which
+    returns 0 (clean) for an empty rows list -- an untested, unguarded path. A
+    genuinely empty Netlify account is indistinguishable from a broken filter (a
+    typo'd REPO_OWNER_FILTER, a Netlify-side account/team scoping change, a token
+    swapped to one with visibility into a different account), so this must be
+    UNMEASURED, never a silent pass. Same defect class this repo's other
+    detectors already guard against: an empty result set is UNMEASURED, not a
+    pass, because "found nothing wrong" and "found nothing" are not the same
+    fact. Two distinct empty-result shapes, both handled here so `main()` (and
+    any other caller) cannot skip this by construction:
+      1. The enumeration fetch itself failed outright (no token, network, a bad
+         response) -- fetch_netlify_sites() already returns None for this.
+      2. The fetch succeeded but filter_org_sites() matched nothing.
+    """
+    raw_sites, reason = fetch_netlify_sites(netlify_token)
+    if raw_sites is None:
+        return [unmeasured_row(_ENUMERATION_SITE, "could not enumerate sites: %s" % reason)]
+
+    sites = filter_org_sites(raw_sites)
+    if not sites:
+        return [
+            unmeasured_row(
+                _ENUMERATION_SITE,
+                "Netlify fetch succeeded (%d site(s) returned) but zero matched the %r org "
+                "filter -- a genuinely empty account is indistinguishable from a broken "
+                "filter or a wrong-scope token, so this is UNMEASURED, not a clean pass"
+                % (len(raw_sites), REPO_OWNER_FILTER),
+            )
+        ]
+
+    return [
+        check_site(site, netlify_token, github_token, queued_stale_minutes=queued_stale_minutes)
+        for site in sites
+    ]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     parser.add_argument("--json", action="store_true")
@@ -781,22 +841,7 @@ def main():
     netlify_token = os.environ.get(NETLIFY_TOKEN_ENV_VAR, "").strip() or None
     github_token = os.environ.get(GITHUB_TOKEN_ENV_VAR, "").strip() or None
 
-    raw_sites, reason = fetch_netlify_sites(netlify_token)
-    if raw_sites is None:
-        # Cannot even enumerate which sites to check -- this is a whole-run
-        # UNMEASURED, not zero rows silently rendered as a clean pass.
-        rows = [
-            unmeasured_row(
-                {"key": "site-enumeration", "label": "Netlify site enumeration (all sites)", "repo": ISSUE_REPO},
-                "could not enumerate sites: %s" % reason,
-            )
-        ]
-    else:
-        sites = filter_org_sites(raw_sites)
-        rows = [
-            check_site(site, netlify_token, github_token, queued_stale_minutes=args.queued_stale_minutes)
-            for site in sites
-        ]
+    rows = resolve_site_rows(netlify_token, github_token, queued_stale_minutes=args.queued_stale_minutes)
     code = report_exit_code(rows)
     warnings = compute_account_warnings(netlify_token)
 

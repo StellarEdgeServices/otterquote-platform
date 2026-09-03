@@ -67,6 +67,10 @@ def _json_response(payload):
 
 
 def main():
+    # Captured once, up front, so any section below can monkeypatch
+    # nd.urllib.request.urlopen and restore it -- sections are order-independent.
+    real_urlopen = nd.urllib.request.urlopen
+
     # -------------------------------------------------------------------------------
     print("Pure verdict logic (evaluate_site) -- IDENTICAL / BEHIND / BUILD_FAILING")
     # -------------------------------------------------------------------------------
@@ -266,6 +270,42 @@ def main():
     check("filter_org_sites on empty/None input -> []", nd.filter_org_sites(None), [])
 
     # -------------------------------------------------------------------------------
+    print("\nresolve_site_rows: gh-1569 fresh-context review fixture -- a SUCCESSFUL fetch")
+    print("whose org filter matches ZERO sites must resolve UNMEASURED, never a silent 0/clean")
+    print("pass (PR #1569's reviewer: 'that's the exact defect class this repo's own")
+    print("detectors keep re-learning -- an empty result set is UNMEASURED, never a pass').")
+    # -------------------------------------------------------------------------------
+    def _unrelated_org_sites_only(req, timeout=20):
+        # A non-empty, successfully-fetched site list -- none of it StellarEdgeServices.
+        return _json_response([
+            {"id": "x1", "name": "someone-elses-blog",
+             "build_settings": {"repo_url": "https://github.com/SomeoneElse/blog"}},
+            {"id": "x2", "name": "no-repo-at-all", "build_settings": {}},
+        ])
+
+    nd.urllib.request.urlopen = _unrelated_org_sites_only
+    try:
+        rows = nd.resolve_site_rows("fake-netlify-token", "fake-github-token")
+        check("non-empty fetch, filter matches nothing -> exactly one row (never zero)",
+              len(rows), 1)
+        check("that row is UNMEASURED, not a fabricated pass", rows[0]["verdict"], nd.UNMEASURED)
+        check("detail names the fetched count and the org filter",
+              "2 site(s)" in rows[0]["detail"] and nd.REPO_OWNER_FILTER in rows[0]["detail"], True)
+        code = nd.report_exit_code(rows)
+        check("resolve_site_rows -> report_exit_code is 3 (UNMEASURED), NOT 0 (the actual bug)",
+              code, 3)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # Contrast case: enumeration fetch fails outright (no token) -- also exactly one
+    # UNMEASURED row, via the other branch of resolve_site_rows.
+    rows = nd.resolve_site_rows(None, "fake-github-token")
+    check("no NETLIFY_PAT -> resolve_site_rows still returns exactly one UNMEASURED row",
+          (len(rows), rows[0]["verdict"]), (1, nd.UNMEASURED))
+    check("that row's detail names the enumeration failure, not the empty-filter case",
+          "could not enumerate sites" in rows[0]["detail"], True)
+
+    # -------------------------------------------------------------------------------
     print("\nAccount-level auto-topup WARN (gh-1549 CTO comment 5524997596, item 3)")
     # -------------------------------------------------------------------------------
     warn_account = {"name": "OtterQuote", "auto_topup_enabled": False, "has_stripe_payment_method": True}
@@ -314,6 +354,13 @@ def main():
           nd.report_exit_code([behind_row, unmeasured_row]), 3)
     check("one UNMEASURED alongside a QUEUED_STALE site -> exit 3 (outranks QUEUED_STALE)",
           nd.report_exit_code([queued_stale_row, unmeasured_row]), 3)
+
+    # gh-1569 fresh-context review on PR #1569: report_exit_code([]) was falling
+    # through to 0 (clean) -- {r["verdict"] for r in []} is the empty set, which
+    # contains neither UNMEASURED nor a FAILING_VERDICTS member. An empty rows
+    # list must never read as a clean pass.
+    check("EMPTY rows list -> exit 3, NOT 0 (gh-1569: the untested/unguarded path)",
+          nd.report_exit_code([]), 3)
 
     # -------------------------------------------------------------------------------
     print("\nUNMEASURED fetch paths -- must never resolve to a clean verdict")
