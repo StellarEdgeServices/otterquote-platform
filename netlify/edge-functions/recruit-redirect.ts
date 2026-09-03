@@ -48,9 +48,9 @@ export default async (req: Request, context: any) => {
     const url = new URL(req.url);
     const target = new URL('/recruit.html', url.origin);
     url.searchParams.forEach((value, key) => target.searchParams.set(key, value));
-    return context.rewrite(target);
+    return await context.rewrite(target);
   } catch {
-    return context.next();
+    return await context.next();
   }
 };
 
