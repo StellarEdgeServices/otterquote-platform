@@ -62,16 +62,28 @@ const VALID_STATE_CODES = new Set([
 // derive the ambiguous set structurally as an intersection.
 //
 // DERIVATION: USPS Publication 28, Appendix C1 ("Street Suffix
-// Abbreviations") assigns each primary street-suffix name a two-character
-// Postal Service standard abbreviation for exactly these suffixes (name →
-// abbreviation): Branch→BR, Camp→CP, Court→CT, Cove→CV, Dale→DL, Dam→DM,
-// Divide→DV, Drive→DR, Fort→FT, Hill→HL, Island→IS, Key→KY, Loaf→LF,
-// Lake→LK, Lane→LN, Mill→ML, Mount→MT, Place→PL, Prairie→PR, Point→PT,
-// Road→RD, Square→SQ, Street→ST, Union→UN, Ville→VL, View→VW, Way→WY.
-// (Every other primary suffix — Avenue, Boulevard, Circle, Court(s), etc.
-// — abbreviates to three or more letters and can't collide with a 2-letter
-// state code at all, so it's excluded from the candidate set before the
-// intersection even runs.)
+// Abbreviations"). Take every two-character abbreviation that can appear in
+// a written address for a primary suffix name — which means BOTH the
+// "Postal Service Standard Suffix Abbreviation" column AND the "Commonly
+// Used Street Suffix or Abbreviation" column (name → abbreviation):
+// Branch→BR, Camp→CP, Court→CT, Cove→CV, Dale→DL, Dam→DM, Divide→DV,
+// Drive→DR, Fort→FT, Hill→HL, Island→IS, Key→KY, Loaf→LF, Lake→LK,
+// Lane→LN, Mill→ML, Mount→MT, Place→PL, Prairie→PR, Point→PT, Road→RD,
+// Square→SQ, Street→ST, Union→UN, Ville→VL, View→VW, Way→WY.
+//
+// ⚠ READ BEFORE RE-DERIVING. `WY` comes from the COMMONLY-USED column, not
+// the Standard column — Way's Standard abbreviation is the three-letter
+// `WAY`. Re-deriving from the Standard column ALONE drops `WY` and silently
+// reintroduces the exact bug this set exists to prevent: '100 Sunset Wy
+// 90210' parsing as Wyoming with a truncated street (gh-1579 review round
+// 2). Both columns, always. The Standard column also contributes `WL`
+// (Well→WL), which is harmless here only because WL is not a state code —
+// do not treat its absence as evidence the Standard column is sufficient.
+//
+// (Every other primary suffix — Avenue, Boulevard, Circle, etc. —
+// abbreviates to three or more letters in both columns and can't collide
+// with a 2-letter state code at all, so it's excluded from the candidate
+// set before the intersection even runs.)
 //
 // USPS_TWO_LETTER_SUFFIX_ABBREVIATIONS is that candidate set. Intersecting
 // it against VALID_STATE_CODES below is the actual ambiguity set — not
