@@ -248,7 +248,11 @@ var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
 
 var AUDIENCE_LABELS = { homeowner: 'Homeowner', contractor: 'Contractor', referral_partner: 'Referral Partner' };
 
-var state = { user: null, data: null, includeTest: false, expanded: {} };
+var state = {
+  user: null, data: null, includeTest: false, expanded: {},
+  // gh-1573: Otter CRM line page — separate lazy-loaded fetch, own error state.
+  crmData: null, crmError: null, crmLoading: false,
+};
 
 var _initFired = false;
 if (sb) {
@@ -340,6 +344,10 @@ function render() {
   // strings through into renderAudiencePage. hasOwnProperty constrains
   // `audience` to one of AUDIENCE_LABELS' own three keys, full stop.
   if (line === 'otterquotes' && audience && Object.prototype.hasOwnProperty.call(AUDIENCE_LABELS, audience)) return renderAudiencePage(audience, tab);
+  // gh-1573 (#1340 phase 3): Otter CRM line page. `line` here is compared
+  // literally against a fixed string, never used as an object key/lookup,
+  // so the gh-1562 hasOwnProperty concern above does not apply to it.
+  if (line === 'otter-crm') return renderCrmLinePage();
   return renderTopPage();
 }
 
@@ -445,6 +453,89 @@ function renderLinePage() {
   });
   html += '</div>';
   document.getElementById('viewRoot').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// gh-1573 (#1340 phase 3) — Otter CRM line page.
+//
+// A SEPARATE Supabase project (CONFIG.CRM_SUPABASE_URL /
+// lreqwnqvlerdgukpklwb) from the one `sb`/loadDashboard() talk to. The
+// caller's OQ session token is sent as the bearer straight to the CRM
+// project's crm-business-lines Edge Function; that function verifies it
+// against OQ's own GoTrue itself (see its index.ts) — this page never
+// talks to the CRM project's auth, never creates a second supabase-js
+// client, and never stores a CRM session anywhere. Fetched lazily (only
+// when this page is opened), not as part of loadDashboard(), so a CRM
+// outage cannot take the Otter Quotes line page down.
+//
+// Renders with the EXACT SAME tileHtml()/weeklySeriesCardHtml()/
+// groupedWeeklySeriesCardHtml() functions phase 2b already built (gh-1573
+// spec) — this page adds zero new rendering primitives, only a new data
+// source feeding the existing ones.
+// ══════════════════════════════════════════════════════════════════════════
+function renderCrmLinePage() {
+  var root = document.getElementById('viewRoot');
+  var breadcrumb = '<p class="breadcrumb"><a href="?">All business lines</a> &rsaquo; Otter CRM</p>';
+
+  if (state.crmError) {
+    root.innerHTML = breadcrumb + '<div class="error-box">Could not load Otter CRM: ' + esc(state.crmError) + '</div>';
+    return;
+  }
+  if (!state.crmData) {
+    root.innerHTML = breadcrumb + '<div class="loading">Loading Otter CRM&hellip;</div>';
+    if (!state.crmLoading) loadCrmData();
+    return;
+  }
+
+  var t = state.crmData.totals;
+  var w = state.crmData.weekly;
+  var html = breadcrumb;
+  html += '<div class="tile-grid">' +
+    tileHtml('Companies (total)', t.companies_total) +
+    tileHtml('Companies (internal/test)', t.companies_internal) +
+    tileHtml('Companies (outside)', t.companies_outside) +
+    tileHtml('Members', t.members_total) +
+  '</div>';
+  html += '<div class="not-measured-banner">Every company in Otter CRM today is internal ' +
+    '(Stellar Edge / otterquote.com test accounts, or Dustin&#39;s own) &mdash; &ldquo;Companies (outside)&rdquo; ' +
+    'reads 0 for that real reason, not because it is unmeasured. This split exists so the first real ' +
+    'external signup is visible the moment it happens, not so today&#39;s zero looks like a customer count.</div>';
+  html += '<div class="marketing-grid">' +
+    weeklySeriesCardHtml('Company signups', w.company_signups) +
+    weeklySeriesCardHtml('Active companies', w.active_companies, 'A company is &ldquo;active&rdquo; in a week if it has &ge;1 usage event or job created that week.') +
+    weeklySeriesCardHtml('Invoices created', w.invoices_created) +
+    weeklySeriesCardHtml('Estimates created', w.estimates_created) +
+    groupedWeeklySeriesCardHtml('Usage by feature', w.usage_by_feature) +
+  '</div>';
+  root.innerHTML = html;
+}
+
+async function loadCrmData() {
+  state.crmLoading = true;
+  try {
+    var { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+    var res = await fetch(CONFIG.CRM_SUPABASE_URL + '/functions/v1/crm-business-lines', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // This is the OQ session token, sent to a DIFFERENT project on
+        // purpose — crm-business-lines verifies it against OQ's own
+        // /auth/v1/user itself (cross-project gate, see that function).
+        'Authorization': 'Bearer ' + session.access_token,
+        'apikey': CONFIG.CRM_SUPABASE_ANON,
+      },
+      body: JSON.stringify({}),
+    });
+    var body = await res.json();
+    if (!res.ok || !body.ok) throw new Error(body.error || ('EF returned ' + res.status));
+    state.crmData = body;
+  } catch (e) {
+    state.crmError = e.message;
+  } finally {
+    state.crmLoading = false;
+    render();
+  }
 }
 
 function renderAudiencePage(audience, tab) {

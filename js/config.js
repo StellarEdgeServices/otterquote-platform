@@ -20,6 +20,16 @@ var CONFIG = {
   SUPABASE_URL:  'https://yeszghaspzwwstvsrioa.supabase.co',
   SUPABASE_ANON: 'sb_publishable_mKmYIsRMc6dCG8ZrGGbyyw_l_MOTwZP',
 
+  // ── Otter CRM (gh-1573, #1340 phase 3) ──
+  // A SEPARATE Supabase project (org "OtterQuote CRM"), used only by
+  // admin-dashboard.html's `?line=otter-crm` page to call crm-business-lines.
+  // Publishable key only — safe to ship (RLS/the EF's own admin gate is the
+  // boundary, same as SUPABASE_ANON above). Never mix this URL/key into the
+  // main `sb` client: this project has its own auth users and its own RLS,
+  // unrelated to OQ prod's.
+  CRM_SUPABASE_URL:  'https://lreqwnqvlerdgukpklwb.supabase.co',
+  CRM_SUPABASE_ANON: 'sb_publishable_gPfsAdt2rrclIlhPDrf_Jw_Bm3sL5TP',
+
   // ── Google Analytics 4 ──
   GA4_ID: 'G-D1Y1TLGEFY',
 
