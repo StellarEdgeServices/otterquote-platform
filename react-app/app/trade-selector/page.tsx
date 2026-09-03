@@ -25,6 +25,7 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds } from '@/lib/cookie-storage';
 import { isTestEmail } from '@/lib/test-signal';
+import { parseAddress } from './utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -478,16 +479,20 @@ export default function TradeSelectorPage() {
         // ── Upsert profiles table ──
         try {
           const address = (csSignup.address as string) || '';
-          const addressParts = address.split(',').map((s: string) => s.trim());
+          // gh-1579: tolerant regex-first parse (comma-split fallback) — see
+          // ./utils.ts. The old addressParts[1..3] comma-index split assumed
+          // exactly 4 comma segments and silently dropped state/zip on any
+          // address with fewer.
+          const parsedAddress = parseAddress(address);
           await supabase.from('profiles').upsert({
             id: user.id,
             role: 'homeowner',
             full_name: [(csSignup.first_name as string || '').trim(), (csSignup.last_name as string || '').trim()].filter(Boolean).join(' ') || null,
             phone: (csSignup.phone as string) || null,
-            address_street: addressParts[0] || null,
-            address_city: addressParts[1] || null,
-            address_state: addressParts[2] || null,
-            address_zip: addressParts[3] || null,
+            address_street: parsedAddress.street,
+            address_city: parsedAddress.city,
+            address_state: parsedAddress.state,
+            address_zip: parsedAddress.zip,
             referral_source: (csSignup.referral_source as string) || null,
             sms_consent_ts: (csSignup.sms_consent_ts as string) || null,
             updated_at: new Date().toISOString(),
@@ -540,8 +545,9 @@ export default function TradeSelectorPage() {
           // #482: static-stack parity — property_address/property_state must land
           // on the claim (contractor cards + D-178 state gating read them).
           const csAddress = (csSignup.address as string) || '';
-          const csParts = csAddress.split(',').map((s: string) => s.trim());
-          const csStateToken = ((csParts[2] || '').split(/\s+/)[0] || '').toUpperCase() || null;
+          // gh-1579: same tolerant parser as the profiles upsert above —
+          // one helper, both write sites (./utils.ts parseAddress).
+          const csStateToken = parseAddress(csAddress).state;
 
           const claimPayload: Record<string, unknown> = {
             funding_type: fundingType,
