@@ -915,6 +915,68 @@ async function seed() {
   }
   console.log('  ✅ Contractor verified: status=active, onboarding_step=4');
 
+  // ── 6e. Integrity guard (gh-1584) — make the bad shape loud, not silent ──
+  //
+  // #1584's root cause was a contractor_templates row that reached
+  // status='auto_validated' — bid_can_submit's "may bid" gate — with no
+  // validation_result: a shape nothing stopped, so it sat undetected for
+  // weeks. The DB-level CHECK constraint that would forbid it outright is
+  // explicitly out of scope here (Tier 3B, tracked on #1313); this is the
+  // seed-side half this issue closes on — assert, after the seed has
+  // finished writing, that the bad shape is not present, and throw loudly
+  // if it is, instead of completing silently on top of it.
+  //
+  // Runs LAST (after every other seed step, not immediately after 5b's own
+  // insert) and reads the WHOLE contractor_templates table on this
+  // project, not just the four rows 5b just inserted. Both are deliberate:
+  // nothing else in this script writes to contractor_templates (only 5b's
+  // delete + insert do), so a full-table read here is equivalent in
+  // coverage to one right after 5b, but placing it last also means the
+  // guard fires after everything the seed does is done, matching "the seed
+  // has completed" rather than "one particular step of it succeeded." The
+  // PRODUCTION_PROJECT_REF guard at the top of this file (gh-1028) already
+  // guarantees SUPABASE_URL here can only be the dedicated E2E test
+  // project, never prod, so a full-table read is safe — and it catches
+  // drift from ANY source (a future edit to this script, a manually
+  // inserted fixture, a different code path entirely), not only the rows
+  // this exact insert produced. A check narrowed to templatesPayload's own
+  // rows would stay green even if some other row in the table were still
+  // in the bad shape — precisely the local-looks-fine-globally-isn't gap
+  // #1584 is about.
+  console.log('6e. Integrity guard: no auto_validated row without validation_result...');
+  const { data: autoValidatedRows, error: guardErr } = await supabase
+    .from('contractor_templates')
+    .select('id, contractor_id, trade, funding_type, pdf_storage_path, created_at, validation_result')
+    .eq('status', 'auto_validated');
+  if (guardErr) throw new Error(`Integrity guard query failed: ${guardErr.message}`);
+  // A jsonb column holding SQL NULL and one holding the JSON literal `null`
+  // are indistinguishable once PostgREST serializes them to a JSON response
+  // (both arrive here as JS `null`) — `== null` is the correct check for
+  // either case, not a looseness bug.
+  const unvalidatedRows = (autoValidatedRows || []).filter((row) => row.validation_result == null);
+  if (unvalidatedRows.length > 0) {
+    const banner = '\n' + '❌'.repeat(24) + '\n';
+    console.error(banner);
+    console.error(
+      `GH-1584 INTEGRITY GUARD FAILED: ${unvalidatedRows.length} contractor_templates ` +
+        "row(s) have status='auto_validated' with NO validation_result. This is the " +
+        'exact fail-quiet shape #1584 exists to prevent — bid_can_submit treats ' +
+        'auto_validated as "may bid" with no validation artefact behind it. Offending rows:\n' +
+        JSON.stringify(unvalidatedRows, null, 2)
+    );
+    console.error(banner);
+    // NOTE: `Run E2E Tests` carries `continue-on-error: true` in CI (gh-1261,
+    // CEO ruling 2026-08-26) — this thrown error will NOT fail that job. The
+    // banner above printed to stderr is the only thing standing between this
+    // and a silent pass in CI; grep the seed step's log for "INTEGRITY GUARD
+    // FAILED" rather than relying on the job's own pass/fail status.
+    throw new Error(
+      `Integrity guard failed: ${unvalidatedRows.length} auto_validated contractor_templates ` +
+        'row(s) with no validation_result. See the banner above for the offending rows.'
+    );
+  }
+  console.log('  ✅ Integrity guard passed: no auto_validated rows without validation_result');
+
   // ── 7. Write .test-state.json ────────────────────────────────────────────
   // runId: deterministic per seed run — YYYYMMDD-HHmmss + first 8 chars of
   // testClaimId (without dashes). Unique enough for artifact storage paths.
