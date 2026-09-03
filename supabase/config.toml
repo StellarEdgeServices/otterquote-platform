@@ -354,3 +354,9 @@ verify_jwt = false
 # purpose is minting sessions. Pinned at creation per spec.
 [functions.mint-test-session]
 verify_jwt = true
+
+# gh-1580: Cron-exception, same pattern as send-incomplete-onboarding-reminders —
+# JWT verification disabled; access is gated by CRON_SECRET header check inside
+# the function.
+[functions.send-homeowner-next-steps]
+verify_jwt = false
