@@ -200,7 +200,16 @@ jobs:
       - name: Check Netlify production deploys against main
         env:
           NETLIFY_PAT: ${{ secrets.NETLIFY_PAT }}
-          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_PERSONAL_ACCESS_TOKEN }}
+          # Fall back to the workflow's own token: it reads this repo's commits,
+          # which covers the two otterquote-platform sites. otter-crm still needs
+          # a cross-repo PAT secret (the documented scope gap above) and reports
+          # UNMEASURED until one exists.
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_PERSONAL_ACCESS_TOKEN || github.token }}
+        # pipefail is load-bearing: without it, `| tee` swallows the script's
+        # exit code and an UNMEASURED (exit 3) run concludes success -- measured
+        # on schedule run 33761892324, the silent-detector shape this file exists
+        # to prevent.
+        shell: bash
         run: |
           python3 scripts/netlify-deploy-drift.py --json --file-issue | tee netlify-drift-report.json
 
