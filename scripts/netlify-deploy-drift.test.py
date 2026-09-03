@@ -14,6 +14,7 @@ scripts/drift-detector-age.test.py).
 Run: python netlify-deploy-drift.test.py
 """
 
+import datetime
 import importlib.util
 import io
 import json
@@ -66,6 +67,10 @@ def _json_response(payload):
 
 
 def main():
+    # Captured once, up front, so any section below can monkeypatch
+    # nd.urllib.request.urlopen and restore it -- sections are order-independent.
+    real_urlopen = nd.urllib.request.urlopen
+
     # -------------------------------------------------------------------------------
     print("Pure verdict logic (evaluate_site) -- IDENTICAL / BEHIND / BUILD_FAILING")
     # -------------------------------------------------------------------------------
@@ -114,6 +119,216 @@ def main():
           "no error_message provided by the API" in r["detail"], True)
 
     # -------------------------------------------------------------------------------
+    print("\nQUEUED_STALE -- third independent signal, priority vs BUILD_FAILING/BEHIND (gh-1549")
+    print("CTO comment 5524997596, item 2b -- the #1517 shape neither other signal catches)")
+    # -------------------------------------------------------------------------------
+    stale_build = {"id": "test-queued-stale-build-1517", "created_at": "2026-08-20T19:45:55Z",
+                    "_age_minutes": 20160.0}  # ~14 days, matches #1517's live evidence
+
+    r = nd.evaluate_site(
+        SITE, same_sha, "2026-09-01T10:00:00.000Z", same_sha, 0, "ready", None, False,
+        queued_stale_build=stale_build,
+    )
+    check("matching sha, ready deploy, but a stale queued build -> QUEUED_STALE (not IDENTICAL)",
+          r["verdict"], nd.QUEUED_STALE)
+    check("QUEUED_STALE row records the stuck build id", r["queued_stale_build_id"], stale_build["id"])
+    check("QUEUED_STALE detail names the build id and queued-since timestamp",
+          stale_build["id"] in r["detail"] and stale_build["created_at"] in r["detail"], True)
+    check("QUEUED_STALE display token", nd.display_verdict(r).startswith("QUEUED_STALE ("), True)
+
+    # BUILD_FAILING still wins over QUEUED_STALE when both are present -- a newer,
+    # actively erroring deploy attempt is the more urgent finding.
+    r = nd.evaluate_site(
+        SITE, same_sha, "2026-09-02T18:33:33.000Z", same_sha, 0, "error", "credit exceeded", True,
+        queued_stale_build=stale_build,
+    )
+    check("BUILD_FAILING outranks QUEUED_STALE when both fire", r["verdict"], nd.BUILD_FAILING)
+
+    # QUEUED_STALE wins over what would otherwise be a clean BEHIND-free IDENTICAL.
+    r = nd.evaluate_site(
+        SITE, "1" * 40, "2026-08-11T00:00:00.000Z", "2" * 40, 3, "ready", None, False,
+        queued_stale_build=stale_build,
+    )
+    check("QUEUED_STALE outranks BEHIND when both would otherwise apply", r["verdict"], nd.QUEUED_STALE)
+
+    # No stale build present (the default/normal case) -- falls through to BEHIND/IDENTICAL
+    # exactly as before hardening; queued_stale_build=None must not change prior behavior.
+    r = nd.evaluate_site(SITE, same_sha, "2026-09-01T10:00:00.000Z", same_sha, 0, "ready", None, False)
+    check("no queued_stale_build -> unaffected, still IDENTICAL", r["verdict"], nd.IDENTICAL)
+    check("no queued_stale_build -> row field is None", r["queued_stale_build_id"], None)
+
+    # -------------------------------------------------------------------------------
+    print("\nfind_queued_stale_build -- pure age-threshold logic, no network, no real clock")
+    # -------------------------------------------------------------------------------
+    now = datetime.datetime(2026, 9, 3, 12, 0, 0, tzinfo=datetime.timezone.utc)
+
+    fresh_build = {"id": "fresh", "done": False, "error": None, "deploy_id": None,
+                   "created_at": "2026-09-03T11:50:00Z"}  # 10 min old -- under the 60min default
+    stuck_build = {"id": "stuck", "done": False, "error": None, "deploy_id": None,
+                   "created_at": "2026-09-03T10:00:00Z"}  # 120 min old -- over the default
+    errored_build = {"id": "errored", "done": False, "error": "build script failed",
+                     "deploy_id": None, "created_at": "2026-08-01T00:00:00Z"}  # has an error -- BUILD_FAILING's job
+    done_build = {"id": "done", "done": True, "error": None, "deploy_id": None,
+                 "created_at": "2026-08-01T00:00:00Z"}  # finished -- not stuck
+    deployed_build = {"id": "deployed", "done": False, "error": None, "deploy_id": "d-123",
+                      "created_at": "2026-08-01T00:00:00Z"}  # has a deploy_id -- produced something
+    unparseable_build = {"id": "bad-ts", "done": False, "error": None, "deploy_id": None,
+                         "created_at": "not-a-timestamp"}
+
+    check("no builds -> None", nd.find_queued_stale_build([], now), None)
+    check("only a fresh queued build (under threshold) -> None",
+          nd.find_queued_stale_build([fresh_build], now), None)
+    check("errored build (done=False, has error) -> excluded, that's BUILD_FAILING's job",
+          nd.find_queued_stale_build([errored_build], now), None)
+    check("finished build (done=True) -> excluded",
+          nd.find_queued_stale_build([done_build], now), None)
+    check("build with a deploy_id (produced a deploy) -> excluded",
+          nd.find_queued_stale_build([deployed_build], now), None)
+    check("unparseable created_at -> excluded, not a crash",
+          nd.find_queued_stale_build([unparseable_build], now), None)
+
+    found = nd.find_queued_stale_build([fresh_build, stuck_build], now)
+    check("one stale build among a fresh one -> found", found["id"] if found else None, "stuck")
+    check("found build carries computed _age_minutes", round(found["_age_minutes"]), 120)
+
+    older_stuck = {"id": "older-stuck", "done": False, "error": None, "deploy_id": None,
+                   "created_at": "2026-08-20T00:00:00Z"}
+    found = nd.find_queued_stale_build([stuck_build, older_stuck], now)
+    check("multiple stale builds -> the OLDEST (most stuck) one is returned",
+          found["id"], "older-stuck")
+
+    check("custom stale_minutes threshold respected -- 120min build not stale at a 180min threshold",
+          nd.find_queued_stale_build([stuck_build], now, stale_minutes=180), None)
+
+    # -------------------------------------------------------------------------------
+    print("\n_format_minutes -- scales past days (the #1517 shape sat 14+ days)")
+    # -------------------------------------------------------------------------------
+    check("_format_minutes under an hour", nd._format_minutes(45), "45 min")
+    check("_format_minutes hours", nd._format_minutes(125), "2h5m")
+    check("_format_minutes days", nd._format_minutes(60 * 24 * 14 + 60), "14d1h")
+
+    # -------------------------------------------------------------------------------
+    print("\nSite enumeration -- filter_org_sites / _repo_from_repo_url (gh-1549 CTO comment")
+    print("5524997596, item 2a: enumerate by build_settings.repo_url, don't hardcode)")
+    # -------------------------------------------------------------------------------
+    check("_repo_from_repo_url https form",
+          nd._repo_from_repo_url("https://github.com/StellarEdgeServices/otterquote-platform"),
+          "StellarEdgeServices/otterquote-platform")
+    check("_repo_from_repo_url git@ ssh form",
+          nd._repo_from_repo_url("git@github.com:StellarEdgeServices/otter-crm.git"),
+          "StellarEdgeServices/otter-crm")
+    check("_repo_from_repo_url non-github url -> None",
+          nd._repo_from_repo_url("https://gitlab.com/someone/somewhere"), None)
+    check("_repo_from_repo_url empty -> None", nd._repo_from_repo_url(""), None)
+    check("_repo_from_repo_url None -> None", nd._repo_from_repo_url(None), None)
+
+    raw_sites = [
+        {  # otterquote.com -- in-org, kept
+            "id": "6748a414-1baa-4309-a5f9-f3a7f45e3d94",
+            "name": "jade-alpaca-b82b5e",
+            "custom_domain": "otterquote.com",
+            "build_settings": {"repo_url": "https://github.com/StellarEdgeServices/otterquote-platform"},
+        },
+        {  # otterquote-app -- same repo, DIFFERENT site (this is the site the hardcoded
+           # table missed and that CTO comment 5524997596 found 32h stale)
+            "id": "26316673-212a-4f20-a95e-902ece8387c4",
+            "name": "otterquote-app",
+            "custom_domain": "app.otterquote.com",
+            "build_settings": {"repo_url": "https://github.com/StellarEdgeServices/otterquote-platform"},
+        },
+        {  # otter-crm -- in-org, separate repo, kept
+            "id": "d1b2efbd-8478-472f-8503-57cbdd5b36db",
+            "name": "otter-crm",
+            "custom_domain": "crm.otterquote.com",
+            "build_settings": {"repo_url": "git@github.com:StellarEdgeServices/otter-crm.git"},
+        },
+        {  # a different org's site sharing this Netlify account -- must be excluded
+            "id": "unrelated-1",
+            "name": "some-other-project",
+            "custom_domain": "example.com",
+            "build_settings": {"repo_url": "https://github.com/SomeoneElse/unrelated-repo"},
+        },
+        {  # not git-connected at all -- excluded, not UNMEASURED
+            "id": "unrelated-2",
+            "name": "manual-drop-site",
+            "build_settings": {},
+        },
+    ]
+    filtered = nd.filter_org_sites(raw_sites)
+    check("filter_org_sites keeps exactly the 3 in-org sites", len(filtered), 3)
+    check("filter_org_sites keys", sorted(s["key"] for s in filtered),
+          ["jade-alpaca-b82b5e", "otter-crm", "otterquote-app"])
+    otterquote_app_row = next(s for s in filtered if s["key"] == "otterquote-app")
+    check("otterquote-app resolved to the otterquote-platform repo (same repo, different site)",
+          otterquote_app_row["repo"], "StellarEdgeServices/otterquote-platform")
+    check("filter_org_sites label includes the custom domain",
+          "app.otterquote.com" in otterquote_app_row["label"], True)
+    check("filter_org_sites excludes a different org's site",
+          "some-other-project" not in [s["key"] for s in filtered], True)
+    check("filter_org_sites excludes a non-git-connected site",
+          "manual-drop-site" not in [s["key"] for s in filtered], True)
+    check("filter_org_sites on empty/None input -> []", nd.filter_org_sites(None), [])
+
+    # -------------------------------------------------------------------------------
+    print("\nresolve_site_rows: gh-1569 fresh-context review fixture -- a SUCCESSFUL fetch")
+    print("whose org filter matches ZERO sites must resolve UNMEASURED, never a silent 0/clean")
+    print("pass (PR #1569's reviewer: 'that's the exact defect class this repo's own")
+    print("detectors keep re-learning -- an empty result set is UNMEASURED, never a pass').")
+    # -------------------------------------------------------------------------------
+    def _unrelated_org_sites_only(req, timeout=20):
+        # A non-empty, successfully-fetched site list -- none of it StellarEdgeServices.
+        return _json_response([
+            {"id": "x1", "name": "someone-elses-blog",
+             "build_settings": {"repo_url": "https://github.com/SomeoneElse/blog"}},
+            {"id": "x2", "name": "no-repo-at-all", "build_settings": {}},
+        ])
+
+    nd.urllib.request.urlopen = _unrelated_org_sites_only
+    try:
+        rows = nd.resolve_site_rows("fake-netlify-token", "fake-github-token")
+        check("non-empty fetch, filter matches nothing -> exactly one row (never zero)",
+              len(rows), 1)
+        check("that row is UNMEASURED, not a fabricated pass", rows[0]["verdict"], nd.UNMEASURED)
+        check("detail names the fetched count and the org filter",
+              "2 site(s)" in rows[0]["detail"] and nd.REPO_OWNER_FILTER in rows[0]["detail"], True)
+        code = nd.report_exit_code(rows)
+        check("resolve_site_rows -> report_exit_code is 3 (UNMEASURED), NOT 0 (the actual bug)",
+              code, 3)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # Contrast case: enumeration fetch fails outright (no token) -- also exactly one
+    # UNMEASURED row, via the other branch of resolve_site_rows.
+    rows = nd.resolve_site_rows(None, "fake-github-token")
+    check("no NETLIFY_PAT -> resolve_site_rows still returns exactly one UNMEASURED row",
+          (len(rows), rows[0]["verdict"]), (1, nd.UNMEASURED))
+    check("that row's detail names the enumeration failure, not the empty-filter case",
+          "could not enumerate sites" in rows[0]["detail"], True)
+
+    # -------------------------------------------------------------------------------
+    print("\nAccount-level auto-topup WARN (gh-1549 CTO comment 5524997596, item 3)")
+    # -------------------------------------------------------------------------------
+    warn_account = {"name": "OtterQuote", "auto_topup_enabled": False, "has_stripe_payment_method": True}
+    safe_account_topup_on = {"name": "Safe1", "auto_topup_enabled": True, "has_stripe_payment_method": True}
+    safe_account_no_card = {"name": "Safe2", "auto_topup_enabled": False, "has_stripe_payment_method": False}
+
+    warnings = nd.find_auto_topup_warnings([warn_account])
+    check("auto_topup off + card on file -> exactly one WARN", len(warnings), 1)
+    check("WARN names the account", "OtterQuote" in warnings[0], True)
+    check("WARN mentions auto_topup", "auto_topup" in warnings[0].lower() or "auto-topup" in warnings[0].lower(), True)
+
+    check("auto_topup ON -> no warning", nd.find_auto_topup_warnings([safe_account_topup_on]), [])
+    check("no payment method on file -> no warning (nothing to freeze against)",
+          nd.find_auto_topup_warnings([safe_account_no_card]), [])
+    check("mixed accounts -> only the risky one warns",
+          len(nd.find_auto_topup_warnings([warn_account, safe_account_topup_on, safe_account_no_card])), 1)
+    check("no accounts -> []", nd.find_auto_topup_warnings([]), [])
+
+    # compute_account_warnings: no token -> one WARN naming the missing token, never a crash.
+    check("compute_account_warnings with no token -> WARN naming NETLIFY_PAT",
+          nd.NETLIFY_TOKEN_ENV_VAR in nd.compute_account_warnings(None)[0], True)
+
+    # -------------------------------------------------------------------------------
     print("\ndisplay_verdict / IDENTICAL has no parenthetical")
     # -------------------------------------------------------------------------------
     r = nd.evaluate_site(SITE, same_sha, "2026-09-01T10:00:00.000Z", same_sha, 0, "ready", None, False)
@@ -124,14 +339,28 @@ def main():
     # -------------------------------------------------------------------------------
     identical_row = nd.evaluate_site(SITE, same_sha, "2026-09-01T00:00:00Z", same_sha, 0, "ready", None, False)
     behind_row = nd.evaluate_site(SITE, "1" * 40, "2026-08-11T00:00:00Z", "2" * 40, 3, "ready", None, False)
+    queued_stale_row = nd.evaluate_site(
+        SITE, same_sha, "2026-09-01T00:00:00Z", same_sha, 0, "ready", None, False,
+        queued_stale_build={"id": "x", "created_at": "2026-08-20T00:00:00Z", "_age_minutes": 20160.0},
+    )
     unmeasured_row = nd.unmeasured_row(SITE, "no NETLIFY_PAT found in the environment")
 
     check("all IDENTICAL -> exit 0", nd.report_exit_code([identical_row, identical_row]), 0)
     check("one BEHIND -> exit 2", nd.report_exit_code([identical_row, behind_row]), 2)
+    check("one QUEUED_STALE -> exit 2", nd.report_exit_code([identical_row, queued_stale_row]), 2)
     check("one UNMEASURED alongside a clean site -> exit 3 (outranks IDENTICAL)",
           nd.report_exit_code([identical_row, unmeasured_row]), 3)
     check("one UNMEASURED alongside a BEHIND site -> exit 3 (outranks BEHIND)",
           nd.report_exit_code([behind_row, unmeasured_row]), 3)
+    check("one UNMEASURED alongside a QUEUED_STALE site -> exit 3 (outranks QUEUED_STALE)",
+          nd.report_exit_code([queued_stale_row, unmeasured_row]), 3)
+
+    # gh-1569 fresh-context review on PR #1569: report_exit_code([]) was falling
+    # through to 0 (clean) -- {r["verdict"] for r in []} is the empty set, which
+    # contains neither UNMEASURED nor a FAILING_VERDICTS member. An empty rows
+    # list must never read as a clean pass.
+    check("EMPTY rows list -> exit 3, NOT 0 (gh-1569: the untested/unguarded path)",
+          nd.report_exit_code([]), 3)
 
     # -------------------------------------------------------------------------------
     print("\nUNMEASURED fetch paths -- must never resolve to a clean verdict")
@@ -145,6 +374,21 @@ def main():
     check("fetch_github_main_sha with no token -> data is None", data, None)
     check("fetch_github_main_sha with no token -> reason names GITHUB_PERSONAL_ACCESS_TOKEN",
           nd.GITHUB_TOKEN_ENV_VAR in reason, True)
+
+    data, reason = nd.fetch_netlify_sites(None)
+    check("fetch_netlify_sites with no token -> data is None", data, None)
+    check("fetch_netlify_sites with no token -> reason names NETLIFY_PAT",
+          nd.NETLIFY_TOKEN_ENV_VAR in reason, True)
+
+    data, reason = nd.fetch_netlify_builds("site-123", None)
+    check("fetch_netlify_builds with no token -> data is None", data, None)
+    check("fetch_netlify_builds with no token -> reason names NETLIFY_PAT",
+          nd.NETLIFY_TOKEN_ENV_VAR in reason, True)
+
+    data, reason = nd.fetch_netlify_accounts(None)
+    check("fetch_netlify_accounts with no token -> data is None", data, None)
+    check("fetch_netlify_accounts with no token -> reason names NETLIFY_PAT",
+          nd.NETLIFY_TOKEN_ENV_VAR in reason, True)
 
     real_urlopen = nd.urllib.request.urlopen
 
@@ -211,6 +455,39 @@ def main():
         nd.urllib.request.urlopen = real_urlopen
 
     # -------------------------------------------------------------------------------
+    print("\nfetch_netlify_sites paginates rather than silently truncating at 100")
+    # -------------------------------------------------------------------------------
+    def _paged_sites(req, timeout=20):
+        # NOTE: match on "?page=N" (the query-starting param), not "page=N" bare --
+        # "per_page=100" itself contains the substring "page=100", which would
+        # falsely match a bare "page=1" check on every request regardless of the
+        # actual page number.
+        url = req.full_url
+        if "?page=1" in url:
+            return _json_response([{"id": "s%d" % i} for i in range(100)])
+        if "?page=2" in url:
+            return _json_response([{"id": "s100"}])
+        raise AssertionError("unexpected page in test: %s" % url)
+
+    nd.urllib.request.urlopen = _paged_sites
+    try:
+        data, reason = nd.fetch_netlify_sites("fake-token-not-real")
+        check("fetch_netlify_sites follows pagination past a full first page", len(data), 101)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    def _single_short_page(req, timeout=20):
+        return _json_response([{"id": "only-one"}])
+
+    nd.urllib.request.urlopen = _single_short_page
+    try:
+        data, reason = nd.fetch_netlify_sites("fake-token-not-real")
+        check("fetch_netlify_sites stops after a short page (no needless extra request)",
+              len(data), 1)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # -------------------------------------------------------------------------------
     print("\nfetch_github_ahead_by short-circuits when shas already match (no compare call)")
     # -------------------------------------------------------------------------------
     def _explode_if_called(req, timeout=20):
@@ -228,11 +505,13 @@ def main():
     print("cross-repo-style 404 mid-pipeline resolving to UNMEASURED (the otter-crm shape)")
     # -------------------------------------------------------------------------------
     def _make_router(site_body, deploys_body, github_commit_body=None, github_compare_body=None,
-                      github_status=200):
+                      github_status=200, builds_body=None):
         def _router(req, timeout=20):
             url = req.full_url
             if "api.netlify.com" in url and "/deploys" in url:
                 return _json_response(deploys_body)
+            if "api.netlify.com" in url and "/builds" in url:
+                return _json_response(builds_body if builds_body is not None else [])
             if "api.netlify.com" in url:
                 return _json_response(site_body)
             if "api.github.com" in url and "/compare/" in url:
@@ -290,6 +569,46 @@ def main():
               row["verdict"], nd.BUILD_FAILING)
         check("check_site end-to-end BUILD_FAILING detail",
               row["detail"], "Skipped due to account credit usage exceeded")
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # Full QUEUED_STALE path (the #1517 shape: published still matches main, newest
+    # deploy is "ready", but a build has been queued for hours with no error and no
+    # deploy produced).
+    fixed_now = datetime.datetime(2026, 9, 3, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    nd.urllib.request.urlopen = _make_router(
+        site_body={"published_deploy": {"commit_ref": same_sha, "published_at": "2026-09-01T00:00:00Z"}},
+        deploys_body=[{"state": "ready", "created_at": "2026-09-01T00:00:00Z", "error_message": None}],
+        github_commit_body={"sha": same_sha},
+        builds_body=[
+            {"id": "test-queued-stale-build-1517", "done": False, "error": None, "deploy_id": None,
+             "created_at": "2026-08-20T19:45:55Z"},
+        ],
+    )
+    try:
+        row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token", now=fixed_now)
+        check("check_site end-to-end QUEUED_STALE (matching sha, ready deploy, stuck build)",
+              row["verdict"], nd.QUEUED_STALE)
+        check("check_site end-to-end QUEUED_STALE carries the build id",
+              row["queued_stale_build_id"], "test-queued-stale-build-1517")
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # Builds fetch itself failing (e.g. HTTP error) -> UNMEASURED, same fail-loud
+    # discipline as every other fetch step, never silently skipped.
+    def _builds_500(req, timeout=20):
+        url = req.full_url
+        if "/builds" in url:
+            raise urllib.error.HTTPError(url=url, code=500, msg="Internal Server Error", hdrs=None, fp=None)
+        if "/deploys" in url:
+            return _json_response([{"state": "ready", "created_at": "2026-09-01T00:00:00Z", "error_message": None}])
+        return _json_response({"published_deploy": {"commit_ref": same_sha, "published_at": "2026-09-01T00:00:00Z"}})
+
+    nd.urllib.request.urlopen = _builds_500
+    try:
+        row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token")
+        check("builds fetch HTTP error -> UNMEASURED, not a crash", row["verdict"], nd.UNMEASURED)
+        check("UNMEASURED detail names the builds fetch failure", "builds fetch failed" in row["detail"], True)
     finally:
         nd.urllib.request.urlopen = real_urlopen
 
@@ -351,6 +670,21 @@ def main():
     check("UNMEASURED run --json verdict", unmeasured_json["verdict"], "UNMEASURED")
     check("UNMEASURED run --json banner carries the loud warning",
           "NOT A PASS" in (unmeasured_json["banner"] or ""), True)
+
+    # -------------------------------------------------------------------------------
+    print("\nAccount WARN lines are independent of drift verdict / exit code (item 3)")
+    # -------------------------------------------------------------------------------
+    topup_warning = ['WARN: Netlify account "OtterQuote" has auto_topup disabled with a payment '
+                     "method on file -- the next usage-limit depletion freezes every deploy again "
+                     "with no notice (the #1548 shape)."]
+    clean_json_with_warn = json.loads(nd.render_json(clean_rows, clean_code, warnings=topup_warning))
+    check("a clean (CURRENT) run can still carry a WARN", clean_json_with_warn["warnings"], topup_warning)
+    check("a WARN never changes the verdict/exit code of a clean run",
+          clean_json_with_warn["verdict"], "CURRENT")
+    check("no warnings -> json 'warnings' is [] not null/omitted",
+          json.loads(nd.render_json(clean_rows, clean_code))["warnings"], [])
+    clean_text_with_warn = nd.render_text(clean_rows, clean_code, warnings=topup_warning)
+    check("text mode includes the WARN line too", "auto_topup disabled" in clean_text_with_warn, True)
 
     # -------------------------------------------------------------------------------
     print("\n--file-issue: no token -> skips posting, never crashes")
