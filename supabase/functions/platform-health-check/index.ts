@@ -45,7 +45,16 @@
  *      event as "~1am ET" — see #527).
  *
  * Scheduled: every 15 minutes via pg_cron (schedule: "* /15 * * * *")
- * Auth: no JWT required — invoked by pg_cron service-role bearer.
+ * Auth: verify_jwt = false (see supabase/config.toml). Gated instead by a
+ * caller-identity check at the top of the handler: the request must carry
+ * "Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>", matching exactly what
+ * cron.job's platform-health-check-cron entry sends (confirmed live against
+ * prod, gh-1600 — it posts Bearer <cron_service_role_key> pulled from
+ * vault.decrypted_secrets, which is provisioned to equal the function's own
+ * SUPABASE_SERVICE_ROLE_KEY). Any other caller, including one holding only
+ * the public anon/publishable key, is rejected 401 before Phase 1 starts.
+ * (Previously this comment claimed the same gate without the handler
+ * actually implementing it — see gh-1600.)
  *
  * Environment variables:
  *   SUPABASE_URL
@@ -847,6 +856,17 @@ serve(async (req) => {
   if (!supabaseUrl || !serviceKey || !mailgunApiKey || !mailgunDomain) {
     console.error("[platform-health-check] Missing required env vars");
     return jsonResponse({ error: "Server configuration error" }, 500, corsHeaders);
+  }
+
+  // ── Caller-identity gate (gh-1600) ──────────────────────────────────────────
+  // Reject before Phase 1 starts unless the caller presents the service-role
+  // bearer — matching exactly what cron.job's platform-health-check-cron entry
+  // sends in prod (verified live, see gh-1600 evidence). This function pings
+  // other Edge Functions and writes cron_health / platform_alerts_log rows, so
+  // an anonymous caller must not be able to trigger those side effects.
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (authHeader !== `Bearer ${serviceKey}`) {
+    return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
   }
 
   const supabase = createClient(supabaseUrl, serviceKey);
