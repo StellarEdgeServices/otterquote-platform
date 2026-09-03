@@ -6,12 +6,13 @@
 // never imported here; same source-split pattern as
 // notify-contractors/test-exclusion.test.ts).
 
-import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   type ActivityLogRow,
   type DbAdapter,
   MAGIC_LINK_EXPIRES_IN,
   resolveAndMint,
+  unexpectedErrorResponse,
 } from "./gate.ts";
 
 const ACTOR_EMAIL = "dustinstohler1@gmail.com";
@@ -151,4 +152,55 @@ Deno.test("404 when contractor is is_test but has no linked auth user", async ()
   });
   const result = await resolveAndMint({ contractor_id: "c6" }, db, ACTOR_EMAIL);
   assertEquals(result.status, 404);
+});
+
+// gh-1562 (js/stack-trace-exposure): index.ts's outer catch calls
+// unexpectedErrorResponse for anything that escapes resolveAndMint's own
+// gating (e.g. a thrown Error from client construction). The response body
+// must never carry the error's message/stack — only a fixed generic
+// string — while the real detail still reaches console.error so it is not
+// silently lost.
+Deno.test("unexpectedErrorResponse: generic body, real detail still logged", () => {
+  const loggedCalls: unknown[][] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => {
+    loggedCalls.push(args);
+  };
+
+  try {
+    const secretDetail = new Error("Supabase credentials not configured");
+    secretDetail.stack = "Error: Supabase credentials not configured\n    at very/internal/path.ts:42:7";
+    const result = unexpectedErrorResponse(secretDetail);
+
+    assertEquals(result.status, 500);
+    assertEquals(result.body, { error: "Internal server error" });
+    assertEquals(JSON.stringify(result.body).includes("very/internal/path.ts"), false);
+    assertEquals(JSON.stringify(result.body).includes("Supabase credentials"), false);
+
+    assertEquals(loggedCalls.length, 1);
+    const loggedText = Deno.inspect(loggedCalls[0]);
+    assertStringIncludes(loggedText, "Supabase credentials not configured");
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+// Non-Error throws (a plain string, a rejected value that isn't an Error
+// instance) must also collapse to the same fixed generic body — the sink
+// discipline does not depend on what shape the thrown value happens to be.
+Deno.test("unexpectedErrorResponse: non-Error throw still yields the generic body", () => {
+  const originalConsoleError = console.error;
+  let called = false;
+  console.error = () => {
+    called = true;
+  };
+
+  try {
+    const result = unexpectedErrorResponse("raw string throw with internal detail");
+    assertEquals(result.status, 500);
+    assertEquals(result.body, { error: "Internal server error" });
+    assertEquals(called, true);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });

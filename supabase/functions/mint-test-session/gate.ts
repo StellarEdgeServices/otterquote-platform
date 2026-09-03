@@ -90,6 +90,21 @@ function jsonError(status: number, error: string): MintResult {
 }
 
 /**
+ * gh-1562 (CodeQL js/stack-trace-exposure): index.ts's catch-all calls this
+ * for any error that reaches its outer try/catch (auth client construction,
+ * an unexpected throw inside resolveAndMint's db calls, etc.). This is a
+ * credential-minting endpoint, so an exception's message or stack can leak
+ * internal structure to whoever can reach it. The function has no Sentry
+ * init, so console.error is the only server-side detail sink; the response
+ * body is always the same fixed, generic string — never error.message,
+ * error.stack, or String(error).
+ */
+export function unexpectedErrorResponse(error: unknown): MintResult {
+  console.error("mint-test-session error:", error);
+  return jsonError(500, "Internal server error");
+}
+
+/**
  * Core R-174 gate + mint logic.
  *
  * Input: exactly one of contractor_id | user_id (non-empty string).

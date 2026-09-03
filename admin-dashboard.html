@@ -333,7 +333,13 @@ function render() {
 
   if (!line) return renderTopPage();
   if (line === 'otterquotes' && !audience) return renderLinePage();
-  if (line === 'otterquotes' && audience && AUDIENCE_LABELS[audience]) return renderAudiencePage(audience, tab);
+  // gh-1562: `AUDIENCE_LABELS[audience]` truthy was not a real allow-list
+  // check — `audience` is a raw URL query value, and Object.prototype key
+  // names (e.g. audience=constructor, toString, hasOwnProperty) are also
+  // truthy lookups on a plain object literal, so that check let non-label
+  // strings through into renderAudiencePage. hasOwnProperty constrains
+  // `audience` to one of AUDIENCE_LABELS' own three keys, full stop.
+  if (line === 'otterquotes' && audience && Object.prototype.hasOwnProperty.call(AUDIENCE_LABELS, audience)) return renderAudiencePage(audience, tab);
   return renderTopPage();
 }
 
@@ -447,12 +453,17 @@ function renderAudiencePage(audience, tab) {
   var html = '<p class="breadcrumb"><a href="?">All business lines</a> &rsaquo; ' +
     '<a href="?line=otterquotes">Otter Quotes</a> &rsaquo; ' + esc(AUDIENCE_LABELS[audience]) + '</p>';
 
-  // audience is validated by render() (AUDIENCE_LABELS[audience] truthy)
-  // before this function is ever called, so it is one of a known-safe
-  // three-value set here — not free text from the EF response.
+  // gh-1562 (CodeQL js/xss, both innerHTML sinks below): audience is now
+  // validated by render() via Object.prototype.hasOwnProperty.call, so it
+  // can only be one of AUDIENCE_LABELS' three literal own keys here — not
+  // free text from the EF response, and not an inherited Object.prototype
+  // property name either. esc() is kept as a second, independent layer so
+  // this string is never interpolated raw regardless of what render() lets
+  // through in the future.
+  var audienceEsc = esc(audience);
   html += '<div class="tabs">' +
-    '<button class="tab-btn' + (isMarketing ? ' active' : '') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audience + '\',tab:\'marketing\'})">Marketing</button>' +
-    '<button class="tab-btn' + (isMarketing ? '' : ' active') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audience + '\',tab:\'crm\'})">CRM</button>' +
+    '<button class="tab-btn' + (isMarketing ? ' active' : '') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audienceEsc + '\',tab:\'marketing\'})">Marketing</button>' +
+    '<button class="tab-btn' + (isMarketing ? '' : ' active') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audienceEsc + '\',tab:\'crm\'})">CRM</button>' +
   '</div>';
 
   if (isMarketing) {
