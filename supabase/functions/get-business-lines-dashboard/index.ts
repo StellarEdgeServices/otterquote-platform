@@ -50,6 +50,21 @@
  * new double-counted rows but does not backfill rows created before that
  * migration, and this series' 12-week trailing window spans that boundary.
  *
+ * Phase 5 (gh-1574) adds ONE more series to all three audiences: `visits`, a
+ * 12-week weekly GA4 `sessions` count via the live ga4-report (#1331) Data
+ * API path — its token-minting/runReport client is mirrored (not shared;
+ * `_shared/` does not resolve at deploy time) in this directory's ga4.ts.
+ * All three audiences read the SAME site-wide GA4 property (541423859) until
+ * per-audience GA4 dimensions exist — the series' `note` field says so, per
+ * the issue. Same honesty contract as every other series: `kind: "measured"`
+ * / `"measured_zero"` on a successful GA4 read, `kind: "not_run"` with a
+ * `reason` on ANY GA4 failure (missing/invalid service account, non-2xx,
+ * unparsable response) — never a fabricated zero (house rule gh-1419).
+ * Carries a standing `caveat`: GA4 sessions are unfiltered and bot share is
+ * unknown (#1464) — sessions ≈ totalUsers on a site with very few signups
+ * smells like crawler traffic, so a rate built on this denominator without
+ * the caveat would be a lie in the other direction.
+ *
  * Read-only. No writes, no schema change, no other EF touched.
  *
  * Input:  POST {}  (body currently unused — reserved for future filtering)
@@ -57,17 +72,19 @@
  *         lines[key=otterquotes] additionally carries revenue_mtd (phase 4).
  *         audiences.{homeowner,contractor,referral_partner} additionally
  *         carry `marketing` (phase 2a) — see buildWeeklySeries/
- *         buildGroupedWeeklySeries for the shared shape.
+ *         buildGroupedWeeklySeries for the shared shape — and, as of phase 5
+ *         (gh-1574), a `visits` series on that same `marketing` block.
  *
  * Auth: requires a valid Supabase JWT with email in the admin allow-list.
  * verify_jwt = false (see supabase/config.toml) — auth is performed
  * in-handler, same pattern as get-payout-completion-status / approve-payout.
  *
- * GitHub: #1340, #1469
+ * GitHub: #1340, #1469, #1574
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { fetchGa4SessionsByDay, type Ga4SessionsByDayResult } from "./ga4.ts";
 
 const FUNCTION_NAME = "get-business-lines-dashboard";
 // gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
@@ -213,11 +230,92 @@ function buildWeeklySeries(unit: string, rows: DatedRow[], windows: WeekWindow[]
 
 // A series with no live data source at all — distinct from a series whose
 // query ran and returned zero (buildWeeklySeries above always returns that
-// as "measured_zero"). No caller in this phase uses this yet; kept because
-// the honesty contract is per-series and the shape has to exist before the
-// first genuinely-dark series (phase 5's GA4 visits) needs it.
+// as "measured_zero"). Introduced in phase 2a with no caller yet; phase 5's
+// GA4 visits series (buildVisitsSeries below) is the first one to actually
+// reach kind:"not_run" — on any GA4 fetch failure, never a fabricated zero.
 function notRunSeries(unit: string, windows: WeekWindow[], reason: string): WeeklySeries {
   return { kind: "not_run", unit, windows, values: new Array(windows.length).fill(0), total: 0, reason };
+}
+
+// ── gh-1574 (#1340 phase 5): GA4 sessions ("visits") weekly series ──────
+// GA4 returns one row per calendar day ("YYYYMMDD" in the property's
+// reporting timezone) carrying an already-aggregated `sessions` total for
+// that day — unlike the Supabase-backed series above, which count individual
+// rows, this one SUMS each day's total into whichever of the 12 rolling
+// windows (buildWeekWindows) contains it. Midnight UTC of the GA4 date
+// string stands in for "when that day happened", the same day-level (not
+// sub-day) precision buildWeeklySeries already accepts for every other
+// series in this file.
+function ga4DateToIso(ga4Date: string): string | null {
+  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(ga4Date);
+  if (!m) return null;
+  const iso = `${m[1]}-${m[2]}-${m[3]}T00:00:00.000Z`;
+  return isNaN(new Date(iso).getTime()) ? null : iso;
+}
+
+interface WeightedDatedRow { iso: string | null; value: number }
+
+// Same [start, end) windowing as countByWeek, but SUMS row.value into the
+// matching window instead of counting occurrences — countByWeek itself
+// cannot be reused as-is because each GA4 daily row already represents many
+// sessions, not one event.
+function sumByWeek(rows: WeightedDatedRow[], windows: WeekWindow[]): number[] {
+  const starts = windows.map((w) => new Date(w.week_start).getTime());
+  const ends = windows.map((w) => new Date(w.week_end).getTime());
+  const values = new Array(windows.length).fill(0);
+  for (const row of rows) {
+    if (!row.iso) continue;
+    const t = new Date(row.iso).getTime();
+    if (isNaN(t)) continue;
+    for (let w = 0; w < windows.length; w++) {
+      if (t >= starts[w] && t < ends[w]) {
+        values[w] += row.value;
+        break;
+      }
+    }
+  }
+  return values;
+}
+
+// gh-1340 body / phase 5 build note: "sessions ≈ totalUsers on a site with
+// 22 signups in 12 weeks smells like crawler traffic" — a conversion rate
+// built on this denominator without saying so would be a lie in the other
+// direction. Carried on the series itself (same pattern as referral_clicks'
+// caveat above) so no consumer of this payload can drop the caveat by
+// forgetting to look it up elsewhere.
+const GA4_VISITS_CAVEAT = "GA4 sessions, unfiltered — bot share unknown (see #1464).";
+
+// gh-1574: all three audiences source the SAME site-wide GA4 property until
+// per-audience GA4 dimensions exist — the issue asks that this be said in
+// the payload, not just in this comment.
+const GA4_VISITS_NOTE =
+  "Sourced from the site-wide GA4 property (541423859), not this audience specifically — " +
+  "per-audience GA4 dimensions do not exist yet (gh-1574).";
+
+interface VisitsSeries extends WeeklySeries {
+  caveat: string;
+  note: string;
+}
+
+// Turns a fetchGa4SessionsByDay result into the `visits` series honoring the
+// fail-loud contract: any GA4 failure is kind:"not_run" with the reason
+// attached (never zeros standing in for "unmeasured").
+function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindow[]): VisitsSeries {
+  if (!ga4Result.ok) {
+    return { ...notRunSeries("sessions", windows, ga4Result.reason), caveat: GA4_VISITS_CAVEAT, note: GA4_VISITS_NOTE };
+  }
+  const dated = ga4Result.rows.map((r) => ({ iso: ga4DateToIso(r.date), value: r.sessions }));
+  const values = sumByWeek(dated, windows);
+  const total = values.reduce((a, b) => a + b, 0);
+  return {
+    kind: kindForTotal(total),
+    unit: "sessions",
+    windows,
+    values,
+    total,
+    caveat: GA4_VISITS_CAVEAT,
+    note: GA4_VISITS_NOTE,
+  };
 }
 
 interface GroupedRow extends DatedRow { group: string | null }
@@ -473,6 +571,13 @@ serve(async (req: Request) => {
     // NOT in the all-tables error gate — a Stripe outage must degrade one
     // tile, not 500 the dashboard.
     const revenueMtdPromise = fetchRevenueMtd(now);
+
+    // Phase 5 (gh-1574): GA4 sessions-by-day, same concurrency/never-throws/
+    // outside-the-error-gate treatment as revenueMtdPromise above — a GA4
+    // outage must degrade one series (kind:"not_run"), not 500 the dashboard.
+    // 90 days covers the 12-week (84-day) trailing window with margin, same
+    // range verified live in the issue body.
+    const ga4VisitsPromise = fetchGa4SessionsByDay("90daysAgo", "today");
 
     // ── One query per table (no N+1) ──────────────────────────────────────
     const [
@@ -771,6 +876,12 @@ serve(async (req: Request) => {
     // ══════════════════════════════════════════════════════════════════════
     const weekWindows = buildWeekWindows(now, MARKETING_WEEKS);
 
+    // gh-1574 phase 5 — resolve the concurrently-kicked-off GA4 fetch and
+    // build the ONE `visits` series shared across all three audiences below
+    // (same underlying site-wide property, per GA4_VISITS_NOTE above).
+    const ga4VisitsResult = await ga4VisitsPromise;
+    const visitsSeries = buildVisitsSeries(ga4VisitsResult, weekWindows);
+
     const nonTestRows = <T extends { is_test?: boolean }>(rows: T[]) => rows.filter((r) => r.is_test !== true);
 
     // ── Homeowner marketing ──────────────────────────────────────────────
@@ -795,6 +906,7 @@ serve(async (req: Request) => {
         (leads as any[]).map((l) => ({ iso: l.created_at as string | null, group: l.source as string | null })),
         weekWindows,
       ),
+      visits: visitsSeries,
     };
 
     // ── Contractor marketing — funnel: pre-approval → template → first bid ─
@@ -841,6 +953,7 @@ serve(async (req: Request) => {
           excluded_no_timestamp: firstBid.excludedNoTimestamp,
         },
       },
+      visits: visitsSeries,
     };
 
     // ── Referral partner marketing — signups by agent_type / UTM, clicks ──
@@ -878,6 +991,7 @@ serve(async (req: Request) => {
         caveat: REFERRAL_CLICK_CAVEAT,
         caveat_ref: "https://github.com/StellarEdgeServices/otterquote-platform/issues/1302",
       },
+      visits: visitsSeries,
     };
 
     // ══════════════════════════════════════════════════════════════════════
