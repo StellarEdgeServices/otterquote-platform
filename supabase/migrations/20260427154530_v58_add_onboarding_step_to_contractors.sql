@@ -1,0 +1,23 @@
+-- Migration: v58_add_onboarding_step_to_contractors
+-- Filed by: gh-1438 migration history backfill batch 1 (Code lane)
+-- Date filed: 2026-09-02
+--
+-- STATUS: ALREADY APPLIED. This file is a post-apply trace added by the
+-- gh-1438 migration history backfill (issue #1438, batch 1, non-money
+-- orphans, oldest first) -- it does NOT re-apply anything; merging this PR
+-- is a no-op against the database. Applied to production
+-- (yeszghaspzwwstvsrioa) 2026-04-27T15:45:30Z, recorded in
+-- supabase_migrations.schema_migrations as version 20260427154530, name
+-- "v58_add_onboarding_step_to_contractors". NEVER RE-RUN.
+--
+-- PROVENANCE: sourced verbatim via a read-only SELECT against
+-- supabase_migrations.schema_migrations.statements for this version,
+-- 2026-09-02, gh-1438 backfill batch 1. No SQL was executed against
+-- production to produce this file -- no prior repo record for this
+-- version was found; this is the first repo record of it.
+
+-- v58: Add onboarding_step column to contractors table
+-- Tracks which page of the D-190 4-page contractor onboarding wizard the contractor has completed
+-- 1 = contact info submitted, 2 = license/insurance completed, 3 = agreement signed, 4 = card uploaded
+-- Default 1 so existing contractors are unaffected (they are already past onboarding)
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS onboarding_step INT NOT NULL DEFAULT 1;
