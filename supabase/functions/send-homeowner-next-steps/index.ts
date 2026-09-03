@@ -34,6 +34,39 @@
  *     metadata: { claim_id, nudge_stage: '2h' | '48h', system_generated: true } }
  * keyed by user_id, filtered by metadata.claim_id + nudge_stage per claim.
  *
+ * Concurrency (gh-1580 Q&A, CTO ruling 2026-09-03T21:40:09Z, "condition 2"):
+ * the in-memory nudgeSentByClaimStage snapshot + stamp-before-send order
+ * above only close the SEQUENTIAL race (one run retrying after a partial
+ * failure). Two OVERLAPPING invocations (a manual trigger racing the cron
+ * tick, or a retried call while the first is still mid-Mailgun-loop) would
+ * each read the same "not yet sent" snapshot and each stamp+send — a real
+ * homeowner emailed twice. The fix for that is a Postgres-level guard: the
+ * stamp INSERT below catches a 23505 unique-violation and treats it as
+ * "already sent" (not an error), so whichever invocation loses the race
+ * skips its send. This depends on a unique partial index on activity_log
+ * for (user_id, event_type, metadata->>'claim_id', metadata->>'stage')
+ * that does NOT exist yet — it is Tier 3B, approved separately, and lands
+ * as its own migration ahead of sql/v113 per the CTO's binding ordering
+ * (index applied -> v113 applied -> this function is ever invoked by cron).
+ * Two states, both must hold and both are true of this code as written:
+ *   - INDEX ABSENT (today): no unique constraint exists, so Postgres never
+ *     raises 23505 here — the INSERT always succeeds and the catch branch
+ *     below is simply unreachable. Behavior is unchanged from before this
+ *     comment: the sequential guard still holds, the concurrent race still
+ *     exists (as the CTO's ruling accepts — there is no live cron trigger
+ *     yet, so the race has no window to fire in). Nothing here depends on
+ *     the index existing, and nothing here crashes for its absence.
+ *   - INDEX PRESENT (after the Tier 3B migration lands): a losing INSERT
+ *     raises 23505, is caught, counted as a skip (not a silent return —
+ *     see stages_skipped_already_sent below), and does NOT call Mailgun.
+ *     This is what actually closes the concurrent-double-send exposure.
+ * ON CONFLICT DO NOTHING ... RETURNING (the CTO's other acceptable option)
+ * was not used: it requires naming the target constraint/index up front,
+ * which errors at the database level (42P10, no matching unique/exclusion
+ * constraint) when that index does not exist — i.e. it would crash today,
+ * before the migration lands. Catching 23505 degrades safely in that state
+ * instead, which is why it's the one wired up here.
+ *
  * metadata.system_generated = true is the OTHER thing this stamp must do:
  * get-business-lines-dashboard's lastActivityByUser/firstActivityByUser
  * (and any future consumer of activity_log-as-movement) must not treat this
@@ -84,6 +117,10 @@ interface ClaimRow {
 interface ScanResult {
   claim_id: string;
   stages_sent: NudgeStage[];
+  // 23505-caught duplicate stamps (concurrent/overlapping invocation lost
+  // the race) — counted explicitly per condition 2, not folded silently
+  // into stages_sent or dropped.
+  stages_skipped_already_sent?: NudgeStage[];
   skipped_reason?: "has_hover_order" | "real_activity_since_created" | "no_email";
 }
 
@@ -395,6 +432,7 @@ serve(async (req: Request) => {
     const colorUrl = `${siteUrl}/color-selection.html?claim_id=${claim.id}`;
 
     const sentStages: NudgeStage[] = [];
+    const skippedAlreadySentStages: NudgeStage[] = [];
     for (const stage of stagesToSend) {
       // gh-1580 review fix (PR #1601, comment 5532245612): stamp BEFORE
       // sending, not after. The prior send-then-stamp order's own comment
@@ -423,6 +461,20 @@ serve(async (req: Request) => {
         is_test: false,
       });
       if (stampError) {
+        // condition 2 (gh-1580 Q&A, CTO ruling 2026-09-03T21:40:09Z): a
+        // unique-violation here means a concurrent/overlapping invocation
+        // already won the race and stamped+sent this exact (claim, stage)
+        // first — NOT a failure. Skip the send, count it explicitly, do not
+        // treat it as an error. Unreachable until the Tier 3B unique
+        // partial index lands (see the file-header comment) — before then,
+        // no unique constraint exists on activity_log for this key, so
+        // Postgres never raises 23505 and this branch is simply dead code
+        // that cannot crash anything.
+        if (stampError.code === "23505") {
+          console.log(`[${FUNCTION_NAME}] ${stage} nudge for claim ${claim.id} already sent (23505 unique-violation — concurrent run won the race) — skipping send`);
+          skippedAlreadySentStages.push(stage);
+          continue;
+        }
         console.error(`[${FUNCTION_NAME}] Failed to stamp ${stage} nudge for claim ${claim.id} — skipping send this run, will retry next run:`, stampError.message);
         continue; // fatal for this row this run: no stamp landed, so nothing was sent — safe to retry
       }
@@ -442,9 +494,21 @@ serve(async (req: Request) => {
       sentStages.push(stage);
     }
 
-    results.push({ claim_id: claim.id, stages_sent: sentStages });
+    results.push({
+      claim_id: claim.id,
+      stages_sent: sentStages,
+      ...(skippedAlreadySentStages.length > 0 ? { stages_skipped_already_sent: skippedAlreadySentStages } : {}),
+    });
   }
 
   const processed = results.filter((r) => r.stages_sent.length > 0).length;
-  return jsonResponse({ ok: true, processed, results }, 200, corsHeaders);
+  // Counted output per condition 2 — never a silent return. Zero today is
+  // expected and correct (no unique index yet => 23505 cannot fire); a
+  // non-zero count after the Tier 3B index lands is the guard working, not
+  // an error condition.
+  const skippedAlreadySent = results.reduce(
+    (sum, r) => sum + (r.stages_skipped_already_sent?.length || 0),
+    0
+  );
+  return jsonResponse({ ok: true, processed, skipped_already_sent: skippedAlreadySent, results }, 200, corsHeaders);
 });
