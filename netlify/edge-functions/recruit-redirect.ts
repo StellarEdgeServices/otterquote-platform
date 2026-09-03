@@ -30,13 +30,28 @@
  * context.rewrite() serves /recruit.html's content directly (200) while
  * leaving the requested URL, and its query string, untouched in the
  * browser: no redirect ever happens, so nothing can drop `?code=`.
+ *
+ * Fail-open (CTO condition, gh-1540 2026-09-03T22:28:49Z): this function
+ * sits in front of the single highest-value entry point on the site, so a
+ * throw here must never turn into a 500. If anything in the try block
+ * throws — a malformed req.url, context.rewrite() erroring, the edge
+ * runtime having a bad day — the catch falls through via context.next(),
+ * handing the request to Netlify's normal pipeline. That reproduces
+ * exactly the pre-fix behaviour these two shapes had (Pretty URLs 301s to
+ * /recruit, which then 200s): one extra hop and a working page, never an
+ * error. A partner link that errors is strictly worse than one that takes
+ * a 301.
  */
 
 export default async (req: Request, context: any) => {
-  const url = new URL(req.url);
-  const target = new URL('/recruit.html', url.origin);
-  url.searchParams.forEach((value, key) => target.searchParams.set(key, value));
-  return context.rewrite(target);
+  try {
+    const url = new URL(req.url);
+    const target = new URL('/recruit.html', url.origin);
+    url.searchParams.forEach((value, key) => target.searchParams.set(key, value));
+    return context.rewrite(target);
+  } catch {
+    return context.next();
+  }
 };
 
 export const config = { path: ['/recruit/', '/Recruit.html'] };
