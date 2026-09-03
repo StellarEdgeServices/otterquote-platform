@@ -672,11 +672,19 @@ serve(async (req: Request) => {
 
     // ── activity_log reduced to last-movement-per-user (no N+1 downstream) ──
     const lastActivityByUser = new Map<string, string>();
+    // gh-1580: also reduced to first-movement-per-user, so the CRM render can
+    // show "no activity since signup" (null = never) without re-deriving it
+    // client-side from a raw activity_log scan.
+    const firstActivityByUser = new Map<string, string>();
     for (const row of activityLog as { user_id: string | null; created_at: string }[]) {
       if (!row.user_id) continue;
-      const prev = lastActivityByUser.get(row.user_id);
-      if (!prev || new Date(row.created_at).getTime() > new Date(prev).getTime()) {
+      const prevLast = lastActivityByUser.get(row.user_id);
+      if (!prevLast || new Date(row.created_at).getTime() > new Date(prevLast).getTime()) {
         lastActivityByUser.set(row.user_id, row.created_at);
+      }
+      const prevFirst = firstActivityByUser.get(row.user_id);
+      if (!prevFirst || new Date(row.created_at).getTime() < new Date(prevFirst).getTime()) {
+        firstActivityByUser.set(row.user_id, row.created_at);
       }
     }
 
@@ -744,6 +752,14 @@ serve(async (req: Request) => {
         is_test: p.is_test === true,
         checklist,
         movement: { ...movement, bucket: isComplete ? "complete" : movement.bucket },
+        // gh-1580: signup time — the CRM render needs this to compute "age in
+        // hours" for the NEW strip without a second derived source of truth.
+        created_at: p.created_at,
+        // gh-1580: null = never had an activity_log row. Admin CRM "NEW — no
+        // activity since signup" strip keys off this rather than re-deriving
+        // it from movement.bucket, which a freshly-created row buckets green
+        // (see p.updated_at as a movement input above) regardless of activity.
+        first_activity_at: firstActivityByUser.get(p.id) || null,
       };
     });
 
