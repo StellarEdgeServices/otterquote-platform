@@ -293,6 +293,24 @@ if _agent_types_result.stderr:
     print(_agent_types_result.stderr, end="", file=sys.stderr)
 agent_types_exit = _agent_types_result.returncode
 
-if file_integrity_exit != 0 or partner_parity_exit != 0 or agent_types_exit != 0:
+# -- innerHTML escape guard (gh-1436) ----------------------------------------
+# Chained for the same reason as partner_parity_check.py above: this is the
+# one CI job this lane's push credential can extend without a workflow-file
+# edit (gh-634/#873). Fails the build when a served page interpolates a bare
+# claim.* / profiles.* field into an innerHTML template without escaping --
+# the stored-XSS class CodeQL never flagged (gh-1436 reopen directive,
+# issue comment 5485692341).
+print()
+print("-" * 78)
+_xss_guard_script = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "tools", "innerhtml_escape_check.py"
+)
+_xss_guard_result = subprocess.run([sys.executable, _xss_guard_script], capture_output=True, text=True)
+print(_xss_guard_result.stdout, end="")
+if _xss_guard_result.stderr:
+    print(_xss_guard_result.stderr, end="", file=sys.stderr)
+xss_guard_exit = _xss_guard_result.returncode
+
+if file_integrity_exit != 0 or partner_parity_exit != 0 or agent_types_exit != 0 or xss_guard_exit != 0:
     sys.exit(1)
 sys.exit(0)

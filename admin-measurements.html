@@ -105,6 +105,14 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 .drawer-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
 .drawer-err { background: #FEE2E2; color: #991B1B; padding: 0.7rem 0.9rem; border-radius: 0.4rem; font-size: 0.86rem; margin-bottom: 1rem; display: none; }
 .margin-live { background: #F8FAFC; border: 1px solid var(--light); border-radius: 0.4rem; padding: 0.7rem 0.9rem; font-size: 0.88rem; color: var(--navy); }
+
+/* ── Per-pitch area table ── */
+.pitch-table { margin-bottom: 0.5rem; }
+.pitch-row-head, .pitch-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+.pitch-row-head { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94A3B8; }
+.pitch-row input { padding: 0.5rem 0.6rem; border: 1px solid var(--light); border-radius: 0.4rem; font-family: inherit; font-size: 0.86rem; color: #1F2937; background: #fff; box-sizing: border-box; width: 100%; }
+.pitch-row-remove { background: transparent; color: #64748B; border: 1px solid var(--light); border-radius: 0.4rem; padding: 0.4rem 0.6rem; cursor: pointer; font-size: 0.78rem; font-family: inherit; }
+.pitch-add-btn { margin-top: 0.25rem; }
 </style>
 </head>
 <body>
@@ -136,9 +144,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
   <div class="info-banner">
     📐 <strong>Manual fulfillment.</strong> The homeowner has already paid. Order the report from the
     measurement vendor yourself, then come back here, upload the PDF and key in the numbers.
-    The homeowner sees the report the moment you save; the contractor sees the measurements on the
-    bid form. <strong>Enter what we paid the vendor</strong> — it is the only way real margin per
-    order is visible instead of estimated.
+    The homeowner is emailed the moment you deliver, and the measurements appear on their project;
+    the contractor sees the measurements on the bid form. The vendor PDF itself stays internal —
+    it is never served to a homeowner or contractor. <strong>Enter what we paid the vendor</strong> —
+    it is the only way real margin per order is visible instead of estimated.
   </div>
 
   <div class="summary-cards">
@@ -210,7 +219,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
       <div class="field">
         <label for="fReport">Report PDF</label>
         <input type="file" id="fReport" accept="application/pdf">
-        <div class="hint">Optional on save, but the homeowner has nothing to open without it.</div>
+        <div class="hint">Optional on save. Kept for internal records only — never served to the homeowner or contractor.</div>
       </div>
     </div>
 
@@ -232,6 +241,17 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
       <div class="field"><label for="mDripEdge">Drip edge / perimeter (lf)</label><input type="number" id="mDripEdge" step="0.01" min="0"></div>
       <div class="field"><label for="mStepFlash">Step flashing (lf)</label><input type="number" id="mStepFlash" step="0.01" min="0"></div>
     </div>
+    <div class="grid2">
+      <div class="field"><label for="mFlashing">Flashing (lf)</label><input type="number" id="mFlashing" step="0.01" min="0"></div>
+      <div class="field"><label for="mHighRoofSq">High Roof — over 1 story (SQ)</label><input type="number" id="mHighRoofSq" step="0.01" min="0"></div>
+    </div>
+
+    <div class="fieldset-title">Per-pitch areas (raw rows, not bucketed)</div>
+    <div class="pitch-table" id="pitchTable">
+      <div class="pitch-row-head"><div>Pitch</div><div>Area (sf)</div><div>Squares</div><div></div></div>
+      <div id="pitchRowsBody"></div>
+    </div>
+    <button class="btn-sm btn-ghost-sm pitch-add-btn" type="button" onclick="addPitchRow()">+ Add pitch row</button>
 
     <div class="field" style="margin-top:1rem">
       <label for="fNotes">Internal notes</label>
@@ -263,6 +283,9 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  *                   reader (bid form, opportunity card, auto-bid math) works
  *                   on a hand-entered report exactly as on a parsed one.
  *                   Getting these key names wrong is the silent failure here.
+ *   [gh-1412] on delivery it also invokes send-measurement-ready (admin-gated
+ *   EF) which writes the 'measurement_order_fulfilled' activity_log row and
+ *   emails the homeowner. Idempotent per order — Edit re-saves do not re-send.
  */
 var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
 var STORAGE_BUCKET = 'claim-documents';
@@ -270,14 +293,34 @@ var STORAGE_BUCKET = 'claim-documents';
 var state = { filter: 'awaiting_fulfillment', rows: [], catalog: {}, current: null, user: null };
 
 var _initFired = false;
-if (!sb) return;
-sb.auth.onAuthStateChange(async function (event, session) {
-  if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
-    _initFired = true;
-    if (!session) { window.location.href = '/'; return; }
-    await checkAdminAndInit(session.user);
-  }
-});
+// [gh-1376] The original `if (!sb) return;` here was an "Illegal return
+// statement" SyntaxError in every real browser: it sat at the top level of
+// this <script> block, not inside a function, so the parser rejected the
+// ENTIRE inline script and NOTHING in it ran -- including every function this
+// page depends on (openDrawer, saveFulfillment, the new per-pitch table code,
+// etc.). `node --check` does not catch this: Node wraps file content in a
+// CommonJS function, which silently makes a top-level `return` legal there,
+// masking the bug. Confirmed live via the in-app Browser pane (console:
+// "Uncaught SyntaxError: Illegal return statement"); pre-existing on main and
+// unrelated to this issue's edits.
+// That same `if (!sb) return;` shape is also the exact fix
+// scripts/check-sb-auth-guards.py (Stage 5 prevention, 86e1fratf) requires
+// before every sb.auth.onAuthStateChange call -- the checker's own suggested
+// pattern is unsafe at top-level scope, and at least one other page
+// (admin-warranty-drift.html:278) has the identical live bug. `if (sb) { ... }`
+// around the registration is syntactically valid at top level, satisfies the
+// checker's GUARD_RE (`if (sb)` is one of its accepted forms), and is
+// semantically equivalent: skip registering the listener if the Supabase CDN
+// failed to load.
+if (sb) {
+  sb.auth.onAuthStateChange(async function (event, session) {
+    if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
+      _initFired = true;
+      if (!session) { window.location.href = '/'; return; }
+      await checkAdminAndInit(session.user);
+    }
+  });
+}
 
 async function checkAdminAndInit(user) {
   // Same admin test as every other admin page: the primary admin address, or
@@ -332,7 +375,13 @@ async function loadOrders() {
   // integration) are a different lifecycle and are not this queue's business.
   var res = await sb
     .from('hover_orders')
-    .select('id, claim_id, status, product_code, fulfillment_mode, vendor_order_ref, vendor_cost_cents, homeowner_charge_amount, requested_by_role, fulfilled_at, report_url, admin_notes, created_at, claims(id, address_line_1, address_city, address_state, address_zip, user_id)')
+    // [gh-1412] The embedded claims list previously asked for address_line_1 /
+    // address_city / address_state / address_zip — columns that do not exist on
+    // the live claims table (verified against production information_schema;
+    // live columns are property_address + property_state). PostgREST 400s the
+    // whole request on an unknown embedded column, so the queue rendered
+    // "Could not load orders" for every admin. Schema truth, not repo truth.
+    .select('id, claim_id, status, product_code, fulfillment_mode, vendor_order_ref, vendor_cost_cents, homeowner_charge_amount, requested_by_role, fulfilled_at, report_url, admin_notes, created_at, claims(id, property_address, property_state, user_id)')
     .eq('fulfillment_mode', 'manual')
     .order('created_at', { ascending: true });
 
@@ -390,7 +439,7 @@ function renderRows() {
   }
   tbody.innerHTML = list.map(function (r) {
     var c = r.claims || {};
-    var addr = [c.address_line_1, c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', ');
+    var addr = c.property_address || '';
     var product = state.catalog[r.product_code] || {};
     var canFulfil = r.status === 'awaiting_fulfillment' || r.status === 'awaiting_quote' || r.status === 'completed';
     return '<tr>' +
@@ -417,7 +466,7 @@ function openDrawer(orderId) {
   state.current = row;
 
   var c = row.claims || {};
-  var addr = [c.address_line_1, c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', ');
+  var addr = c.property_address || '';
   var product = state.catalog[row.product_code] || {};
   document.getElementById('drawerSub').textContent =
     (product.label || row.product_code || 'Measurement report') + ' · ' + (addr || 'no address on claim') +
@@ -428,8 +477,9 @@ function openDrawer(orderId) {
     row.vendor_cost_cents !== null && row.vendor_cost_cents !== undefined ? (row.vendor_cost_cents / 100).toFixed(2) : '';
   document.getElementById('fNotes').value = row.admin_notes || '';
   document.getElementById('fReport').value = '';
-  ['mSquares','mAreaSf','mPitch','mRidgeHip','mValley','mRake','mEave','mDripEdge','mStepFlash']
+  ['mSquares','mAreaSf','mPitch','mRidgeHip','mValley','mRake','mEave','mDripEdge','mStepFlash','mFlashing','mHighRoofSq']
     .forEach(function (id) { document.getElementById(id).value = ''; });
+  document.getElementById('pitchRowsBody').innerHTML = '';
   document.getElementById('drawerErr').style.display = 'none';
   updateMarginLive();
   document.getElementById('drawerOverlay').classList.add('open');
@@ -454,6 +504,73 @@ function updateMarginLive() {
   var rebateNote = product.rebate_on_close ? ' — and the ' + money(paid) + ' is rebated if this project is completed with one of our contractors' : '';
   el.innerHTML = 'Margin on this order: <strong class="' + (net < 0 ? 'margin-neg' : 'margin-pos') + '">' +
     (net < 0 ? '-' : '') + '$' + Math.abs(net / 100).toFixed(2) + '</strong>' + esc(rebateNote);
+}
+
+// ── Per-pitch area table ──
+// Repeatable pitch/area_sf/squares rows writing hover_measurements.areas_by_pitch
+// as RAW rows -- bucketByBands() (create-docusign-envelope/index.ts, read-only
+// from this page) buckets against a contractor's priced slope bands at render
+// time. Bucketing here would destroy the ability to re-bucket against a
+// different contractor's bands, which is the entire point of keeping raw rows.
+function normalizePitch(raw) {
+  // pitchOver12() in create-docusign-envelope/index.ts accepts either "/" or
+  // ":" as the separator, but parse-hover-measurements (the Hover parser,
+  // #1375) always emits slash form ("4/12") into this same JSONB key. This
+  // normalises admin-typed input (either "10:12" or "10/12") to slash form on
+  // write so the field is consistent regardless of which path wrote a row.
+  if (raw === null || raw === undefined) return null;
+  var s = String(raw).trim();
+  if (!s) return null;
+  var m = s.match(/^(\d+(?:\.\d+)?)\s*[\/:]\s*(\d+(?:\.\d+)?)$/);
+  if (m) return m[1] + '/' + m[2];
+  var bare = Number(s);
+  return isFinite(bare) ? (bare + '/12') : s;
+}
+
+function addPitchRow(pitch, areaSf, squares) {
+  var body = document.getElementById('pitchRowsBody');
+  var row = document.createElement('div');
+  row.className = 'pitch-row';
+  row.innerHTML =
+    '<input type="text" class="pitchPitch" placeholder="10:12" value="' + esc(pitch || '') + '">' +
+    '<input type="number" class="pitchAreaSf" step="1" min="0" placeholder="sf" value="' + esc(areaSf != null ? areaSf : '') + '">' +
+    '<input type="number" class="pitchSquares" step="0.01" min="0" placeholder="squares" value="' + esc(squares != null ? squares : '') + '">' +
+    '<button type="button" class="pitch-row-remove">Remove</button>';
+  body.appendChild(row);
+  var areaInput = row.querySelector('.pitchAreaSf');
+  var sqInput = row.querySelector('.pitchSquares');
+  // Squares auto-computes from area_sf (matches the parser's own rounding)
+  // but stays editable -- the vendor report prints its own rounding and a
+  // typed value should win, so auto-compute stops the moment squares is
+  // hand-edited.
+  areaInput.addEventListener('input', function () {
+    if (sqInput.dataset.manual === '1') return;
+    var sf = parseFloat(areaInput.value);
+    sqInput.value = isNaN(sf) ? '' : (Math.round((sf / 100) * 100) / 100);
+  });
+  sqInput.addEventListener('input', function () { sqInput.dataset.manual = '1'; });
+  row.querySelector('.pitch-row-remove').addEventListener('click', function () { row.remove(); });
+}
+
+function collectPitchRows() {
+  // Never synthesise a value: a row is only included when the admin typed
+  // both a pitch and an area_sf. An empty/untouched table returns null, not
+  // [] -- an empty array reads as "measured, and the roof has no pitched
+  // area", which is not what null means (parse-hover-measurements' own rule
+  // for this exact field).
+  var out = [];
+  document.querySelectorAll('#pitchRowsBody .pitch-row').forEach(function (row) {
+    var pitchRaw = row.querySelector('.pitchPitch').value.trim();
+    var areaRaw = row.querySelector('.pitchAreaSf').value;
+    if (!pitchRaw || areaRaw === '') return;
+    var areaSf = Number(areaRaw);
+    if (isNaN(areaSf)) return;
+    var sqRaw = row.querySelector('.pitchSquares').value;
+    var squares = sqRaw === '' ? Math.round((areaSf / 100) * 100) / 100 : Number(sqRaw);
+    if (isNaN(squares)) squares = Math.round((areaSf / 100) * 100) / 100;
+    out.push({ pitch: normalizePitch(pitchRaw), area_sf: areaSf, squares: squares, pct: null });
+  });
+  return out.length > 0 ? out : null;
 }
 
 function numOrNull(id) {
@@ -483,7 +600,21 @@ async function saveFulfillment() {
     var file = document.getElementById('fReport').files[0];
     if (file) {
       if (file.type !== 'application/pdf') throw new Error('The report must be a PDF.');
-      var path = 'measurements/' + row.claim_id + '/' + row.id + '.pdf';
+      // [gh-1412] UID-first path — this is load-bearing on two axes, verified
+      // against the live storage.objects policies:
+      //   1. It is the ONLY prefix an authenticated admin can write: the sole
+      //      matching INSERT policy on claim-documents ("Users can upload to
+      //      own folder") requires foldername[1] = auth.uid(). The previous
+      //      'measurements/{claim_id}/...' path matched NO insert policy, so
+      //      every upload was RLS-rejected before any PDF ever landed.
+      //   2. It keeps the vendor PDF internal-only (D-317 cl. 7): the
+      //      "Contractors can view biddable claim docs" SELECT policy grants
+      //      any active contractor read on paths whose foldername[2] equals a
+      //      biddable claim's id — which 'measurements/{claim_id}/...' would
+      //      have satisfied. Here foldername[2] is 'measurements', never a
+      //      claim id, and foldername[1] is the admin's uid, never the
+      //      homeowner's — so neither contractors nor homeowners can read it.
+      var path = state.user.id + '/measurements/' + row.claim_id + '/' + row.id + '.pdf';
       var up = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: true, contentType: 'application/pdf' });
       if (up.error) throw new Error('Upload failed: ' + up.error.message);
       reportPath = path;
@@ -504,11 +635,18 @@ async function saveFulfillment() {
       eave_lf: numOrNull('mEave'),
       drip_edge_perimeter_lf: numOrNull('mDripEdge'),
       step_flashing_lf: numOrNull('mStepFlash'),
-      flashing_lf: null,
-      predominant_pitch: document.getElementById('mPitch').value.trim() || null
+      flashing_lf: numOrNull('mFlashing'),
+      predominant_pitch: document.getElementById('mPitch').value.trim() || null,
+      high_roof_sq: numOrNull('mHighRoofSq'),
+      areas_by_pitch: collectPitchRows()
     };
-    var anyNumber = ['roof_area_sf','squares','ridge_hip_lf','valley_lf','rake_lf','eave_lf','drip_edge_perimeter_lf','step_flashing_lf']
-      .some(function (k) { return m[k] !== null; }) || m.predominant_pitch !== null;
+    // [gh-1376] Extended, not reordered/replaced: flashing_lf and high_roof_sq
+    // appended at the end. areas_by_pitch isn't a plain number so it can't
+    // join this array -- it's OR'd in separately below, so a per-pitch-only
+    // or High-Roof-only entry still registers as data to save instead of
+    // silently no-oping.
+    var anyNumber = ['roof_area_sf','squares','ridge_hip_lf','valley_lf','rake_lf','eave_lf','drip_edge_perimeter_lf','step_flashing_lf','flashing_lf','high_roof_sq']
+      .some(function (k) { return m[k] !== null; }) || m.predominant_pitch !== null || m.areas_by_pitch !== null;
 
     // Deliver only when there is something to deliver.
     var delivering = !!reportPath || anyNumber;
@@ -535,6 +673,32 @@ async function saveFulfillment() {
     if (anyNumber && row.claim_id) {
       var cUpd = await sb.from('claims').update({ hover_measurements: m }).eq('id', row.claim_id);
       if (cUpd.error) throw new Error('Order saved, but writing measurements to the claim failed: ' + cUpd.error.message);
+    }
+
+    // [gh-1412] Close the loop: on delivery, tell the homeowner their report
+    // is ready and write the fulfilment activity_log row. Called on EVERY
+    // delivering save deliberately — send-measurement-ready is idempotent per
+    // order (one email, one log row, ever), which makes Edit re-saves cheap
+    // server-side no-ops AND makes a failed first notification retryable by
+    // just re-saving the order. Admin-gated with this same session's JWT.
+    // A notification failure must not un-deliver the order — the save above
+    // already stands — so this is a warning, never a throw.
+    if (delivering) {
+      try {
+        var sess = await sb.auth.getSession();
+        var token = sess && sess.data && sess.data.session ? sess.data.session.access_token : null;
+        var nres = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-measurement-ready', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: row.id })
+        });
+        var njson = await nres.json().catch(function () { return {}; });
+        if (!nres.ok) {
+          alert('Order delivered, but the homeowner notification failed (' + (njson.error || nres.status) + '). Re-open the order and Save again to retry.');
+        }
+      } catch (notifyErr) {
+        alert('Order delivered, but the homeowner notification failed: ' + (notifyErr.message || notifyErr));
+      }
     }
 
     closeDrawer();

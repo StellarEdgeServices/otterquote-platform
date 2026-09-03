@@ -29,7 +29,7 @@
 //   NOTE: this webhook subscription itself (Stripe Dashboard/API event selection)
 //   is NOT changed by this PR — see the PR body for the documented dashboard step.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -309,7 +309,7 @@ function buildEvidencePayload(params: {
     "The platform collects a platform fee from contractors when a homeowner signs their contract.",
     "The homeowner pays nothing to Otter Quotes; the fee is charged to the contractor.",
     "The platform fee covers: competitive bid management, digital contract execution (DocuSign), ",
-    "measurements (Hover aerial reports), and document compliance services.",
+    "measurements (aerial measurement reports), and document compliance services.",
   ].join(" ");
 
   const serviceDocLines = [

@@ -22,6 +22,12 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY")!;
 const MAILGUN_DOMAIN = "mail.otterquote.com";
+// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
+// do not edit without updating that file too (deploy path does not resolve imports).
+// checkAdminRole()'s email fast-path has only ever gated on this single primary
+// email (the DB template_review_role fallback below it is untouched by gh-1534) —
+// do not widen the fast-path without an explicit decision (see gh-1534).
+const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -82,7 +88,8 @@ Deno.serve(async (req: Request) => {
     proposedValueOverride = body.proposed_value ?? null;
     if (!driftId) throw new Error("drift_id required");
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error("[approve-warranty-drift] Invalid request:", e);
+    return new Response(JSON.stringify({ error: "Invalid request" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -213,14 +220,14 @@ Deno.serve(async (req: Request) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[approve-warranty-drift] Error: ${message}`);
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
 
 async function checkAdminRole(userId: string, email: string): Promise<boolean> {
-  if (email === "dustinstohler1@gmail.com") return true;
+  if (email === PRIMARY_ADMIN_EMAIL) return true;
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const { data } = await sb
     .from("contractors")

@@ -440,10 +440,14 @@
 <script>
 // Trusted checkout destinations, resolved by a fixed plan key -- never by trusting
 // a DOM attribute directly (gh-777: CodeQL js/client-side-unvalidated-url-redirection).
+// gh-1417: each URL carries a client_reference_id query param (Stripe-native, per
+// docs.stripe.com/payment-links/url-parameters) naming the embed surface + tier, so
+// every resulting Checkout Session is attributable to where the click happened. If
+// these links are ever embedded on another page, use a different surface prefix there.
 var STRIPE_CHECKOUT_LINKS = {
-  good:   'https://buy.stripe.com/5kQ7sD54ocog7T03mdaMU02',
-  better: 'https://buy.stripe.com/aFaeV540kcogddk9KBaMU01',
-  best:   'https://buy.stripe.com/eVqaEP68s2NG6OWbSJaMU00'
+  good:   'https://buy.stripe.com/5kQ7sD54ocog7T03mdaMU02?client_reference_id=tools_online_presence_good',
+  better: 'https://buy.stripe.com/aFaeV540kcogddk9KBaMU01?client_reference_id=tools_online_presence_better',
+  best:   'https://buy.stripe.com/eVqaEP68s2NG6OWbSJaMU00?client_reference_id=tools_online_presence_best'
 };
 
 // gh-871: every .price-cta button's data-plan is present in STRIPE_CHECKOUT_LINKS,

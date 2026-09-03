@@ -270,7 +270,7 @@
       background: rgba(255,255,255,0.06);
     }
 
-    /* Hover link sent &mdash; amber/waiting state */
+    /* Measurement link sent &mdash; amber/waiting state */
     .checklist-icon.hover-pending {
       background: rgba(245,158,11,0.15);
       color: var(--amber);
@@ -1677,7 +1677,7 @@
             window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
             console.log('[Dashboard] Loaded existing claim:', { id: data.id, status: data.status, has_estimate: data.has_estimate, has_material_selection: data.has_material_selection });
 
-            // Fetch the most recent active Hover order for this claim (link_sent or pending)
+            // Fetch the most recent active measurement order for this claim (link_sent or pending)
             try {
               const { data: hoData } = await sb
                 .from('hover_orders')
@@ -1689,10 +1689,10 @@
                 .maybeSingle();
               hoverOrder = hoData || null;
               if (hoverOrder) {
-                console.log('[Dashboard] Hover order found:', { id: hoverOrder.id, status: hoverOrder.status });
+                console.log('[Dashboard] Measurement order found:', { id: hoverOrder.id, status: hoverOrder.status });
               }
             } catch (hoErr) {
-              console.warn('[Dashboard] Could not load hover order (non-fatal):', hoErr);
+              console.warn('[Dashboard] Could not load measurement order (non-fatal):', hoErr);
               hoverOrder = null;
             }
 
@@ -1925,6 +1925,12 @@
         document.getElementById('user-address').textContent = address;
       }
 
+      // gh-1381 (CodeQL #7/#8/#9): claim fields are homeowner-entered free text;
+      // escape everything interpolated into innerHTML. Same idiom as PR #1442.
+      function escapeHtml(text) {
+        return String(text).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]);
+      }
+
       function renderClaimInfo() {
         if (!currentClaim) return;
 
@@ -1973,8 +1979,8 @@
 
         const summaryHtml = summaryRows.length ? summaryRows.map(r => `
           <div class="claim-field">
-            <div class="claim-field-label">${r.label}</div>
-            <div class="claim-field-value">${r.value}</div>
+            <div class="claim-field-label">${escapeHtml(r.label)}</div>
+            <div class="claim-field-value">${escapeHtml(r.value)}</div>
           </div>
         `).join('') : '';
 
@@ -1991,7 +1997,7 @@
         ];
 
         // Display mode
-        display.innerHTML = fields.map(field => {
+        const fieldsHtml = fields.map(field => {
           let value = currentClaim[field.key] || 'Not provided';
 
           // Special handling for carrier_id
@@ -2034,14 +2040,16 @@
 
           return `
             <div class="claim-field">
-              <div class="claim-field-label">${field.label}</div>
-              <div class="claim-field-value">${value}</div>
+              <div class="claim-field-label">${escapeHtml(field.label)}</div>
+              <div class="claim-field-value">${escapeHtml(value)}</div>
             </div>
           `;
         }).join('');
 
-        // Prepend summary rows (property address, trades, funding)
-        display.innerHTML = summaryHtml + display.innerHTML;
+        // Prepend summary rows (property address, trades, funding).
+        // gh-1381 (CodeQL #8): build the full string first — never read
+        // innerHTML back and re-assign it (DOM text re-interpreted as HTML).
+        display.innerHTML = summaryHtml + fieldsHtml;
 
         // Edit form
         form.innerHTML = fields.map(field => {
@@ -2053,14 +2061,14 @@
               <select class="form-select" name="${field.key}">
                 <option value="">Select carrier...</option>
                 ${carriers.map(c => `
-                  <option value="${c.id}" ${c.id === value ? 'selected' : ''}>${c.name}</option>
+                  <option value="${escapeHtml(c.id)}" ${c.id === value ? 'selected' : ''}>${escapeHtml(c.name)}</option>
                 `).join('')}
               </select>
             `;
           } else if (field.type === 'currency') {
-            input = `<input type="number" step="0.01" class="form-input" name="${field.key}" value="${value}" placeholder="0.00">`;
+            input = `<input type="number" step="0.01" class="form-input" name="${field.key}" value="${escapeHtml(value)}" placeholder="0.00">`;
           } else {
-            input = `<input type="${field.type}" class="form-input" name="${field.key}" value="${value}" placeholder="">`;
+            input = `<input type="${field.type}" class="form-input" name="${field.key}" value="${escapeHtml(value)}" placeholder="">`;
           }
 
           // Hide field if showIf function returns false
@@ -2068,7 +2076,7 @@
 
           return `
             <div class="form-group">
-              <label class="form-label">${field.label}</label>
+              <label class="form-label">${escapeHtml(field.label)}</label>
               ${input}
             </div>
           `;
@@ -2083,7 +2091,7 @@
         const isInsurance      = currentClaim.funding_type === 'insurance';
         const isExplicitlyCash = currentClaim.funding_type === 'cash';
 
-        // Hover order state helpers
+        // Measurement order state helpers
         const hasHoverOrder = hoverOrder && (hoverOrder.status === 'link_sent' || hoverOrder.status === 'pending');
         const todayResendCount = (() => {
           if (!hoverOrder?.last_resend_at) return 0;
@@ -2120,7 +2128,7 @@
             { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' },
           ];
         } else if (isExplicitlyCash) {
-          // Retail / cash — required, no hover order yet
+          // Retail / cash — required, no measurement order yet
           measurementsDesc  = 'Required for retail projects. Upload measurement reports or use a professional aerial measurement.';
           measurementsNote  = 'Required — contractors need measurements to price your project accurately.';
           measurementsBtns  = [
@@ -2259,8 +2267,8 @@
         `; // end template literal
         }).join(''); // end items.map
 
-        // ── D-181: Hover Measurement Payment + Rebate Status ─────────────────
-        // Shown whenever the homeowner has paid the Hover fee. States:
+        // ── D-181: Measurement Payment + Rebate Status ─────────────────
+        // Shown whenever the homeowner has paid the measurement fee. States:
         //   1. Paid — rebate owed on project completion (rebate_due=true, no rebate_paid_at)
         //   2. Rebated on [date] (rebate_paid_at populated)
         //   3. Charge recorded but rebate flag cleared without timestamp — defensive display.
@@ -2315,69 +2323,6 @@
           rebateCard.appendChild(wrap);
 
           container.appendChild(rebateCard);
-        }
-
-        // ── D-164: Siding Design Gate CTA ────────────────────────────────────
-        // Retail siding bids are held until the homeowner completes their full
-        // Hover design (manufacturer + profile + color + trim).
-        const claimTrades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
-        const claimHasSiding    = claimTrades.some(t => (t || '').toLowerCase().includes('siding'));
-        const isRetailFunding   = currentClaim.funding_type === 'cash';
-        const sidingReleased    = !!currentClaim.siding_bid_released_at;
-
-        if (claimHasSiding && isRetailFunding) {
-          // Resolve Hover job link (hover.to/jobs/{id} — NOT app.hover.to per Session 238 fix)
-          let hoverJobId = null;
-          if (hoverOrder?.hover_job_id) {
-            hoverJobId = hoverOrder.hover_job_id;
-          } else {
-            const mf = currentClaim.measurements_filename || '';
-            const mMatch = mf.match(/hover[_-](\d{6,})[_-]/) || mf.match(/job[_-](\d{6,})/i) || mf.match(/(\d{6,})/);
-            if (mMatch) hoverJobId = mMatch[1];
-          }
-          const hoverLink = hoverJobId ? `https://hover.to/jobs/${hoverJobId}` : 'https://hover.to';
-
-          const ctaDiv = document.createElement('div');
-
-          if (!sidingReleased) {
-            // ── Gate NOT clear: prominent CTA card ───────────────────────
-            ctaDiv.style.cssText = 'margin-top:1.25rem;background:linear-gradient(135deg,#0f2942 0%,#0d3151 100%);border:2px solid var(--amber,#E07B00);border-radius:0.875rem;padding:1.25rem 1.5rem;';
-            ctaDiv.innerHTML = `
-              <div style="display:flex;align-items:flex-start;gap:1rem;">
-                <div style="font-size:2rem;flex-shrink:0;line-height:1;">🏠</div>
-                <div style="flex:1;">
-                  <div style="font-weight:700;color:var(--amber,#E07B00);font-size:1rem;margin-bottom:0.5rem;">
-                    Design your siding
-                  </div>
-                  <div style="font-size:0.875rem;color:rgba(255,255,255,0.85);margin-bottom:1rem;line-height:1.55;">
-                    Siding pricing depends on <strong style="color:#fff;">manufacturer</strong>,
-                    <strong style="color:#fff;">profile</strong>,
-                    <strong style="color:#fff;">color</strong>, and
-                    <strong style="color:#fff;">trim</strong>.
-                    Once you've chosen all four in your property design, your siding bids will be released to contractors.
-                  </div>
-                  <a href="${hoverLink}" target="_blank" rel="noopener"
-                     style="display:inline-block;background:var(--amber,#E07B00);color:#0D1B2E;font-size:0.875rem;font-weight:700;text-decoration:none;padding:8px 20px;border-radius:0.5rem;transition:opacity 0.2s;"
-                     onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-                    Design Your Siding →
-                  </a>
-                </div>
-              </div>
-            `;
-          } else {
-            // ── Gate cleared: brief confirmation ─────────────────────────
-            ctaDiv.style.cssText = 'margin-top:1rem;background:rgba(224,123,0,0.08);border:1px solid rgba(224,123,0,0.35);border-radius:0.75rem;padding:0.875rem 1.25rem;display:flex;align-items:center;gap:0.75rem;';
-            ctaDiv.innerHTML = `
-              <div style="font-size:1.25rem;flex-shrink:0;">✅</div>
-              <div style="font-size:0.875rem;color:rgba(255,255,255,0.9);">
-                <strong style="color:#FAC775;">Siding design locked in.</strong>
-                Contractors are now bidding on your siding project.
-                <a href="bids.html?claim_id=${encodeURIComponent(currentClaim.id)}"
-                   style="color:var(--amber,#E07B00);margin-left:0.25rem;text-decoration:none;">View bids →</a>
-              </div>
-            `;
-          }
-          container.appendChild(ctaDiv);
         }
       }
 
@@ -2858,7 +2803,7 @@
         input.click();
       };
 
-      // ── Resend Hover Capture Link ──
+      // ── Resend Measurement Capture Link ──
       window.resendHoverLink = async function(btn) {
         if (!currentClaim?.id || CONFIG.DEMO_MODE) return;
 
@@ -3079,7 +3024,7 @@
           // Fix (E2E walk 2026-07-07): the opportunities query + RLS both
           // require ready_for_bids=true — without it a submitted claim is
           // invisible to every contractor. D-165: release each non-siding
-          // trade at submit; siding stays gated on the D-164 Hover design
+          // trade at submit; siding stays gated on the D-164 property design
           // completion webhook.
           const submitUpdate = { status: 'active', ready_for_bids: true };
           const releasableTrades = ['roofing', 'gutters', 'windows'];
@@ -3451,7 +3396,7 @@
       return `
         <div style="margin-bottom: 12px; padding: 12px; background: ${isOwn ? "#EFF6FF" : "#F1F5F9"}; border-radius: 6px; border-left: 3px solid ${isOwn ? "var(--navy)" : "var(--amber)"};">
           <div style="font-weight: 600; font-size: 13px; color: var(--navy); margin-bottom: 4px;">
-            ${msg.profiles.full_name} ${isOwn ? "(You)" : ""}
+            ${escapeHtml(msg.profiles.full_name)} ${isOwn ? "(You)" : ""}
           </div>
           <div style="font-size: 13px; color: #333; margin-bottom: 8px; word-wrap: break-word;">
             ${escapeHtml(msg.body)}
@@ -3638,7 +3583,7 @@
       const isOwn = msg.sender_id === userId;
       const timestamp = new Date(msg.created_at).toLocaleString();
       return '<div style="margin-bottom:12px;padding:12px;background:' + (isOwn ? "#EFF6FF" : "#F1F5F9") + ';border-radius:6px;border-left:3px solid ' + (isOwn ? "var(--navy)" : "var(--amber)") + ';">' +
-        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + msg.profiles.full_name + (isOwn ? " (You)" : "") + '</div>' +
+        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + escapeHtml(msg.profiles.full_name) + (isOwn ? " (You)" : "") + '</div>' +
         '<div style="font-size:13px;color:#333;margin-bottom:8px;word-wrap:break-word;">' + escapeHtml(msg.body) + '</div>' +
         '<div style="font-size:11px;color:#94A3B8;">' + timestamp + '</div></div>';
     }).join("");

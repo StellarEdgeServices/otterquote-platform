@@ -1,0 +1,231 @@
+# Edge Function drift detector — gh-1295 step 2.
+#
+# "A merge is not a deploy, and this system has no mechanism that notices the
+# difference." Every instance so far was found by a human reading a narrative,
+# days or weeks late: create-docusign-envelope 23 days stale with the contract
+# path dead behind it (gh-1244); process-auto-bids 7 days stale while placing
+# live bids (gh-1253); gh-912 filed the same class and was closed not_planned
+# with its audit never run. This is the mechanism that fails loudly without
+# anyone's cooperation, per R-148.
+#
+# Runs on a SCHEDULE against `main`, not as a per-PR gate. Drift between a merge
+# and its deploy is normal for minutes; the thing worth alarming on is drift that
+# persists. Running this per-PR would alarm on every un-deployed PR by design and
+# would be trained away within a week.
+#
+# 09:17 UTC = 05:17 ET, inside the R-031 off-peak window (3 PM - 7 AM ET).
+#
+# Moved off :00 (gh-1295, 2026-09-01): GitHub documents that scheduled workflows
+# can be delayed under load, and the busiest minute on the busiest hour is the
+# worst-affected. Both scheduled fires observed on this workflow landed hours
+# late (run 33415036347 fired 2026-08-31T16:36Z against a 09:00 UTC target --
+# 7h15m late; run 33515902091 fired 2026-09-01T13:51Z -- 4h50m late). Neither
+# was dropped, but both were far enough off-target that a stricter SLA on
+# freshness would have alarmed. :17 is a mitigation for that delay, not a
+# guarantee -- GitHub does not promise scheduled-run delivery, and a detector
+# whose only trigger is `schedule` inherits that unreliability. See gh-1295
+# comment thread for the recommendation to add a separate liveness check.
+#
+# netlify-drift job (gh-1549, 2026-09-02): the static-site half of the same defect
+# class -- "a merge is not a deploy, and this system has no mechanism that notices
+# the difference" -- applied to the two Netlify-hosted sites instead of Edge
+# Functions. Filed after TWO same-shaped incidents in one day with no alarm on
+# either: otterquote.com production deploys silently erroring on "credit usage
+# exceeded" for 35+ minutes (#1548), and otter-crm sitting 22 days / 9 commits
+# behind main on cancelled builds (#1517). Wired into THIS file, on the same
+# schedule + workflow_dispatch, per the CTO's own filing instruction on #1549.
+# See scripts/netlify-deploy-drift.py's docstring for the two independent signals
+# it checks (BEHIND vs BUILD_FAILING) and the CROSS-REPO SCOPE GAP it documents.
+
+name: Edge Function Drift
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+    inputs:
+      allow_undeployed:
+        description: 'Do not fail on functions that are on main but never deployed'
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/edge-function-drift-check.py'
+      - 'scripts/edge-function-drift-check.test.py'
+      - 'scripts/netlify-deploy-drift.py'
+      - 'scripts/netlify-deploy-drift.test.py'
+      - '.github/workflows/edge-function-drift.yml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  SUPABASE_PROJECT_REF: yeszghaspzwwstvsrioa
+
+jobs:
+  drift:
+    name: Deployed source vs main
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The detector's own verdict logic is unit-tested with no network and no
+      # credentials, so a logic regression is caught even on a run where the
+      # fetch cannot happen. Its load-bearing case is the parse-hover-measurements
+      # U+00A0-vs-U+0020 pair, which any normalizing comparison reports as
+      # identical -- see gh-1295 rule 3.
+      - name: Self-test the detector
+        run: python3 scripts/edge-function-drift-check.test.py
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          # Pinned (gh-1295) for reproducibility. The CLI version was tested and
+          # FALSIFIED as the cause of the 58-59/59 false-drift runs -- the real
+          # cause was the CLI's Docker eszip-extraction path, which returns
+          # transformed bytes when Docker is reachable. The detector now passes
+          # `--use-api` (PR #1447) to force the byte-faithful server-side
+          # unbundle, so the verdict no longer depends on Docker's presence.
+          # Keep the pin anyway: a tool whose output you hash should not float.
+          version: 2.116.0
+
+      # The former "Debug -- fetch one function source" step is REMOVED
+      # (gh-1295, 2026-08-31). It ran `supabase functions download` from a
+      # scratch subdirectory WITHOUT --use-api; the CLI walked up to this
+      # checkout's supabase/config.toml, resolved the repo itself as the
+      # project root, and extracted the Docker-path (transformed) bytes into
+      # `supabase/functions/parse-hover-measurements/` -- silently corrupting
+      # the checkout's repo side before the check step hashed it (run
+      # 33447971403: repo-side df91bcc3... vs true `main` blob 785ed507...,
+      # while the deployed side fetched via --use-api matched `main` exactly).
+      # That is also why the step's own debug-fetch/ directory was always
+      # empty despite exit 0. It has served its diagnostic purpose.
+
+      # NOT a soft skip when the token is absent. gh-1344 records that sec-sweep
+      # "has run blind since it was written" for exactly that reason. A detector
+      # for the defect class "looks shipped, isn't" must not be able to look green
+      # while measuring nothing -- the script exits 2 on a missing token, a missing
+      # CLI, any per-function fetch failure, and an empty result set.
+      #
+      # SUPABASE_ACCESS_TOKEN must be a Supabase Personal Access Token (sbp_...).
+      # The SUPABASE_SERVICE_ROLE_KEY this repo already holds is NOT sufficient --
+      # the Management API rejects it. Mint at
+      # https://supabase.com/dashboard/account/tokens
+      - name: Check deployed Edge Functions against main
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          python3 scripts/edge-function-drift-check.py \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --markdown-out drift-report.md \
+            --json-out drift-report.json \
+            ${{ inputs.allow_undeployed && '--allow-undeployed' || '' }}
+
+      # Runs even on failure -- the report is most useful precisely when the step
+      # above went red.
+      - name: Publish drift table to the job summary
+        if: always()
+        run: |
+          if [ -f drift-report.md ]; then
+            cat drift-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "# Edge Function drift"
+              echo
+              echo "No report produced — the detector could not measure."
+              echo "See the step log above. This is a failure, not a clean run."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: edge-function-drift-report
+          path: |
+            drift-report.md
+            drift-report.json
+          if-no-files-found: ignore
+
+  netlify-drift:
+    name: Netlify production deploy vs main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # File an alarm comment on gh-1549 -- the alarm IS the comment (the #1295
+      # pattern). Not needed by the `drift` job above, so scoped to this job only.
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Same discipline as the Edge Function job above: a logic regression (e.g. a
+      # BUILD_FAILING check that stops firing when a still-matching published_deploy
+      # is present -- the exact #1548 shape) is caught even on a run where the
+      # Netlify/GitHub fetch cannot happen at all.
+      - name: Self-test the detector
+        run: python3 scripts/netlify-deploy-drift.test.py
+
+      # NOT a soft skip when NETLIFY_PAT is absent -- same fail-loud discipline as
+      # the Edge Function job: the script exits 3 (UNMEASURED) on a missing token,
+      # an unreachable API, or a malformed response, and UNMEASURED is never
+      # quieter than a measured BEHIND/BUILD_FAILING (gh-1419).
+      #
+      # GITHUB_PERSONAL_ACCESS_TOKEN here must have READ access to BOTH
+      # StellarEdgeServices/otterquote-platform AND StellarEdgeServices/otter-crm --
+      # the default `secrets.GITHUB_TOKEN` this job would otherwise get for free is
+      # scoped only to the repo the workflow runs in and 404s on a different private
+      # repo it cannot see at all. Confirmed live 2026-09-02 (gh-1549 build): the
+      # Code-lane fine-grained PAT available while writing this detector could read
+      # otterquote-platform but 404'd on otter-crm's `commits/main`. Provisioning a
+      # PAT scoped to both repos (or adding a second otter-crm-scoped secret and a
+      # second script invocation) is an owner/unblock item -- until then this job's
+      # otter-crm row will legitimately report UNMEASURED, which is the correct,
+      # loud, non-silent behavior for a scope gap, not a bug to silence.
+      #
+      # `--file-issue` posts to gh-1549 itself on any BEHIND/BUILD_FAILING site
+      # (never on UNMEASURED alone -- a measurement gap is not a drift finding).
+      # Combined into this one invocation (rather than a second run) so the check
+      # and the alarm comment share one set of API calls.
+      - name: Check Netlify production deploys against main
+        env:
+          NETLIFY_PAT: ${{ secrets.NETLIFY_PAT }}
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_PERSONAL_ACCESS_TOKEN }}
+        run: |
+          python3 scripts/netlify-deploy-drift.py --json --file-issue | tee netlify-drift-report.json
+
+      # Runs even on failure -- the report is most useful precisely when the step
+      # above went red.
+      - name: Publish drift table to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Netlify production deploy drift"
+            echo
+            if [ -s netlify-drift-report.json ]; then
+              echo '```json'
+              cat netlify-drift-report.json
+              echo '```'
+            else
+              echo "No report produced — the detector could not measure. This is a"
+              echo "failure, not a clean run. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: netlify-deploy-drift-report
+          path: netlify-drift-report.json
+          if-no-files-found: ignore

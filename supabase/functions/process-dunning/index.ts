@@ -27,7 +27,12 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import {
+  describeGuardVerdict,
+  evaluateLiveChargeGuard,
+  GUARD_SELECT,
+} from "./live-charge-guard.ts";
 
 const PLATFORM_URL = "https://otterquote.com";
 const SETTINGS_URL = `${PLATFORM_URL}/contractor-settings.html`;
@@ -53,9 +58,7 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── TIMEZONE UTILITIES ──
-// ═══════════════════════════════════════════════════════════
+// TIMEZONE UTILITIES
 
 /** State abbreviation → IANA timezone (most-common/majority zone per state). */
 const STATE_TIMEZONE: Record<string, string> = {
@@ -269,9 +272,7 @@ function nextHourlyReminder(now: Date, tz: string, warningAt: Date): Date {
   return sixAM;
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── EMAIL HELPER (Mailgun) ──
-// ═══════════════════════════════════════════════════════════
+// EMAIL HELPER (Mailgun)
 
 // #869 AC 5: this function sent HTML with no text/plain alternative to any of
 // its callers. Rather than hand-write a bespoke plain-text template for every
@@ -367,9 +368,7 @@ async function sendEmailToAll(addresses: string[], subject: string, html: string
   return count;
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── SMS HELPER (Twilio direct) ──
-// ═══════════════════════════════════════════════════════════
+// SMS HELPER (Twilio direct)
 
 async function sendSMS(to: string, message: string): Promise<boolean> {
   const sid    = Deno.env.get("TWILIO_ACCOUNT_SID");
@@ -422,9 +421,7 @@ async function sendSMSToAll(phones: string[], message: string): Promise<number> 
   return count;
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── COLLECT CONTRACTOR CONTACT INFO ──
-// ═══════════════════════════════════════════════════════════
+// COLLECT CONTRACTOR CONTACT INFO
 
 interface ContactInfo {
   emails: string[];
@@ -463,9 +460,7 @@ async function getContractorContacts(contractor: Record<string, any>, supabase: 
   return { emails, phones };
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── MESSAGE TEXT ──
-// ═══════════════════════════════════════════════════════════
+// MESSAGE TEXT
 
 const HOURLY_SMS =
   "You have a signed contract waiting for you, but your payment method has been " +
@@ -594,9 +589,7 @@ function adminAlertEmail(subject: string, body: string): string {
   return `<div style="font-family:monospace;padding:20px;"><h2>${subject}</h2>${body}</div>`;
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── SIMPLE HTML RESPONSE PAGE (for homeowner CTA clicks) ──
-// ═══════════════════════════════════════════════════════════
+// SIMPLE HTML RESPONSE PAGE (for homeowner CTA clicks)
 
 function homeownerResponsePage(title: string, message: string, isError = false): Response {
   const html = `<!DOCTYPE html>
@@ -634,9 +627,7 @@ function homeownerResponsePage(title: string, message: string, isError = false):
   });
 }
 
-// ═══════════════════════════════════════════════════════════
-// ── MAIN HANDLER ──
-// ═══════════════════════════════════════════════════════════
+// MAIN HANDLER
 
 serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -661,9 +652,7 @@ serve(async (req) => {
 
   try {
 
-    // ─────────────────────────────────────────────────────
     // MODE: HOMEOWNER CHOICE  (GET ?mode=homeowner_choice)
-    // ─────────────────────────────────────────────────────
     const url    = new URL(req.url);
     const mode   = url.searchParams.get("mode");
     const choice = url.searchParams.get("choice");
@@ -799,9 +788,7 @@ serve(async (req) => {
       }
     }
 
-    // ─────────────────────────────────────────────────────
     // Parse request body (TRIGGER vs CRON)
-    // ─────────────────────────────────────────────────────
     let body: any = null;
     try {
       const text = await req.text();
@@ -810,9 +797,7 @@ serve(async (req) => {
       // No body or invalid JSON — CRON mode
     }
 
-    // ─────────────────────────────────────────────────────
     // MODE: TRIGGER — Payment just failed
-    // ─────────────────────────────────────────────────────
     if (body?.quote_id && body?.contractor_id) {
       console.log("TRIGGER mode: Attempting all payment methods before dunning for quote", body.quote_id);
 
@@ -821,9 +806,14 @@ serve(async (req) => {
 
       // ── MULTI-METHOD RETRY: Try ALL payment methods before initiating dunning ──
       // This ensures dunning only triggers when every method on file has failed.
-      // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z)
+      // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z).
+      // gh-1536: exact-match, not substring — "app-staging." falsely matched
+      // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
+      // site (not staging), which selected Stripe TEST-mode keys against real
+      // production data. This must never match a production hostname.
       const _reqOrigin = req.headers.get("Origin") || "";
-      const isStaging = _reqOrigin.includes("staging--") || _reqOrigin.includes("app-staging.");
+      const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
+        _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
       const stripeSecretKey = isStaging
         ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
         : Deno.env.get("STRIPE_SECRET_KEY");
@@ -866,6 +856,55 @@ serve(async (req) => {
             for (const m of cards) if (!defaultM || m.id !== defaultM.id) retryMethods.push({ stripe_pm_id: m.stripe_payment_method_id, payment_type: m.payment_type, cpm_id: m.id });
           } else if (cData.stripe_payment_method_id) {
             retryMethods.push({ stripe_pm_id: cData.stripe_payment_method_id, payment_type: "card", cpm_id: null });
+          }
+
+          // ── #1467 GATE 3: live-charge authorization, before ANY retry ────
+          // This function does not call create-payment-intent — it POSTs to
+          // api.stripe.com/v1/payment_intents itself, and it has a CRON mode
+          // that sweeps every dunning-status quote with no human in the loop.
+          // So the #1467 defect on this path needs nobody to fire it, which is
+          // a strictly worse shape than the ceremony path it was found on.
+          // Fails CLOSED: an unreadable claim refuses every retry.
+          {
+            const { data: guardClaim } = await supabase
+              .from("claims")
+              .select(GUARD_SELECT)
+              .eq("id", claim_id ?? "")
+              .maybeSingle();
+            const chargeGuard = evaluateLiveChargeGuard(guardClaim);
+            if (!chargeGuard.allow) {
+              const guardMessage = describeGuardVerdict(
+                chargeGuard,
+                claim_id,
+                amount_cents
+              );
+              console.error(`[process-dunning] ${guardMessage}`);
+              try {
+                await supabase.from("platform_alerts_log").insert({
+                  alert_type: "platform_fee_refused_unauthorized_test",
+                  function_name: "process-dunning",
+                  message: `${guardMessage} No retry attempted; dunning not initiated for quote ${quote_id}.`,
+                  sent_at: new Date().toISOString(),
+                });
+              } catch (alertErr) {
+                console.error("platform_alerts_log insert failed:", alertErr);
+              }
+              return new Response(
+                JSON.stringify({
+                  success: false,
+                  charge_refused: chargeGuard.reason,
+                  quote_id,
+                  claim_id,
+                  message:
+                    "Live charge refused by the #1467 guard. No payment method " +
+                    "was retried and no dunning sequence was started.",
+                }),
+                {
+                  status: 200,
+                  headers: { ...corsHeaders, "Content-Type": "application/json" },
+                }
+              );
+            }
           }
 
           // Skip the method that already failed (passed in stripe_error context)
@@ -1105,9 +1144,7 @@ serve(async (req) => {
       );
     }
 
-    // ─────────────────────────────────────────────────────
     // MODE: CRON — Process all active dunning records
-    // ─────────────────────────────────────────────────────
     console.log("CRON mode: Scanning active dunning records...");
     const now = new Date();
     let processed = 0;
@@ -1264,7 +1301,7 @@ serve(async (req) => {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("process-dunning error:", msg);
     return new Response(
-      JSON.stringify({ error: msg }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

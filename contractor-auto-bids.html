@@ -172,10 +172,8 @@
       <p class="page-subtitle">Configure your auto-bid preferences for insurance roofing opportunities. When enabled, Otter Quotes places bids on your behalf for matching jobs in your service area.</p>
     </div>
 
-    <!-- ═══════════════════════════════════════ -->
-    <!-- Auto-Bid Settings (LIVE &mdash; Insurance)   -->
+    <!-- Auto-Bid Settings (LIVE & Insurance) -->
     <!-- D-193: Moved from contractor-settings  -->
-    <!-- ═══════════════════════════════════════ -->
     <div class="settings-card">
       <div class="settings-card-title">Auto-Bid Settings</div>
       <div class="settings-card-subtitle">
@@ -603,16 +601,16 @@
   <script src="js/nav.js"></script>
 
   <script>
-    // ── Globals ──
+    // Globals
     let currentUser = null;
     let contractorRecord = null;
 
-    // ── Supabase init ──
+    // Supabase init
     document.addEventListener('DOMContentLoaded', async () => {
       await initAutoBids();
     });
 
-    // ── Auto-Bid Toggle Logic ──
+    // Auto-Bid Toggle Logic
     const autoBidToggle = document.getElementById('autoBidToggle');
     const autoBidDetails = document.getElementById('autoBidDetails');
     const autoBidStatusBadge = document.getElementById('autoBidStatusBadge');
@@ -631,7 +629,7 @@
 
     autoBidToggle.addEventListener('change', updateAutoBidUI);
 
-    // ── Initialize: load auto-bid data from Supabase ──
+    // Initialize: load auto-bid data from Supabase
     async function initAutoBids() {
       currentUser = await Auth.requireAuth('contractor');
       if (!currentUser && !CONFIG.DEMO_MODE) return;
@@ -734,7 +732,7 @@
       }
     }
 
-    // ── Save auto-bid settings to Supabase ──
+    // Save auto-bid settings to Supabase
     async function saveAutoBidSettings() {
       const button = document.querySelector('.save-button');
       const originalText = button.textContent;
@@ -840,7 +838,7 @@
       }
     }
 
-    // ── Bid Preview Toggle ──
+    // Bid Preview Toggle
     window.toggleBidPreview = function() {
       const panel = document.getElementById('bidPreviewPanel');
       const btn = document.getElementById('bidPreviewToggleBtn');
@@ -853,6 +851,14 @@
         btn.textContent = '👁 See What My Auto Bid Looks Like';
       }
     };
+
+    // gh-1381 (js/xss-through-dom #3, #2): free-text bid-preview fields (cleanup guarantee,
+    // "other offers", warranty descriptions, etc.) are read straight off form inputs and
+    // joined into the previewIncludesList / previewWarrantyList innerHTML below -- escape
+    // each item before it goes back into the DOM.
+    function escHtml(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
     function updateBidPreview() {
       const companyName = contractorRecord?.company_name || contractorRecord?.contact_name || 'Your Company';
@@ -900,7 +906,7 @@
       if (selectedTrades.length) items.push('🏠 Other Trades (if covered by insurance): ' + selectedTrades.join(', '));
 
       document.getElementById('previewIncludesList').innerHTML = items.length
-        ? items.map(i => '<div>' + i + '</div>').join('')
+        ? items.map(i => '<div>' + escHtml(i) + '</div>').join('')
         : '<div style="color:var(--slate);">No items configured yet — fill out the sections above.</div>';
 
       // Warranty preview
@@ -914,7 +920,7 @@
       const wSection = document.getElementById('previewWarrantySection');
       if (warrantyItems.length) {
         wSection.style.display = 'block';
-        document.getElementById('previewWarrantyList').innerHTML = warrantyItems.map(i => '<div>' + i + '</div>').join('');
+        document.getElementById('previewWarrantyList').innerHTML = warrantyItems.map(i => '<div>' + escHtml(i) + '</div>').join('');
         document.getElementById('previewWarrantyDisclaimer').textContent = '* Warranty terms apply only to ' + shingleName + '. Different warranty terms may apply to other shingles.';
       } else {
         wSection.style.display = 'none';

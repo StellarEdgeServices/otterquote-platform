@@ -29,7 +29,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
@@ -251,9 +251,14 @@ serve(async (req) => {
 
   const supabaseUrl   = Deno.env.get("SUPABASE_URL")!;
   const serviceKey    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z)
+  // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z).
+  // gh-1536: exact-match, not substring — "app-staging." falsely matched
+  // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
+  // site (not staging), which selected Stripe TEST-mode keys against real
+  // production data. This must never match a production hostname.
   const _reqOrigin = req.headers.get("Origin") || "";
-  const isStaging = _reqOrigin.includes("staging--") || _reqOrigin.includes("app-staging.");
+  const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
+    _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
   const stripeKey = isStaging
     ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY") || "")
     : (Deno.env.get("STRIPE_SECRET_KEY") || "");

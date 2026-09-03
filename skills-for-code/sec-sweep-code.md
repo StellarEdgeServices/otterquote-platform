@@ -78,7 +78,7 @@ SECURITY_DIR.mkdir(parents=True, exist_ok=True)
 
 ## Hard Invariants
 
-1. Never fix vulnerabilities autonomously — triage and create ClickUp tasks only; never modify production code
+1. Never fix vulnerabilities autonomously — triage and file GitHub issues (or ClickUp CEO-board tasks for CEO-facing items only); never modify production code
 2. Never suppress or downgrade a CVSS Critical or High finding
 3. Secrets findings (GitGuardian) are always P0 — treat as live credential exposure until proven otherwise
 4. SLA clock starts at finding creation date (from the tool), not the date this skill runs
@@ -96,7 +96,7 @@ Unavailable:   Fall back to bash equivalents where possible
 Semgrep:       Always via bash — check with `which semgrep`
 ```
 
-Log which sources were available vs. unavailable in the digest header. If ALL four sources are unavailable, post a ClickUp task flagging the toolchain gap and exit.
+Log which sources were available vs. unavailable in the digest header. If ALL four sources are unavailable, file a GitHub issue (dedup-first, `exec:cto` label) flagging the toolchain gap and exit — GitHub MCP itself is not the unavailable tool in this case, so the R-098 GitHub-unavailable exception does not apply here.
 
 ---
 
@@ -177,9 +177,9 @@ For each finding, assign:
 
 | Adjusted Severity | SLA | Action |
 |-------------------|-----|--------|
-| Critical | < 24 hours | Tier 2 ClickUp task |
-| High | < 7 days | Tier 1 ClickUp task |
-| Medium | < 30 days | Tier 1 ClickUp task |
+| Critical | < 24 hours | Tier 2 GitHub issue |
+| High | < 7 days | Tier 1 GitHub issue |
+| Medium | < 30 days | Tier 1 GitHub issue |
 | Low | Next sprint | Digest only |
 | Informational | Backlog | Digest only |
 

@@ -1,3 +1,10 @@
+[functions.check-email-exists]
+# gh-1544: called from contractor-join.html BEFORE any auth session exists
+# (pre-magic-link, pre-OAuth), so it cannot carry a JWT. The function only
+# ever returns { exists, status } for the anon-supplied email — no PII, no
+# other row contents — so unauthenticated access is intentional, not a gap.
+verify_jwt = false
+
 [functions.submit-partner-w9]
 # verify_jwt=false: auth performed in-handler via user-scoped client (auth.getUser).
 # Preserves existing behavior; bucket changed to partner-w9 (86e1v6nnh Item 4).
@@ -217,3 +224,133 @@ verify_jwt = false
 # Pinned so that can't happen. No behavior change — matches live state.
 [functions.send-partner-status-email]
 verify_jwt = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gh-1295: pin verify_jwt for the remaining 20 unpinned functions.
+#
+# Generalizes the gh-916 AC1 block above, which pinned exactly one function for
+# exactly this reason. The 2026-08-28 full sweep on gh-1295 found 37 functions
+# pinned here and 20 with no block at all. A bare `supabase functions deploy
+# <slug>` defaults verify_jwt to TRUE, so any of these 20 could be flipped to
+# JWT-required by a routine deploy, silently breaking every caller — the same
+# trap gh-916 caught for send-partner-status-email.
+#
+# NO BEHAVIOR CHANGE. Every value below was read from production
+# (yeszghaspzwwstvsrioa) on 2026-08-30 via list_edge_functions and matches the
+# live setting exactly; all 20 run verify_jwt=false today. The same check
+# confirmed all 37 pre-existing pins also match production, so after this block
+# config.toml and production agree on all 57.
+#
+# verify_jwt=false does NOT mean unauthenticated. Each of these enforces auth
+# in-handler (service-role caller, a shared-secret header, a provider signature,
+# or auth.getUser on a user-scoped client) — the same pattern documented on the
+# blocks above. Pinning records the existing contract; it does not weaken it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[functions.admin-contractor-action]
+verify_jwt = false
+
+[functions.check-rate-limits]
+verify_jwt = false
+
+[functions.check-siding-design-completion]
+verify_jwt = false
+
+[functions.create-hover-order]
+verify_jwt = false
+
+[functions.create-hubspot-contact]
+verify_jwt = false
+
+[functions.create-measurement-order]
+verify_jwt = false
+
+[functions.create-setup-intent]
+verify_jwt = false
+
+# Provider callback: Hover posts here with no Supabase JWT.
+[functions.hover-webhook]
+verify_jwt = false
+
+[functions.notify-admin-new-contractor]
+verify_jwt = false
+
+[functions.notify-feature-request]
+verify_jwt = false
+
+[functions.parse-hover-measurements]
+verify_jwt = false
+
+[functions.platform-health-check]
+verify_jwt = false
+
+# Cron-invoked.
+[functions.process-coi-reminders]
+verify_jwt = false
+
+[functions.process-hover-rebate]
+verify_jwt = false
+
+[functions.record-warranty-upload]
+verify_jwt = false
+
+[functions.send-bid-confirmation]
+verify_jwt = false
+
+[functions.send-home-profile-prompt]
+verify_jwt = false
+
+[functions.send-message-notification]
+verify_jwt = false
+
+[functions.send-sms]
+verify_jwt = false
+
+# Provider callback: Stripe signs with a webhook secret and cannot present a
+# Supabase JWT. Flipping this to true would break every incoming Stripe event.
+[functions.stripe-webhook]
+verify_jwt = false
+
+# gh-1331: new read-only GA4 Data API path. Auth enforced in-handler (service-role
+# key, or a Supabase JWT in the admin allow-list), same pattern as
+# approve-payout / get-payout-completion-status. Pinned at creation so it never
+# joins the 20 that gh-1295 found unpinned.
+[functions.ga4-report]
+verify_jwt = false
+
+# gh-1387: authoritative server-side confirmation of a contractor payment method.
+# Auth enforced at the gateway AND in-handler (auth.getUser; caller must own the
+# contractor row), matching get-contractor-info. Pinned at creation.
+[functions.verify-payment-method]
+verify_jwt = true
+
+# gh-1340 phase 1: business-lines admin dashboard read model. profiles/quotes/
+# referrals/activity_log carry no admin RLS, so this reads with the service
+# role behind the admin allow-list — same shape as get-payout-completion-status.
+# Auth performed in-handler. Pinned at creation.
+[functions.get-business-lines-dashboard]
+verify_jwt = false
+
+# gh-1412: manual measurement-fulfilment loop notifications. Both do auth
+# in-handler (the project-wide ES256/HS256 gateway mismatch makes verify_jwt
+# unreliable for these callers) and are pinned at creation so a flagless
+# `functions deploy` (CLI default verify_jwt=true) can't silently flip them.
+# notify-measurement-order: machine-called by create-measurement-order with the
+#   service-role key as bearer — same model as notify-admin-new-contractor.
+# send-measurement-ready: called from admin-measurements.html with the admin's
+#   own JWT; in-handler admin gate matches approve-warranty-drift.
+[functions.notify-measurement-order]
+verify_jwt = false
+
+[functions.send-measurement-ready]
+verify_jwt = false
+
+# gh-1513, R-174: mints a Supabase magic link for is_test-only fixtures so
+# the Code lane (no service-role key, no auth-admin MCP tool in its own env)
+# can obtain a signed-in session for E2E verification. Auth is enforced BOTH
+# at the gateway (verify_jwt = true, unlike admin-contractor-action's false)
+# AND in-handler via the same single-admin allow-list pattern
+# (dustinstohler1@gmail.com) — defense in depth for a function whose entire
+# purpose is minting sessions. Pinned at creation per spec.
+[functions.mint-test-session]
+verify_jwt = true

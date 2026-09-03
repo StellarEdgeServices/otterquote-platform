@@ -1715,6 +1715,10 @@
     let elements = null;
     let cardElement = null;
     let currentClientSecret = null;
+    // gh-1387: the SetupIntent id is what verify-payment-method re-reads from
+    // Stripe with the server's charging key. Without it the browser would be
+    // the only witness that a card was ever saved.
+    let currentSetupIntentId = null;
     let currentSetupType = null; // 'card' or 'us_bank_account'
     let savedPaymentMethods = []; // loaded from contractor_payment_methods table
 
@@ -1896,10 +1900,14 @@
             })
             .eq('id', contractorRecord.id);
         } else if (remaining.length === 0) {
-          // No methods left &mdash; clear legacy fields
+          // No methods left &mdash; clear legacy fields AND the has_payment_method flag together.
+          // The CHECK constraint (contractors_has_payment_method_requires_verified_method) forbids
+          // has_payment_method = true with a null stripe_payment_method_id, so these must land in
+          // one UPDATE (gh-1425 path 3).
           await sb
             .from('contractors')
             .update({
+              has_payment_method: false,
               stripe_payment_method_id: null,
               stripe_payment_method_last4: null,
               stripe_payment_method_brand: null,
@@ -1973,6 +1981,7 @@
         if (!data || !data.client_secret) throw new Error('No client secret returned');
 
         currentClientSecret = data.client_secret;
+        currentSetupIntentId = data.setup_intent_id || null;
 
         if (data.customer_id && !contractorRecord.stripe_customer_id) {
           contractorRecord.stripe_customer_id = data.customer_id;
@@ -2000,6 +2009,7 @@
       document.getElementById('ach-errors').textContent = '';
       document.getElementById('ach-errors').style.display = 'none';
       currentClientSecret = null;
+      currentSetupIntentId = null;
       currentSetupType = null;
     };
 
@@ -2033,47 +2043,41 @@
           throw new Error('Setup failed with status: ' + (setupIntent?.status || 'unknown'));
         }
 
-        const paymentMethodId = setupIntent.payment_method;
-        let last4 = '••••';
-        let brand = 'CARD';
+        // gh-1387: every write below used to happen here, in the browser.
+        // Two defects came out of that and both are fixed by handing the
+        // SetupIntent id to the server instead:
+        //
+        //   * stripe.retrievePaymentMethod() takes a CLIENT SECRET, not a
+        //     payment-method id, so the old call always threw. The catch
+        //     swallowed it and persisted the display placeholder as last4.
+        //   * A browser-written has_payment_method (or, as it happened, no
+        //     writer at all) is not evidence that Stripe can charge the card.
+        //
+        // verify-payment-method re-reads the SetupIntent with the key this
+        // platform actually charges with. A test-mode object presented to a
+        // live key fails there, and the contractor is told to re-enter — which
+        // is the honest outcome, because that card could never have been used.
+        button.textContent = 'Verifying...';
 
-        try {
-          const { paymentMethod } = await stripe.retrievePaymentMethod(paymentMethodId);
-          if (paymentMethod && paymentMethod.card) {
-            last4 = paymentMethod.card.last4;
-            brand = paymentMethod.card.brand.toUpperCase();
+        const { data: verified, error: verifyError } = await sb.functions.invoke(
+          'verify-payment-method',
+          {
+            body: {
+              contractor_id: contractorRecord.id,
+              setup_intent_id: currentSetupIntentId || setupIntent.id,
+            },
           }
-        } catch (pmErr) { console.warn('Could not retrieve PM details:', pmErr); }
+        );
 
-        // Determine if this should be default (first method = auto-default)
-        const isFirstMethod = savedPaymentMethods.length === 0;
-
-        // Save to contractor_payment_methods table
-        const { error: insertError } = await sb
-          .from('contractor_payment_methods')
-          .insert({
-            contractor_id: contractorRecord.id,
-            stripe_payment_method_id: paymentMethodId,
-            payment_type: 'card',
-            last_four: last4,
-            brand: brand,
-            is_default: isFirstMethod,
-          });
-
-        if (insertError) throw insertError;
-
-        // Also update legacy fields on contractors table (for backward compat)
-        if (isFirstMethod) {
-          await sb
-            .from('contractors')
-            .update({
-              stripe_payment_method_id: paymentMethodId,
-              stripe_payment_method_last4: last4,
-              stripe_payment_method_brand: brand,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', contractorRecord.id);
+        if (verifyError || !verified || !verified.ok) {
+          throw new Error(
+            (verified && verified.message) ||
+            (verifyError && verifyError.message) ||
+            'We could not verify this card with our payment processor. It was not saved.'
+          );
         }
+
+        const brand = verified.brand || 'CARD';
 
         // Refresh UI
         cancelPaymentSetup();
@@ -2166,44 +2170,29 @@
 
     // Helper: save ACH method after successful setup
     async function saveACHMethod(setupIntent) {
-      const paymentMethodId = setupIntent.payment_method;
-      let last4 = '••••';
-      let bankName = 'Bank Account';
-
-      try {
-        const { paymentMethod } = await stripe.retrievePaymentMethod(paymentMethodId);
-        if (paymentMethod && paymentMethod.us_bank_account) {
-          last4 = paymentMethod.us_bank_account.last4;
-          bankName = paymentMethod.us_bank_account.bank_name || 'Bank Account';
+      // gh-1387: same server-side verification as the card path. See the long
+      // note in confirmCardSetup — the old client-side retrievePaymentMethod()
+      // call was invalid for bank accounts too, so ACH rows also persisted the
+      // "••••" placeholder instead of the real digits.
+      const { data: verified, error: verifyError } = await sb.functions.invoke(
+        'verify-payment-method',
+        {
+          body: {
+            contractor_id: contractorRecord.id,
+            setup_intent_id: currentSetupIntentId || setupIntent.id,
+          },
         }
-      } catch (pmErr) { console.warn('Could not retrieve ACH PM details:', pmErr); }
+      );
 
-      const isFirstMethod = savedPaymentMethods.length === 0;
-
-      const { error: insertError } = await sb
-        .from('contractor_payment_methods')
-        .insert({
-          contractor_id: contractorRecord.id,
-          stripe_payment_method_id: paymentMethodId,
-          payment_type: 'us_bank_account',
-          last_four: last4,
-          bank_name: bankName,
-          is_default: isFirstMethod,
-        });
-
-      if (insertError) throw insertError;
-
-      if (isFirstMethod) {
-        await sb
-          .from('contractors')
-          .update({
-            stripe_payment_method_id: paymentMethodId,
-            stripe_payment_method_last4: last4,
-            stripe_payment_method_brand: bankName,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', contractorRecord.id);
+      if (verifyError || !verified || !verified.ok) {
+        throw new Error(
+          (verified && verified.message) ||
+          (verifyError && verifyError.message) ||
+          'We could not verify this bank account with our payment processor. It was not saved.'
+        );
       }
+
+      const bankName = verified.brand || 'Bank Account';
 
       cancelPaymentSetup();
       await loadPaymentMethods();
@@ -3263,6 +3252,14 @@
       }
     };
 
+    // gh-1381 (js/xss-through-dom #6, #5): free-text bid-preview fields (cleanup guarantee,
+    // "other offers", warranty descriptions, etc.) are read straight off form inputs and
+    // joined into the previewIncludesList / previewWarrantyList innerHTML below — escape
+    // each item before it goes back into the DOM.
+    function escHtml(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     function updateBidPreview() {
       // Company name
       const companyName = contractorRecord?.company_name || contractorRecord?.contact_name || 'Your Company';
@@ -3322,7 +3319,7 @@
       const selectedTrades = Array.from(document.querySelectorAll('input[name="abOtherTrades"]:checked')).map(el => tradeLabels[el.value] || el.value);
       if (selectedTrades.length) items.push('🏠 Other Trades (if covered by insurance): ' + selectedTrades.join(', '));
 
-      document.getElementById('previewIncludesList').innerHTML = items.length ? items.map(i => '<div>' + i + '</div>').join('') : '<div style="color:var(--slate);">No items configured yet &mdash; fill out the sections above.</div>';
+      document.getElementById('previewIncludesList').innerHTML = items.length ? items.map(i => '<div>' + escHtml(i) + '</div>').join('') : '<div style="color:var(--slate);">No items configured yet &mdash; fill out the sections above.</div>';
 
       // Reviews in bid preview
       const rvPlatforms = [
@@ -3350,7 +3347,7 @@
       const wSection = document.getElementById('previewWarrantySection');
       if (warrantyItems.length) {
         wSection.style.display = 'block';
-        document.getElementById('previewWarrantyList').innerHTML = warrantyItems.map(i => '<div>' + i + '</div>').join('');
+        document.getElementById('previewWarrantyList').innerHTML = warrantyItems.map(i => '<div>' + escHtml(i) + '</div>').join('');
         document.getElementById('previewWarrantyDisclaimer').textContent = '* Warranty terms apply only to ' + shingleName + '. Different warranty terms may apply to other shingles.';
       } else {
         wSection.style.display = 'none';

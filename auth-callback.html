@@ -218,6 +218,25 @@
       return;
     }
 
+    // gh-1476: honor admin identity before the contractor-first branch below.
+    // The platform's one admin account (dustinstohler1@gmail.com) also carries
+    // a leftover is_test=true contractor row ("Stohler Roofing, LLC"), so
+    // role === 'contractor' is true for it too -- same "a second identity
+    // outranks getRole()'s contractor-first precedence" shape as the
+    // partnerRoles early-exit just above (gh-817/#643), keyed off admin
+    // identity instead of signed-in-surface intent. Uses Auth._getIsAdmin(),
+    // the existing shared admin check in js/auth.js (same primitive
+    // admin-dashboard.html's checkAdminAndInit() and Auth.ready() already use)
+    // rather than hardcoding a third copy of the admin email here.
+    var isAdmin = false;
+    try { isAdmin = await Auth._getIsAdmin(session.user); } catch (e) { isAdmin = false; }
+    if (isAdmin) {
+      _oqLog('routing -> /admin-dashboard.html (admin identity overrides contractor-first)');
+      _oqTrackAuth('admin', '/admin-dashboard.html');
+      window.location.href = '/admin-dashboard.html';
+      return;
+    }
+
     // Hard signal: a contractor record exists. That's the source of truth —
     // even if the user clicked the wrong login button, route them home.
     if (role === 'contractor') {

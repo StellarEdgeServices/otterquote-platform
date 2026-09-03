@@ -39,12 +39,17 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { parsePayload } from "./payload-parser.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { findCompletedContractSigner, parsePayload } from "./payload-parser.ts";
 import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
 import { evaluatePrice, extractSignedContractPrice } from "./price-verify.ts";
+import {
+  describeGuardVerdict,
+  evaluateLiveChargeGuard,
+  REFUSAL_CODE as GUARD_REFUSAL_CODE,
+} from "./live-charge-guard.ts";
 
 // ── 86e1tz17j: best-effort Sentry reporter for swallowed audit-write failures ──
 // Inlined (not imported from _shared) because the EF body-deploy path does not
@@ -356,7 +361,7 @@ serve(async (req) => {
       //              could never be found, let alone persisted.
       // Dropping either one silently breaks the thing it was added for.
       .select(
-        "id, status, docusign_envelope_id, color_confirmation_envelope_id, project_confirmation_envelope_id, contract_signed_at, is_test"
+        "id, status, docusign_envelope_id, color_confirmation_envelope_id, project_confirmation_envelope_id, contract_signed_at, is_test, live_charge_authorized_at"
       )
       .or(
         `docusign_envelope_id.eq.${envelopeId},color_confirmation_envelope_id.eq.${envelopeId},project_confirmation_envelope_id.eq.${envelopeId}`
@@ -383,33 +388,39 @@ serve(async (req) => {
       })`
     );
 
-    // ========== SIGNER STATUS (D-274 / #631) ==========
+    // ========== SIGNER STATUS (D-274 / #631; matcher re-keyed gh-1446) ==========
     // BoldSign's webhook payload DOES carry per-signer status directly
     // (data.signerDetails — confirmed against developers.boldsign.com's
     // sample-event-data page, unlike the shorter event-metadata page which
     // only shows the bare `event` block). payload-parser.ts's `parsed.signerDetails`
     // is that array, normalized to { clientUserId, status: lowercase,
-    // signedDateTime: null, email } so the `s.clientUserId === "contractor_1"` /
-    // `"homeowner_1"` matching further down is UNCHANGED from the DocuSign
-    // implementation — create-docusign-envelope sets signers[].id to exactly
-    // those two strings at send time (see handleContractorSign), the same
-    // convention DocuSign's clientUserId used. No live API call needed for
-    // this coarse status (unlike the D-269 ack backstop below, which DOES need
-    // one — BoldSign's webhook payload never includes per-field formFields
-    // data, only signer-level status).
+    // signedDateTime: null, email, order }.
+    //
+    // [gh-1446] The original matching here required clientUserId ===
+    // "contractor_1" / "homeowner_1" — true under DocuSign, FALSE since
+    // gh-1244: BoldSign rejects string-label signer ids ("The field Id is
+    // invalid"), so create-docusign-envelope mints them as crypto.randomUUID().
+    // A GUID never equals those labels, so every signer-keyed branch below was
+    // dead code (measured live 2026-08-31: contractor Signed event delivered +
+    // HMAC-verified + 200, quotes.contractor_signed_at stayed NULL — #1446).
+    // Roles now resolve via findCompletedContractSigner (payload-parser.ts):
+    // legacy labels first (historical envelopes unchanged), then BoldSign
+    // signer `order` (1 = contractor, 2 = homeowner — handleContractorSign's
+    // convention, the only live mint site for contract envelopes). Unknown
+    // shapes resolve to no match: no write, no misattribution, no throw.
+    // No live API call needed for this coarse status (unlike the D-269 ack
+    // backstop below, which DOES need one — BoldSign's webhook payload never
+    // includes per-field formFields data, only signer-level status).
     const signerStatusList: any[] = parsed.signerDetails;
 
     // ========== CONTRACTOR SIGNING TRACKING ==========
     // On every contract envelope event, check signer status. If the contractor
-    // signer (clientUserId: "contractor_1") has completed, write contractor_signed_at
-    // to the matching quote. Covers both intermediate events (contractor signed,
-    // homeowner pending) and the final completed event (all signed). Idempotent
-    // via IS NULL guard.
+    // signer (role resolved per gh-1446 above) has completed, write
+    // contractor_signed_at to the matching quote. Covers both intermediate
+    // events (contractor signed, homeowner pending) and the final completed
+    // event (all signed). Idempotent via IS NULL guard.
     if (isContract) {
-      const allSigners: any[] = signerStatusList;
-      const contractorSigner = allSigners.find(
-        (s: any) => s.clientUserId === "contractor_1" && s.status === "completed"
-      );
+      const contractorSigner = findCompletedContractSigner(signerStatusList, "contractor");
       if (contractorSigner) {
         const { data: contractorQuote } = await supabase
           .from("quotes")
@@ -433,9 +444,43 @@ serve(async (req) => {
       }
     }
 
+    // ========== HOMEOWNER SIGNING TRACKING (gh-1446) ==========
+    // Symmetric to the contractor write above. Before gh-1446 this function had
+    // NO quotes.homeowner_signed_at write at all — the only writer was the
+    // client-side return bridge, exactly the path that failed in the #1351
+    // ceremony walk (homeowner_signed_at is NULL on the platform's first
+    // completed contract). Idempotent via IS NULL guard; non-fatal like every
+    // tracking write in this function.
+    if (isContract) {
+      const homeownerSigner = findCompletedContractSigner(signerStatusList, "homeowner");
+      if (homeownerSigner) {
+        const { data: homeownerQuote } = await supabase
+          .from("quotes")
+          .select("id, homeowner_signed_at")
+          .eq("docusign_envelope_id", envelopeId)
+          .is("homeowner_signed_at", null)
+          .maybeSingle();
+        if (homeownerQuote) {
+          const { error: hsErr } = await supabase
+            .from("quotes")
+            .update({
+              homeowner_signed_at: homeownerSigner.signedDateTime || new Date().toISOString(),
+            })
+            .eq("id", homeownerQuote.id);
+          if (hsErr) {
+            console.error(`Failed to write homeowner_signed_at for quote ${homeownerQuote.id}:`, hsErr);
+          } else {
+            console.log(`homeowner_signed_at written for quote ${homeownerQuote.id} (claim ${claim.id})`);
+          }
+        }
+      }
+    }
+
     // ========== D-149 COUNTER-SIGNATURE NUDGE (86e1gabf4) ==========
     // Immediate Mailgun nudge to the CONTRACTOR at the homeowner-signed
-    // transition: homeowner_1 completed while contractor_1 has not. The check
+    // transition: homeowner completed while the contractor has not (roles
+    // resolved per gh-1446, replacing the dead homeowner_1/contractor_1
+    // label match). The check
     // is routing-order-agnostic, so it covers both signer orderings used by
     // create-docusign-envelope. Runs AFTER HMAC verification and AFTER the
     // contractor_signed_at tracking write above — nothing upstream changes.
@@ -454,13 +499,8 @@ serve(async (req) => {
     // inserts (86e1tz17j audit-write class).
     if (isContract && status !== "completed" && status !== "declined" && status !== "voided") {
       try {
-        const nudgeSigners: any[] = signerStatusList;
-        const homeownerCompleted = nudgeSigners.find(
-          (s: any) => s.clientUserId === "homeowner_1" && s.status === "completed"
-        );
-        const contractorCompleted = nudgeSigners.find(
-          (s: any) => s.clientUserId === "contractor_1" && s.status === "completed"
-        );
+        const homeownerCompleted = findCompletedContractSigner(signerStatusList, "homeowner");
+        const contractorCompleted = findCompletedContractSigner(signerStatusList, "contractor");
 
         if (homeownerCompleted && !contractorCompleted) {
           // Idempotency: at most one pending-marker (and one immediate nudge)
@@ -935,6 +975,98 @@ serve(async (req) => {
               quote.total_price * (platformFeePercent / 100) * 100
             );
 
+            // ── #1467 GATE 1: live-charge authorization ──────────────────
+            // On 2026-08-31 a ceremony on a claim with is_test = true charged a
+            // real card $180.54, five seconds after the signature completed.
+            // The predicate is DELIBERATE HUMAN AUTHORIZATION, not is_test —
+            // live-charge-guard.ts records why a blanket is_test refusal was
+            // rejected (it would silently destroy the only proof the fee path
+            // works). This is an explicit branch BEFORE the fetch and never a
+            // throw: the catch below buckets every pre-charge throw as
+            // `signed_unbilled_no_method`, so a throw here would be swallowed
+            // and misread as a missing card.
+            const chargeGuard = evaluateLiveChargeGuard(claim);
+            if (!chargeGuard.allow) {
+              const guardMessage = describeGuardVerdict(
+                chargeGuard,
+                claim.id,
+                feeAmount
+              );
+              console.error(`[docusign-webhook] ${guardMessage}`);
+
+              // The signing is a FACT (#480 precedent) — record it. The fee is
+              // NOT charged, platform_fee_charged stays false, and dunning is
+              // deliberately NOT triggered: dunning is a retry queue and a
+              // retry is precisely what must not happen here.
+              await supabase
+                .from("claims")
+                .update({
+                  contract_signed_at: completedDateTime || new Date().toISOString(),
+                  contract_signed_by: recipientEmail || null,
+                  status: "contract_signed",
+                })
+                .eq("id", claim.id);
+
+              try {
+                await supabase.from("platform_alerts_log").insert({
+                  alert_type: "platform_fee_refused_unauthorized_test",
+                  function_name: "docusign-webhook",
+                  message: guardMessage,
+                  sent_at: new Date().toISOString(),
+                });
+              } catch (alertErr) {
+                await reportToSentry(alertErr, {
+                  fn: "docusign-webhook",
+                  op: "platform_alerts_log.insert",
+                  extra: {
+                    alert_type: "platform_fee_refused_unauthorized_test",
+                    claim_id: claim.id,
+                  },
+                });
+              }
+              try {
+                await supabase.from("activity_log").insert({
+                  event_type: "platform_fee_refused_unauthorized_test",
+                  is_test: claim.is_test ?? false,
+                  metadata: {
+                    claim_id: claim.id,
+                    quote_id: quote.id,
+                    contractor_id: quote.contractor_id,
+                    reason: chargeGuard.reason,
+                    amount_not_charged_cents: feeAmount,
+                    issue: "1467",
+                  },
+                });
+              } catch (activityErr) {
+                await reportToSentry(activityErr, {
+                  fn: "docusign-webhook",
+                  op: "activity_log.insert",
+                  extra: {
+                    event_type: "platform_fee_refused_unauthorized_test",
+                    claim_id: claim.id,
+                  },
+                });
+              }
+
+              return new Response(
+                JSON.stringify({
+                  received: true,
+                  envelope_id: envelopeId,
+                  status,
+                  claim_id: claim.id,
+                  platform_fee_charged: false,
+                  fee_charge_refused: chargeGuard.reason,
+                  message:
+                    "Contract signed. Platform fee NOT charged: this claim has no " +
+                    "live-charge authorization (#1467).",
+                }),
+                {
+                  status: 200,
+                  headers: { ...corsHeaders, "Content-Type": "application/json" },
+                }
+              );
+            }
+
             // Call create-payment-intent via internal function invocation
             console.log(
               `Charging contractor ${contractor.id} ${feeAmount} cents for platform fee...`
@@ -972,6 +1104,55 @@ serve(async (req) => {
             let paymentResult: Record<string, unknown>;
             if (!paymentResponse.ok) {
               const paymentError = await paymentResponse.text();
+              // #1467: a 422 carrying the guard's refusal code is NOT a payment
+              // failure and must not enter dunning — dunning is a retry queue,
+              // it emails the contractor and the homeowner about a failed
+              // charge, and process-dunning charges Stripe DIRECTLY on retry.
+              // Routing a guard refusal there would recreate the defect this
+              // change exists to close, one hop downstream.
+              if (
+                paymentResponse.status === 422 &&
+                paymentError.includes(GUARD_REFUSAL_CODE)
+              ) {
+                console.error(
+                  `[docusign-webhook] platform fee REFUSED by create-payment-intent guard for claim ${claim.id}: ${paymentError.slice(0, 300)}`
+                );
+                await supabase
+                  .from("claims")
+                  .update({
+                    contract_signed_at: completedDateTime || new Date().toISOString(),
+                    contract_signed_by: recipientEmail || null,
+                    status: "contract_signed",
+                  })
+                  .eq("id", claim.id);
+                try {
+                  await supabase.from("platform_alerts_log").insert({
+                    alert_type: "platform_fee_refused_unauthorized_test",
+                    function_name: "docusign-webhook",
+                    message: `Claim ${claim.id}: downstream guard refused the live platform-fee charge (${feeAmount} cents NOT taken). Dunning deliberately NOT triggered. (#1467)`,
+                    sent_at: new Date().toISOString(),
+                  });
+                } catch (alertErr) {
+                  console.error("platform_alerts_log insert failed:", alertErr);
+                }
+                return new Response(
+                  JSON.stringify({
+                    received: true,
+                    envelope_id: envelopeId,
+                    status,
+                    claim_id: claim.id,
+                    platform_fee_charged: false,
+                    fee_charge_refused: "downstream_guard",
+                    message:
+                      "Contract signed. Platform fee NOT charged: refused by the " +
+                      "live-charge guard (#1467). Dunning not triggered.",
+                  }),
+                  {
+                    status: 200,
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                  }
+                );
+              }
               console.error(
                 `Payment function returned ${paymentResponse.status}: ${paymentError}`
               );

@@ -23,7 +23,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { resolveJobState } from "./job-completion.ts";
 
 const HOVER_API_BASE = "https://hover.to";
@@ -200,7 +200,7 @@ serve(async (req) => {
                 claim_id:          order.claim_id,
                 notification_type: "hover_complete",
                 channel:           "dashboard",
-                message_preview:   "Your property measurements from Hover are now available. You can proceed with submitting for contractor bids.",
+                message_preview:   "Your property measurements are now available. You can proceed with submitting for contractor bids.",
               });
             }
 

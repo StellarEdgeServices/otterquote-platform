@@ -19,7 +19,13 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+
+// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
+// do not edit without updating that file too (deploy path does not resolve imports).
+// This function has only ever gated on the single primary email, not the full
+// ADMIN_EMAILS allow-list — do not widen without an explicit decision (see gh-1534).
+const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
 
 // CORS tightened Apr 15, 2026 (Session 181, ClickUp 86e0xhz2j): admin-only
 // function (requires dustinstohler1@gmail.com auth) — origin allowlisted.
@@ -175,7 +181,7 @@ serve(async (req) => {
       token
     );
 
-    if (userError || !user?.user || user.user.email !== "dustinstohler1@gmail.com") {
+    if (userError || !user?.user || user.user.email !== PRIMARY_ADMIN_EMAIL) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }

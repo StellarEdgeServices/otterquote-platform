@@ -28,7 +28,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const HOVER_API_BASE = "https://hover.to";
 
@@ -269,7 +269,7 @@ serve(async (req) => {
           design_color: null,
           design_trim: null,
           design_complete: false,
-          message: "No Hover job linked to this claim",
+          message: "No measurement job linked to this claim",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -293,7 +293,7 @@ serve(async (req) => {
           design_color: null,
           design_trim: null,
           design_complete: false,
-          message: "Hover authentication unavailable — view in Hover directly",
+          message: "Design service authentication unavailable — use the property design link to view directly",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

@@ -1,0 +1,162 @@
+name: R-120 Review Gate
+
+# gh-1507: pre-merge review gate for the Code lane (R-120 constitution entry 6 +
+# the pre-merge fresh-context refuter). Built as the "CI half" of #1507 — the
+# companion run-work/SKILL.md half (the sub-agent that actually posts the
+# REVIEW: PASS|FAIL comment) is a separate, CTO-owned change.
+#
+# ADVISORY ONLY, NOT YET REQUIRED. Neither job here is wired into branch
+# protection by this change — that flip is the CTO's/Dustin's call once the
+# SKILL.md half exists and the mechanism has run on a few real PRs. Until then
+# these are informational checks: a red X here does not block merge, so they
+# cannot brick an unrelated PR while the other half of the mechanism is still
+# being built.
+#
+# RE-RUNNING. Both jobs only see comments that exist at run time. Once the
+# missing comment (an `R-120 READ:` sign-off or a `REVIEW: PASS`) is posted,
+# re-run the job from the PR's Checks tab ("Re-run jobs" / "Re-run failed
+# jobs"), or push any new commit, to pick it up — no need to edit this file.
+#
+# KNOWN LIMITATION (flagged to #1507, not fixed here): the R-120 path gate
+# requires the "R-120 READ:" comment to be authored by dustinstohler1-dotcom.
+# Per #1507's own measurement, dustinstohler1-dotcom is the identity EVERY
+# executive and executor session authenticates as — so this check proves a
+# comment was posted under that login, not that Dustin personally typed it.
+# See the Q: comment on #1507 for a recommended follow-up.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  r120-path-gate:
+    name: R-120 path gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check R-120 path set and READ sign-off
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const REQUIRED_LOGIN = 'dustinstohler1-dotcom'; // Dustin's identity (#1507 body + claim thread)
+
+            // Path set is the CTO's to finalise (#1507 body). This is the
+            // four-path minimum (stripe, docusign/boldsign, partner-agreement.html,
+            // terms.html) plus the rest of the money/legal set named in the issue.
+            const EXACT_FILES = new Set([
+              'partner-agreement.html',
+              'terms.html',
+              'privacy.html',
+              'contractor-agreement.html',
+              'admin-fee-config.html',
+            ]);
+            const FUNCTIONS_PREFIX = 'supabase/functions/';
+            const FUNCTIONS_KEYWORDS = ['stripe', 'payment', 'invoice', 'payout', 'docusign', 'boldsign', 'webhook'];
+            const SQL_DIRS = ['sql/', 'supabase/migrations/'];
+            const SQL_KEYWORDS = ['payout_', 'platform_fee', 'claims.is_test'];
+
+            function isExactFile(filename) {
+              const base = filename.split('/').pop();
+              return EXACT_FILES.has(filename) || EXACT_FILES.has(base);
+            }
+            function isFunctionsMatch(filename) {
+              if (!filename.startsWith(FUNCTIONS_PREFIX)) return false;
+              const lower = filename.toLowerCase();
+              return FUNCTIONS_KEYWORDS.some((k) => lower.includes(k));
+            }
+            function isSqlDirFile(filename) {
+              return SQL_DIRS.some((d) => filename.startsWith(d));
+            }
+            function sqlContentMatches(file) {
+              // Fail-safe: if the patch is unavailable (huge diff or binary),
+              // treat it as a match rather than silently skipping a money-adjacent file.
+              if (typeof file.patch !== 'string') return true;
+              return SQL_KEYWORDS.some((k) => file.patch.includes(k));
+            }
+
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: prNumber, per_page: 100,
+            });
+
+            const matchedFiles = [];
+            for (const f of files) {
+              const filename = f.filename;
+              if (isExactFile(filename)) { matchedFiles.push(filename); continue; }
+              if (isFunctionsMatch(filename)) { matchedFiles.push(filename); continue; }
+              if (isSqlDirFile(filename) && sqlContentMatches(f)) { matchedFiles.push(filename); continue; }
+            }
+
+            if (matchedFiles.length === 0) {
+              core.info('R-120 path set not touched by this PR. Gate passes (neutral).');
+              return;
+            }
+
+            core.info(`R-120 path set touched by:\n  - ${matchedFiles.join('\n  - ')}`);
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: prNumber, per_page: 100,
+            });
+
+            const hasRead = comments.some(
+              (c) => c.user && c.user.login === REQUIRED_LOGIN &&
+                     typeof c.body === 'string' && c.body.trim().startsWith('R-120 READ:')
+            );
+
+            if (!hasRead) {
+              core.setFailed(
+                `R-120 path gate: this PR touches the money/legal path set:\n  - ${matchedFiles.join('\n  - ')}\n\n` +
+                `No PR comment starting with "R-120 READ:" from ${REQUIRED_LOGIN} was found yet. ` +
+                `Add that comment, then re-run this check from the Checks tab (or push a new commit).`
+              );
+              return;
+            }
+
+            core.info(`R-120 READ: sign-off found from ${REQUIRED_LOGIN}. Gate passes.`);
+
+  review-pass-gate:
+    name: REVIEW PASS gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for the newest REVIEW marker comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: prNumber, per_page: 100,
+            });
+
+            const markers = comments
+              .filter((c) => typeof c.body === 'string' && (c.body.includes('REVIEW: PASS') || c.body.includes('REVIEW: FAIL')))
+              .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+            if (markers.length === 0) {
+              core.setFailed(
+                'REVIEW gate: no "REVIEW: PASS" or "REVIEW: FAIL" comment found on this PR yet. ' +
+                'Waiting on the pre-merge fresh-context refuter (run-work/SKILL.md half of #1507). ' +
+                'Re-run this check from the Checks tab once it posts, or push a new commit.'
+              );
+              return;
+            }
+
+            const newest = markers[markers.length - 1];
+            const who = newest.user ? newest.user.login : 'unknown';
+
+            if (newest.body.includes('REVIEW: FAIL')) {
+              core.setFailed(
+                `REVIEW gate: the newest review marker is REVIEW: FAIL (comment by ${who} at ${newest.created_at}). ` +
+                `Address the refuter's findings and get a fresh REVIEW: PASS, then re-run this check.`
+              );
+              return;
+            }
+
+            core.info(`REVIEW gate: newest review marker is REVIEW: PASS (comment by ${who} at ${newest.created_at}). Gate passes.`);

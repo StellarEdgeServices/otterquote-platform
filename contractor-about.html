@@ -955,31 +955,13 @@
       document.getElementById('modalBody').textContent = 'Awarding the project and notifying the contractor…';
 
       try {
-        // 1. Award claim
-        const { error: claimErr } = await sb
-          .from('claims')
-          .update({
-            selected_contractor_id: bid.contractor_id,
-            selected_bid_amount: bid.total_price,
-            status: 'awarded',
-          })
-          .eq('id', claimId);
-        if (claimErr) throw claimErr;
-
-        // 2. Mark winning quote
-        const { error: winErr } = await sb
-          .from('quotes')
-          .update({ status: 'selected' })  // Forge L1 D-159 fix: DB constraint quotes.status ∈ {draft,submitted,selected,declined,expired}
-          .eq('id', bid.id);
-        if (winErr) throw winErr;
-
-        // 3. Decline other quotes
-        const { error: rejectErr } = await sb
-          .from('quotes')
-          .update({ status: 'declined' })
-          .eq('claim_id', claimId)
-          .neq('id', bid.id);
-        if (rejectErr) throw rejectErr;
+        // 1-3. Atomic bid acceptance via SECURITY DEFINER RPC (gh-1293 criterion 5) --
+        // same three-write sequence as bids.html, now the same RPC so the two writers
+        // of one transaction can no longer drift apart (see
+        // supabase/migrations/20260830192051_v116_accept_bid_rpc.sql).
+        const { error: acceptErr } = await sb
+          .rpc('accept_bid', { p_claim_id: claimId, p_quote_id: bid.id });
+        if (acceptErr) throw acceptErr;
 
         gtag('event', 'contractor_selected', {
           bid_id: bid.id,
@@ -987,6 +969,19 @@
           price: bid.total_price,
           source: 'contractor_about_page',
         });
+
+        // gh-1293 criterion 3b: same non-fatal bid-accepted contractor email as
+        // bids.html's identical accept_bid call site — see that file for the
+        // full comment (the dashboard-channel notifications row is written
+        // unconditionally by the log_bid_accepted() DB trigger; this is the
+        // email channel, gated server-side on notification_preferences.bid_accepted).
+        try {
+          await sb.functions.invoke('notify-contractors', {
+            body: { event_type: 'bid_accepted', claim_id: claimId },
+          });
+        } catch (notifErr) {
+          console.warn('Bid-accepted contractor email failed (non-fatal):', notifErr);
+        }
 
         // 4. Redirect to contract signing
         // gh-1293: explicit role= — same homeowner accept-bid path as bids.html.

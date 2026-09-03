@@ -2004,9 +2004,13 @@
                         { id: 'yelpUrl', viewLabel: 'Yelp' },
                     ];
                     const reviewsView = document.getElementById('reviewsView');
+                    // gh-1381 (js/xss-through-dom #4): `val` is a contractor-supplied URL read
+                    // straight off the input DOM — escape before it goes back into innerHTML.
+                    const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                     reviewsView.innerHTML = reviewFields.map(f => {
                         const val = document.getElementById(f.id).value;
-                        return `<div class="view-field"><label>${f.viewLabel}</label><div class="view-field-value">${val ? `<a href="${val}" target="_blank" style="color: var(--amber); text-decoration: none;">View</a>` : '<span style="color: var(--slate);">Not provided</span>'}</div></div>`;
+                        const safeVal = escHtml(val);
+                        return `<div class="view-field"><label>${f.viewLabel}</label><div class="view-field-value">${val ? `<a href="${safeVal}" target="_blank" style="color: var(--amber); text-decoration: none;">View</a>` : '<span style="color: var(--slate);">Not provided</span>'}</div></div>`;
                     }).join('');
 
                     toggleEdit('reviews');
@@ -2913,10 +2917,14 @@
                         }
                         const img = document.createElement('img');
                         img.className = 'image-preview';
-                        // codeql[js/xss-through-dom] blob: URL rendered via <img src>, not
-                        // innerHTML — SVG script does not execute in an <img> render context,
-                        // and the "attacker" is the same user picking their own local file
+                        // gh-1562: blob: URL rendered via <img src>, not innerHTML — SVG
+                        // script does not execute in an <img> render context, and the
+                        // "attacker" is the same user picking their own local file
                         // (isSafeRasterImage() above rejects image/svg+xml regardless).
+                        // A GitHub codeql[] suppression comment only covers the single
+                        // line directly beneath it, so the marker has to be its own line
+                        // immediately above the sink, not the first line of this block:
+                        // codeql[js/xss-through-dom]
                         img.src = URL.createObjectURL(this.files[0]);
                         preview.appendChild(img);
                     }
@@ -2934,10 +2942,14 @@
                         const item = document.createElement('div');
                         item.className = 'gallery-item';
                         const img = document.createElement('img');
-                        // codeql[js/xss-through-dom] blob: URL rendered via <img src>, not
-                        // innerHTML — SVG script does not execute in an <img> render context,
-                        // and the "attacker" is the same user picking their own local file
+                        // gh-1562: blob: URL rendered via <img src>, not innerHTML — SVG
+                        // script does not execute in an <img> render context, and the
+                        // "attacker" is the same user picking their own local file
                         // (isSafeRasterImage() above rejects image/svg+xml regardless).
+                        // A GitHub codeql[] suppression comment only covers the single
+                        // line directly beneath it, so the marker has to be its own line
+                        // immediately above the sink, not the first line of this block:
+                        // codeql[js/xss-through-dom]
                         img.src = URL.createObjectURL(file);
                         item.appendChild(img);
                         preview.appendChild(item);

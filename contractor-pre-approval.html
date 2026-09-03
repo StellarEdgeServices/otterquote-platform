@@ -535,6 +535,44 @@
         });
     }
 
+    // gh-1544: before creating a NEW contractors row, check whether this
+    // email already has one under a DIFFERENT user_id. This is reachable
+    // even when the by-user_id lookup above found nothing, because
+    // contractor-join.html offers two independent sign-in paths (magic-
+    // link/OTP and Google OAuth) that mint separate Supabase auth
+    // identities for the same email — exactly how the Stohler Roofing pair
+    // (07-20 OTP, 07-24 Google) got two rows. RLS blocks this client from
+    // reading another user's contractors row, so the check runs server-side
+    // via check-email-exists (service role, verify_jwt=false). Fails OPEN:
+    // a lookup failure falls through to the normal insert rather than
+    // trapping a legitimate first-time applicant on this page.
+    async function checkContractorEmailDuplicate(email) {
+        try {
+            const { data, error } = await sb.functions.invoke('check-email-exists', { body: { email } });
+            if (error) throw error;
+            return (data && typeof data.exists === 'boolean') ? data : { exists: false, status: null };
+        } catch (err) {
+            console.warn('[pre-approval] check-email-exists failed (failing open):', err);
+            return { exists: false, status: null };
+        }
+    }
+
+    // Repurposes the existing panelError DOM (no new locked copy) to surface
+    // the duplicate-application message and route back to sign-in, per gh-1544.
+    function showDuplicateApplicationPanel(status) {
+        const errEl = document.getElementById('panelError');
+        if (errEl) {
+            const heading = errEl.querySelector('h2');
+            const body    = errEl.querySelector('p');
+            const link    = errEl.querySelector('a');
+            if (heading) heading.textContent = 'Application Already Exists';
+            if (body) body.textContent = 'You already have an application on file' +
+                (status ? ' (status: ' + status + ')' : '') + '. Sign in to continue.';
+            if (link) { link.textContent = 'Sign in →'; link.setAttribute('href', 'contractor-login.html'); }
+        }
+        showPanel('error');
+    }
+
     function updateProgress(activeStep) {
         // Dots: 1=done, 2/3/4 = active or pending
         for (let i = 2; i <= 4; i++) {
@@ -988,6 +1026,8 @@
                 coi_uploaded_at: new Date().toISOString(),
                 phone: profile.phone,
                 trades: profile.trades,
+                // gh-1253: also persist service_states (real column since gh-749; process-auto-bids matches it) -- this wizard path wrote only service_area_description, which nothing in the auto-bid matcher reads.
+                service_states: profile.states,
                 service_area_description: profile.states.join(', '),
                 onboarding_step: 2,
                 updated_at: new Date().toISOString()
@@ -1128,7 +1168,11 @@
             console.error('Step 2 submit error:', error);
             if (advBtn) { advBtn.dataset.submitting = 'false'; advBtn.disabled = false; advBtn.style.opacity = '1'; advBtn.textContent = 'Continue to Agreements →'; }
             showPanel('error');
-            document.getElementById('panelError').innerHTML = '<h3>Upload Failed</h3><p>' + error.message + '</p>';
+            // gh-1381 (CodeQL #12): error.message can echo user-supplied input
+            // (e.g. a license number inside a DB error) — set it as text, not HTML.
+            const panelErrorEl = document.getElementById('panelError');
+            panelErrorEl.innerHTML = '<h3>Upload Failed</h3><p></p>';
+            panelErrorEl.querySelector('p').textContent = error.message;
         }
     }
 
@@ -1322,6 +1366,15 @@
             if (ctErr && ctErr.code !== 'PGRST116') throw ctErr;
 
             if (!ct) {
+                // gh-1544: pre-insert duplicate-by-email gate — see
+                // checkContractorEmailDuplicate() above for why this can fire
+                // even though no row exists for this user_id.
+                const dup = await checkContractorEmailDuplicate(currentUser.email);
+                if (dup.exists) {
+                    showDuplicateApplicationPanel(dup.status);
+                    return;
+                }
+
                 // Contractor record doesn't exist yet — create from localStorage signup data
                 const signupRaw = localStorage.getItem('cs_contractor_signup');
                 const signup    = signupRaw ? JSON.parse(signupRaw) : {};

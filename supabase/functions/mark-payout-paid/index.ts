@@ -29,10 +29,12 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const FUNCTION_NAME     = "mark-payout-paid";
 // Same admin allow-list as approve-payout / reject-payout (D-211 Phase 18 Unit 2).
+// gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
+// edit this array without updating that file too (deploy path does not resolve imports).
 const ADMIN_EMAILS      = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
 const PARTNER_DASH_URL  = "https://otterquote.com/partner-dashboard.html";
 

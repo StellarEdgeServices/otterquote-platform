@@ -410,7 +410,7 @@
               </p>
           </div>
 
-          <!-- Hover Property Design Panel (siding jobs only) -->
+          <!-- Property Design Panel (siding jobs only) -->
           <div id="hoverPropertyPanel" style="display:none;background:linear-gradient(135deg,#0C2A3A 0%,#0F3849 100%);border:1px solid rgba(224,123,0,0.3);border-radius:0.875rem;padding:1.5rem;margin-bottom:1.5rem;animation:fadeUp 0.5s ease both;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
               <div>
@@ -1003,7 +1003,7 @@
         document.getElementById('rcvDisclaimer').style.display = 'none';
       }
 
-      // Show Hover Property Design Panel for siding claims
+      // Show Property Design Panel for siding claims
       if (currentClaim) {
         const trades = Array.isArray(currentClaim.trades) ? currentClaim.trades : [];
         const hasSiding = trades.some(t => (t || '').toLowerCase().includes('siding'));
@@ -1037,8 +1037,8 @@
       }
     }
 
-    // ── Hover Property Design Panel (homeowner view) ──────────────────
-    // Fetches siding design data from Hover and populates the panel on bids.html.
+    // ── Property Design Panel (homeowner view) ──────────────────
+    // Fetches siding design data from the measurement vendor and populates the panel on bids.html.
     // Non-blocking — errors are caught and displayed gracefully.
     let _hoverPropLoaded = false;
     async function loadHoverPropertyDesign() {
@@ -1049,7 +1049,6 @@
       const imagesEl   = document.getElementById('hoverPropImages');
       const measureEl  = document.getElementById('hoverPropMeasurements');
       const matEl      = document.getElementById('hoverPropMaterials');
-      const viewLink   = document.getElementById('hoverPropViewLink');
       const addrEl     = document.getElementById('hoverPropAddress');
 
       if (!statusEl || !currentClaim) return;
@@ -1069,20 +1068,12 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        // "View in Hover" link
-        if (data.hover_job_id) {
-          if (viewLink) {
-            viewLink.href = 'https://hover.to/jobs/' + data.hover_job_id;
-            viewLink.style.display = 'inline-block';
-          }
-        }
-
         // Address
         if (data.job_address && addrEl) addrEl.textContent = data.job_address;
 
         // Rendered images gallery
         // Session 254: XSS hardening — build DOM instead of string-concatenated innerHTML
-        // so that Hover-supplied URLs can never inject markup or JS handlers.
+        // so that vendor-supplied URLs can never inject markup or JS handlers.
         if (data.design_images && data.design_images.length > 0 && imagesEl) {
           imagesEl.innerHTML = ''; // clear
           const grid = document.createElement('div');
@@ -1144,9 +1135,7 @@
           statusEl.style.display = 'none';
         } else if (data.wall_squares || data.design_images?.length > 0) {
           // Measurements available but no product selections
-          statusEl.innerHTML = '<span style="color:#64748B;">Measurements loaded. '
-            + (data.hover_job_id ? 'To select specific brands and colors, <a href="https://hover.to/jobs/' + data.hover_job_id + '" target="_blank" style="color:#E07B00;">open your property design ↗</a> and create an Estimate.' : '')
-            + '</span>';
+          statusEl.innerHTML = '<span style="color:#64748B;">Measurements loaded. Product selections are not yet available.</span>';
         } else if (data.message) {
           statusEl.innerHTML = '<span style="color:#64748B;">' + data.message + '</span>';
         } else {
@@ -1362,7 +1351,10 @@
             <!-- ── ALSO COVERS (other trades) ── -->
             ${renderOtherTradesCovered(bid)}
 
-            <!-- ── INCLUSIONS + SHINGLES PANEL ── -->
+            <!-- ── INCLUDED / EXTRA CHARGES SUMMARY (gh-1378, D-317 cl.3) ── -->
+            ${renderDeclarationsSummary(bid)}
+
+            <!-- ── OTHER SHINGLES / SPECIAL OFFERS (legacy value_adds, unchanged) ── -->
             ${renderValueAdds(bid)}
 
             ${bid.notes ? `<div class="bid-message">"${esc(bid.notes)}"</div>` : ''}
@@ -2107,37 +2099,31 @@
         // Payment will be charged by docusign-webhook after contract signing (D-127)
         document.getElementById('modalBody').textContent = 'Awarding the project...';
 
-        // 1. Update claim status to 'awarded' and store winning contractor
-        const { error: claimErr } = await sb
-          .from('claims')
-          .update({
-            selected_contractor_id: bid.contractor_id,
-            selected_bid_amount: bid.total_price,
-            status: 'awarded',
-          })
-          .eq('id', currentClaim.id);
-        if (claimErr) throw claimErr;
-
-        // 3. Update winning quote status to 'selected' (DB constraint: ['draft','submitted','selected','declined','expired'])
-        const { error: winErr } = await sb
-          .from('quotes')
-          .update({ status: 'selected' })
-          .eq('id', bidId);
-        if (winErr) throw winErr;
-
-        // 4. Decline all other quotes for this claim
-        const { error: rejectErr } = await sb
-          .from('quotes')
-          .update({ status: 'declined' })
-          .eq('claim_id', currentClaim.id)
-          .neq('id', bidId);
-        if (rejectErr) throw rejectErr;
+        // 1-4. Atomic bid acceptance via SECURITY DEFINER RPC (gh-1293 criterion 5) --
+        // replaces three unbatched .update() calls that could leave a durable half-state
+        // between steps (see supabase/migrations/20260830192051_v116_accept_bid_rpc.sql).
+        const { error: acceptErr } = await sb
+          .rpc('accept_bid', { p_claim_id: currentClaim.id, p_quote_id: bidId });
+        if (acceptErr) throw acceptErr;
 
         gtag('event', 'contractor_selected', {
           bid_id: bidId,
           contractor_id: bid.contractor_id,
           price: bid.total_price,
         });
+
+        // gh-1293 criterion 3b: notify the winning contractor by email that they
+        // won the bid (the notifications table's dashboard-channel row is written
+        // unconditionally by the log_bid_accepted() DB trigger; this is the email
+        // channel, gated server-side on notification_preferences.bid_accepted).
+        // Non-fatal — never blocks the redirect to contract signing below.
+        try {
+          await sb.functions.invoke('notify-contractors', {
+            body: { event_type: 'bid_accepted', claim_id: currentClaim.id },
+          });
+        } catch (notifErr) {
+          console.warn('Bid-accepted contractor email failed (non-fatal):', notifErr);
+        }
 
         // 5. Proceed to contract signing — contract distributed to both parties after selection
         // gh-1293: explicit role= — this page only ever acts on behalf of the
@@ -2407,48 +2393,129 @@
       toggle.style.display = activeCount >= 2 ? 'flex' : 'none';
     }
 
+    // ── gh-1378 (D-317 cl.3) — homeowner two-list bid-card summary ──────
+    // Reads ONLY scope_summary.declarations, the per-row {state, rate_cents}
+    // object gh-1377 writes on the contractor bid form. Never re-derives
+    // included/extra/not_offered from value_adds or the underlying radio
+    // group names -- that is the exact drift #1378 exists to prevent
+    // between what the homeowner sees here and what the contract says.
+    //
+    // Row label + trigger text below are fixed, code-defined strings (never
+    // authored per-bid) chosen to match the wording already deployed in
+    // create-docusign-envelope's CONTINGENCIES AND CONDITIONAL PRICING
+    // table, so the bid card and the contract read the same way. That PDF
+    // generator is tier:3b gated (#1244) and is read-only reference here --
+    // nothing in this function touches it.
+    const DECLARATION_ROW_META = {
+      gutters:          { label: 'Gutters',              extraTrigger: 'Homeowner elects gutters upgrade (not included in base price)' },
+      chimney:          { label: 'Chimney Flashing',      extraTrigger: 'Homeowner elects chimney flashing work (not included in base price)' },
+      skylights:        { label: 'Skylights',             extraTrigger: null },
+      ice_water_shield: { label: 'Ice & Water Shield',    extraTrigger: null },
+      drip_edge:        { label: 'Drip Edge',             extraTrigger: 'Homeowner elects drip edge (not included in base price)' },
+    };
+    const TRADE_SCOPE_LABEL = {
+      roofing: 'Complete roofing installation',
+      siding:  'Complete siding installation',
+      gutters: 'Complete gutter installation',
+    };
+
+    function renderDeclarationsSummary(bid) {
+      const declarations = getScopeSummary(bid).declarations;
+      const totalPrice = '$' + (bid.total_price || 0).toLocaleString();
+
+      if (!declarations || typeof declarations !== 'object') {
+        return `
+          <div style="margin: var(--sp-4) 0; padding: var(--sp-4); background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md);">
+            <div style="font-size: 0.8rem; color: var(--slate);">This contractor's included / extra breakdown is not yet available for this bid.</div>
+          </div>
+        `;
+      }
+
+      const includedItems = [];
+      const extraItems = [];
+
+      Object.keys(DECLARATION_ROW_META).forEach(key => {
+        const decl = declarations[key];
+        if (!decl || typeof decl !== 'object') return; // absent key == not declared -- omit, never render as not_offered
+        const meta = DECLARATION_ROW_META[key];
+        if (decl.state === 'included') {
+          includedItems.push(`${esc(meta.label)} — included at no extra cost`);
+        } else if (decl.state === 'extra') {
+          const cents = Number(decl.rate_cents);
+          if (!(cents > 0)) return; // no rate == omitted, never rendered as "TBD"
+          if (!meta.extraTrigger) return; // this row has no extra-cost mechanism in the form; ignore an unexpected value
+          const rate = '$' + Math.round(cents / 100).toLocaleString();
+          extraItems.push({ label: meta.label, rate, trigger: meta.extraTrigger });
+        }
+        // 'not_offered' -> struck entirely (D-272), omitted from both lists.
+        // 'other' (gutters free-text offer) -> cannot be placed as included or
+        // extra without guessing which it is, so it is omitted from both lists
+        // too rather than synthesised into either bucket.
+      });
+
+      // Section 3 contingencies already captured on the bid -- same fields
+      // renderDeckingContingencies() reads, folded into this single EXTRA
+      // CHARGES block per gh-1378 scope item 1. renderDeckingContingencies()
+      // itself is left rendering its own separate box unchanged (gh-1378 is
+      // additive, not a removal of existing surfaces) -- some duplication
+      // between the two is an accepted, flagged tradeoff, not an oversight.
+      const va = typeof bid.value_adds === 'string' ? parseJSON(bid.value_adds) : (bid.value_adds || {});
+      if (bid.decking_price_per_sheet != null) {
+        const fullStr = bid.full_redeck_price ? `; full re-deck ${'$' + Number(bid.full_redeck_price).toLocaleString()}` : '';
+        extraItems.push({ label: 'Decking replacement', rate: '$' + Number(bid.decking_price_per_sheet).toLocaleString() + '/sheet' + fullStr, trigger: 'Deteriorated roof decking found after tear-off' });
+      }
+      if (va && va.secondLayerContingency && (va.secondLayerContingency.pricePerSquare || va.secondLayerContingency.flatFeeAlternative)) {
+        const slc = va.secondLayerContingency;
+        const slcRate = slc.pricePerSquare ? '$' + Number(slc.pricePerSquare).toLocaleString() + '/sq' : '$' + Number(slc.flatFeeAlternative).toLocaleString() + ' flat fee';
+        extraItems.push({ label: 'Second-layer tear-off', rate: slcRate, trigger: 'More than one layer of existing shingles found at tear-off' });
+      }
+      if (va && typeof va.rotten_wood_pricing === 'string' && va.rotten_wood_pricing.trim()) {
+        extraItems.push({ label: 'Rotten wood / fascia / soffit', rate: esc(va.rotten_wood_pricing.trim()), trigger: 'Concealed rot found during the work' });
+      }
+
+      let html = '';
+
+      if (includedItems.length > 0) {
+        const scopeLabel = TRADE_SCOPE_LABEL[bid.trade_type] || TRADE_SCOPE_LABEL.roofing;
+        html += `
+          <div style="margin: var(--sp-4) 0; padding: var(--sp-4); background: #F0FDF4; border: 1px solid #86EFAC; border-radius: var(--radius-md);">
+            <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #166534; margin-bottom: var(--sp-2);">Included in Your Price — ${totalPrice}</div>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-1);">
+              <li style="font-size: 0.875rem; color: #14532D;">${esc(scopeLabel)}</li>
+              ${includedItems.map(item => `<li style="font-size: 0.875rem; color: #14532D;">${item}</li>`).join('')}
+            </ul>
+          </div>
+        `;
+      }
+
+      if (extraItems.length > 0) {
+        html += `
+          <div style="margin: var(--sp-4) 0; padding: var(--sp-4); background: #FFFBEB; border: 1px solid #FDE68A; border-radius: var(--radius-md);">
+            <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #92400E; margin-bottom: var(--sp-2);">Extra Charges If Needed</div>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-2);">
+              ${extraItems.map(it => `<li style="font-size: 0.875rem; color: #78350F;"><strong>${esc(it.label)}: ${it.rate}</strong><br><span style="font-size:0.78rem;color:#92400E;">${esc(it.trigger)}</span></li>`).join('')}
+            </ul>
+          </div>
+        `;
+      }
+
+      return html;
+    }
+
     function renderValueAdds(bid) {
       const va = typeof bid.value_adds === 'string' ? parseJSON(bid.value_adds) : bid.value_adds;
       if (!va) return '';
 
+      // gh-1378: the gutters/chimney/gutter-guards/skylights/chimney-reflash
+      // bullets that used to live here are removed -- renderDeclarationsSummary()
+      // now covers that ground from scope_summary.declarations (the single
+      // source of truth) instead of these legacy, partly-deprecated value_adds
+      // fields (va.chimney_flashing / va.chimney_reflash are null on every
+      // bid written after gh-1377's D-317 merge; only kept here for bids that
+      // predate it, and even those are superseded by the block above).
+      // "Other offers" is genuinely separate content (contractor's own
+      // free-text special offer, e.g. financing) and is kept.
       const items = [];
-
-      // Gutters
-      if (va.gutters && va.gutters.option && va.gutters.option !== 'none') {
-        const opt = va.gutters.option;
-        if (opt === '5inch_included') items.push('✓ 5" gutters included at no out-of-pocket cost');
-        else if (opt === '6inch_included') items.push('✓ 6" gutters included at no out-of-pocket cost');
-        else if (opt === '5inch_additional') items.push(`5" gutters available for +$${(va.gutters.additional_cost_5inch || 0).toLocaleString()}`);
-        else if (opt === '6inch_additional') items.push(`6" gutters available for +$${(va.gutters.additional_cost_6inch || 0).toLocaleString()}`);
-        else if (opt === 'other' && va.gutters.other_text) items.push('Gutters: ' + esc(va.gutters.other_text));
-      }
-
-      // Chimney Flashing
-      if (va.chimney_flashing && va.chimney_flashing !== 'na') {
-        if (va.chimney_flashing === 'replace') items.push('✓ Chimney flashing replaced (included)');
-        else if (va.chimney_flashing === 'reuse') items.push('Chimney flashing reused if in good condition');
-      }
-
-      // Gutter Guards
-      if (va.gutter_guards && va.gutter_guards.option === 'available') {
-        const type = va.gutter_guards.type === 'other' ? (va.gutter_guards.type_other || 'custom type') : (va.gutter_guards.type || 'mesh');
-        const price = va.gutter_guards.oop_price ? `+$${va.gutter_guards.oop_price.toLocaleString()} OOP` : 'price on request';
-        items.push(`Gutter guards available (${esc(type)}) — ${price}`);
-      }
-
-      // Skylights
-      if (va.skylights && va.skylights !== 'na') {
-        if (va.skylights === 'reflash') items.push('✓ Skylights reflashed (included)');
-        else if (va.skylights === 'replace') items.push('Skylights can be replaced');
-      }
-
-      // Chimney Reflash
-      if (va.chimney_reflash && va.chimney_reflash.option && va.chimney_reflash.option !== 'na') {
-        if (va.chimney_reflash.option === 'included') items.push('✓ Chimney reflash included at no additional cost');
-        else if (va.chimney_reflash.option === 'oop') items.push(`Chimney reflash available for +$${(va.chimney_reflash.oop_price || 0).toLocaleString()} OOP`);
-      }
-
-      // Other offers
       if (va.other_offers && va.other_offers.trim()) {
         items.push(esc(va.other_offers.trim()));
       }
@@ -2487,7 +2554,7 @@
       if (items.length > 0) {
         html += `
           <div style="margin: var(--sp-4) 0; padding: var(--sp-4); background: #F0FDF4; border: 1px solid #86EFAC; border-radius: var(--radius-md);">
-            <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #166534; margin-bottom: var(--sp-2);">What's Included / Available</div>
+            <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #166534; margin-bottom: var(--sp-2);">Special Offer</div>
             <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-1);">
               ${items.map(item => `<li style="font-size: 0.875rem; color: #14532D;">${item}</li>`).join('')}
             </ul>

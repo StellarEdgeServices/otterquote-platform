@@ -15,7 +15,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
@@ -73,7 +73,7 @@ serve(async (req) => {
     const { data: contractor, error: contractorError } = await supabase
       .from("contractors")
       .select(
-        "id, stripe_customer_id, company_name, contact_name, email, user_id"
+        "id, stripe_customer_id, company_name, contact_name, email, user_id, is_test"
       )
       .eq("id", contractor_id)
       .single();
@@ -90,14 +90,43 @@ serve(async (req) => {
       );
     }
 
-    // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z)
+    // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z).
+    // gh-1536: exact-match, not substring — "app-staging." falsely matched
+    // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
+    // site (not staging), which selected Stripe TEST-mode keys against real
+    // production data. This must never match a production hostname.
     const _reqOrigin = req.headers.get("Origin") || "";
-    const isStaging = _reqOrigin.includes("staging--") || _reqOrigin.includes("app-staging.");
+    const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
+      _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
     const stripeSecretKey = isStaging
       ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
       : Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeSecretKey) {
       throw new Error("Stripe secret key not configured.");
+    }
+
+    // ── Mode gate (gh-1425 path 2 interim mitigation) ──
+    // The Origin header that selects the test key is attacker-supplied, so
+    // "staging" can be claimed by any raw HTTP client. If the key actually
+    // selected is test-mode, refuse to mint for anyone but a seeded test
+    // contractor -- before a wrong-mode Stripe Customer or SetupIntent exists.
+    const isTestModeKey = /^(sk|rk)_test_/.test(stripeSecretKey);
+    if (isTestModeKey && contractor.is_test !== true) {
+      console.error(
+        `create-setup-intent: refusing test-mode key for non-test contractor ${contractor_id}`
+      );
+      return new Response(
+        JSON.stringify({
+          error: "payment_method_unverifiable",
+          message:
+            "Payment method setup is unavailable for this account on the staging " +
+            "environment. Please use the production site to add your card.",
+        }),
+        {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const basicAuth = btoa(`${stripeSecretKey}:`);

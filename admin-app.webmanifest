@@ -1,0 +1,38 @@
+{
+  "name": "Otter Quotes Admin",
+  "short_name": "OQ Admin",
+  "description": "Business-line metrics, payouts, contractor review, and admin tooling for Otter Quotes.",
+  "id": "/admin-app",
+  "start_url": "/admin-dashboard.html",
+  "scope": "/admin-",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0D1B2E",
+  "theme_color": "#E07B00",
+  "icons": [
+    {
+      "src": "/img/app/admin-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/img/app/admin-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/img/app/admin-icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/img/app/admin-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

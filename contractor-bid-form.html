@@ -1603,7 +1603,7 @@
             For insurance jobs, homeowners often receive identical bids at the same RCV price. This is your chance to stand out. Tell homeowners exactly what's included in your proposal at no extra cost, and what's available as an add-on.
           </p>
 
-          <!-- ── Hover Roofing Measurements Panel (86e10t2cb — retail roofing only) ── -->
+          <!-- ── Roofing Measurements Panel (86e10t2cb — retail roofing only) ── -->
           <div id="hoverRoofingPanel" style="display:none;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-6);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-4);">
               <div>
@@ -1626,10 +1626,10 @@
           </div>
 
           <!-- ── Gutters ── -->
-          <div class="va-box">
+          <div class="va-box" id="gutterOptionRow">
             <h4>Gutters</h4>
             <div class="va-options">
-              <label class="va-option-row"><input type="radio" name="gutterOption" value="none" checked> Not included / N/A</label>
+              <label class="va-option-row"><input type="radio" name="gutterOption" value="none"> Not included / N/A</label>
               <label class="va-option-row"><input type="radio" name="gutterOption" value="5inch_included"> 5&quot; gutters included (no out-of-pocket for homeowner)</label>
               <label class="va-option-row"><input type="radio" name="gutterOption" value="6inch_included"> 6&quot; gutters included (no out-of-pocket for homeowner)</label>
               <label class="va-option-row">
@@ -1645,6 +1645,7 @@
                 <input type="text" id="gutterOtherText" name="gutterOtherText" placeholder="Describe your gutter offer…" style="margin-left:4px;flex:1;padding:2px 8px;border:1px solid var(--light);border-radius:4px;font-size:0.875rem;">
               </label>
             </div>
+            <div class="va-row-error" id="gutterOptionRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
           </div>
 
           <!-- ── Gutter Guards (moved under Gutters per spec) ── -->
@@ -1672,35 +1673,38 @@
           </div>
 
           <!-- ── Chimney Flashing / Reflash (merged — 86e10t28v) ── -->
-          <div class="va-box">
+          <div class="va-box" id="chimneyTypeRow">
             <h4>Chimney Flashing / Reflash</h4>
             <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Select the type of chimney work applicable to this project.</p>
             <div class="va-options" style="margin-bottom:var(--sp-3);">
-              <label class="va-option-row"><input type="radio" name="chimneyType" value="na" checked> N/A — no chimney</label>
+              <label class="va-option-row"><input type="radio" name="chimneyType" value="na"> N/A — no chimney</label>
               <label class="va-option-row"><input type="radio" name="chimneyType" value="new_flashing"> New flashing (chimney has no existing flashing)</label>
               <label class="va-option-row"><input type="radio" name="chimneyType" value="reflash"> Reflash only (reseal / step-flash existing chimney)</label>
               <label class="va-option-row"><input type="radio" name="chimneyType" value="both"> Both — new flashing &amp; reflash</label>
             </div>
+            <div class="va-row-error" id="chimneyTypeRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-bottom:var(--sp-3);font-weight:600;"></div>
             <div id="chimneyPricingOptions" style="display:none;margin-top:var(--sp-2);">
               <div class="va-options">
-                <label class="va-option-row"><input type="radio" name="chimneyOption" value="included" checked> Included in bid (no extra charge)</label>
+                <label class="va-option-row"><input type="radio" name="chimneyOption" value="included"> Included in bid (no extra charge)</label>
                 <label class="va-option-row"><input type="radio" name="chimneyOption" value="reuse"> Reuse / inspect existing flashing (if in good condition)</label>
                 <label class="va-option-row">
                   <input type="radio" name="chimneyOption" value="oop"> Out of pocket —
                   <span class="va-inline-dollar">$<input type="number" name="chimneyOopPrice" id="chimneyOopPrice" min="0" step="1" placeholder="0"></span>
                 </label>
               </div>
+              <div class="va-row-error" id="chimneyOptionRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
             </div>
           </div>
 
           <!-- ── Skylights ── -->
-          <div class="va-box">
+          <div class="va-box" id="skylightsRow">
             <h4>Skylights</h4>
             <div class="va-options">
-              <label class="va-option-row"><input type="radio" name="skylights" value="na" checked> N/A — no skylights</label>
+              <label class="va-option-row"><input type="radio" name="skylights" value="na"> N/A — no skylights</label>
               <label class="va-option-row"><input type="radio" name="skylights" value="reflash"> Reflash skylights (included)</label>
               <label class="va-option-row"><input type="radio" name="skylights" value="replace"> Replace skylights</label>
             </div>
+            <div class="va-row-error" id="skylightsRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
           </div>
 
           <!-- ── Other Shingles Available ── -->
@@ -1805,14 +1809,15 @@
           </div>
 
           <!-- ── Ice & Water Shield (86e10t28b) ── -->
-          <div class="va-box">
+          <div class="va-box" id="iceWaterShieldRow">
             <h4>Ice &amp; Water Shield</h4>
             <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Ice &amp; water shield is a self-adhering waterproof membrane installed at eaves, valleys, and other vulnerable areas.</p>
             <div class="va-options">
-              <label class="va-option-row"><input type="radio" name="iceWaterShield" value="not_applicable" checked> Not Applicable — climate or project type does not require</label>
+              <label class="va-option-row"><input type="radio" name="iceWaterShield" value="not_applicable"> Not Applicable — climate or project type does not require</label>
               <label class="va-option-row"><input type="radio" name="iceWaterShield" value="standard"> Standard — required coverage only (eaves &amp; valleys, code minimum)</label>
               <label class="va-option-row"><input type="radio" name="iceWaterShield" value="enhanced"> Enhanced — full-coverage application (entire roof deck)</label>
             </div>
+            <div class="va-row-error" id="iceWaterShieldRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
           </div>
 
           <!-- ── Ventilation ── -->
@@ -1845,11 +1850,11 @@
           </div>
 
           <!-- ── Drip Edge (86e10t28h) ── -->
-          <div class="va-box">
+          <div class="va-box" id="dripEdgeOptionRow">
             <h4>Drip Edge</h4>
             <p style="font-size:0.8rem;color:#6B7280;margin-bottom:var(--sp-3);">Drip edge is a metal flashing installed at the roof perimeter to direct water away from the fascia.</p>
             <div class="va-options">
-              <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="na" checked> N/A — not applicable to this project</label>
+              <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="na"> N/A — not applicable to this project</label>
               <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="included_black"> Included — Standard (Black)</label>
               <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="included_white"> Included — Standard (White)</label>
               <label class="va-option-row"><input type="radio" name="dripEdgeOption" value="included_custom"> Included — Custom color / special order</label>
@@ -1858,6 +1863,7 @@
                 <span class="va-inline-dollar">$<input type="number" name="dripEdgeOopPrice" id="dripEdgeOopPrice" min="0" step="1" placeholder="0"></span>
               </label>
             </div>
+            <div class="va-row-error" id="dripEdgeOptionRowError" style="display:none;color:#991B1B;font-size:0.8rem;margin-top:var(--sp-2);font-weight:600;"></div>
           </div>
 
           <!-- ── Warranty Builder (D-202 Phase 2) ── -->
@@ -2110,7 +2116,7 @@
           <h3 style="font-size:1.1rem;margin-bottom:var(--sp-2);">🧱 Siding Project Details</h3>
           <p style="font-size:0.85rem;color:#6B7280;margin-bottom:var(--sp-6);">This is a retail siding project. The homeowner designs their siding in our property design tool, so you can see exactly what product and color was selected before bidding.</p>
 
-          <!-- Hover Design Summary Panel -->
+          <!-- Design Summary Panel -->
           <div id="hoverDesignPanel" style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-8);">
 
             <!-- Panel header row -->
@@ -2425,7 +2431,7 @@
     let gutterTradeActive = false;
     let sidingTradeActive = false;
     let gutterGuardCount = 0;
-    let sidingWallSquares = null; // populated from Hover data; used by syncSidingTotal
+    let sidingWallSquares = null; // populated from measurement data; used by syncSidingTotal
 
     // ── Siding Total Sync (module-level so loadHoverSidingData + Change Bid can call it) ──
     // For siding-only retail jobs the fee calculator derives total from per-sq × wall_squares + fixed items.
@@ -2622,7 +2628,7 @@
         if (va) va.style.display = '';
         const slc = document.getElementById('secondLayerContingencySection');
         if (slc) slc.style.display = '';
-        // Show Hover roofing panel (86e10t2cb)
+        // Show roofing measurements panel (86e10t2cb)
         const hrp = document.getElementById('hoverRoofingPanel');
         if (hrp) hrp.style.display = 'block';
         loadHoverRoofingData();
@@ -2848,25 +2854,11 @@
       const moreEl    = document.getElementById('hoverPhotosMore');
       const emptyEl   = document.getElementById('hoverPhotosEmpty');
       const addrEl    = document.getElementById('hoverPhotosAddress');
-      const btn3D     = document.getElementById('hoverPhotos3DBtn');
-      const link3D    = document.getElementById('hoverPhotos3DLink');
-      const directLnk = document.getElementById('hoverPhotosDirectLink');
 
       if (loadingEl) loadingEl.style.display = 'none';
 
       // Address line
       if (addrEl && payload.job_address) addrEl.textContent = payload.job_address;
-
-      // Hover job links
-      if (payload.hover_job_id) {
-        const jobUrl = 'https://hover.to/jobs/' + payload.hover_job_id;
-        if (link3D) link3D.href = jobUrl;
-        if (directLnk) directLnk.href = jobUrl;
-
-        // "Open Hover 3D Design" button — siding claims only
-        const isSiding = currentClaim && Array.isArray(currentClaim.trades) && currentClaim.trades.includes('siding');
-        if (isSiding && btn3D) btn3D.style.display = 'block';
-      }
 
       const images = payload.images || [];
 
@@ -2963,7 +2955,7 @@
       if (e.key === 'ArrowRight')  _stepPhotoModal(1);
     }
 
-    // ── Hover Siding Data Loader ──
+    // ── Siding Design Data Loader ──
     async function loadHoverSidingData() {
       const btn        = document.getElementById('loadHoverSidingDataBtn');
       const content    = document.getElementById('hoverDesignContent');
@@ -2991,14 +2983,6 @@
 
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
-
-        // ── "View in Hover" link ──────────────────────────────────────
-        if (data.hover_job_id) {
-          const linkDiv = document.getElementById('hoverDesignLink');
-          const linkEl  = document.getElementById('hoverJobLink');
-          if (linkDiv) linkDiv.style.display = 'block';
-          if (linkEl)  linkEl.href = 'https://hover.to/jobs/' + data.hover_job_id;
-        }
 
         // ── Address line ──────────────────────────────────────────────
         if (data.job_address) {
@@ -3125,10 +3109,7 @@
         btn.disabled = false;
       } catch (err) {
         console.warn('loadHoverSidingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Use the "View property design" button above to view manually.</span>';
-        // Still show the Hover link even on failure so contractor isn't blocked
-        const linkDiv = document.getElementById('hoverDesignLink');
-        if (linkDiv) linkDiv.style.display = 'block';
+        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Please try again.</span>';
         btn.textContent = 'Retry';
         btn.disabled = false;
       }
@@ -3278,7 +3259,7 @@
         // Second-layer tear-off contingency
         document.getElementById('secondLayerContingencySection')?.style.setProperty('display', 'block');
         _wireSlcListeners();
-        // Hover roofing panel (86e10t2cb — non-wizard retail roofing)
+        // Roofing measurements panel (86e10t2cb — non-wizard retail roofing)
         const hrp = document.getElementById('hoverRoofingPanel');
         if (hrp) hrp.style.display = 'block';
         loadHoverRoofingData();
@@ -3328,7 +3309,7 @@
       syncChimney();
     }
 
-    // ── Hover Roofing Measurements (86e10t2cb) ──
+    // ── Roofing Measurements Loader (86e10t2cb) ──
     async function loadHoverRoofingData() {
       const btn     = document.getElementById('loadHoverRoofingBtn');
       const content = document.getElementById('hoverRoofingContent');
@@ -3353,19 +3334,12 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        // Hover job link
-        if (data.hover_job_id) {
-          const linkDiv = document.getElementById('hoverRoofingLink');
-          const linkEl  = document.getElementById('hoverRoofingJobLink');
-          if (linkDiv) linkDiv.style.display = 'block';
-          if (linkEl)  linkEl.href = 'https://hover.to/jobs/' + data.hover_job_id;
-        }
         if (data.job_address) {
           const addrEl = document.getElementById('hoverRoofingAddressLine');
           if (addrEl) addrEl.textContent = data.job_address;
         }
 
-        // Try to extract roofing-specific measurements from the Hover payload
+        // Try to extract roofing-specific measurements from the vendor payload
         const totalSquares  = data.total_squares  || data.roof_squares  || null;
         const ridgeLength   = data.ridge_length   || null;
         const hipLength     = data.hip_length     || null;
@@ -3397,9 +3371,7 @@
         btn.disabled = false;
       } catch (err) {
         console.warn('loadHoverRoofingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load roofing measurements. Try the View measurements link above.</span>';
-        const linkDiv = document.getElementById('hoverRoofingLink');
-        if (linkDiv) linkDiv.style.display = 'block';
+        content.innerHTML = '<span style="color:#DC2626;">Could not load roofing measurements. Please try again.</span>';
         btn.textContent = 'Retry';
         btn.disabled = false;
       }
@@ -3634,8 +3606,8 @@
             // D-202 Phase 2 — wire warranty dropdowns once contractor is known (Session 463)
             try { await initWarrantyDropdowns(null); } catch (e) { console.warn('[D-202] init wire failed:', e); }
 
-            // Render contract template card now that both claim + contractor are loaded (86e10t277)
-            renderContractTemplateCard();
+            // Render bid eligibility banner now that both claim + contractor are loaded (86e10t277, gh-1504)
+            await renderContractTemplateCard();
 
             // Re-render line items with contractor trades
             renderInsuranceLineItems();
@@ -3729,7 +3701,9 @@
       }
 
       // Gutters
-      setRadio('gutterOption', va.gutters?.option || 'none');
+      // gh-1377: no fallback default — a legacy/undeclared bid must reload
+      // with nothing checked, not a silently re-asserted "none".
+      if (va.gutters?.option) setRadio('gutterOption', va.gutters.option);
       if (va.gutters?.additional_cost_5inch) setVal('gutter5Cost', va.gutters.additional_cost_5inch);
       if (va.gutters?.additional_cost_6inch) setVal('gutter6Cost', va.gutters.additional_cost_6inch);
       if (va.gutters?.other_text) setVal('gutterOtherText', va.gutters.other_text);
@@ -3775,7 +3749,8 @@
       }
 
       // Skylights
-      setRadio('skylights', va.skylights || 'na');
+      // gh-1377: no fallback default — see Gutters comment above.
+      if (va.skylights) setRadio('skylights', va.skylights);
 
       // Other shingles
       // Other Shingles — new array format ["GAF|Timberline HDZ", ...] or legacy object format
@@ -4051,104 +4026,96 @@
         .replace(/"/g, '&quot;');
     }
 
-    // ── Contract Template Card (86e10t277) ────────────────────────────────────
+    // ── Bid Eligibility Banner (86e10t277, gh-1504) ────────────────────────────────────
+    // gh-1504: this used to read currentContractor.contract_templates -- a field
+    // nothing in this file ever populated -- so the "you cannot submit a bid"
+    // banner showed for every contractor regardless of real template status.
+    // Fix (CTO+CEO endorsed option 2): delete the client-side template lookup
+    // entirely and defer to the same server-side bid_can_submit RPC already
+    // enforced at submit time (D-199, see checkBidCanSubmitGate below), so the
+    // banner is incapable of contradicting the gate -- it IS the gate's verdict.
+
+    // gh-1504 copy check: bid_can_submit's `reason` strings were read live from
+    // the DB (pg_proc.prosrc). Most are already contractor-readable. Two are
+    // not: 'manual_mapping_pending' names internal DocuSign anchor-mapping
+    // terminology, and the input-validation failures (status: null -- missing
+    // contractor_id/trade/funding_type) are pure engineer-facing guard clauses
+    // that should never reach a contractor's screen. Keyed on `status` (a
+    // stable code) rather than the `reason` sentence, so a future copy tweak
+    // on the server can't silently break this map; any other status falls
+    // back to the RPC's own reason string verbatim.
+    const BID_CAN_SUBMIT_REASON_OVERRIDES = {
+      manual_mapping_pending: 'Your contract template needs a quick manual review from our team before it can be used for e-signature. We\'ll notify you once it\'s ready -- check your profile for status.',
+    };
+    function mapBidCanSubmitReason(result) {
+      if (!result) return 'You are not able to submit a bid right now. Please contact support.';
+      if (!result.status) {
+        // RPC-level input-validation guard clauses -- engineer-facing, never for a contractor.
+        return 'We couldn\'t verify your bidding eligibility. Please refresh the page or contact support if this continues.';
+      }
+      return BID_CAN_SUBMIT_REASON_OVERRIDES[result.status] || result.reason ||
+        'You are not able to submit a bid right now. Please contact support.';
+    }
+
     // Called after both currentClaim and currentContractor are loaded.
-    function renderContractTemplateCard() {
+    // can_submit: true  -> no banner, form fully usable.
+    // can_submit: false -> accurate banner with the (mapped) reason.
+    // RPC fails/errors  -> fail OPEN on the banner (render nothing, log it) --
+    //   the submit-time gate (checkBidCanSubmitGate) still protects actual
+    //   submission either way, so a transient RPC failure here should not
+    //   block or mislead a contractor who is otherwise eligible.
+    async function renderContractTemplateCard() {
       if (!currentClaim || !currentContractor) return;
       const cardEl = document.getElementById('contractTemplateCard');
       if (!cardEl) return;
+      if (!currentContractor.id) return;
 
-      // Determine slot key: {primaryTrade}/{fundingType}
       const claimTrades  = currentClaim.selected_trades || currentClaim.trades || [];
       const primaryTrade = (Array.isArray(claimTrades) ? (claimTrades[0] || 'roofing') : 'roofing').toLowerCase();
       const fundingRaw   = currentClaim.funding_type ||
                            (currentClaim.job_type?.startsWith('insurance') ? 'insurance' : 'retail');
       const fundingKey   = fundingRaw === 'insurance' ? 'insurance' : 'retail';
-      const slotKey      = primaryTrade + '/' + fundingKey;
 
-      // Friendly display label for this slot
-      const tradeLabel   = primaryTrade.charAt(0).toUpperCase() + primaryTrade.slice(1);
-      const fundingLabel = fundingKey === 'insurance' ? 'Insurance' : 'Retail';
-      const slotLabel    = tradeLabel + ' / ' + fundingLabel;
-
-      // Fix (#483, E2E walk 2026-07-08): this card was reading the PC-template
-      // field (color_confirmation_template) and told every contractor with a
-      // validated CONTRACT template that they could not bid. Resolve from
-      // contract_templates with the same normalized funding vocabulary as the
-      // envelope EF (insurance | retail).
-      const __normFunding = (f) => {
-        const s = String(f || '').toLowerCase();
-        if (s.includes('insurance')) return 'insurance';
-        if (s.includes('retail') || s.includes('cash')) return 'retail';
-        return s;
-      };
-      const template = (currentContractor.contract_templates || []).find(t =>
-        t && t.trade && String(t.trade).toLowerCase() === primaryTrade &&
-        __normFunding(t.funding_type) === fundingKey
-      ) || null;
-
-      let bodyHtml = '';
-      const templatePath = template && (template.path || template.file_url);
-      if (template && templatePath) {
-        bodyHtml = `
-          <div style="display:flex;align-items:center;gap:var(--sp-4);flex-wrap:wrap;margin-bottom:var(--sp-2);">
-            <span class="contract-template-slot-label">&#x1F4CB; ${escHtmlBid(slotLabel)} Template</span>
-            <button class="doc-link-btn-form" id="previewTemplateBtnBid" onclick="previewContractTemplateBid()">
-              &#x1F517; Preview Template
-            </button>
-          </div>
-          <p class="contract-template-note">This template will be sent to you and the homeowner after selection for e-signature.</p>
-        `;
-      } else {
-        bodyHtml = `
-          <p class="contract-template-no-upload">
-            &#x26A0;&#xFE0F; You haven't uploaded a contract template for <strong>${escHtmlBid(slotLabel)}</strong>.
-            You cannot submit a bid on this opportunity until your template is uploaded and validated.
-          </p>
-          <p class="contract-template-note">
-            Upload your contract in <a href="contractor-settings.html#contract-templates" style="color:var(--amber);">Settings &rarr; Contract Templates</a>. Otter Quotes does not draft or provide homeowner-contractor contracts &mdash; your contract is the agreement of record.
-          </p>
-        `;
+      let result;
+      try {
+        const { data, error } = await sb.rpc('bid_can_submit', {
+          p_contractor_id: currentContractor.id,
+          p_trade: primaryTrade,
+          p_funding_type: fundingKey,
+        });
+        if (error) {
+          console.error('[gh-1504] bid_can_submit RPC error on load (failing open, no banner):', error);
+          return;
+        }
+        result = data;
+      } catch (e) {
+        console.error('[gh-1504] bid_can_submit threw on load (failing open, no banner):', e);
+        return;
       }
 
+      if (!result || result.can_submit) {
+        cardEl.style.display = 'none';
+        cardEl.innerHTML = '';
+        return;
+      }
+
+      const msg = mapBidCanSubmitReason(result);
       cardEl.innerHTML = `
         <div class="contract-template-card">
           <div class="contract-template-card-title">&#x1F4CB; Contract Template</div>
-          ${bodyHtml}
+          <p class="contract-template-no-upload">
+            &#x26A0;&#xFE0F; ${escHtmlBid(msg)}
+          </p>
+          <p class="contract-template-note">
+            Manage your contract in <a href="contractor-settings.html#contract-templates" style="color:var(--amber);">Settings &rarr; Contract Templates</a>. Otter Quotes does not draft or provide homeowner-contractor contracts &mdash; your contract is the agreement of record.
+          </p>
         </div>
       `;
       cardEl.style.display = 'block';
-
-      // Store file_url for the preview handler
-      if (template?.file_url) {
-        cardEl.dataset.templatePath = templatePath;
-      } else {
-        delete cardEl.dataset.templatePath;
-      }
-    }
-
-    async function previewContractTemplateBid() {
-      const cardEl = document.getElementById('contractTemplateCard');
-      const filePath = cardEl?.dataset.templatePath;
-      if (!filePath) return;
-      const btn = document.getElementById('previewTemplateBtnBid');
-      if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
-      try {
-        const { data, error } = await sb.storage
-          .from('contractor-templates')
-          .createSignedUrl(filePath, 3600);
-        if (error || !data?.signedUrl) throw error || new Error('No URL');
-        window.open(data.signedUrl, '_blank');
-      } catch (err) {
-        console.error('Failed to preview template:', err);
-        alert('Unable to open template preview. Please try again.');
-      } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F517; Preview Template'; }
-      }
     }
 
     // ── Bid Form Document Links (86e10t26y) ───────────────────────────────────
-    // Called after currentClaim is loaded. Renders loss sheet + Hover PDF buttons.
+    // Called after currentClaim is loaded. Renders loss sheet + measurement PDF buttons.
     function renderBidFormDocLinks() {
       if (!currentClaim) return;
       const el = document.getElementById('bidFormDocLinks');
@@ -4158,16 +4125,16 @@
       if (currentClaim.estimate_filename) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormEstimatePdf()">&#x1F4C4; View Loss Sheet</button>');
       }
-      // Homeowner-uploaded measurement file — independent of Hover PDF / hover_orders state.
+      // Homeowner-uploaded measurement file — independent of the measurement PDF / hover_orders state.
       // gh-484: contractors previously had no way to open this even when has_measurements was true.
       // gh-484 follow-up: hover-webhook stamps a synthesized `hover_{job}_measurements.json`
       // sentinel on claims (see supabase/functions/hover-webhook/index.ts) that names no storage
-      // object — the real Hover artifact is a PDF served by the Hover button below. Rendering off
+      // object — the real measurement artifact is a PDF served by the measurement-PDF button below. Rendering off
       // a bare truthiness check therefore offers a link that can only fail. Guard on the sentinel.
       if (currentClaim.measurements_filename && !isHoverMeasurementsSentinel(currentClaim.measurements_filename)) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormMeasurementsPdf()">&#x1F4D0; View Measurements</button>');
       }
-      // Always offer Hover PDF — function handles gracefully if no Hover job exists
+      // Always offer the measurement PDF — function handles gracefully if no measurement job exists
       if (currentClaim.id && !CONFIG.DEMO_MODE) {
         parts.push('<button class="doc-link-btn-form" id="bidFormHoverBtn" onclick="openBidFormHoverPdf()">&#x1F4CF; View Measurement PDF</button>');
       }
@@ -4238,7 +4205,7 @@
         hoverPdfLink.click();
         document.body.removeChild(hoverPdfLink);
       } catch (err) {
-        console.error('Failed to open Hover PDF:', err);
+        console.error('Failed to open measurement PDF:', err);
         alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
       } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; View Measurement PDF'; }
@@ -5112,6 +5079,223 @@
       return `Platform fee for this job: ${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} (${feePct.toFixed(2)}% of your bid). By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed. The fee is due upon contract execution and will be charged to your card on file. Submitting this bid constitutes your acceptance of this fee.`;
     }
 
+    // ── gh-1377 (D-317 cl.2) — Section 2 value-add declarations ──
+    // Every row below used to ship with a `checked` default (stripped above),
+    // so a contractor who never touched the section silently submitted a bid
+    // that declared gutters not-offered and chimney flashing included. Now
+    // "declared" == a radio in the row's group is checked; nothing is
+    // checked on load, so an untouched row is unambiguously undeclared.
+    //
+    // This gate applies ONLY where valueAddsSection actually renders today:
+    // retail (out-of-pocket) roofing bids (isRetailJob && roofing trade,
+    // wizard or non-wizard). It never renders for insurance-funded roofing,
+    // gutters-only, or siding-only bids, so those paths are unaffected.
+    const VALUE_ADD_DECLARATION_ROWS = [
+      {
+        key: 'gutters',
+        radioName: 'gutterOption',
+        rowLabel: 'Gutters',
+        errorElId: 'gutterOptionRowError',
+        containerId: 'gutterOptionRow',
+        // 'other' is a free-text offer — a real declaration, but neither
+        // "included" nor "extra" can be inferred from free text without
+        // guessing, so it is kept as its own state (never synthesise).
+        resolve(value) {
+          if (value === 'none') return { state: 'not_offered', rateField: null };
+          if (value === '5inch_included' || value === '6inch_included') return { state: 'included', rateField: null };
+          if (value === '5inch_additional') return { state: 'extra', rateField: 'gutter5Cost' };
+          if (value === '6inch_additional') return { state: 'extra', rateField: 'gutter6Cost' };
+          if (value === 'other') return { state: 'other', rateField: null };
+          return null;
+        },
+      },
+      {
+        key: 'chimney_type',
+        radioName: 'chimneyType',
+        rowLabel: 'Chimney flashing / reflash',
+        errorElId: 'chimneyTypeRowError',
+        containerId: 'chimneyTypeRow',
+        resolve(value) {
+          if (value === 'na') return { state: 'not_offered', rateField: null };
+          return { state: 'applicable', rateField: null }; // whether included/extra is the nested chimneyOption row
+        },
+      },
+      {
+        key: 'skylights',
+        radioName: 'skylights',
+        rowLabel: 'Skylights',
+        errorElId: 'skylightsRowError',
+        containerId: 'skylightsRow',
+        resolve(value) {
+          if (value === 'na') return { state: 'not_offered', rateField: null };
+          // 'reflash' and 'replace' both ship with no $ input anywhere in
+          // this form — there is no mechanism to charge extra for either,
+          // so both are declared included rather than guessed as extra.
+          return { state: 'included', rateField: null };
+        },
+      },
+      {
+        key: 'ice_water_shield',
+        radioName: 'iceWaterShield',
+        rowLabel: 'Ice & Water Shield',
+        errorElId: 'iceWaterShieldRowError',
+        containerId: 'iceWaterShieldRow',
+        resolve(value) {
+          if (value === 'not_applicable') return { state: 'not_offered', rateField: null };
+          return { state: 'included', rateField: null }; // standard/enhanced — no $ field exists for either
+        },
+      },
+      {
+        key: 'drip_edge',
+        radioName: 'dripEdgeOption',
+        rowLabel: 'Drip Edge',
+        errorElId: 'dripEdgeOptionRowError',
+        containerId: 'dripEdgeOptionRow',
+        resolve(value) {
+          if (value === 'na') return { state: 'not_offered', rateField: null };
+          if (value === 'oop') return { state: 'extra', rateField: 'dripEdgeOopPrice' };
+          return { state: 'included', rateField: null }; // included_black / included_white / included_custom
+        },
+      },
+    ];
+
+    function _valueAddsSectionVisible() {
+      const el = document.getElementById('valueAddsSection');
+      if (!el) return false;
+      return el.style.display !== 'none' && window.getComputedStyle(el).display !== 'none';
+    }
+
+    function _clearValueAddRowError(errorElId) {
+      const el = document.getElementById(errorElId);
+      if (el) { el.style.display = 'none'; el.textContent = ''; }
+    }
+
+    function _showValueAddRowError(errorElId, message) {
+      const el = document.getElementById(errorElId);
+      if (el) { el.style.display = 'block'; el.textContent = message; }
+    }
+
+    // Validates every visible Section 2 row is declared, and that any row
+    // declared "extra" carries a rate > 0 ($0 extra is a contradiction).
+    // Shows per-row inline messages — not one banner — and scrolls to the
+    // first offending row. Returns true/false.
+    function validateValueAddDeclarations() {
+      if (!_valueAddsSectionVisible()) return true; // gate applies only where this section renders
+
+      let firstBadEl = null;
+      let ok = true;
+
+      for (const row of VALUE_ADD_DECLARATION_ROWS) {
+        _clearValueAddRowError(row.errorElId);
+        const checkedEl = document.querySelector(`input[type="radio"][name="${row.radioName}"]:checked`);
+        if (!checkedEl) {
+          _showValueAddRowError(row.errorElId, `${row.rowLabel} — say Included, Extra, or Not offered.`);
+          ok = false;
+          firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          continue;
+        }
+        const resolved = row.resolve(checkedEl.value);
+        if (resolved && resolved.state === 'extra' && resolved.rateField) {
+          const rate = parseFloat(document.getElementById(resolved.rateField)?.value);
+          if (!(rate > 0)) {
+            _showValueAddRowError(row.errorElId, `${row.rowLabel} — enter a rate greater than $0 for the extra charge, or choose Included / Not offered instead.`);
+            ok = false;
+            firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          }
+        }
+      }
+
+      // Chimney's nested pricing row is only required once chimneyType !== 'na'.
+      const chimneyTypeChecked = document.querySelector('input[type="radio"][name="chimneyType"]:checked');
+      _clearValueAddRowError('chimneyOptionRowError');
+      if (chimneyTypeChecked && chimneyTypeChecked.value !== 'na') {
+        const chimneyOptionChecked = document.querySelector('input[type="radio"][name="chimneyOption"]:checked');
+        if (!chimneyOptionChecked) {
+          _showValueAddRowError('chimneyOptionRowError', 'Chimney work — say Included, Reuse/inspect, or Out of pocket.');
+          ok = false;
+          firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
+        } else if (chimneyOptionChecked.value === 'oop') {
+          const rate = parseFloat(document.getElementById('chimneyOopPrice')?.value);
+          if (!(rate > 0)) {
+            _showValueAddRowError('chimneyOptionRowError', 'Chimney out-of-pocket — enter a rate greater than $0, or choose Included / Reuse instead.');
+            ok = false;
+            firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
+          }
+        }
+      }
+
+      if (!ok && firstBadEl) {
+        firstBadEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return ok;
+    }
+
+    // Builds { row_key: { state, rate_cents } } from the CURRENT, already-
+    // validated radio state. Only ever called after validateValueAddDeclarations()
+    // returns true, so every value here reflects an explicit contractor
+    // choice — never a synthesised default. Returns null when valueAddsSection
+    // never rendered (gh-1377 item 5): the key is then simply absent from
+    // scope_summary, and every reader (gh-1378) must treat absence as
+    // "not declared", never as "not offered".
+    function buildValueAddDeclarations() {
+      if (!_valueAddsSectionVisible()) return null;
+
+      const declarations = {};
+      const centsFrom = (fieldId) => {
+        const v = parseFloat(document.getElementById(fieldId)?.value);
+        return (v > 0) ? Math.round(v * 100) : null;
+      };
+
+      for (const row of VALUE_ADD_DECLARATION_ROWS) {
+        if (row.key === 'chimney_type') continue; // folded into 'chimney' below
+        const checkedEl = document.querySelector(`input[type="radio"][name="${row.radioName}"]:checked`);
+        if (!checkedEl) continue; // should not happen post-validation; absence == not declared
+        const resolved = row.resolve(checkedEl.value);
+        if (!resolved) continue;
+        declarations[row.key] = {
+          state: resolved.state,
+          rate_cents: resolved.rateField ? centsFrom(resolved.rateField) : null,
+        };
+      }
+
+      const chimneyTypeChecked = document.querySelector('input[type="radio"][name="chimneyType"]:checked');
+      if (chimneyTypeChecked) {
+        if (chimneyTypeChecked.value === 'na') {
+          declarations.chimney = { state: 'not_offered', rate_cents: null };
+        } else {
+          const chimneyOptionChecked = document.querySelector('input[type="radio"][name="chimneyOption"]:checked');
+          if (chimneyOptionChecked) {
+            declarations.chimney = {
+              state: chimneyOptionChecked.value === 'oop' ? 'extra' : 'included', // 'included' or 'reuse' both -> included
+              rate_cents: chimneyOptionChecked.value === 'oop' ? centsFrom('chimneyOopPrice') : null,
+            };
+          }
+        }
+      }
+
+      return declarations;
+    }
+
+    // Clear a row's inline error the moment the contractor interacts with it,
+    // rather than only re-validating on the next submit attempt.
+    function initValueAddDeclarationErrorClearing() {
+      VALUE_ADD_DECLARATION_ROWS.forEach(row => {
+        document.querySelectorAll(`input[name="${row.radioName}"]`).forEach(el => {
+          el.addEventListener('change', () => _clearValueAddRowError(row.errorElId));
+        });
+      });
+      ['gutter5Cost', 'gutter6Cost', 'dripEdgeOopPrice', 'chimneyOopPrice'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', () => {
+          _clearValueAddRowError('gutterOptionRowError');
+          _clearValueAddRowError('dripEdgeOptionRowError');
+          _clearValueAddRowError('chimneyOptionRowError');
+        });
+      });
+      document.querySelectorAll('input[name="chimneyOption"]').forEach(el => {
+        el.addEventListener('change', () => _clearValueAddRowError('chimneyOptionRowError'));
+      });
+    }
+
     bidForm.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -5158,6 +5342,12 @@
 
       if (!bidForm.checkValidity()) {
         alert('Please fill in all required fields');
+        return;
+      }
+
+      // gh-1377 (D-317 cl.2) — block submit until every visible Section 2
+      // row is declared; per-row inline messages are shown by the function.
+      if (!validateValueAddDeclarations()) {
         return;
       }
 
@@ -5226,10 +5416,17 @@
           // charged another whenever bid ≠ RCV.
           const feeBase = totalPrice;
 
+          // gh-1377 (D-317 cl.2) — additive to the existing scope_summary write
+          // path; no schema change. Only present when valueAddsSection rendered
+          // (retail roofing) and was validated above — never back-filled, never
+          // present-but-empty for bids where the section didn't render.
+          const _valueAddDeclarations = buildValueAddDeclarations();
+
           const scopeSummary = JSON.stringify({
             brand: formData.get('brandProduct') || null,
             estimated_start_date: formData.get('startDate') || null,
             estimated_completion_time: formData.get('completionTime') || null,
+            ...(_valueAddDeclarations ? { declarations: _valueAddDeclarations } : {}),
           });
 
           if (!currentContractor) {
@@ -5620,11 +5817,13 @@
       const icons = { roofing: '🏠', siding: '🧱', gutters: '🌧️', windows: '🪟' };
       const labels = { roofing: 'Roofing', siding: 'Siding', gutters: 'Gutters', windows: 'Windows' };
 
+      // gh-1381 (CodeQL #13): escape every dynamic value entering innerHTML —
+      // defense-in-depth behind the KNOWN_TRADES whitelist at the call site.
       checkboxContainer.innerHTML = trades.map(t =>
         '<label style="display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);background:var(--white);border:2px solid #E5E7EB;border-radius:var(--radius-md);cursor:pointer;transition:all 0.2s;">'
-        + '<input type="checkbox" class="trade-check" value="' + t + '" checked>'
+        + '<input type="checkbox" class="trade-check" value="' + escHtmlBid(t) + '" checked>'
         + '<span style="font-size:1.1rem;">' + (icons[t]||'') + '</span>'
-        + '<span style="font-weight:600;color:var(--navy);">' + (labels[t]||t) + '</span></label>'
+        + '<span style="font-weight:600;color:var(--navy);">' + escHtmlBid(labels[t]||t) + '</span></label>'
       ).join('');
 
       const tradeChecks = document.querySelectorAll('.trade-check');
@@ -5650,12 +5849,13 @@
 
         if (isBundled && selected.length >= 2) {
           breakdownCard.style.display = 'block';
+          // gh-1381 (CodeQL #10): same whitelist upstream; escape at the sink too.
           breakdownFields.innerHTML = selected.map(t =>
             '<div style="display:flex;align-items:center;gap:var(--sp-4);margin-bottom:var(--sp-4);">'
-            + '<span style="min-width:100px;font-weight:600;color:var(--navy);">' + (icons[t]||'') + ' ' + (labels[t]||t) + '</span>'
+            + '<span style="min-width:100px;font-weight:600;color:var(--navy);">' + (icons[t]||'') + ' ' + escHtmlBid(labels[t]||t) + '</span>'
             + '<div class="input-prefix" style="flex:1;">'
             + '<span>$</span>'
-            + '<input type="number" class="trade-price" data-trade="' + t + '" step="0.01" min="0" placeholder="Price for ' + (labels[t]||t).toLowerCase() + '">'
+            + '<input type="number" class="trade-price" data-trade="' + escHtmlBid(t) + '" step="0.01" min="0" placeholder="Price for ' + escHtmlBid((labels[t]||t).toLowerCase()) + '">'
             + '</div></div>'
           ).join('');
 
@@ -5686,6 +5886,9 @@
       // Wire up chimney type toggle (86e10t28v)
       initChimneyToggle();
 
+      // Wire up Section 2 declaration error-clearing (gh-1377)
+      initValueAddDeclarationErrorClearing();
+
       async function startUp() {
         await init();
         updateFeeCalculator();
@@ -5712,9 +5915,16 @@
         }
 
         // Multi-trade project check (non-wizard path)
+        // gh-1381 (CodeQL #13/#10): the trades URL param is attacker-controllable —
+        // a crafted link could reflect script through it. Whitelist to the known
+        // trade keys before anything reaches an innerHTML sink.
+        const KNOWN_TRADES = ['roofing', 'siding', 'gutters', 'windows'];
         const tradesParam = urlParams.get('trades');
         if (tradesParam) {
-          try { initTradeSelection(JSON.parse(tradesParam)); } catch(e) {}
+          try {
+            const parsedTrades = JSON.parse(tradesParam);
+            initTradeSelection(Array.isArray(parsedTrades) ? parsedTrades.filter(t => KNOWN_TRADES.includes(t)) : []);
+          } catch(e) {}
         } else if (currentClaim && currentClaim.trades && currentClaim.trades.length > 1) {
           initTradeSelection(currentClaim.trades);
         }

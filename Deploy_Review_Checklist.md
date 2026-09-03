@@ -57,6 +57,12 @@ Mark each item ✅ (pass) / ❌ (fail — stop) / N/A (genuinely not applicable 
 - [ ] **`schema-column-lint` CI passes.** Run locally: `python3 scripts/schema-column-lint.py --root . --schema sql/schema-snapshot.json`. Zero FAIL lines. (ADR-010-schema-column-lint)
 - [ ] **New write calls use exact schema column names.** No `coi_document_url` vs `coi_file_url`-style typos. Cross-reference `sql/schema-snapshot.json` if in doubt.
 
+### Service-Role Key Containment
+*(Check if any file under `react-app/` or any client-side `.js`/`.html` was modified.)*
+- [ ] **No client-reachable file reads a service-role-shaped env var.** No file that a `'use client'` component imports — directly or transitively — references `SUPABASE_SERVICE_ROLE_KEY`, `SERVICE_ROLE_KEY`, or any `sb_secret_`-prefixed literal. Next.js inlines whatever the client graph touches at build time, so this leaks a full-privilege key into a public bundle with no runtime error and no CI signal. Check with:
+  `grep -rn "SERVICE_ROLE" react-app/app --include=*.ts --include=*.tsx | grep -v supabase-admin.ts`
+  Measured clean 2026-08-28 (CTO `cto-2026-08-28T19:45:25Z`): the only two hits are `react-app/app/lib/supabase-admin.ts`, which is server-only and carries its own "NEVER import this in a 'use client' component" header, and `react-app/app/lib/supabase.ts`, where the name appears solely inside a warning comment. **Zero real leaks today — this item exists so the first one is caught.** The mechanised version of this check is a lint rule and rides with the CI wiring on #1307.
+
 ---
 
 ## HIGH — Block Absent Explicit Waiver

@@ -53,7 +53,7 @@ digest_path = DEP_UPGRADES_DIR / f"{today}.md"
 
 ## Tool Availability Check
 
-- **GitHub MCP** (`mcp__github__*`): required. If unavailable → create ClickUp task flagging gap and exit.
+- **GitHub MCP** (`mcp__github__*`): required. If unavailable → this is a toolchain gap that cannot file to GitHub by definition (R-098 exception); search the ClickUp CEO board for an existing open "GitHub MCP unavailable" task first (dedup), file there if none found, and exit. Close with evidence once the MCP is restored.
 - **WebFetch / WebSearch**: needed for changelogs. If unavailable → treat all minors as majors.
 
 ---
@@ -152,11 +152,13 @@ Read all CI check runs for the PR head SHA.
 
 **AUTO-MERGE:** Approve PR via GitHub MCP → squash merge → log.
 
-**ESCALATE:**
+**ESCALATE (R-098 — no per-dep tasks anywhere):**
 1. Do NOT merge
-2. Create ClickUp task in list `901711730553` (name, priority, description, tags: `dep-upgrade`, `triage-needed`)
-3. Post comment on Dependabot PR with ClickUp task URL
-4. Log decision
+2. Do NOT create a separate ClickUp task or GitHub issue per dependency — the Dependabot PR itself is the per-dependency work item.
+3. Post comment on the Dependabot PR with the reason, bump type, and changelog excerpt/breaking-change summary. Add a `triage-needed` label to the PR if the escalation is a judgment call (major bump, sensitive package) — no label needed for a plain CI-failure escalation.
+4. Record the escalation as a line-item in the weekly digest and the weekly GitHub sweep issue — not as an individual filing.
+5. **Exception — CEO-facing escalation:** money/legal/brand/vendor-action escalations dedup-check and file to the ClickUp CEO board instead — do not cross-file to GitHub.
+6. Log decision
 
 ---
 
@@ -197,9 +199,22 @@ print("null-byte: PASS")
 
 ---
 
-### Step 7 — ClickUp Summary + Handoff
+### Step 7 — Weekly Sweep GitHub Issue + Handoff (R-098)
 
-Post comment to persistent `[dep-upgrader] Weekly Dependency Sweep Log` task in list `901711730553`.
+**The ClickUp "Weekly Dependency Sweep Log" persistent task (list `901711730553`, confirmed-retired) is retired.** File the weekly digest as a **GitHub issue per run** on `StellarEdgeServices/otterquote-platform`, not an accumulating ClickUp anchor.
+
+**Search open issues first (mandatory dedup):** Look for an existing open issue titled `Dependency sweep — YYYY-MM-DD` for today's date before creating a new one; comment on it instead if found (guards against same-day re-runs).
+
+Create (or comment on) a GitHub issue:
+```
+Title: Dependency sweep — YYYY-MM-DD
+Labels: lane:auto, env:code
+
+Body: dep-upgrader run YYYY-MM-DD: [N merged, N escalated, N skipped]. Full log: [digest path].
+[per-PR summary from Step 6]
+```
+
+Dependabot PRs remain the per-dependency work items — no per-dep ClickUp tasks or GitHub issues are filed alongside this rollup. Close this issue only when every referenced PR has resolved, attaching evidence (merge SHA(s) or superseding-PR note) per CTO-Operating-Model-v2 §6.
 
 Write handoff file:
 ```python

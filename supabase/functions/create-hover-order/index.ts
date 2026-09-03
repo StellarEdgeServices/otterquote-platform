@@ -28,7 +28,8 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
 
 const FUNCTION_NAME = "create-hover-order";
 const HOVER_API_BASE = "https://hover.to";
@@ -105,9 +106,14 @@ async function verifyHoverPayment(
   claimId: string | null,
   requestOrigin: string,
 ): Promise<{ ok: true; amount: number } | { ok: false; status: number; error: string }> {
-  // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z)
+  // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z).
+  // gh-1536: exact-match, not substring — "app-staging." falsely matched
+  // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
+  // site (not staging), which selected Stripe TEST-mode keys against real
+  // production data. This must never match a production hostname.
   const _reqOrigin = requestOrigin;
-  const isStaging = _reqOrigin.includes("staging--") || _reqOrigin.includes("app-staging.");
+  const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
+    _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
   const stripeSecretKey = isStaging
     ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
     : Deno.env.get("STRIPE_SECRET_KEY");
@@ -115,15 +121,34 @@ async function verifyHoverPayment(
     return { ok: false, status: 500, error: "Stripe secret key not configured." };
   }
 
-  // Look up expected price (defensive default 1500 — D-291, $15; supersedes D-205's $150).
-  const { data: priceRow } = await supabase
+  // Look up expected price. gh-1537: no defensive numeric default — a stale
+  // literal fallback is a silent overcharge/mismatch risk one deleted
+  // platform_settings row away (see price-setting.ts). Missing/invalid
+  // setting must fail closed: never contact Hover on a guessed expected
+  // amount.
+  const { data: priceRow, error: priceErr } = await supabase
     .from("platform_settings")
     .select("value")
     .eq("key", "hover_measurement_price")
     .maybeSingle();
-  const expectedAmount = typeof priceRow?.value === "number"
-    ? priceRow.value
-    : Number(priceRow?.value ?? 1500);
+  let expectedAmount: number;
+  try {
+    expectedAmount = resolveRequiredPriceCents("hover_measurement_price", priceRow, priceErr);
+  } catch (err) {
+    const message = err instanceof PlatformSettingMissingError ? err.message : "platform_setting_missing: hover_measurement_price";
+    console.error(`[${FUNCTION_NAME}] ${message}`, priceErr ?? "");
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "platform_setting_missing",
+        function_name: FUNCTION_NAME,
+        message,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error("platform_alerts_log insert failed:", alertErr);
+    }
+    return { ok: false, status: 500, error: "Could not verify Hover measurement payment: pricing configuration unavailable." };
+  }
 
   const basicAuth = btoa(`${stripeSecretKey}:`);
   const piRes = await fetch(`${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}`, {

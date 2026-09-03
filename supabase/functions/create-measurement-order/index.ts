@@ -35,7 +35,8 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { logNotificationFailure } from "./notification-failure.ts";
 
 const FUNCTION_NAME = "create-measurement-order";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -176,7 +177,12 @@ async function verifyPayment(
   claimId: string | null,
   requestOrigin: string,
 ): Promise<{ ok: true; amount: number; stripeChargeId: string | null } | { ok: false; status: number; error: string }> {
-  const isStaging = requestOrigin.includes("staging--") || requestOrigin.includes("app-staging.");
+  // gh-1536: exact-match, not substring — "app-staging." falsely matched
+  // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
+  // site (not staging), which selected Stripe TEST-mode keys against real
+  // production data. This must never match a production hostname.
+  const isStaging = requestOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
+    requestOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
   const stripeSecretKey = isStaging
     ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
     : Deno.env.get("STRIPE_SECRET_KEY");
@@ -220,6 +226,104 @@ async function verifyPayment(
   }
 
   return { ok: true, amount: pi.amount, stripeChargeId: pi.latest_charge ?? null };
+}
+
+/**
+ * gh-1412: make the order visible the moment it exists.
+ *
+ * Two artifacts, neither of which may break the money path:
+ *   1. An activity_log row — the CTO's #1412 ruling put this first: "the log
+ *      row is the record that makes the order findable, auditable, and
+ *      reportable." Before this, a paid order's only trace anywhere was the
+ *      hover_orders row itself (measured live: the first real-looking order
+ *      sat 6h44m in awaiting_fulfillment with zero activity rows).
+ *   2. An invoke of notify-measurement-order (service-role bearer, same
+ *      machine-to-machine model as notify-admin-new-contractor), which sends
+ *      the admin the "Buy basic report — [address]" / "Buy detailed report —
+ *      [address]" purchase email per #1339's spec copy.
+ *
+ * Failures here are logged and swallowed: the buyer's order (and possibly
+ * their money) is already recorded, and a notification failure must never
+ * turn a recorded order into a 500.
+ */
+async function recordOrderCreated(
+  supabase: any,
+  supabaseUrl: string,
+  order: { id: string; status: string },
+  claimId: string,
+  productCode: string,
+  buyerRole: string,
+  buyerUserId: string,
+  amountCents: number | null,
+): Promise<void> {
+  // gh-1538: this lookup must never throw out of recordOrderCreated — a
+  // failure here must not turn an already-recorded (and possibly paid)
+  // order into a client-facing 500. Defaults is_test to false (fail toward
+  // "treat as real," matching this function's existing swallow-everything
+  // posture) rather than let the exception propagate.
+  let isTest = false;
+  try {
+    const { data: claim } = await supabase
+      .from("claims")
+      .select("is_test")
+      .eq("id", claimId)
+      .maybeSingle();
+    isTest = claim?.is_test === true;
+  } catch (e) {
+    console.error(`[${FUNCTION_NAME}] claim is_test lookup failed:`, e);
+  }
+
+  try {
+    const { error: logErr } = await supabase.from("activity_log").insert({
+      event_type: "measurement_order_created",
+      title: "measurement_order_created",
+      user_id: buyerUserId,
+      is_test: isTest,
+      metadata: {
+        order_id: order.id,
+        claim_id: claimId,
+        product_code: productCode,
+        status: order.status,
+        requested_by_role: buyerRole,
+        amount_cents: amountCents,
+      },
+    });
+    if (logErr) console.error(`[${FUNCTION_NAME}] activity_log insert failed:`, logErr);
+  } catch (e) {
+    console.error(`[${FUNCTION_NAME}] activity_log write threw:`, e);
+  }
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/notify-measurement-order`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({ order_id: order.id }),
+    });
+    if (!res.ok) {
+      const bodyText = await res.text();
+      throw new Error(`notify-measurement-order returned ${res.status}: ${bodyText}`);
+    }
+  } catch (e) {
+    // gh-1538: this was console.error-only, with no durable trace anywhere
+    // (no activity_log row, no Sentry, no notifications row). Never turn a
+    // notification failure into a client-facing throw here — the order is
+    // already recorded, and possibly paid for; log it instead.
+    console.error(`[${FUNCTION_NAME}] notify-measurement-order invoke failed:`, e);
+    await logNotificationFailure(
+      (row) => supabase.from("activity_log").insert(row),
+      e,
+      {
+        functionName: FUNCTION_NAME,
+        recipientRole: buyerRole,
+        isTest,
+        userId: buyerUserId,
+        extra: { order_id: order.id, claim_id: claimId },
+      },
+    );
+  }
 }
 
 serve(async (req) => {
@@ -292,6 +396,8 @@ serve(async (req) => {
         console.error(`[${FUNCTION_NAME}] request insert failed:`, reqErr);
         return json({ error: "Could not file your request. Please try again." }, 500, corsHeaders);
       }
+      // gh-1412: log + admin email ("Buy detailed report — [address]").
+      await recordOrderCreated(supabase, supabaseUrl, requested, claimId, productCode, "contractor", authedUser.id, null);
       return json({ order_id: requested.id, status: requested.status, quote_required: true }, 200, corsHeaders);
     }
 
@@ -362,6 +468,9 @@ serve(async (req) => {
       product_code: productCode,
       amount: paid.amount,
     });
+
+    // gh-1412: log + admin email ("Buy basic report — [address]").
+    await recordOrderCreated(supabase, supabaseUrl, order, claimId, productCode, buyerRole, authedUser.id, paid.amount);
 
     return json({
       order_id: order.id,

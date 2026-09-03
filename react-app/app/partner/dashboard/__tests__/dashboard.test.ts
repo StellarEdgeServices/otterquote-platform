@@ -121,7 +121,7 @@ describe('identity + links', () => {
   it('recruitLinkState: enabled link when recruit_code present, else pending message', () => {
     expect(recruitLinkState({ recruit_code: 'rc9' }, RECRUIT_LINK_PENDING)).toEqual({
       enabled: true,
-      text: 'otterquote.com/recruit.html?code=rc9',
+      text: 'https://otterquote.com/recruit.html?code=rc9',
     });
     expect(recruitLinkState({ recruit_code: null }, RECRUIT_LINK_PENDING)).toEqual({
       enabled: false,

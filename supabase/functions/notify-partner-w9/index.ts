@@ -25,7 +25,8 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { readW9GateFlag, shouldSkipW9Notification, skipResponseBody } from "./w9-gate.ts";
 
 const PARTNER_DASHBOARD_URL = "https://otterquote.com/partner-dashboard.html#w9Upload";
 
@@ -207,6 +208,21 @@ serve(async (req) => {
     // ── Load agent details ───────────────────────────────────────────────────
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const sb = createClient(supabaseUrl, serviceRoleKey);
+
+    // D-319 (gh-1509 half A): platform_settings.w9_gate_retired — flag OFF
+    // (default; no row yet, this PR ships no seed/migration) sends exactly as
+    // before. Flag ON no-ops with a logged skip — no email, no DB write.
+    const w9GateRetired = await readW9GateFlag(
+      async () => await sb.from("platform_settings").select("value").eq("key", "w9_gate_retired").maybeSingle(),
+      (msg) => console.error(`notify-partner-w9: ${msg}`)
+    );
+    if (shouldSkipW9Notification(w9GateRetired)) {
+      console.log(`notify-partner-w9: SKIPPED agent_id=${agentId} — w9_gate_retired flag is ON`);
+      return new Response(
+        JSON.stringify(skipResponseBody(agentId)),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const { data: agent, error: agentErr } = await sb
       .from("referral_agents")

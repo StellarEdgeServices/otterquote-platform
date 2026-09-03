@@ -33,7 +33,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const FUNCTION_NAME = "send-home-profile-prompt";
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;

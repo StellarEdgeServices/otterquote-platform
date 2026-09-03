@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Admin - Business Lines Dashboard | Otter Quotes</title>
+
+<!-- PWA (Admin App v1, gh-1479) -->
+<link rel="manifest" href="/admin-app.webmanifest">
+<meta name="theme-color" content="#E07B00">
+<link rel="apple-touch-icon" href="/img/app/apple-touch-icon-admin.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OQ Admin">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+<style>
+:root {
+  --navy: #0D1B2E; --amber: #E07B00; --white: #FFFFFF;
+  --slate: #94A3B8; --light: #E2E8F0;
+  --red: #EF4444; --green: #10B981; --teal: #14B8A6; --yellow: #F59E0B;
+}
+body { background-color: var(--navy); color: #1F2937; font-family: 'Rubik', sans-serif; }
+main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+.admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+.admin-title  { display: flex; align-items: center; gap: 1rem; }
+.admin-badge  { background: var(--amber); color: var(--navy); padding: 0.4rem 0.8rem; border-radius: 0.5rem; font-weight: 700; font-size: 0.875rem; }
+.admin-header h1 { font-size: 2rem; color: var(--white); margin: 0; }
+.logout-btn  { background: var(--white); color: var(--navy); border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; }
+
+.admin-nav { display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap; }
+.admin-nav a { color: var(--slate); text-decoration: none; font-weight: 500; font-size: 0.9rem; padding: 0.5rem 1rem; border-radius: 0.5rem; }
+.admin-nav a:hover  { background: rgba(255,255,255,0.08); color: var(--white); }
+.admin-nav a.active { background: rgba(255,255,255,0.12); color: var(--white); }
+
+.breadcrumb { color: var(--slate); font-size: 0.9rem; margin-bottom: 1.25rem; }
+.breadcrumb a { color: var(--teal); text-decoration: none; }
+.breadcrumb a:hover { text-decoration: underline; }
+
+.info-banner { background: rgba(20,184,166,0.08); border: 1px solid rgba(20,184,166,0.25); color: var(--teal); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.88rem; line-height: 1.5; }
+.not-measured-banner { background: rgba(148,163,184,0.10); border: 1px dashed rgba(148,163,184,0.4); color: var(--slate); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.88rem; line-height: 1.5; }
+.not-measured-banner a { color: var(--teal); }
+
+/* ── Top page: line cards ── */
+.line-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+.line-card { background: var(--white); border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.line-card h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: var(--navy); display: flex; align-items: center; gap: 0.6rem; }
+.line-card a.line-link { display: inline-block; margin-top: 1rem; color: var(--teal); font-weight: 600; text-decoration: none; font-size: 0.9rem; }
+.line-card a.line-link:hover { text-decoration: underline; }
+.status-pill { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.2rem 0.55rem; border-radius: 1rem; }
+.status-operational { background: #D1FAE5; color: #065F46; }
+.status-not-operational { background: #F1F5F9; color: #475569; }
+.status-note { color: #64748B; font-size: 0.85rem; margin-top: 0.5rem; }
+
+/* ── Stat tiles ── */
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.tile { background: #F8FAFC; border: 1px solid var(--light); border-radius: 0.6rem; padding: 0.9rem 1rem; }
+.tile-label { font-size: 0.75rem; color: var(--slate); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.3rem; }
+.tile-value { font-size: 1.6rem; font-weight: 700; color: var(--navy); }
+.tile.measured-zero .tile-value { color: #047857; }
+.tile.measured-zero { border-color: #A7F3D0; background: #ECFDF5; }
+.tile.measured-zero .tile-flag { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-weight: 700; color: #047857; background: #D1FAE5; padding: 0.1rem 0.4rem; border-radius: 0.3rem; vertical-align: middle; }
+.tile.not-measured { border-style: dashed; border-color: #CBD5E1; background: #F8FAFC; }
+.tile.not-measured .tile-value { color: var(--slate); font-size: 1.1rem; }
+.tile .tile-note { font-size: 0.7rem; color: #64748B; margin-top: 0.3rem; line-height: 1.35; }
+/* NOT RUN (gh-1340 phase 4) — a data source that EXISTS but did not answer
+   this request (Stripe read: key missing, HTTP error, refused pagination).
+   Fourth distinct treatment: red dashed, vs measured (white), measured-zero
+   (green) and not-measured (grey dashed). Never renders a number. */
+.tile.not-run { border-style: dashed; border-color: #FCA5A5; background: #FEF2F2; }
+.tile.not-run .tile-value { color: #B91C1C; font-size: 1.05rem; }
+.tile.not-run .tile-note { color: #991B1B; }
+
+/* ── Otter Quotes line page: audience cards ── */
+.audience-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
+.audience-card { background: var(--white); border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.audience-card h3 { margin: 0 0 0.5rem; color: var(--navy); }
+.audience-card .counts { color: #64748B; font-size: 0.88rem; margin-bottom: 0.75rem; }
+.audience-card a.crm-link { display: inline-block; background: var(--amber); color: var(--navy); padding: 0.5rem 1rem; border-radius: 0.4rem; font-weight: 600; text-decoration: none; font-size: 0.88rem; }
+
+/* ── Audience page: tabs ── */
+.tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.tab-btn { background: rgba(255,255,255,0.05); color: var(--slate); border: 1px solid rgba(255,255,255,0.1); padding: 0.6rem 1.2rem; border-radius: 0.5rem 0.5rem 0 0; cursor: pointer; font-size: 0.92rem; font-family: inherit; font-weight: 600; }
+.tab-btn.active { background: var(--white); color: var(--navy); border-color: var(--white); }
+.tab-btn.disabled { cursor: not-allowed; opacity: 0.6; }
+
+/* ── Marketing tab (gh-1470 / #1340 phase 2b) ── */
+.visits-dark-banner { background: rgba(148,163,184,0.10); border: 1px dashed rgba(148,163,184,0.4); color: var(--slate); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.88rem; line-height: 1.5; }
+.visits-dark-banner a { color: var(--teal); }
+.marketing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+.marketing-card { background: var(--white); border-radius: 0.75rem; padding: 1.25rem 1.4rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.marketing-card h4 { margin: 0 0 0.5rem; color: var(--navy); font-size: 1rem; }
+.metric-total { font-size: 1.5rem; font-weight: 700; color: var(--navy); }
+.metric-total.measured-zero { color: #047857; }
+.metric-unit { font-size: 0.76rem; color: var(--slate); margin-left: 0.45rem; font-weight: 500; }
+.sparkline { display: flex; align-items: flex-end; gap: 2px; height: 46px; margin: 0.7rem 0 0.3rem; }
+.sparkline.small { height: 22px; margin: 0.2rem 0; }
+.sparkline .spark-bar { flex: 1; background: var(--teal); border-radius: 2px 2px 0 0; min-height: 2px; }
+.sparkline .spark-bar.zero { background: var(--light); }
+.not-run-note { font-size: 0.8rem; color: #B91C1C; background: #FEF2F2; border: 1px dashed #FCA5A5; border-radius: 0.4rem; padding: 0.6rem 0.8rem; margin-top: 0.5rem; }
+.excluded-note { font-size: 0.74rem; color: #92400E; margin-top: 0.4rem; line-height: 1.4; }
+.click-caveat { margin-top: 0.65rem; background: #FEF3C7; border: 1px solid #FDE68A; color: #92400E; border-radius: 0.4rem; padding: 0.6rem 0.8rem; font-size: 0.78rem; line-height: 1.4; }
+.click-caveat a { color: #92400E; }
+.grouped-list { margin-top: 0.5rem; }
+.grouped-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0; border-top: 1px solid var(--light); }
+.grouped-row:first-child { border-top: none; }
+.grouped-key { flex: 0 0 130px; font-size: 0.8rem; color: var(--navy); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grouped-spark { flex: 1; }
+.grouped-total { flex: 0 0 auto; font-size: 0.82rem; color: #475569; font-weight: 600; min-width: 2.2rem; text-align: right; }
+.funnel-row { display: flex; align-items: center; gap: 1rem; padding: 0.65rem 0; border-top: 1px solid var(--light); }
+.funnel-row:first-child { border-top: none; }
+.funnel-label { flex: 0 0 170px; font-weight: 600; color: var(--navy); font-size: 0.85rem; }
+.funnel-body { flex: 1; }
+
+.controls-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; background: var(--white); border-radius: 0.6rem; padding: 0.85rem 1.1rem; }
+.controls-row label { color: var(--navy); font-size: 0.88rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+.legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; color: #64748B; }
+.legend span.dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.3rem; }
+
+.roster-empty { background: var(--white); border-radius: 0.75rem; padding: 2rem; text-align: center; }
+.roster-empty.measured-zero { border: 1px solid #A7F3D0; background: #ECFDF5; color: #047857; font-weight: 600; }
+.roster-empty.plain { color: var(--slate); }
+
+.table-wrapper { background: var(--white); border-radius: 0.75rem; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.crm-table { width: 100%; border-collapse: collapse; min-width: 960px; }
+.crm-table th { background: var(--light); padding: 0.8rem 1rem; text-align: left; font-weight: 600; color: var(--navy); font-size: 0.82rem; white-space: nowrap; }
+.crm-table td { padding: 0.85rem 1rem; border-top: 1px solid var(--light); font-size: 0.86rem; vertical-align: top; }
+.crm-table tr.member-row { cursor: pointer; }
+.crm-table tr.member-row:hover { background: rgba(0,0,0,0.02); }
+.crm-table tr.is-test td { background: repeating-linear-gradient(45deg, #FFFBEB, #FFFBEB 8px, #FEF3C7 8px, #FEF3C7 16px); }
+
+.member-label { font-weight: 600; color: var(--navy); }
+.test-badge { display: inline-block; margin-left: 0.4rem; font-size: 0.66rem; font-weight: 700; color: #92400E; background: #FEF3C7; padding: 0.1rem 0.35rem; border-radius: 0.3rem; }
+
+.checklist { display: flex; flex-wrap: wrap; gap: 0.3rem; max-width: 420px; }
+.check-item { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.72rem; padding: 0.15rem 0.4rem; border-radius: 0.3rem; white-space: nowrap; }
+.check-item.done { background: #D1FAE5; color: #065F46; }
+.check-item.pending { background: #F1F5F9; color: #94A3B8; }
+
+.movement-badge { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 700; padding: 0.3rem 0.6rem; border-radius: 0.4rem; font-size: 0.85rem; }
+.movement-green  { background: #D1FAE5; color: #065F46; }
+.movement-yellow { background: #FEF3C7; color: #92400E; }
+.movement-red    { background: #FEE2E2; color: #991B1B; }
+.movement-complete { background: #DBEAFE; color: #1E40AF; }
+.movement-unknown { background: #F1F5F9; color: #64748B; }
+
+.detail-row td { background: #F8FAFC; padding: 1rem 1.5rem; }
+.detail-inputs { font-size: 0.8rem; color: #475569; }
+.detail-inputs div { padding: 0.15rem 0; }
+.detail-inputs .stale { color: #94A3B8; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.loading, .empty { padding: 2rem; text-align: center; color: var(--slate); }
+.error-box { background: #FEE2E2; color: #991B1B; padding: 0.9rem 1.1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; }
+</style>
+</head>
+<body>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+
+<main id="main-content" style="display:none">
+
+  <div class="admin-header">
+    <div class="admin-title">
+      <span class="admin-badge">ADMIN</span>
+      <h1>Business Lines Dashboard</h1>
+    </div>
+    <button class="logout-btn" onclick="Auth.signOut()">Sign Out</button>
+  </div>
+
+  <nav class="admin-nav">
+    <a href="admin-dashboard.html" class="active">Business Lines</a>
+    <a href="admin-contractors.html">Contractors</a>
+    <a href="admin-incomplete-profiles.html">Incomplete Profiles</a>
+    <a href="admin-template-review.html">Template Review</a>
+    <a href="admin-cert-verifications.html">Cert Verifications</a>
+    <a href="admin-payouts.html">Payouts</a>
+    <a href="admin-warranty-drift.html">Warranty Drift</a>
+    <a href="admin-measurements.html">Measurements</a>
+  </nav>
+
+  <div id="errorBox" style="display:none" class="error-box"></div>
+  <div id="viewRoot"><div class="loading">Loading…</div></div>
+</main>
+
+<script>
+/**
+ * gh-1340 phase 1 — Business Lines Dashboard.
+ *
+ * Top page (all SES lines) -> Otter Quotes line page (high-level stats +
+ * three audiences) -> audience page (Marketing | CRM tabs). CRM is the
+ * phase-1 build: one roster per audience, checklist ticked from
+ * get-business-lines-dashboard's response, days-since-movement computed
+ * SERVER-SIDE by that EF (never here).
+ *
+ * Phase 4: Revenue MTD tile (top page OQ card + OQ line page) fed by the
+ * EF's server-side Stripe read — see revenueTileHtml() for the honest-state
+ * contract (measured / measured-zero / NOT RUN, never a fabricated $0).
+ *
+ * gh-1470 (#1340 phase 2b): Marketing tab renders the 12-week weekly-bucketed
+ * series gh-1469 added to the EF response (audiences.*.marketing) — signups,
+ * claims, measurement orders, leads by source (homeowner); the pre-approval
+ * -> template -> first-bid funnel (contractor); partner signups by
+ * agent_type/UTM and referral clicks (referral_partner). This file computes
+ * no counts and decides no honesty state itself — it renders exactly what
+ * the EF already decided (kind: measured / measured_zero / not_run), same
+ * contract as tileHtml()/revenueTileHtml() above. GA4 visits are not wired
+ * in yet (#1331, phase 5) — visitsDarkBannerHtml() says so on the tab rather
+ * than letting any figure here be read as a rate of visits. See
+ * renderMarketingSection() and its helpers below movementHtml().
+ *
+ * URL state: ?line=otterquotes&audience=homeowner|contractor|referral_partner&tab=crm|marketing
+ * No params = top page. line=otterquotes, no audience = OQ line page.
+ *
+ * Test-toggle: the EF always returns every row (is_test included) so the
+ * toggle is a pure client-side display filter, not a recomputation — the
+ * only thing computed here is which rows to show, never their checklist or
+ * their days-since-movement.
+ */
+var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+
+var AUDIENCE_LABELS = { homeowner: 'Homeowner', contractor: 'Contractor', referral_partner: 'Referral Partner' };
+
+var state = { user: null, data: null, includeTest: false, expanded: {} };
+
+var _initFired = false;
+if (sb) {
+  sb.auth.onAuthStateChange(async function (event, session) {
+    if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
+      _initFired = true;
+      if (!session) { window.location.href = '/'; return; }
+      await checkAdminAndInit(session.user);
+    }
+  });
+}
+
+async function checkAdminAndInit(user) {
+  // Same admin test as every other admin page: the primary admin address, or
+  // a contractor row flagged template_review_role='admin'.
+  var isAdmin = user.email === 'dustinstohler1@gmail.com';
+  if (!isAdmin) {
+    var res = await sb.from('contractors').select('template_review_role').eq('user_id', user.id).maybeSingle();
+    isAdmin = res.data && res.data.template_review_role === 'admin';
+  }
+  if (!isAdmin) { window.location.href = '/'; return; }
+  state.user = user;
+  document.getElementById('main-content').style.display = 'block';
+
+  window.addEventListener('popstate', render);
+  await loadDashboard();
+}
+
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function getParams() {
+  return new URLSearchParams(window.location.search);
+}
+
+function navigate(params) {
+  var qs = new URLSearchParams(params).toString();
+  window.history.pushState({}, '', window.location.pathname + (qs ? '?' + qs : ''));
+  render();
+}
+
+async function loadDashboard() {
+  var root = document.getElementById('viewRoot');
+  var errBox = document.getElementById('errorBox');
+  errBox.style.display = 'none';
+  root.innerHTML = '<div class="loading">Loading business lines…</div>';
+  try {
+    var { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+    var res = await fetch(
+      CONFIG.SUPABASE_URL + '/functions/v1/get-business-lines-dashboard',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + session.access_token,
+          'apikey': CONFIG.SUPABASE_ANON,
+        },
+        body: JSON.stringify({}),
+      }
+    );
+    var body = await res.json();
+    if (!res.ok || !body.ok) throw new Error(body.error || ('EF returned ' + res.status));
+    state.data = body;
+    render();
+  } catch (e) {
+    errBox.textContent = 'Could not load the dashboard: ' + e.message;
+    errBox.style.display = 'block';
+    root.innerHTML = '';
+  }
+}
+
+function render() {
+  if (!state.data) return;
+  var params = getParams();
+  var line = params.get('line');
+  var audience = params.get('audience');
+  var tab = params.get('tab') || 'crm';
+
+  if (!line) return renderTopPage();
+  if (line === 'otterquotes' && !audience) return renderLinePage();
+  // gh-1562: `AUDIENCE_LABELS[audience]` truthy was not a real allow-list
+  // check — `audience` is a raw URL query value, and Object.prototype key
+  // names (e.g. audience=constructor, toString, hasOwnProperty) are also
+  // truthy lookups on a plain object literal, so that check let non-label
+  // strings through into renderAudiencePage. hasOwnProperty constrains
+  // `audience` to one of AUDIENCE_LABELS' own three keys, full stop.
+  if (line === 'otterquotes' && audience && Object.prototype.hasOwnProperty.call(AUDIENCE_LABELS, audience)) return renderAudiencePage(audience, tab);
+  return renderTopPage();
+}
+
+function tileHtml(label, tileVal) {
+  var cls = tileVal.kind === 'measured_zero' ? 'tile measured-zero' : 'tile';
+  var flag = tileVal.kind === 'measured_zero' ? '<span class="tile-flag">MEASURED ZERO</span>' : '';
+  return '<div class="' + cls + '"><div class="tile-label">' + esc(label) + '</div>' +
+    '<div class="tile-value">' + tileVal.value + flag + '</div></div>';
+}
+
+function fmtUsd(cents) {
+  return '$' + (Number(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * gh-1340 phase 4 — Revenue MTD, the one tile whose data source lives outside
+ * Supabase (server-side Stripe read inside the EF). Honest states:
+ *   measured       -> real dollars from a completed Stripe read
+ *   measured_zero  -> a real $0.00 Stripe actually answered (green flag)
+ *   not_run        -> the read did not complete (key missing / HTTP error /
+ *                     refused pagination). Prints NOT RUN with the query
+ *                     count and the EF's reason — NEVER $0.
+ * An absent field means the deployed EF predates the revenue read: also
+ * NOT RUN (0 queries), which is exactly true.
+ */
+function revenueTileHtml(rev) {
+  if (!rev || rev.kind === 'not_run') {
+    var queries = rev ? Number(rev.queries) || 0 : 0;
+    var reason = rev && rev.reason ? rev.reason : 'Deployed EF predates the revenue read — deploy owed.';
+    return '<div class="tile not-run"><div class="tile-label">Revenue MTD (Stripe)</div>' +
+      '<div class="tile-value">NOT RUN (' + queries + ' ' + (queries === 1 ? 'query' : 'queries') + ')</div>' +
+      '<div class="tile-note">' + esc(reason) + '</div></div>';
+  }
+  var cls = rev.kind === 'measured_zero' ? 'tile measured-zero' : 'tile';
+  var flag = rev.kind === 'measured_zero' ? '<span class="tile-flag">MEASURED ZERO</span>' : '';
+  var chargeCount = Number(rev.charge_count) || 0;
+  var note = 'Succeeded charges net of refunds since ' + esc(String(rev.window_start_iso || '').slice(0, 10)) +
+    ' (UTC) &middot; ' + chargeCount + ' charge' + (chargeCount === 1 ? '' : 's') +
+    (rev.non_usd_ignored ? ' &middot; ' + Number(rev.non_usd_ignored) + ' non-USD ignored' : '');
+  return '<div class="' + cls + '"><div class="tile-label">Revenue MTD (Stripe)</div>' +
+    '<div class="tile-value">' + fmtUsd(rev.value_cents) + flag + '</div>' +
+    '<div class="tile-note">' + note + '</div></div>';
+}
+
+function renderTopPage() {
+  var lines = state.data.lines;
+  var html = '<p class="breadcrumb">All Stellar Edge Services business lines</p>';
+  html += '<div class="line-cards">';
+  lines.forEach(function (l) {
+    if (l.operational) {
+      html += '<div class="line-card">' +
+        '<h2>' + esc(l.label) + ' <span class="status-pill status-operational">Operational</span></h2>' +
+        '<div class="tile-grid">' +
+          tileHtml('Homeowners', l.stats.homeowners_total) +
+          tileHtml('Claims', l.stats.claims_total) +
+          tileHtml('Contractors', l.stats.contractors_total) +
+          tileHtml('Referral partners', l.stats.referral_partners_total) +
+          tileHtml('Measurement orders', l.stats.measurement_orders) +
+          revenueTileHtml(l.revenue_mtd) +
+        '</div>' +
+        '<a class="line-link" href="?line=' + esc(l.key) + '">View ' + esc(l.label) + ' &rarr;</a>' +
+      '</div>';
+    } else {
+      html += '<div class="line-card">' +
+        '<h2>' + esc(l.label) + ' <span class="status-pill status-not-operational">Not operational</span></h2>' +
+        '<div class="status-note">' + esc(l.status_note) + '</div>' +
+        '<a class="line-link" href="' + esc(l.issues_url) + '" target="_blank" rel="noopener">What remains &rarr;</a>' +
+      '</div>';
+    }
+  });
+  html += '</div>';
+  document.getElementById('viewRoot').innerHTML = html;
+}
+
+function renderLinePage() {
+  var line = state.data.lines.filter(function (l) { return l.key === 'otterquotes'; })[0];
+  var d = state.data.audiences;
+  var html = '<p class="breadcrumb"><a href="?">All business lines</a> &rsaquo; Otter Quotes</p>';
+  html += '<div class="tile-grid">' +
+    // Label fix (gh-1340 CTO review, minor): this tile shows ONLY the total;
+    // the non-test figure is its own tile, next.
+    tileHtml('Homeowners (total)', line.stats.homeowners_total) +
+    tileHtml('Non-test homeowners', line.stats.homeowners_non_test) +
+    tileHtml('Claims', line.stats.claims_total) +
+    tileHtml('Non-test claims', line.stats.claims_non_test) +
+    tileHtml('Contractors', line.stats.contractors_total) +
+    tileHtml('Non-test contractors', line.stats.contractors_non_test) +
+    tileHtml('Referral partners', line.stats.referral_partners_total) +
+    tileHtml('Non-test referral partners', line.stats.referral_partners_non_test) +
+    tileHtml('Measurement orders (hover_orders)', line.stats.measurement_orders) +
+    revenueTileHtml(line.revenue_mtd) +
+  '</div>';
+
+  html += '<div class="audience-cards">';
+  ['homeowner', 'contractor', 'referral_partner'].forEach(function (aud) {
+    var rows = d[aud].rows;
+    var nonTestCount = rows.filter(function (r) { return !r.is_test; }).length;
+    html += '<div class="audience-card">' +
+      '<h3>' + esc(AUDIENCE_LABELS[aud]) + '</h3>' +
+      '<div class="counts">' + rows.length + ' total &middot; ' + nonTestCount + ' non-test</div>' +
+      '<a class="crm-link" href="?line=otterquotes&audience=' + aud + '&tab=crm">Open CRM &rarr;</a>' +
+    '</div>';
+  });
+  html += '</div>';
+  document.getElementById('viewRoot').innerHTML = html;
+}
+
+function renderAudiencePage(audience, tab) {
+  var isMarketing = tab === 'marketing';
+  var rows = state.data.audiences[audience].rows;
+  var html = '<p class="breadcrumb"><a href="?">All business lines</a> &rsaquo; ' +
+    '<a href="?line=otterquotes">Otter Quotes</a> &rsaquo; ' + esc(AUDIENCE_LABELS[audience]) + '</p>';
+
+  // gh-1562 (CodeQL js/xss, both innerHTML sinks below): audience is now
+  // validated by render() via Object.prototype.hasOwnProperty.call, so it
+  // can only be one of AUDIENCE_LABELS' three literal own keys here — not
+  // free text from the EF response, and not an inherited Object.prototype
+  // property name either. That hasOwnProperty gate is the real barrier for
+  // this specific onclick="navigate({...audience:'...'})" sink: the browser
+  // HTML-decodes an attribute's value before compiling it as the inline
+  // handler's JS, so esc()'s '&#39; encoding of a quote would decode back to
+  // a literal ' and would NOT stop a JS-string break-out on its own if this
+  // gate were ever weakened (correction per PR #1563 review — an earlier
+  // version of this comment overclaimed esc() as an independent layer here).
+  // esc() is still applied below, matching this file's house style and
+  // covering the surrounding HTML-attribute-quote boundary, but the
+  // hasOwnProperty constraint above is what actually makes this safe.
+  var audienceEsc = esc(audience);
+  html += '<div class="tabs">' +
+    '<button class="tab-btn' + (isMarketing ? ' active' : '') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audienceEsc + '\',tab:\'marketing\'})">Marketing</button>' +
+    '<button class="tab-btn' + (isMarketing ? '' : ' active') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audienceEsc + '\',tab:\'crm\'})">CRM</button>' +
+  '</div>';
+
+  if (isMarketing) {
+    html += renderMarketingSection(audience);
+    document.getElementById('viewRoot').innerHTML = html;
+    return;
+  }
+
+  var nonTestRows = rows.filter(function (r) { return !r.is_test; });
+  var visibleRows = state.includeTest ? rows : nonTestRows;
+
+  html += '<div class="controls-row">' +
+    '<label><input type="checkbox" id="testToggle" ' + (state.includeTest ? 'checked' : '') + '> Show test rows (' + rows.length + ' total, ' + (rows.length - nonTestRows.length) + ' test)</label>' +
+    '<div class="legend">' +
+      '<span><span class="dot" style="background:#10B981"></span>&le;7 days</span>' +
+      '<span><span class="dot" style="background:#F59E0B"></span>8&ndash;13 days</span>' +
+      '<span><span class="dot" style="background:#EF4444"></span>&ge;14 days, stuck</span>' +
+      '<span><span class="dot" style="background:#1E40AF"></span>complete</span>' +
+    '</div>' +
+  '</div>';
+
+  if (visibleRows.length === 0) {
+    // Every row this EF returns is a live Supabase read, so an empty roster
+    // here is always a real, verified MEASURED ZERO — never a missing data
+    // source — regardless of the test-toggle state.
+    if (state.includeTest || rows.length === 0) {
+      html += '<div class="roster-empty measured-zero">MEASURED ZERO &mdash; 0 ' + esc(AUDIENCE_LABELS[audience].toLowerCase()) + ' members exist yet. A real, verified count, not a missing data source.</div>';
+    } else {
+      html += '<div class="roster-empty measured-zero">MEASURED ZERO &mdash; 0 non-test ' + esc(AUDIENCE_LABELS[audience].toLowerCase()) + ' rows. ' + rows.length + ' test row' + (rows.length === 1 ? '' : 's') + ' exist; toggle above to see them.</div>';
+    }
+  } else {
+    // Stuck-first: red, then yellow, then green, complete last.
+    var order = { red: 0, yellow: 1, green: 2, unknown: 3, complete: 4 };
+    var sorted = visibleRows.slice().sort(function (a, b) {
+      return (order[a.movement.bucket] ?? 9) - (order[b.movement.bucket] ?? 9);
+    });
+
+    html += '<div class="table-wrapper"><table class="crm-table"><thead><tr>' +
+      '<th>Member</th><th>Checklist</th><th>Days since movement</th>' +
+    '</tr></thead><tbody>';
+    sorted.forEach(function (r, i) {
+      // gh-1562 alert #42 (CodeQL js/xss, live re-scan on merged main):
+      // this rowId built off the RAW `audience` parameter, not audienceEsc
+      // (defined above for the tab-button onclick handlers) — a second,
+      // independent unescaped interpolation of the same value, reachable
+      // only from this CRM branch, which is exactly why the marketing
+      // branch's innerHTML sink (~line 478) came back `fixed` on re-scan
+      // while this one (~line 527) did not. `i` is a plain loop index
+      // (always numeric, never external input) so audienceEsc alone
+      // closes it.
+      var rowId = audienceEsc + '-' + i;
+      html += '<tr class="member-row' + (r.is_test ? ' is-test' : '') + '" onclick="toggleDetail(\'' + rowId + '\')">' +
+        '<td><span class="member-label">' + esc(r.label) + '</span>' + (r.is_test ? '<span class="test-badge">TEST</span>' : '') + '</td>' +
+        '<td>' + checklistHtml(r.checklist) + '</td>' +
+        '<td>' + movementHtml(r.movement) + '</td>' +
+      '</tr>';
+      html += '<tr class="detail-row" id="detail-' + rowId + '" style="display:none"><td colspan="3">' +
+        detailHtml(r) + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  document.getElementById('viewRoot').innerHTML = html;
+  var toggle = document.getElementById('testToggle');
+  if (toggle) toggle.addEventListener('change', function () { state.includeTest = this.checked; renderAudiencePage(audience, tab); });
+}
+
+function checklistHtml(checklist) {
+  return '<div class="checklist">' + checklist.map(function (c) {
+    // gh-1381 (#42): count is meant to be numeric — constrain the shape
+    // before interpolation instead of trusting the EF response, same
+    // pattern as the hover_job_id taint barrier (#1451).
+    var count = (typeof c.count === 'number' && isFinite(c.count)) ? ' (' + c.count + ')' : '';
+    return '<span class="check-item ' + (c.done ? 'done' : 'pending') + '">' + (c.done ? '✓' : '○') + ' ' + esc(c.label) + count + '</span>';
+  }).join('') + '</div>';
+}
+
+function movementHtml(m) {
+  if (m.bucket === 'complete') return '<span class="movement-badge movement-complete">✅ Complete</span>';
+  if (m.days === null) return '<span class="movement-badge movement-unknown">No movement recorded</span>';
+  var icon = m.bucket === 'green' ? '🟢' : m.bucket === 'yellow' ? '🟡' : '🔴';
+  // gh-1381 (#42): m.bucket was interpolated straight into an HTML class
+  // attribute unescaped — an EF response value containing a `"` could
+  // break out of the attribute and inject markup/attributes. Constrain to
+  // the known bucket set before interpolation; the icon ternary above
+  // already only compares m.bucket (safe regardless of its content), so
+  // this only changes what reaches the DOM. m.days gets the same numeric
+  // shape constraint.
+  var safeBucket = (m.bucket === 'red' || m.bucket === 'yellow' || m.bucket === 'green' || m.bucket === 'unknown') ? m.bucket : 'unknown';
+  var days = (typeof m.days === 'number' && isFinite(m.days)) ? m.days : 0;
+  return '<span class="movement-badge movement-' + safeBucket + '">' + icon + ' ' + days + ' day' + (days === 1 ? '' : 's') + '</span>';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// gh-1470 (#1340 phase 2b) — Marketing tab.
+//
+// Consumes the `marketing` block gh-1469 added per audience to
+// get-business-lines-dashboard's response (WeeklySeries / GroupedWeeklySeries
+// — see that EF's index.ts header for the exact shape). This file is
+// render-only: every honesty discriminant (measured / measured_zero /
+// not_run) is decided by the EF, never recomputed or overridden here.
+//
+// XSS discipline (gh-1381 #42 was closed in THIS file, in
+// renderAudiencePage/movementHtml — same file, same rules): group keys
+// (leads.source, referral_agents.agent_type, referral_agents.utm_source)
+// are free-text-ish values that can carry vendor- or user-controlled
+// content, so every one is rendered via esc() and never used as a class
+// name or unescaped attribute. Numeric fields (values, totals,
+// excluded_no_timestamp) are shape-constrained via safeNum() before they
+// reach a template-literal-driven style or text position. caveat_ref is
+// constrained to a known-safe https://github.com/... prefix before it is
+// ever used as an href.
+// ══════════════════════════════════════════════════════════════════════════
+
+function safeNum(n) {
+  return (typeof n === 'number' && isFinite(n)) ? n : 0;
+}
+
+// The exact wording here is proposed copy pending the CTO ruling reserved on
+// gh-1470 (posted as a Q: comment on that issue) — ship default, swap on
+// ruling.
+function visitsDarkBannerHtml() {
+  return '<div class="visits-dark-banner">📉 <strong>Visits are dark this phase.</strong> ' +
+    'GA4 is not wired in yet (<a href="https://github.com/StellarEdgeServices/otterquote-platform/issues/1331" target="_blank" rel="noopener">gh-1331</a>), ' +
+    'so there is no visits denominator to compute a conversion rate from. Every figure below is a raw count, not a rate ' +
+    '&mdash; when GA4 lands (phase 5) these same tiles switch to showing a share &ldquo;of visits.&rdquo;</div>';
+}
+
+function fmtWeekLabel(w) {
+  var start = new Date(w && w.week_start);
+  var end = new Date(w && w.week_end);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return 'week';
+  var opts = { month: 'short', day: 'numeric' };
+  return start.toLocaleDateString('en-US', opts) + '–' + end.toLocaleDateString('en-US', opts);
+}
+
+// Renders a 12-bar sparkline from a WeeklySeries-shaped {kind, windows,
+// values} (or the not_run state). Bar heights are relative to the max value
+// in this series only, never compared across series.
+function sparklineHtml(series, small) {
+  if (!series || series.kind === 'not_run') {
+    var reason = series && series.reason ? series.reason : 'This series has no live data source yet.';
+    return '<div class="not-run-note">NOT RUN &mdash; ' + esc(reason) + '</div>';
+  }
+  var windows = Array.isArray(series.windows) ? series.windows : [];
+  var values = Array.isArray(series.values) ? series.values : [];
+  var max = 1;
+  for (var i = 0; i < values.length; i++) { var v0 = safeNum(values[i]); if (v0 > max) max = v0; }
+  var bars = '';
+  for (var j = 0; j < values.length; j++) {
+    var val = safeNum(values[j]);
+    var h = val === 0 ? 2 : Math.max(4, Math.round((val / max) * 100));
+    var label = esc(fmtWeekLabel(windows[j])) + ': ' + val;
+    bars += '<div class="spark-bar' + (val === 0 ? ' zero' : '') + '" style="height:' + h + '%" title="' + label + '"></div>';
+  }
+  return '<div class="sparkline' + (small ? ' small' : '') + '">' + bars + '</div>';
+}
+
+function seriesTotalHtml(series) {
+  if (!series || series.kind === 'not_run') return '';
+  var cls = series.kind === 'measured_zero' ? 'metric-total measured-zero' : 'metric-total';
+  var flag = series.kind === 'measured_zero' ? '<span class="tile-flag">MEASURED ZERO</span>' : '';
+  return '<span class="' + cls + '">' + safeNum(series.total) + '</span>' +
+    '<span class="metric-unit">' + esc(series.unit || '') + ' &middot; 12 wks' + flag + '</span>';
+}
+
+function weeklySeriesCardHtml(title, series, extraNote) {
+  return '<div class="marketing-card"><h4>' + esc(title) + '</h4>' +
+    '<div>' + seriesTotalHtml(series) + '</div>' +
+    sparklineHtml(series, false) +
+    (extraNote ? '<div class="excluded-note">' + extraNote + '</div>' : '') +
+  '</div>';
+}
+
+function groupedWeeklySeriesCardHtml(title, series) {
+  if (!series || series.kind === 'not_run') {
+    var reason = series && series.reason ? series.reason : 'No live data source yet.';
+    return '<div class="marketing-card"><h4>' + esc(title) + '</h4>' +
+      '<div class="not-run-note">NOT RUN &mdash; ' + esc(reason) + '</div></div>';
+  }
+  var groups = Array.isArray(series.groups) ? series.groups : [];
+  var totalCls = series.kind === 'measured_zero' ? 'metric-total measured-zero' : 'metric-total';
+  var flag = series.kind === 'measured_zero' ? '<span class="tile-flag">MEASURED ZERO</span>' : '';
+  var html = '<div class="marketing-card"><h4>' + esc(title) + '</h4>' +
+    '<div><span class="' + totalCls + '">' + safeNum(series.total) + '</span>' +
+    '<span class="metric-unit">' + esc(series.unit || '') + ' &middot; 12 wks' + flag + '</span></div>';
+  if (groups.length === 0) {
+    html += '<div class="not-run-note" style="color:#047857;background:#ECFDF5;border-color:#A7F3D0;">MEASURED ZERO &mdash; no rows in the last 12 weeks.</div>';
+  } else {
+    html += '<div class="grouped-list">' + groups.map(function (g) {
+      // g.key is free text sourced from a DB column (leads.source /
+      // agent_type / utm_source) — vendor- or user-controlled, never
+      // trusted raw. textContent via esc() only; never a class name or
+      // unescaped attribute.
+      var keyEsc = esc(g.key);
+      return '<div class="grouped-row">' +
+        '<span class="grouped-key" title="' + keyEsc + '">' + keyEsc + '</span>' +
+        '<span class="grouped-spark">' + sparklineHtml({ kind: series.kind, windows: series.windows, values: g.values }, true) + '</span>' +
+        '<span class="grouped-total">' + safeNum(g.total) + '</span>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+  return html;
+}
+
+function contractorFunnelHtml(funnel) {
+  if (!funnel) {
+    return '<div class="marketing-card"><h4>Contractor funnel (first event per contractor)</h4>' +
+      '<div class="not-run-note">NOT RUN &mdash; funnel series unavailable for this audience.</div></div>';
+  }
+  var stages = [
+    { key: 'pre_approval', label: 'Pre-approval' },
+    { key: 'template_submitted', label: 'Template submitted' },
+    { key: 'first_bid', label: 'First bid' },
+  ];
+  return '<div class="marketing-card"><h4>Contractor funnel (first event per contractor)</h4>' +
+    stages.map(function (s) {
+      var series = funnel[s.key];
+      var excluded = series ? safeNum(series.excluded_no_timestamp) : 0;
+      var note = excluded > 0
+        ? excluded + ' contractor' + (excluded === 1 ? '' : 's') + ' reached this stage with no timestamp to bucket by &mdash; excluded from the weekly count above, not silently dropped from the total.'
+        : '';
+      return '<div class="funnel-row"><span class="funnel-label">' + esc(s.label) + '</span>' +
+        '<div class="funnel-body">' + seriesTotalHtml(series) + sparklineHtml(series, false) +
+        (note ? '<div class="excluded-note">' + note + '</div>' : '') +
+        '</div></div>';
+    }).join('') +
+  '</div>';
+}
+
+function referralClicksCardHtml(series) {
+  if (!series) {
+    return '<div class="marketing-card"><h4>Referral clicks</h4>' +
+      '<div class="not-run-note">NOT RUN &mdash; series unavailable for this audience.</div></div>';
+  }
+  var html = '<div class="marketing-card"><h4>Referral clicks</h4>' +
+    '<div>' + seriesTotalHtml(series) + '</div>' +
+    sparklineHtml(series, false);
+  // gh-1302 caveat text/link come from the EF payload (series.caveat /
+  // series.caveat_ref, gh-1469) — never hardcoded here, so the two cannot
+  // drift apart. caveat_ref is shape-constrained to a known-safe
+  // https://github.com/... prefix before it is ever used as an href; if it
+  // doesn't match, the caveat text still renders, just without a link.
+  if (series.caveat) {
+    var ref = (typeof series.caveat_ref === 'string' && series.caveat_ref.indexOf('https://github.com/') === 0)
+      ? series.caveat_ref : null;
+    html += '<div class="click-caveat">⚠️ ' + esc(series.caveat) +
+      (ref ? ' <a href="' + esc(ref) + '" target="_blank" rel="noopener">Details &rarr;</a>' : '') +
+    '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderMarketingSection(audience) {
+  var aud = state.data.audiences[audience] || {};
+  var marketing = aud.marketing;
+  var html = visitsDarkBannerHtml();
+  if (!marketing) {
+    html += '<div class="not-measured-banner">Marketing series unavailable for this audience &mdash; the deployed EF ' +
+      'may predate gh-1469, or this response omitted the section. If this persists, a deploy is owed.</div>';
+    return html;
+  }
+  html += '<div class="marketing-grid">';
+  if (audience === 'homeowner') {
+    html += weeklySeriesCardHtml('Signups', marketing.signups);
+    html += weeklySeriesCardHtml('Claims', marketing.claims);
+    html += weeklySeriesCardHtml('Measurement orders', marketing.measurement_orders);
+    html += groupedWeeklySeriesCardHtml('Leads by source', marketing.leads_by_source);
+  } else if (audience === 'contractor') {
+    html += contractorFunnelHtml(marketing.funnel);
+  } else if (audience === 'referral_partner') {
+    html += groupedWeeklySeriesCardHtml('Partner signups by agent type', marketing.partner_signups_by_agent_type);
+    html += groupedWeeklySeriesCardHtml('Partner signups by UTM source', marketing.partner_signups_by_utm_source);
+    html += referralClicksCardHtml(marketing.referral_clicks);
+  }
+  html += '</div>';
+  return html;
+}
+
+function detailHtml(r) {
+  var inputs = r.movement.inputs || [];
+  var lines = inputs.map(function (inp) {
+    var stale = inp.iso && inp.iso !== r.movement.latest_iso;
+    return '<div class="' + (inp.iso ? (stale ? 'stale' : '') : 'stale') + '">' +
+      esc(inp.label) + ': <span class="mono">' + (inp.iso ? esc(inp.iso) : 'null') + '</span>' +
+      (inp.iso === r.movement.latest_iso && r.movement.latest_iso ? ' &larr; used' : '') +
+    '</div>';
+  }).join('');
+  return '<div class="detail-inputs"><strong>Movement inputs (spot-check these against the badge):</strong>' + lines + '</div>';
+}
+
+function toggleDetail(rowId) {
+  var el = document.getElementById('detail-' + rowId);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+}
+</script>
+<script>
+// Service worker (admin surface only, gh-1479) -- same
+// register-once-and-reload-on-controllerchange pattern as partner-sw.js
+// (gh-831), so a reopen after a new worker activates never races the
+// initial fetch of an auth-critical asset under the old controller.
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+  var swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    window.location.reload();
+  });
+  window.addEventListener('load', function () {
+    // Explicit narrow scope, not the /admin-sw.js default of "/": partner-sw.js
+    // also registers at the site root (its own default scope), and only one
+    // worker can control a given scope. A root-scoped admin-sw would displace
+    // partner-sw as the controller for the whole site (and vice versa on the
+    // next partner page load) -- and since both workers call clients.claim()
+    // and both pages reload on controllerchange, that displacement becomes a
+    // cross-tab reload loop. "/admin-" prefix-matches every ADMIN_PAGES entry
+    // in admin-sw.js and nothing partner-owned, so the two workers coexist.
+    navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin-' }).catch(function () { /* non-fatal */ });
+  });
+})();
+</script>
+</body>
+</html>

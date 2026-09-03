@@ -888,6 +888,37 @@
     <header id="site-header" data-auth="false"></header>
 
     <main>
+        <!-- gh-1420: in-page state for a signed-in account whose referral_agents
+             lookup came back empty in init() below. Replaces the previous
+             silent `window.location.href = '/partner-re.html'` bounce (#1420),
+             which read as a broken app — including to a partner whose
+             claim_partner_account RPC call genuinely failed, which produced
+             byte-identical UX to a real non-partner. showNoPartnerState()
+             (bottom script) picks between the two messages below based on
+             whether that RPC returned a claimError, and toggles this against
+             #partnerDashboardContent. -->
+        <div id="noPartnerState" style="display: none;">
+            <div class="dashboard-hero" style="text-align: center;">
+                <p style="font-size: 0.9rem; color: #5A6B7B; margin-bottom: var(--sp-2);">Signed in as <strong id="noPartnerEmail"></strong></p>
+                <div id="noPartnerRecordMessage" style="display: none;">
+                    <h3 class="empty-state-title">No Partner Account Found</h3>
+                    <p class="empty-state-text">This account doesn't have a partner record. If you meant to use a different account, sign out below — or apply to become a partner.</p>
+                    <div class="btn-group" style="justify-content: center;">
+                        <button type="button" class="btn secondary" onclick="Auth.signOut()">Sign Out and Use a Different Account</button>
+                        <a href="/partner-re.html" class="btn" style="text-decoration: none;">Become a Partner</a>
+                    </div>
+                </div>
+                <div id="partnerClaimFailedMessage" style="display: none;">
+                    <h3 class="empty-state-title">We Couldn't Verify Your Partner Account</h3>
+                    <p class="empty-state-text">Linking this sign-in to your partner record failed. That's not the same as not having one — try again, or sign out and use a different account.</p>
+                    <div class="btn-group" style="justify-content: center;">
+                        <button type="button" class="btn" onclick="window.location.reload()">Try Again</button>
+                        <button type="button" class="btn secondary" onclick="Auth.signOut()">Sign Out and Use a Different Account</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="partnerDashboardContent">
         <!-- gh-fix: moved to the top of the dashboard (was buried at the bottom
              of the hero, under two other link sections). Hidden by default in
              markup; shown by refreshAppInstallBanner() (bottom script) once we
@@ -959,6 +990,9 @@
 
             <div class="referral-link-section" data-section="refer-client">
                 <div class="referral-link-label">Your Referral Link</div>
+                <!-- gh-1482 §2: state the destination in one line, matching the
+                     pattern already used on the Partner Profile Page card below. -->
+                <p class="link-hint destination-hint">Opens a page where your client requests a free quote from Otter Quotes' vetted contractors.</p>
                 <div class="referral-link-display">
                     <!-- Bridge 2026-08-26: was "https://otterquote.com/r/agent123" — /r/ is a live
                          404 (only /ref/ redirects), so any failure of the populate below
@@ -968,18 +1002,23 @@
                     <button class="copy-btn" id="shareLinkBtn">Share</button>
                     <button class="copy-btn" id="emailLinkBtn">Email</button>
                     <button class="copy-btn" id="qrLinkBtn">QR</button>
+                    <a href="#" class="copy-btn" id="previewLinkBtn" style="opacity: 0.5; pointer-events: none; text-decoration: none; display: inline-flex; align-items: center;" aria-disabled="true" target="_blank" rel="noopener">Preview</a>
                 </div>
                 <p class="link-hint referral-fee-disclaimer">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
             </div>
 
             <div class="referral-link-section recruit-link-section" data-section="refer-partner">
                 <div class="referral-link-label">Your Recruit Link</div>
+                <!-- gh-1482 §2: state the destination in one line, matching the
+                     pattern already used on the Partner Profile Page card below. -->
+                <p class="link-hint destination-hint">Opens a page where the person you send it to picks their profession and applies to become an Otter Quotes partner.</p>
                 <div class="referral-link-display">
                     <div class="referral-link-url" id="recruitLink">Loading your link&hellip;</div>
                     <button class="copy-btn" id="copyRecruitLinkBtn">Copy Link</button>
                     <button class="copy-btn" id="shareRecruitBtn">Share</button>
                     <button class="copy-btn" id="emailRecruitBtn">Email</button>
                     <button class="copy-btn" id="qrRecruitBtn">QR</button>
+                    <a href="#" class="copy-btn" id="recruitPreviewBtn" style="opacity: 0.5; pointer-events: none; text-decoration: none; display: inline-flex; align-items: center;" aria-disabled="true" target="_blank" rel="noopener">Preview</a>
                 </div>
                 <p class="link-hint">Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job.</p>
             </div>
@@ -1310,6 +1349,7 @@ Let me know if you have any questions!
         <p style="text-align: center; margin-top: var(--sp-8);">
             <a href="#" id="showAppInstallBannerLink" style="font-size: 0.8rem; color: #5A6B7B;">Need the app again?</a>
         </p>
+        </div>
     </main>
 
     <div id="qrModal" style="display: none; position: fixed; inset: 0; background: rgba(13, 27, 46, 0.72); z-index: 1000; align-items: center; justify-content: center; padding: 24px;">
@@ -1339,6 +1379,35 @@ Let me know if you have any questions!
         let allReferrals = [];
         let allRecruits = [];
         let widgetStyle = 'button';
+        // D-319 (gh-1509 half A): platform_settings.w9_gate_retired — flag OFF
+        // (default) is today's behavior unchanged. See loadW9GateFlag() below.
+        let w9GateRetired = false;
+
+        // D-319 (gh-1509 half A): reads platform_settings.w9_gate_retired —
+        // same key/value config pattern as D204_HARD_FILTER in
+        // contractor-bid-form.html. NOTE: platform_settings' client-readable
+        // key allowlist RLS policy does not yet include 'w9_gate_retired'
+        // (only D204_HARD_FILTER / hover_measurement_price /
+        // platform_fee_percentage / skip_hover_in_test / measurement_products
+        // are whitelisted — see supabase/migrations/20260825113728_gh1245_
+        // admin_measurements_rls.sql), so this read is RLS-filtered to 0 rows
+        // until a follow-up migration adds the key. That failure mode already
+        // resolves to w9GateRetired = false below, i.e. today's W-9 copy stays
+        // visible — the safe direction — until that follow-up lands (flagged
+        // via Q: on gh-1509).
+        async function loadW9GateFlag() {
+            try {
+                const { data: flagRow } = await sb
+                    .from('platform_settings')
+                    .select('value')
+                    .eq('key', 'w9_gate_retired')
+                    .maybeSingle();
+                w9GateRetired = !!flagRow && flagRow.value === true;
+            } catch (e) {
+                console.warn('[D-319] w9_gate_retired flag fetch failed; defaulting to gate enforced:', e);
+                w9GateRetired = false;
+            }
+        }
 
         // Initialize
         async function init() {
@@ -1350,6 +1419,8 @@ Let me know if you have any questions!
             if (!currentUser && !CONFIG.DEMO_MODE) {
                 return;
             }
+
+            await loadW9GateFlag();
 
             // gh-fix: reveal/hide the app-install box now that we know who's
             // signed in (defined in the "Partner App v1" script below —
@@ -1397,9 +1468,18 @@ Let me know if you have any questions!
                         if (claimedPartner) {
                             currentPartner = claimedPartner;
                         } else {
-                            // Genuinely no partner record for this account —
-                            // redirect to the signup chooser.
-                            window.location.href = '/partner-re.html';
+                            // gh-1420: this used to be a silent
+                            // `window.location.href = '/partner-re.html'` —
+                            // indistinguishable from a broken app, and fired
+                            // identically whether the account genuinely has
+                            // no partner record OR the claim_partner_account
+                            // RPC above just failed (claimError, logged
+                            // above). Those are two different failures; show
+                            // two different in-page states instead of
+                            // redirecting either way, so a real claim
+                            // failure is never laundered into "you are not
+                            // a partner".
+                            showNoPartnerState(claimError);
                             return;
                         }
                     } else {
@@ -1441,6 +1521,31 @@ Let me know if you have any questions!
             };
         }
 
+        // gh-1420: in-page state replacing the old silent redirect to
+        // partner-re.html for a signed-in account with no referral_agents
+        // row. Distinguishes a genuine non-partner from a failed
+        // claim_partner_account RPC call (claimError) — the two must never
+        // read the same to the user.
+        function showNoPartnerState(claimError) {
+            const contentEl = document.getElementById('partnerDashboardContent');
+            const stateEl = document.getElementById('noPartnerState');
+            if (contentEl) contentEl.style.display = 'none';
+            if (stateEl) stateEl.style.display = 'block';
+
+            const emailEl = document.getElementById('noPartnerEmail');
+            if (emailEl) emailEl.textContent = (currentUser && currentUser.email) || 'this account';
+
+            const noRecordMsg = document.getElementById('noPartnerRecordMessage');
+            const claimFailedMsg = document.getElementById('partnerClaimFailedMessage');
+            if (claimError) {
+                if (noRecordMsg) noRecordMsg.style.display = 'none';
+                if (claimFailedMsg) claimFailedMsg.style.display = 'block';
+            } else {
+                if (claimFailedMsg) claimFailedMsg.style.display = 'none';
+                if (noRecordMsg) noRecordMsg.style.display = 'block';
+            }
+        }
+
         function updateUI() {
             if (!currentPartner) return;
 
@@ -1472,6 +1577,17 @@ Let me know if you have any questions!
             const referralLink = `https://otterquote.com/ref.html?code=${uniqueCode}`;
             document.getElementById('referralLink').textContent = referralLink;
 
+            // gh-1482 §2: Preview control equivalent to the Partner Profile
+            // Page card's — always resolvable once currentPartner is loaded,
+            // so it just gets enabled here alongside the link text itself.
+            const previewLinkBtn = document.getElementById('previewLinkBtn');
+            if (previewLinkBtn) {
+                previewLinkBtn.href = referralLink;
+                previewLinkBtn.style.opacity = '';
+                previewLinkBtn.style.pointerEvents = '';
+                previewLinkBtn.removeAttribute('aria-disabled');
+            }
+
             // gh-862, rebuilt: "Your Partner Profile Page" used to be
             // landingPageUrl === referralLink verbatim — a literal duplicate
             // of the Referral Link box above, with a dead href="#" Preview
@@ -1500,17 +1616,34 @@ Let me know if you have any questions!
             // show a graceful "being generated" message instead of the URL.
             const recruitLinkEl = document.getElementById('recruitLink');
             const copyRecruitBtn = document.getElementById('copyRecruitLinkBtn');
+            const recruitPreviewBtn = document.getElementById('recruitPreviewBtn');
             if (currentPartner.recruit_code) {
                 // Bridge 2026-08-26: scheme added — a schemeless URL does not
                 // linkify in most mail and SMS clients, so a recruit sent by text
                 // arrived as plain grey text the recipient had to retype.
-                recruitLinkEl.textContent = `https://otterquote.com/recruit.html?code=${currentPartner.recruit_code}`;
+                const recruitLink = `https://otterquote.com/recruit.html?code=${currentPartner.recruit_code}`;
+                recruitLinkEl.textContent = recruitLink;
                 copyRecruitBtn.disabled = false;
                 copyRecruitBtn.style.opacity = '';
+                // gh-1482 §2: Preview control equivalent to the Partner Profile
+                // Page card's — only enabled once a real recruit_code exists,
+                // same gate as the Copy Link button above.
+                if (recruitPreviewBtn) {
+                    recruitPreviewBtn.href = recruitLink;
+                    recruitPreviewBtn.style.opacity = '';
+                    recruitPreviewBtn.style.pointerEvents = '';
+                    recruitPreviewBtn.removeAttribute('aria-disabled');
+                }
             } else {
                 recruitLinkEl.textContent = 'Your recruit link is being generated. Refresh the page in a moment.';
                 copyRecruitBtn.disabled = true;
                 copyRecruitBtn.style.opacity = '0.5';
+                if (recruitPreviewBtn) {
+                    recruitPreviewBtn.href = '#';
+                    recruitPreviewBtn.style.opacity = '0.5';
+                    recruitPreviewBtn.style.pointerEvents = 'none';
+                    recruitPreviewBtn.setAttribute('aria-disabled', 'true');
+                }
             }
 
             // One-pager (gh-847): only re_agent and insurance_agent have a built asset today.
@@ -1555,6 +1688,12 @@ Let me know if you have any questions!
         function renderW9Card() {
             const card = document.getElementById('w9Upload');
             if (!card || !currentPartner) return;
+
+            // D-319 (gh-1509 half A): flag ON -> no W-9 gate copy at all.
+            if (w9GateRetired) {
+                card.innerHTML = '';
+                return;
+            }
 
             const { payments_blocked, w9_submitted_at, w9_verified_at } = currentPartner;
 
@@ -2306,7 +2445,7 @@ Let me know if you have any questions!`;
                     return 'Hi! I recommend Otter Quotes — a quick, free way to get competing bids from qualified contractors. Check it out: ' + link;
                 },
                 recruit: function (link) {
-                    return 'I partner with Otter Quotes — I share a link, they handle everything for the homeowner, and I earn a referral fee when jobs complete. They’re adding partners: ' + link;
+                    return 'I wanted to recommend using Otter Quotes when your friends and clients need a contractor for roofing, siding, gutters or windows. Otter Quotes helps homeowners get measurements, develop a scope of work, pick out materials and submit their job to multiple vetted contractors. They get competitive bids without sitting through multiple sales calls. They get better prices and better materials. I earn a referral fee when jobs complete. Use my link below to sign up and download the app: ' + link;
                 }
             };
 

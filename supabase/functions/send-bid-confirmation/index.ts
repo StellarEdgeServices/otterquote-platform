@@ -486,7 +486,6 @@ serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         error: "Internal server error",
-        details: error instanceof Error ? error.message : String(error),
       }),
       {
         status: 500,

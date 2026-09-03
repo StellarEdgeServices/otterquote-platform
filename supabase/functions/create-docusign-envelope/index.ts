@@ -573,7 +573,7 @@ function insurerScopeRows(insurance: any) {
 
 // ========== RETAIL SCOPE OF WORK PDF ==========
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, declarations, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears } = params;
   const va = valueAdds || {};
   const pc = projectConfirmation || null;
   // ---- Page geometry ----
@@ -1255,7 +1255,7 @@ function generateRetailScopeOfWorkPdf(params) {
     ensure(20);
     addText(LEFT_X, y, 11, "F2", "SIDING");
     y -= 14;
-    addText(60, y, 10, "F1", "Scope per contractor bid and Hover design specifications.");
+    addText(60, y, 10, "F1", "Scope per contractor bid and property design specifications.");
     y -= 14;
     if (measurements?.wallSqFt) {
       ensure(14);
@@ -1331,33 +1331,104 @@ function generateRetailScopeOfWorkPdf(params) {
     }
     y -= 4;
   }
-  // ===== CONTINGENCIES AND CONDITIONAL PRICING =====
-  // [C3 2026-08-27, Dustin-directed] One section listing EVERY condition that
-  // can change the contract price, each with its trigger and its rate. These
-  // were previously scattered -- decking inside the roofing detail block,
-  // second-layer tear-off under its own heading, out-of-pocket options inline
-  // with their trades -- and several never rendered at all.
+  // ===== INCLUDED IN YOUR PRICE / EXTRA CHARGES IF NEEDED (gh-1378, D-317 cl.3) =====
+  // [gh-1378 2026-09-02] Was "CONTINGENCIES AND CONDITIONAL PRICING", reading
+  // bidData.value_adds directly for chimney/drip-edge/gutters/skylights.
+  // Those five rows are now repointed onto quotes.scope_summary.declarations
+  // -- the same per-row {state, rate_cents} object gh-1377 writes on the
+  // contractor bid form and bids.html's renderDeclarationsSummary() already
+  // reads (bids.html ~2407-2515). DECLARATION_ROW_META and the two headings
+  // below are copied from there verbatim, key-for-key and string-for-string,
+  // so this document and the bid card cannot disagree about what a homeowner
+  // was shown as included vs extra -- that disagreement is the defect #1378
+  // exists to close, and this PDF is the copy that ends up in a dispute.
   //
-  // Every key below was verified against contractor-bid-form.html's own
-  // valueAdds constructor (~line 5233) rather than assumed. Four of these had
-  // NEVER reached this document:
-  //   - va.drip_edge          (written at :5286, never read here)
-  //   - va.rotten_wood_pricing (written at :5318, never read here)
-  //   - va.siding_rotten_sheathing_pricing (written at :5328, never read here)
-  //   - va.num_stories         (written at :5303, never read here)
-  // and a fifth, va.chimney, was read under its deprecated name -- see the
-  // chimney fix above.
+  // Rows the contractor entered directly on the bid form as fixed-rate
+  // conditions -- second-layer tear-off, decking, rotten wood/sheathing,
+  // ridge vent, gutter guards, slope/two-story adders -- are NOT part of
+  // gh-1377's declarations set (bids.html doesn't render them from
+  // declarations either; it folds decking/second-layer/rotten-wood in from
+  // value_adds too, see bids.html ~2473-2485) and are read from value_adds
+  // unchanged, same as before this change.
   //
   // A row with no value is OMITTED. Nothing renders as "TBD": a contract
   // exhibit that says "TBD" next to a price trigger is worse than silence,
   // because it implies a number exists somewhere that the homeowner has not
   // been shown.
+  const DECLARATION_ROW_META: Record<string, { label: string; extraTrigger: string | null }> = {
+    gutters:          { label: "Gutters",            extraTrigger: "Homeowner elects gutters upgrade (not included in base price)" },
+    chimney:          { label: "Chimney Flashing",   extraTrigger: "Homeowner elects chimney flashing work (not included in base price)" },
+    skylights:        { label: "Skylights",          extraTrigger: null },
+    ice_water_shield: { label: "Ice & Water Shield", extraTrigger: null },
+    drip_edge:        { label: "Drip Edge",          extraTrigger: "Homeowner elects drip edge (not included in base price)" },
+  };
+  const TRADE_SCOPE_LABEL = {
+    roofing: "Complete roofing installation",
+    siding:  "Complete siding installation",
+    gutters: "Complete gutter installation",
+  };
   {
-    const rows = [];
-    const add = (name, trigger, price) => {
+    const declValid = declarations && typeof declarations === "object";
+    // includedLines / declExtra hold ONLY the five DECLARATION_ROW_META rows,
+    // exactly mirroring bids.html: includedItems/extraItems there are built
+    // from nothing else, and the scope-label bullet is appended to the
+    // Included block only when at least one row was actually declared
+    // "included" (bids.html gates that render on includedItems.length > 0,
+    // not on the trade being present) -- reproduced here, not re-decided.
+    const includedLines: string[] = [];
+    const declExtra: Record<string, { name: string; trigger: string; price: string }> = {};
+    if (declValid) {
+      for (const key of Object.keys(DECLARATION_ROW_META)) {
+        const decl = declarations[key];
+        if (!decl || typeof decl !== "object") continue; // absent key == not declared -- omit, never "not_offered"
+        const meta = DECLARATION_ROW_META[key];
+        if (decl.state === "included") {
+          includedLines.push(`${meta.label} - included at no extra cost`);
+        } else if (decl.state === "extra") {
+          const cents = Number(decl.rate_cents);
+          if (!(cents > 0)) continue; // no rate == omitted, never "TBD"
+          if (!meta.extraTrigger) continue; // this row has no extra-cost mechanism on the form
+          declExtra[key] = { name: meta.label, trigger: meta.extraTrigger, price: fmt$(cents / 100) };
+        }
+        // "not_offered" -> struck entirely (D-272), omitted from both lists.
+        // "other" (free-text offer) -> cannot be placed as included or extra
+        // without guessing which it is, so it is omitted from both, too.
+      }
+    }
+    if (includedLines.length > 0) {
+      const scopeLabels = [];
+      if (hasRoofing) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      if (hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
+      if (hasGutters) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
+      if (scopeLabels.length === 0) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      ensure(20 + (scopeLabels.length + includedLines.length) * 11);
+      addText(LEFT_X, y, 12, "F2", "Included in Your Price - $" + Number(contractPrice || 0).toLocaleString("en-US"));
+      y -= 14;
+      for (const line of scopeLabels.concat(includedLines)) {
+        addText(60, y, 9, "F1", line);
+        y -= 11;
+      }
+      y -= 6;
+    } else if (!declValid) {
+      // Mirrors bids.html's fallback note exactly. Legacy value_adds
+      // contingencies below (decking, second-layer tear-off, etc.) still
+      // render even when declarations is absent -- they predate gh-1377 and
+      // are real, priced contract terms independent of this feature.
+      ensure(16);
+      addText(LEFT_X, y, 9, "F1", "This contractor's included / extra breakdown is not yet available for this bid.");
+      y -= 16;
+    }
+    const rows: { name: string; trigger: string; price: string }[] = [];
+    const add = (name: string, trigger: string, price: string | null) => {
       if (price == null || price === "") return;
       rows.push({ name, trigger, price });
     };
+    // Declaration-sourced extra rows, in the same key order bids.html
+    // iterates (gutters, chimney, drip_edge -- skylights/ice_water_shield
+    // never reach declExtra since their extraTrigger is null above).
+    if (declExtra.gutters) add(declExtra.gutters.name, declExtra.gutters.trigger, declExtra.gutters.price);
+    if (declExtra.chimney) add(declExtra.chimney.name, declExtra.chimney.trigger, declExtra.chimney.price);
+    if (declExtra.drip_edge) add(declExtra.drip_edge.name, declExtra.drip_edge.trigger, declExtra.drip_edge.price);
     const slc = va?.secondLayerContingency;
     if (hasRoofing && slc) {
       const flat = slc.method === "flat_fee" && slc.flatFeeAlternative != null;
@@ -1370,17 +1441,8 @@ function generateRetailScopeOfWorkPdf(params) {
     }
     add("Rotten wood / fascia / soffit", "Concealed rot found during the work", typeof va.rotten_wood_pricing === "string" && va.rotten_wood_pricing.trim() ? va.rotten_wood_pricing.trim() : null);
     add("Rotten sheathing behind siding", "Concealed rot found behind removed siding", typeof va.siding_rotten_sheathing_pricing === "string" && va.siding_rotten_sheathing_pricing.trim() ? va.siding_rotten_sheathing_pricing.trim() : null);
-    {
-      const c = va.chimney ?? va.chimney_flashing ?? va.chimney_reflash ?? null;
-      if (c && (c.option === "oop" || c.option === "replace_oop") && c.oop_price != null) {
-        add("Chimney flashing", "Homeowner elects chimney flashing work (not included in base price)", fmt$(c.oop_price));
-      }
-    }
     if (va.ventilation && !va.ventilation.ridge_vent_included && va.ventilation.ridge_vent_oop != null) {
       add("Ridge vent", "Homeowner elects ridge vent (not included in base price)", fmt$(va.ventilation.ridge_vent_oop));
-    }
-    if (va.drip_edge?.option === "oop" && va.drip_edge.oop_price != null) {
-      add("Drip edge", "Homeowner elects drip edge (not included in base price)", fmt$(va.drip_edge.oop_price));
     }
     if (va.gutter_guards) {
       const gg = va.gutter_guards;
@@ -1389,14 +1451,6 @@ function generateRetailScopeOfWorkPdf(params) {
       if (gg.pricing_on_request && gg.mesh_oop == null && gg.screw_in_oop == null) {
         add("Gutter guards", "Homeowner elects gutter guards", "Pricing on request");
       }
-    }
-    if (va.gutters?.option) {
-      const go = String(va.gutters.option);
-      if (go.includes("5inch") && go.includes("additional") && va.gutters.additional_cost_5inch != null) add('Gutters - 5"', "Homeowner elects 5-inch gutters (not included in base price)", fmt$(va.gutters.additional_cost_5inch));
-      if (go.includes("6inch") && go.includes("additional") && va.gutters.additional_cost_6inch != null) add('Gutters - 6"', "Homeowner elects 6-inch gutters (not included in base price)", fmt$(va.gutters.additional_cost_6inch));
-    }
-    if (va.skylights && va.skylights !== "na") {
-      add("Skylights", "Skylight condition assessed on site", va.skylights === "reflash" ? "Reflash - per contractor bid" : "Replace - per contractor bid");
     }
     // [C4 2026-08-27] Slope and access adders. These come from the contractor's
     // rate card, not from the bid form, so they render only when he has one on
@@ -1425,7 +1479,7 @@ function generateRetailScopeOfWorkPdf(params) {
       ensure(78);
       hLine(y + 4);
       y -= 12;
-      addText(LEFT_X, y, 12, "F2", "CONTINGENCIES AND CONDITIONAL PRICING");
+      addText(LEFT_X, y, 12, "F2", "Extra Charges If Needed");
       y -= 12;
       y = addWrappedText(LEFT_X, y, 8, "F1", "Every condition below can change the contract price. None is included in the price on page 1. Each states what triggers it and what it costs.", 512);
       y -= 4;
@@ -1823,6 +1877,21 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
 // ========== HANDLER: CONTRACTOR SIGN (new — Step A) ==========
 async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const { claim_id, contractor_id, signer, fields: providedFields, return_url, quote_id } = requestBody;
+  // gh-1400: never mint while a live envelope exists for this quote. The entry
+  // point already resolved it. Re-entering the page must return the contractor
+  // to the document they are partway through -- not create a second one, strand
+  // the first, and spend another unit of plan quota doing it.
+  if (requestBody.resolved_envelope_id) {
+    console.log(`contractor_sign: resuming existing document ${requestBody.resolved_envelope_id} (no mint)`);
+    return await issueContractorSignLink(supabase, {
+      claim_id,
+      envelopeId: requestBody.resolved_envelope_id,
+      signer,
+      return_url,
+      corsHeaders,
+      resumed: true
+    });
+  }
   let autoFields = providedFields || {};
   let claimData = null;
   let contractorData = null;
@@ -1972,11 +2041,19 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       // price is quotes.total_price; trades come from claims.trades.
       let bidBrand = null;
       let estimatedStartDate = null;
+      // [gh-1378 2026-09-02, D-317 cl.3] The per-row {state, rate_cents}
+      // declarations object gh-1377 writes on the contractor bid form -- the
+      // same key bids.html's renderDeclarationsSummary() reads (bids.html
+      // ~2407-2515). Read here, never re-derived from value_adds, so this
+      // document cannot disagree with the bid card about what a homeowner
+      // was shown as included vs extra.
+      let bidDeclarations = null;
       if (bidData?.scope_summary) {
         try {
           const parsedScope = typeof bidData.scope_summary === "string" ? JSON.parse(bidData.scope_summary) : bidData.scope_summary;
           bidBrand = parsedScope?.brand ?? null;
           estimatedStartDate = parsedScope?.estimated_start_date ?? null;
+          bidDeclarations = parsedScope?.declarations ?? null;
         } catch (scopeErr) {
           console.warn("Failed to parse quotes.scope_summary JSON (non-fatal):", scopeErr);
         }
@@ -1994,6 +2071,7 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         contractPrice,
         estimatedStartDate,
         valueAdds: bidData?.value_adds ?? null,
+        declarations: bidDeclarations,
         bidBrand,
         deckingPricePerSheet: bidData?.decking_price_per_sheet ?? null,
         fullRedeckPrice: bidData?.full_redeck_price ?? null,
@@ -2100,34 +2178,13 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const envelopeId = sendData.documentId;
   if (!envelopeId) throw new Error("No documentId returned from BoldSign");
   console.log(`Document created (contractor_sign): ${envelopeId}`);
-  // gh-1244: bounded wait for BoldSign's async document creation to settle
-  // before asking for a signing link -- see waitForBoldSignDocumentReady().
-  await waitForBoldSignDocumentReady(envelopeId);
-  const defaultReturnUrl = return_url || `https://otterquote.com/contractor-bid-form.html?claim_id=${claim_id}&signed=contractor`;
-  // gh-1244: BoldSign's documented query params are camelCase (documentId,
-  // signerEmail, redirectUrl), matching the official API docs. Fixed
-  // regardless of whether it's the full explanation for the "Invalid
-  // Document ID" 403 seen in the sandbox E2E run -- see gh-1244 comments for
-  // the open investigation (BOLDSIGN_SANDBOX confirmed unset; document
-  // creation confirmed succeeding with a real documentId moments before this
-  // call rejects that same ID).
-  const signLinkResponse = await fetch(
-    `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
-      documentId: envelopeId,
-      signerEmail: signer.email,
-      redirectUrl: defaultReturnUrl
-    }),
-    {
-      headers: boldSignHeaders()
-    }
-  );
-  if (!signLinkResponse.ok) {
-    const errorData = await signLinkResponse.text();
-    throw new Error(`Failed to generate contractor signing URL: ${signLinkResponse.status} ${errorData}`);
-  }
-  const signLinkData = await signLinkResponse.json();
-  const signingUrl = signLinkData.signLink;
-  if (!signingUrl) throw new Error("No signLink returned from BoldSign getEmbeddedSignLink");
+  // gh-1400: persist the pointer BEFORE handing out a signing link. The old
+  // order asked BoldSign for the link first and only recorded the envelope id
+  // afterwards, so any failure in between left a real, paid-for document that
+  // no later page entry could find -- the next entry would mint again and the
+  // first became unreachable. That is exactly how 32e83466 was stranded.
+  // Recording first makes the resume lookup authoritative even on a partial
+  // failure: the signer retries and lands back on the same document.
   const quoteUpdateFilter = quote_id ? supabase.from("quotes").update({
     docusign_envelope_id: envelopeId
   }).eq("id", quote_id) : supabase.from("quotes").update({
@@ -2141,19 +2198,13 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
     contract_sent_at: new Date().toISOString(),
     docusign_envelope_id: envelopeId
   }).eq("id", claim_id);
-  return new Response(JSON.stringify({
-    success: true,
-    envelope_id: envelopeId,
-    signing_url: signingUrl,
-    status: "sent",
-    document_type: "contractor_sign",
-    signer_email: signer.email
-  }), {
-    status: 200,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json"
-    }
+  return await issueContractorSignLink(supabase, {
+    claim_id,
+    envelopeId,
+    signer,
+    return_url,
+    corsHeaders,
+    resumed: false
   });
 }
 // ========== HANDLER: HOMEOWNER SIGN (new — Step C) ==========
@@ -2393,6 +2444,181 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   });
 }
 // ========== MAIN HANDLER ==========
+// ========== gh-1400: OPERATION SPLIT + HONEST RATE-LIMIT SURFACE ==========
+// This endpoint has always done two jobs with wildly different costs, on one
+// budget:
+//
+//   MINT   POST /v1/document/send. Creates a real BoldSign document. Costs
+//          money and burns plan quota. Strict budget. Fails CLOSED.
+//   RESUME GET /v1/document/getEmbeddedSignLink for a document that already
+//          exists and that the authenticated caller is already a party to.
+//          Costs nothing. It is also the ONLY way any signer ever reaches the
+//          document, because enableEmbeddedSigning:true suppresses BoldSign's
+//          invitation emails. Generous budget. Fails OPEN.
+//
+// Before gh-1400 both ran on the mint key, whose caller_id is the CLAIM_ID --
+// so the budget was per claim, and a contractor who opened their contract and
+// came back to it was locked out of their own signature for an hour behind
+// "Edge Function returned a non-2xx status code".
+const RATE_KEY_MINT = FUNCTION_NAME;
+const RATE_KEY_RESUME = `${FUNCTION_NAME}:sign-link`;
+function rateLimitKeyFor(operation: any) {
+  return operation === "resume" ? RATE_KEY_RESUME : RATE_KEY_MINT;
+}
+// The whole defect in one function. Only the two signing document types can
+// resume; the legacy one-shot documents (contract / color_confirmation /
+// project_confirmation) have no resume semantics and always mint. A signing
+// type with an envelope id already on its quote is ALWAYS a resume -- there is
+// no condition under which we mint a second document for the same quote.
+function resolveOperation(documentType: any, existingEnvelopeId: any) {
+  if (documentType !== "contractor_sign" && documentType !== "homeowner_sign") return "mint";
+  return existingEnvelopeId ? "resume" : "mint";
+}
+// check_rate_limit() denies by default when no rate_limit_config row exists.
+// That default has produced this exact outage four times now (mark-job-complete,
+// send-message-notification, send-partner-status-email, and this function). The
+// RESUME key is brand new, so if its row is missing at deploy time the fetch
+// path would 429 100% of the time -- the very failure this change exists to
+// remove. Minting stays fail-closed; resuming spends nothing, so it fails open
+// and says so loudly in the logs.
+function isMissingConfigDenial(result: any) {
+  return typeof result?.reason === "string" && result.reason.startsWith("No rate limit config found for function:");
+}
+// The 429 the signer sees must name a time they can act on. check_rate_limit()
+// returns which ceiling was hit only in prose, and returns no reset instant at
+// all, so we recover the window from the reason and compute the reset from the
+// oldest still-counted call.
+function resolveRateLimitWindow(reason: any) {
+  const r = String(reason || "").toLowerCase();
+  if (r.includes("hourly limit")) return "hour";
+  if (r.includes("daily limit")) return "day";
+  if (r.includes("monthly limit") || r.includes("budget cap")) return "month";
+  return null;
+}
+// Mirrors Postgres interval arithmetic: '1 hour' and '1 day' are exact, and
+// '1 month' is a calendar month that clamps rather than rolling over (Jan 31 +
+// 1 month is Feb 28, not Mar 3).
+function computeRetryAt(oldestCalledAt: any, window: any) {
+  if (!oldestCalledAt || !window) return null;
+  const t = Date.parse(oldestCalledAt);
+  if (Number.isNaN(t)) return null;
+  if (window === "hour") return new Date(t + 3600000).toISOString();
+  if (window === "day") return new Date(t + 86400000).toISOString();
+  if (window !== "month") return null;
+  const d = new Date(t);
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d.toISOString();
+}
+// Start of the window check_rate_limit() is counting over, mirroring its
+// interval arithmetic exactly. Deliberately not widened: a lookback wider than
+// the real window would surface an older call and compute a retry_at that is
+// too EARLY, sending the signer back into another 429.
+function windowStartIso(window: any, now: any) {
+  const d = new Date(now);
+  if (window === "hour") return new Date(d.getTime() - 3600000).toISOString();
+  if (window === "day") return new Date(d.getTime() - 86400000).toISOString();
+  if (window !== "month") return null;
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  return d.toISOString();
+}
+// The reset instant, recovered from the oldest call still inside the exhausted
+// window. Matches check_rate_limit()'s own counting predicate: same key, same
+// caller bucket, not blocked, inside the window. Only ever runs on the 429
+// branch, so it costs nothing on the happy path.
+async function computeRetryAtForCaller(supabase: any, rateKey: any, callerId: any, window: any) {
+  const since = windowStartIso(window, Date.now());
+  if (!since) return null;
+  let q = supabase.from("rate_limits").select("called_at").eq("function_name", rateKey).eq("blocked", false).gt("called_at", since).order("called_at", {
+    ascending: true
+  }).limit(1);
+  q = callerId ? q.eq("caller_id", callerId) : q.is("caller_id", null);
+  const { data, error } = await q.maybeSingle();
+  if (error || !data?.called_at) return null;
+  return computeRetryAt(data.called_at, window);
+}
+// The sentence a signer actually reads. Kept here rather than on the page so
+// there is one source of truth and it is covered by tests; contract-signing.html
+// re-renders the clock time in the signer's own timezone and falls back to this
+// string verbatim when it cannot.
+function buildRateLimitMessage(window: any, retryAt: any, timeZone: any) {
+  const opened = window === "hour" ? "You have opened this contract several times in the last hour." : window === "day" ? "You have opened this contract several times today." : window === "month" ? "This contract has been opened many times this month." : "This contract has been opened too many times recently.";
+  const when = retryAt ? new Date(retryAt) : null;
+  if (!when || Number.isNaN(when.getTime())) {
+    return `${opened} Please try again a little later.`;
+  }
+  const opts: any = window === "hour" ? {
+    hour: "numeric",
+    minute: "2-digit"
+  } : {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  };
+  if (timeZone) opts.timeZone = timeZone;
+  const stamp = window === "hour" ? when.toLocaleTimeString("en-US", opts) : when.toLocaleString("en-US", opts);
+  return `${opened} Please try again at ${stamp}.`;
+}
+// Resolve the envelope this quote already has, if any. Same lookup the
+// homeowner path has always used -- by quote_id first, then the newest quote on
+// (claim_id, contractor_id) that carries one. maybeSingle() rather than
+// single(): "no rows" is an ordinary answer here, not an error.
+async function findExistingEnvelopeId(supabase: any, { quote_id, claim_id, contractor_id }: any) {
+  if (quote_id) {
+    const { data } = await supabase.from("quotes").select("docusign_envelope_id").eq("id", quote_id).maybeSingle();
+    if (data?.docusign_envelope_id) return data.docusign_envelope_id;
+  }
+  if (!claim_id || !contractor_id) return null;
+  const { data } = await supabase.from("quotes").select("docusign_envelope_id").eq("claim_id", claim_id).eq("contractor_id", contractor_id).not("docusign_envelope_id", "is", null).order("created_at", {
+    ascending: false
+  }).limit(1).maybeSingle();
+  return data?.docusign_envelope_id || null;
+}
+// Issue an embedded signing link for a contractor on an existing document.
+// Shared by the mint path (right after /v1/document/send) and the resume path
+// (which reaches it without touching /v1/document/send at all).
+async function issueContractorSignLink(supabase: any, { claim_id, envelopeId, signer, return_url, corsHeaders, resumed }: any) {
+  const defaultReturnUrl = return_url || `https://otterquote.com/contractor-bid-form.html?claim_id=${claim_id}&signed=contractor`;
+  // gh-1244: bounded wait for BoldSign's async document creation to settle
+  // before asking for a signing link -- see waitForBoldSignDocumentReady().
+  // On the resume path the document is long since settled and this is a no-op.
+  await waitForBoldSignDocumentReady(envelopeId);
+  // gh-1244: BoldSign's documented query params are camelCase (documentId,
+  // signerEmail, redirectUrl), matching the official API docs.
+  const signLinkResponse = await fetch(`${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
+    documentId: envelopeId,
+    signerEmail: signer.email,
+    redirectUrl: defaultReturnUrl
+  }), {
+    headers: boldSignHeaders()
+  });
+  if (!signLinkResponse.ok) {
+    const errorData = await signLinkResponse.text();
+    throw new Error(`Failed to generate contractor signing URL: ${signLinkResponse.status} ${errorData}`);
+  }
+  const signLinkData = await signLinkResponse.json();
+  const signingUrl = signLinkData.signLink;
+  if (!signingUrl) throw new Error("No signLink returned from BoldSign getEmbeddedSignLink");
+  return new Response(JSON.stringify({
+    success: true,
+    envelope_id: envelopeId,
+    signing_url: signingUrl,
+    status: "sent",
+    document_type: "contractor_sign",
+    signer_email: signer.email,
+    resumed: resumed === true
+  }), {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json"
+    }
+  });
+}
 serve(async (req)=>{
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
@@ -2534,30 +2760,66 @@ serve(async (req)=>{
     }
     // Replace request-body signer with server-derived identity.
     requestBody.signer = verifiedSigner;
-    if (document_type !== "homeowner_sign") {
+    // ===== gh-1400: resolve the OPERATION before spending any budget =====
+    // homeowner_sign has never minted -- it has always resumed the document the
+    // quote already points at. contractor_sign minted unconditionally, which is
+    // why re-entering the page produced a SECOND BoldSign document and orphaned
+    // the first (32e83466 on claim 82f5dff4). Both now resolve identically: if
+    // the quote already carries an envelope id, this is a resume.
+    //
+    // "Explicitly voided" is expressed as quotes.docusign_envelope_id = NULL.
+    // Clearing the pointer is what re-enables minting; nothing else does.
+    let resolvedEnvelopeId = null;
+    if (document_type === "homeowner_sign" || document_type === "contractor_sign") {
+      resolvedEnvelopeId = await findExistingEnvelopeId(supabase, {
+        quote_id: requestBody.quote_id,
+        claim_id,
+        contractor_id
+      });
+    }
+    const operation = resolveOperation(document_type, resolvedEnvelopeId);
+    // Server-derived, overwritten unconditionally -- never caller-supplied.
+    requestBody.resolved_envelope_id = resolvedEnvelopeId;
+    requestBody.operation = operation;
+    {
+      const rateKey = rateLimitKeyFor(operation);
       const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
-        p_function_name: FUNCTION_NAME,
+        p_function_name: rateKey,
         p_caller_id: claim_id || null
       });
       if (rlError) {
-        console.error("Rate limit check failed:", rlError);
-        return new Response(JSON.stringify({
-          error: "Rate limit check failed. Refusing to create envelope for safety.",
-          detail: rlError.message
-        }), {
-          status: 503,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json"
-          }
-        });
-      }
-      if (!rateLimitResult?.allowed) {
-        console.warn(`RATE LIMITED [${FUNCTION_NAME}]: ${rateLimitResult?.reason}`);
+        console.error(`Rate limit check failed [${rateKey}]:`, rlError);
+        // Minting is fail-closed: if the budget cannot be verified we do not
+        // spend money. Resuming is fail-open: it spends nothing, and refusing a
+        // signer entry to their own executed-but-unsigned contract is precisely
+        // the outage this change exists to remove.
+        if (operation === "mint") {
+          return new Response(JSON.stringify({
+            error: "Rate limit check failed. Refusing to create envelope for safety.",
+            detail: rlError.message
+          }), {
+            status: 503,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json"
+            }
+          });
+        }
+        console.warn(`RATE LIMIT UNAVAILABLE [${rateKey}]: allowing resume, no vendor cost.`);
+      } else if (!rateLimitResult?.allowed && operation === "resume" && isMissingConfigDenial(rateLimitResult)) {
+        console.error(`RATE LIMIT CONFIG MISSING [${rateKey}]: allowing resume anyway. Insert the rate_limit_config row for this key -- see gh-1400.`);
+      } else if (!rateLimitResult?.allowed) {
+        const limitWindow = resolveRateLimitWindow(rateLimitResult?.reason);
+        const retryAt = await computeRetryAtForCaller(supabase, rateKey, claim_id || null, limitWindow);
+        console.warn(`RATE LIMITED [${rateKey}] op=${operation}: ${rateLimitResult?.reason} retry_at=${retryAt}`);
         return new Response(JSON.stringify({
           error: "Rate limit exceeded",
           reason: rateLimitResult?.reason,
-          counts: rateLimitResult?.counts
+          counts: rateLimitResult?.counts,
+          operation,
+          window: limitWindow,
+          retry_at: retryAt,
+          message: buildRateLimitMessage(limitWindow, retryAt, "UTC")
         }), {
           status: 429,
           headers: {

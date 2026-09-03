@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 const ALLOWED_ORIGINS = [
   "https://stellaredgeservices.com",
@@ -88,7 +88,7 @@ serve(async (req: Request) => {
   // Service-role read bypasses RLS
   const { data: contractor, error: contractorErr } = await sb
     .from("contractors")
-    .select("company_name, user_id, stripe_payment_method_id, contract_templates, contract_pdf_url")
+    .select("company_name, user_id, stripe_payment_method_id, has_payment_method, contract_templates, contract_pdf_url")
     .eq("id", contractor_id)
     .single();
 
@@ -121,7 +121,23 @@ serve(async (req: Request) => {
     return json({ error: "Forbidden" }, 403, corsHeaders);
   }
 
-  const hasPaymentMethod = !!(contractor.stripe_payment_method_id && contractor.stripe_payment_method_id !== "");
+  // gh-1387: the gate now requires BOTH an id and the verified flag.
+  //
+  // The id alone is not evidence. Three production contractors rows carried a
+  // real-looking pm_… that resolves only in Stripe TEST mode, written by a
+  // card-capture flow that never checked. On an id-only gate those contractors
+  // pass, the homeowner awards the job, DocuSign fires, and the charge fails
+  // later against the live key — the worst possible place to discover it.
+  //
+  // has_payment_method is written in exactly one place: verify-payment-method,
+  // after re-reading the SetupIntent with the key this platform charges with.
+  // Requiring both means an unverifiable method fails closed, here, before any
+  // money-path side effect has run.
+  const hasPaymentMethod = !!(
+    contractor.has_payment_method === true &&
+    contractor.stripe_payment_method_id &&
+    contractor.stripe_payment_method_id !== ""
+  );
 
   // #486: when the homeowner's selection attempt finds no payment method on
   // file, create the contractor's in-app notification SERVER-SIDE (service
