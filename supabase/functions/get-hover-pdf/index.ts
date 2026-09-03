@@ -128,7 +128,7 @@ serve(async (req) => {
       .from("hover_orders")
       .select("id, hover_job_id, status, measurements_json")
       .eq("claim_id", claim_id)
-      .eq("status", "complete")
+      .in("status", ["complete", "completed"])
       .order("created_at", { ascending: false })
       .limit(1)
       .single();

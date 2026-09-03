@@ -111,14 +111,16 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 .tab-btn.disabled { cursor: not-allowed; opacity: 0.6; }
 
 /* ── Marketing tab (gh-1470 / #1340 phase 2b) ── */
-.visits-dark-banner { background: rgba(148,163,184,0.10); border: 1px dashed rgba(148,163,184,0.4); color: var(--slate); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.88rem; line-height: 1.5; }
-.visits-dark-banner a { color: var(--teal); }
 .marketing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
 .marketing-card { background: var(--white); border-radius: 0.75rem; padding: 1.25rem 1.4rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .marketing-card h4 { margin: 0 0 0.5rem; color: var(--navy); font-size: 1rem; }
 .metric-total { font-size: 1.5rem; font-weight: 700; color: var(--navy); }
 .metric-total.measured-zero { color: #047857; }
 .metric-unit { font-size: 0.76rem; color: var(--slate); margin-left: 0.45rem; font-weight: 500; }
+/* gh-1574 (#1340 phase 5): per-tile rate line sourced from the GA4 `visits`
+ * series (see visitsRateHtml() below) — replaces the old visits-dark-banner
+ * now that GA4 is wired in. */
+.visits-rate { font-size: 0.82rem; color: var(--slate); margin-top: 0.5rem; font-weight: 600; }
 .sparkline { display: flex; align-items: flex-end; gap: 2px; height: 46px; margin: 0.7rem 0 0.3rem; }
 .sparkline.small { height: 22px; margin: 0.2rem 0; }
 .sparkline .spark-bar { flex: 1; background: var(--teal); border-radius: 2px 2px 0 0; min-height: 2px; }
@@ -231,10 +233,11 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  * agent_type/UTM and referral clicks (referral_partner). This file computes
  * no counts and decides no honesty state itself — it renders exactly what
  * the EF already decided (kind: measured / measured_zero / not_run), same
- * contract as tileHtml()/revenueTileHtml() above. GA4 visits are not wired
- * in yet (#1331, phase 5) — visitsDarkBannerHtml() says so on the tab rather
- * than letting any figure here be read as a rate of visits. See
- * renderMarketingSection() and its helpers below movementHtml().
+ * contract as tileHtml()/revenueTileHtml() above. gh-1574 (#1340 phase 5):
+ * GA4 is wired in now — every tile carries a "N of M visits (x.x%)" rate
+ * line sourced from the EF response (marketing.visits, see visitsRateHtml()
+ * below) instead of the old visits-dark banner. See renderMarketingSection()
+ * and its helpers below movementHtml().
  *
  * URL state: ?line=otterquotes&audience=homeowner|contractor|referral_partner&tab=crm|marketing
  * No params = top page. line=otterquotes, no audience = OQ line page.
@@ -680,14 +683,37 @@ function safeNum(n) {
   return (typeof n === 'number' && isFinite(n)) ? n : 0;
 }
 
-// The exact wording here is proposed copy pending the CTO ruling reserved on
-// gh-1470 (posted as a Q: comment on that issue) — ship default, swap on
-// ruling.
-function visitsDarkBannerHtml() {
-  return '<div class="visits-dark-banner">📉 <strong>Visits are dark this phase.</strong> ' +
-    'GA4 is not wired in yet (<a href="https://github.com/StellarEdgeServices/otterquote-platform/issues/1331" target="_blank" rel="noopener">gh-1331</a>), ' +
-    'so there is no visits denominator to compute a conversion rate from. Every figure below is a raw count, not a rate ' +
-    '&mdash; when GA4 lands (phase 5) these same tiles switch to showing a share &ldquo;of visits.&rdquo;</div>';
+// gh-1574 (#1340 phase 5): renders the "N of M visits (x.x%)" rate line each
+// Marketing tile now carries, sourced from the EF's `marketing.visits` GA4
+// sessions series (see get-business-lines-dashboard/index.ts buildVisitsSeries).
+// Three honest-state cases, matched to the same kind/reason contract every
+// other series in this file already follows — never a fabricated percentage:
+//   - visitsSeries missing or kind === 'not_run' -> NOT RUN, no percentage.
+//   - visitsSeries.total === 0 (a real GA4 read that measured zero sessions,
+//     kind 'measured_zero') -> the metric's raw count with an explicit
+//     "rate unavailable" note, NOT "Infinity%" and NOT a silent "0%" (0% would
+//     misrepresent "we don't have a denominator" as "we measured a real rate").
+//   - otherwise -> metricTotal of visitsTotal (pct.toFixed(1)%).
+// The visits caveat (series.caveat, EF-sourced — never hardcoded, same
+// no-drift discipline as referral_clicks' caveat below) rides along on every
+// tile that gets a rate line, since every such tile is now making a claim
+// against that denominator.
+function visitsRateHtml(metricTotal, visitsSeries) {
+  var n = safeNum(metricTotal);
+  if (!visitsSeries || visitsSeries.kind === 'not_run') {
+    var reason = (visitsSeries && visitsSeries.reason) ? visitsSeries.reason : 'Visits series unavailable in this response (deploy owed).';
+    return '<div class="visits-rate not-run-note">Rate of visits: NOT RUN &mdash; ' + esc(reason) + '</div>';
+  }
+  var m = safeNum(visitsSeries.total);
+  var line;
+  if (m === 0) {
+    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' &mdash; rate of visits unavailable (GA4 measured 0 visits this window)</div>';
+  } else {
+    var pct = (n / m) * 100;
+    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' of ' + m.toLocaleString('en-US') + ' visits (' + pct.toFixed(1) + '%)</div>';
+  }
+  var caveat = visitsSeries.caveat ? '<div class="click-caveat">⚠️ ' + esc(visitsSeries.caveat) + '</div>' : '';
+  return line + caveat;
 }
 
 function fmtWeekLabel(w) {
@@ -728,15 +754,26 @@ function seriesTotalHtml(series) {
     '<span class="metric-unit">' + esc(series.unit || '') + ' &middot; 12 wks' + flag + '</span>';
 }
 
-function weeklySeriesCardHtml(title, series, extraNote) {
+// visitsSeries is an OPTIONAL 4th argument (checked via arguments.length, not
+// truthiness — the CRM line page, gh-1573, reuses this same function with
+// only 2-3 args and must never render a visits rate line it never asked
+// for; the Marketing tab, gh-1574, always passes marketing.visits explicitly,
+// even when that value is itself undefined, so the "missing" case above still
+// renders its own NOT RUN line instead of silently omitting the row).
+function weeklySeriesCardHtml(title, series, extraNote, visitsSeries) {
+  var rate = (arguments.length >= 4 && series && series.kind !== 'not_run') ? visitsRateHtml(series.total, visitsSeries) : '';
   return '<div class="marketing-card"><h4>' + esc(title) + '</h4>' +
     '<div>' + seriesTotalHtml(series) + '</div>' +
     sparklineHtml(series, false) +
+    rate +
     (extraNote ? '<div class="excluded-note">' + extraNote + '</div>' : '') +
   '</div>';
 }
 
-function groupedWeeklySeriesCardHtml(title, series) {
+// visitsSeries: same optional-3rd-arg / arguments.length contract as
+// weeklySeriesCardHtml above — the CRM line page reuses this function with
+// 2 args, the Marketing tab always passes marketing.visits as the 3rd.
+function groupedWeeklySeriesCardHtml(title, series, visitsSeries) {
   if (!series || series.kind === 'not_run') {
     var reason = series && series.reason ? series.reason : 'No live data source yet.';
     return '<div class="marketing-card"><h4>' + esc(title) + '</h4>' +
@@ -748,6 +785,7 @@ function groupedWeeklySeriesCardHtml(title, series) {
   var html = '<div class="marketing-card"><h4>' + esc(title) + '</h4>' +
     '<div><span class="' + totalCls + '">' + safeNum(series.total) + '</span>' +
     '<span class="metric-unit">' + esc(series.unit || '') + ' &middot; 12 wks' + flag + '</span></div>';
+  if (arguments.length >= 3) html += visitsRateHtml(series.total, visitsSeries);
   if (groups.length === 0) {
     html += '<div class="not-run-note" style="color:#047857;background:#ECFDF5;border-color:#A7F3D0;">MEASURED ZERO &mdash; no rows in the last 12 weeks.</div>';
   } else {
@@ -767,7 +805,7 @@ function groupedWeeklySeriesCardHtml(title, series) {
   return html + '</div>';
 }
 
-function contractorFunnelHtml(funnel) {
+function contractorFunnelHtml(funnel, visitsSeries) {
   if (!funnel) {
     return '<div class="marketing-card"><h4>Contractor funnel (first event per contractor)</h4>' +
       '<div class="not-run-note">NOT RUN &mdash; funnel series unavailable for this audience.</div></div>';
@@ -784,15 +822,17 @@ function contractorFunnelHtml(funnel) {
       var note = excluded > 0
         ? excluded + ' contractor' + (excluded === 1 ? '' : 's') + ' reached this stage with no timestamp to bucket by &mdash; excluded from the weekly count above, not silently dropped from the total.'
         : '';
+      var rate = (series && series.kind !== 'not_run') ? visitsRateHtml(series.total, visitsSeries) : '';
       return '<div class="funnel-row"><span class="funnel-label">' + esc(s.label) + '</span>' +
         '<div class="funnel-body">' + seriesTotalHtml(series) + sparklineHtml(series, false) +
+        rate +
         (note ? '<div class="excluded-note">' + note + '</div>' : '') +
         '</div></div>';
     }).join('') +
   '</div>';
 }
 
-function referralClicksCardHtml(series) {
+function referralClicksCardHtml(series, visitsSeries) {
   if (!series) {
     return '<div class="marketing-card"><h4>Referral clicks</h4>' +
       '<div class="not-run-note">NOT RUN &mdash; series unavailable for this audience.</div></div>';
@@ -800,6 +840,7 @@ function referralClicksCardHtml(series) {
   var html = '<div class="marketing-card"><h4>Referral clicks</h4>' +
     '<div>' + seriesTotalHtml(series) + '</div>' +
     sparklineHtml(series, false);
+  if (series.kind !== 'not_run') html += visitsRateHtml(series.total, visitsSeries);
   // gh-1302 caveat text/link come from the EF payload (series.caveat /
   // series.caveat_ref, gh-1469) — never hardcoded here, so the two cannot
   // drift apart. caveat_ref is shape-constrained to a known-safe
@@ -819,24 +860,28 @@ function referralClicksCardHtml(series) {
 function renderMarketingSection(audience) {
   var aud = state.data.audiences[audience] || {};
   var marketing = aud.marketing;
-  var html = visitsDarkBannerHtml();
+  var html = '';
   if (!marketing) {
     html += '<div class="not-measured-banner">Marketing series unavailable for this audience &mdash; the deployed EF ' +
       'may predate gh-1469, or this response omitted the section. If this persists, a deploy is owed.</div>';
     return html;
   }
+  // gh-1574 (#1340 phase 5): the visits-dark banner is gone — GA4 is wired in
+  // now, so `marketing.visits` is passed to every card below and each tile
+  // carries its own "of visits" rate line (visitsRateHtml()) instead.
+  var visits = marketing.visits;
   html += '<div class="marketing-grid">';
   if (audience === 'homeowner') {
-    html += weeklySeriesCardHtml('Signups', marketing.signups);
-    html += weeklySeriesCardHtml('Claims', marketing.claims);
-    html += weeklySeriesCardHtml('Measurement orders', marketing.measurement_orders);
-    html += groupedWeeklySeriesCardHtml('Leads by source', marketing.leads_by_source);
+    html += weeklySeriesCardHtml('Signups', marketing.signups, null, visits);
+    html += weeklySeriesCardHtml('Claims', marketing.claims, null, visits);
+    html += weeklySeriesCardHtml('Measurement orders', marketing.measurement_orders, null, visits);
+    html += groupedWeeklySeriesCardHtml('Leads by source', marketing.leads_by_source, visits);
   } else if (audience === 'contractor') {
-    html += contractorFunnelHtml(marketing.funnel);
+    html += contractorFunnelHtml(marketing.funnel, visits);
   } else if (audience === 'referral_partner') {
-    html += groupedWeeklySeriesCardHtml('Partner signups by agent type', marketing.partner_signups_by_agent_type);
-    html += groupedWeeklySeriesCardHtml('Partner signups by UTM source', marketing.partner_signups_by_utm_source);
-    html += referralClicksCardHtml(marketing.referral_clicks);
+    html += groupedWeeklySeriesCardHtml('Partner signups by agent type', marketing.partner_signups_by_agent_type, visits);
+    html += groupedWeeklySeriesCardHtml('Partner signups by UTM source', marketing.partner_signups_by_utm_source, visits);
+    html += referralClicksCardHtml(marketing.referral_clicks, visits);
   }
   html += '</div>';
   return html;

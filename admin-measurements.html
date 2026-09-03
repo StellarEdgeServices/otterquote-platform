@@ -704,6 +704,11 @@ async function saveFulfillment() {
     closeDrawer();
     await loadOrders();
   } catch (e) {
+    if (typeof Sentry !== 'undefined') {
+      Sentry.captureException(e, {
+        extra: { order_id: row.id, claim_id: row.claim_id }
+      });
+    }
     err.textContent = e.message || String(e);
     err.style.display = 'block';
   } finally {
