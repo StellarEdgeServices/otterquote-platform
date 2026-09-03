@@ -90,6 +90,25 @@ function jsonError(status: number, error: string): MintResult {
 }
 
 /**
+ * gh-1562 (CodeQL js/stack-trace-exposure): the single sink for every error
+ * path in this function that reaches an HTTP response, whether the error
+ * arrives as a thrown exception (index.ts's outer catch-all — auth client
+ * construction, anything unexpected) or as a returned `{ error }` from a
+ * DbAdapter call inside resolveAndMint (getContractorById, getClaimsByUserId,
+ * getAuthUserById, generateMagicLink — gh-1562 fixup, PR #1563 review: these
+ * four were still shipping raw adapter error text after the first pass).
+ * This is a credential-minting endpoint, so error detail — a message, a
+ * stack, PostgREST/driver text — can leak internal structure to whoever can
+ * reach it. The function has no Sentry init, so console.error is the only
+ * server-side detail sink; the response body is always the same fixed,
+ * generic string — never error.message, error.stack, or String(error).
+ */
+export function unexpectedErrorResponse(error: unknown): MintResult {
+  console.error("mint-test-session error:", error);
+  return jsonError(500, "Internal server error");
+}
+
+/**
  * Core R-174 gate + mint logic.
  *
  * Input: exactly one of contractor_id | user_id (non-empty string).
@@ -128,7 +147,12 @@ export async function resolveAndMint(
 
   if (contractorId !== undefined) {
     const { data: contractor, error } = await db.getContractorById(contractorId);
-    if (error) return jsonError(500, error.message);
+    // gh-1562 fixup: this used to be `jsonError(500, error.message)`, which
+    // put the raw Supabase/PostgREST adapter error text straight into the
+    // response body — the same leak class as the outer catch-all in
+    // index.ts, just reached via a returned `{error}` shape instead of a
+    // thrown exception. Route it through the same sink as that catch-all.
+    if (error) return unexpectedErrorResponse(error);
     if (!contractor) return jsonError(404, "Contractor not found");
     if (contractor.is_test !== true) {
       return jsonError(403, "Forbidden: contractor is not marked is_test");
@@ -141,7 +165,8 @@ export async function resolveAndMint(
     resolvedContractorId = contractor.id;
   } else {
     const { data: claims, error } = await db.getClaimsByUserId(userId!);
-    if (error) return jsonError(500, error.message);
+    // gh-1562 fixup: same leak class as getContractorById above.
+    if (error) return unexpectedErrorResponse(error);
     if (!claims || claims.length === 0) {
       return jsonError(403, "Forbidden: user owns no claims");
     }
@@ -150,7 +175,8 @@ export async function resolveAndMint(
     }
 
     const { data: authUser, error: authErr } = await db.getAuthUserById(userId!);
-    if (authErr) return jsonError(500, authErr.message);
+    // gh-1562 fixup: same leak class as getContractorById above.
+    if (authErr) return unexpectedErrorResponse(authErr);
     if (!authUser || !authUser.email) {
       return jsonError(404, "Auth user not found");
     }
@@ -159,8 +185,15 @@ export async function resolveAndMint(
   }
 
   const { data: link, error: linkError } = await db.generateMagicLink(targetEmail);
+  // gh-1562 fixup: same leak class as getContractorById above — this branch
+  // used to return linkError.message verbatim. The no-action_link-without-
+  // an-error edge case (adapter returned ok but no link) still gets logged
+  // with its own distinguishing message server-side, not silently merged
+  // into a generic "error" object with nothing to grep for.
   if (linkError || !link?.action_link) {
-    return jsonError(500, linkError?.message ?? "generateLink returned no action_link");
+    return unexpectedErrorResponse(
+      linkError ?? new Error("generateMagicLink returned no action_link"),
+    );
   }
 
   const { error: logError } = await db.insertActivityLog({

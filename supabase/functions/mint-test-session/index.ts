@@ -39,7 +39,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { type DbAdapter, resolveAndMint } from "./gate.ts";
+import { type DbAdapter, resolveAndMint, unexpectedErrorResponse } from "./gate.ts";
 
 // gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
 // do not edit without updating that file too (deploy path does not resolve imports).
@@ -152,10 +152,17 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("mint-test-session error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    // gh-1562 (js/stack-trace-exposure): unexpectedErrorResponse (gate.ts)
+    // logs the real error server-side only — this function has no Sentry
+    // init, so console.error is the detail sink — and returns a fixed,
+    // generic body with no error-derived content (no message, no stack, no
+    // driver text) to the caller of this credential-minting endpoint,
+    // regardless of what threw. The 403/200 contract from resolveAndMint
+    // (#1513) is untouched; only this catch-all 500 changes.
+    const result = unexpectedErrorResponse(error);
+    return new Response(JSON.stringify(result.body), {
+      status: result.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

@@ -333,7 +333,13 @@ function render() {
 
   if (!line) return renderTopPage();
   if (line === 'otterquotes' && !audience) return renderLinePage();
-  if (line === 'otterquotes' && audience && AUDIENCE_LABELS[audience]) return renderAudiencePage(audience, tab);
+  // gh-1562: `AUDIENCE_LABELS[audience]` truthy was not a real allow-list
+  // check — `audience` is a raw URL query value, and Object.prototype key
+  // names (e.g. audience=constructor, toString, hasOwnProperty) are also
+  // truthy lookups on a plain object literal, so that check let non-label
+  // strings through into renderAudiencePage. hasOwnProperty constrains
+  // `audience` to one of AUDIENCE_LABELS' own three keys, full stop.
+  if (line === 'otterquotes' && audience && Object.prototype.hasOwnProperty.call(AUDIENCE_LABELS, audience)) return renderAudiencePage(audience, tab);
   return renderTopPage();
 }
 
@@ -447,12 +453,24 @@ function renderAudiencePage(audience, tab) {
   var html = '<p class="breadcrumb"><a href="?">All business lines</a> &rsaquo; ' +
     '<a href="?line=otterquotes">Otter Quotes</a> &rsaquo; ' + esc(AUDIENCE_LABELS[audience]) + '</p>';
 
-  // audience is validated by render() (AUDIENCE_LABELS[audience] truthy)
-  // before this function is ever called, so it is one of a known-safe
-  // three-value set here — not free text from the EF response.
+  // gh-1562 (CodeQL js/xss, both innerHTML sinks below): audience is now
+  // validated by render() via Object.prototype.hasOwnProperty.call, so it
+  // can only be one of AUDIENCE_LABELS' three literal own keys here — not
+  // free text from the EF response, and not an inherited Object.prototype
+  // property name either. That hasOwnProperty gate is the real barrier for
+  // this specific onclick="navigate({...audience:'...'})" sink: the browser
+  // HTML-decodes an attribute's value before compiling it as the inline
+  // handler's JS, so esc()'s '&#39; encoding of a quote would decode back to
+  // a literal ' and would NOT stop a JS-string break-out on its own if this
+  // gate were ever weakened (correction per PR #1563 review — an earlier
+  // version of this comment overclaimed esc() as an independent layer here).
+  // esc() is still applied below, matching this file's house style and
+  // covering the surrounding HTML-attribute-quote boundary, but the
+  // hasOwnProperty constraint above is what actually makes this safe.
+  var audienceEsc = esc(audience);
   html += '<div class="tabs">' +
-    '<button class="tab-btn' + (isMarketing ? ' active' : '') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audience + '\',tab:\'marketing\'})">Marketing</button>' +
-    '<button class="tab-btn' + (isMarketing ? '' : ' active') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audience + '\',tab:\'crm\'})">CRM</button>' +
+    '<button class="tab-btn' + (isMarketing ? ' active' : '') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audienceEsc + '\',tab:\'marketing\'})">Marketing</button>' +
+    '<button class="tab-btn' + (isMarketing ? '' : ' active') + '" onclick="navigate({line:\'otterquotes\',audience:\'' + audienceEsc + '\',tab:\'crm\'})">CRM</button>' +
   '</div>';
 
   if (isMarketing) {
@@ -494,7 +512,16 @@ function renderAudiencePage(audience, tab) {
       '<th>Member</th><th>Checklist</th><th>Days since movement</th>' +
     '</tr></thead><tbody>';
     sorted.forEach(function (r, i) {
-      var rowId = audience + '-' + i;
+      // gh-1562 alert #42 (CodeQL js/xss, live re-scan on merged main):
+      // this rowId built off the RAW `audience` parameter, not audienceEsc
+      // (defined above for the tab-button onclick handlers) — a second,
+      // independent unescaped interpolation of the same value, reachable
+      // only from this CRM branch, which is exactly why the marketing
+      // branch's innerHTML sink (~line 478) came back `fixed` on re-scan
+      // while this one (~line 527) did not. `i` is a plain loop index
+      // (always numeric, never external input) so audienceEsc alone
+      // closes it.
+      var rowId = audienceEsc + '-' + i;
       html += '<tr class="member-row' + (r.is_test ? ' is-test' : '') + '" onclick="toggleDetail(\'' + rowId + '\')">' +
         '<td><span class="member-label">' + esc(r.label) + '</span>' + (r.is_test ? '<span class="test-badge">TEST</span>' : '') + '</td>' +
         '<td>' + checklistHtml(r.checklist) + '</td>' +
