@@ -1079,7 +1079,21 @@
                     sb.from('contractors').insert(createObj).select().single(),
                     10000, 'Contractor record create (86e1p4pre stub fallback)'
                 );
-                if (createRes.error) throw createRes.error;
+                if (createRes.error) {
+                    // gh-1544: same contractors_email_lower_uniq backstop as init()'s
+                    // insert — this stub-fallback create path can also race a concurrent
+                    // signup for the same email. Route to the duplicate-application panel
+                    // instead of the generic "Upload Failed" error below.
+                    if (createRes.error.code === '23505') {
+                        const dupRace2 = await checkContractorEmailDuplicate(
+                            (liveSession?.user?.email) || currentUser?.email || ''
+                        );
+                        if (advBtn) { advBtn.dataset.submitting = 'false'; advBtn.disabled = false; advBtn.style.opacity = '1'; advBtn.textContent = 'Continue to Agreements →'; }
+                        showDuplicateApplicationPanel(dupRace2.status);
+                        return;
+                    }
+                    throw createRes.error;
+                }
                 contractor = createRes.data;
                 console.log('[pre-approval] 86e1p4pre: created missing contractors row during step-2 save for user_id=' + user_id);
             } else {
@@ -1391,7 +1405,19 @@
                 if (signup.phone) insertObj.phone = signup.phone;
                 const insertRes = await sb.from('contractors').insert(insertObj).select().single();
 
-                if (insertRes.error) throw insertRes.error;
+                if (insertRes.error) {
+                    // gh-1544: contractors_email_lower_uniq is the server-side backstop for
+                    // the pre-insert duplicate-by-email gate above — it closes the race where
+                    // two signups for the same email land concurrently between the check and
+                    // this insert. Surface the same "Application Already Exists" panel rather
+                    // than letting a raw Postgres error reach the applicant.
+                    if (insertRes.error.code === '23505') {
+                        const dupRace = await checkContractorEmailDuplicate(currentUser.email);
+                        showDuplicateApplicationPanel(dupRace.status);
+                        return;
+                    }
+                    throw insertRes.error;
+                }
                 ct = insertRes.data;
             }
 
