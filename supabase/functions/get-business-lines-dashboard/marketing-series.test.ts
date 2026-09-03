@@ -11,11 +11,16 @@
 // implementations — not a re-implementation of them.
 //
 // Deliberately does NOT exercise the handler itself (auth, the Supabase
-// reads, fetchAllActivity, fetchRevenueMtd): those need live credentials and
-// network access and are out of scope for a pure-unit, --allow-net-free
-// lane. What IS covered here is every pure function gh-1469 added:
-// buildWeekWindows, countByWeek, kindForTotal, buildWeeklySeries,
-// notRunSeries, buildGroupedWeeklySeries, firstEventPerGroup.
+// reads, fetchAllActivity, fetchRevenueMtd, the live GA4 fetch behind
+// fetchGa4SessionsByDay): those need live credentials and network access and
+// are out of scope for a pure-unit, --allow-net-free lane. What IS covered
+// here is every pure function gh-1469 added — buildWeekWindows, countByWeek,
+// kindForTotal, buildWeeklySeries, notRunSeries, buildGroupedWeeklySeries,
+// firstEventPerGroup — plus, as of gh-1574 (#1340 phase 5), the pure GA4
+// visits-series functions: ga4DateToIso, sumByWeek, buildVisitsSeries. The
+// GA4 *response-parsing* pure function (parseSessionsByDayResponse) lives in
+// ga4.ts, which is a real module with real exports (not a single-file EF),
+// so it is tested directly in ga4.test.ts instead of via this extraction.
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
 const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
@@ -109,6 +114,19 @@ const mod = [
     "function firstEventPerGroup(",
     "export function firstEventPerGroup(",
   ),
+  // gh-1574 (#1340 phase 5) — GA4 visits weekly series.
+  grabConst("GA4_VISITS_CAVEAT").replace("const GA4_VISITS_CAVEAT", "export const GA4_VISITS_CAVEAT"),
+  grabConst("GA4_VISITS_NOTE").replace("const GA4_VISITS_NOTE", "export const GA4_VISITS_NOTE"),
+  grabBlock("function ga4DateToIso(").replace("function ga4DateToIso(", "export function ga4DateToIso("),
+  grabBlock("interface WeightedDatedRow").replace(
+    "interface WeightedDatedRow",
+    "export interface WeightedDatedRow",
+  ),
+  grabBlock("function sumByWeek(").replace("function sumByWeek(", "export function sumByWeek("),
+  grabBlock("function buildVisitsSeries(").replace(
+    "function buildVisitsSeries(",
+    "export function buildVisitsSeries(",
+  ),
 ].join("\n\n");
 const url = "data:application/typescript," + encodeURIComponent(mod);
 const {
@@ -122,6 +140,11 @@ const {
   UNSPECIFIED_GROUP,
   WEEK_MS,
   MARKETING_WEEKS,
+  GA4_VISITS_CAVEAT,
+  GA4_VISITS_NOTE,
+  ga4DateToIso,
+  sumByWeek,
+  buildVisitsSeries,
   // deno-lint-ignore no-explicit-any
 } = await import(url) as any;
 
@@ -294,4 +317,103 @@ Deno.test("firstEventPerGroup: multiple groups each contribute exactly one first
   const { firsts, excludedNoTimestamp } = firstEventPerGroup(rows);
   assertEquals(firsts.length, 2);
   assertEquals(excludedNoTimestamp, 0);
+});
+
+// --- gh-1574 (#1340 phase 5): GA4 visits weekly series --------------------
+
+// --- ga4DateToIso -----------------------------------------------------
+
+Deno.test("ga4DateToIso: converts a GA4 YYYYMMDD date to midnight-UTC ISO", () => {
+  assertEquals(ga4DateToIso("20260901"), "2026-09-01T00:00:00.000Z");
+});
+
+Deno.test("ga4DateToIso: rejects anything that isn't exactly 8 digits", () => {
+  for (const bad of ["2026-09-01", "202609011", "2026901", "", "today", "2026090a"]) {
+    assertEquals(ga4DateToIso(bad), null);
+  }
+});
+
+// --- sumByWeek ----------------------------------------------------------
+
+Deno.test("sumByWeek: sums each row's value into the window whose [start, end) contains its timestamp", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const midLastWeek = new Date(NOW - WEEK_MS / 2).toISOString();
+  const values = sumByWeek([{ iso: midLastWeek, value: 250 }], windows);
+  assertEquals(values, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 250]);
+});
+
+Deno.test("sumByWeek: multiple rows in the same window accumulate rather than overwrite", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const midLastWeek = new Date(NOW - WEEK_MS / 2).toISOString();
+  const values = sumByWeek(
+    [{ iso: midLastWeek, value: 100 }, { iso: midLastWeek, value: 50 }],
+    windows,
+  );
+  assertEquals(values[11], 150);
+});
+
+Deno.test("sumByWeek: a row with no timestamp, or one older than all windows, is dropped rather than mis-bucketed", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const ancient = new Date(NOW - 52 * WEEK_MS).toISOString();
+  const values = sumByWeek([{ iso: null, value: 999 }, { iso: ancient, value: 999 }], windows);
+  assertEquals(values.reduce((a: number, b: number) => a + b, 0), 0);
+});
+
+// --- buildVisitsSeries ----------------------------------------------------
+
+Deno.test("buildVisitsSeries: a successful GA4 fetch with sessions produces a measured series carrying the caveat and note", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const dayInLastWindow = "20260901"; // NOW is 2026-09-01T18:00:00Z
+  const series = buildVisitsSeries(
+    { ok: true, property_id: "541423859", rows: [{ date: dayInLastWindow, sessions: 421 }] },
+    windows,
+  );
+  assertEquals(series.kind, "measured");
+  assertEquals(series.unit, "sessions");
+  assertEquals(series.total, 421);
+  assertEquals(series.values[11], 421);
+  assertEquals(series.caveat, GA4_VISITS_CAVEAT);
+  assertEquals(series.note, GA4_VISITS_NOTE);
+});
+
+Deno.test("buildVisitsSeries: a successful GA4 fetch with no rows is a real measured_zero, not not_run", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const series = buildVisitsSeries({ ok: true, property_id: "541423859", rows: [] }, windows);
+  assertEquals(series.kind, "measured_zero");
+  assertEquals(series.total, 0);
+});
+
+Deno.test("buildVisitsSeries: a GA4 fetch failure is not_run with the reason attached — never a fabricated zero series", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const series = buildVisitsSeries(
+    { ok: false, reason: "GA4 Data API returned 403 for property 541423859" },
+    windows,
+  );
+  assertEquals(series.kind, "not_run");
+  assertEquals(series.reason, "GA4 Data API returned 403 for property 541423859");
+  assertEquals(series.values, new Array(12).fill(0));
+  assertEquals(series.total, 0);
+  // The caveat/note are still carried even when unmeasured — they describe
+  // the series' meaning and scope, not its measured state.
+  assertEquals(series.caveat, GA4_VISITS_CAVEAT);
+  assertEquals(series.note, GA4_VISITS_NOTE);
+});
+
+Deno.test("buildVisitsSeries: sessions from multiple days land in their own respective weeks, not all in one bucket", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const series = buildVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      rows: [
+        { date: "20260901", sessions: 100 }, // last window (NOW's day)
+        { date: "20260701", sessions: 50 },  // an earlier window
+      ],
+    },
+    windows,
+  );
+  assertEquals(series.kind, "measured");
+  assertEquals(series.total, 150);
+  assertEquals(series.values[11], 100);
+  assertEquals(series.values.slice(0, 11).reduce((a: number, b: number) => a + b, 0), 50);
 });
