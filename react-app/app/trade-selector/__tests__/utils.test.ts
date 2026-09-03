@@ -138,4 +138,42 @@ describe('parseAddress (gh-1579)', () => {
       });
     });
   });
+
+  describe('gh-1579 round 3: full USPS-suffix/state collision set (CT, KY, MT, PR, WY)', () => {
+    // The round-2 fix hand-picked only "CT" and missed "Wy" (Way vs.
+    // Wyoming) — the identical defect class one suffix over. The round-3
+    // fix derives the full intersection of 2-letter USPS Pub-28 suffix
+    // abbreviations against VALID_STATE_CODES instead of hand-picking, so
+    // these cases lock in every member of that derived set, not just the
+    // one a reviewer happened to notice.
+
+    it.each([
+      // Wy = Way, collides with Wyoming. The exact inputs from the FAIL
+      // review that caught the round-2 gap.
+      ['100 Sunset Wy 90210', 'WY/Way'],
+      ['400 Fair Wy 82001', 'WY/Way'],
+      // Ky = Key, collides with Kentucky.
+      ['12 Compass Ky 40202', 'KY/Key'],
+      // Mt = Mount, collides with Montana.
+      ['5 Fair Mt 59601', 'MT/Mount'],
+      // Pr = Prairie, collides with Puerto Rico.
+      ['20 Rolling Pr 78701', 'PR/Prairie'],
+    ])('does not mangle comma-less "%s" (%s) into a fabricated state', (address) => {
+      expect(parseAddress(address)).toEqual({
+        street: address,
+        city: null,
+        state: null,
+        zip: null,
+      });
+    });
+
+    it.each([
+      ['123 Main St, Cheyenne, WY 82001', '123 Main St', 'Cheyenne', 'WY', '82001'],
+      ['12 Main St, Lexington KY 40502', '12 Main St', 'Lexington', 'KY', '40502'],
+      ['5 Main St, Helena MT 59601', '5 Main St', 'Helena', 'MT', '59601'],
+      ['20 Main St, San Juan PR 00901', '20 Main St', 'San Juan', 'PR', '00901'],
+    ])('still trusts "%s" as a real state when a comma marks a real city segment', (address, street, city, state, zip) => {
+      expect(parseAddress(address)).toEqual({ street, city, state, zip });
+    });
+  });
 });

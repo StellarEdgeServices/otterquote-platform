@@ -53,21 +53,53 @@ const VALID_STATE_CODES = new Set([
   'DC', 'PR',
 ]);
 
-// Official USPS Pub-28 street-suffix abbreviations that are exactly two
-// letters AND collide with a real state code above: "Ct" (Court) is also
-// Connecticut. (The other 2-letter suffixes — Dr, Ln, Pl, Rd, Sq, St — do
-// not collide with any state in VALID_STATE_CODES, so a plain whitelist
-// check is already sufficient for those.) For this one collision, the
-// whitelist can't tell "…Riverside Ct 12345" (a street) from "…Hartford CT
-// 06103" (a city, Connecticut) by the token alone — so we use the *shape*
-// of the address as the tiebreaker: a comma in the head (a "street, city"
-// split already happened) is a strong signal the trailing token really is
-// the state, whereas a fully comma-less head is exactly the shape that
-// produced the false "Ct" = Connecticut misfire this fix targets. On that
-// ambiguous, comma-less shape we deliberately fall through to the legacy
-// fallback (null state) rather than guess — consistent with this fix's
-// overall principle that a NULL is safer than a confidently wrong state.
-const AMBIGUOUS_STATE_SUFFIX_CODES = new Set(['CT']);
+// gh-1579 round 3: the round-2 fix hand-picked "CT" as the one ambiguous
+// code and asserted (wrongly — see review comment on PR #1583) that no
+// other 2-letter USPS street-suffix abbreviation collides with a state in
+// VALID_STATE_CODES. A second one ("Wy"/Way vs. Wyoming) was found by
+// inspection immediately after. Hand-picking is a treadmill: every future
+// reviewer who thinks of one more suffix finds one more collision. Instead,
+// derive the ambiguous set structurally as an intersection.
+//
+// DERIVATION: USPS Publication 28, Appendix C1 ("Street Suffix
+// Abbreviations") assigns each primary street-suffix name a two-character
+// Postal Service standard abbreviation for exactly these suffixes (name →
+// abbreviation): Branch→BR, Camp→CP, Court→CT, Cove→CV, Dale→DL, Dam→DM,
+// Divide→DV, Drive→DR, Fort→FT, Hill→HL, Island→IS, Key→KY, Loaf→LF,
+// Lake→LK, Lane→LN, Mill→ML, Mount→MT, Place→PL, Prairie→PR, Point→PT,
+// Road→RD, Square→SQ, Street→ST, Union→UN, Ville→VL, View→VW, Way→WY.
+// (Every other primary suffix — Avenue, Boulevard, Circle, Court(s), etc.
+// — abbreviates to three or more letters and can't collide with a 2-letter
+// state code at all, so it's excluded from the candidate set before the
+// intersection even runs.)
+//
+// USPS_TWO_LETTER_SUFFIX_ABBREVIATIONS is that candidate set. Intersecting
+// it against VALID_STATE_CODES below is the actual ambiguity set — not
+// asserted, computed — so re-deriving it is just re-running this
+// intersection against Pub 28's table, not re-guessing suffixes by eye.
+const USPS_TWO_LETTER_SUFFIX_ABBREVIATIONS = new Set([
+  'BR', 'CP', 'CT', 'CV', 'DL', 'DM', 'DV', 'DR', 'FT', 'HL',
+  'IS', 'KY', 'LF', 'LK', 'LN', 'ML', 'MT', 'PL', 'PR', 'PT',
+  'RD', 'SQ', 'ST', 'UN', 'VL', 'VW', 'WY',
+]);
+
+// The computed intersection: 2-letter USPS suffix abbreviations that are
+// ALSO real state/territory codes in VALID_STATE_CODES. For every code in
+// this set, the whitelist alone can't tell "…Riverside Ct 12345" (a
+// street) from "…Hartford CT 06103" (a city, Connecticut) by the token
+// alone — so we use the *shape* of the address as the tiebreaker: a comma
+// in the head (a "street, city" split already happened) is a strong signal
+// the trailing token really is the state, whereas a fully comma-less head
+// is exactly the shape that produces the false suffix-as-state misfire.
+// On that ambiguous, comma-less shape we deliberately fall through to the
+// legacy fallback (null state) rather than guess — consistent with this
+// fix's overall principle that a NULL is safer than a confidently wrong
+// state. As of this derivation the intersection is: CT (Court/
+// Connecticut), KY (Key/Kentucky), MT (Mount/Montana), PR (Prairie/Puerto
+// Rico), WY (Way/Wyoming).
+const AMBIGUOUS_STATE_SUFFIX_CODES = new Set(
+  [...USPS_TWO_LETTER_SUFFIX_ABBREVIATIONS].filter((code) => VALID_STATE_CODES.has(code))
+);
 
 function cleanState(raw: string | null | undefined): string | null {
   const token = (raw || '').trim().split(/\s+/)[0] || '';
@@ -81,8 +113,9 @@ function isValidStateCode(token: string): boolean {
 function isTrustworthyStateMatch(token: string, head: string): boolean {
   if (!isValidStateCode(token)) return false;
   if (AMBIGUOUS_STATE_SUFFIX_CODES.has(token.toUpperCase())) {
-    // Only trust "Ct" as Connecticut when a comma already separated a city
-    // segment from it; a comma-less head is the ambiguous street-suffix shape.
+    // Only trust a code in the derived intersection (currently CT/KY/MT/
+    // PR/WY) as a state when a comma already separated a city segment from
+    // it; a comma-less head is the ambiguous street-suffix shape.
     return head.trim().includes(',');
   }
   return true;
@@ -99,11 +132,13 @@ function isTrustworthyStateMatch(token: string, head: string): boolean {
  *    everything before the token into street/city on the last comma — or,
  *    if there is no comma at all, on the last whitespace-separated word.
  * 3. When no such trailing token is found, OR the token is found but is
- *    not a real state code, OR it is the one ambiguous code that is both a
- *    real state and a common street suffix ("Ct"/Connecticut) appearing on
- *    a fully comma-less address (see AMBIGUOUS_STATE_SUFFIX_CODES), fall
- *    back unchanged to the original 4-segment comma split — identical
- *    treatment to a regex miss, so this never invents a third behavior.
+ *    not a real state code, OR it is one of the codes that are both a real
+ *    state and a 2-letter USPS street-suffix abbreviation (CT/KY/MT/PR/WY —
+ *    see AMBIGUOUS_STATE_SUFFIX_CODES, derived by intersecting the USPS
+ *    Pub-28 2-letter suffix table against VALID_STATE_CODES) appearing on a
+ *    fully comma-less address, fall back unchanged to the original
+ *    4-segment comma split — identical treatment to a regex miss, so this
+ *    never invents a third behavior.
  *    This also covers the legacy "street, city, state, zip" shape, where
  *    state and zip are themselves comma-separated and so never match the
  *    trailing-token regex to begin with.
