@@ -36,6 +36,25 @@ Being unable to measure a site is UNMEASURED, never IDENTICAL. No token, no netw
 HTTP error, an empty/malformed response, or a missing field all resolve to UNMEASURED for
 that site and it is never silently skipped from the run's overall exit code.
 
+HARDENING (gh-1549 CTO comment 5524997596, 2026-09-03 -- filed after the first shipped
+version resolved UNMEASURED for 16h47m with nobody reading it, per "a shipped script is
+not a mechanism; a firing one is")
+  1. SITE ENUMERATION: sites are discovered from `GET /api/v1/sites`, filtered to
+     build_settings.repo_url containing "StellarEdgeServices/", instead of a hardcoded
+     pair. A hardcoded list is how a third site (otterquote-app, found 32h stale and
+     named on no issue anywhere) goes unwatched. See filter_org_sites().
+  2. QUEUED_STALE: a third independent signal alongside BEHIND/BUILD_FAILING -- a
+     `/builds` entry with done=False, no error, and no deploy_id (never produced a
+     deploy), older than --queued-stale-minutes (default 60). This is the #1517 shape
+     neither existing signal catches: BUILD_FAILING reads the newest production
+     *deploy*, and a build that produced none has nothing for it to fail on. See
+     find_queued_stale_build().
+  3. AUTO-TOPUP WARN: a WARN line, independent of any site's drift verdict and never
+     affecting the exit code, when a Netlify account has auto_topup_enabled=False while
+     has_stripe_payment_method=True -- read during the actual #1548 freeze, this was the
+     field that carried the signal while every usage-exceeded array stayed `[]`. See
+     find_auto_topup_warnings().
+
 CROSS-REPO SCOPE GAP (found running this detector live, 2026-09-02 -- read before adding
 a third site or "fixing" a red otter-crm row)
   otter-crm is a SEPARATE private repo (StellarEdgeServices/otter-crm), not a directory
@@ -63,12 +82,14 @@ USAGE
                      non-clean run (null when every site is IDENTICAL) -- per gh-1501
                      comment 5509656183 ruling 2c, loudness must not be a function of
                      output format.
-    --file-issue    On any site resolving to BEHIND or BUILD_FAILING, POST a comment to
-                     issue #1549 with the full report. Requires GITHUB_TOKEN or
-                     GITHUB_PERSONAL_ACCESS_TOKEN with `issues: write`. Without this flag
-                     the script still exits non-zero on a bad result (loud in CI logs) but
-                     never touches the issue tracker -- used for local/test invocations so
-                     a manual run never spams the thread.
+    --file-issue    On any site resolving to BEHIND, BUILD_FAILING, or QUEUED_STALE, POST
+                     a comment to issue #1549 with the full report. Requires GITHUB_TOKEN
+                     or GITHUB_PERSONAL_ACCESS_TOKEN with `issues: write`. Without this
+                     flag the script still exits non-zero on a bad result (loud in CI
+                     logs) but never touches the issue tracker -- used for local/test
+                     invocations so a manual run never spams the thread.
+    --queued-stale-minutes N
+                     Age threshold in minutes for the QUEUED_STALE signal (default 60).
 
 AUTH
   NETLIFY_PAT                    Netlify Personal Access Token. Per gh-1549's filing
@@ -89,16 +110,21 @@ AUTH
 
 EXIT
   0  IDENTICAL for every site
-  2  BEHIND or BUILD_FAILING for at least one site, and every site was measurable
+  2  BEHIND, BUILD_FAILING, or QUEUED_STALE for at least one site, and every site was
+     measurable
   3  UNMEASURED for at least one site -- could not measure at all. This OUTRANKS 2: a run
      that could not check one site does not get to report the others' clean verdicts as if
      the whole run were trustworthy (same "could not measure outranks drift" ordering as
      edge-function-drift-check.py's report_exit_code()).
+
+  The account-level auto-topup WARN (see HARDENING above) never affects this exit code by
+  itself -- it is an advisory line, not a measured per-site verdict.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import sys
@@ -106,23 +132,17 @@ import urllib.error
 import urllib.request
 
 # ---------------------------------------------------------------------------
-# Site table (gh-1549 issue body, verbatim site ids)
+# Site enumeration (gh-1549 CTO comment 5524997596, 2026-09-03): sites are now
+# discovered from the Netlify API by build_settings.repo_url instead of hardcoded --
+# see fetch_netlify_sites() / filter_org_sites() below. A hardcoded pair is how a
+# third site (otterquote-app, discovered 32h stale and named on no issue anywhere)
+# gets watched by nobody. As of this writing that enumeration yields:
+#   jade-alpaca-b82b5e  (otterquote.com)          repo: otterquote-platform
+#   otterquote-app      (app.otterquote.com)      repo: otterquote-platform
+#   otter-crm           (crm.otterquote.com)      repo: otter-crm
 # ---------------------------------------------------------------------------
 
-SITES = [
-    {
-        "key": "otterquote-platform",
-        "label": "otterquote.com (jade-alpaca-b82b5e)",
-        "site_id": "6748a414-1baa-4309-a5f9-f3a7f45e3d94",
-        "repo": "StellarEdgeServices/otterquote-platform",
-    },
-    {
-        "key": "otter-crm",
-        "label": "otter-crm",
-        "site_id": "d1b2efbd-8478-472f-8503-57cbdd5b36db",
-        "repo": "StellarEdgeServices/otter-crm",
-    },
-]
+REPO_OWNER_FILTER = "StellarEdgeServices/"
 
 ISSUE_REPO = "StellarEdgeServices/otterquote-platform"
 ALARM_ISSUE_NUMBER = 1549
@@ -132,14 +152,17 @@ GITHUB_TOKEN_ENV_VAR = "GITHUB_PERSONAL_ACCESS_TOKEN"
 
 TIMEOUT_SECONDS = 20
 
+DEFAULT_QUEUED_STALE_MINUTES = 60
+
 # Verdicts.
 IDENTICAL = "IDENTICAL"
 BEHIND = "BEHIND"
 BUILD_FAILING = "BUILD_FAILING"
+QUEUED_STALE = "QUEUED_STALE"
 UNMEASURED = "UNMEASURED"
 
 # Verdicts that represent a real, measured problem (as opposed to "could not measure").
-FAILING_VERDICTS = {BEHIND, BUILD_FAILING}
+FAILING_VERDICTS = {BEHIND, BUILD_FAILING, QUEUED_STALE}
 
 # Netlify deploy states treated as a failing build/deploy attempt. "error" is the
 # state observed live on gh-1549 (2026-09-02: 8 consecutive production deploy
@@ -151,6 +174,39 @@ FAILING_DEPLOY_STATES = {"error"}
 
 def _plural(n):
     return "commit" if n == 1 else "commits"
+
+
+def _format_minutes(total_minutes):
+    """Human-readable duration for a QUEUED_STALE detail string. The #1517 shape sat
+    for up to 14+ days, so this must scale past "N minutes" cleanly rather than
+    printing e.g. "20160 min"."""
+    total_minutes = int(total_minutes)
+    if total_minutes < 60:
+        return "%d min" % total_minutes
+    hours, minutes = divmod(total_minutes, 60)
+    if hours < 24:
+        return "%dh%dm" % (hours, minutes)
+    days, hours = divmod(hours, 24)
+    return "%dd%dh" % (days, hours)
+
+
+def _parse_iso8601(ts):
+    """Best-effort ISO-8601 parse of a Netlify timestamp (e.g. "2026-08-20T19:45:55.000Z").
+    Returns None (never raises) on anything unparseable -- an unparseable timestamp
+    means "cannot age this build", not "assume it's fine"; callers treat None as
+    excluding that build from staleness detection rather than crashing the run."""
+    if not ts:
+        return None
+    s = ts.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        parsed = datetime.datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +228,7 @@ def unmeasured_row(site, reason):
         "deploy_state": None,
         "deploy_error_message": None,
         "deploy_skipped": None,
+        "queued_stale_build_id": None,
     }
 
 
@@ -184,12 +241,20 @@ def evaluate_site(
     deploy_state,
     deploy_error_message,
     deploy_skipped,
+    queued_stale_build=None,
 ):
     """Pure verdict logic given already-fetched fields. No network, no I/O.
 
-    BUILD_FAILING is checked FIRST and independently of the sha compare -- see the
-    module docstring's "TWO INDEPENDENT SIGNALS": a still-matching published_deploy
-    must never hide a newer deploy attempt that is actively erroring.
+    Priority order (gh-1549 CTO comment 5524997596: three independent signals, none
+    of which may shadow another into looking clean):
+      1. BUILD_FAILING -- see the module docstring's "TWO INDEPENDENT SIGNALS": a
+         still-matching published_deploy must never hide a newer deploy attempt
+         that is actively erroring.
+      2. QUEUED_STALE -- a build stuck in limbo (done=False, no error, no deploy
+         produced) for longer than the staleness threshold. This is the #1517
+         shape BUILD_FAILING cannot see: BUILD_FAILING reads the newest production
+         DEPLOY, and a build that never produced one has no deploy to fail on.
+      3. BEHIND / IDENTICAL -- the sha compare, as before.
     """
     row = {
         "key": site["key"],
@@ -202,6 +267,7 @@ def evaluate_site(
         "deploy_state": deploy_state,
         "deploy_error_message": deploy_error_message,
         "deploy_skipped": deploy_skipped,
+        "queued_stale_build_id": None,
     }
 
     if deploy_state in FAILING_DEPLOY_STATES:
@@ -213,6 +279,19 @@ def evaluate_site(
         row["detail"] = detail
         return row
 
+    if queued_stale_build is not None:
+        build_id = queued_stale_build.get("id") or "?"
+        age = queued_stale_build.get("_age_minutes") or 0
+        created_at = queued_stale_build.get("created_at") or "?"
+        row["verdict"] = QUEUED_STALE
+        row["detail"] = "build %s stuck %s (queued since %s), never started or failed" % (
+            build_id,
+            _format_minutes(age),
+            created_at,
+        )
+        row["queued_stale_build_id"] = build_id
+        return row
+
     if published_commit == main_sha:
         row["verdict"] = IDENTICAL
         row["detail"] = "production commit_ref matches main HEAD"
@@ -221,6 +300,127 @@ def evaluate_site(
     row["verdict"] = BEHIND
     row["detail"] = "%d %s behind, since %s" % (ahead_by, _plural(ahead_by), row["since"])
     return row
+
+
+def find_queued_stale_build(builds, now, stale_minutes=DEFAULT_QUEUED_STALE_MINUTES):
+    """Pure function -- given already-fetched /builds entries, find the oldest build
+    matching the #1517 QUEUED_STALE shape: done=False, no error, no deploy_id (never
+    produced a deploy), and older than stale_minutes. Returns the matching build dict
+    (with an added "_age_minutes" key) or None. No network, no clock reads -- `now`
+    is passed in so this is fully testable.
+
+    gh-1549 CTO comment 5524997596 (the live #1517 evidence):
+        6a8759721a15470008234b70  done=False  err=  2026-08-20T19:45:55Z  (14+ days)
+        6a84b513f9b1030008ca39a8  done=False  err=  2026-08-18T19:40:03Z
+        6a7e639d1ac7d40008c8492b  done=False  err=  2026-08-14T00:38:53Z
+    "BUILD_FAILING reads the newest production deploy; these produced none, so it
+    sees nothing to fail on."
+    """
+    stale = []
+    for b in builds or []:
+        if b.get("done") is not False:
+            continue
+        if b.get("error"):
+            continue
+        if b.get("deploy_id"):
+            continue
+        created = _parse_iso8601(b.get("created_at"))
+        if created is None:
+            continue
+        age_minutes = (now - created).total_seconds() / 60.0
+        if age_minutes >= stale_minutes:
+            b = dict(b)
+            b["_age_minutes"] = age_minutes
+            stale.append(b)
+    if not stale:
+        return None
+    # Oldest (most-stuck) first -- that is the most alarming single build to report.
+    stale.sort(key=lambda b: b["_age_minutes"], reverse=True)
+    return stale[0]
+
+
+# ---------------------------------------------------------------------------
+# Site enumeration -- pure filter/map layer (no network). gh-1549 CTO comment
+# 5524997596: enumerate by build_settings.repo_url instead of a hardcoded table.
+# ---------------------------------------------------------------------------
+
+
+def _repo_from_repo_url(repo_url):
+    """Extract "owner/repo" from a Netlify build_settings.repo_url, e.g.
+    "https://github.com/StellarEdgeServices/otterquote-platform" or
+    "git@github.com:StellarEdgeServices/otter-crm.git". Returns None for anything
+    that doesn't look like a parseable GitHub URL (never raises)."""
+    if not repo_url:
+        return None
+    url = repo_url.strip()
+    if url.endswith(".git"):
+        url = url[: -len(".git")]
+    if "github.com" not in url:
+        return None
+    tail = url.split("github.com", 1)[1].lstrip(":/")
+    parts = [p for p in tail.split("/") if p]
+    if len(parts) < 2:
+        return None
+    return "%s/%s" % (parts[0], parts[1])
+
+
+def filter_org_sites(raw_sites, owner_prefix=REPO_OWNER_FILTER):
+    """Pure filter+map: raw Netlify /api/v1/sites entries -> this script's internal
+    site dicts ({key, label, site_id, repo}), keeping only sites whose
+    build_settings.repo_url belongs to the given GitHub org. No network, no I/O --
+    fully testable. A site with no repo_url (not git-connected) or a repo_url this
+    detector can't parse is silently excluded, not UNMEASURED -- it is not a site
+    this detector's drift model applies to, not a measurement failure."""
+    out = []
+    for raw in raw_sites or []:
+        build_settings = raw.get("build_settings") or {}
+        repo_url = build_settings.get("repo_url")
+        if not repo_url or owner_prefix not in repo_url:
+            continue
+        repo = _repo_from_repo_url(repo_url)
+        if not repo:
+            continue
+        name = raw.get("name") or raw.get("id") or "unknown-site"
+        domain = raw.get("custom_domain") or raw.get("default_domain")
+        label = "%s (%s)" % (domain, name) if domain and domain != name else name
+        out.append(
+            {
+                "key": name,
+                "label": label,
+                "site_id": raw.get("id"),
+                "repo": repo,
+            }
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Account-level WARN (gh-1549 CTO comment 5524997596, item 3) -- independent of any
+# site's drift verdict, never changes the run's exit code by itself.
+# ---------------------------------------------------------------------------
+
+
+def find_auto_topup_warnings(accounts):
+    """Pure function -- one WARN line per Netlify account with auto_topup_enabled
+    False while has_stripe_payment_method is True.
+
+    "auto_topup_enabled == False on a Pro account with has_stripe_payment_method ==
+    True is a standing alarm condition, not a state... the next depletion freezes
+    every deploy again with no notice." (CTO comment 5524997596, item 3 -- read
+    during the actual #1548 16h47m freeze, where usages_exceeded /
+    sites_with_usage_exceeded / configurable_limits_exceeded were all `[]` the whole
+    time; this is the field that actually carried the signal.)
+    """
+    warnings = []
+    for acct in accounts or []:
+        if acct.get("auto_topup_enabled") is False and acct.get("has_stripe_payment_method") is True:
+            name = acct.get("name") or acct.get("slug") or acct.get("id") or "unknown account"
+            warnings.append(
+                'WARN: Netlify account "%s" has auto_topup disabled with a payment method '
+                "on file -- the next usage-limit depletion freezes every deploy again with "
+                "no notice (the #1548 shape)." % name
+            )
+    return warnings
 
 
 def display_verdict(row):
@@ -268,8 +468,9 @@ def _banner_lines(rows, code):
     else:
         lines += [
             "  >> NETLIFY PRODUCTION DEPLOY DRIFT. <<",
-            "  At least one site's production deploy does not match `main`, or its build",
-            "  pipeline is erroring. See the per-site detail below. Do not silently",
+            "  At least one site's production deploy does not match `main`, its build",
+            "  pipeline is erroring, or a build has been queued for over an hour with no",
+            "  deploy and no error. See the per-site detail below. Do not silently",
             "  redeploy everything -- diagnose the specific site (Netlify credit/billing,",
             "  cancelled builds, a stuck queue) the way #1548 and #1517 were each",
             "  diagnosed individually.",
@@ -281,7 +482,7 @@ def _banner_lines(rows, code):
     return lines
 
 
-def render_text(rows, code):
+def render_text(rows, code, warnings=None):
     lines = ["NETLIFY PRODUCTION DEPLOY DRIFT   repo=%s" % ISSUE_REPO, ""]
     for r in rows:
         lines.append("  %-40s %s" % (r["label"], display_verdict(r)))
@@ -296,10 +497,15 @@ def render_text(rows, code):
         lines.extend(banner)
     else:
         lines.append("Every site's production deploy is byte-for-commit identical to `main`.")
+    if warnings:
+        # Account-level WARNs (gh-1549 item 3) are independent of drift verdicts and
+        # never change `code` -- printed after the drift banner, never folded into it.
+        lines.append("")
+        lines.extend(warnings)
     return "\n".join(lines)
 
 
-def render_json(rows, code):
+def render_json(rows, code, warnings=None):
     banner = _banner_lines(rows, code)
     verdict_names = {0: "CURRENT", 2: "DRIFTED", 3: "UNMEASURED"}
     return json.dumps(
@@ -309,6 +515,7 @@ def render_json(rows, code):
             "code": code,
             "sites": rows,
             "banner": "\n".join(banner) if banner else None,
+            "warnings": list(warnings) if warnings else [],
         },
         indent=2,
     )
@@ -445,7 +652,65 @@ def fetch_github_ahead_by(repo, base_sha, head_sha, token):
     return ahead_by, "ok"
 
 
-def check_site(site, netlify_token, github_token):
+def fetch_netlify_builds(site_id, token):
+    if not token:
+        return None, "no %s found in the environment" % NETLIFY_TOKEN_ENV_VAR
+    return _get_json("https://api.netlify.com/api/v1/sites/%s/builds?per_page=20" % site_id, token)
+
+
+_MAX_SITE_PAGES = 20  # guard, not a real-world expected count -- see fetch_netlify_sites
+
+
+def fetch_netlify_sites(token, timeout=TIMEOUT_SECONDS):
+    """Enumerate every site the token's Netlify account can see. Paginates -- a
+    single-page call silently truncating as the account grows would reintroduce a
+    smaller version of the exact bug this replaces (a hardcoded, stale site list)."""
+    if not token:
+        return None, "no %s found in the environment" % NETLIFY_TOKEN_ENV_VAR
+    all_sites = []
+    page = 1
+    while True:
+        data, reason = _get_json(
+            "https://api.netlify.com/api/v1/sites?page=%d&per_page=100" % page,
+            token,
+            timeout=timeout,
+        )
+        if data is None:
+            return None, reason
+        if not isinstance(data, list):
+            return None, "Netlify /sites response was not a list"
+        all_sites.extend(data)
+        if len(data) < 100:
+            break
+        page += 1
+        if page > _MAX_SITE_PAGES:
+            return None, "Netlify /sites pagination exceeded %d pages without terminating" % _MAX_SITE_PAGES
+    return all_sites, "ok"
+
+
+def fetch_netlify_accounts(token, timeout=TIMEOUT_SECONDS):
+    if not token:
+        return None, "no %s found in the environment" % NETLIFY_TOKEN_ENV_VAR
+    return _get_json("https://api.netlify.com/api/v1/accounts", token, timeout=timeout)
+
+
+def compute_account_warnings(netlify_token):
+    """WARN lines for the run (gh-1549 item 3). Never raises, never affects the
+    run's exit code -- a failure to even check account posture becomes a WARN line
+    naming the failure, not a silent skip and not a fatal UNMEASURED (this is a
+    billing-posture advisory, not a drift measurement)."""
+    if not netlify_token:
+        return [
+            "WARN: could not check Netlify account auto-topup posture: no %s found in the "
+            "environment" % NETLIFY_TOKEN_ENV_VAR
+        ]
+    accounts, reason = fetch_netlify_accounts(netlify_token)
+    if accounts is None:
+        return ["WARN: could not check Netlify account auto-topup posture: %s" % reason]
+    return find_auto_topup_warnings(accounts)
+
+
+def check_site(site, netlify_token, github_token, now=None, queued_stale_minutes=DEFAULT_QUEUED_STALE_MINUTES):
     site_data, reason = fetch_netlify_site(site["site_id"], netlify_token)
     if site_data is None:
         return unmeasured_row(site, "Netlify site fetch failed: %s" % reason)
@@ -462,6 +727,10 @@ def check_site(site, netlify_token, github_token):
     if deploy_data is None:
         return unmeasured_row(site, "Netlify deploys fetch failed: %s" % reason)
 
+    builds_data, reason = fetch_netlify_builds(site["site_id"], netlify_token)
+    if builds_data is None:
+        return unmeasured_row(site, "Netlify builds fetch failed: %s" % reason)
+
     main_sha, reason = fetch_github_main_sha(site["repo"], github_token)
     if main_sha is None:
         return unmeasured_row(site, "GitHub main HEAD fetch failed: %s" % reason)
@@ -469,6 +738,12 @@ def check_site(site, netlify_token, github_token):
     ahead_by, reason = fetch_github_ahead_by(site["repo"], published_commit, main_sha, github_token)
     if ahead_by is None:
         return unmeasured_row(site, "GitHub compare failed: %s" % reason)
+
+    queued_stale_build = find_queued_stale_build(
+        builds_data,
+        now or datetime.datetime.now(datetime.timezone.utc),
+        stale_minutes=queued_stale_minutes,
+    )
 
     return evaluate_site(
         site=site,
@@ -479,6 +754,7 @@ def check_site(site, netlify_token, github_token):
         deploy_state=deploy_data.get("state"),
         deploy_error_message=deploy_data.get("error_message"),
         deploy_skipped=deploy_data.get("skipped"),
+        queued_stale_build=queued_stale_build,
     )
 
 
@@ -491,18 +767,40 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--file-issue", action="store_true")
+    parser.add_argument(
+        "--queued-stale-minutes",
+        type=int,
+        default=DEFAULT_QUEUED_STALE_MINUTES,
+        help="Age threshold in minutes for the QUEUED_STALE signal (default: %(default)s)",
+    )
     args = parser.parse_args()
 
     netlify_token = os.environ.get(NETLIFY_TOKEN_ENV_VAR, "").strip() or None
     github_token = os.environ.get(GITHUB_TOKEN_ENV_VAR, "").strip() or None
 
-    rows = [check_site(site, netlify_token, github_token) for site in SITES]
+    raw_sites, reason = fetch_netlify_sites(netlify_token)
+    if raw_sites is None:
+        # Cannot even enumerate which sites to check -- this is a whole-run
+        # UNMEASURED, not zero rows silently rendered as a clean pass.
+        rows = [
+            unmeasured_row(
+                {"key": "site-enumeration", "label": "Netlify site enumeration (all sites)", "repo": ISSUE_REPO},
+                "could not enumerate sites: %s" % reason,
+            )
+        ]
+    else:
+        sites = filter_org_sites(raw_sites)
+        rows = [
+            check_site(site, netlify_token, github_token, queued_stale_minutes=args.queued_stale_minutes)
+            for site in sites
+        ]
     code = report_exit_code(rows)
+    warnings = compute_account_warnings(netlify_token)
 
     if args.json:
-        print(render_json(rows, code))
+        print(render_json(rows, code, warnings=warnings))
     else:
-        print(render_text(rows, code))
+        print(render_text(rows, code, warnings=warnings))
 
     if args.file_issue and any(r["verdict"] in FAILING_VERDICTS for r in rows):
         post_issue_comment(render_issue_comment_body(rows, code))
