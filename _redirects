@@ -65,22 +65,3 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # otherwise (see the /inspector-landing.html rule above for the same
 # reasoning -- that one avoided the problem by deleting the file instead).
 /landing.html / 301!
-
-# gh-1540 REFUTED-REOPENED fix: netlify.toml now sets
-# [build.processing.html] pretty_urls = false, which stops Netlify's
-# built-in trailing-slash/case pre-normalization from 301-ing /recruit/ and
-# /Recruit.html ahead of the explicit 200 rules above (that pre-normalization
-# ran BEFORE this file was ever consulted). Disabling Pretty URLs also turns
-# off its site-wide implicit /page -> page.html resolution, so this
-# catch-all restores that behavior explicitly for every other extensionless
-# path on the site. Placed last so every specific rule above (including the
-# gh-1540 block) still wins on an exact match; a rewrite target that has no
-# corresponding *.html file falls through to the normal 404, same as before.
-# Blast-radius check performed before adding this (gh-1540 report): grepped
-# every href="/..." and src="/..." across *.html/*.js repo-wide for
-# extensionless internal paths -- the only hits were root "/" (already
-# index.html by default, unaffected) and directory links "/blog/" and
-# "/guides/" (served by blog/index.html and guides/index.html, directory-index
-# serving, unaffected by Pretty URLs). No hardcoded extensionless
-# window.location/location.href assignments were found in js/*.js either.
-/*  /:splat.html  200

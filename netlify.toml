@@ -10,20 +10,6 @@
   publish = "."
   command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js'"
 
-# gh-1540 REFUTED-REOPENED fix: Netlify's Pretty URLs post-processing runs
-# BEFORE _redirects is consulted, so its own trailing-slash and case
-# normalization was 301-redirecting /recruit/ and /Recruit.html to /recruit
-# ahead of the explicit 200-rewrite rules already in _redirects (see the
-# gh-1540 block there) -- meaning those two variants never actually got the
-# 200 the rules specified. Disabling Pretty URLs removes that pre-emptive
-# redirect layer so the literal _redirects rules run as written. This also
-# turns off Pretty URLs' site-wide implicit /page -> page.html resolution,
-# so an explicit catch-all rewrite (`/*  /:splat.html  200`) is added at the
-# end of _redirects to replace it -- see that file for the blast-radius grep
-# performed before adding it.
-[build.processing.html]
-  pretty_urls = false
-
 # Stripe publishable key per deploy context (not secrets — publishable keys are client-safe)
 [context.production.environment]
   STRIPE_PK = "pk_live_51TCI2O0AJRnqIYPU4ybaUmt2FRxihUu4kMKXvjnrvfsWRHyoi8ptkVuyKsDs3Zq4dMrGniPGg5BxtAmZfukah5aI00K31rnCbk"
@@ -117,3 +103,20 @@
 [[edge_functions]]
   path = "/ref/*"
   function = "ref-redirect"
+
+# gh-1540 REFUTED-REOPENED fix (2026-09-03): /recruit/ and /Recruit.html
+# were measuring 301 (not the required 200) because Netlify's built-in
+# Pretty URLs post-processing normalizes trailing slashes and .html-case
+# ahead of `_redirects`, pre-empting the 200-rewrite rules already declared
+# there. A sitewide `pretty_urls = false` toggle was rejected on review — it
+# strips that canonicalization for every other page on the site too. This
+# edge function intercepts only these two literal paths, ahead of Pretty
+# URLs, so the rest of the site's behavior is unchanged.
+# Source: netlify/edge-functions/recruit-redirect.ts
+[[edge_functions]]
+  path = "/recruit/"
+  function = "recruit-redirect"
+
+[[edge_functions]]
+  path = "/Recruit.html"
+  function = "recruit-redirect"
