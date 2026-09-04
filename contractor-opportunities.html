@@ -939,7 +939,7 @@
                 + '<div class="upgrade-card-errors" id="upgrade-card-errors-' + safeId + '"></div>'
                 + '<div class="upgrade-panel-actions">'
                 + '<button class="btn btn-primary" id="upgrade-pay-btn-' + safeId + '" onclick="confirmUpgradePayment(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')" disabled>Pay Securely</button>'
-                + '<button class="btn btn-secondary" type="button" onclick="cancelUpgradePanel(' + JSON.stringify(safeId) + ')">Cancel</button>'
+                + '<button class="btn btn-secondary" type="button" onclick="cancelUpgradePanel(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')">Cancel</button>'
                 + '</div>'
                 + '<p style="font-size:0.72rem;color:#64748B;margin:var(--sp-2) 0 0;">&#x1F512; Payment secured by Stripe. Your card details are never stored on our servers.</p>'
                 + '</div>'
@@ -961,6 +961,23 @@
             SQUARES_UNKNOWN: 'We do not have measured squares on file for this roof yet, so we cannot price the upgrade.',
             TEST_CLAIM_CHARGE_REFUSED: 'This project cannot be charged.',
         };
+
+        // Tears down the live Stripe card Element (if any) for claimId and
+        // clears its upgradeState entry, so the next openUpgradePanel() for
+        // this claim mounts a fresh Element instead of stacking a second one
+        // on top of an un-torn-down first. Called from every exit out of an
+        // open upgrade panel: Cancel, a successful purchase, an init error
+        // that happens after the card already mounted, and a card list
+        // re-render (e.g. a filter change) that replaces the DOM node the
+        // card was mounted into out from under it.
+        function teardownUpgradePanel(claimId) {
+            const state = upgradeState[claimId];
+            if (state && state.cardElement) {
+                try { state.cardElement.unmount(); } catch (e) { /* already unmounted */ }
+                try { state.cardElement.destroy(); } catch (e) { /* already destroyed */ }
+            }
+            delete upgradeState[claimId];
+        }
 
         function initUpgradeStripeForClaim(claimId) {
             if (!upgradeState[claimId]) upgradeState[claimId] = {};
@@ -1036,6 +1053,11 @@
                 console.error('Upgrade purchase init error:', err);
                 const message = (err && err.code && UPGRADE_ERROR_COPY[err.code]) || err.message || 'Could not start the purchase. Please try again.';
                 if (errEl) errEl.textContent = message;
+                // If the card element had already mounted before this failure,
+                // tear it down so a retry doesn't mount a second one alongside it.
+                if (upgradeState[claimId] && upgradeState[claimId].cardElement) {
+                    teardownUpgradePanel(claimId);
+                }
                 btn.disabled = false;
                 btn.innerHTML = originalText;
             }
@@ -1088,6 +1110,10 @@
                     contractor_id: currentContractor.id,
                 });
 
+                // Purchase is recorded — tear down the mounted card Element
+                // before replacing the panel's contents with the success badge.
+                teardownUpgradePanel(claimId);
+
                 if (panel) {
                     panel.innerHTML = '<span class="upgrade-available-badge">&#x2713; Purchased. We will email you when the detailed report is ready &mdash; every other contractor on this project will see it too, at no charge.</span>';
                     panel.classList.add('open');
@@ -1107,7 +1133,8 @@
             }
         }
 
-        function cancelUpgradePanel(safeId) {
+        function cancelUpgradePanel(claimId, safeId) {
+            teardownUpgradePanel(claimId);
             const panel = document.getElementById('upgrade-panel-' + safeId);
             const btn   = document.getElementById('upgrade-btn-' + safeId);
             if (panel) panel.classList.remove('open');
@@ -1172,6 +1199,12 @@
 
         function render(opps) {
             const el = document.getElementById('opportunitiesContainer');
+            // A re-render (e.g. a filter change) replaces this container's
+            // DOM wholesale. Any open upgrade panel has its Stripe card
+            // Element mounted into a node that's about to be destroyed —
+            // tear each down explicitly first rather than letting the DOM
+            // removal silently orphan it.
+            Object.keys(upgradeState).forEach(teardownUpgradePanel);
             if (!opps.length) {
                 // Differentiate: zero base opportunities (chicken-and-egg, new market)
                 // vs. filtered to zero (contractor applied filters that narrowed results)
