@@ -23,7 +23,15 @@ jobs:
   smoke:
     name: 5-Page Revenue-Path Smoke Check
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # gh-1588: raised 5 -> 10 as a stopgap, not a fix. Root cause (measured
+    # 2026-09-03) is the "Install E2E test dependencies" (npm ci) step
+    # intermittently stalling 2-5+ minutes with a WARM npm cache hit and
+    # zero output in between -- consistent with npm-registry/network
+    # flakiness on the runner, not a growing dependency tree (tests/e2e has
+    # 15 resolved packages) or a genuinely slower job. 10m gives headroom
+    # for the stall observed tonight (worst completed case ~4m10s for this
+    # step alone); it does not address why npm ci stalls on a warm cache.
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
