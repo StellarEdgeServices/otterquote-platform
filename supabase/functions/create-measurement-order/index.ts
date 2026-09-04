@@ -29,6 +29,15 @@
  * (buyer_role='contractor', status='awaiting_quote') and an admin prices
  * them by hand. Rejecting rather than guessing is the point.
  *
+ * [gh-1411, 2026-09-03] EXCEPTION to the paragraph above: product_code
+ * 'roof_upgrade_detailed' (D-317 cl. 4/5, the contractor detailed-measurement
+ * upgrade) IS a priced, chargeable contractor purchase — $25/$55 by SQ tier,
+ * computed and enforced server-side by create-payment-intent's own gate, not
+ * by this file's catalog-driven price. It is handled by a dedicated branch
+ * near the top of the handler, before the generic catalog flow, because it
+ * is not (and by design cannot be) a flat-priced platform_settings SKU. See
+ * measurement-upgrade-order.ts.
+ *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
  *   STRIPE_SECRET_KEY (+ STRIPE_SECRET_KEY_TEST for staging origins)
@@ -37,6 +46,10 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { logNotificationFailure } from "./notification-failure.ts";
+import {
+  buildUpgradeOrderInsert,
+  UPGRADE_PRODUCT_CODE,
+} from "./measurement-upgrade-order.ts";
 
 const FUNCTION_NAME = "create-measurement-order";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -229,6 +242,63 @@ async function verifyPayment(
 }
 
 /**
+ * [gh-1411] verifyPayment's counterpart for the measurement_upgrade type.
+ * Deliberately separate rather than widening verifyPayment's signature: this
+ * SKU has no single catalog `expectedAmount` (it is SQ-tier priced — see
+ * measurement-upgrade-order.ts), so the exact-amount check is a membership
+ * test against the two known tier prices instead, performed by the caller
+ * via buildUpgradeOrderInsert. This function only confirms Stripe actually
+ * settled the charge, for the right claim, as the right charge type.
+ */
+async function verifyUpgradePayment(
+  paymentIntentId: string,
+  claimId: string,
+  requestOrigin: string,
+): Promise<{ ok: true; amount: number; stripeChargeId: string | null } | { ok: false; status: number; error: string }> {
+  const isStaging = requestOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
+    requestOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
+  const stripeSecretKey = isStaging
+    ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
+    : Deno.env.get("STRIPE_SECRET_KEY");
+  if (!stripeSecretKey) {
+    return { ok: false, status: 500, error: "Payment processing is not configured." };
+  }
+
+  const basicAuth = btoa(`${stripeSecretKey}:`);
+  const piRes = await fetch(
+    `${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+    { headers: { Authorization: `Basic ${basicAuth}` } },
+  );
+  if (!piRes.ok) {
+    console.error(`[${FUNCTION_NAME}] Stripe PI retrieve failed (upgrade):`, piRes.status, await piRes.text());
+    return {
+      ok: false,
+      status: 402,
+      error: "We could not verify your payment. Please try again or contact support.",
+    };
+  }
+  const pi = await piRes.json();
+
+  if (pi.status !== "succeeded") {
+    return {
+      ok: false,
+      status: 402,
+      error: `Payment must complete before we can order your report. Current payment status: ${pi.status}.`,
+    };
+  }
+  if (pi.metadata?.claim_id && pi.metadata.claim_id !== claimId) {
+    console.error(`[${FUNCTION_NAME}] upgrade PI claim mismatch:`, { pi_claim: pi.metadata.claim_id, supplied: claimId });
+    return { ok: false, status: 402, error: "Payment does not belong to this project. Please contact support." };
+  }
+  if (pi.metadata?.type !== "measurement_upgrade") {
+    console.error(`[${FUNCTION_NAME}] upgrade PI type mismatch:`, { pi_type: pi.metadata?.type });
+    return { ok: false, status: 402, error: "Payment is not a measurement-upgrade charge. Please contact support." };
+  }
+
+  return { ok: true, amount: pi.amount, stripeChargeId: pi.latest_charge ?? null };
+}
+
+/**
  * gh-1412: make the order visible the moment it exists.
  *
  * Two artifacts, neither of which may break the money path:
@@ -349,6 +419,134 @@ serve(async (req) => {
 
     if (!claimId) return json({ error: "Missing claim_id." }, 400, corsHeaders);
     if (!productCode) return json({ error: "Missing product_code." }, 400, corsHeaders);
+
+    // ── gh-1411 / D-317 cl. 4-5: contractor detailed-measurement upgrade ──
+    // Not a catalog SKU (see the file header note) — handled entirely here,
+    // before the generic loadProduct() flow below.
+    if (productCode === UPGRADE_PRODUCT_CODE) {
+      if (buyerRole !== "contractor" || !contractorId) {
+        return json({ error: "The detailed-measurement upgrade may only be purchased by a contractor." }, 400, corsHeaders);
+      }
+      if (!paymentIntentId || typeof paymentIntentId !== "string") {
+        return json(
+          { error: "Missing payment_intent_id. A completed payment is required before we can record your upgrade." },
+          400,
+          corsHeaders,
+        );
+      }
+
+      // Idempotency FIRST, before touching Stripe — same discipline as the
+      // generic paid path below: a retried request for a PaymentIntent we
+      // already recorded returns the existing order rather than a duplicate.
+      const { data: existingUpgrade } = await supabase
+        .from("hover_orders")
+        .select("id, status")
+        .eq("homeowner_stripe_payment_intent_id", paymentIntentId)
+        .maybeSingle();
+      if (existingUpgrade) {
+        return json({ order_id: existingUpgrade.id, status: existingUpgrade.status, idempotent: true }, 200, corsHeaders);
+      }
+
+      // First buyer? Only the first upgrade order on a claim carries the
+      // D-317 cl. 4 vendor-credit bookkeeping (see measurement-upgrade-order.ts).
+      const { data: priorUpgrade } = await supabase
+        .from("hover_orders")
+        .select("id")
+        .eq("claim_id", claimId)
+        .eq("product_code", UPGRADE_PRODUCT_CODE)
+        .limit(1)
+        .maybeSingle();
+      const isFirstBuyer = !priorUpgrade;
+
+      const paidUpgrade = await verifyUpgradePayment(paymentIntentId, claimId, req.headers.get("Origin") || "");
+      if (!paidUpgrade.ok) return json({ error: paidUpgrade.error }, paidUpgrade.status, corsHeaders);
+
+      const decision = buildUpgradeOrderInsert(
+        paidUpgrade,
+        claimId,
+        authedUser.id,
+        contractorId,
+        paymentIntentId,
+        isFirstBuyer,
+        note,
+      );
+      if (!decision.ok) {
+        console.error(`[${FUNCTION_NAME}] upgrade order rejected AFTER successful payment:`, {
+          payment_intent_id: paymentIntentId,
+          claim_id: claimId,
+          error: decision.error,
+        });
+        return json({ error: decision.error, payment_captured: true }, decision.status, corsHeaders);
+      }
+
+      let { data: upgradeOrder, error: upgradeInsErr } = await supabase
+        .from("hover_orders")
+        .insert(decision.insertPayload)
+        .select("id, status")
+        .single();
+
+      // [gh-1411] vendor_credit_expected_cents ships in this PR's migration
+      // (Tier 3A additive, D-182 approval pending) but may not be applied to
+      // every environment yet. Same tolerance the #1410 shape column already
+      // requires of readers (js/measurement-shape.js) — degrade gracefully
+      // rather than turn an already-captured payment into a 500. The order
+      // itself, and its PaymentIntent id, are never dropped by this retry.
+      if (upgradeInsErr?.code === "42703") {
+        console.error(
+          `[${FUNCTION_NAME}] hover_orders.vendor_credit_expected_cents missing (migration not yet applied) — retrying without it:`,
+          upgradeInsErr,
+        );
+        const { vendor_credit_expected_cents: _omit, ...payloadWithoutVendorCredit } = decision.insertPayload;
+        const retry = await supabase
+          .from("hover_orders")
+          .insert(payloadWithoutVendorCredit)
+          .select("id, status")
+          .single();
+        upgradeOrder = retry.data;
+        upgradeInsErr = retry.error;
+      }
+
+      if (upgradeInsErr || !upgradeOrder) {
+        // The buyer's money has already moved. Never tell them the order
+        // failed in a way that invites a second payment — this is a support case.
+        console.error(`[${FUNCTION_NAME}] upgrade order insert failed AFTER successful payment:`, {
+          payment_intent_id: paymentIntentId,
+          claim_id: claimId,
+          error: upgradeInsErr,
+        });
+        return json({
+          error: "Your payment went through, but we could not record the order. Do not pay again — contact support and we will finish it by hand.",
+          payment_captured: true,
+        }, 500, corsHeaders);
+      }
+
+      console.log(`[${FUNCTION_NAME}] upgrade order queued for manual fulfillment:`, {
+        order_id: upgradeOrder.id,
+        claim_id: claimId,
+        contractor_id: contractorId,
+        amount: paidUpgrade.amount,
+        first_buyer: isFirstBuyer,
+      });
+
+      // gh-1412: same log + admin email path every other paid order uses.
+      await recordOrderCreated(
+        supabase,
+        supabaseUrl,
+        upgradeOrder,
+        claimId,
+        UPGRADE_PRODUCT_CODE,
+        "contractor",
+        authedUser.id,
+        paidUpgrade.amount,
+      );
+
+      return json({
+        order_id: upgradeOrder.id,
+        status: upgradeOrder.status,
+        product_code: UPGRADE_PRODUCT_CODE,
+        amount: paidUpgrade.amount,
+      }, 200, corsHeaders);
+    }
 
     const product = await loadProduct(supabase, productCode);
     if (!product) {
