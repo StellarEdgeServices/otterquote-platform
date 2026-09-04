@@ -33,6 +33,13 @@ const HOVER_API_BASE = "https://hover.to";
 const FUNCTION_NAME = "get-hover-pdf";
 const STORAGE_BUCKET = "claim-documents";
 
+// gh-1636: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
+// same pattern as admin-contractor-action / send-measurement-ready. Used only to
+// gate the internal-only vendor PDF (manual-fulfilment branch below) — the narrower
+// PRIMARY_ADMIN_EMAIL group (see admin.ts header), not the full ADMIN_EMAILS
+// allow-list — do not widen without an explicit decision.
+const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
+
 // CORS tightened (Session 254): origin-allowlisted instead of wildcard.
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -80,6 +87,7 @@ serve(async (req) => {
     // allowed ANY active contractor to pull ANY claim's PDF, and a request with
     // no Authorization header skipped the ownership check entirely.)
     let rateLimitUserId: string | null = null;
+    let callerEmail: string | null = null; // gh-1636 — used only by the manual-branch admin gate below
     const authHeader = req.headers.get("Authorization");
     const isServiceRole = !!authHeader && authHeader.includes(supabaseKey);
     if (!isServiceRole) {
@@ -94,6 +102,7 @@ serve(async (req) => {
         );
       }
       rateLimitUserId = user.id;
+      callerEmail = user.email ?? null;
       const allowed = await canAccessClaim(supabase, claim_id, user);
       if (!allowed) {
         return new Response(
@@ -153,6 +162,25 @@ serve(async (req) => {
     // gh-1538 this only ever checked hover_job_id and 500'd every manual
     // order regardless of whether report_url pointed at a real upload.
     const pdfSource = selectPdfSource(order);
+
+    // ── D-317 cl. 7 (#1339) / gh-1636 — the manual-fulfilment vendor PDF is
+    // internal/admin records only and must NEVER be served to a contractor
+    // or homeowner. canAccessClaim() above authorizes CLAIM visibility (it
+    // mirrors the claims-table RLS SELECT boundary) — that is a different
+    // audience than PDF-FILE visibility for this one asset, and until now
+    // nothing enforced the narrower one. The Hover-sourced branch and the
+    // "no file" branch are untouched pending a separate CTO ruling on
+    // whether cl. 7 also covers Hover-fulfilled orders (see issue #1636 §7).
+    // Gate: service-role (the "or service role for admin use" caller this
+    // function's own header already documents) or the same PRIMARY_ADMIN_EMAIL
+    // identity admin-contractor-action / send-measurement-ready gate on.
+    if (pdfSource.kind === "manual" && !isServiceRole && callerEmail !== PRIMARY_ADMIN_EMAIL) {
+      return new Response(
+        JSON.stringify({ error: "Claim not found or access denied" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     let pdfBytes: ArrayBuffer;
     const jobId: string | null = pdfSource.kind === "hover" ? pdfSource.jobId : null;
 
