@@ -1,5 +1,18 @@
 name: R-120 Review Gate
 
+# =====================================================================
+# SUPERSEDED (gh-1650) by .github/workflows/r120-signed-review.yml — the
+# "R-120 signed review" check. That gate is content-based and requires an
+# ECDSA P-256 signature that no agent session can produce; see
+# Docs/r120-signed-review.md. This file is kept ONLY so the "R-120 path
+# gate" context keeps reporting until branch protection is confirmed not to
+# require it, at which point this whole file should be deleted. It no longer
+# fails any PR: the login-based "R-120 READ:" check below is advisory-only
+# (warning), because the login dustinstohler1-dotcom is shared by every
+# agent session and proves nothing. The "REVIEW PASS gate" job, which was
+# red on every PR and blocked nothing, has been removed.
+# =====================================================================
+#
 # gh-1507: pre-merge review gate for the Code lane (R-120 constitution entry 6 +
 # the pre-merge fresh-context refuter). Built as the "CI half" of #1507 — the
 # companion run-work/SKILL.md half (the sub-agent that actually posts the
@@ -120,8 +133,8 @@ jobs:
             );
 
             if (readComments.length === 0) {
-              core.setFailed(
-                `R-120 path gate: this PR touches the money/legal path set:\n  - ${matchedFiles.join('\n  - ')}\n\n` +
+              core.warning(
+                `R-120 path gate (SUPERSEDED, advisory): this PR touches the money/legal path set:\n  - ${matchedFiles.join('\n  - ')}\n\n` +
                 `No PR comment starting with "R-120 READ:" from ${REQUIRED_LOGIN} was found yet. ` +
                 `Add that comment, then re-run this check from the Checks tab (or push a new commit).`
               );
@@ -136,8 +149,8 @@ jobs:
             );
 
             if (new Date(newestRead.created_at) < new Date(headCommitDate)) {
-              core.setFailed(
-                `R-120 path gate: the newest "R-120 READ:" sign-off (${newestRead.created_at}) is older than ` +
+              core.warning(
+                `R-120 path gate (SUPERSEDED, advisory): the newest "R-120 READ:" sign-off (${newestRead.created_at}) is older than ` +
                 `the PR head commit ${headSha} (committed ${headCommitDate}). The code has changed since that ` +
                 `read. Post a fresh "R-120 READ:" comment after reviewing head ${headSha}, then re-run this check.`
               );
@@ -146,64 +159,3 @@ jobs:
 
             core.info(`R-120 READ: sign-off found from ${REQUIRED_LOGIN}, newer than head ${headSha}. Gate passes.`);
 
-  review-pass-gate:
-    name: REVIEW PASS gate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check for the newest REVIEW marker comment
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const prNumber = context.payload.pull_request.number;
-            const headSha = context.payload.pull_request.head.sha;
-
-            // gh-1507: same freshness requirement as the path gate above —
-            // fetch the head commit's own timestamp from the API and use the
-            // committer date so a rebase/force-push counts as "changed since".
-            const headCommit = await github.rest.repos.getCommit({ owner, repo, ref: headSha });
-            const headCommitDate = headCommit.data.commit.committer.date;
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner, repo, issue_number: prNumber, per_page: 100,
-            });
-
-            const markers = comments
-              .filter((c) => typeof c.body === 'string' && (c.body.includes('REVIEW: PASS') || c.body.includes('REVIEW: FAIL')))
-              .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-            if (markers.length === 0) {
-              core.setFailed(
-                'REVIEW gate: no "REVIEW: PASS" or "REVIEW: FAIL" comment found on this PR yet. ' +
-                'Waiting on the pre-merge fresh-context refuter (run-work/SKILL.md half of #1507). ' +
-                'Re-run this check from the Checks tab once it posts, or push a new commit.'
-              );
-              return;
-            }
-
-            const newest = markers[markers.length - 1];
-            const who = newest.user ? newest.user.login : 'unknown';
-
-            // gh-1507: a marker only certifies the code it was posted against.
-            // If the head has moved past it (rebase, force-push, new commit),
-            // the marker is stale and does not cover this head — fail closed
-            // regardless of what the stale marker said.
-            if (new Date(newest.created_at) < new Date(headCommitDate)) {
-              core.setFailed(
-                `REVIEW gate: the newest review marker (comment by ${who} at ${newest.created_at}) is older than ` +
-                `the PR head commit ${headSha} (committed ${headCommitDate}). The reviewed code has changed since ` +
-                `that marker was posted — it does not cover this head. Get a fresh REVIEW: PASS on head ${headSha}, ` +
-                `then re-run this check.`
-              );
-              return;
-            }
-
-            if (newest.body.includes('REVIEW: FAIL')) {
-              core.setFailed(
-                `REVIEW gate: the newest review marker is REVIEW: FAIL (comment by ${who} at ${newest.created_at}). ` +
-                `Address the refuter's findings and get a fresh REVIEW: PASS, then re-run this check.`
-              );
-              return;
-            }
-
-            core.info(`REVIEW gate: newest review marker is REVIEW: PASS (comment by ${who} at ${newest.created_at}), newer than head ${headSha}. Gate passes.`);
