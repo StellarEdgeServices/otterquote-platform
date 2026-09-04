@@ -111,6 +111,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 .tab-btn.disabled { cursor: not-allowed; opacity: 0.6; }
 
 /* ── Marketing tab (gh-1470 / #1340 phase 2b) ── */
+/* gh-1638 (#1340 phase 5b): one denominator-scope statement per Marketing
+ * tab, not per tile -- sourced from the payload's visits.property_id /
+ * visits.hosts (see visitsDenominatorScopeHtml() below). */
+.visits-denominator-scope { font-size: 0.8rem; color: var(--slate); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 0.4rem; padding: 0.5rem 0.8rem; margin-bottom: 1rem; }
 .marketing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
 .marketing-card { background: var(--white); border-radius: 0.75rem; padding: 1.25rem 1.4rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .marketing-card h4 { margin: 0 0 0.5rem; color: var(--navy); font-size: 1rem; }
@@ -742,22 +746,36 @@ function safeNum(n) {
 // no-drift discipline as referral_clicks' caveat below) rides along on every
 // tile that gets a rate line, since every such tile is now making a claim
 // against that denominator.
-function visitsRateHtml(metricTotal, visitsSeries) {
+// gh-1638 (#1340 phase 5b): the GA4 caveat box, factored out so callers that
+// invoke visitsRateHtml more than once per tab (contractorFunnelHtml, once
+// per funnel stage) can suppress the per-call copy and render this once
+// instead -- never duplicated, never dropped, always sourced from
+// visitsSeries.caveat.
+function visitsCaveatHtml(visitsSeries) {
+  return (visitsSeries && visitsSeries.caveat) ? '<div class="click-caveat">⚠️ ' + esc(visitsSeries.caveat) + '</div>' : '';
+}
+
+function visitsRateHtml(metricTotal, visitsSeries, includeCaveat) {
   var n = safeNum(metricTotal);
   if (!visitsSeries || visitsSeries.kind === 'not_run') {
     var reason = (visitsSeries && visitsSeries.reason) ? visitsSeries.reason : 'Visits series unavailable in this response (deploy owed).';
-    return '<div class="visits-rate not-run-note">Rate of visits: NOT RUN &mdash; ' + esc(reason) + '</div>';
+    return '<div class="visits-rate not-run-note">Rate of production visits: NOT RUN &mdash; ' + esc(reason) + '</div>';
   }
   var m = safeNum(visitsSeries.total);
   var line;
   if (m === 0) {
-    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' &mdash; rate of visits unavailable (GA4 measured 0 visits this window)</div>';
+    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' &mdash; rate of production visits unavailable (GA4 measured 0 production visits this window)</div>';
   } else {
     var pct = (n / m) * 100;
-    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' of ' + m.toLocaleString('en-US') + ' visits (' + pct.toFixed(1) + '%)</div>';
+    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' of ' + m.toLocaleString('en-US') + ' production visits (' + pct.toFixed(1) + '%)</div>';
   }
-  var caveat = visitsSeries.caveat ? '<div class="click-caveat">⚠️ ' + esc(visitsSeries.caveat) + '</div>' : '';
-  return line + caveat;
+  // gh-1638: includeCaveat defaults to true so the existing single-call
+  // sites (weeklySeriesCardHtml, groupedWeeklySeriesCardHtml,
+  // referralClicksCardHtml's rate line) are unchanged; only
+  // contractorFunnelHtml's per-stage loop passes false to avoid rendering
+  // the same caveat box three times.
+  var wantCaveat = includeCaveat !== false;
+  return line + (wantCaveat ? visitsCaveatHtml(visitsSeries) : '');
 }
 
 function fmtWeekLabel(w) {
@@ -866,13 +884,17 @@ function contractorFunnelHtml(funnel, visitsSeries) {
       var note = excluded > 0
         ? excluded + ' contractor' + (excluded === 1 ? '' : 's') + ' reached this stage with no timestamp to bucket by &mdash; excluded from the weekly count above, not silently dropped from the total.'
         : '';
-      var rate = (series && series.kind !== 'not_run') ? visitsRateHtml(series.total, visitsSeries) : '';
+      // gh-1638: suppress the per-call caveat -- three stages would otherwise
+      // render the same GA4 caveat box three times. Rendered once below the
+      // funnel instead (visitsCaveatHtml() call after this .map()).
+      var rate = (series && series.kind !== 'not_run') ? visitsRateHtml(series.total, visitsSeries, false) : '';
       return '<div class="funnel-row"><span class="funnel-label">' + esc(s.label) + '</span>' +
         '<div class="funnel-body">' + seriesTotalHtml(series) + sparklineHtml(series, false) +
         rate +
         (note ? '<div class="excluded-note">' + note + '</div>' : '') +
         '</div></div>';
     }).join('') +
+    visitsCaveatHtml(visitsSeries) +
   '</div>';
 }
 
@@ -884,21 +906,52 @@ function referralClicksCardHtml(series, visitsSeries) {
   var html = '<div class="marketing-card"><h4>Referral clicks</h4>' +
     '<div>' + seriesTotalHtml(series) + '</div>' +
     sparklineHtml(series, false);
-  if (series.kind !== 'not_run') html += visitsRateHtml(series.total, visitsSeries);
+  // gh-1638: suppress visitsRateHtml's own caveat copy -- it is merged below
+  // with the gh-1302 caveat into a single .click-caveat box instead of two
+  // stacked boxes.
+  if (series.kind !== 'not_run') html += visitsRateHtml(series.total, visitsSeries, false);
   // gh-1302 caveat text/link come from the EF payload (series.caveat /
   // series.caveat_ref, gh-1469) — never hardcoded here, so the two cannot
   // drift apart. caveat_ref is shape-constrained to a known-safe
   // https://github.com/... prefix before it is ever used as an href; if it
   // doesn't match, the caveat text still renders, just without a link.
+  // gh-1638: both the gh-1302 double-counting caveat and the GA4 visits
+  // caveat (visitsSeries.caveat) are independently true statements about
+  // this card and both must survive -- merged into ONE .click-caveat box as
+  // two lines rather than two stacked boxes.
+  var caveatLines = [];
   if (series.caveat) {
     var ref = (typeof series.caveat_ref === 'string' && series.caveat_ref.indexOf('https://github.com/') === 0)
       ? series.caveat_ref : null;
-    html += '<div class="click-caveat">⚠️ ' + esc(series.caveat) +
-      (ref ? ' <a href="' + esc(ref) + '" target="_blank" rel="noopener">Details &rarr;</a>' : '') +
-    '</div>';
+    caveatLines.push('⚠️ ' + esc(series.caveat) +
+      (ref ? ' <a href="' + esc(ref) + '" target="_blank" rel="noopener">Details &rarr;</a>' : ''));
+  }
+  if (visitsSeries && visitsSeries.caveat) {
+    caveatLines.push('⚠️ ' + esc(visitsSeries.caveat));
+  }
+  if (caveatLines.length) {
+    html += '<div class="click-caveat">' + caveatLines.join('<br>') + '</div>';
   }
   html += '</div>';
   return html;
+}
+
+// gh-1638 (#1340 phase 5b): a single denominator-scope statement per
+// Marketing tab, sourced ONLY from the payload's visits series
+// (visits.property_id / visits.hosts, see get-business-lines-dashboard's
+// buildVisitsSeries) -- never hardcoded, same no-drift discipline as
+// visitsSeries.caveat. Every value renders through esc(). hosts is
+// defensively checked for Array-ness -- a payload from before gh-1637
+// deployed, or any future shape drift, renders "hosts unavailable" rather
+// than throwing or printing "undefined".
+function visitsDenominatorScopeHtml(visitsSeries) {
+  var propertyId = (visitsSeries && typeof visitsSeries.property_id === 'string' && visitsSeries.property_id)
+    ? esc(visitsSeries.property_id) : 'unavailable';
+  var hostsText = (visitsSeries && Array.isArray(visitsSeries.hosts) && visitsSeries.hosts.length)
+    ? visitsSeries.hosts.map(function (h) { return esc(String(h)); }).join(' · ')
+    : 'hosts unavailable';
+  return '<div class="visits-denominator-scope">Visits denominator: GA4 property ' + propertyId +
+    ', hosts ' + hostsText + '</div>';
 }
 
 function renderMarketingSection(audience) {
@@ -914,6 +967,9 @@ function renderMarketingSection(audience) {
   // now, so `marketing.visits` is passed to every card below and each tile
   // carries its own "of visits" rate line (visitsRateHtml()) instead.
   var visits = marketing.visits;
+  // gh-1638 (#1340 phase 5b): one denominator-scope statement per Marketing
+  // tab (not per tile) -- see visitsDenominatorScopeHtml() above.
+  html += visitsDenominatorScopeHtml(visits);
   html += '<div class="marketing-grid">';
   if (audience === 'homeowner') {
     html += weeklySeriesCardHtml('Signups', marketing.signups, null, visits);
