@@ -95,7 +95,7 @@ export const SHARE_CARDS = {
 export const HOW_IT_WORKS_HEADING = 'How It Works';
 export const HOW_IT_WORKS = [
   { number: '1', title: 'Share Your Link', text: 'Share your unique referral link with friends, family, or neighbors.' },
-  { number: '2', title: 'They Get Competing Bids', text: 'They receive competing bids from licensed, insured contractors for their project.' },
+  { number: '2', title: 'They Get Competing Bids', text: 'They receive competing bids from contractors for their project.' },
   { number: '3', title: 'You Earn $200', text: 'When their job completes ($10K or more), you earn $200 in commission.' },
 ] as const;
 
