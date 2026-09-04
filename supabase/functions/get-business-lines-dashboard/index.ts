@@ -60,10 +60,19 @@
  * / `"measured_zero"` on a successful GA4 read, `kind: "not_run"` with a
  * `reason` on ANY GA4 failure (missing/invalid service account, non-2xx,
  * unparsable response) — never a fabricated zero (house rule gh-1419).
- * Carries a standing `caveat`: GA4 sessions are unfiltered and bot share is
+ * Carries a standing `caveat`: bot share within production traffic is still
  * unknown (#1464) — sessions ≈ totalUsers on a site with very few signups
  * smells like crawler traffic, so a rate built on this denominator without
  * the caveat would be a lie in the other direction.
+ *
+ * gh-1637 (#1340 phase 5a): the GA4 read this series was built from was
+ * UNFILTERED — ~93% of the property's sessions are staging/branch-deploy/
+ * localhost traffic (production `gtag` fires everywhere until #1619 fixes
+ * the source), so the denominator was wrong by an order of magnitude. Every
+ * GA4 request ga4.ts makes now applies a `hostName` dimensionFilter scoped
+ * to the production hosts, and this payload declares that scope explicitly
+ * (`visits.scope`, `visits.property_id`, `visits.hosts`) so #1638 (the page
+ * half) and #1639 can render what was actually counted instead of assuming.
  *
  * Read-only. No writes, no schema change, no other EF touched.
  *
@@ -79,7 +88,7 @@
  * verify_jwt = false (see supabase/config.toml) — auth is performed
  * in-handler, same pattern as get-payout-completion-status / approve-payout.
  *
- * GitHub: #1340, #1469, #1574
+ * GitHub: #1340, #1469, #1574, #1637
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -283,7 +292,17 @@ function sumByWeek(rows: WeightedDatedRow[], windows: WeekWindow[]): number[] {
 // direction. Carried on the series itself (same pattern as referral_clicks'
 // caveat above) so no consumer of this payload can drop the caveat by
 // forgetting to look it up elsewhere.
-const GA4_VISITS_CAVEAT = "GA4 sessions, unfiltered — bot share unknown (see #1464).";
+//
+// gh-1637: replaces the old "unfiltered" text, which became false the
+// moment the hostName filter shipped — this string is now accurate about
+// BOTH remaining caveats: bot share within production is still unknown
+// (#1464), and the property itself stays polluted by non-production
+// traffic for historical windows until #1619 lands (the filter only fixes
+// what gets COUNTED, not what the raw property contains).
+const GA4_VISITS_CAVEAT =
+  "GA4 sessions on the production hosts only (property 541423859) — bot share within " +
+  "production still unknown (see #1464); the property itself is polluted by staging and " +
+  "localhost traffic (see #1619).";
 
 // gh-1574: all three audiences source the SAME site-wide GA4 property until
 // per-audience GA4 dimensions exist — the issue asks that this be said in
@@ -292,17 +311,37 @@ const GA4_VISITS_NOTE =
   "Sourced from the site-wide GA4 property (541423859), not this audience specifically — " +
   "per-audience GA4 dimensions do not exist yet (gh-1574).";
 
+// gh-1637: `scope` / `property_id` / `hosts` are a PINNED payload contract —
+// #1638 (the page half) and #1639 are written against these exact key
+// names and must not have to guess them. `property_id` and `hosts` come
+// straight off `ga4Result` (both branches of Ga4SessionsByDayResult carry
+// them as of gh-1637 — see ga4.ts) rather than being re-derived here, so
+// there is exactly one place ("the same resolution the client already
+// does") that decides what was actually requested.
 interface VisitsSeries extends WeeklySeries {
+  scope: string;
+  property_id: string;
+  hosts: string[];
   caveat: string;
   note: string;
 }
 
 // Turns a fetchGa4SessionsByDay result into the `visits` series honoring the
 // fail-loud contract: any GA4 failure is kind:"not_run" with the reason
-// attached (never zeros standing in for "unmeasured").
+// attached (never zeros standing in for "unmeasured"). gh-1637: scope/
+// property_id/hosts are populated on BOTH branches — a not_run result still
+// says what it would have counted.
 function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindow[]): VisitsSeries {
+  const scope = "production";
   if (!ga4Result.ok) {
-    return { ...notRunSeries("sessions", windows, ga4Result.reason), caveat: GA4_VISITS_CAVEAT, note: GA4_VISITS_NOTE };
+    return {
+      ...notRunSeries("sessions", windows, ga4Result.reason),
+      scope,
+      property_id: ga4Result.property_id,
+      hosts: ga4Result.hosts,
+      caveat: GA4_VISITS_CAVEAT,
+      note: GA4_VISITS_NOTE,
+    };
   }
   const dated = ga4Result.rows.map((r) => ({ iso: ga4DateToIso(r.date), value: r.sessions }));
   const values = sumByWeek(dated, windows);
@@ -313,6 +352,9 @@ function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindo
     windows,
     values,
     total,
+    scope,
+    property_id: ga4Result.property_id,
+    hosts: ga4Result.hosts,
     caveat: GA4_VISITS_CAVEAT,
     note: GA4_VISITS_NOTE,
   };
