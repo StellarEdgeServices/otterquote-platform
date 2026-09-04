@@ -29,6 +29,31 @@ disclaimed the weaker word while asserting the stronger claim, and advertised
 the compliance. Pattern 3 below catches that shape ("contractors ... are
 licensed"), not just the fixed noun phrase.
 
+gh-1617 pass 2 closed the bare-"licensed" class the first pass did not reach:
+"licensed contractors" with no "insured" beside it, on 74 lines. The most
+expensive were index.html's <meta name="description"> and og:description -- the
+text Google renders under the homepage result -- plus how-it-works.html's three
+meta tags and its JSON-LD HowTo description. 23 lines across 12 files were
+reworded; the remaining 51 are consumer advice and stayed (see below).
+
+Pass 2 also removed an affirmative verification PROMISE, which is worse than the
+marketing copy because it is a first-person statement to a contractor in a
+transactional email about what we do:
+send-welcome-email/index.ts told every applicant "We verify your contractor
+license(s) for each trade and municipality." We do not. D-217 (v77/v78) removed
+the license requirement outright: v77 constrains contractors.license_path to
+NULL or 'not_provided' -- there is no third value -- and v78 backfilled every
+row to 'not_provided', so contractor_has_required_docs()'s license limb
+(`EXISTS(contractor_licenses) OR license_path = 'not_provided'`) is satisfied
+unconditionally. license_verified/insurance_verified are admin-only columns
+(frozen against end-user writes by contractors_freeze_privileged_columns), and 1
+of 8 active contractors carries each. What actually happens at that step is that
+the contractor supplies license information and attests to it under the IC
+24-5-11 attestation in contractor-pre-approval.html. The email now says so.
+The two siblings found by the same grep -- the COI half of the same email, and
+contractor-how-it-works.html's "We review your profile to confirm licensing and
+insurance are in order" -- were reworded the same way.
+
 Patterns (case-insensitive):
   1. "licensed, insured" / "licensed and insured" -- the noun-phrase form.
   2. "vetted / pre-screened / screened / background-checked / verified
@@ -37,6 +62,30 @@ Patterns (case-insensitive):
      [all|fully] licensed|insured|vetted|screened|verified" -- the predicate
      form, which is how the claim gets reintroduced once the noun phrase is
      gone.
+  4. the bare-"licensed" ROSTER forms (pass 2). Scoped to the shape in which
+     "licensed <contractor|professional|roofer>" is OUR representation about who
+     bids through us, NOT to the bare phrase, because the bare phrase is also
+     how legitimate consumer advice is written and ~45 such lines remain in the
+     repo on purpose. Deliberately five narrow patterns rather than one broad
+     one plus a 45-entry allowlist: an allowlist that long stops being read, and
+     the broad form would pressure a future author to weaken good advice ("ask
+     to see their license") just to quiet the scanner. The five:
+       4a. "<quotes|bids> from [up to 3 words] licensed contractors" -- the
+           supply claim ("competing quotes from licensed contractors").
+       4b. "licensed contractors ... <bid on|submit|compete|in your area|on your
+           job|for your project>" -- the predicate claim.
+       4c. "<connects|delivers|matches|puts|priced by> ... licensed contractors"
+           -- the intermediation claim.
+       4d. a standalone element whose whole text is "Licensed Local Contractors"
+           -- the trust-badge form, which carries no sentence to key on.
+       4e. "is a licensed contractor" -- the generated-bio form
+           (contractor-about.html wrote this for any contractor who left
+           about_us blank, making it OtterQuote's assertion, not theirs).
+  5. the VERIFICATION PROMISE: "we|Otter Quotes ... <verify|confirm|validate|
+     vet|screen|check> ... <licen*|insur*|coverage minimum|credential|
+     background>" within one sentence. Negations are excluded from the gap, so
+     the honest disclaimer this fix introduced ("We do not independently verify
+     it") does not trip the scanner that required it.
 
 Three categories of match are legitimate and are ALLOWLISTed rather than
 special-cased inline (same convention as check-10k-floor-phrasing.py and
@@ -51,7 +100,14 @@ check-payout-timing-copy-drift.py):
       duty, not a representation about who is on our platform ("you have the
       right to choose any licensed, insured contractor", "use licensed,
       insured contractors who provide complete documentation"). Those
-      statements are true, useful, and make no claim about our roster.
+      statements are true, useful, and make no claim about our roster. Copy
+      that tells the homeowner to check credentials THEMSELVES is the reason
+      this category exists: deleting it would make the site worse, not more
+      honest, so it is allowlisted rather than reworded.
+  (d) a verification we genuinely perform or genuinely reserve -- the COI
+      confirmation email an admin actually sends to a contractor's broker, and
+      the contract clause that reserves the right to verify without promising
+      that we routinely do.
 
 Compliance guards, generators and tests are skipped wholesale (see SKIP_DIR_NAMES
 and SKIP_FILE_MARKERS) -- a rule or an assertion has to be able to quote the
@@ -75,6 +131,14 @@ SKIP_DIR_NAMES = {
 SKIP_FILE_MARKERS = (".test.", ".spec.")
 SCAN_SUFFIXES = {".html", ".ts", ".tsx", ".js", ".mjs", ".txt"}
 
+# Credential nouns the roster claims attach to (pass-2 patterns 4a-4c).
+_CRED = r"(?:contractors?|professionals?|roofers?)"
+
+# One non-sentence-ending character that is not part of a negation. Used as the
+# gap in pattern 5 so "We do not independently verify it" cannot match while
+# "We review your profile to confirm licensing ... " still does.
+_NO_NEG = r"(?:(?!\bnot\b|n't|\bnever\b|\bcannot\b|\bdon\b)[^.])"
+
 PATTERNS = [
     re.compile(r"licensed,?\s+(?:and\s+)?insured", re.IGNORECASE),
     re.compile(
@@ -87,6 +151,40 @@ PATTERNS = [
         r"\b(?:contractors?|professionals?|roofers?|bidders?)\s+"
         r"(?:on\s+[^.]{0,40}?\s+)?(?:are|is)\s+(?:all\s+|fully\s+)?"
         r"(?:licensed|insured|vetted|screened|verified|background[- ]checked)\b",
+        re.IGNORECASE,
+    ),
+    # -- pass 2: the bare-"licensed" roster forms (4a-4e) --
+    # 4a: the supply claim -- "competing quotes/bids from licensed contractors".
+    re.compile(
+        r"(?:quotes?|bids?)\s+from\s+(?:\w+\s+){0,3}"
+        r"licensed\s+(?:local\s+)?" + _CRED,
+        re.IGNORECASE,
+    ),
+    # 4b: the predicate claim -- licensed contractors doing something for us.
+    re.compile(
+        r"\blicensed\s+(?:local\s+|roofing\s+(?:and\s+exterior\s+)?)?" + _CRED +
+        r"\b[^.]{0,70}?\b(?:bid on|submit|compet|in your area|on your job|"
+        r"on the platform|for your (?:project|job))",
+        re.IGNORECASE,
+    ),
+    # 4c: the intermediation claim -- we connect/deliver/price via them.
+    re.compile(
+        r"\b(?:connects?|connecting|delivers?|matches?|puts?|priced\s+by|"
+        r"sourced\s+from)\b[^.]{0,70}?"
+        r"\blicensed\s+(?:local\s+|roofing\s+(?:and\s+exterior\s+)?)?" + _CRED,
+        re.IGNORECASE,
+    ),
+    # 4d: the trust-badge form -- an element whose entire text is the claim.
+    re.compile(r">\s*Licensed\s+(?:Local\s+|Roofing\s+)?Contractors?\s*<", re.IGNORECASE),
+    # 4e: the generated-bio form -- we assert it on the contractor's behalf.
+    re.compile(r"\bis\s+a\s+licensed\s+(?:local\s+)?contractor\b", re.IGNORECASE),
+    # 5: the first-person verification promise. _NO_NEG keeps negations out of
+    #    the gap so an honest "we do not verify" disclaimer never trips this.
+    re.compile(
+        r"\b(?:we|otter\s*quotes?)\b" + _NO_NEG + r"{0,45}?"
+        r"\b(?:verif(?:y|ies)|confirms?|validates?|vets?|screens?|checks?)\b"
+        r"[^.]{0,80}?"
+        r"(?:licen[cs]|insur|coverage\s+minimum|credential|background)",
         re.IGNORECASE,
     ),
 ]
@@ -156,6 +254,45 @@ ALLOWLIST = [
         "confirm that the subcontractors are also licensed and insured",
         "Consumer advice on what to ask a GC about its subs.",
     ),
+    # ---- gh-1617 pass 2: the four lines the new patterns 4a/4b/4c/5 match
+    # ---- that are legitimate. Everything else pass 2 matched was reworded.
+    (
+        "guides/how-to-file-property-damage-claim.html",
+        "Having competing bids from multiple licensed contractors serves two purposes",
+        "Consumer advice, not a supply claim: the paragraph directly under "
+        "'Use licensed, insured, local contractors' tells the homeowner why to "
+        "collect competing bids from whoever they hire. The sibling clause in "
+        "the same line ('the bids you're receiving from licensed contractors') "
+        "has the same homeowner subject. The OtterQuote CTA 12 lines below it "
+        "is the line pass 2 reworded.",
+    ),
+    (
+        "guides/how-to-negotiate-with-insurer.html",
+        "If multiple licensed contractors in your area cannot complete the work within the adjuster's pricing",
+        "Body prose making a market-pricing argument -- if nobody can do the job "
+        "for the adjuster's number, the estimate is low. Says nothing about who "
+        "bids through us; the two CTA boxes on the same page that did were "
+        "reworded.",
+    ),
+    (
+        "contractor-agreement.html",
+        "Otter Quotes reserves the right to verify all licenses, insurance, and credentials at any time",
+        "A RESERVED RIGHT, not a promise -- 'reserves the right to' is the "
+        "opposite of an assertion that we routinely do it, and the clause is "
+        "what lets us suspend a contractor whose credentials lapse. Removing it "
+        "would cost us the enforcement hook and buy no honesty.",
+    ),
+    (
+        "supabase/functions/admin-contractor-action/index.ts",
+        "We are writing to verify the Certificate of Insurance on file for",
+        "A verification we actually perform: the body of the COI confirmation "
+        "email an admin sends to the contractor's broker, which stamps "
+        "insurance_verification_sent_at on the row. First person is accurate "
+        "here because the action is happening as the sentence is sent. That it "
+        "is admin-triggered per contractor -- not automatic at signup -- is "
+        "also why the welcome email no longer promises it to everyone. "
+        "(Matches on two lines: plain-text and HTML halves of the same email.)",
+    ),
 ]
 
 
@@ -204,11 +341,17 @@ def main() -> int:
             "\nD-104 bars screening and credential claims about the contractors on the "
             "marketplace, and the data does not support one: of 8 active contractors, 1 "
             "has license_verified=true, 1 has insurance_verified=true, and 7 have "
-            "license_path='not_provided'. Every hit must be either (a) reworded to drop "
-            "the credential claim -- say what the platform actually does (contractors "
-            "compete for the project; the homeowner confirms credentials before hiring) "
-            "-- or (b) added to ALLOWLIST in this script with a stated reason if it is a "
-            "disclaimer, contractor speech, or generic consumer advice."
+            "license_path='not_provided' -- a value D-217/v77 constrains to NULL or "
+            "'not_provided', so the license limb of the doc gate is satisfied "
+            "unconditionally. Every hit must be either (a) reworded to drop the "
+            "credential claim -- say what the platform actually does (contractors "
+            "compete for the project; the contractor supplies and attests to their own "
+            "license information; the homeowner confirms credentials before hiring) -- "
+            "or (b) added to ALLOWLIST in this script with a stated reason if it is a "
+            "disclaimer, contractor speech, generic consumer advice, or a verification "
+            "we genuinely perform.\n"
+            "Do NOT satisfy this scanner by deleting copy that tells the homeowner to "
+            "check credentials themselves. That copy is the point; allowlist it."
         )
         return 1
 
