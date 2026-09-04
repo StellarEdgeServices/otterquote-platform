@@ -624,8 +624,25 @@ def main():
         row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token-without-otter-crm-access")
         check("GitHub 404 mid-pipeline -> UNMEASURED, not a crash", row["verdict"], nd.UNMEASURED)
         check("UNMEASURED detail names the GitHub 404", "404" in row["detail"], True)
+        check("UNMEASURED detail distinguishes token-scope gap from a dead target",
+              "token-scope gap" in row["detail"], True)
     finally:
         nd.urllib.request.urlopen = real_urlopen
+
+    # -------------------------------------------------------------------------------
+    print("\n_annotate_github_404: only rewrites HTTP 404, leaves every other reason untouched")
+    # -------------------------------------------------------------------------------
+    check("_annotate_github_404 leaves a non-404 reason unchanged",
+          nd._annotate_github_404("HTTP 500 (Internal Server Error) for https://api.github.com/x"),
+          "HTTP 500 (Internal Server Error) for https://api.github.com/x")
+    check("_annotate_github_404 leaves a network-exception reason unchanged",
+          nd._annotate_github_404("URLError: timed out"),
+          "URLError: timed out")
+    _annotated_404 = nd._annotate_github_404("HTTP 404 (Not Found) for https://api.github.com/x")
+    check("_annotate_github_404 preserves the original HTTP 404 text",
+          _annotated_404.startswith("HTTP 404 (Not Found) for https://api.github.com/x"), True)
+    check("_annotate_github_404 adds the token-scope-gap explanation",
+          "token-scope gap" in _annotated_404, True)
 
     # -------------------------------------------------------------------------------
     print("\nNever prints a token value")

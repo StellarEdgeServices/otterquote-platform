@@ -132,6 +132,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
   </div>
 
   <nav class="admin-nav">
+    <a href="admin-homeowners.html">Homeowners</a>
     <a href="admin-contractors.html">Contractors</a>
     <a href="admin-incomplete-profiles.html">Incomplete Profiles</a>
     <a href="admin-template-review.html">Template Review</a>
@@ -727,6 +728,11 @@ async function saveFulfillment() {
     closeDrawer();
     await loadOrders();
   } catch (e) {
+    if (typeof Sentry !== 'undefined') {
+      Sentry.captureException(e, {
+        extra: { order_id: row.id, claim_id: row.claim_id }
+      });
+    }
     err.textContent = e.message || String(e);
     err.style.display = 'block';
   } finally {

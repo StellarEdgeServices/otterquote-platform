@@ -60,10 +60,19 @@
  * / `"measured_zero"` on a successful GA4 read, `kind: "not_run"` with a
  * `reason` on ANY GA4 failure (missing/invalid service account, non-2xx,
  * unparsable response) — never a fabricated zero (house rule gh-1419).
- * Carries a standing `caveat`: GA4 sessions are unfiltered and bot share is
+ * Carries a standing `caveat`: bot share within production traffic is still
  * unknown (#1464) — sessions ≈ totalUsers on a site with very few signups
  * smells like crawler traffic, so a rate built on this denominator without
  * the caveat would be a lie in the other direction.
+ *
+ * gh-1637 (#1340 phase 5a): the GA4 read this series was built from was
+ * UNFILTERED — ~93% of the property's sessions are staging/branch-deploy/
+ * localhost traffic (production `gtag` fires everywhere until #1619 fixes
+ * the source), so the denominator was wrong by an order of magnitude. Every
+ * GA4 request ga4.ts makes now applies a `hostName` dimensionFilter scoped
+ * to the production hosts, and this payload declares that scope explicitly
+ * (`visits.scope`, `visits.property_id`, `visits.hosts`) so #1638 (the page
+ * half) and #1639 can render what was actually counted instead of assuming.
  *
  * Read-only. No writes, no schema change, no other EF touched.
  *
@@ -79,7 +88,7 @@
  * verify_jwt = false (see supabase/config.toml) — auth is performed
  * in-handler, same pattern as get-payout-completion-status / approve-payout.
  *
- * GitHub: #1340, #1469, #1574
+ * GitHub: #1340, #1469, #1574, #1637
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -283,7 +292,17 @@ function sumByWeek(rows: WeightedDatedRow[], windows: WeekWindow[]): number[] {
 // direction. Carried on the series itself (same pattern as referral_clicks'
 // caveat above) so no consumer of this payload can drop the caveat by
 // forgetting to look it up elsewhere.
-const GA4_VISITS_CAVEAT = "GA4 sessions, unfiltered — bot share unknown (see #1464).";
+//
+// gh-1637: replaces the old "unfiltered" text, which became false the
+// moment the hostName filter shipped — this string is now accurate about
+// BOTH remaining caveats: bot share within production is still unknown
+// (#1464), and the property itself stays polluted by non-production
+// traffic for historical windows until #1619 lands (the filter only fixes
+// what gets COUNTED, not what the raw property contains).
+const GA4_VISITS_CAVEAT =
+  "GA4 sessions on the production hosts only (property 541423859) — bot share within " +
+  "production still unknown (see #1464); the property itself is polluted by staging and " +
+  "localhost traffic (see #1619).";
 
 // gh-1574: all three audiences source the SAME site-wide GA4 property until
 // per-audience GA4 dimensions exist — the issue asks that this be said in
@@ -292,17 +311,37 @@ const GA4_VISITS_NOTE =
   "Sourced from the site-wide GA4 property (541423859), not this audience specifically — " +
   "per-audience GA4 dimensions do not exist yet (gh-1574).";
 
+// gh-1637: `scope` / `property_id` / `hosts` are a PINNED payload contract —
+// #1638 (the page half) and #1639 are written against these exact key
+// names and must not have to guess them. `property_id` and `hosts` come
+// straight off `ga4Result` (both branches of Ga4SessionsByDayResult carry
+// them as of gh-1637 — see ga4.ts) rather than being re-derived here, so
+// there is exactly one place ("the same resolution the client already
+// does") that decides what was actually requested.
 interface VisitsSeries extends WeeklySeries {
+  scope: string;
+  property_id: string;
+  hosts: string[];
   caveat: string;
   note: string;
 }
 
 // Turns a fetchGa4SessionsByDay result into the `visits` series honoring the
 // fail-loud contract: any GA4 failure is kind:"not_run" with the reason
-// attached (never zeros standing in for "unmeasured").
+// attached (never zeros standing in for "unmeasured"). gh-1637: scope/
+// property_id/hosts are populated on BOTH branches — a not_run result still
+// says what it would have counted.
 function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindow[]): VisitsSeries {
+  const scope = "production";
   if (!ga4Result.ok) {
-    return { ...notRunSeries("sessions", windows, ga4Result.reason), caveat: GA4_VISITS_CAVEAT, note: GA4_VISITS_NOTE };
+    return {
+      ...notRunSeries("sessions", windows, ga4Result.reason),
+      scope,
+      property_id: ga4Result.property_id,
+      hosts: ga4Result.hosts,
+      caveat: GA4_VISITS_CAVEAT,
+      note: GA4_VISITS_NOTE,
+    };
   }
   const dated = ga4Result.rows.map((r) => ({ iso: ga4DateToIso(r.date), value: r.sessions }));
   const values = sumByWeek(dated, windows);
@@ -313,6 +352,9 @@ function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindo
     windows,
     values,
     total,
+    scope,
+    property_id: ga4Result.property_id,
+    hosts: ga4Result.hosts,
     caveat: GA4_VISITS_CAVEAT,
     note: GA4_VISITS_NOTE,
   };
@@ -401,7 +443,14 @@ function firstEventPerGroup(rows: FirstEventRow[]): FirstEventResult {
 const ACTIVITY_PAGE = 1000;
 const ACTIVITY_MAX_PAGES = 500;
 
-interface ActivityRow { user_id: string | null; created_at: string }
+interface ActivityRow {
+  user_id: string | null;
+  created_at: string;
+  // gh-1580 review fix (PR #1601, comment 5532211463): needed so this reducer
+  // can exclude system-generated absence nudges (metadata.system_generated)
+  // from movement/first-activity — see the exclusion below.
+  metadata: Record<string, unknown> | null;
+}
 
 async function fetchAllActivity(
   // deno-lint-ignore no-explicit-any
@@ -412,7 +461,7 @@ async function fetchAllActivity(
   for (let page = 0; page < ACTIVITY_MAX_PAGES; page++) {
     const { data, error } = await db
       .from("activity_log")
-      .select("user_id, created_at")
+      .select("user_id, created_at, metadata")
       .order("created_at", { ascending: false })
       .range(from, from + ACTIVITY_PAGE - 1);
     if (error) return { data: null, error };
@@ -671,12 +720,50 @@ serve(async (req: Request) => {
     const leads = leadsRes.data ?? [];
 
     // ── activity_log reduced to last-movement-per-user (no N+1 downstream) ──
+    //
+    // gh-1580 review fix (PR #1601, comment 5532211463): a system-generated
+    // "we nagged you because nothing happened" row (metadata.system_generated
+    // === true — see send-homeowner-next-steps' activity_log insert) must NOT
+    // count as movement here, or the feature undoes itself: sending the day-0
+    // nudge would stamp a fresh activity_log row, which would (a) make
+    // computeMovement/bucketFor read the claim as "green" again — the exact
+    // false-freshness bug gh-1580 exists to fix — and (b) flip
+    // first_activity_at from null to non-null, silently dropping the claim
+    // out of admin-dashboard.html's "NEW — no activity since signup" strip
+    // right after the system acts on it.
+    //
+    // This is a metadata FLAG, not a deny-list of specific event_type
+    // strings, deliberately: this repo's Edge Function deploy path does not
+    // resolve `_shared/` imports (see send-home-profile-prompt's emailButton
+    // comment), so a constant shared between this file and every future
+    // nudge-sending function cannot be enforced by import — only a shared
+    // naming CONVENTION can. A per-event-type deny-list would need this file
+    // updated every time any other Edge Function adds a new "system nagged
+    // about inactivity" event type, and nothing would catch a forgotten
+    // update (fails open). Requiring every such writer to set
+    // metadata.system_generated = true is exactly as opt-in, but the
+    // reader-side check here never needs to change again for a new event
+    // type — only the writer needs to remember the one flag, at the point
+    // where they're already choosing the event's semantics. (A real
+    // fail-safe — an `activity_log.system_generated` COLUMN the writer can't
+    // omit — would be stronger still, but that is a schema change: Tier 3 /
+    // D-182, its own migration, and a decision about every existing writer's
+    // default, which is out of scope for this fix.)
     const lastActivityByUser = new Map<string, string>();
-    for (const row of activityLog as { user_id: string | null; created_at: string }[]) {
+    // gh-1580: also reduced to first-movement-per-user, so the CRM render can
+    // show "no activity since signup" (null = never) without re-deriving it
+    // client-side from a raw activity_log scan.
+    const firstActivityByUser = new Map<string, string>();
+    for (const row of activityLog as ActivityRow[]) {
       if (!row.user_id) continue;
-      const prev = lastActivityByUser.get(row.user_id);
-      if (!prev || new Date(row.created_at).getTime() > new Date(prev).getTime()) {
+      if ((row.metadata as { system_generated?: boolean } | null)?.system_generated === true) continue;
+      const prevLast = lastActivityByUser.get(row.user_id);
+      if (!prevLast || new Date(row.created_at).getTime() > new Date(prevLast).getTime()) {
         lastActivityByUser.set(row.user_id, row.created_at);
+      }
+      const prevFirst = firstActivityByUser.get(row.user_id);
+      if (!prevFirst || new Date(row.created_at).getTime() < new Date(prevFirst).getTime()) {
+        firstActivityByUser.set(row.user_id, row.created_at);
       }
     }
 
@@ -701,6 +788,29 @@ serve(async (req: Request) => {
       claimsByUserId.get(c.user_id)!.push(c);
     }
 
+    // gh-1580 review (PR #1601, comment 5532245612): homeownerRows is, and
+    // was before this PR, ONE ROW PER PROFILE — userClaims[0] below picks
+    // only the most-recently-updated claim; checklist/movement have always
+    // reflected that single claim, never a homeowner's full claim history.
+    // This PR's created_at/first_activity_at additions inherit that same
+    // per-profile granularity, but the EMAIL side (send-homeowner-next-
+    // steps) is per-CLAIM. The mismatch: for a homeowner with 2+ claims, an
+    // older claim's activity_log history makes first_activity_at non-null
+    // for the PROFILE, so a genuinely-stalled newer claim would correctly
+    // still receive the nudge email (claim-scoped) but would never earn the
+    // "NEW — no activity since signup" badge on admin-dashboard.html
+    // (profile-scoped) — the two halves of gh-1580 would disagree for that
+    // homeowner. Confirmed via Supabase MCP against prod (yeszghaspzwwstvsrioa)
+    // at review time: 0 real homeowners currently hold >1 claim, so this
+    // does not invalidate the closes-on artifact test today. Deliberately
+    // NOT fixed here: doing so means moving every homeownerRows field
+    // (checklist, movement, bidsReceived, all of it) to per-claim
+    // granularity — i.e. one CRM row per claim instead of per homeowner —
+    // which is a materially larger change than gh-1580's day-0/day-2 nudge
+    // + NEW strip, touches the meaning of every existing homeowner row, and
+    // is a product decision (does Dustin want one row or many per repeat
+    // homeowner?) that deserves its own issue rather than expanding this
+    // one. Bites again the day a second real homeowner claim exists.
     const homeownerRows = (profiles as any[]).map((p) => {
       const userClaims = (claimsByUserId.get(p.id) || []).slice().sort(
         (a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime()
@@ -744,6 +854,14 @@ serve(async (req: Request) => {
         is_test: p.is_test === true,
         checklist,
         movement: { ...movement, bucket: isComplete ? "complete" : movement.bucket },
+        // gh-1580: signup time — the CRM render needs this to compute "age in
+        // hours" for the NEW strip without a second derived source of truth.
+        created_at: p.created_at,
+        // gh-1580: null = never had an activity_log row. Admin CRM "NEW — no
+        // activity since signup" strip keys off this rather than re-deriving
+        // it from movement.bucket, which a freshly-created row buckets green
+        // (see p.updated_at as a movement input above) regardless of activity.
+        first_activity_at: firstActivityByUser.get(p.id) || null,
       };
     });
 

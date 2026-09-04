@@ -69,6 +69,19 @@ a third site or "fixing" a red otter-crm row)
   even though the Netlify side of that row is reachable -- this is an owner/unblock item,
   not a bug in this script. See RUN result below for the live measurement.
 
+  RECONFIRMED 2026-09-04 (gh-1549 dispatch rw-f22-20260904T182711-hxxv), because the same
+  404 got mis-read a second time as "the repo doesn't exist": it does. Direct GitHub
+  search with a broader-scoped credential (the GitHub MCP server's own token, not the
+  Code-lane fine-grained PAT) finds `StellarEdgeServices/otter-crm` -- private,
+  `created_at: 2026-07-30`, `pushed_at: 2026-09-03T14:44:35Z` -- and that push timestamp
+  and commit sha (`9cf92d30...`) match this detector's own live UNMEASURED read for
+  crm.otterquote.com's `published_deploy.commit_ref` exactly (see the automated comment
+  on this issue at 2026-09-04T13:31:51Z). The repo is real, is the correct target, and is
+  actively deployed; the 404 is the token-scope artifact described above, not a dead
+  target. Do not "fix" this by repointing the checker at a different repo/owner/name --
+  see fetch_github_main_sha()'s 404 annotation, which now says this inline so a future
+  read of a bare UNMEASURED line doesn't reopen the same investigation from zero.
+
 USAGE
   NETLIFY_PAT=... GITHUB_PERSONAL_ACCESS_TOKEN=... python scripts/netlify-deploy-drift.py
   python scripts/netlify-deploy-drift.py --json
@@ -635,6 +648,29 @@ def fetch_netlify_newest_production_deploy(site_id, token):
     return newest, "ok"
 
 
+def _annotate_github_404(reason):
+    """A GitHub 404 while fetching a site's configured repo is, per this script's
+    CROSS-REPO SCOPE GAP note (module docstring, 2026-09-02, reconfirmed 2026-09-04),
+    almost always a token-scope artifact and NOT evidence the repo is missing or
+    misconfigured: GitHub's fine-grained PATs and repo-scoped GITHUB_TOKEN both
+    return 404 rather than 403 for a repo outside their grant, specifically so an
+    unauthorized caller cannot learn a private repo exists by seeing a 403 instead of
+    a 404. That ambiguity is exactly what made the same otter-crm 404 get re-diagnosed
+    as "the repo doesn't exist" a second time (gh-1549 dispatch 2026-09-04) even though
+    it had already been confirmed real, private, and actively deployed. Say so inline
+    so the next reader doesn't reopen that investigation from zero -- the fix for this
+    shape is a credential with read access to the target repo, never a repo-pointer
+    change in this script."""
+    if reason.startswith("HTTP 404"):
+        return (
+            reason + " -- likely a cross-repo token-scope gap (fine-grained PATs and "
+            "repo-scoped GITHUB_TOKEN 404 rather than 403 outside their grant), NOT "
+            "evidence the repo is missing -- see CROSS-REPO SCOPE GAP in this script's "
+            "module docstring before treating this as a dead target"
+        )
+    return reason
+
+
 def fetch_github_main_sha(repo, token):
     if not token:
         return None, "no %s found in the environment" % GITHUB_TOKEN_ENV_VAR
@@ -642,7 +678,7 @@ def fetch_github_main_sha(repo, token):
         "https://api.github.com/repos/%s/commits/main" % repo, token, accept_github=True
     )
     if data is None:
-        return None, reason
+        return None, _annotate_github_404(reason)
     sha = data.get("sha")
     if not sha:
         return None, "GitHub API response for %s commits/main had no sha" % repo
@@ -660,7 +696,7 @@ def fetch_github_ahead_by(repo, base_sha, head_sha, token):
         accept_github=True,
     )
     if data is None:
-        return None, reason
+        return None, _annotate_github_404(reason)
     ahead_by = data.get("ahead_by")
     if ahead_by is None:
         return None, "GitHub compare response for %s had no ahead_by" % repo

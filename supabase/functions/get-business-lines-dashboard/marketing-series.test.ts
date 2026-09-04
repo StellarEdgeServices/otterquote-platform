@@ -361,11 +361,20 @@ Deno.test("sumByWeek: a row with no timestamp, or one older than all windows, is
 
 // --- buildVisitsSeries ----------------------------------------------------
 
+// gh-1637: fetchGa4SessionsByDay's result now carries property_id + hosts on
+// BOTH branches (ok:true and ok:false) — these fixtures match that shape.
+const GA4_HOSTS_FIXTURE = ["otterquote.com", "www.otterquote.com", "app.otterquote.com"];
+
 Deno.test("buildVisitsSeries: a successful GA4 fetch with sessions produces a measured series carrying the caveat and note", () => {
   const windows = buildWeekWindows(NOW, 12);
   const dayInLastWindow = "20260901"; // NOW is 2026-09-01T18:00:00Z
   const series = buildVisitsSeries(
-    { ok: true, property_id: "541423859", rows: [{ date: dayInLastWindow, sessions: 421 }] },
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE,
+      rows: [{ date: dayInLastWindow, sessions: 421 }],
+    },
     windows,
   );
   assertEquals(series.kind, "measured");
@@ -378,7 +387,10 @@ Deno.test("buildVisitsSeries: a successful GA4 fetch with sessions produces a me
 
 Deno.test("buildVisitsSeries: a successful GA4 fetch with no rows is a real measured_zero, not not_run", () => {
   const windows = buildWeekWindows(NOW, 12);
-  const series = buildVisitsSeries({ ok: true, property_id: "541423859", rows: [] }, windows);
+  const series = buildVisitsSeries(
+    { ok: true, property_id: "541423859", hosts: GA4_HOSTS_FIXTURE, rows: [] },
+    windows,
+  );
   assertEquals(series.kind, "measured_zero");
   assertEquals(series.total, 0);
 });
@@ -386,7 +398,12 @@ Deno.test("buildVisitsSeries: a successful GA4 fetch with no rows is a real meas
 Deno.test("buildVisitsSeries: a GA4 fetch failure is not_run with the reason attached — never a fabricated zero series", () => {
   const windows = buildWeekWindows(NOW, 12);
   const series = buildVisitsSeries(
-    { ok: false, reason: "GA4 Data API returned 403 for property 541423859" },
+    {
+      ok: false,
+      reason: "GA4 Data API returned 403 for property 541423859",
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE,
+    },
     windows,
   );
   assertEquals(series.kind, "not_run");
@@ -405,6 +422,7 @@ Deno.test("buildVisitsSeries: sessions from multiple days land in their own resp
     {
       ok: true,
       property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE,
       rows: [
         { date: "20260901", sessions: 100 }, // last window (NOW's day)
         { date: "20260701", sessions: 50 },  // an earlier window
@@ -416,4 +434,34 @@ Deno.test("buildVisitsSeries: sessions from multiple days land in their own resp
   assertEquals(series.total, 150);
   assertEquals(series.values[11], 100);
   assertEquals(series.values.slice(0, 11).reduce((a: number, b: number) => a + b, 0), 50);
+});
+
+// --- gh-1637 (#1340 phase 5a): scope / property_id / hosts on the payload -
+
+Deno.test("buildVisitsSeries: a successful GA4 fetch declares scope/property_id/hosts on the series — the pinned #1638/#1639 payload contract", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const series = buildVisitsSeries(
+    { ok: true, property_id: "541423859", hosts: GA4_HOSTS_FIXTURE, rows: [{ date: "20260901", sessions: 10 }] },
+    windows,
+  );
+  assertEquals(series.scope, "production");
+  assertEquals(series.property_id, "541423859");
+  assertEquals(series.hosts, GA4_HOSTS_FIXTURE);
+});
+
+Deno.test("buildVisitsSeries: a not_run result STILL carries scope/property_id/hosts — the page must be able to say what it would have counted", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const series = buildVisitsSeries(
+    {
+      ok: false,
+      reason: "GA4_SERVICE_ACCOUNT_JSON is not set or is not a complete service account",
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE,
+    },
+    windows,
+  );
+  assertEquals(series.kind, "not_run");
+  assertEquals(series.scope, "production");
+  assertEquals(series.property_id, "541423859");
+  assertEquals(series.hosts, GA4_HOSTS_FIXTURE);
 });

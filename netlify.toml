@@ -103,3 +103,20 @@
 [[edge_functions]]
   path = "/ref/*"
   function = "ref-redirect"
+
+# gh-1540 REFUTED-REOPENED fix (2026-09-03): /recruit/ and /Recruit.html
+# were measuring 301 (not the required 200) because Netlify's built-in
+# Pretty URLs post-processing normalizes trailing slashes and .html-case
+# ahead of `_redirects`, pre-empting the 200-rewrite rules already declared
+# there. A sitewide `pretty_urls = false` toggle was rejected on review — it
+# strips that canonicalization for every other page on the site too. This
+# edge function intercepts only these two literal paths, ahead of Pretty
+# URLs, so the rest of the site's behavior is unchanged.
+# Source: netlify/edge-functions/recruit-redirect.ts
+[[edge_functions]]
+  path = "/recruit/"
+  function = "recruit-redirect"
+
+[[edge_functions]]
+  path = "/Recruit.html"
+  function = "recruit-redirect"

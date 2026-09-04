@@ -28,6 +28,7 @@ import { writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import { config as loadEnv } from 'dotenv';
+import { runIntegrityGuard } from './integrity-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(__dirname, '..', '.env.test') });
@@ -136,6 +137,193 @@ async function findOrCreateUser(email, role) {
   }
   console.log(`  ✅ Existing ${role}: ${email} (${existing.id})`);
   return existing.id;
+}
+
+// ─── gh-1584: real validation artefacts for seeded contractor_templates ──────
+//
+// Root cause (#1584): this script used to insert contractor_templates rows
+// with status:'auto_validated' and NO validation_result, plus a shared
+// ci-test/placeholder.pdf path. bid_can_submit treats auto_validated as "may
+// bid" — a row with that status and no validation artefact is exactly the
+// fail-quiet shape #1313 is about, and the shared placeholder path broke
+// create-docusign-envelope's tag scan in #1504. Fix (part 1 of 2 — the
+// schema CHECK constraint that would enforce this is #1313 Tier 3B, tracked
+// separately, NOT added here): give every seeded row (a) a real per-contractor
+// tagged PDF and (b) a validation_result shaped exactly like the one the live
+// validator writes, marked `seeded: true` so it is never mistaken for one the
+// validator actually produced.
+
+/**
+ * BoldSign Text Tag builder — must match
+ * supabase/functions/validate-contract-template/index.ts's `tag()` exactly,
+ * since these strings are the literal anchors the live scan looks for.
+ */
+function boldsignTag(fieldType, signerIndex, required, label, fieldId) {
+  return `{{${fieldType}|${signerIndex}|${required ? '*' : ' '}|${label}|${fieldId}}}`;
+}
+const CONTRACTOR_IDX = 1;
+const HOMEOWNER_IDX = 2;
+
+// Mirrors the v3 anchor manifest (D-274, approved 2026-08-13) in
+// supabase/functions/validate-contract-template/index.ts — required/optional
+// anchor lists for the 4 slots this script seeds only. If that MANIFEST is
+// ever superseded (a v4), this copy must be updated to match or these seeded
+// templates validate against a shape the live validator no longer produces.
+const SEED_MANIFEST_SLOTS = {
+  roofing: {
+    retail: {
+      requiredCount: 13,
+      required: [
+        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, 'Homeowner Signature', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, 'Homeowner Sign Date', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, 'Contractor Signature', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, 'Contractor Sign Date', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Customer Name', 'customer_name'), mechanism: 'boldsign_tag', field: 'Customer name', tabType: 'text', source: 'Party identification' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Property Address', 'customer_address'), mechanism: 'boldsign_tag', field: 'Property address', tabType: 'text', source: 'Property identification' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Contract Price', 'contract_price'), mechanism: 'boldsign_tag', field: 'Total contract amount', tabType: 'text', source: 'Financial term' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Job Description', 'job_description'), mechanism: 'boldsign_tag', field: 'Job description / See Exhibit A', tabType: 'text', source: 'Scope reference (D-186)' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Material Type', 'material_type'), mechanism: 'boldsign_tag', field: 'Shingle product/brand', tabType: 'text', source: 'Material commitment' },
+        { anchor: "Manufacturer's Warranty:", mechanism: 'label_text', field: 'Auto-filled from D-202 manifest', tabType: 'text', source: 'D-202' },
+        { anchor: 'Workmanship Warranty:', mechanism: 'label_text', field: 'Contractor workmanship years', tabType: 'text', source: 'Workmanship commitment' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Decking Per Sheet', 'decking_per_sheet'), mechanism: 'boldsign_tag', field: 'Per-sheet decking replacement price', tabType: 'text', source: 'Roofing contingency' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Start Date', 'estimated_start'), mechanism: 'boldsign_tag', field: 'Estimated start date', tabType: 'text', source: 'Scheduling commitment' },
+      ],
+      optional: ['City/Zip:', 'Phone', 'Email:', 'Single Manufacture', 'Shingle Type:', 'Shingle Color:', 'Drip Edge Color:', 'Vents', 'Satellite', 'Skylights', 'Full Redeck:', 'Permit Fee:', 'Dumpster Fee:', 'Contractor:', 'Contractor Phone:', 'Contractor Email:', 'Contractor Address:', 'License #:', 'Structures:', 'Structure Names:', 'Valley Type:', 'Bad Decking:', 'Project Notes:'],
+    },
+    insurance: {
+      requiredCount: 14,
+      required: [
+        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, 'Homeowner Signature', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, 'Homeowner Sign Date', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, 'Contractor Signature', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, 'Contractor Sign Date', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Customer Name', 'customer_name'), mechanism: 'boldsign_tag', field: 'Customer name', tabType: 'text', source: 'Party identification' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Property Address', 'customer_address'), mechanism: 'boldsign_tag', field: 'Property address', tabType: 'text', source: 'Property identification' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Contract Price', 'contract_price'), mechanism: 'boldsign_tag', field: 'Total contract amount (RCV-based)', tabType: 'text', source: 'Financial term' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Insurance Company', 'insurance_company'), mechanism: 'boldsign_tag', field: 'Insurance carrier', tabType: 'text', source: 'Insurance-specific' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Claim Number', 'claim_number'), mechanism: 'boldsign_tag', field: 'Carrier claim number', tabType: 'text', source: 'Insurance-specific' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Deductible', 'deductible'), mechanism: 'boldsign_tag', field: 'Homeowner deductible amount', tabType: 'text', source: 'Financial term' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Material Type', 'material_type'), mechanism: 'boldsign_tag', field: 'Shingle product/brand', tabType: 'text', source: 'Material commitment' },
+        { anchor: "Manufacturer's Warranty:", mechanism: 'label_text', field: 'Auto-filled from D-202 manifest', tabType: 'text', source: 'D-202' },
+        { anchor: 'Workmanship Warranty:', mechanism: 'label_text', field: 'Contractor workmanship years', tabType: 'text', source: 'Workmanship commitment' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Decking Per Sheet', 'decking_per_sheet'), mechanism: 'boldsign_tag', field: 'Per-sheet decking replacement price', tabType: 'text', source: 'Roofing contingency' },
+      ],
+      optional: ['City/Zip:', 'Phone', 'Email:', 'Single Manufacture', 'Shingle Type:', 'Shingle Color:', 'Drip Edge Color:', 'Vents', 'Satellite', 'Skylights', 'Full Redeck:', 'Permit Fee:', 'Dumpster Fee:', 'Contractor:', 'Contractor Phone:', 'Contractor Email:', 'Contractor Address:', 'License #:', 'Structures:', 'Structure Names:', 'Valley Type:', 'Bad Decking:', 'Project Notes:', 'Non-Recoverable Dep:', 'Work Not Done:', 'Description:'],
+    },
+  },
+  siding: {
+    retail: {
+      requiredCount: 13,
+      required: [
+        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, 'Homeowner Signature', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, 'Homeowner Sign Date', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, 'Contractor Signature', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, 'Contractor Sign Date', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Customer Name', 'customer_name'), mechanism: 'boldsign_tag', field: 'Customer name', tabType: 'text', source: 'Party identification' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Property Address', 'customer_address'), mechanism: 'boldsign_tag', field: 'Property address', tabType: 'text', source: 'Property identification' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Contract Price', 'contract_price'), mechanism: 'boldsign_tag', field: 'Total contract amount', tabType: 'text', source: 'Financial term' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Job Description', 'job_description'), mechanism: 'boldsign_tag', field: 'Job description / See Exhibit A', tabType: 'text', source: 'Scope reference (D-186)' },
+        { anchor: 'Siding Product:', mechanism: 'label_text', field: 'Siding product/brand', tabType: 'text', source: 'Material commitment' },
+        { anchor: "Manufacturer's Warranty:", mechanism: 'label_text', field: 'Auto-filled from D-202 manifest', tabType: 'text', source: 'D-202' },
+        { anchor: 'Workmanship Warranty:', mechanism: 'label_text', field: 'Contractor workmanship years', tabType: 'text', source: 'Workmanship commitment' },
+        { anchor: 'Wall Substrate:', mechanism: 'label_text', field: 'Per-sheet sheathing replacement contingency', tabType: 'text', source: 'Siding contingency' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Start Date', 'estimated_start'), mechanism: 'boldsign_tag', field: 'Estimated start date', tabType: 'text', source: 'Scheduling commitment' },
+      ],
+      optional: ['City/Zip:', 'Phone', 'Email:', 'Siding Color:', 'Siding Profile:', 'Trim Color:', 'Trim Material:', 'Contractor:', 'Contractor Phone:', 'Contractor Email:', 'Contractor Address:', 'License #:', 'Project Notes:'],
+    },
+    insurance: {
+      requiredCount: 14,
+      required: [
+        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, 'Homeowner Signature', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, 'Homeowner Sign Date', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, 'Contractor Signature', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, 'Contractor Sign Date', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Customer Name', 'customer_name'), mechanism: 'boldsign_tag', field: 'Customer name', tabType: 'text', source: 'Party identification' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Property Address', 'customer_address'), mechanism: 'boldsign_tag', field: 'Property address', tabType: 'text', source: 'Property identification' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Contract Price', 'contract_price'), mechanism: 'boldsign_tag', field: 'Total contract amount (RCV-based)', tabType: 'text', source: 'Financial term' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Insurance Company', 'insurance_company'), mechanism: 'boldsign_tag', field: 'Insurance carrier', tabType: 'text', source: 'Insurance-specific' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Claim Number', 'claim_number'), mechanism: 'boldsign_tag', field: 'Carrier claim number', tabType: 'text', source: 'Insurance-specific' },
+        { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Deductible', 'deductible'), mechanism: 'boldsign_tag', field: 'Homeowner deductible amount', tabType: 'text', source: 'Financial term' },
+        { anchor: 'Siding Product:', mechanism: 'label_text', field: 'Siding product/brand', tabType: 'text', source: 'Material commitment' },
+        { anchor: "Manufacturer's Warranty:", mechanism: 'label_text', field: 'Auto-filled from D-202 manifest', tabType: 'text', source: 'D-202' },
+        { anchor: 'Workmanship Warranty:', mechanism: 'label_text', field: 'Contractor workmanship years', tabType: 'text', source: 'Workmanship commitment' },
+        { anchor: 'Wall Substrate:', mechanism: 'label_text', field: 'Per-sheet sheathing replacement contingency', tabType: 'text', source: 'Siding contingency' },
+      ],
+      optional: ['City/Zip:', 'Phone', 'Email:', 'Start Date:', 'Siding Color:', 'Siding Profile:', 'Trim Color:', 'Trim Material:', 'Description:', 'Non-Recoverable Dep:', 'Work Not Done:', 'Contractor:', 'Contractor Phone:', 'Contractor Email:', 'Contractor Address:', 'License #:', 'Project Notes:'],
+    },
+  },
+};
+
+/**
+ * Mints a real access token for a test user, server-side, without a browser
+ * redirect round-trip — same generateLink technique tests/e2e/helpers/auth.ts
+ * uses for magic-link login, followed by verifyOtp to redeem it directly.
+ *
+ * Deliberately runs on a THROWAWAY client, not the shared `supabase` admin
+ * client: supabase-js auto-switches every subsequent request on a client to
+ * whichever session auth.verifyOtp()/signIn*() last established on it, and
+ * every other step in this script depends on `supabase.from(...)` running as
+ * the service role with RLS bypassed. Contaminating that client's session
+ * would silently break every seed step after this one.
+ */
+async function mintUserAccessToken(email) {
+  const tokenClient = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    realtime: { transport: NoRealtimeTransportStub },
+  });
+  const { data: linkData, error: linkErr } = await tokenClient.auth.admin.generateLink({
+    type: 'magiclink',
+    email,
+  });
+  if (linkErr || !linkData?.properties?.hashed_token) {
+    throw new Error(
+      `mintUserAccessToken(${email}): generateLink failed: ${linkErr?.message || 'no hashed_token in response'}`
+    );
+  }
+  const { data: otpData, error: otpErr } = await tokenClient.auth.verifyOtp({
+    token_hash: linkData.properties.hashed_token,
+    type: 'magiclink',
+  });
+  if (otpErr || !otpData?.session?.access_token) {
+    throw new Error(
+      `mintUserAccessToken(${email}): verifyOtp failed: ${otpErr?.message || 'no session in response'}`
+    );
+  }
+  return otpData.session.access_token;
+}
+
+/**
+ * Fetches the #1313 pre-tagged starter PDF for one trade/funding_type slot
+ * from validate-contract-template's `starter: true` path. Generated FROM the
+ * live v3 manifest server-side, so it always carries every marker that slot's
+ * validator scan requires and can never itself drift from the real thing —
+ * only the SEED_MANIFEST_SLOTS description of it (above) can drift.
+ */
+async function fetchStarterTemplate(accessToken, trade, fundingType) {
+  const url = `${SUPABASE_URL}/functions/v1/validate-contract-template`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      apikey: SERVICE_KEY,
+    },
+    body: JSON.stringify({ starter: true, trade, funding_type: fundingType }),
+  });
+  const text = await resp.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = { rawText: text };
+  }
+  if (!resp.ok || !body.pdf_base64) {
+    throw new Error(
+      `fetchStarterTemplate(${trade}/${fundingType}) HTTP ${resp.status}: ` +
+        (body.error || body.rawText || 'no pdf_base64 in response')
+    );
+  }
+  return { pdfBase64: body.pdf_base64, manifestVersion: body.manifestVersion };
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -254,15 +442,86 @@ async function seed() {
   // bid form blocks submission with a window.confirm() before the form submits.
   await supabase.from('contractor_templates').delete().eq('contractor_id', contractorId);
 
-  const templatesPayload = [
-    { contractor_id: contractorId, trade: 'roofing', funding_type: 'insurance', status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
-    { contractor_id: contractorId, trade: 'roofing', funding_type: 'retail',    status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
-    { contractor_id: contractorId, trade: 'siding',  funding_type: 'retail',    status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
-    { contractor_id: contractorId, trade: 'siding',  funding_type: 'insurance', status: 'auto_validated', pdf_storage_path: 'ci-test/placeholder.pdf' },
+  // gh-1584: each seeded row gets a real per-contractor tagged PDF (the #1313
+  // starter, generated from the live manifest) and a validation_result shaped
+  // exactly like the one the live validator writes — not the bare
+  // status:'auto_validated' + shared ci-test/placeholder.pdf this used to
+  // insert with no validation artefact at all. See the block comment above
+  // mintUserAccessToken/fetchStarterTemplate for why.
+  const contractorAccessToken = await mintUserAccessToken(CONTRACTOR_EMAIL);
+  const templateSlots = [
+    { trade: 'roofing', funding_type: 'insurance' },
+    { trade: 'roofing', funding_type: 'retail' },
+    { trade: 'siding', funding_type: 'retail' },
+    { trade: 'siding', funding_type: 'insurance' },
   ];
+
+  const templatesPayload = [];
+  for (const { trade, funding_type: fundingType } of templateSlots) {
+    const { pdfBase64, manifestVersion } = await fetchStarterTemplate(
+      contractorAccessToken,
+      trade,
+      fundingType
+    );
+    const pdfBytes = Buffer.from(pdfBase64, 'base64');
+    // Canonical slot path (<contractor_id>/<trade>/<funding>.pdf) — the same
+    // path shape create-docusign-envelope and a real contractor upload use,
+    // per the validator's own "slot path is canonical" comment.
+    const storagePath = `${contractorId}/${trade}/${fundingType}.pdf`;
+    const { error: uploadErr } = await supabase.storage
+      .from('contractor-templates')
+      .upload(storagePath, pdfBytes, { contentType: 'application/pdf', upsert: true });
+    if (uploadErr) {
+      throw new Error(
+        `Seeded template PDF upload failed (${trade}/${fundingType}): ${uploadErr.message}`
+      );
+    }
+
+    const slot = SEED_MANIFEST_SLOTS[trade][fundingType];
+    const anchors = slot.required.map((req) => ({
+      anchor: req.anchor,
+      mechanism: req.mechanism,
+      field: req.field,
+      tabType: req.tabType,
+      source: req.source,
+      found: true,
+      manualOverride: false,
+      manualOverrideValue: null,
+    }));
+    const optional = slot.optional.map((anchor) => ({ anchor, found: false }));
+
+    templatesPayload.push({
+      contractor_id: contractorId,
+      trade,
+      funding_type: fundingType,
+      status: 'auto_validated',
+      pdf_storage_path: storagePath,
+      validation_result: {
+        manifestVersion: manifestVersion || 'v3',
+        trade,
+        funding_type: fundingType,
+        requiredCount: slot.requiredCount,
+        requiredFoundCount: slot.required.length,
+        allRequiredFound: true,
+        anchors,
+        optional,
+        missingMarkers: [],
+        filledProposal: { detected: false, signals: [] },
+        // Unedited starter carries the placeholder block, not a real notice —
+        // matches what cancellationNoticeState() would report against it.
+        cancellationNotice: 'placeholder',
+        assistApplied: null,
+        validatedAt: new Date().toISOString(),
+        // Distinguishes this from a validation_result the live validator
+        // actually produced — the whole point of this fix (#1584).
+        seeded: true,
+      },
+    });
+  }
+
   const { error: tmplErr } = await supabase.from('contractor_templates').insert(templatesPayload);
   if (tmplErr) throw new Error(`Contractor templates insert failed: ${tmplErr.message}`);
-  console.log(`  ✅ Contractor templates seeded (roofing/insurance, roofing/retail, siding/retail, siding/insurance)`);
+  console.log(`  ✅ Contractor templates seeded (roofing/insurance, roofing/retail, siding/retail, siding/insurance) — real tagged PDFs + validation_result (seeded:true)`);
 
   // ── 5c. D-210 dedicated test contractor ──────────────────────────────────
   // Isolated from the main flow-A contractor so D-210 beforeAll/afterAll status
@@ -656,6 +915,54 @@ async function seed() {
     );
   }
   console.log('  ✅ Contractor verified: status=active, onboarding_step=4');
+
+  // ── 6e. Integrity guard (gh-1584) — make the bad shape loud, not silent ──
+  //
+  // #1584's root cause was a contractor_templates row that reached
+  // status='auto_validated' — bid_can_submit's "may bid" gate — with no
+  // validation_result: a shape nothing stopped, so it sat undetected for
+  // weeks. The DB-level CHECK constraint that would forbid it outright is
+  // explicitly out of scope here (Tier 3B, tracked on #1313); this is the
+  // seed-side half this issue closes on — assert, after the seed has
+  // finished writing, that the bad shape is not present, and throw loudly
+  // if it is, instead of completing silently on top of it.
+  //
+  // Runs LAST (after every other seed step, not immediately after 5b's own
+  // insert) and reads the WHOLE contractor_templates table on this
+  // project, not just the four rows 5b just inserted. Both are deliberate:
+  // nothing else in this script writes to contractor_templates (only 5b's
+  // delete + insert do), so a full-table read here is equivalent in
+  // coverage to one right after 5b, but placing it last also means the
+  // guard fires after everything the seed does is done, matching "the seed
+  // has completed" rather than "one particular step of it succeeded." The
+  // PRODUCTION_PROJECT_REF guard at the top of this file (gh-1028) already
+  // guarantees SUPABASE_URL here can only be the dedicated E2E test
+  // project, never prod, so a full-table read is safe — and it catches
+  // drift from ANY source (a future edit to this script, a manually
+  // inserted fixture, a different code path entirely), not only the rows
+  // this exact insert produced. A check narrowed to templatesPayload's own
+  // rows would stay green even if some other row in the table were still
+  // in the bad shape — precisely the local-looks-fine-globally-isn't gap
+  // #1584 is about.
+  // NOTE: `Run E2E Tests` carries `continue-on-error: true` in CI (gh-1261,
+  // CEO ruling 2026-08-26) — a thrown error here will NOT fail that job. The
+  // banner runIntegrityGuard prints to stderr on failure is the only thing
+  // standing between this and a silent pass in CI; grep the seed step's log
+  // for "INTEGRITY GUARD FAILED" rather than relying on the job's own
+  // pass/fail status.
+  //
+  // gh-1602: the predicate + fail-closed query handling live in
+  // integrity-guard.mjs specifically so they can be unit-tested (see
+  // integrity-guard.test.mjs) against a constructed bad row, independent of
+  // this script's own env-var/Supabase-client setup.
+  console.log('6e. Integrity guard: no auto_validated row without validation_result...');
+  await runIntegrityGuard(() =>
+    supabase
+      .from('contractor_templates')
+      .select('id, contractor_id, trade, funding_type, pdf_storage_path, created_at, validation_result')
+      .eq('status', 'auto_validated')
+  );
+  console.log('  ✅ Integrity guard passed: no auto_validated rows without validation_result');
 
   // ── 7. Write .test-state.json ────────────────────────────────────────────
   // runId: deterministic per seed run — YYYYMMDD-HHmmss + first 8 chars of
