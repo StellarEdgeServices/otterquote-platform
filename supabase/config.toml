@@ -367,3 +367,10 @@ verify_jwt = true
 # the function.
 [functions.send-homeowner-next-steps]
 verify_jwt = false
+
+# gh-1313: Cron-exception, same pattern as send-homeowner-next-steps — JWT
+# verification disabled; access is gated by the CRON_SECRET / service-role
+# Bearer check inside the function. Read-only on contractor_templates; writes
+# platform_alerts_log only.
+[functions.watch-template-mapping]
+verify_jwt = false
