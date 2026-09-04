@@ -591,14 +591,14 @@ function QuickActions({ referralLink }: { referralLink: string }) {
 
   const message =
     `Hi ${clientName || '[Client Name]'},\n\n` +
-    `I wanted to refer you to Otter Quotes — a quick and easy way to get a free quote from qualified contractors.\n\n` +
+    `I wanted to refer you to Otter Quotes — a quick and easy way to get free, competing quotes from contractors.\n\n` +
     `Check it out: ${referralLink}\n\n` +
     `Let me know if you have any questions!`;
 
   const widgetCode =
     widgetStyle === 'button'
       ? `<a href="${referralLink}" style="display: inline-block; padding: 12px 24px; background-color: #E07B00; color: #00D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600; font-family: Rubik, sans-serif; font-size: 0.9rem;">Get a Free Contractor Quote</a>`
-      : `<div style="padding: 20px; background: #0D1B2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; max-width: 320px;"><div style="font-size: 1rem; font-weight: 700; color: #FFFFFF; margin-bottom: 8px;">Get a Free Quote</div><div style="font-size: 0.875rem; color: #94A3B8; margin-bottom: 16px;">Connect with qualified contractors and get quotes instantly</div><a href="${referralLink}" style="display: inline-block; padding: 10px 20px; background-color: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600;">Get Started</a></div>`;
+      : `<div style="padding: 20px; background: #0D1B2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; max-width: 320px;"><div style="font-size: 1rem; font-weight: 700; color: #FFFFFF; margin-bottom: 8px;">Get a Free Quote</div><div style="font-size: 0.875rem; color: #94A3B8; margin-bottom: 16px;">Describe your project once and compare competing contractor bids</div><a href="${referralLink}" style="display: inline-block; padding: 10px 20px; background-color: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600;">Get Started</a></div>`;
 
   return (
     <div className="quick-actions-grid">
@@ -677,7 +677,7 @@ function QuickActions({ referralLink }: { referralLink: string }) {
           ) : (
             <div className="widget-card">
               <div className="widget-card-title">Get a Free Quote</div>
-              <div className="widget-card-text">Connect with qualified contractors and get quotes instantly</div>
+              <div className="widget-card-text">Describe your project once and compare competing contractor bids</div>
               <button className="widget-card-button" disabled>Get Started</button>
             </div>
           )}

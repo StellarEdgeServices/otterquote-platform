@@ -60,7 +60,7 @@ export const LOGIN_COPY = {
     {
       icon: '💰',
       h: 'Review incoming bids',
-      p: 'Compare bids from qualified contractors and select the best offer for your project.',
+      p: 'Compare bids from contractors and select the best offer for your project.',
     },
     {
       icon: '📝',

@@ -747,7 +747,7 @@ export default function GetStartedPage() {
           <div className="gs-form-wrap">
             <h1>Get Started</h1>
             <p className="gs-subtitle">
-              Create your free account and start getting competitive quotes from qualified contractors.
+              Create your free account and start getting competitive quotes from contractors.
             </p>
 
             {/* ── Account-Confirmation State ── */}
@@ -1077,7 +1077,7 @@ export default function GetStartedPage() {
               <div className="benefit-icon">🎯</div>
               <div className="benefit-text">
                 <h4>Contractors compete</h4>
-                <p>Licensed contractors in your area submit quotes for your job. You compare and choose the best deal.</p>
+                <p>Contractors in your area submit quotes for your job. You compare and choose the best deal.</p>
               </div>
             </div>
 

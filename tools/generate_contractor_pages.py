@@ -183,7 +183,7 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
 <title>{company_esc} — Contractor Profile · Otter Quotes</title>
-<meta name="description" content="{company_esc} is available on Otter Quotes. {trades_str} services in {location_esc}. Get competing bids from qualified contractors.">
+<meta name="description" content="{company_esc} is available on Otter Quotes. {trades_str} services in {location_esc}. Get competing bids from contractors.">
 <link rel="canonical" href="{SITE_BASE}/contractors/{slug}/">
 <meta property="og:title" content="{company_esc} — Contractor Profile · Otter Quotes">
 <meta property="og:description" content="{company_esc}: {trades_str} contractor serving {location_esc} via Otter Quotes.">
@@ -296,7 +296,7 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
     </div>
 
     <div class="cta-bar">
-      <p>Ready to connect with a qualified contractor?</p>
+      <p>Ready to connect with a contractor?</p>
       <a href="/get-started.html" class="btn btn-primary btn-lg">Start Your Project with Otter Quotes</a>
     </div>
 
@@ -385,7 +385,7 @@ def generate_directory_index(contractors_with_slugs: list[tuple], dry_run: bool)
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
 <title>Contractor Directory — Otter Quotes</title>
-<meta name="description" content="Browse contractors available on the Otter Quotes platform. Get competing bids from qualified roofing and exterior contractors.">
+<meta name="description" content="Browse contractors available on the Otter Quotes platform. Get competing bids from roofing and exterior contractors.">
 <link rel="canonical" href="{SITE_BASE}/contractors/">
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments)}}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>

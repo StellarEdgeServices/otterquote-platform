@@ -141,10 +141,10 @@ serve(async (req: Request) => {
 
 Welcome to Otter Quotes — your application is now in review.
 
-Our team typically completes reviews within 2–5 business days. Here's what we check during that time:
-- Contractor license verification
-- Certificate of Insurance (COI) requirements
-- Overall profile completeness
+Our team typically completes reviews within 2–5 business days. Here's what happens during that time:
+- You give us your contractor license information for each trade and municipality, and attest that it is current
+- You upload a Certificate of Insurance (COI) that meets our coverage minimums
+- We review your profile for completeness before activating your account
 
 While you wait, use the time to get everything ready so you can hit the ground running the moment you're approved.
 
@@ -179,7 +179,7 @@ https://otterquote.com`;
           <td style="padding:32px 32px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
             <p style="margin:0 0 6px;color:#14B8A6;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Application In Review</p>
             <h2 style="margin:0 0 20px;color:#0F172A;font-size:22px;font-weight:700;line-height:1.3;">Welcome to Otter Quotes, ${escapeHtml(greeting)}!</h2>
-            <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">Your application is in review. Our team typically completes the process within <strong>2&ndash;5 business days</strong>. Here&rsquo;s what we check:</p>
+            <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">Your application is in review. Our team typically completes the process within <strong>2&ndash;5 business days</strong>. Here&rsquo;s what happens:</p>
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F8FAFC;border-radius:8px;margin-bottom:24px;">
               <tr><td style="padding:16px 20px;border-bottom:1px solid #E2E8F0;">
                 <table cellpadding="0" cellspacing="0" border="0"><tr>
@@ -187,8 +187,8 @@ https://otterquote.com`;
                     <div style="width:22px;height:22px;background:#14B8A6;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;color:#ffffff;">1</div>
                   </td>
                   <td style="padding-left:12px;">
-                    <p style="margin:0;color:#0F172A;font-size:14px;font-weight:600;">License Verification</p>
-                    <p style="margin:4px 0 0;color:#64748B;font-size:13px;">We verify your contractor license(s) for each trade and municipality.</p>
+                    <p style="margin:0;color:#0F172A;font-size:14px;font-weight:600;">License Information</p>
+                    <p style="margin:4px 0 0;color:#64748B;font-size:13px;">You give us your license information for each trade and municipality you serve, and attest that it is current. We do not independently verify it.</p>
                   </td>
                 </tr></table>
               </td></tr>
@@ -199,7 +199,7 @@ https://otterquote.com`;
                   </td>
                   <td style="padding-left:12px;">
                     <p style="margin:0;color:#0F172A;font-size:14px;font-weight:600;">COI Requirements</p>
-                    <p style="margin:4px 0 0;color:#64748B;font-size:13px;">We confirm your Certificate of Insurance meets our coverage minimums ($1M/$2M CGL, Stellar Edge Services LLC as additional insured).</p>
+                    <p style="margin:4px 0 0;color:#64748B;font-size:13px;">You upload a current Certificate of Insurance. Our coverage minimums are $1M per occurrence / $2M aggregate CGL, with Stellar Edge Services LLC named as additional insured.</p>
                   </td>
                 </tr></table>
               </td></tr>

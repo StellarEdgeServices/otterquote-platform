@@ -95,7 +95,7 @@ export const SHARE_CARDS = {
 export const HOW_IT_WORKS_HEADING = 'How It Works';
 export const HOW_IT_WORKS = [
   { number: '1', title: 'Share Your Link', text: 'Share your unique referral link with friends, family, or neighbors.' },
-  { number: '2', title: 'They Get Competing Bids', text: 'They receive competing bids from licensed, insured contractors for their project.' },
+  { number: '2', title: 'They Get Competing Bids', text: 'They receive competing bids from contractors for their project.' },
   { number: '3', title: 'You Earn $200', text: 'When their job completes ($10K or more), you earn $200 in commission.' },
 ] as const;
 
@@ -136,6 +136,15 @@ export const TAX_NOTICE = {
 // partner-agreement.html §4.2: paid after completion and approval, no interval promised.
 export const COMMISSION_APPROVAL_DISCLOSURE =
   "Commission payments are subject to Otter Quotes' approval process and are paid after the qualifying job is complete and the payout has been approved.";
+
+// ── D-266 Referral-fee legality disclaimer — ⚠️ Tier-3 VERBATIM ──
+// MANDATORY on every referral funnel surface (Dustin-dictated, final — no
+// paraphrase, no shortening). Ported byte-for-byte from the static page
+// (refer-a-friend.html @ main), where it sits immediately after the D-180
+// block; identical to react-app/app/partner/dashboard/copy.ts's constant of
+// the same name. Any wording change is Tier-3 -> STOP and gate to Dustin.
+export const REFERRAL_FEE_DISCLAIMER =
+  'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.';
 
 // ── D-172 W-9 banner — ⚠️ Tier-3 VERBATIM ──
 export const W9_BANNER = {
