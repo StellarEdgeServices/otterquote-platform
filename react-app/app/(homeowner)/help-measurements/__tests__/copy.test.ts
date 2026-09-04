@@ -48,7 +48,7 @@ const STATIC = {
     'Request measurements from your insurance adjuster. Many adjusters take measurements during their inspection and can share them at no cost.',
   adjusterCardFeatures: [
     'No cost to you',
-    'We send a professional email on your behalf',
+    'We send your adjuster a written request for a copy of your file',
     'Auto-captured when adjuster replies',
     'May not always be available',
   ],
