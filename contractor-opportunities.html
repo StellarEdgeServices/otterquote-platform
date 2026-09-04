@@ -44,6 +44,9 @@
     <!-- Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
+    <!-- Stripe.js — required for the contractor detailed-measurement upgrade purchase (gh-1411) -->
+    <script src="https://js.stripe.com/v3/"></script>
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -180,6 +183,22 @@
         .doc-link-btn:hover { border-color: var(--amber); background: #FFFBEB; }
         .doc-link-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+        /* ── gh-1411 / D-317 cl. 4-5: detailed-measurement upgrade purchase ── */
+        .upgrade-section { margin-bottom: var(--sp-4); }
+        .upgrade-available-badge { display: inline-flex; align-items: center; gap: var(--sp-2); background: #DCFCE7; color: #15803D; border-radius: var(--radius-md); padding: var(--sp-2) var(--sp-4); font-family: var(--font-body); font-size: 0.82rem; font-weight: 600; }
+        .upgrade-buy-btn { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); background: #FFFBEB; border: 1px solid var(--amber); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 0.85rem; font-weight: 700; color: var(--amber); cursor: pointer; transition: all 0.15s ease; }
+        .upgrade-buy-btn:hover:not(:disabled) { background: var(--amber); color: #fff; }
+        .upgrade-buy-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .upgrade-panel { display: none; margin-top: var(--sp-3); padding: var(--sp-4); background: #F8FAFC; border: 1.5px solid #D0D9E3; border-radius: var(--radius-md); }
+        .upgrade-panel.open { display: block; }
+        .upgrade-panel-price { font-family: var(--font-heading); font-size: 1.05rem; font-weight: 700; color: var(--navy); margin-bottom: var(--sp-2); }
+        .upgrade-panel-note { font-family: var(--font-body); font-size: 0.82rem; color: #475569; line-height: 1.55; margin-bottom: var(--sp-3); }
+        .upgrade-card-element { padding: 0.75rem; border: 1.5px solid #CBD5E1; border-radius: 6px; background: white; margin-bottom: var(--sp-2); }
+        .upgrade-card-errors { color: #DC2626; font-size: 0.8rem; min-height: 1.1rem; margin-bottom: var(--sp-2); }
+        .upgrade-panel-actions { display: flex; gap: var(--sp-3); flex-wrap: wrap; }
+        .upgrade-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff; border-radius: 50%; animation: upgrade-spin 0.6s linear infinite; }
+        @keyframes upgrade-spin { to { transform: rotate(360deg); } }
+
         /* ── Bid Expiry Countdown (86e10t2bh / D-150) ── */
         .expiry-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px; font-family: var(--font-body); font-size: 0.78rem; font-weight: 700; border: 1px solid transparent; }
         .expiry-neutral { background: #F3F4F6; color: #374151; border-color: #E5E7EB; }
@@ -287,6 +306,7 @@
   <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <script src="js/services.js"></script>
 
     <script>
         // CPA version — must match contractor-dashboard.html. Bump both when the CPA changes.
@@ -565,6 +585,16 @@
                     existingShingle: claim.existing_shingle_brand ? `${claim.existing_shingle_brand} - ${claim.existing_shingle_color}` : null,
                     estimateAvailable: !!(claim.estimate_filename || claim.has_estimate),
                     measurementsAvailable: !!(claim.measurements_filename || claim.has_measurements),
+                    // gh-1411 / D-317 cl. 4-5: same field create-payment-intent's
+                    // measurement-upgrade-gate.ts prices from (claims.hover_measurements.squares)
+                    // — NOT claim.roof_squares above, which is a separate, legacy-parsed
+                    // column the upgrade gate does not read. #1410 tolerant read: a
+                    // missing/null measurement_shape (column may not be applied yet)
+                    // resolves to "basic", exactly like the server-side gate.
+                    hoverSquares: (typeof claim.hover_measurements?.squares === 'number' && isFinite(claim.hover_measurements.squares) && claim.hover_measurements.squares > 0)
+                      ? claim.hover_measurements.squares
+                      : null,
+                    measurementShape: claim.measurement_shape || null,
                     claimFiledDate: claim.created_at,
                     distance: computeZipDistance(currentContractor?.address_zip, zip),
                     urgency: claim.urgency || 'flexible',
@@ -860,6 +890,346 @@
             return '<div class="docs-section"><span class="docs-label">Documents</span>' + parts.join('') + '</div>';
         }
 
+        // ── gh-1411 / D-317 cl. 4-5: contractor detailed-measurement upgrade purchase ──
+        // $25 under 50 SQ / $55 at-or-over 50 SQ — mirrors the fixed constants in
+        // supabase/functions/create-payment-intent/measurement-upgrade-gate.ts
+        // (SQ_TIER_BOUNDARY / PRICE_UNDER_TIER_CENTS / PRICE_AT_OR_OVER_TIER_CENTS)
+        // exactly. This is cosmetic pre-charge copy only, same precedent as
+        // help-measurements.html's hardcoded "$15" button label (D-181): the
+        // amount actually charged always comes back from create-payment-intent's
+        // response and is re-displayed before the card element is shown, so a
+        // drift here can never overcharge a contractor without them seeing the
+        // real number first.
+        const UPGRADE_SQ_TIER_BOUNDARY = 50;
+        const UPGRADE_PRICE_UNDER_CENTS = 2500;
+        const UPGRADE_PRICE_AT_OR_OVER_CENTS = 5500;
+        function upgradeTierPriceCents(squares) {
+            return squares >= UPGRADE_SQ_TIER_BOUNDARY ? UPGRADE_PRICE_AT_OR_OVER_CENTS : UPGRADE_PRICE_UNDER_CENTS;
+        }
+        function fmtCents(cents) { return '$' + (cents / 100).toFixed(2); }
+
+        function getUpgradePurchaseHtml(o) {
+            const safeId = String(o.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+            // #1410 shape gate, mirrored for display only: already detailed ->
+            // nothing to buy, matching evaluateMeasurementUpgradeGate's ALREADY_DETAILED case.
+            if (o.measurementShape === 'full') {
+                return '<div class="upgrade-section"><span class="upgrade-available-badge">&#x2713; Detailed measurement report available &mdash; nothing to buy</span></div>';
+            }
+            // No basic-report squares on file yet — the gate would refuse with
+            // SQUARES_UNKNOWN or BASIC_REPORT_NOT_READY. Don't offer a button
+            // that can only fail; the badge above already covers "Measurements Pending."
+            if (typeof o.hoverSquares !== 'number') return '';
+
+            const priceCents = upgradeTierPriceCents(o.hoverSquares);
+            return '<div class="upgrade-section">'
+                + '<button class="upgrade-buy-btn" id="upgrade-btn-' + safeId + '" onclick="openUpgradePanel(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')">'
+                + '&#x1F4D0; Buy Detailed Measurement Report &mdash; ' + fmtCents(priceCents)
+                + '</button>'
+                + '<div class="upgrade-panel" id="upgrade-panel-' + safeId + '">'
+                + '<div class="upgrade-panel-price" id="upgrade-panel-price-' + safeId + '">Loading price&hellip;</div>'
+                + '<div class="upgrade-panel-note">One-time upgrade from the basic to the full detailed measurement report for this roof ('
+                + o.hoverSquares.toFixed(1) + ' sq). OtterQuote&rsquo;s measurement partner applies a $15 credit toward this report&rsquo;s cost, so you are not covering its full price. Once purchased, every other contractor already bidding this project sees the detailed report too &mdash; nothing more for them to buy &mdash; and the homeowner&rsquo;s own copy upgrades at the same time, at no extra charge.</div>'
+                + '<div class="upgrade-card-element" id="upgrade-card-element-' + safeId + '"></div>'
+                + '<div class="upgrade-card-errors" id="upgrade-card-errors-' + safeId + '"></div>'
+                + '<div class="upgrade-panel-actions">'
+                + '<button class="btn btn-primary" id="upgrade-pay-btn-' + safeId + '" onclick="confirmUpgradePayment(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')" disabled>Pay Securely</button>'
+                + '<button class="btn btn-secondary" type="button" id="upgrade-cancel-btn-' + safeId + '" onclick="cancelUpgradePanel(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')">Cancel</button>'
+                + '</div>'
+                + '<p style="font-size:0.72rem;color:#64748B;margin:var(--sp-2) 0 0;">&#x1F512; Payment secured by Stripe. Your card details are never stored on our servers.</p>'
+                + '</div>'
+                + '</div>';
+        }
+
+        // claimId → { stripe, cardElement, clientSecret, paymentIntentId,
+        // paymentInFlight, teardownPending } — Stripe state for an in-progress
+        // upgrade purchase. Keyed by claim id so multiple opportunity cards
+        // can each hold independent payment state. paymentInFlight is true
+        // only while confirmCardPayment() is actually awaiting Stripe for
+        // this claim; teardownPending records that a teardown was attempted
+        // during that window and deferred (GH-1411 review round 2).
+        const upgradeState = {};
+
+        // Count of claims currently awaiting confirmCardPayment(). Filters
+        // trigger a full render() of #opportunitiesContainer (see render()),
+        // which would detach any mounted card Element's iframe from the
+        // document out from under an in-flight Stripe confirm call even
+        // though teardownUpgradePanel() itself refuses to unmount/destroy it
+        // (GH-1411 review round 2) — so the filters are locked for the
+        // duration of ANY claim's in-flight payment, not just the paying one.
+        let upgradePaymentsInFlight = 0;
+
+        function setUpgradeFiltersDisabled(disabled) {
+            ['jobTypeFilter', 'tradeFilter', 'materialFilter', 'distanceFilter', 'sortFilter'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.disabled = disabled;
+                el.title = disabled ? 'A payment is being processed — please wait.' : '';
+            });
+        }
+
+        // Display-only copy for the gate refusal codes evaluateMeasurementUpgradeGate
+        // (supabase/functions/create-payment-intent/measurement-upgrade-gate.ts) can
+        // return. The server is the sole source of truth for whether a charge is
+        // allowed; this map only turns its `code` into a readable sentence.
+        const UPGRADE_ERROR_COPY = {
+            ALREADY_DETAILED: 'The detailed report is already available for this project — there is nothing left to buy.',
+            BASIC_REPORT_NOT_READY: 'The basic measurement report has not been delivered for this project yet. Please try again once it has arrived.',
+            SQUARES_UNKNOWN: 'We do not have measured squares on file for this roof yet, so we cannot price the upgrade.',
+            TEST_CLAIM_CHARGE_REFUSED: 'This project cannot be charged.',
+        };
+
+        // Tears down the live Stripe card Element (if any) for claimId and
+        // clears its upgradeState entry, so the next openUpgradePanel() for
+        // this claim mounts a fresh Element instead of stacking a second one
+        // on top of an un-torn-down first. Called from every exit out of an
+        // open upgrade panel: Cancel, a successful purchase, an init error
+        // that happens after the card already mounted, and a card list
+        // re-render (e.g. a filter change) that replaces the DOM node the
+        // card was mounted into out from under it.
+        function teardownUpgradePanel(claimId) {
+            const state = upgradeState[claimId];
+            if (!state) return;
+            if (state.paymentInFlight) {
+                // A charge is currently being confirmed against this exact
+                // cardElement. Stripe.js defines no safe behavior for
+                // destroying an Element mid-confirmCardPayment() (GH-1411
+                // review round 2) — defer instead of unmounting/destroying.
+                // confirmUpgradePayment's finally flushes this once the
+                // flight settles; if it never gets a chance to (e.g. a
+                // stuck/reloaded tab), the next openUpgradePanel() for this
+                // claim would still overwrite state.cardElement, so at worst
+                // this degrades to the pre-fix leak for that one edge case,
+                // never a mid-charge Element destruction.
+                state.teardownPending = true;
+                return;
+            }
+            if (state.cardElement) {
+                try { state.cardElement.unmount(); } catch (e) { /* already unmounted */ }
+                try { state.cardElement.destroy(); } catch (e) { /* already destroyed */ }
+            }
+            delete upgradeState[claimId];
+        }
+
+        function initUpgradeStripeForClaim(claimId) {
+            if (!upgradeState[claimId]) upgradeState[claimId] = {};
+            if (upgradeState[claimId].stripe) return upgradeState[claimId].stripe;
+            if (typeof CONFIG === 'undefined' || !CONFIG.STRIPE_PK) {
+                throw new Error('Stripe is not configured.');
+            }
+            const stripeInstance = Stripe(CONFIG.STRIPE_PK);
+            upgradeState[claimId].stripe = stripeInstance;
+            return stripeInstance;
+        }
+
+        // Step 1 — create the PaymentIntent server-side (no charge yet) and mount
+        // the Stripe card element. Mirrors help-measurements.html's purchaseHover().
+        async function openUpgradePanel(claimId, safeId) {
+            const btn     = document.getElementById('upgrade-btn-' + safeId);
+            const panel   = document.getElementById('upgrade-panel-' + safeId);
+            const priceEl = document.getElementById('upgrade-panel-price-' + safeId);
+            const errEl   = document.getElementById('upgrade-card-errors-' + safeId);
+            if (!btn || !panel) return;
+
+            if (!currentContractor || !currentContractor.id) {
+                if (errEl) errEl.textContent = 'You must be an approved contractor to purchase this report.';
+                return;
+            }
+
+            btn.disabled = true;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="upgrade-spinner"></span> Loading&hellip;';
+
+            try {
+                const stripeInstance = initUpgradeStripeForClaim(claimId);
+
+                const result = await Services.createMeasurementUpgradePaymentIntent({
+                    claim_id: claimId,
+                    contractor_id: currentContractor.id,
+                });
+
+                if (!result || !result.client_secret) {
+                    throw new Error('Could not start the purchase. Please try again.');
+                }
+
+                upgradeState[claimId].clientSecret = result.client_secret;
+                upgradeState[claimId].paymentIntentId = result.payment_intent_id;
+
+                // The ONLY authoritative price: whatever create-payment-intent
+                // actually minted the PaymentIntent for, server-side
+                // (measurement-upgrade-gate.ts). The button's own label above is
+                // cosmetic pre-charge copy; this is what the card will be charged.
+                if (priceEl && typeof result.amount === 'number') {
+                    priceEl.textContent = 'You will be charged ' + fmtCents(result.amount) + ' for the detailed measurement report.';
+                }
+
+                const elements = stripeInstance.elements();
+                const cardElement = elements.create('card', {
+                    style: {
+                        base: { fontSize: '15px', color: '#0D1B2E', fontFamily: 'Rubik, sans-serif', '::placeholder': { color: '#94A3B8' } },
+                        invalid: { color: '#EF4444' },
+                    },
+                });
+                cardElement.mount('#upgrade-card-element-' + safeId);
+                cardElement.on('change', (e) => {
+                    if (errEl) errEl.textContent = e.error ? e.error.message : '';
+                });
+                upgradeState[claimId].cardElement = cardElement;
+
+                panel.classList.add('open');
+                btn.style.display = 'none';
+                const payBtn = document.getElementById('upgrade-pay-btn-' + safeId);
+                if (payBtn) payBtn.disabled = false;
+
+            } catch (err) {
+                console.error('Upgrade purchase init error:', err);
+                const message = (err && err.code && UPGRADE_ERROR_COPY[err.code]) || err.message || 'Could not start the purchase. Please try again.';
+                if (errEl) errEl.textContent = message;
+                // If the card element had already mounted before this failure,
+                // tear it down so a retry doesn't mount a second one alongside it.
+                if (upgradeState[claimId] && upgradeState[claimId].cardElement) {
+                    teardownUpgradePanel(claimId);
+                }
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // Step 2 — confirm the card payment, then (and only then) record the
+        // order. Mirrors help-measurements.html's confirmHoverPayment().
+        async function confirmUpgradePayment(claimId, safeId) {
+            const payBtn    = document.getElementById('upgrade-pay-btn-' + safeId);
+            const cancelBtn = document.getElementById('upgrade-cancel-btn-' + safeId);
+            const errEl     = document.getElementById('upgrade-card-errors-' + safeId);
+            const panel     = document.getElementById('upgrade-panel-' + safeId);
+            const state     = upgradeState[claimId];
+            if (!payBtn || !state || !state.stripe || !state.cardElement || !state.clientSecret) {
+                if (errEl) errEl.textContent = 'Payment not initialized. Please refresh and try again.';
+                return;
+            }
+
+            const originalText = payBtn.innerHTML;
+            payBtn.disabled = true;
+            payBtn.innerHTML = '<span class="upgrade-spinner"></span> Processing&hellip;';
+            if (errEl) errEl.textContent = '';
+
+            // GH-1411 review round 2: from here until this settles, this
+            // claim's cardElement is live inside an in-progress
+            // confirmCardPayment() call. Lock every path that could tear it
+            // down or blow away the DOM node it's mounted in — this claim's
+            // own Cancel button directly, and (since a filter change
+            // re-renders the WHOLE opportunities list, not just this card)
+            // every filter globally for as long as ANY claim is paying.
+            // teardownUpgradePanel()'s own guard is the last line of
+            // defense if either lock is somehow bypassed.
+            state.paymentInFlight = true;
+            upgradePaymentsInFlight++;
+            if (cancelBtn) {
+                cancelBtn.disabled = true;
+                cancelBtn.title = 'A payment is being processed — please wait.';
+            }
+            setUpgradeFiltersDisabled(true);
+
+            try {
+                const { paymentIntent, error: stripeError } = await state.stripe.confirmCardPayment(
+                    state.clientSecret,
+                    { payment_method: { card: state.cardElement } }
+                );
+
+                if (stripeError) {
+                    if (errEl) errEl.textContent = stripeError.message;
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = originalText;
+                    return;
+                }
+
+                if (paymentIntent.status !== 'succeeded') {
+                    throw new Error('Unexpected payment status: ' + paymentIntent.status + '. Please contact support.');
+                }
+
+                // Payment confirmed — safe to record the order. Same
+                // create-measurement-order call help-measurements.html makes;
+                // this is the recording half, not a second vendor order.
+                payBtn.innerHTML = '<span class="upgrade-spinner"></span> Recording your purchase&hellip;';
+
+                await Services.createMeasurementOrder({
+                    claim_id: claimId,
+                    product_code: 'roof_upgrade_detailed',
+                    payment_intent_id: paymentIntent.id,
+                    buyer_role: 'contractor',
+                    contractor_id: currentContractor.id,
+                });
+
+                // Purchase is recorded — the charge has fully settled, so
+                // it's safe to tear down the mounted card Element now.
+                // Clear the in-flight flag first so teardownUpgradePanel()
+                // actually performs the teardown instead of deferring it.
+                state.paymentInFlight = false;
+                teardownUpgradePanel(claimId);
+
+                if (panel) {
+                    panel.innerHTML = '<span class="upgrade-available-badge">&#x2713; Purchased. We will email you when the detailed report is ready &mdash; every other contractor on this project will see it too, at no charge.</span>';
+                    panel.classList.add('open');
+                }
+
+            } catch (err) {
+                console.error('Upgrade payment confirmation error:', err);
+                if (errEl) errEl.textContent = err.message || 'Payment failed. Please try again.';
+                // If the charge succeeded and only the bookkeeping failed, the
+                // worst outcome is the buyer paying twice. Leave Pay disabled.
+                if (err && err.paymentCaptured) {
+                    payBtn.innerHTML = 'Paid — contact support';
+                } else {
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = originalText;
+                }
+            } finally {
+                // Always runs, however this settled: success (paymentInFlight
+                // is already false above — idempotent), a Stripe-reported
+                // card error, an unexpected status, or a thrown
+                // createMeasurementOrder failure. Unlocks this claim's
+                // Cancel button, and drops the global filter lock once no
+                // other claim is still paying.
+                state.paymentInFlight = false;
+                upgradePaymentsInFlight = Math.max(0, upgradePaymentsInFlight - 1);
+                if (cancelBtn) {
+                    cancelBtn.disabled = false;
+                    cancelBtn.title = '';
+                }
+                if (upgradePaymentsInFlight === 0) setUpgradeFiltersDisabled(false);
+                // If Cancel or a render() were attempted while this claim's
+                // charge was in flight, teardownUpgradePanel() deferred the
+                // actual unmount/destroy instead of risking it mid-charge
+                // (see its own guard) — finish that deferred teardown now.
+                // No-op on the success path: it already tore down above and
+                // upgradeState[claimId] no longer exists.
+                if (state.teardownPending) {
+                    state.teardownPending = false;
+                    teardownUpgradePanel(claimId);
+                }
+            }
+        }
+
+        function cancelUpgradePanel(claimId, safeId) {
+            const state = upgradeState[claimId];
+            if (state && state.paymentInFlight) {
+                // Belt-and-suspenders: this claim's Cancel button is disabled
+                // synchronously for the duration of its own in-flight charge
+                // (see confirmUpgradePayment), so a real click shouldn't
+                // reach here. If it does anyway, do nothing — never hide the
+                // panel or touch the live Element while a charge is
+                // outstanding; the contractor must keep seeing the
+                // "Processing…" state until it settles (GH-1411 review
+                // round 2).
+                return;
+            }
+            teardownUpgradePanel(claimId);
+            const panel = document.getElementById('upgrade-panel-' + safeId);
+            const btn   = document.getElementById('upgrade-btn-' + safeId);
+            if (panel) panel.classList.remove('open');
+            if (btn) { btn.style.display = ''; btn.disabled = false; }
+        }
+
         async function openEstimatePdf(claimId) {
             const docInfo = oppDocMap[claimId];
             if (!docInfo?.estimateFilename) return;
@@ -918,6 +1288,23 @@
 
         function render(opps) {
             const el = document.getElementById('opportunitiesContainer');
+            // GH-1411 review round 2: if any claim's payment is in flight,
+            // rebuilding this container would rip its mounted card
+            // Element's iframe out of the document mid-confirmCardPayment()
+            // — just as unsafe as calling unmount()/destroy() on it
+            // directly, and NOT prevented by teardownUpgradePanel()'s own
+            // guard below, since that guard only stops the explicit
+            // unmount/destroy call, not this innerHTML replacement. Filters
+            // are disabled for the duration of any in-flight payment (see
+            // confirmUpgradePayment), so this should be unreachable via user
+            // action; refuse here too as the last line of defense.
+            if (upgradePaymentsInFlight > 0) return;
+            // A re-render (e.g. a filter change) replaces this container's
+            // DOM wholesale. Any open upgrade panel has its Stripe card
+            // Element mounted into a node that's about to be destroyed —
+            // tear each down explicitly first rather than letting the DOM
+            // removal silently orphan it.
+            Object.keys(upgradeState).forEach(teardownUpgradePanel);
             if (!opps.length) {
                 // Differentiate: zero base opportunities (chicken-and-egg, new market)
                 // vs. filtered to zero (contractor applied filters that narrowed results)
@@ -1021,6 +1408,7 @@
                     + (o.measurementsAvailable ? '<span class="badge badge-available">Measurements &#x2713;</span>' : '<span class="badge badge-pending">Measurements Pending</span>')
                     + '</div>'
                     + getDocLinksHtml(o)
+                    + getUpgradePurchaseHtml(o)
                     + notes
                     + scopeHtml
                     + '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:var(--sp-6);flex-wrap:wrap;gap:var(--sp-2);">'
