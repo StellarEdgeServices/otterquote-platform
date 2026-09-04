@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check R-120 path set and READ sign-off
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const REQUIRED_LOGIN = 'dustinstohler1-dotcom'; // Dustin's identity (#1507 body + claim thread)
@@ -151,7 +151,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check for the newest REVIEW marker comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;
