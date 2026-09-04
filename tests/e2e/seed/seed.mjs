@@ -28,6 +28,7 @@ import { writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import { config as loadEnv } from 'dotenv';
+import { runIntegrityGuard } from './integrity-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(__dirname, '..', '.env.test') });
@@ -914,6 +915,54 @@ async function seed() {
     );
   }
   console.log('  ✅ Contractor verified: status=active, onboarding_step=4');
+
+  // ── 6e. Integrity guard (gh-1584) — make the bad shape loud, not silent ──
+  //
+  // #1584's root cause was a contractor_templates row that reached
+  // status='auto_validated' — bid_can_submit's "may bid" gate — with no
+  // validation_result: a shape nothing stopped, so it sat undetected for
+  // weeks. The DB-level CHECK constraint that would forbid it outright is
+  // explicitly out of scope here (Tier 3B, tracked on #1313); this is the
+  // seed-side half this issue closes on — assert, after the seed has
+  // finished writing, that the bad shape is not present, and throw loudly
+  // if it is, instead of completing silently on top of it.
+  //
+  // Runs LAST (after every other seed step, not immediately after 5b's own
+  // insert) and reads the WHOLE contractor_templates table on this
+  // project, not just the four rows 5b just inserted. Both are deliberate:
+  // nothing else in this script writes to contractor_templates (only 5b's
+  // delete + insert do), so a full-table read here is equivalent in
+  // coverage to one right after 5b, but placing it last also means the
+  // guard fires after everything the seed does is done, matching "the seed
+  // has completed" rather than "one particular step of it succeeded." The
+  // PRODUCTION_PROJECT_REF guard at the top of this file (gh-1028) already
+  // guarantees SUPABASE_URL here can only be the dedicated E2E test
+  // project, never prod, so a full-table read is safe — and it catches
+  // drift from ANY source (a future edit to this script, a manually
+  // inserted fixture, a different code path entirely), not only the rows
+  // this exact insert produced. A check narrowed to templatesPayload's own
+  // rows would stay green even if some other row in the table were still
+  // in the bad shape — precisely the local-looks-fine-globally-isn't gap
+  // #1584 is about.
+  // NOTE: `Run E2E Tests` carries `continue-on-error: true` in CI (gh-1261,
+  // CEO ruling 2026-08-26) — a thrown error here will NOT fail that job. The
+  // banner runIntegrityGuard prints to stderr on failure is the only thing
+  // standing between this and a silent pass in CI; grep the seed step's log
+  // for "INTEGRITY GUARD FAILED" rather than relying on the job's own
+  // pass/fail status.
+  //
+  // gh-1602: the predicate + fail-closed query handling live in
+  // integrity-guard.mjs specifically so they can be unit-tested (see
+  // integrity-guard.test.mjs) against a constructed bad row, independent of
+  // this script's own env-var/Supabase-client setup.
+  console.log('6e. Integrity guard: no auto_validated row without validation_result...');
+  await runIntegrityGuard(() =>
+    supabase
+      .from('contractor_templates')
+      .select('id, contractor_id, trade, funding_type, pdf_storage_path, created_at, validation_result')
+      .eq('status', 'auto_validated')
+  );
+  console.log('  ✅ Integrity guard passed: no auto_validated rows without validation_result');
 
   // ── 7. Write .test-state.json ────────────────────────────────────────────
   // runId: deterministic per seed run — YYYYMMDD-HHmmss + first 8 chars of
