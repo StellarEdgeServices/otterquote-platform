@@ -28,6 +28,7 @@ import { writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import { config as loadEnv } from 'dotenv';
+import { runIntegrityGuard } from './integrity-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(__dirname, '..', '.env.test') });
@@ -943,38 +944,24 @@ async function seed() {
   // rows would stay green even if some other row in the table were still
   // in the bad shape — precisely the local-looks-fine-globally-isn't gap
   // #1584 is about.
+  // NOTE: `Run E2E Tests` carries `continue-on-error: true` in CI (gh-1261,
+  // CEO ruling 2026-08-26) — a thrown error here will NOT fail that job. The
+  // banner runIntegrityGuard prints to stderr on failure is the only thing
+  // standing between this and a silent pass in CI; grep the seed step's log
+  // for "INTEGRITY GUARD FAILED" rather than relying on the job's own
+  // pass/fail status.
+  //
+  // gh-1602: the predicate + fail-closed query handling live in
+  // integrity-guard.mjs specifically so they can be unit-tested (see
+  // integrity-guard.test.mjs) against a constructed bad row, independent of
+  // this script's own env-var/Supabase-client setup.
   console.log('6e. Integrity guard: no auto_validated row without validation_result...');
-  const { data: autoValidatedRows, error: guardErr } = await supabase
-    .from('contractor_templates')
-    .select('id, contractor_id, trade, funding_type, pdf_storage_path, created_at, validation_result')
-    .eq('status', 'auto_validated');
-  if (guardErr) throw new Error(`Integrity guard query failed: ${guardErr.message}`);
-  // A jsonb column holding SQL NULL and one holding the JSON literal `null`
-  // are indistinguishable once PostgREST serializes them to a JSON response
-  // (both arrive here as JS `null`) — `== null` is the correct check for
-  // either case, not a looseness bug.
-  const unvalidatedRows = (autoValidatedRows || []).filter((row) => row.validation_result == null);
-  if (unvalidatedRows.length > 0) {
-    const banner = '\n' + '❌'.repeat(24) + '\n';
-    console.error(banner);
-    console.error(
-      `GH-1584 INTEGRITY GUARD FAILED: ${unvalidatedRows.length} contractor_templates ` +
-        "row(s) have status='auto_validated' with NO validation_result. This is the " +
-        'exact fail-quiet shape #1584 exists to prevent — bid_can_submit treats ' +
-        'auto_validated as "may bid" with no validation artefact behind it. Offending rows:\n' +
-        JSON.stringify(unvalidatedRows, null, 2)
-    );
-    console.error(banner);
-    // NOTE: `Run E2E Tests` carries `continue-on-error: true` in CI (gh-1261,
-    // CEO ruling 2026-08-26) — this thrown error will NOT fail that job. The
-    // banner above printed to stderr is the only thing standing between this
-    // and a silent pass in CI; grep the seed step's log for "INTEGRITY GUARD
-    // FAILED" rather than relying on the job's own pass/fail status.
-    throw new Error(
-      `Integrity guard failed: ${unvalidatedRows.length} auto_validated contractor_templates ` +
-        'row(s) with no validation_result. See the banner above for the offending rows.'
-    );
-  }
+  await runIntegrityGuard(() =>
+    supabase
+      .from('contractor_templates')
+      .select('id, contractor_id, trade, funding_type, pdf_storage_path, created_at, validation_result')
+      .eq('status', 'auto_validated')
+  );
   console.log('  ✅ Integrity guard passed: no auto_validated rows without validation_result');
 
   // ── 7. Write .test-state.json ────────────────────────────────────────────
