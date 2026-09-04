@@ -134,12 +134,22 @@ If GitHub MCP available:
   an honest "cause not determined" beats a confident wrong one; a wrong cause sends the next
   reader to fix a token when the real answer is a feature switched off, or the reverse. This
   principle must survive the next edit to this section (GitHub #1380, PR #1603 rounds 1–2).
-  - `403` → `otter-crm: NOT MEASURED (403, Dependabot alerts not enabled on this repository)`,
-    per CTO ruling comment 5518451236: *"The token works. The features are switched off on the
-    target repo... not a scope error."* That ruling's own measured data for this exact endpoint —
-    `otter-crm dependabot alerts 403 "Dependabot alerts are disabled for this repository"` — is
-    the basis. Do NOT report 403 here as a token, permission, or SSO problem — that was the
-    round-2 defect per PR #1603 review 5533717774.
+  - `403` whose response body indicates the feature is disabled (e.g. contains `disabled` or
+    `must be enabled`) → `otter-crm: NOT MEASURED (403, Dependabot alerts not enabled on this
+    repository)`, quoting the observed body snippet. Per CTO ruling comment 5518451236 — two
+    separate, non-contiguous sentences from that comment, quoted verbatim rather than stitched
+    into one: **"The token works. The features are switched off on the target repo."** and **"A
+    403 saying the feature is disabled is not a 403 saying you lack scope."** That ruling's own
+    measured data for this exact endpoint — `otter-crm dependabot alerts 403 "Dependabot alerts
+    are disabled for this repository"` — is the basis. Do NOT report a body-confirmed
+    disabled-feature 403 as a token, permission, or SSO problem — that was the round-2 defect per
+    PR #1603 review 5533717774.
+  - `403` whose response body does NOT indicate the feature is disabled → report the raw observed
+    status and a short body snippet, explicitly unclassified: `otter-crm: NOT MEASURED (403,
+    <short body snippet>, cause not determined)`. This case could genuinely be a permission or
+    SSO problem — asserting a feature-disabled cause without the body actually saying so would
+    reintroduce the round-1/round-2 defect by the back door. Key the classification on the
+    response body, never on the status code alone.
   - `404` → `otter-crm: NOT MEASURED (404, repository not visible to this token)`. GitHub returns
     404, not 403, when a fine-grained PAT cannot see a repo at all. Measured this session: this
     lane's `GITHUB_PERSONAL_ACCESS_TOKEN` returns HTTP 404 on both
