@@ -364,6 +364,13 @@ Deno.test("sumByWeek: a row with no timestamp, or one older than all windows, is
 // gh-1637: fetchGa4SessionsByDay's result now carries property_id + hosts on
 // BOTH branches (ok:true and ok:false) — these fixtures match that shape.
 const GA4_HOSTS_FIXTURE = ["otterquote.com", "www.otterquote.com", "app.otterquote.com"];
+// gh-1649: both branches also carry `exclusions` (what the wire filter removed).
+const GA4_EXCLUSIONS_FIXTURE = {
+  source_substrings: ["netlify.app"],
+  sources_exact: ["accounts.google.com"],
+  cities: ["Glenview", "Council Bluffs"],
+  residual: "fixture residual",
+};
 
 Deno.test("buildVisitsSeries: a successful GA4 fetch with sessions produces a measured series carrying the caveat and note", () => {
   const windows = buildWeekWindows(NOW, 12);
@@ -373,6 +380,7 @@ Deno.test("buildVisitsSeries: a successful GA4 fetch with sessions produces a me
       ok: true,
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE,
+      exclusions: GA4_EXCLUSIONS_FIXTURE,
       rows: [{ date: dayInLastWindow, sessions: 421 }],
     },
     windows,
@@ -383,12 +391,15 @@ Deno.test("buildVisitsSeries: a successful GA4 fetch with sessions produces a me
   assertEquals(series.values[11], 421);
   assertEquals(series.caveat, GA4_VISITS_CAVEAT);
   assertEquals(series.note, GA4_VISITS_NOTE);
+  // gh-1649: the exclusions the client applied ride through to the payload.
+  assertEquals(series.exclusions, GA4_EXCLUSIONS_FIXTURE);
 });
 
 Deno.test("buildVisitsSeries: a successful GA4 fetch with no rows is a real measured_zero, not not_run", () => {
   const windows = buildWeekWindows(NOW, 12);
   const series = buildVisitsSeries(
-    { ok: true, property_id: "541423859", hosts: GA4_HOSTS_FIXTURE, rows: [] },
+    { ok: true, property_id: "541423859", hosts: GA4_HOSTS_FIXTURE,
+      exclusions: GA4_EXCLUSIONS_FIXTURE, rows: [] },
     windows,
   );
   assertEquals(series.kind, "measured_zero");
@@ -403,6 +414,7 @@ Deno.test("buildVisitsSeries: a GA4 fetch failure is not_run with the reason att
       reason: "GA4 Data API returned 403 for property 541423859",
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE,
+      exclusions: GA4_EXCLUSIONS_FIXTURE,
     },
     windows,
   );
@@ -423,6 +435,7 @@ Deno.test("buildVisitsSeries: sessions from multiple days land in their own resp
       ok: true,
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE,
+      exclusions: GA4_EXCLUSIONS_FIXTURE,
       rows: [
         { date: "20260901", sessions: 100 }, // last window (NOW's day)
         { date: "20260701", sessions: 50 },  // an earlier window
@@ -441,7 +454,8 @@ Deno.test("buildVisitsSeries: sessions from multiple days land in their own resp
 Deno.test("buildVisitsSeries: a successful GA4 fetch declares scope/property_id/hosts on the series — the pinned #1638/#1639 payload contract", () => {
   const windows = buildWeekWindows(NOW, 12);
   const series = buildVisitsSeries(
-    { ok: true, property_id: "541423859", hosts: GA4_HOSTS_FIXTURE, rows: [{ date: "20260901", sessions: 10 }] },
+    { ok: true, property_id: "541423859", hosts: GA4_HOSTS_FIXTURE,
+      exclusions: GA4_EXCLUSIONS_FIXTURE, rows: [{ date: "20260901", sessions: 10 }] },
     windows,
   );
   assertEquals(series.scope, "production");
@@ -457,6 +471,7 @@ Deno.test("buildVisitsSeries: a not_run result STILL carries scope/property_id/h
       reason: "GA4_SERVICE_ACCOUNT_JSON is not set or is not a complete service account",
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE,
+      exclusions: GA4_EXCLUSIONS_FIXTURE,
     },
     windows,
   );
