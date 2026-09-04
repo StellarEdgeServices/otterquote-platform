@@ -447,7 +447,7 @@ function renderRows() {
       '<td>' + esc(new Date(r.created_at).toLocaleDateString()) + '<div class="addr">' + esc(daysAgo(r.created_at)) + '</div></td>' +
       '<td>' + (addr ? esc(addr) : '<span class="addr">no address on claim</span>') +
         '<div class="addr mono">' + esc((r.claim_id || '').slice(0, 8)) + '</div></td>' +
-      '<td>' + esc(product.label || r.product_code || '—') +
+      '<td>' + esc(product.label || (r.product_code === 'roof_upgrade_detailed' ? 'Detailed Measurement Upgrade' : r.product_code) || '—') +
         (r.vendor_order_ref ? '<div class="addr mono">' + esc(r.vendor_order_ref) + '</div>' : '') + '</td>' +
       '<td>' + esc(r.requested_by_role || 'homeowner') + '</td>' +
       '<td>' + money(r.homeowner_charge_amount) + '</td>' +
@@ -674,6 +674,29 @@ async function saveFulfillment() {
     if (anyNumber && row.claim_id) {
       var cUpd = await sb.from('claims').update({ hover_measurements: m }).eq('id', row.claim_id);
       if (cUpd.error) throw new Error('Order saved, but writing measurements to the claim failed: ' + cUpd.error.message);
+    }
+
+    // [gh-1411 / D-317 cl. 4-5] Delivering the paid contractor upgrade is the
+    // ONLY writer of claims.measurement_shape (js/measurement-shape.js:
+    // "no static page and no contractor action ever writes this flag").
+    // Flipping it here — not per-contractor — is what makes every OTHER
+    // contractor on this claim see the detailed report with nothing left to
+    // buy: the purchase gate in create-payment-intent's measurement_upgrade
+    // branch reads this same claim-level flag and refuses to mint a second
+    // PaymentIntent once it is 'full' (the "already-detailed no-mint" case).
+    // The homeowner's own copy is the SAME claims row, so it upgrades free
+    // in the same write — no separate charge, per D-317 cl. 5.
+    //
+    // Tolerant of the column not existing yet, exactly as #1410 documents
+    // for every OTHER reader/writer of this flag: the migration is a
+    // separate, separately-approved (D-182) step, and a claim delivered
+    // before it lands must not have its order un-delivered by this failing.
+    if (delivering && row.product_code === 'roof_upgrade_detailed' && row.claim_id) {
+      var shapeUpd = await sb.from('claims').update({ measurement_shape: 'full' }).eq('id', row.claim_id);
+      if (shapeUpd.error) {
+        console.error('[gh-1411] measurement_shape flip failed (migration not yet applied?)', shapeUpd.error);
+        alert('Order delivered, but marking the claim as fully detailed failed: ' + shapeUpd.error.message + '. Re-open and Save again to retry once the measurement_shape column exists.');
+      }
     }
 
     // [gh-1412] Close the loop: on delivery, tell the homeowner their report
