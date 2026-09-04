@@ -28,7 +28,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
   <title>My Project Dashboard &mdash; Otter Quotes</title>
-  <meta name="description" content="Review and submit your project details for competitive bids from qualified contractors.">
+  <meta name="description" content="Review and submit your project details for competitive bids from contractors.">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
@@ -2457,7 +2457,7 @@
           if (titleEl) titleEl.textContent = bidCount === 1
             ? 'You have 1 bid!'
             : `You have ${bidCount} bids!`;
-          if (textEl) textEl.textContent = 'Review the bids from qualified contractors and select the best offer for your project.';
+          if (textEl) textEl.textContent = 'Review the bids from contractors and select the best offer for your project.';
         } else {
           // Default: submitted, waiting for bids
           if (iconEl) iconEl.textContent = '✓';
@@ -2554,7 +2554,7 @@
           if (needsMeasurements && !hasMeasurements) missing.push('Property Measurements (required for retail projects)');
           hint.textContent = `Complete the required items: ${missing.join(', ')}.`;
         } else {
-          hint.textContent = 'Your project details are complete. Submit them now to get competitive bids from qualified contractors.';
+          hint.textContent = 'Your project details are complete. Submit them now to get competitive bids from contractors.';
         }
       }
 

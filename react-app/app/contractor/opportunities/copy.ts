@@ -50,14 +50,14 @@ export const OPP_COPY = {
   // Empty state — zero base opportunities (new market, chicken-and-egg).
   emptyEarly: {
     headline: "You're in early.",
-    headlineEm: 'The best contractors always are.',
+    headlineEm: "We're still building this market.",
     sub: "We're actively recruiting homeowners in your service area right now. The moment a matching project comes in, you'll be the first to know — we won't make you check back.",
-    notifyPill: '📲 Text & email the instant a match drops — guaranteed.',
+    notifyPill: '📲 Text & email when a matching project is posted.',
     checklistHeading: 'While you wait — lock in your spot:',
     items: [
       {
         label: 'Complete your contractor profile',
-        desc: 'Homeowners review your profile before approving a bid. A complete profile wins more jobs.',
+        desc: 'Homeowners review your profile before approving a bid. A complete profile gives them more to go on.',
         linkText: 'Go to Profile →',
         href: '/contractor/profile',
       },
