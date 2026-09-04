@@ -80,6 +80,16 @@ jobs:
 
             const { owner, repo } = context.repo;
             const prNumber = context.payload.pull_request.number;
+            const headSha = context.payload.pull_request.head.sha;
+
+            // gh-1507: a sign-off only counts if it postdates the code it is
+            // signing off on. Fetch the head commit's own timestamp from the
+            // API rather than trusting anything in the event payload, and use
+            // the committer date so a rebase/force-push (which moves the
+            // committer date even when the author date is untouched) counts
+            // as "the code changed since this read".
+            const headCommit = await github.rest.repos.getCommit({ owner, repo, ref: headSha });
+            const headCommitDate = headCommit.data.commit.committer.date;
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner, repo, pull_number: prNumber, per_page: 100,
@@ -104,12 +114,12 @@ jobs:
               owner, repo, issue_number: prNumber, per_page: 100,
             });
 
-            const hasRead = comments.some(
+            const readComments = comments.filter(
               (c) => c.user && c.user.login === REQUIRED_LOGIN &&
                      typeof c.body === 'string' && c.body.trim().startsWith('R-120 READ:')
             );
 
-            if (!hasRead) {
+            if (readComments.length === 0) {
               core.setFailed(
                 `R-120 path gate: this PR touches the money/legal path set:\n  - ${matchedFiles.join('\n  - ')}\n\n` +
                 `No PR comment starting with "R-120 READ:" from ${REQUIRED_LOGIN} was found yet. ` +
@@ -118,7 +128,23 @@ jobs:
               return;
             }
 
-            core.info(`R-120 READ: sign-off found from ${REQUIRED_LOGIN}. Gate passes.`);
+            // gh-1507: the newest READ sign-off must postdate the head commit
+            // it is signing off on, or a rebase/force-push after the read
+            // makes it a sign-off on code nobody actually read.
+            const newestRead = readComments.reduce((a, b) =>
+              new Date(a.created_at) > new Date(b.created_at) ? a : b
+            );
+
+            if (new Date(newestRead.created_at) < new Date(headCommitDate)) {
+              core.setFailed(
+                `R-120 path gate: the newest "R-120 READ:" sign-off (${newestRead.created_at}) is older than ` +
+                `the PR head commit ${headSha} (committed ${headCommitDate}). The code has changed since that ` +
+                `read. Post a fresh "R-120 READ:" comment after reviewing head ${headSha}, then re-run this check.`
+              );
+              return;
+            }
+
+            core.info(`R-120 READ: sign-off found from ${REQUIRED_LOGIN}, newer than head ${headSha}. Gate passes.`);
 
   review-pass-gate:
     name: REVIEW PASS gate
@@ -130,6 +156,13 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const prNumber = context.payload.pull_request.number;
+            const headSha = context.payload.pull_request.head.sha;
+
+            // gh-1507: same freshness requirement as the path gate above —
+            // fetch the head commit's own timestamp from the API and use the
+            // committer date so a rebase/force-push counts as "changed since".
+            const headCommit = await github.rest.repos.getCommit({ owner, repo, ref: headSha });
+            const headCommitDate = headCommit.data.commit.committer.date;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: prNumber, per_page: 100,
@@ -151,6 +184,20 @@ jobs:
             const newest = markers[markers.length - 1];
             const who = newest.user ? newest.user.login : 'unknown';
 
+            // gh-1507: a marker only certifies the code it was posted against.
+            // If the head has moved past it (rebase, force-push, new commit),
+            // the marker is stale and does not cover this head — fail closed
+            // regardless of what the stale marker said.
+            if (new Date(newest.created_at) < new Date(headCommitDate)) {
+              core.setFailed(
+                `REVIEW gate: the newest review marker (comment by ${who} at ${newest.created_at}) is older than ` +
+                `the PR head commit ${headSha} (committed ${headCommitDate}). The reviewed code has changed since ` +
+                `that marker was posted — it does not cover this head. Get a fresh REVIEW: PASS on head ${headSha}, ` +
+                `then re-run this check.`
+              );
+              return;
+            }
+
             if (newest.body.includes('REVIEW: FAIL')) {
               core.setFailed(
                 `REVIEW gate: the newest review marker is REVIEW: FAIL (comment by ${who} at ${newest.created_at}). ` +
@@ -159,4 +206,4 @@ jobs:
               return;
             }
 
-            core.info(`REVIEW gate: newest review marker is REVIEW: PASS (comment by ${who} at ${newest.created_at}). Gate passes.`);
+            core.info(`REVIEW gate: newest review marker is REVIEW: PASS (comment by ${who} at ${newest.created_at}), newer than head ${headSha}. Gate passes.`);
