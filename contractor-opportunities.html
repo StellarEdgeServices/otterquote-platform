@@ -939,17 +939,39 @@
                 + '<div class="upgrade-card-errors" id="upgrade-card-errors-' + safeId + '"></div>'
                 + '<div class="upgrade-panel-actions">'
                 + '<button class="btn btn-primary" id="upgrade-pay-btn-' + safeId + '" onclick="confirmUpgradePayment(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')" disabled>Pay Securely</button>'
-                + '<button class="btn btn-secondary" type="button" onclick="cancelUpgradePanel(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')">Cancel</button>'
+                + '<button class="btn btn-secondary" type="button" id="upgrade-cancel-btn-' + safeId + '" onclick="cancelUpgradePanel(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')">Cancel</button>'
                 + '</div>'
                 + '<p style="font-size:0.72rem;color:#64748B;margin:var(--sp-2) 0 0;">&#x1F512; Payment secured by Stripe. Your card details are never stored on our servers.</p>'
                 + '</div>'
                 + '</div>';
         }
 
-        // claimId → { stripe, cardElement, clientSecret, paymentIntentId } — Stripe
-        // state for an in-progress upgrade purchase. Keyed by claim id so multiple
-        // opportunity cards can each hold independent payment state.
+        // claimId → { stripe, cardElement, clientSecret, paymentIntentId,
+        // paymentInFlight, teardownPending } — Stripe state for an in-progress
+        // upgrade purchase. Keyed by claim id so multiple opportunity cards
+        // can each hold independent payment state. paymentInFlight is true
+        // only while confirmCardPayment() is actually awaiting Stripe for
+        // this claim; teardownPending records that a teardown was attempted
+        // during that window and deferred (GH-1411 review round 2).
         const upgradeState = {};
+
+        // Count of claims currently awaiting confirmCardPayment(). Filters
+        // trigger a full render() of #opportunitiesContainer (see render()),
+        // which would detach any mounted card Element's iframe from the
+        // document out from under an in-flight Stripe confirm call even
+        // though teardownUpgradePanel() itself refuses to unmount/destroy it
+        // (GH-1411 review round 2) — so the filters are locked for the
+        // duration of ANY claim's in-flight payment, not just the paying one.
+        let upgradePaymentsInFlight = 0;
+
+        function setUpgradeFiltersDisabled(disabled) {
+            ['jobTypeFilter', 'tradeFilter', 'materialFilter', 'distanceFilter', 'sortFilter'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.disabled = disabled;
+                el.title = disabled ? 'A payment is being processed — please wait.' : '';
+            });
+        }
 
         // Display-only copy for the gate refusal codes evaluateMeasurementUpgradeGate
         // (supabase/functions/create-payment-intent/measurement-upgrade-gate.ts) can
@@ -972,7 +994,22 @@
         // card was mounted into out from under it.
         function teardownUpgradePanel(claimId) {
             const state = upgradeState[claimId];
-            if (state && state.cardElement) {
+            if (!state) return;
+            if (state.paymentInFlight) {
+                // A charge is currently being confirmed against this exact
+                // cardElement. Stripe.js defines no safe behavior for
+                // destroying an Element mid-confirmCardPayment() (GH-1411
+                // review round 2) — defer instead of unmounting/destroying.
+                // confirmUpgradePayment's finally flushes this once the
+                // flight settles; if it never gets a chance to (e.g. a
+                // stuck/reloaded tab), the next openUpgradePanel() for this
+                // claim would still overwrite state.cardElement, so at worst
+                // this degrades to the pre-fix leak for that one edge case,
+                // never a mid-charge Element destruction.
+                state.teardownPending = true;
+                return;
+            }
+            if (state.cardElement) {
                 try { state.cardElement.unmount(); } catch (e) { /* already unmounted */ }
                 try { state.cardElement.destroy(); } catch (e) { /* already destroyed */ }
             }
@@ -1066,10 +1103,11 @@
         // Step 2 — confirm the card payment, then (and only then) record the
         // order. Mirrors help-measurements.html's confirmHoverPayment().
         async function confirmUpgradePayment(claimId, safeId) {
-            const payBtn = document.getElementById('upgrade-pay-btn-' + safeId);
-            const errEl  = document.getElementById('upgrade-card-errors-' + safeId);
-            const panel  = document.getElementById('upgrade-panel-' + safeId);
-            const state  = upgradeState[claimId];
+            const payBtn    = document.getElementById('upgrade-pay-btn-' + safeId);
+            const cancelBtn = document.getElementById('upgrade-cancel-btn-' + safeId);
+            const errEl     = document.getElementById('upgrade-card-errors-' + safeId);
+            const panel     = document.getElementById('upgrade-panel-' + safeId);
+            const state     = upgradeState[claimId];
             if (!payBtn || !state || !state.stripe || !state.cardElement || !state.clientSecret) {
                 if (errEl) errEl.textContent = 'Payment not initialized. Please refresh and try again.';
                 return;
@@ -1079,6 +1117,23 @@
             payBtn.disabled = true;
             payBtn.innerHTML = '<span class="upgrade-spinner"></span> Processing&hellip;';
             if (errEl) errEl.textContent = '';
+
+            // GH-1411 review round 2: from here until this settles, this
+            // claim's cardElement is live inside an in-progress
+            // confirmCardPayment() call. Lock every path that could tear it
+            // down or blow away the DOM node it's mounted in — this claim's
+            // own Cancel button directly, and (since a filter change
+            // re-renders the WHOLE opportunities list, not just this card)
+            // every filter globally for as long as ANY claim is paying.
+            // teardownUpgradePanel()'s own guard is the last line of
+            // defense if either lock is somehow bypassed.
+            state.paymentInFlight = true;
+            upgradePaymentsInFlight++;
+            if (cancelBtn) {
+                cancelBtn.disabled = true;
+                cancelBtn.title = 'A payment is being processed — please wait.';
+            }
+            setUpgradeFiltersDisabled(true);
 
             try {
                 const { paymentIntent, error: stripeError } = await state.stripe.confirmCardPayment(
@@ -1110,8 +1165,11 @@
                     contractor_id: currentContractor.id,
                 });
 
-                // Purchase is recorded — tear down the mounted card Element
-                // before replacing the panel's contents with the success badge.
+                // Purchase is recorded — the charge has fully settled, so
+                // it's safe to tear down the mounted card Element now.
+                // Clear the in-flight flag first so teardownUpgradePanel()
+                // actually performs the teardown instead of deferring it.
+                state.paymentInFlight = false;
                 teardownUpgradePanel(claimId);
 
                 if (panel) {
@@ -1130,10 +1188,46 @@
                     payBtn.disabled = false;
                     payBtn.innerHTML = originalText;
                 }
+            } finally {
+                // Always runs, however this settled: success (paymentInFlight
+                // is already false above — idempotent), a Stripe-reported
+                // card error, an unexpected status, or a thrown
+                // createMeasurementOrder failure. Unlocks this claim's
+                // Cancel button, and drops the global filter lock once no
+                // other claim is still paying.
+                state.paymentInFlight = false;
+                upgradePaymentsInFlight = Math.max(0, upgradePaymentsInFlight - 1);
+                if (cancelBtn) {
+                    cancelBtn.disabled = false;
+                    cancelBtn.title = '';
+                }
+                if (upgradePaymentsInFlight === 0) setUpgradeFiltersDisabled(false);
+                // If Cancel or a render() were attempted while this claim's
+                // charge was in flight, teardownUpgradePanel() deferred the
+                // actual unmount/destroy instead of risking it mid-charge
+                // (see its own guard) — finish that deferred teardown now.
+                // No-op on the success path: it already tore down above and
+                // upgradeState[claimId] no longer exists.
+                if (state.teardownPending) {
+                    state.teardownPending = false;
+                    teardownUpgradePanel(claimId);
+                }
             }
         }
 
         function cancelUpgradePanel(claimId, safeId) {
+            const state = upgradeState[claimId];
+            if (state && state.paymentInFlight) {
+                // Belt-and-suspenders: this claim's Cancel button is disabled
+                // synchronously for the duration of its own in-flight charge
+                // (see confirmUpgradePayment), so a real click shouldn't
+                // reach here. If it does anyway, do nothing — never hide the
+                // panel or touch the live Element while a charge is
+                // outstanding; the contractor must keep seeing the
+                // "Processing…" state until it settles (GH-1411 review
+                // round 2).
+                return;
+            }
             teardownUpgradePanel(claimId);
             const panel = document.getElementById('upgrade-panel-' + safeId);
             const btn   = document.getElementById('upgrade-btn-' + safeId);
@@ -1199,6 +1293,17 @@
 
         function render(opps) {
             const el = document.getElementById('opportunitiesContainer');
+            // GH-1411 review round 2: if any claim's payment is in flight,
+            // rebuilding this container would rip its mounted card
+            // Element's iframe out of the document mid-confirmCardPayment()
+            // — just as unsafe as calling unmount()/destroy() on it
+            // directly, and NOT prevented by teardownUpgradePanel()'s own
+            // guard below, since that guard only stops the explicit
+            // unmount/destroy call, not this innerHTML replacement. Filters
+            // are disabled for the duration of any in-flight payment (see
+            // confirmUpgradePayment), so this should be unreachable via user
+            // action; refuse here too as the last line of defense.
+            if (upgradePaymentsInFlight > 0) return;
             // A re-render (e.g. a filter change) replaces this container's
             // DOM wholesale. Any open upgrade panel has its Stripe card
             // Element mounted into a node that's about to be destroyed —
