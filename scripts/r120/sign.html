@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Belt and braces: no network at all, even if something tries. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>R-120 signed review — sign a PR approval</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  body { max-width: 860px; margin: 2rem auto; padding: 0 1rem; line-height: 1.45; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; border-top: 1px solid #8884; padding-top: 1rem; }
+  label { display: block; font-weight: 600; margin: .75rem 0 .25rem; }
+  input, textarea { width: 100%; box-sizing: border-box; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: .45rem; border: 1px solid #8886; border-radius: 6px; background: transparent; color: inherit; }
+  textarea { min-height: 6.5em; resize: vertical; }
+  button { font: inherit; padding: .5rem .9rem; border-radius: 6px; border: 1px solid #8886; background: #0969da; color: #fff; cursor: pointer; margin-top: .75rem; }
+  button.secondary { background: transparent; color: inherit; }
+  .warn { background: #fff3cd; color: #5c4400; border: 1px solid #ffe08a; border-radius: 6px; padding: .6rem .8rem; margin: .75rem 0; }
+  @media (prefers-color-scheme: dark) { .warn { background: #3b2e00; color: #ffe08a; border-color: #7a6200; } }
+  .out { white-space: pre-wrap; word-break: break-all; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #8881; border: 1px solid #8884; border-radius: 6px; padding: .6rem .8rem; min-height: 2.5em; }
+  .err { color: #c1121f; font-weight: 600; }
+  .ok { color: #1a7f37; font-weight: 600; }
+  small { color: #777; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+</style>
+</head>
+<body>
+<h1>R-120 signed review</h1>
+<p>Sign a human read of a pull request so the <code>R-120 signed review</code> check can verify it. Everything happens in this page with your browser's WebCrypto. <strong>This page makes no network calls</strong> (it has no scripts or resources from anywhere, and its Content-Security-Policy forbids connections). <strong>Your private key is never stored and never sent anywhere</strong> — it lives only in the textarea below until you close the tab.</p>
+<p><small>Works from <code>file://</code>. Verified by <code>scripts/r120/verify.mjs</code> against <code>.github/r120-review-pubkey.jwk</code> on <code>main</code>. See <code>Docs/r120-signed-review.md</code>.</small></p>
+
+<h2>1. One-time: generate a keypair</h2>
+<p>Click once. Put the <em>private</em> JWK in your password manager and never paste it anywhere but this page. Commit the <em>public</em> JWK as <code>.github/r120-review-pubkey.jwk</code> (that PR must itself be signed with the key currently on <code>main</code>).</p>
+<button id="gen" type="button">Generate keypair (ECDSA P-256)</button>
+<label for="genPriv">Private JWK — keep secret (password manager)</label>
+<textarea id="genPriv" readonly placeholder="(appears here after Generate)"></textarea>
+<label for="genPub">Public JWK — commit to .github/r120-review-pubkey.jwk</label>
+<textarea id="genPub" readonly placeholder="(appears here after Generate)"></textarea>
+
+<h2>2. Per PR: sign your read</h2>
+<div class="warn">Only sign after you have personally read the whole diff at exactly this head sha. A signature is bound to the PR number and the head sha; any new commit invalidates it and needs a fresh read and a fresh signature.</div>
+<div class="row">
+  <div><label for="owner">Owner</label><input id="owner" value="StellarEdgeServices" autocomplete="off" spellcheck="false"></div>
+  <div><label for="repo">Repo</label><input id="repo" value="otterquote-platform" autocomplete="off" spellcheck="false"></div>
+</div>
+<div class="row">
+  <div><label for="pr">PR number</label><input id="pr" inputmode="numeric" placeholder="1650" autocomplete="off"></div>
+  <div><label for="sha">Head sha (40 hex — from the PR's latest commit)</label><input id="sha" placeholder="40 hex characters" autocomplete="off" spellcheck="false"></div>
+</div>
+<label for="priv">Private JWK <small>(never stored; never sent; cleared when you close the tab)</small></label>
+<textarea id="priv" placeholder='{"kty":"EC","crv":"P-256","d":"...","x":"...","y":"..."}' autocomplete="off" spellcheck="false"></textarea>
+<p><small>Message that gets signed: <code id="msgPreview">R-120 owner/repo#pr sha</code></small></p>
+<button id="sign" type="button">Sign</button>
+<button id="copy" type="button" class="secondary" hidden>Copy comment line</button>
+<button id="clear" type="button" class="secondary">Clear private key</button>
+<label for="out">Paste this line as a PR comment</label>
+<div id="out" class="out"></div>
+<p id="status"></p>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const subtle = window.crypto && window.crypto.subtle;
+  const status = $('status');
+  if (!subtle) {
+    status.innerHTML = '<span class="err">WebCrypto is unavailable in this browser context. Open this file in a modern browser (Chrome, Firefox, Safari, Edge).</span>';
+  }
+
+  function b64url(bytes) {
+    let s = '';
+    for (const b of new Uint8Array(bytes)) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function message() {
+    const owner = $('owner').value.trim(), repo = $('repo').value.trim();
+    const pr = Number($('pr').value.trim()), sha = $('sha').value.trim().toLowerCase();
+    return { owner, repo, pr, sha, text: `R-120 ${owner}/${repo}#${pr} ${sha}` };
+  }
+  function preview() { $('msgPreview').textContent = message().text; }
+  for (const id of ['owner', 'repo', 'pr', 'sha']) $(id).addEventListener('input', preview);
+  preview();
+
+  $('gen').addEventListener('click', async () => {
+    try {
+      const kp = await subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+      const priv = await subtle.exportKey('jwk', kp.privateKey);
+      const pubFull = await subtle.exportKey('jwk', kp.publicKey);
+      const pub = { kty: pubFull.kty, crv: pubFull.crv, x: pubFull.x, y: pubFull.y, use: 'sig', alg: 'ES256', kid: 'r120-review' };
+      $('genPriv').value = JSON.stringify({ kty: priv.kty, crv: priv.crv, d: priv.d, x: priv.x, y: priv.y });
+      $('genPub').value = JSON.stringify(pub, null, 2) + '\n';
+      status.innerHTML = '<span class="ok">Keypair generated locally. Save the private JWK in your password manager now; it will not be shown again.</span>';
+    } catch (e) {
+      status.innerHTML = '<span class="err">Keypair generation failed: ' + String(e.message || e) + '</span>';
+    }
+  });
+
+  $('sign').addEventListener('click', async () => {
+    $('out').textContent = '';
+    $('copy').hidden = true;
+    const m = message();
+    if (!m.owner || !m.repo) return fail('Owner and repo are required.');
+    if (!Number.isInteger(m.pr) || m.pr <= 0) return fail('PR number must be a positive integer.');
+    if (!/^[0-9a-f]{40}$/.test(m.sha)) return fail('Head sha must be exactly 40 hex characters (copy the full sha from the PR\'s latest commit).');
+    let jwk;
+    try { jwk = JSON.parse($('priv').value); } catch { return fail('Private JWK is not valid JSON.'); }
+    if (!jwk || jwk.kty !== 'EC' || jwk.crv !== 'P-256' || typeof jwk.d !== 'string') return fail('Private JWK must be an EC P-256 key with a "d" field.');
+    try {
+      const key = await subtle.importKey('jwk', { kty: jwk.kty, crv: jwk.crv, d: jwk.d, x: jwk.x, y: jwk.y }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+      const sig = await subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(m.text));
+      const line = `R-120 SIGNED: pr=${m.pr} sha=${m.sha} sig=${b64url(sig)}`;
+      $('out').textContent = line;
+      $('copy').hidden = false;
+      status.innerHTML = '<span class="ok">Signed. Paste the line above as a comment on PR #' + m.pr + '. The check re-evaluates on the comment.</span>';
+    } catch (e) {
+      fail('Signing failed: ' + String(e.message || e));
+    }
+  });
+
+  $('copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('out').textContent); status.innerHTML = '<span class="ok">Copied.</span>'; }
+    catch { status.innerHTML = '<span class="err">Clipboard unavailable — select the line and copy it manually.</span>'; }
+  });
+
+  $('clear').addEventListener('click', () => { $('priv').value = ''; $('genPriv').value = ''; status.textContent = 'Private key cleared from the page.'; });
+  window.addEventListener('beforeunload', () => { $('priv').value = ''; $('genPriv').value = ''; });
+
+  function fail(msg) { status.innerHTML = '<span class="err">' + msg.replace(/</g, '&lt;') + '</span>'; }
+})();
+</script>
+</body>
+</html>

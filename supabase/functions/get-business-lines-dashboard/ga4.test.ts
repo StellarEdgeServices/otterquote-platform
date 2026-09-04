@@ -14,7 +14,12 @@
 // exercised against a stubbed GA4 runReport response fixture, per the work
 // order) and the service-account config check (parseServiceAccountEnv).
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { parseServiceAccountEnv, parseSessionsByDayResponse } from "./ga4.ts";
+import {
+  buildRunReportRequestBody,
+  GA4_PRODUCTION_HOSTS,
+  parseServiceAccountEnv,
+  parseSessionsByDayResponse,
+} from "./ga4.ts";
 
 // --- parseSessionsByDayResponse -------------------------------------------
 
@@ -94,3 +99,53 @@ Deno.test("parseServiceAccountEnv: a complete service account parses cleanly (sy
   assertEquals(sa?.client_email, "otterquote-ga4-reader@otterquote-analytics.iam.gserviceaccount.com");
   assertEquals(sa?.private_key, "NOT-A-REAL-KEY");
 });
+
+// --- gh-1637: hostName dimensionFilter -------------------------------------
+//
+// fetchGa4SessionsByDay's network path (mintAccessToken, the runReport
+// fetch) is deliberately not exercised here — same boundary as the rest of
+// this file. buildRunReportRequestBody is the pure function
+// fetchGa4SessionsByDay actually calls to build the object it JSON.stringifies
+// into fetch's `body`, so asserting on ITS return value is asserting on the
+// real serialised request body, not a separately-checked constant a future
+// refactor could drop without failing this test (work order clause 7).
+
+Deno.test("buildRunReportRequestBody: the body handed to fetch carries a hostName dimensionFilter for all three production hosts (gh-1637)", () => {
+  const body = buildRunReportRequestBody("84daysAgo", "today");
+  // Round-trip through JSON exactly like fetch's `body: JSON.stringify(...)`
+  // does, so this asserts on the actual serialised shape sent over the wire.
+  const serialised = JSON.parse(JSON.stringify(body));
+  assertEquals(serialised, {
+    dateRanges: [{ startDate: "84daysAgo", endDate: "today" }],
+    dimensions: [{ name: "date" }],
+    metrics: [{ name: "sessions" }],
+    dimensionFilter: {
+      filter: {
+        fieldName: "hostName",
+        inListFilter: {
+          values: ["otterquote.com", "www.otterquote.com", "app.otterquote.com"],
+        },
+      },
+    },
+  });
+});
+
+Deno.test("buildRunReportRequestBody: the filter's host list is GA4_PRODUCTION_HOSTS itself, not a hand-copied duplicate", () => {
+  const body = buildRunReportRequestBody("90daysAgo", "today") as {
+    dimensionFilter: { filter: { inListFilter: { values: string[] } } };
+  };
+  assertEquals(body.dimensionFilter.filter.inListFilter.values, GA4_PRODUCTION_HOSTS);
+});
+
+Deno.test("GA4_PRODUCTION_HOSTS: is exactly the three production hosts named in the issue, www included though it reports zero sessions today", () => {
+  assertEquals(GA4_PRODUCTION_HOSTS, ["otterquote.com", "www.otterquote.com", "app.otterquote.com"]);
+});
+
+// resolveGa4PropertyId() itself is NOT unit-tested here: it reads
+// Deno.env.get, and this repo's CI runs `deno test` with ZERO permission
+// flags beyond --allow-read (see e2e-tests.yml's "gh-422" comment) so that
+// any test needing a secret or env access fails loudly instead of silently
+// widening the CI grant. resolveGa4PropertyId is exercised indirectly via
+// fetchGa4SessionsByDay in production; its "same resolution" contract with
+// the payload's visits.property_id is what buildVisitsSeries's tests in
+// marketing-series.test.ts (gh-1637) actually cover.

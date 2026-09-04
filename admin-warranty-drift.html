@@ -128,13 +128,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 .loading { color: var(--slate); padding: 2rem; text-align: center; }
 </style>
 <!-- GA4 -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-D1Y1TLGEFY');
-</script>
+<script src="/js/ga-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
 </head>
 <body>
 
@@ -155,6 +150,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
   </div>
 
   <nav class="admin-nav">
+    <a href="admin-homeowners.html">Homeowners</a>
     <a href="admin-contractors.html">Contractors</a>
     <a href="admin-incomplete-profiles.html">Incomplete Profiles</a>
     <a href="admin-template-review.html">Template Review</a>

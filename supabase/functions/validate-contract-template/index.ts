@@ -365,7 +365,13 @@ Deno.serve(async (req: Request) => {
     // contractor is told his file was rewritten and where the original went.
     let assistApplied: { archivedOriginalPath: string; pagesAdded: boolean } | null = null;
 
-    if (!contractor_template_id) {
+    // [#1584] The #1313 starter path (body.starter === true, below) builds a
+    // blank pre-tagged PDF for a trade/funding slot straight from MANIFEST —
+    // it never touches a specific contractor_template_id row, so it must not
+    // be blocked by this guard. Every other path (Tier 1/2/3 validation)
+    // still requires contractor_template_id exactly as before; the starter
+    // request still has to clear the Auth Gate below before it can run.
+    if (!contractor_template_id && body.starter !== true) {
       return jsonResponse({ error: "Missing contractor_template_id" }, 400, corsHeaders);
     }
 
