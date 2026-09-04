@@ -992,7 +992,7 @@
                 <div class="referral-link-label">Your Referral Link</div>
                 <!-- gh-1482 §2: state the destination in one line, matching the
                      pattern already used on the Partner Profile Page card below. -->
-                <p class="link-hint destination-hint">Opens a page where your client requests a free quote from Otter Quotes' vetted contractors.</p>
+                <p class="link-hint destination-hint">Opens a page where your client requests a free quote from contractors competing on Otter Quotes.</p>
                 <div class="referral-link-display">
                     <!-- Bridge 2026-08-26: was "https://otterquote.com/r/agent123" — /r/ is a live
                          404 (only /ref/ redirects), so any failure of the populate below
@@ -2081,7 +2081,7 @@ Let me know if you have any questions!
             const nextdoorEl = document.getElementById('nextdoorPost');
             const badgeEl = document.getElementById('badgeHtmlCode');
 
-            const nextdoorMsg = `I partner with Otter Quotes, a free service that gets homeowners competing bids from licensed, insured contractors. If anyone in the neighborhood needs work done, I'd recommend checking them out: ${referralLink}`;
+            const nextdoorMsg = `I partner with Otter Quotes, a free service that gets homeowners competing bids from contractors. If anyone in the neighborhood needs work done, I'd recommend checking them out: ${referralLink}`;
             if (nextdoorEl) nextdoorEl.textContent = nextdoorMsg;
 
             const badgeHtml = `<a href="${referralLink}" target="_blank" style="display: inline-block; padding: 8px 12px; background: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 8px; font-family: 'Rubik', sans-serif; font-size: 12px; font-weight: 600;">I'm an Otter Quotes Partner &mdash; Get a Free Quote</a>`;
@@ -2093,7 +2093,7 @@ Let me know if you have any questions!
                 badgeHtml,
                 smsText: `Hi! I'm a partner with Otter Quotes — I earn a referral fee when I connect people with them for home projects. If you know anyone who needs contractor bids, here's my link: ${referralLink}`,
                 emailSubject: 'A referral program worth a look — Otter Quotes',
-                emailBody: `Hi,\n\nI wanted to share something I've been using: Otter Quotes. It's a free service that gets homeowners competing bids from licensed, insured contractors.\n\nIf you or anyone you know needs work done, here's my personal link:\n${referralLink}\n\nHappy to answer any questions.`
+                emailBody: `Hi,\n\nI wanted to share something I've been using: Otter Quotes. It's a free service that gets homeowners competing bids from contractors.\n\nIf you or anyone you know needs work done, here's my personal link:\n${referralLink}\n\nHappy to answer any questions.`
             };
 
             drawPartnerShareCard(referralLink, agentName);
@@ -2119,7 +2119,7 @@ Let me know if you have any questions!
             ctx.fillText(`${agentName || 'I'} partner${agentName ? 's' : ''} with Otter Quotes`, 30, 160);
             ctx.font = '18px "Rubik", sans-serif';
             ctx.fillStyle = '#5A6B7B';
-            wrapCanvasText(ctx, 'Free competing bids from licensed, insured contractors for your next project.', 30, 200, width - 60, 26);
+            wrapCanvasText(ctx, 'Free competing bids from contractors for your next project.', 30, 200, width - 60, 26);
 
             ctx.fillStyle = '#0D1B2E';
             ctx.fillRect(0, height - 50, width, 50);
@@ -2445,7 +2445,7 @@ Let me know if you have any questions!`;
                     return 'Hi! I recommend Otter Quotes — a quick, free way to get competing bids from qualified contractors. Check it out: ' + link;
                 },
                 recruit: function (link) {
-                    return 'I wanted to recommend using Otter Quotes when your friends and clients need a contractor for roofing, siding, gutters or windows. Otter Quotes helps homeowners get measurements, develop a scope of work, pick out materials and submit their job to multiple vetted contractors. They get competitive bids without sitting through multiple sales calls. They get better prices and better materials. I earn a referral fee when jobs complete. Use my link below to sign up and download the app: ' + link;
+                    return 'I wanted to recommend using Otter Quotes when your friends and clients need a contractor for roofing, siding, gutters or windows. Otter Quotes helps homeowners get measurements, develop a scope of work, pick out materials and submit their job to multiple competing contractors. They get competitive bids without sitting through multiple sales calls. They get better prices and better materials. I earn a referral fee when jobs complete. Use my link below to sign up and download the app: ' + link;
                 }
             };
 
