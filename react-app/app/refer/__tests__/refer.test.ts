@@ -43,6 +43,7 @@ import {
   FAQ,
   TAX_NOTICE,
   COMMISSION_APPROVAL_DISCLOSURE,
+  REFERRAL_FEE_DISCLAIMER,
   W9_BANNER,
   REFERRALS,
   LOGIN_ROUTE,
@@ -219,6 +220,15 @@ describe('verbatim Tier-3 tax/legal copy', () => {
   it('D-180 commission-approval disclosure', () => {
     expect(COMMISSION_APPROVAL_DISCLOSURE).toBe(
       "Commission payments are subject to Otter Quotes' approval process and are paid after the qualifying job is complete and the payout has been approved.",
+    );
+  });
+  // D-266: MANDATORY on every referral funnel surface. It was present on
+  // refer-a-friend.html but was dropped entirely in the React port, and nothing
+  // in CI could see it (tools/partner_parity_check.py only read root-level
+  // partner-*.html). Pinned here byte-for-byte and rendered by page.tsx.
+  it('D-266 referral-fee legality disclaimer (byte-for-byte, Dustin-dictated)', () => {
+    expect(REFERRAL_FEE_DISCLAIMER).toBe(
+      'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.',
     );
   });
   it('D-172 W-9 banner copy', () => {
