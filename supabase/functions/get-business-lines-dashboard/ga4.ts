@@ -32,12 +32,33 @@
 // { ok: false, reason } and NEVER throws. The caller turns that into a
 // `not_run` series carrying the reason, never a silent zero series.
 //
-// GitHub: #1574, #1340, #1331
+// gh-1637 (#1340 phase 5a): this client's `sessions` read was unfiltered —
+// every GA4 request now applies a `hostName` dimensionFilter restricting to
+// the production hosts (GA4_PRODUCTION_HOSTS below). Without it the
+// denominator is ~93% staging/branch-deploy/localhost traffic (production
+// `gtag` fires everywhere until #1619 fixes the source), which inverts the
+// conclusion a reader draws from every rate built on this series. The filter
+// stays load-bearing for every window spanning #1619's eventual fix date —
+// historical data cannot be retroactively cleaned. `www.otterquote.com` is
+// included even though it reports zero sessions today, because it is a live
+// host that can begin serving at any time.
+//
+// GitHub: #1574, #1340, #1331, #1637
 
 const DEFAULT_PROPERTY_ID = "541423859";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const GA4_DATA_API = "https://analyticsdata.googleapis.com/v1beta";
 const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
+
+// gh-1637: the production host allow-list for the `hostName` dimensionFilter
+// on every GA4 request this client makes. Exported so index.ts's payload can
+// declare exactly what it counted (visits.hosts) rather than restating this
+// list by hand — see the work order's pinned payload-key contract.
+export const GA4_PRODUCTION_HOSTS: string[] = [
+  "otterquote.com",
+  "www.otterquote.com",
+  "app.otterquote.com",
+];
 
 export interface ServiceAccount {
   client_email: string;
@@ -139,9 +160,47 @@ export interface Ga4DailyRow {
   sessions: number;
 }
 
+// gh-1637: both branches carry property_id + hosts (not just the success
+// branch) so a `not_run` result can still say what it WOULD have counted —
+// the page (#1638) renders that even when GA4 itself is unreachable.
 export type Ga4SessionsByDayResult =
-  | { ok: true; property_id: string; rows: Ga4DailyRow[] }
-  | { ok: false; reason: string };
+  | { ok: true; property_id: string; hosts: string[]; rows: Ga4DailyRow[] }
+  | { ok: false; reason: string; property_id: string; hosts: string[] };
+
+/**
+ * Resolves the GA4 property id from GA4_PROPERTY_ID (validated as all-digit)
+ * or DEFAULT_PROPERTY_ID otherwise. Exported (gh-1637) so this is the single
+ * resolution both the live request and every result branch — success or
+ * not_run — report back, rather than a second ad hoc derivation drifting
+ * from the one actually used on the wire.
+ */
+export function resolveGa4PropertyId(): string {
+  const raw = (Deno.env.get("GA4_PROPERTY_ID") || "").trim();
+  return /^\d+$/.test(raw) ? raw : DEFAULT_PROPERTY_ID;
+}
+
+/**
+ * Pure construction of the GA4 :runReport request body for a given date
+ * range, INCLUDING the gh-1637 hostName dimensionFilter. Split out from
+ * fetchGa4SessionsByDay (same "test the pure part" split
+ * parseSessionsByDayResponse above already uses) so the filter can be
+ * asserted against the actual object handed to fetch's body — not a
+ * separately-checked constant a future refactor could silently drop without
+ * failing a test.
+ */
+export function buildRunReportRequestBody(startDate: string, endDate: string): unknown {
+  return {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "date" }],
+    metrics: [{ name: "sessions" }],
+    dimensionFilter: {
+      filter: {
+        fieldName: "hostName",
+        inListFilter: { values: GA4_PRODUCTION_HOSTS },
+      },
+    },
+  };
+}
 
 /**
  * Pure extraction of { date, sessions } rows from a GA4 runReport response
@@ -179,6 +238,13 @@ export async function fetchGa4SessionsByDay(
   startDate: string,
   endDate: string,
 ): Promise<Ga4SessionsByDayResult> {
+  // gh-1637: resolved up front (pure env read, no side effects) so EVERY
+  // return path below — not_run included — can report the property/hosts a
+  // caller would have counted, per the work order's "not_run still carries
+  // property_id/hosts" requirement.
+  const propertyId = resolveGa4PropertyId();
+  const hosts = GA4_PRODUCTION_HOSTS;
+
   const sa = parseServiceAccountEnv(Deno.env.get("GA4_SERVICE_ACCOUNT_JSON") || "");
   if (!sa) {
     return {
@@ -186,18 +252,21 @@ export async function fetchGa4SessionsByDay(
       reason:
         "GA4_SERVICE_ACCOUNT_JSON is not set or is not a complete service account " +
         "(see ga4-report's gh-1331 config-error handling for the full diagnostic).",
+      property_id: propertyId,
+      hosts,
     };
   }
-
-  const propertyId = (Deno.env.get("GA4_PROPERTY_ID") || "").trim().match(/^\d+$/)
-    ? (Deno.env.get("GA4_PROPERTY_ID") as string).trim()
-    : DEFAULT_PROPERTY_ID;
 
   let accessToken: string;
   try {
     accessToken = await mintAccessToken(sa);
   } catch (err) {
-    return { ok: false, reason: `GA4 auth failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 400) };
+    return {
+      ok: false,
+      reason: `GA4 auth failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 400),
+      property_id: propertyId,
+      hosts,
+    };
   }
 
   let reportRes: Response;
@@ -206,17 +275,15 @@ export async function fetchGa4SessionsByDay(
     reportRes = await fetch(`${GA4_DATA_API}/properties/${propertyId}:runReport`, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dateRanges: [{ startDate, endDate }],
-        dimensions: [{ name: "date" }],
-        metrics: [{ name: "sessions" }],
-      }),
+      body: JSON.stringify(buildRunReportRequestBody(startDate, endDate)),
     });
     reportText = await reportRes.text();
   } catch (err) {
     return {
       ok: false,
       reason: `GA4 request failed before a response was received: ${err instanceof Error ? err.message : String(err)}`.slice(0, 400),
+      property_id: propertyId,
+      hosts,
     };
   }
 
@@ -235,18 +302,25 @@ export async function fetchGa4SessionsByDay(
         `GA4 Data API returned 403 for property ${propertyId} — the service account ` +
         "otterquote-ga4-reader@otterquote-analytics.iam.gserviceaccount.com is likely not " +
         "granted Viewer on this property yet (same failure mode ga4-report documents for gh-1331).",
+      property_id: propertyId,
+      hosts,
     };
   }
   if (!reportRes.ok) {
-    return { ok: false, reason: `GA4 Data API returned HTTP ${reportRes.status}` };
+    return { ok: false, reason: `GA4 Data API returned HTTP ${reportRes.status}`, property_id: propertyId, hosts };
   }
 
   let report: unknown;
   try {
     report = JSON.parse(reportText);
   } catch {
-    return { ok: false, reason: "GA4 Data API returned a response that could not be parsed as JSON." };
+    return {
+      ok: false,
+      reason: "GA4 Data API returned a response that could not be parsed as JSON.",
+      property_id: propertyId,
+      hosts,
+    };
   }
 
-  return { ok: true, property_id: propertyId, rows: parseSessionsByDayResponse(report) };
+  return { ok: true, property_id: propertyId, hosts, rows: parseSessionsByDayResponse(report) };
 }

@@ -1,0 +1,168 @@
+name: R-120 signed review
+
+# gh-1650: constitution entry 6 (R-120) — a human (Dustin) must read any diff
+# that touches legal wording, consent, pricing or money before it merges.
+#
+# This gate is CONTENT-based (added/removed diff lines, not filenames) and the
+# approval is an ECDSA P-256 signature over "R-120 <owner>/<repo>#<pr> <headSha>"
+# that must verify under .github/r120-review-pubkey.jwk as it exists on main.
+# No agent session holds the private key, so no agent can produce a passing
+# approval — a shared GitHub login proves nothing here. See
+# Docs/r120-signed-review.md and scripts/r120/verify.mjs.
+#
+# Why pull_request_target: the workflow definition, verify.mjs and the pubkey
+# are all taken from the BASE branch, so a PR cannot edit the gate it is being
+# judged by. We deliberately never check out or execute anything from the PR
+# head: the diff is fetched as text through the API and only scanned.
+#
+# Why issue_comment: the signature arrives as a PR comment after the last
+# commit (pushing a new commit changes the sha and invalidates it), so the
+# comment must be able to re-evaluate the gate. A comment-triggered run cannot
+# attach its own check to the PR head, so it re-runs the head's
+# pull_request_target run instead (actions: write); manual fallback is
+# "Re-run jobs" from the Checks tab.
+#
+# Make the job below ("R-120 signed review") a required status check on main.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read        # read verify.mjs + pubkey from the base branch
+  pull-requests: write  # sticky verdict comment
+  actions: write        # issue_comment path: re-run the head's pull_request_target run
+
+concurrency:
+  group: r120-signed-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  r120-signed-review:
+    name: R-120 signed review
+    if: ${{ github.event_name == 'pull_request_target' || github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out BASE branch only (never PR head)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/r120/verify.mjs
+            .github/r120-review-pubkey.jwk
+          sparse-checkout-cone-mode: false
+
+      - name: Verify R-120 content + signed approval
+        uses: actions/github-script@v9
+        env:
+          SIGN_PAGE: scripts/r120/sign.html
+          MARKER: '<!-- r120-signed-review -->'
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { pathToFileURL } = require('url');
+
+            const ws = process.env.GITHUB_WORKSPACE;
+            const { detectR120Content, verifySignedApproval } = await import(pathToFileURL(path.join(ws, 'scripts/r120/verify.mjs')).href);
+            const pubJwk = JSON.parse(fs.readFileSync(path.join(ws, '.github/r120-review-pubkey.jwk'), 'utf8'));
+
+            const { owner, repo } = context.repo;
+            const eventName = context.eventName;
+            const prNumber = eventName === 'pull_request_target'
+              ? context.payload.pull_request.number
+              : context.payload.issue.number;
+
+            // Always take head sha from the API, not the event payload, so a
+            // comment-triggered run judges the CURRENT head.
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: prNumber })).data;
+            const headSha = pr.head.sha;
+            const baseRef = pr.base.ref;
+            const defaultBranch = context.payload.repository.default_branch;
+
+            if (pr.state !== 'open') {
+              core.info(`PR #${prNumber} is ${pr.state}; nothing to gate.`);
+              return;
+            }
+
+            // Diff as TEXT via the API. Never checked out, never executed.
+            const diffResp = await github.rest.pulls.get({ owner, repo, pull_number: prNumber, mediaType: { format: 'diff' } });
+            const diffText = typeof diffResp.data === 'string' ? diffResp.data : String(diffResp.data);
+
+            const detection = detectR120Content(diffText);
+
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: prNumber, per_page: 100 });
+
+            const marker = process.env.MARKER;
+            const signPage = process.env.SIGN_PAGE;
+            const short = headSha.slice(0, 12);
+            let verdictOk = false;
+            let title, body;
+
+            if (!detection.hit) {
+              verdictOk = true;
+              title = 'no R-120 content';
+              body = `**R-120 signed review — no R-120 content** at head \`${short}\`.\n\nNo added/removed line matched the money, pricing, legal or consent rules (see \`scripts/r120/verify.mjs\`). No signature required.`;
+            } else {
+              const result = await verifySignedApproval({ owner, repo, pr: prNumber, headSha, comments, pubJwk });
+              const grouped = detection.lines.slice(0, 60).map((l) => `- \`${l.file}:${l.line}\` (${l.rule}, ${l.side === '-' ? 'removed' : 'added'}) \`${l.text.replace(/`/g, "'").slice(0, 120)}\``).join('\n');
+              const more = detection.lines.length > 60 ? `\n- … and ${detection.lines.length - 60} more` : '';
+              const touchesPubkey = detection.lines.some((l) => l.rule === 'gate-file' && l.file === '.github/r120-review-pubkey.jwk');
+              const pubkeyNote = touchesPubkey
+                ? `\n\n**This PR changes \`.github/r120-review-pubkey.jwk\`.** A key rotation must be signed with the key currently on \`${defaultBranch}\` (the old key), which is what this check verified against.`
+                : '';
+              const howTo = `\n\n**To approve:** open \`${signPage}\` from a checkout (file:// works, no network), enter PR **${prNumber}** and head sha **\`${headSha}\`**, paste your private JWK, click Sign, and post the resulting \`R-120 SIGNED: pr=${prNumber} sha=${headSha} sig=…\` line as a comment on this PR. Any new commit changes the sha and needs a fresh read + signature.`;
+
+              if (result.ok) {
+                verdictOk = true;
+                title = `signed approval verified for ${short}`;
+                body = `**R-120 signed review — PASS** at head \`${short}\`.\n\n${result.reason}.\n\nR-120 content that was covered by this signature:\n${grouped}${more}${pubkeyNote}`;
+              } else {
+                title = `R-120 content without a valid signed approval for ${short}`;
+                body = `**R-120 signed review — FAIL** at head \`${short}\`.\n\nThis diff contains legal / consent / pricing / money wording and no valid signed approval for the current head was found.\n\nReason: ${result.reason}\n\nTriggering lines:\n${grouped}${more}${pubkeyNote}${howTo}`;
+              }
+            }
+
+            // Sticky comment: one per PR, edited in place.
+            const full = `${marker}\n${body}\n\n<sub>Base: \`${baseRef}\` · workflow, verifier and pubkey read from \`${defaultBranch}\` · event: ${eventName}</sub>`;
+            const existing = comments.find((c) => typeof c.body === 'string' && c.body.startsWith(marker));
+            try {
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: full });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body: full });
+              }
+            } catch (e) {
+              core.warning(`could not post sticky comment: ${e.message}`);
+            }
+
+            await core.summary.addHeading(`R-120 signed review: ${title}`).addRaw('\n' + body + '\n').write();
+
+            // Comment-triggered runs cannot attach their check to the PR head;
+            // re-run the head's pull_request_target run so the required context
+            // reflects the new verdict.
+            if (eventName === 'issue_comment') {
+              try {
+                const runs = await github.rest.actions.listWorkflowRuns({
+                  owner, repo, workflow_id: 'r120-signed-review.yml', event: 'pull_request_target', head_sha: headSha, per_page: 5,
+                });
+                const run = runs.data.workflow_runs.find((r) => r.status === 'completed');
+                if (run) {
+                  await github.rest.actions.reRunWorkflow({ owner, repo, run_id: run.id });
+                  core.info(`re-ran pull_request_target run ${run.id} for head ${short} so the check on the PR is refreshed`);
+                } else {
+                  core.info(`no completed pull_request_target run found for head ${short}; use "Re-run jobs" from the Checks tab`);
+                }
+              } catch (e) {
+                core.warning(`could not re-run the head's check (use "Re-run jobs" from the Checks tab): ${e.message}`);
+              }
+            }
+
+            if (!verdictOk) {
+              core.setFailed(`R-120 signed review: ${title}`);
+            } else {
+              core.info(`R-120 signed review: ${title}`);
+            }

@@ -24,11 +24,12 @@
  * next load.
  */
 
-const VERSION = 'oq-admin-v1-9c1e0a2b';
+const VERSION = 'oq-admin-v2-ae43f551';
 const CACHE_NAME = 'oq-admin-cache-' + VERSION;
 
 const ADMIN_PAGES = [
   '/admin-dashboard.html',
+  '/admin-homeowners.html',
   '/admin-contractors.html',
   '/admin-payouts.html',
   '/admin-referrals.html',
