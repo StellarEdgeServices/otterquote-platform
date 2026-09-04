@@ -27,6 +27,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { canAccessClaim, selectPdfSource } from "./pdf-source.ts";
 
 const HOVER_API_BASE = "https://hover.to";
 const FUNCTION_NAME = "get-hover-pdf";
@@ -124,9 +125,13 @@ serve(async (req) => {
     }
 
     // ── Look up hover_order for this claim ─────────────────────────
+    // report_url is included alongside hover_job_id so a manual fulfilment
+    // (gh-1245 admin-measurements.html path, hover_job_id always NULL) can be
+    // served from its uploaded Storage object below instead of 404ing/500ing
+    // on a Hover job lookup that will never exist for it (gh-1538).
     const { data: order, error: orderError } = await supabase
       .from("hover_orders")
-      .select("id, hover_job_id, status, measurements_json")
+      .select("id, hover_job_id, status, measurements_json, report_url")
       .eq("claim_id", claim_id)
       .in("status", ["complete", "completed"])
       .order("created_at", { ascending: false })
@@ -143,58 +148,95 @@ serve(async (req) => {
       );
     }
 
-    const jobId = order.hover_job_id;
-    if (!jobId) {
-      return new Response(
-        JSON.stringify({ error: "Hover job ID not found on order record" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // selectPdfSource (pdf-source.ts, gh-1538) is the single decision of
+    // where this order's PDF comes from — see its own doc comment. Before
+    // gh-1538 this only ever checked hover_job_id and 500'd every manual
+    // order regardless of whether report_url pointed at a real upload.
+    const pdfSource = selectPdfSource(order);
+    let pdfBytes: ArrayBuffer;
+    const jobId: string | null = pdfSource.kind === "hover" ? pdfSource.jobId : null;
 
-    // ── Get valid Hover access token ───────────────────────────────
-    const accessToken = await getValidAccessToken(supabase);
-    if (!accessToken) {
-      return new Response(
-        JSON.stringify({
-          error: "Hover authentication failed — no valid access token",
-          detail: "OtterQuote's Hover OAuth token may need re-authorization",
-        }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // ── Fetch PDF from Hover API ───────────────────────────────────
-    console.log(`Fetching Hover PDF for job_id=${jobId}`);
-    const pdfResponse = await fetch(
-      `${HOVER_API_BASE}/api/v1/jobs/${jobId}/measurements.pdf`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/pdf",
-        },
+    if (pdfSource.kind === "hover") {
+      // ── Automated (Hover) order: fetch the PDF from Hover's API ─────
+      const accessToken = await getValidAccessToken(supabase);
+      if (!accessToken) {
+        return new Response(
+          JSON.stringify({
+            error: "Hover authentication failed — no valid access token",
+            detail: "OtterQuote's Hover OAuth token may need re-authorization",
+          }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
-    );
 
-    if (!pdfResponse.ok) {
-      console.error(`Hover PDF fetch failed: ${pdfResponse.status} ${pdfResponse.statusText}`);
+      console.log(`Fetching Hover PDF for job_id=${jobId}`);
+      const pdfResponse = await fetch(
+        `${HOVER_API_BASE}/api/v1/jobs/${jobId}/measurements.pdf`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/pdf",
+          },
+        }
+      );
+
+      if (!pdfResponse.ok) {
+        console.error(`Hover PDF fetch failed: ${pdfResponse.status} ${pdfResponse.statusText}`);
+        return new Response(
+          JSON.stringify({
+            error: "Failed to fetch PDF from Hover",
+            status: pdfResponse.status,
+            detail: pdfResponse.statusText,
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      pdfBytes = await pdfResponse.arrayBuffer();
+      console.log(`PDF fetched: ${pdfBytes.byteLength} bytes for job ${jobId}`);
+    } else if (pdfSource.kind === "manual") {
+      // ── Manual order: the PDF was already uploaded by an admin to
+      // Storage (claim-documents, UID-first path) — fetch its bytes from
+      // there instead of calling Hover, which never issued a job for it.
+      const { data: manualFile, error: downloadError } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .download(pdfSource.path);
+
+      if (downloadError || !manualFile) {
+        console.error("Manual measurement report download failed:", downloadError);
+        return new Response(
+          JSON.stringify({
+            error: "Failed to fetch the uploaded measurement report",
+            detail: downloadError?.message,
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      pdfBytes = await manualFile.arrayBuffer();
+      console.log(`Manual PDF fetched: ${pdfBytes.byteLength} bytes for order ${order.id}`);
+    } else {
+      // Manually fulfilled with entered measurements but no PDF uploaded —
+      // there is no file to serve. Distinct from the "not completed" 404
+      // above so this doesn't read as "order isn't finished".
       return new Response(
         JSON.stringify({
-          error: "Failed to fetch PDF from Hover",
-          status: pdfResponse.status,
-          detail: pdfResponse.statusText,
+          error: "No measurement report file is available for this order",
+          detail: "This order was fulfilled with entered measurements but no PDF was uploaded.",
         }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const pdfBytes = await pdfResponse.arrayBuffer();
-    console.log(`PDF fetched: ${pdfBytes.byteLength} bytes for job ${jobId}`);
 
     // ── Return PDF ─────────────────────────────────────────────────
+    // fileId names the cached/streamed file; jobId is only set for Hover
+    // orders; manual orders use the order id so filenames stay unique.
+    const fileId = jobId ?? order.id;
+
     if (format === "url") {
       // Upload to Supabase Storage under claim-documents/{claim_id}/hover_measurements.pdf
       // then return a signed URL with 10-minute TTL
-      const storagePath = `${claim_id}/hover_measurements_${jobId}.pdf`;
+      const storagePath = `${claim_id}/hover_measurements_${fileId}.pdf`;
 
       const { error: uploadError } = await supabase.storage
         .from(STORAGE_BUCKET)
@@ -228,6 +270,7 @@ serve(async (req) => {
           url: signedData.signedUrl,
           expires_in: 600,
           job_id: jobId,
+          order_id: order.id,
           claim_id,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -239,7 +282,7 @@ serve(async (req) => {
         headers: {
           ...corsHeaders,
           "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename="hover_measurements_${jobId}.pdf"`,
+          "Content-Disposition": `inline; filename="hover_measurements_${fileId}.pdf"`,
           "Content-Length": pdfBytes.byteLength.toString(),
         },
       });
@@ -272,48 +315,8 @@ serve(async (req) => {
 // here (replicating them would over-restrict and break legitimate browsing).
 //
 // `supabase` is the service-role client; the predicate is enforced explicitly.
-async function canAccessClaim(
-  supabase: any,
-  claimId: string,
-  user: { id: string },
-): Promise<boolean> {
-  // (1) Homeowner ownership.
-  const { data: claim } = await supabase
-    .from("claims")
-    .select("user_id, ready_for_bids, status")
-    .eq("id", claimId)
-    .maybeSingle();
-  if (!claim) return false; // unknown claim → deny
-  if (claim.user_id === user.id) return true;
-
-  // Resolve the caller's contractor record(s) once (a user may own more than one).
-  const { data: contractors } = await supabase
-    .from("contractors")
-    .select("id, status")
-    .eq("user_id", user.id);
-  const contractorRows = (contractors ?? []) as { id: string; status: string | null }[];
-  if (contractorRows.length === 0) return false; // not the owner and not a contractor
-
-  // (2) Active contractor + released, biddable claim.
-  const biddable =
-    claim.ready_for_bids === true &&
-    ["active", "bidding", "pending"].includes(claim.status);
-  if (biddable && contractorRows.some((c) => c.status === "active")) {
-    return true;
-  }
-
-  // (3) Contractor associated via an existing quote/selection on this claim.
-  const { data: quote } = await supabase
-    .from("quotes")
-    .select("id")
-    .eq("claim_id", claimId)
-    .in("contractor_id", contractorRows.map((c) => c.id))
-    .limit(1)
-    .maybeSingle();
-  if (quote) return true;
-
-  return false;
-}
+// (gh-1538: moved to ./pdf-source.ts, unchanged, so it can be unit-tested
+// with a stubbed client — imported above as `canAccessClaim`.)
 
 
 // ── Token management (same pattern as hover-webhook) ──────────────
