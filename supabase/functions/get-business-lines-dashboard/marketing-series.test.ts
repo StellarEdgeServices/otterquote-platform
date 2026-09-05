@@ -625,7 +625,7 @@ Deno.test("sumInvariantMismatches: a difference within (or exactly at) the windo
 
 Deno.test("sumInvariantMismatches: the tolerance is symmetric — a bucket sum BELOW the site total by more than the tolerance is a mismatch too (a short denominator inflates conversion)", () => {
   const windows = [{ week_start: "a0", week_end: "a1" }];
-  assertEquals(sumInvariantMismatches([[300]], [311], [10], windows), []);
+  assertEquals(sumInvariantMismatches([[302]], [311], [10], windows), []); // |302-311| = 9 <= 10
   assertEquals(sumInvariantMismatches([[290]], [311], [10], windows).length, 1);
 });
 
