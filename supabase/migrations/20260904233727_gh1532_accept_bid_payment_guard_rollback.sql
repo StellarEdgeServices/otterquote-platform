@@ -3,8 +3,9 @@
 -- Drops the BEFORE UPDATE trigger + its function, then restores accept_bid()
 -- to the exact live body captured via
 -- pg_get_functiondef('public.accept_bid'::regproc) before the forward
--- migration was authored (md5 8566312d2c641ca6355d229ec5b7199f; see
--- pre-flight.md). No data loss -- no claims/quotes/contractors rows are
+-- migration was authored (md5 prefix 8566312d2c64...; recompute the
+-- full 32-char value via md5(pg_get_functiondef('public.accept_bid'::regproc));
+-- see pre-flight.md). No data loss -- no claims/quotes/contractors rows are
 -- altered by either half of the forward migration or by this rollback; only
 -- the trigger's presence/absence and accept_bid()'s body change.
 

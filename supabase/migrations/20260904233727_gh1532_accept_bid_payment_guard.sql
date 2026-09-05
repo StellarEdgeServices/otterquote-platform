@@ -41,9 +41,11 @@
 --      body are otherwise byte-for-byte unchanged from
 --      20260830192051_v116_accept_bid_rpc.sql -- the live body was captured
 --      via pg_get_functiondef('public.accept_bid'::regproc) before this
---      change (md5 8566312d2c641ca6355d229ec5b7199f; full text and the
---      rolled-back proof transcript are in the companion pre-flight.md,
---      the same text the rollback file below restores verbatim).
+--      change (md5 prefix 8566312d2c64...; recompute the full 32-char
+--      value via md5(pg_get_functiondef('public.accept_bid'::regproc))
+--      -- full text and the rolled-back proof transcript are in the
+--      companion pre-flight.md, the same text the rollback file below
+--      restores verbatim).
 --
 -- Canonical flag: contractors.has_payment_method (boolean). Live state per
 -- the CTO's dispatch, reconfirmed in the pre-flight below: 13 contractors,

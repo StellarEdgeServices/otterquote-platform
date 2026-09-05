@@ -79,9 +79,9 @@ BEGIN; CREATE TEMP TABLE rw_probe(x int); INSERT INTO rw_probe VALUES (1); SELEC
 |---|---|---|
 | 1 | PREFLIGHT_awarded_count_before | `1` |
 | 2 | PREFLIGHT_contractors | `2bc792be-...:is_test=true:has_pm=true` then 12 more, all `is_test=true:has_pm=false` (ids: `986ce2b6-`, `ee452a12-`, `f3350ae0-`, `136d1a1d-`, `8f2ecbf8-`, `573b2525-`, `5e76adc9-`, `848798cc-`, `5ece9e69-`, `8fa0d121-`, `8e90ff23-`, `bb07fc40-`) |
-| 3 | PREFLIGHT_accept_bid_md5_before | `8566312d2c641ca6355d229ec5b7199f` |
+| 3 | PREFLIGHT_accept_bid_md5_before | `8566312d2c64...` (12-char prefix of the 32-char md5; recompute via `md5(pg_get_functiondef('public.accept_bid'::regproc))`) |
 | 4 | PREFLIGHT_claims_total_count | `15` |
-| 5 | MIGRATION_accept_bid_md5_after_guard_added | `0fae69977066f4401e4c49097e5ea195` |
+| 5 | MIGRATION_accept_bid_md5_after_guard_added | `0fae69977066...` (12-char prefix of the 32-char md5) |
 | 6 | MIGRATION_trigger_created | `claims_payment_method_guard` |
 | 7 | **NEG1_RPC** (via `accept_bid()`, claim `38ffb84a-...`, quote `ca91add4-...`, contractor `848798cc-...` has_pm=false, caller uid `6b183fbd-...` = claim owner) | `REFUSED sqlstate=P0001 message=contractor_no_payment_method: the selected contractor has not added a payment method, so this bid cannot be accepted yet` |
 | 8 | NEG1_RPC_claim_after | `status=active selected_contractor_id=NULL` (unchanged) |
@@ -102,7 +102,7 @@ Auth simulation note: `accept_bid()` is `SECURITY DEFINER` and calls `auth.uid()
 ```json
 {
   "claims_triggers": "after_claim_completed,after_claim_completed_rebate,claims_updated_at,trg_claims_advance_referral",
-  "accept_bid_md5_now": "8566312d2c641ca6355d229ec5b7199f",
+  "accept_bid_md5_now": "8566312d2c64... (12-char prefix; recompute via md5(pg_get_functiondef('public.accept_bid'::regproc)))",
   "claims_count_now": 15,
   "claim_82f5dff4_status_now": "contract_signed",
   "claim_474af0fc_status_now": "active",
@@ -114,7 +114,7 @@ Auth simulation note: `accept_bid()` is `SECURITY DEFINER` and calls `auth.uid()
 ```
 
 - **`claims_triggers` does NOT include `claims_payment_method_guard`** — only the four pre-existing triggers remain.
-- **`accept_bid_md5_now` (`8566312d2c641ca6355d229ec5b7199f`) equals `PREFLIGHT_accept_bid_md5_before`** exactly, and differs from `MIGRATION_accept_bid_md5_after_guard_added` (`0fae69977066f4401e4c49097e5ea195`) — the guard is gone, the original function is back.
+- **`accept_bid_md5_now` (`8566312d2c64...`, 12-char prefix) equals `PREFLIGHT_accept_bid_md5_before`** exactly, and differs from `MIGRATION_accept_bid_md5_after_guard_added` (`0fae69977066...`, 12-char prefix) — the guard is gone, the original function is back. Recompute either full 32-char value via `md5(pg_get_functiondef('public.accept_bid'::regproc))` at the respective point in the transaction.
 - **`claims_count_now` (15) unchanged.**
 - Every claim touched by the in-transaction tests is back to its pre-transaction state: `82f5dff4` → `contract_signed` (its real original status, not the `active` this transaction set mid-flight, not the `awarded` the positive test produced); `474af0fc`, `38ffb84a`, `ba90c501` → `active` (untouched throughout, since both negative attempts were refused before any write landed).
 - The `test_log` temp table is gone (session-scoped and the session ended, consistent with `ROLLBACK` + connection close).
@@ -154,7 +154,7 @@ Auth simulation note: `accept_bid()` is `SECURITY DEFINER` and calls `auth.uid()
 - **Application**: **NOT performed by this session.** `apply_migration` was never called; nothing was applied to production or to any branch. This PR ships the authored forward + rollback + pre-flight files only.
 - **This does not merge or apply on lane authority.** Per the CTO's dispatch: merge/apply is `@exec:cto`'s after Dustin's R-120 signed review; the R-120 signed review required check is expected to be red until signed (`supabase/migrations/` is in the R-120 SQL path set).
 - **`closes-on`** (per the CTO's dispatch, restated): the trigger + RPC diff (this file); the negative test refused (above); the positive test showing the `has_payment_method=true` contractor still completes an award (above); the pre-flight showing no existing `awarded` row is retro-invalidated (above). This PR does not close issue #1532 (`Refs #1532`, never `Closes`) — the issue also covers the separately-shipped CHECK-constraint half (#1627).
-- **Rollback pre-authorized**: Yes — run `20260904233727_gh1532_accept_bid_payment_guard_rollback.sql` (drops the trigger + trigger function, restores `accept_bid()`'s exact prior body, byte-verified identical to the source that produced md5 `8566312d2c641ca6355d229ec5b7199f`) if this needs to be removed for any reason. Reversible with no data loss.
+- **Rollback pre-authorized**: Yes — run `20260904233727_gh1532_accept_bid_payment_guard_rollback.sql` (drops the trigger + trigger function, restores `accept_bid()`'s exact prior body, byte-verified identical to the source that produced md5 prefix `8566312d2c64...` (recompute the full 32-char value via `md5(pg_get_functiondef('public.accept_bid'::regproc))`)) if this needs to be removed for any reason. Reversible with no data loss.
 
 ## Danger Overrides
 
