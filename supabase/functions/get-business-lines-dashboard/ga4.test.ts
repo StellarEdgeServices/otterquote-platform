@@ -329,6 +329,25 @@ Deno.test("bucketPagePath: homeowner's prefix paths (/guides/, /blog/)", () => {
   assertEquals(bucketPagePath("/blog/2026-08-launch"), "homeowner");
 });
 
+// gh-1639 fix (fresh-context refuter comment 5548057089, PR #1674):
+// /guides/ and /blog/ are section-index pages that GA4 records with a
+// trailing slash — normalizePagePath strips that slash before
+// bucketPagePath ever sees the value, so composing the two functions (the
+// real production pipeline, not calling bucketPagePath directly with a
+// sub-path already present) is the only way this regression is caught.
+Deno.test("bucketPagePath(normalizePagePath(...)): /guides and /blog section-index paths bucket to homeowner after trailing-slash normalisation", () => {
+  assertEquals(bucketPagePath(normalizePagePath("/guides/")), "homeowner");
+  assertEquals(bucketPagePath(normalizePagePath("/guides")), "homeowner");
+  assertEquals(bucketPagePath(normalizePagePath("/guides/foo.html")), "homeowner");
+  assertEquals(bucketPagePath(normalizePagePath("/blog/")), "homeowner");
+  assertEquals(bucketPagePath(normalizePagePath("/blog/post")), "homeowner");
+});
+
+Deno.test("bucketPagePath: /guidesfoo and /blogger are NOT caught by the /guides//blog/ slash-terminated prefixes (negative — a bare startsWith would wrongly match these)", () => {
+  assertEquals(bucketPagePath(normalizePagePath("/guidesfoo")), "unattributed");
+  assertEquals(bucketPagePath(normalizePagePath("/blogger")), "unattributed");
+});
+
 Deno.test("bucketPagePath: contractor's prefix paths (/contractor, /tools incl. /tools-crm, /recruit)", () => {
   assertEquals(bucketPagePath("/contractor"), "contractor");
   assertEquals(bucketPagePath("/contractor-join"), "contractor");

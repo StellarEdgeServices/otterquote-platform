@@ -682,3 +682,31 @@ Deno.test("buildAudienceVisitsSeries: multiple pagePaths in the same audience in
   );
   assertEquals(result.homeowner.total, 125);
 });
+
+// gh-1639 fix (fresh-context refuter comment 5548057089, PR #1674): the raw
+// GA4 pagePath for the /guides and /blog section-index pages themselves
+// (not a sub-page under them) is exactly "/guides/" / "/blog/" — with the
+// trailing slash, since that IS the real page. Before this fix,
+// normalizePagePath stripped that slash to "/guides"/"/blog" and
+// bucketPagePath's slash-terminated prefix rule then failed to match,
+// silently routing every such visit to unattributed instead of homeowner.
+// This end-to-end (real GA4 rows -> buildAudienceVisitsSeries, not
+// bucketPagePath called directly) mirrors the review's synthetic
+// 40+25-session repro that found the defect.
+Deno.test("buildAudienceVisitsSeries: /guides/ and /blog/ section-index visits (bare, trailing slash) count as homeowner, not unattributed", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+      rows: [
+        { date: "20260901", pagePath: "/guides/", sessions: 40 },
+        { date: "20260901", pagePath: "/blog/", sessions: 25 },
+      ],
+    },
+    windows,
+  );
+  assertEquals(result.homeowner.total, 65);
+  assertEquals(result.unattributed.total, 0);
+});

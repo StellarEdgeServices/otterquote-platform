@@ -317,9 +317,26 @@ const EXACT_AUDIENCE_PATHS: Record<string, Audience> = {
 // normalised path (none do today under the pinned table, but the tie-break
 // is deterministic rather than "first array entry wins" so a future table
 // edit cannot silently depend on array order).
-const PREFIX_AUDIENCE_PATHS: Array<{ prefix: string; audience: Audience }> = [
-  { prefix: "/guides/", audience: "homeowner" },
-  { prefix: "/blog/", audience: "homeowner" },
+//
+// gh-1639 fix (fresh-context refuter comment 5548057089, PR #1674):
+// `/guides/` and `/blog/` are written in the CTO's ruling WITH a trailing
+// slash — a slash-terminated prefix — while `/contractor`, `/tools`,
+// `/recruit`, `/partner` are bare prefixes (the ruling's own text: "matches
+// by the ruling's own text '/contractor (prefix)'"). `normalizePagePath`
+// strips a path's trailing slash (except bare root) before this table is
+// consulted, so the raw GA4 value `/guides/` normalises to `/guides` before
+// `.startsWith("/guides/")` ever runs — it can never match, and every visit
+// to the guides/blog section-index page silently fell to `unattributed`.
+// `slashTerminated: true` restores the ruling's intent post-normalisation
+// without reintroducing the bug a bare `startsWith("/guides")` would cause
+// (matching `/guidesfoo`, which is not in the table): match the bare root
+// (`/guides`, `/blog` — what `/guides/` normalises to) OR any child path
+// that still carries the slash in the middle (`/guides/foo` — untouched by
+// trailing-slash stripping). Bare prefixes are unaffected: `startsWith`
+// against the literal prefix, exactly as the ruling names them.
+const PREFIX_AUDIENCE_PATHS: Array<{ prefix: string; audience: Audience; slashTerminated?: boolean }> = [
+  { prefix: "/guides/", audience: "homeowner", slashTerminated: true },
+  { prefix: "/blog/", audience: "homeowner", slashTerminated: true },
   { prefix: "/contractor", audience: "contractor" },
   { prefix: "/tools", audience: "contractor" }, // covers /tools-crm
   { prefix: "/recruit", audience: "contractor" },
@@ -335,10 +352,18 @@ const PREFIX_AUDIENCE_PATHS: Array<{ prefix: string; audience: Audience }> = [
 export function bucketPagePath(normalizedPath: string): Audience {
   const exact = EXACT_AUDIENCE_PATHS[normalizedPath];
   if (exact) return exact;
-  let best: { prefix: string; audience: Audience } | null = null;
+  let best: { root: string; audience: Audience } | null = null;
   for (const rule of PREFIX_AUDIENCE_PATHS) {
-    if (normalizedPath.startsWith(rule.prefix)) {
-      if (!best || rule.prefix.length > best.prefix.length) best = rule;
+    // Slash-terminated prefixes (/guides/, /blog/) match the bare root
+    // post-normalisation (/guides, /blog) OR a child path that still has
+    // the slash (/guides/foo) — never a bare startsWith, which would also
+    // wrongly catch /guidesfoo or /blogger.
+    const root = rule.slashTerminated ? rule.prefix.slice(0, -1) : rule.prefix;
+    const matches = rule.slashTerminated
+      ? normalizedPath === root || normalizedPath.startsWith(rule.prefix)
+      : normalizedPath.startsWith(rule.prefix);
+    if (matches) {
+      if (!best || root.length > best.root.length) best = { root, audience: rule.audience };
     }
   }
   return best ? best.audience : "unattributed";
