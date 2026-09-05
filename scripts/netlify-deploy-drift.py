@@ -81,8 +81,8 @@ measured 2026-09-05T03:5xZ -- read before "fixing" a red otterquote-app row)
       followed only by no-content cancels is still unresolved and still alarms). The
       match is on the MESSAGE, never on the site name -- a genuinely broken otterquote-app
       must still alarm.
-    - "Skipped due to account credit usage exceeded" (#1548) stays BUILD_FAILING, loud.
-      Dustin's ruling 2026-09-04 (gh-1549 comment 5545292885): auto-topup stays OFF --
+    - the #1548 usage-exceeded skip stays BUILD_FAILING, loud (its literal message is the
+      recorded fixture in netlify-deploy-drift.test.py). Dustin's ruling 2026-09-04 (gh-1549 comment 5545292885): auto-topup stays OFF --
       "Let it stop and alert me." -- so that class is the alarm that replaces the money.
 
 CROSS-REPO SCOPE GAP (found running this detector live, 2026-09-02 -- read before adding
@@ -123,7 +123,7 @@ USAGE
     --self-test     run the built-in fixture suite (no network, no credentials) and
                      exit 0/1. The full suite lives in netlify-deploy-drift.test.py; this
                      is the three-case regression for the base-directory / no-content
-                     cancel / credit-exceeded shapes so it can run wherever the script is.
+                     cancel / real-error shapes so it can run wherever the script is.
     --json          machine-readable {sites: [...], verdict, code, banner}. `banner`
                      carries the exact loud warning text text mode prints for a
                      non-clean run (null when every site is IDENTICAL) -- per gh-1501
@@ -1052,10 +1052,12 @@ def resolve_site_rows(netlify_token, github_token, queued_stale_minutes=DEFAULT_
 
 def self_test():
     """Three-case regression for the 2026-09-05 fixes, runnable anywhere the script is
-    (no network, no credentials): no-content cancel -> IDENTICAL; credit-exceeded ->
-    BUILD_FAILING; genuinely behind -> BEHIND N. The values are the ones measured live
-    on otterquote-app / jade-alpaca-b82b5e (gh-1549), not hand-imagined shapes. The
-    full suite is scripts/netlify-deploy-drift.test.py."""
+    (no network, no token): no-content cancel -> IDENTICAL; a real error (#1517's bare
+    "Canceled build" bulk-sweep, and a build-script failure) -> BUILD_FAILING; genuinely
+    behind -> BEHIND N. The values are the ones measured live on otterquote-app /
+    otter-crm (gh-1549), not hand-imagined shapes. The #1548 usage-exceeded message is
+    the recorded fixture in scripts/netlify-deploy-drift.test.py (the full suite), which
+    CI runs on every change to this file."""
     site = {"key": "otterquote-app", "label": "app.otterquote.com (otterquote-app)",
             "repo": "StellarEdgeServices/otterquote-platform"}
     no_content = ("Failed during stage 'checking build content for changes': "
@@ -1077,11 +1079,18 @@ def self_test():
     expect("no-content cancel on a base-dir site -> IDENTICAL", r["verdict"], IDENTICAL)
     expect("no-content cancel is flagged SKIPPED_NO_CONTENT, not BUILD_FAILING", r["no_content_skip"], True)
     expect("no-content cancel never enters FAILING_VERDICTS", r["verdict"] in FAILING_VERDICTS, False)
-    # 2. Credit-exceeded (#1548, 2026-09-02): stays loud. Dustin: "Let it stop and alert me."
-    r = evaluate_site(site, "2cd939eafbd3", "2026-09-02T18:33:33Z", "f3f763a22ace", 23,
-                      "error", "Skipped due to account credit usage exceeded", True)
-    expect("credit-exceeded -> BUILD_FAILING", r["verdict"], BUILD_FAILING)
-    expect("credit-exceeded detail is the message", r["detail"], "Skipped due to account credit usage exceeded")
+    # 2. A REAL error stays loud (Dustin: "Let it stop and alert me."). (a) otter-crm's
+    #    bulk-swept "Canceled build" (#1517, 2026-08-24, verbatim) -- the bare message is
+    #    NOT the benign no-content cancel and must still alarm; (b) a build-script failure.
+    r = evaluate_site(site, "9cf92d30836a", "2026-09-03T11:23:11Z", "9cf92d30836a", 0,
+                      "error", "Canceled build", None)
+    expect("bare 'Canceled build' (#1517 bulk-sweep) -> BUILD_FAILING, not benign", r["verdict"], BUILD_FAILING)
+    expect("bare 'Canceled build' detail is the message", r["detail"], "Canceled build")
+    r = evaluate_site(site, "3424c60b608f", "2026-09-05T02:04:49Z", "cd89cfbff617", 0,
+                      "error", "Build script returned non-zero exit code: 2", None,
+                      base_dir="react-app", base_head_sha="3424c60b608f", main_ahead_of_production=7)
+    expect("real build error on a base-dir site -> BUILD_FAILING (message-matched, not site-matched)",
+           r["verdict"], BUILD_FAILING)
     # 3. Genuinely behind on a base-dir site: a later main commit DID touch react-app/,
     #    the newest deploy attempt is still a no-content cancel (or anything benign),
     #    production has not moved -> BEHIND N, counted against the base-dir head.
@@ -1097,7 +1106,7 @@ def self_test():
     d, n = select_signal_deploy([
         {"id": "c1", "state": "error", "created_at": "2026-09-05T04:18:48Z", "error_message": no_content},
         {"id": "real", "state": "error", "created_at": "2026-09-05T03:00:00Z",
-         "error_message": "Skipped due to account credit usage exceeded"},
+         "error_message": "Canceled build"},
         {"id": "ok", "state": "ready", "created_at": "2026-09-05T02:04:49Z", "error_message": None},
     ])
     expect("select_signal_deploy skips newer no-content cancels to the real error", (d["id"], n), ("real", 1))
