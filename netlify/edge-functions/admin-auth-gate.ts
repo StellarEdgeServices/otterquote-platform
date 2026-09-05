@@ -1,7 +1,8 @@
 /**
  * admin-auth-gate.ts — Netlify Edge Function (W4-P1)
  *
- * Intercepts all /admin-*.html requests before the static file is served.
+ * Intercepts all /admin-* requests (with or without .html or a trailing slash)
+ * before the static file is served.
  * Reads the sb-otterquote-at cookie (set by OtterQuoteCookieStorage v2,
  * D-212 fix). Falls back to legacy sb_at cookie for in-flight admin sessions.
  * decodes the Supabase JWT payload, and verifies:
@@ -65,4 +66,13 @@ export default async (req: Request, context: any) => {
   }
 };
 
-export const config = { path: '/admin-*.html' };
+// gh-1598 (2026-09-05): was '/admin-*.html' only — '/admin-dashboard' (extensionless,
+// and the target of the '/Admin-Dashboard.html' / '/admin-dashboard/' 301s) bypassed
+// the gate. '/admin-*' alone matches every shape (URLPattern '*' spans '/'); the
+// trailing-slash and .html forms are listed explicitly so the intent is readable.
+// The service worker and manifest are public static assets with no admin data and
+// the manifest is fetched without cookies, so they stay outside the gate.
+export const config = {
+  path: ['/admin-*', '/admin-*/', '/admin-*.html'],
+  excludedPath: ['/admin-sw.js', '/admin-app.webmanifest'],
+};
