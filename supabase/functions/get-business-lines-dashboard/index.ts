@@ -593,7 +593,7 @@ function buildAudienceVisitsSeries(
   };
   if (mismatches.length > 0) {
     return notRunForAll(
-      "gh-1639 sum invariant failed — the four landingPage buckets do not agree with the " +
+      "gh-1639 sum invariant failed — the four landingPage buckets do not match the " +
         "separate date-only site total within the declared tolerance (a non-additive dimension, " +
         `or a mapping that dropped/double-counted rows): ${mismatches.join("; ")}`,
       invariant,
