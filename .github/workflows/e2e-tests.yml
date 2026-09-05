@@ -48,6 +48,9 @@ jobs:
       - name: Partner-signup consent checkbox link guard (D-278, gh-943)
         run: python3 scripts/check-partner-consent-link.py
 
+      - name: Analytics loader single-source guard (gtag.js + clarity.ms behind the host gate, gh-1619)
+        run: python3 scripts/check-gtag-single-source.py
+
   typescript-check:
     name: TypeScript Check
     runs-on: ubuntu-latest

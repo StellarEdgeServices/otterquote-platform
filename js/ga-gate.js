@@ -17,6 +17,13 @@
 // issue). Every page that fires gtag events includes this file first, then
 // makes its own gtag('config', ...) call.
 //
+// Microsoft Clarity (project wwr7qlk8g5) is carried by the SAME gate, per the
+// CTO ruling on gh-1619: it had the same robot problem on the same pages for
+// the same reason, and its 30-day retention means pollution cannot be
+// re-derived away later. The Clarity <script> is likewise never injected
+// off-allowlist. scripts/check-gtag-single-source.py fails CI if either
+// loader appears anywhere but here.
+//
 // Fail-closed by design: an unrecognised hostname is far more likely to be
 // a new preview/staging surface than a new production domain, so it never
 // loads the library. Extending the allowlist is a deliberate, reviewed
@@ -24,6 +31,7 @@
 (function () {
   var ALLOWED_HOSTS = ['otterquote.com', 'www.otterquote.com', 'app.otterquote.com'];
   var MEASUREMENT_ID = 'G-D1Y1TLGEFY';
+  var CLARITY_PROJECT_ID = 'wwr7qlk8g5';
 
   // dataLayer/gtag are defined unconditionally so every page's existing
   // gtag('event', ...) / gtag('config', ...) calls keep working (as harmless
@@ -42,4 +50,12 @@
   s.async = true;
   s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
   document.head.appendChild(s);
+
+  // Microsoft Clarity -- the vendor snippet, verbatim apart from living
+  // behind the allowlist check above. Reached only on a production host.
+  (function (c, l, a, r, i, t, y) {
+    c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+    t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
+    y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+  })(window, document, 'clarity', 'script', CLARITY_PROJECT_ID);
 })();
