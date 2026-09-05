@@ -459,6 +459,11 @@ function renderLinePage() {
     revenueTileHtml(line.revenue_mtd) +
   '</div>';
 
+  // gh-1639 (#1340 phase 5c) item 8: unattributed visits + their share of
+  // the site-wide GA4 total render HERE, on the line page — never on an
+  // audience tab, since neither number belongs to one specific audience.
+  html += '<div class="marketing-grid">' + unattributedVisitsHtml(line.visits_unattributed, line.visits_site_total) + '</div>';
+
   html += '<div class="audience-cards">';
   ['homeowner', 'contractor', 'referral_partner'].forEach(function (aud) {
     var rows = d[aud].rows;
@@ -944,14 +949,58 @@ function referralClicksCardHtml(series, visitsSeries) {
 // defensively checked for Array-ness -- a payload from before gh-1637
 // deployed, or any future shape drift, renders "hosts unavailable" rather
 // than throwing or printing "undefined".
+//
+// gh-1639 (#1340 phase 5c) item 7: gains a second line naming the prefixes
+// THIS audience counted, sourced from visitsSeries.note (see ga4.ts
+// AUDIENCE_PREFIX_NOTE / get-business-lines-dashboard's
+// buildAudienceVisitsSeries) -- never hardcoded here, same no-drift
+// discipline. A payload predating gh-1639 (or any future shape drift) has
+// no `note` string; the line is simply omitted rather than printing
+// "undefined".
 function visitsDenominatorScopeHtml(visitsSeries) {
   var propertyId = (visitsSeries && typeof visitsSeries.property_id === 'string' && visitsSeries.property_id)
     ? esc(visitsSeries.property_id) : 'unavailable';
   var hostsText = (visitsSeries && Array.isArray(visitsSeries.hosts) && visitsSeries.hosts.length)
     ? visitsSeries.hosts.map(function (h) { return esc(String(h)); }).join(' · ')
     : 'hosts unavailable';
-  return '<div class="visits-denominator-scope">Visits denominator: GA4 property ' + propertyId +
+  var html = '<div class="visits-denominator-scope">Visits denominator: GA4 property ' + propertyId +
     ', hosts ' + hostsText + '</div>';
+  if (visitsSeries && typeof visitsSeries.note === 'string' && visitsSeries.note) {
+    html += '<div class="visits-denominator-scope">' + esc(visitsSeries.note) + '</div>';
+  }
+  return html;
+}
+
+// gh-1639 (#1340 phase 5c) item 8: the unattributed bucket renders on the
+// LINE page (not an audience tab), with its share of the site-wide total --
+// sourced from the payload's `visits_unattributed` / `visits_site_total`
+// (get-business-lines-dashboard's buildAudienceVisitsSeries /
+// buildVisitsSeries), never hardcoded. A large share here is meant to be
+// visible without reading code -- per the issue, that is the signal the
+// prefix table (ga4.ts) needs extending.
+function unattributedVisitsHtml(unattributed, siteTotal) {
+  if (!unattributed || unattributed.kind === 'not_run') {
+    var reason = (unattributed && unattributed.reason)
+      ? unattributed.reason
+      : 'Visits series unavailable in this response (deploy owed).';
+    return '<div class="marketing-card"><h4>Unattributed visits</h4>' +
+      '<div class="not-run-note">NOT RUN &mdash; ' + esc(reason) + '</div></div>';
+  }
+  var total = safeNum(unattributed.total);
+  var site = (siteTotal && siteTotal.kind !== 'not_run') ? safeNum(siteTotal.total) : 0;
+  var shareHtml = (site > 0)
+    ? '<div class="visits-rate">' + total.toLocaleString('en-US') + ' of ' + site.toLocaleString('en-US') +
+      ' site-wide production visits (' + (total / site * 100).toFixed(1) + '%)</div>'
+    : '<div class="visits-rate not-run-note">Share of site-wide visits: NOT RUN &mdash; site-wide total unavailable</div>';
+  var noteHtml = (typeof unattributed.note === 'string' && unattributed.note)
+    ? '<div class="visits-denominator-scope">' + esc(unattributed.note) + '</div>'
+    : '';
+  return '<div class="marketing-card"><h4>Unattributed visits</h4>' +
+    '<div>' + seriesTotalHtml(unattributed) + '</div>' +
+    sparklineHtml(unattributed, false) +
+    shareHtml +
+    noteHtml +
+  '</div>';
 }
 
 function renderMarketingSection(audience) {

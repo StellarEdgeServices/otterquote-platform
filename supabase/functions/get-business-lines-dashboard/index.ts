@@ -74,6 +74,19 @@
  * (`visits.scope`, `visits.property_id`, `visits.hosts`) so #1638 (the page
  * half) and #1639 can render what was actually counted instead of assuming.
  *
+ * gh-1639 (#1340 phase 5c): each audience's `marketing.visits` is now ITS
+ * OWN series (not the shared site-wide one) — the same GA4 read now also
+ * carries a `pagePath` dimension, normalised and bucketed by
+ * longest-matching prefix (ga4.ts: normalizePagePath, bucketPagePath) into
+ * homeowner / contractor / referral_partner / unattributed
+ * (buildAudienceVisitsSeries below). The four buckets are asserted to sum,
+ * window by window, to the SAME site-wide total computed independently from
+ * the same rows — any disagreement fails all four to `not_run` rather than
+ * risk a silently short (conversion-inflating) denominator. The site-wide
+ * total and the unattributed bucket both move to the line-level payload
+ * (`lines[key=otterquotes].visits_site_total` / `.visits_unattributed`),
+ * since neither belongs to one specific audience tab.
+ *
  * Read-only. No writes, no schema change, no other EF touched.
  *
  * Input:  POST {}  (body currently unused — reserved for future filtering)
@@ -88,12 +101,18 @@
  * verify_jwt = false (see supabase/config.toml) — auth is performed
  * in-handler, same pattern as get-payout-completion-status / approve-payout.
  *
- * GitHub: #1340, #1469, #1574, #1637
+ * GitHub: #1340, #1469, #1574, #1637, #1639
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { fetchGa4SessionsByDay, type Ga4SessionsByDayResult } from "./ga4.ts";
+import {
+  AUDIENCE_PREFIX_NOTE,
+  bucketPagePath,
+  fetchGa4SessionsByDay,
+  type Audience,
+  type Ga4SessionsByDayResult,
+} from "./ga4.ts";
 
 const FUNCTION_NAME = "get-business-lines-dashboard";
 // gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
@@ -358,6 +377,125 @@ function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindo
     caveat: GA4_VISITS_CAVEAT,
     note: GA4_VISITS_NOTE,
   };
+}
+
+// ── gh-1639 (#1340 phase 5c): per-audience visits denominators ──────────
+//
+// Item 5's sum invariant, factored into its own pure function so it is
+// directly testable against a synthetic mismatched row set — NOT only
+// reachable via buildAudienceVisitsSeries below, whose own partition
+// (bucketPagePath always returns exactly one of the four audiences, never
+// drops or duplicates a row) makes the buckets mathematically guaranteed to
+// sum correctly in that call path. This function is the belt-and-suspenders
+// check that would catch a FUTURE regression in that guarantee (e.g. a
+// refactor that filters rows before bucketing, or a bucketPagePath change
+// that returns something outside the four names) — never trust the
+// partition to stay total just because it is today.
+function sumInvariantMismatches(
+  bucketWeeklyValues: number[][],
+  siteTotalWeeklyValues: number[],
+  windows: WeekWindow[],
+): string[] {
+  const mismatches: string[] = [];
+  for (let w = 0; w < windows.length; w++) {
+    const bucketSum = bucketWeeklyValues.reduce((sum, values) => sum + values[w], 0);
+    if (bucketSum !== siteTotalWeeklyValues[w]) {
+      mismatches.push(
+        `window ${w} (${windows[w].week_start}..${windows[w].week_end}): buckets sum to ${bucketSum}, site total is ${siteTotalWeeklyValues[w]}`,
+      );
+    }
+  }
+  return mismatches;
+}
+
+// Splits the SAME GA4 result buildVisitsSeries reads (site-wide sessions)
+// into four VisitsSeries — homeowner / contractor / referral_partner /
+// unattributed — by bucketing each row's (already-normalised, see ga4.ts)
+// pagePath via bucketPagePath. This does not re-fetch or re-filter
+// anything; it is a second view over the same rows.
+//
+// The four buckets' values must sum, window by window, to the SAME
+// site-wide total computed independently from the same rows (bucket-
+// agnostic) — checked via sumInvariantMismatches above rather than trusted.
+// If they disagree, the mapping dropped or double-counted rows — a short
+// denominator would inflate every conversion rate built on it, the same
+// failure direction #1637 already fixed once. So a mismatch fails ALL FOUR
+// audience buckets to kind:"not_run" with a reason naming which window(s)
+// disagreed, never a silently short series.
+function buildAudienceVisitsSeries(
+  ga4Result: Ga4SessionsByDayResult,
+  windows: WeekWindow[],
+): Record<Audience, VisitsSeries> {
+  const scope = "production";
+  const AUDIENCES: Audience[] = ["homeowner", "contractor", "referral_partner", "unattributed"];
+
+  const notRunForAll = (reason: string): Record<Audience, VisitsSeries> => {
+    const out = {} as Record<Audience, VisitsSeries>;
+    for (const aud of AUDIENCES) {
+      out[aud] = {
+        ...notRunSeries("sessions", windows, reason),
+        scope,
+        property_id: ga4Result.property_id,
+        hosts: ga4Result.hosts,
+        caveat: GA4_VISITS_CAVEAT,
+        note: AUDIENCE_PREFIX_NOTE[aud],
+      };
+    }
+    return out;
+  };
+
+  if (!ga4Result.ok) return notRunForAll(ga4Result.reason);
+
+  const byAudience: Record<Audience, WeightedDatedRow[]> = {
+    homeowner: [],
+    contractor: [],
+    referral_partner: [],
+    unattributed: [],
+  };
+  for (const row of ga4Result.rows) {
+    byAudience[bucketPagePath(row.pagePath)].push({ iso: ga4DateToIso(row.date), value: row.sessions });
+  }
+
+  const perAudienceValues: Record<Audience, number[]> = {} as Record<Audience, number[]>;
+  for (const aud of AUDIENCES) perAudienceValues[aud] = sumByWeek(byAudience[aud], windows);
+
+  // The site total, computed INDEPENDENTLY from every row regardless of
+  // bucket — the same computation buildVisitsSeries performs — so the
+  // invariant check below compares two separately-derived numbers, not the
+  // same arithmetic checked against itself.
+  const allRows = ga4Result.rows.map((r) => ({ iso: ga4DateToIso(r.date), value: r.sessions }));
+  const siteTotalValues = sumByWeek(allRows, windows);
+
+  const mismatches = sumInvariantMismatches(
+    AUDIENCES.map((aud) => perAudienceValues[aud]),
+    siteTotalValues,
+    windows,
+  );
+  if (mismatches.length > 0) {
+    return notRunForAll(
+      "gh-1639 sum invariant failed — the four audience buckets do not sum to the independently " +
+        `computed site-wide total (mapping dropped or double-counted rows): ${mismatches.join("; ")}`,
+    );
+  }
+
+  const out = {} as Record<Audience, VisitsSeries>;
+  for (const aud of AUDIENCES) {
+    const values = perAudienceValues[aud];
+    const total = values.reduce((a, b) => a + b, 0);
+    out[aud] = {
+      kind: kindForTotal(total),
+      unit: "sessions",
+      windows,
+      values,
+      total,
+      scope,
+      property_id: ga4Result.property_id,
+      hosts: ga4Result.hosts,
+      caveat: GA4_VISITS_CAVEAT,
+      note: AUDIENCE_PREFIX_NOTE[aud],
+    };
+  }
+  return out;
 }
 
 interface GroupedRow extends DatedRow { group: string | null }
@@ -995,10 +1133,18 @@ serve(async (req: Request) => {
     const weekWindows = buildWeekWindows(now, MARKETING_WEEKS);
 
     // gh-1574 phase 5 — resolve the concurrently-kicked-off GA4 fetch and
-    // build the ONE `visits` series shared across all three audiences below
-    // (same underlying site-wide property, per GA4_VISITS_NOTE above).
+    // build the site-wide `visits` series (still used on the LINE payload,
+    // see otterQuotesLine.visits below — GA4_VISITS_NOTE above still
+    // describes this one correctly: it is explicitly NOT audience-specific).
+    //
+    // gh-1639 phase 5c — the SAME GA4 result is also split by pagePath into
+    // four per-audience series (buildAudienceVisitsSeries above). Each
+    // audience's `marketing.visits` below is now ITS OWN series, not the
+    // shared site-wide one; the site-wide total moves to the line payload
+    // alongside the unattributed bucket (item 6/8).
     const ga4VisitsResult = await ga4VisitsPromise;
     const visitsSeries = buildVisitsSeries(ga4VisitsResult, weekWindows);
+    const audienceVisits = buildAudienceVisitsSeries(ga4VisitsResult, weekWindows);
 
     const nonTestRows = <T extends { is_test?: boolean }>(rows: T[]) => rows.filter((r) => r.is_test !== true);
 
@@ -1024,7 +1170,9 @@ serve(async (req: Request) => {
         (leads as any[]).map((l) => ({ iso: l.created_at as string | null, group: l.source as string | null })),
         weekWindows,
       ),
-      visits: visitsSeries,
+      // gh-1639: this audience's OWN series (pagePath-bucketed), not the
+      // shared site-wide one — see buildAudienceVisitsSeries above.
+      visits: audienceVisits.homeowner,
     };
 
     // ── Contractor marketing — funnel: pre-approval → template → first bid ─
@@ -1071,7 +1219,8 @@ serve(async (req: Request) => {
           excluded_no_timestamp: firstBid.excludedNoTimestamp,
         },
       },
-      visits: visitsSeries,
+      // gh-1639: this audience's OWN series (pagePath-bucketed).
+      visits: audienceVisits.contractor,
     };
 
     // ── Referral partner marketing — signups by agent_type / UTM, clicks ──
@@ -1109,7 +1258,8 @@ serve(async (req: Request) => {
         caveat: REFERRAL_CLICK_CAVEAT,
         caveat_ref: "https://github.com/StellarEdgeServices/otterquote-platform/issues/1302",
       },
-      visits: visitsSeries,
+      // gh-1639: this audience's OWN series (pagePath-bucketed).
+      visits: audienceVisits.referral_partner,
     };
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1127,6 +1277,14 @@ serve(async (req: Request) => {
       // deliberately NOT inside stats: every stats value is a measured() DB
       // count, and this one can legitimately be "not_run".
       revenue_mtd: revenueMtd,
+      // gh-1639 (#1340 phase 5c) item 6/8: the site-wide GA4 total (same
+      // series #1637/#1638 already shipped, unchanged shape) and the
+      // unattributed bucket both live HERE, on the line payload, not on any
+      // one audience tab — the page renders unattributed's share of the
+      // total on the line page per item 8, sourced from these, never
+      // hardcoded.
+      visits_site_total: visitsSeries,
+      visits_unattributed: audienceVisits.unattributed,
       stats: {
         homeowners_total: measured(profiles.length),
         homeowners_non_test: measured(nonTest(profiles as any[]).length),

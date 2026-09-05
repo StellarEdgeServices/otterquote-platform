@@ -22,8 +22,21 @@
 // ga4.ts, which is a real module with real exports (not a single-file EF),
 // so it is tested directly in ga4.test.ts instead of via this extraction.
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { AUDIENCE_PREFIX_NOTE } from "./ga4.ts";
 
 const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+
+// gh-1639 (#1340 phase 5c): buildAudienceVisitsSeries (extracted below)
+// calls two REAL runtime exports of ga4.ts (bucketPagePath,
+// AUDIENCE_PREFIX_NOTE) — unlike a type-only reference (e.g.
+// Ga4SessionsByDayResult, erased at compile time and already safely left
+// unresolved elsewhere in this file's extraction), those are values
+// actually invoked at runtime, so the extracted module needs a real import
+// of them. A relative "./ga4.ts" import would not resolve inside a data:
+// URL module (it has no meaningful base path to resolve against), so this
+// builds an absolute file:// import statement instead, the same
+// new URL(..., import.meta.url) trick the readTextFile call above uses.
+const ga4ModuleUrl = new URL("./ga4.ts", import.meta.url).href;
 
 // Same string/template-literal-aware brace counter as ga4-report/index.test.ts
 // (a plain counter misfires on any function whose body contains a quoted
@@ -127,6 +140,16 @@ const mod = [
     "function buildVisitsSeries(",
     "export function buildVisitsSeries(",
   ),
+  // gh-1639 (#1340 phase 5c) — per-audience visits denominators.
+  `import { AUDIENCE_PREFIX_NOTE, bucketPagePath } from "${ga4ModuleUrl}";`,
+  grabBlock("function sumInvariantMismatches(").replace(
+    "function sumInvariantMismatches(",
+    "export function sumInvariantMismatches(",
+  ),
+  grabBlock("function buildAudienceVisitsSeries(").replace(
+    "function buildAudienceVisitsSeries(",
+    "export function buildAudienceVisitsSeries(",
+  ),
 ].join("\n\n");
 const url = "data:application/typescript," + encodeURIComponent(mod);
 const {
@@ -145,6 +168,8 @@ const {
   ga4DateToIso,
   sumByWeek,
   buildVisitsSeries,
+  sumInvariantMismatches,
+  buildAudienceVisitsSeries,
   // deno-lint-ignore no-explicit-any
 } = await import(url) as any;
 
@@ -464,4 +489,181 @@ Deno.test("buildVisitsSeries: a not_run result STILL carries scope/property_id/h
   assertEquals(series.scope, "production");
   assertEquals(series.property_id, "541423859");
   assertEquals(series.hosts, GA4_HOSTS_FIXTURE);
+});
+
+// --- gh-1639 (#1340 phase 5c): sumInvariantMismatches ----------------------
+//
+// A synthetic row set whose buckets SUM (the happy path buildAudienceVisits
+// Series always produces, since its partition is total) and a synthetic row
+// set whose buckets do NOT sum (the failure this function exists to catch,
+// per the issue's closes-on clause 1 — unreachable through
+// buildAudienceVisitsSeries itself since bucketPagePath is a total function
+// that never drops or duplicates a row, but this is exactly the guard that
+// would catch a FUTURE regression of that guarantee).
+
+Deno.test("sumInvariantMismatches: buckets that sum correctly to the site total, window by window, report no mismatches", () => {
+  const windows = [
+    { week_start: "2026-08-01T00:00:00.000Z", week_end: "2026-08-08T00:00:00.000Z" },
+    { week_start: "2026-08-08T00:00:00.000Z", week_end: "2026-08-15T00:00:00.000Z" },
+  ];
+  // homeowner + contractor + referral_partner + unattributed, per window.
+  const buckets = [
+    [10, 20],
+    [5, 0],
+    [0, 3],
+    [1, 1],
+  ];
+  const siteTotals = [16, 24]; // 10+5+0+1=16, 20+0+3+1=24
+  assertEquals(sumInvariantMismatches(buckets, siteTotals, windows), []);
+});
+
+Deno.test("sumInvariantMismatches: a synthetic row set whose buckets do NOT sum to the site total fails closed with a reason naming the discrepancy", () => {
+  const windows = [
+    { week_start: "2026-08-01T00:00:00.000Z", week_end: "2026-08-08T00:00:00.000Z" },
+    { week_start: "2026-08-08T00:00:00.000Z", week_end: "2026-08-15T00:00:00.000Z" },
+  ];
+  const buckets = [
+    [10, 20],
+    [5, 0],
+    [0, 3],
+    [1, 1],
+  ];
+  // Window 1's true bucket sum is 24 (see the passing test above) but the
+  // "independently computed" site total disagrees — simulating a dropped or
+  // double-counted row somewhere in the mapping.
+  const siteTotals = [16, 30];
+  const mismatches = sumInvariantMismatches(buckets, siteTotals, windows);
+  assertEquals(mismatches.length, 1);
+  assertEquals(mismatches[0].includes("window 1"), true);
+  assertEquals(mismatches[0].includes("buckets sum to 24"), true);
+  assertEquals(mismatches[0].includes("site total is 30"), true);
+});
+
+Deno.test("sumInvariantMismatches: multiple disagreeing windows are all named, not just the first", () => {
+  const windows = [
+    { week_start: "a0", week_end: "a1" },
+    { week_start: "b0", week_end: "b1" },
+  ];
+  const buckets = [[1, 1]];
+  const siteTotals = [2, 3]; // window 0 agrees (1===2? no) -- both disagree
+  const mismatches = sumInvariantMismatches(buckets, siteTotals, windows);
+  assertEquals(mismatches.length, 2);
+});
+
+// --- gh-1639: buildAudienceVisitsSeries ------------------------------------
+
+const GA4_HOSTS_FIXTURE_1639 = ["otterquote.com", "www.otterquote.com", "app.otterquote.com"];
+
+Deno.test("buildAudienceVisitsSeries: a GA4 fetch failure is not_run on ALL FOUR audiences, each still carrying scope/property_id/hosts/note", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: false,
+      reason: "GA4 Data API returned 403 for property 541423859",
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+    },
+    windows,
+  );
+  for (const aud of ["homeowner", "contractor", "referral_partner", "unattributed"] as const) {
+    assertEquals(result[aud].kind, "not_run");
+    assertEquals(result[aud].reason, "GA4 Data API returned 403 for property 541423859");
+    assertEquals(result[aud].scope, "production");
+    assertEquals(result[aud].property_id, "541423859");
+    assertEquals(result[aud].hosts, GA4_HOSTS_FIXTURE_1639);
+    assertEquals(result[aud].note, AUDIENCE_PREFIX_NOTE[aud]);
+  }
+});
+
+Deno.test("buildAudienceVisitsSeries: buckets rows by pagePath into the correct audience and each carries its own note", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const dayInLastWindow = "20260901"; // NOW is 2026-09-01T18:00:00Z
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+      rows: [
+        { date: dayInLastWindow, pagePath: "/get-started", sessions: 100 }, // homeowner
+        { date: dayInLastWindow, pagePath: "/contractor-join", sessions: 50 }, // contractor
+        { date: dayInLastWindow, pagePath: "/ref", sessions: 10 }, // referral_partner
+        { date: dayInLastWindow, pagePath: "/login", sessions: 5 }, // unattributed
+      ],
+    },
+    windows,
+  );
+  assertEquals(result.homeowner.total, 100);
+  assertEquals(result.contractor.total, 50);
+  assertEquals(result.referral_partner.total, 10);
+  assertEquals(result.unattributed.total, 5);
+  assertEquals(result.homeowner.kind, "measured");
+  assertEquals(result.unattributed.kind, "measured");
+  for (const aud of ["homeowner", "contractor", "referral_partner", "unattributed"] as const) {
+    assertEquals(result[aud].note, AUDIENCE_PREFIX_NOTE[aud]);
+    assertEquals(result[aud].scope, "production");
+    assertEquals(result[aud].caveat, GA4_VISITS_CAVEAT);
+  }
+});
+
+Deno.test("buildAudienceVisitsSeries: the four buckets sum, window by window, to the independently-computed site-wide total (item 5's invariant, exercised end to end)", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const dayInLastWindow = "20260901";
+  const earlierDay = "20260701";
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+      rows: [
+        { date: dayInLastWindow, pagePath: "/get-started", sessions: 100 },
+        { date: dayInLastWindow, pagePath: "/contractor-join", sessions: 50 },
+        { date: earlierDay, pagePath: "/ref", sessions: 10 },
+        { date: earlierDay, pagePath: "/some-future-page", sessions: 5 },
+      ],
+    },
+    windows,
+  );
+  const siteTotal = 100 + 50 + 10 + 5;
+  const bucketTotal = result.homeowner.total + result.contractor.total + result.referral_partner.total +
+    result.unattributed.total;
+  assertEquals(bucketTotal, siteTotal);
+  // Never not_run when the invariant holds.
+  for (const aud of ["homeowner", "contractor", "referral_partner", "unattributed"] as const) {
+    assertEquals(result[aud].kind !== "not_run", true);
+  }
+});
+
+Deno.test("buildAudienceVisitsSeries: an audience with zero rows this window is a real measured_zero, not not_run and not dropped", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+      rows: [{ date: "20260901", pagePath: "/get-started", sessions: 10 }], // homeowner only
+    },
+    windows,
+  );
+  assertEquals(result.contractor.kind, "measured_zero");
+  assertEquals(result.contractor.total, 0);
+  assertEquals(result.referral_partner.kind, "measured_zero");
+  assertEquals(result.unattributed.kind, "measured_zero");
+});
+
+Deno.test("buildAudienceVisitsSeries: multiple pagePaths in the same audience in the same week accumulate rather than overwrite", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+      rows: [
+        { date: "20260901", pagePath: "/get-started", sessions: 100 },
+        { date: "20260901", pagePath: "/claim", sessions: 20 }, // also homeowner
+        { date: "20260901", pagePath: "/blog/roofing", sessions: 5 }, // also homeowner (prefix)
+      ],
+    },
+    windows,
+  );
+  assertEquals(result.homeowner.total, 125);
 });
