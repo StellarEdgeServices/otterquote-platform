@@ -111,6 +111,7 @@ import {
   bucketPagePath,
   fetchGa4SessionsByDay,
   type Audience,
+  type Ga4Exclusions,
   type Ga4SessionsByDayResult,
 } from "./ga4.ts";
 
@@ -318,10 +319,18 @@ function sumByWeek(rows: WeightedDatedRow[], windows: WeekWindow[]): number[] {
 // (#1464), and the property itself stays polluted by non-production
 // traffic for historical windows until #1619 lands (the filter only fixes
 // what gets COUNTED, not what the raw property contains).
+// gh-1649: hostname filtering was not bot filtering — ~60% of what survived
+// the hostName filter on 2026-09-04 was our own CI stepping from staging onto
+// production, login round-trips, or datacenter one-hit traffic. The client
+// now excludes those on the wire (see ga4.ts GA4_EXCLUSIONS) and this caveat
+// says what remains uncertain, so the page never renders the number as a
+// truth: the city rule is a heuristic and the `(not set)` bucket stays in.
 const GA4_VISITS_CAVEAT =
-  "GA4 sessions on the production hosts only (property 541423859) — bot share within " +
-  "production still unknown (see #1464); the property itself is polluted by staging and " +
-  "localhost traffic (see #1619).";
+  "GA4 sessions on the production hosts only (property 541423859), minus our own " +
+  "staging/branch-deploy referrals, login round-trips and datacenter-signature cities " +
+  "(see visits.exclusions, #1649). Still includes unfiltered automated traffic: the city " +
+  "rule is a heuristic and the `(not set)` city bucket cannot be classified. The property " +
+  "itself stays polluted by staging and localhost traffic for historical windows (#1619).";
 
 // gh-1574: all three audiences source the SAME site-wide GA4 property until
 // per-audience GA4 dimensions exist — the issue asks that this be said in
@@ -337,10 +346,14 @@ const GA4_VISITS_NOTE =
 // them as of gh-1637 — see ga4.ts) rather than being re-derived here, so
 // there is exactly one place ("the same resolution the client already
 // does") that decides what was actually requested.
+// gh-1649: `exclusions` joins the pinned contract — what the wire filter
+// removed, declared on the series so a reader can see the heuristic beside
+// the number. Comes straight off `ga4Result` like property_id/hosts.
 interface VisitsSeries extends WeeklySeries {
   scope: string;
   property_id: string;
   hosts: string[];
+  exclusions: Ga4Exclusions;
   caveat: string;
   note: string;
 }
@@ -358,6 +371,7 @@ function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindo
       scope,
       property_id: ga4Result.property_id,
       hosts: ga4Result.hosts,
+      exclusions: ga4Result.exclusions,
       caveat: GA4_VISITS_CAVEAT,
       note: GA4_VISITS_NOTE,
     };
@@ -374,6 +388,7 @@ function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindo
     scope,
     property_id: ga4Result.property_id,
     hosts: ga4Result.hosts,
+    exclusions: ga4Result.exclusions,
     caveat: GA4_VISITS_CAVEAT,
     note: GA4_VISITS_NOTE,
   };
@@ -437,6 +452,7 @@ function buildAudienceVisitsSeries(
         scope,
         property_id: ga4Result.property_id,
         hosts: ga4Result.hosts,
+        exclusions: ga4Result.exclusions,
         caveat: GA4_VISITS_CAVEAT,
         note: AUDIENCE_PREFIX_NOTE[aud],
       };
@@ -491,6 +507,7 @@ function buildAudienceVisitsSeries(
       scope,
       property_id: ga4Result.property_id,
       hosts: ga4Result.hosts,
+      exclusions: ga4Result.exclusions,
       caveat: GA4_VISITS_CAVEAT,
       note: AUDIENCE_PREFIX_NOTE[aud],
     };

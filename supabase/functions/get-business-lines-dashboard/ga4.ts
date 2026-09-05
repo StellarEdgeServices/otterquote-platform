@@ -69,6 +69,74 @@ export const GA4_PRODUCTION_HOSTS: string[] = [
   "app.otterquote.com",
 ];
 
+// gh-1649: hostname filtering is not bot filtering. Measured 2026-09-04 on
+// the production hosts, 28 days, property 541423859 (CRO, device shell,
+// Data API): 1,255 sessions survived the hostName filter and roughly 60% of
+// them were our own robots or datacenter one-hit traffic. Three exclusion
+// rules, in order of certainty, all applied on the wire alongside the host
+// allow-list so EVERY consumer of this client gets the same denominator:
+//
+//  1. sessionSource CONTAINS "netlify.app" — a session whose referrer is our
+//     own staging/branch-deploy host is our own E2E/CI robot stepping from
+//     staging onto production (259 sessions / 28 d, 0 engaged, 0.02 s
+//     average, one session per user). Deterministic; #1619 does NOT remove
+//     these because the session is measured on the production host.
+//  2. sessionSource EXACT "accounts.google.com" — an OAuth round-trip is a
+//     login redirect, never an arrival (73 sessions from 4 users / 28 d).
+//     Deterministic.
+//  3. city NOT IN GA4_DATACENTER_CITIES — HEURISTIC. Every city below showed
+//     the datacenter signature on 2026-09-04: sessions == totalUsers, average
+//     session duration under 10 s, at least 10 sessions / 28 d. Glenview is
+//     96% of "bing / organic" landing on noindexed /recruit.html; Council
+//     Bluffs is GCP us-central1; Boardman is AWS us-west-2; the rest are
+//     Azure regions (GitHub Actions runners). A real person in one of these
+//     cities is excluded too — that is the accepted cost, and it is declared
+//     in the payload (visits.exclusions) so no reader mistakes the heuristic
+//     for a truth.
+//
+// What is NOT excluded, and is declared as the residual: the `(not set)` city
+// bucket (~170 sessions / 28 d, one session per user, ~7 s average) cannot be
+// classified either way and stays in. Dustin's own Zionsville/Indianapolis
+// sessions are a GA4 admin internal-traffic filter (his action), not code.
+//
+// Effect of the three rules on 2026-09-04, same window: 1,255 -> 474 sessions.
+//
+// GitHub: #1649, #1619, #1637, #1638
+export const GA4_EXCLUDED_SOURCE_SUBSTRINGS: string[] = ["netlify.app"];
+export const GA4_EXCLUDED_SOURCES_EXACT: string[] = ["accounts.google.com"];
+export const GA4_DATACENTER_CITIES: string[] = [
+  "Glenview",
+  "Council Bluffs",
+  "Boardman",
+  "Flint Hill",
+  "San Jose",
+  "Des Moines",
+  "Phoenix",
+  "Moses Lake",
+  "Cheyenne",
+  "Boydton",
+  "Prague",
+];
+
+// gh-1649: what the wire filter excludes, in the shape index.ts publishes as
+// `visits.exclusions` so #1638's page can render it instead of restating it.
+export interface Ga4Exclusions {
+  source_substrings: string[];
+  sources_exact: string[];
+  cities: string[];
+  residual: string;
+}
+
+export const GA4_EXCLUSIONS: Ga4Exclusions = {
+  source_substrings: GA4_EXCLUDED_SOURCE_SUBSTRINGS,
+  sources_exact: GA4_EXCLUDED_SOURCES_EXACT,
+  cities: GA4_DATACENTER_CITIES,
+  residual:
+    "City exclusion is a heuristic (sessions = users, <10 s average, >=10 sessions/28 d, measured " +
+    "2026-09-04). The `(not set)` city bucket cannot be classified and stays in; the owner's own " +
+    "sessions are a GA4 internal-traffic filter, not code.",
+};
+
 export interface ServiceAccount {
   client_email: string;
   private_key: string;
@@ -296,8 +364,8 @@ export const AUDIENCE_PREFIX_NOTE: Record<Audience, string> = {
 // branch) so a `not_run` result can still say what it WOULD have counted —
 // the page (#1638) renders that even when GA4 itself is unreachable.
 export type Ga4SessionsByDayResult =
-  | { ok: true; property_id: string; hosts: string[]; rows: Ga4DailyRow[] }
-  | { ok: false; reason: string; property_id: string; hosts: string[] };
+  | { ok: true; property_id: string; hosts: string[]; exclusions: Ga4Exclusions; rows: Ga4DailyRow[] }
+  | { ok: false; reason: string; property_id: string; hosts: string[]; exclusions: Ga4Exclusions };
 
 /**
  * Resolves the GA4 property id from GA4_PROPERTY_ID (validated as all-digit)
@@ -321,6 +389,8 @@ export function resolveGa4PropertyId(): string {
  * failing a test.
  */
 export function buildRunReportRequestBody(startDate: string, endDate: string): unknown {
+  // gh-1649: the host allow-list AND the three exclusion rules, as one
+  // andGroup, so the denominator every consumer receives is the same one.
   return {
     dateRanges: [{ startDate, endDate }],
     // gh-1639: pagePath is a DIMENSION added alongside date, inside the
@@ -332,9 +402,39 @@ export function buildRunReportRequestBody(startDate: string, endDate: string): u
     dimensions: [{ name: "date" }, { name: "pagePath" }],
     metrics: [{ name: "sessions" }],
     dimensionFilter: {
-      filter: {
-        fieldName: "hostName",
-        inListFilter: { values: GA4_PRODUCTION_HOSTS },
+      andGroup: {
+        expressions: [
+          {
+            filter: {
+              fieldName: "hostName",
+              inListFilter: { values: GA4_PRODUCTION_HOSTS },
+            },
+          },
+          ...GA4_EXCLUDED_SOURCE_SUBSTRINGS.map((value) => ({
+            notExpression: {
+              filter: {
+                fieldName: "sessionSource",
+                stringFilter: { matchType: "CONTAINS", value, caseSensitive: false },
+              },
+            },
+          })),
+          ...GA4_EXCLUDED_SOURCES_EXACT.map((value) => ({
+            notExpression: {
+              filter: {
+                fieldName: "sessionSource",
+                stringFilter: { matchType: "EXACT", value },
+              },
+            },
+          })),
+          {
+            notExpression: {
+              filter: {
+                fieldName: "city",
+                inListFilter: { values: GA4_DATACENTER_CITIES },
+              },
+            },
+          },
+        ],
       },
     },
   };
@@ -389,6 +489,7 @@ export async function fetchGa4SessionsByDay(
   // property_id/hosts" requirement.
   const propertyId = resolveGa4PropertyId();
   const hosts = GA4_PRODUCTION_HOSTS;
+  const exclusions = GA4_EXCLUSIONS;
 
   const sa = parseServiceAccountEnv(Deno.env.get("GA4_SERVICE_ACCOUNT_JSON") || "");
   if (!sa) {
@@ -399,6 +500,7 @@ export async function fetchGa4SessionsByDay(
         "(see ga4-report's gh-1331 config-error handling for the full diagnostic).",
       property_id: propertyId,
       hosts,
+      exclusions,
     };
   }
 
@@ -411,6 +513,7 @@ export async function fetchGa4SessionsByDay(
       reason: `GA4 auth failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 400),
       property_id: propertyId,
       hosts,
+      exclusions,
     };
   }
 
@@ -429,6 +532,7 @@ export async function fetchGa4SessionsByDay(
       reason: `GA4 request failed before a response was received: ${err instanceof Error ? err.message : String(err)}`.slice(0, 400),
       property_id: propertyId,
       hosts,
+      exclusions,
     };
   }
 
@@ -449,10 +553,11 @@ export async function fetchGa4SessionsByDay(
         "granted Viewer on this property yet (same failure mode ga4-report documents for gh-1331).",
       property_id: propertyId,
       hosts,
+      exclusions,
     };
   }
   if (!reportRes.ok) {
-    return { ok: false, reason: `GA4 Data API returned HTTP ${reportRes.status}`, property_id: propertyId, hosts };
+    return { ok: false, reason: `GA4 Data API returned HTTP ${reportRes.status}`, property_id: propertyId, hosts, exclusions };
   }
 
   let report: unknown;
@@ -464,8 +569,9 @@ export async function fetchGa4SessionsByDay(
       reason: "GA4 Data API returned a response that could not be parsed as JSON.",
       property_id: propertyId,
       hosts,
+      exclusions,
     };
   }
 
-  return { ok: true, property_id: propertyId, hosts, rows: parseSessionsByDayResponse(report) };
+  return { ok: true, property_id: propertyId, hosts, exclusions, rows: parseSessionsByDayResponse(report) };
 }

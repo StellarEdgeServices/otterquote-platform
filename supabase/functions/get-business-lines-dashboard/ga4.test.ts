@@ -22,6 +22,10 @@ import {
   normalizePagePath,
   parseServiceAccountEnv,
   parseSessionsByDayResponse,
+  GA4_DATACENTER_CITIES,
+  GA4_EXCLUDED_SOURCE_SUBSTRINGS,
+  GA4_EXCLUDED_SOURCES_EXACT,
+  GA4_EXCLUSIONS,
 } from "./ga4.ts";
 
 // --- parseSessionsByDayResponse -------------------------------------------
@@ -140,33 +144,114 @@ Deno.test("buildRunReportRequestBody: the body handed to fetch carries a hostNam
   // Round-trip through JSON exactly like fetch's `body: JSON.stringify(...)`
   // does, so this asserts on the actual serialised shape sent over the wire.
   const serialised = JSON.parse(JSON.stringify(body));
+  // gh-1649: the host allow-list is now the FIRST expression of an andGroup
+  // that also carries the three bot-exclusion rules. The exact wire shape is
+  // pinned here because a future "simplification" back to a bare filter
+  // would silently re-admit ~60% robots to every rate on the dashboard.
   assertEquals(serialised, {
     dateRanges: [{ startDate: "84daysAgo", endDate: "today" }],
     dimensions: [{ name: "date" }, { name: "pagePath" }],
     metrics: [{ name: "sessions" }],
     dimensionFilter: {
-      filter: {
-        fieldName: "hostName",
-        inListFilter: {
-          values: ["otterquote.com", "www.otterquote.com", "app.otterquote.com"],
-        },
+      andGroup: {
+        expressions: [
+          {
+            filter: {
+              fieldName: "hostName",
+              inListFilter: {
+                values: ["otterquote.com", "www.otterquote.com", "app.otterquote.com"],
+              },
+            },
+          },
+          {
+            notExpression: {
+              filter: {
+                fieldName: "sessionSource",
+                stringFilter: { matchType: "CONTAINS", value: "netlify.app", caseSensitive: false },
+              },
+            },
+          },
+          {
+            notExpression: {
+              filter: {
+                fieldName: "sessionSource",
+                stringFilter: { matchType: "EXACT", value: "accounts.google.com" },
+              },
+            },
+          },
+          {
+            notExpression: {
+              filter: {
+                fieldName: "city",
+                inListFilter: {
+                  values: [
+                    "Glenview",
+                    "Council Bluffs",
+                    "Boardman",
+                    "Flint Hill",
+                    "San Jose",
+                    "Des Moines",
+                    "Phoenix",
+                    "Moses Lake",
+                    "Cheyenne",
+                    "Boydton",
+                    "Prague",
+                  ],
+                },
+              },
+            },
+          },
+        ],
       },
     },
   });
 });
 
-Deno.test("buildRunReportRequestBody: pagePath is a DIMENSION only, not folded into the hostName dimensionFilter (gh-1639 — 'do not filter paths out; bucket them')", () => {
-  const body = buildRunReportRequestBody("84daysAgo", "today") as {
-    dimensionFilter: { filter: { fieldName: string } };
+type AndGroupBody = {
+  dimensions: Array<{ name: string }>;
+  dimensionFilter: {
+    andGroup: {
+      expressions: Array<{
+        filter?: { fieldName: string; inListFilter?: { values: string[] } };
+        notExpression?: { filter: { fieldName: string; inListFilter?: { values: string[] }; stringFilter?: { value: string } } };
+      }>;
+    };
   };
-  assertEquals(body.dimensionFilter.filter.fieldName, "hostName");
+};
+
+Deno.test("buildRunReportRequestBody: pagePath is a DIMENSION only, not folded into the andGroup filter (gh-1639 — 'do not filter paths out; bucket them' — survives gh-1649's andGroup rewrite)", () => {
+  const body = buildRunReportRequestBody("84daysAgo", "today") as AndGroupBody;
+  assertEquals(body.dimensions, [{ name: "date" }, { name: "pagePath" }]);
+  const fieldNames = body.dimensionFilter.andGroup.expressions.map(
+    (e) => e.filter?.fieldName ?? e.notExpression?.filter.fieldName,
+  );
+  assertEquals(fieldNames.includes("pagePath"), false);
 });
 
 Deno.test("buildRunReportRequestBody: the filter's host list is GA4_PRODUCTION_HOSTS itself, not a hand-copied duplicate", () => {
-  const body = buildRunReportRequestBody("90daysAgo", "today") as {
-    dimensionFilter: { filter: { inListFilter: { values: string[] } } };
-  };
-  assertEquals(body.dimensionFilter.filter.inListFilter.values, GA4_PRODUCTION_HOSTS);
+  const body = buildRunReportRequestBody("90daysAgo", "today") as AndGroupBody;
+  assertEquals(body.dimensionFilter.andGroup.expressions[0].filter?.inListFilter?.values, GA4_PRODUCTION_HOSTS);
+});
+
+// --- gh-1649: bot exclusion rules ----------------------------------------
+
+Deno.test("buildRunReportRequestBody: the city exclusion is GA4_DATACENTER_CITIES itself and every source exclusion is a notExpression on sessionSource (gh-1649)", () => {
+  const body = buildRunReportRequestBody("28daysAgo", "yesterday") as AndGroupBody;
+  const nots = body.dimensionFilter.andGroup.expressions.filter((e) => e.notExpression);
+  const cityRule = nots.find((e) => e.notExpression?.filter.fieldName === "city");
+  assertEquals(cityRule?.notExpression?.filter.inListFilter?.values, GA4_DATACENTER_CITIES);
+  const sourceValues = nots
+    .filter((e) => e.notExpression?.filter.fieldName === "sessionSource")
+    .map((e) => e.notExpression?.filter.stringFilter?.value);
+  assertEquals(sourceValues, [...GA4_EXCLUDED_SOURCE_SUBSTRINGS, ...GA4_EXCLUDED_SOURCES_EXACT]);
+});
+
+Deno.test("GA4_EXCLUSIONS: the payload-facing declaration is built from the same constants the wire filter uses, and names its residual (gh-1649)", () => {
+  assertEquals(GA4_EXCLUSIONS.source_substrings, GA4_EXCLUDED_SOURCE_SUBSTRINGS);
+  assertEquals(GA4_EXCLUSIONS.sources_exact, GA4_EXCLUDED_SOURCES_EXACT);
+  assertEquals(GA4_EXCLUSIONS.cities, GA4_DATACENTER_CITIES);
+  assertEquals(GA4_EXCLUSIONS.residual.includes("heuristic"), true);
+  assertEquals(GA4_EXCLUSIONS.residual.includes("(not set)"), true);
 });
 
 Deno.test("GA4_PRODUCTION_HOSTS: is exactly the three production hosts named in the issue, www included though it reports zero sessions today", () => {
