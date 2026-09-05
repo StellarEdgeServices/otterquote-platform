@@ -130,6 +130,17 @@ const mod = [
   // gh-1574 (#1340 phase 5) — GA4 visits weekly series.
   grabConst("GA4_VISITS_CAVEAT").replace("const GA4_VISITS_CAVEAT", "export const GA4_VISITS_CAVEAT"),
   grabConst("GA4_VISITS_NOTE").replace("const GA4_VISITS_NOTE", "export const GA4_VISITS_NOTE"),
+  // gh-1639 fix — the declared invariant tolerance and its payload block.
+  grabConst("GA4_INVARIANT_TOLERANCE_PCT").replace(
+    "const GA4_INVARIANT_TOLERANCE_PCT",
+    "export const GA4_INVARIANT_TOLERANCE_PCT",
+  ),
+  grabConst("GA4_INVARIANT_TOLERANCE_RULE").replace(
+    "const GA4_INVARIANT_TOLERANCE_RULE",
+    "export const GA4_INVARIANT_TOLERANCE_RULE",
+  ),
+  grabBlock("interface VisitsInvariant").replace("interface VisitsInvariant", "export interface VisitsInvariant"),
+  grabBlock("function invariantWithout(").replace("function invariantWithout(", "export function invariantWithout("),
   grabBlock("function ga4DateToIso(").replace("function ga4DateToIso(", "export function ga4DateToIso("),
   grabBlock("interface WeightedDatedRow").replace(
     "interface WeightedDatedRow",
@@ -141,10 +152,14 @@ const mod = [
     "export function buildVisitsSeries(",
   ),
   // gh-1639 (#1340 phase 5c) — per-audience visits denominators.
-  `import { AUDIENCE_PREFIX_NOTE, bucketPagePath } from "${ga4ModuleUrl}";`,
+  `import { AUDIENCE_PREFIX_NOTE, bucketPagePath, isUnresolvedLandingPage } from "${ga4ModuleUrl}";`,
   grabBlock("function sumInvariantMismatches(").replace(
     "function sumInvariantMismatches(",
     "export function sumInvariantMismatches(",
+  ),
+  grabBlock("function invariantToleranceValues(").replace(
+    "function invariantToleranceValues(",
+    "export function invariantToleranceValues(",
   ),
   grabBlock("function buildAudienceVisitsSeries(").replace(
     "function buildAudienceVisitsSeries(",
@@ -165,10 +180,12 @@ const {
   MARKETING_WEEKS,
   GA4_VISITS_CAVEAT,
   GA4_VISITS_NOTE,
+  GA4_INVARIANT_TOLERANCE_RULE,
   ga4DateToIso,
   sumByWeek,
   buildVisitsSeries,
   sumInvariantMismatches,
+  invariantToleranceValues,
   buildAudienceVisitsSeries,
   // deno-lint-ignore no-explicit-any
 } = await import(url) as any;
@@ -406,13 +423,18 @@ Deno.test("buildVisitsSeries: a successful GA4 fetch with sessions produces a me
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE,
       exclusions: GA4_EXCLUSIONS_FIXTURE,
-      rows: [{ date: dayInLastWindow, sessions: 421 }],
+      rows: [],
+      site_rows: [{ date: dayInLastWindow, sessions: 421 }],
     },
     windows,
   );
   assertEquals(series.kind, "measured");
   assertEquals(series.unit, "sessions");
   assertEquals(series.total, 421);
+  // gh-1639 fix: the site total IS the reference the buckets are checked
+  // against, and says so.
+  assertEquals(series.invariant.status, "reference");
+  assertEquals(series.invariant.rule, GA4_INVARIANT_TOLERANCE_RULE);
   assertEquals(series.values[11], 421);
   assertEquals(series.caveat, GA4_VISITS_CAVEAT);
   assertEquals(series.note, GA4_VISITS_NOTE);
@@ -424,7 +446,7 @@ Deno.test("buildVisitsSeries: a successful GA4 fetch with no rows is a real meas
   const windows = buildWeekWindows(NOW, 12);
   const series = buildVisitsSeries(
     { ok: true, property_id: "541423859", hosts: GA4_HOSTS_FIXTURE,
-      exclusions: GA4_EXCLUSIONS_FIXTURE, rows: [] },
+      exclusions: GA4_EXCLUSIONS_FIXTURE, rows: [], site_rows: [] },
     windows,
   );
   assertEquals(series.kind, "measured_zero");
@@ -461,7 +483,8 @@ Deno.test("buildVisitsSeries: sessions from multiple days land in their own resp
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE,
       exclusions: GA4_EXCLUSIONS_FIXTURE,
-      rows: [
+      rows: [],
+      site_rows: [
         { date: "20260901", sessions: 100 }, // last window (NOW's day)
         { date: "20260701", sessions: 50 },  // an earlier window
       ],
@@ -480,7 +503,7 @@ Deno.test("buildVisitsSeries: a successful GA4 fetch declares scope/property_id/
   const windows = buildWeekWindows(NOW, 12);
   const series = buildVisitsSeries(
     { ok: true, property_id: "541423859", hosts: GA4_HOSTS_FIXTURE,
-      exclusions: GA4_EXCLUSIONS_FIXTURE, rows: [{ date: "20260901", sessions: 10 }] },
+      exclusions: GA4_EXCLUSIONS_FIXTURE, rows: [], site_rows: [{ date: "20260901", sessions: 10 }] },
     windows,
   );
   assertEquals(series.scope, "production");
@@ -506,6 +529,33 @@ Deno.test("buildVisitsSeries: a not_run result STILL carries scope/property_id/h
   assertEquals(series.hosts, GA4_HOSTS_FIXTURE);
 });
 
+// gh-1639 fix: v13's visits_site_total summed the pagePath-dimensioned rows
+// (1,464 over 84 days) instead of the site's sessions (827). The site total
+// must now come from `site_rows` (the [date]-only read) and NEVER from the
+// dimensioned `rows` — this fixture makes the two disagree by the measured
+// 1.77x so summing the wrong one is a red test.
+Deno.test("buildVisitsSeries: the site total is summed from site_rows (the date-only read), never from the landingPage-dimensioned rows (gh-1639 fix — v13 summed 1,464 where the site had 827)", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const series = buildVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE,
+      exclusions: GA4_EXCLUSIONS_FIXTURE,
+      rows: [
+        { date: "20260901", landingPage: "/", sessions: 639 },
+        { date: "20260901", landingPage: "/recruit", sessions: 431 },
+        { date: "20260901", landingPage: "/partners", sessions: 250 },
+        { date: "20260901", landingPage: "/login", sessions: 144 },
+      ], // sums to 1,464 — the v13 inflation
+      site_rows: [{ date: "20260901", sessions: 827 }],
+    },
+    windows,
+  );
+  assertEquals(series.total, 827);
+  assertEquals(series.values[11], 827);
+});
+
 // --- gh-1639 (#1340 phase 5c): sumInvariantMismatches ----------------------
 //
 // A synthetic row set whose buckets SUM (the happy path buildAudienceVisits
@@ -529,7 +579,7 @@ Deno.test("sumInvariantMismatches: buckets that sum correctly to the site total,
     [1, 1],
   ];
   const siteTotals = [16, 24]; // 10+5+0+1=16, 20+0+3+1=24
-  assertEquals(sumInvariantMismatches(buckets, siteTotals, windows), []);
+  assertEquals(sumInvariantMismatches(buckets, siteTotals, [0, 0], windows), []);
 });
 
 Deno.test("sumInvariantMismatches: a synthetic row set whose buckets do NOT sum to the site total fails closed with a reason naming the discrepancy", () => {
@@ -547,11 +597,47 @@ Deno.test("sumInvariantMismatches: a synthetic row set whose buckets do NOT sum 
   // "independently computed" site total disagrees — simulating a dropped or
   // double-counted row somewhere in the mapping.
   const siteTotals = [16, 30];
-  const mismatches = sumInvariantMismatches(buckets, siteTotals, windows);
+  const mismatches = sumInvariantMismatches(buckets, siteTotals, [0, 0], windows);
   assertEquals(mismatches.length, 1);
   assertEquals(mismatches[0].includes("window 1"), true);
   assertEquals(mismatches[0].includes("buckets sum to 24"), true);
   assertEquals(mismatches[0].includes("site total is 30"), true);
+  assertEquals(mismatches[0].includes("tolerance 0"), true);
+});
+
+// gh-1639 fix: the tolerance is per window and inclusive — a difference
+// exactly AT the tolerance passes, one past it fails.
+Deno.test("sumInvariantMismatches: a difference within (or exactly at) the window's tolerance is not a mismatch; one past it is", () => {
+  const windows = [
+    { week_start: "a0", week_end: "a1" },
+    { week_start: "b0", week_end: "b1" },
+    { week_start: "c0", week_end: "c1" },
+  ];
+  const buckets = [[331, 64, 97]]; // measured 2026-09-05 window -0: 331 landingPage vs 311 date-only
+  const siteTotals = [311, 64, 97];
+  assertEquals(sumInvariantMismatches(buckets, siteTotals, [20, 0, 0], windows), []); // exactly at tolerance
+  assertEquals(sumInvariantMismatches(buckets, siteTotals, [26, 2, 2], windows), []); // within
+  const over = sumInvariantMismatches(buckets, siteTotals, [19, 0, 0], windows); // one past
+  assertEquals(over.length, 1);
+  assertEquals(over[0].includes("window 0"), true);
+  assertEquals(over[0].includes("tolerance 19"), true);
+});
+
+Deno.test("sumInvariantMismatches: the tolerance is symmetric — a bucket sum BELOW the site total by more than the tolerance is a mismatch too (a short denominator inflates conversion)", () => {
+  const windows = [{ week_start: "a0", week_end: "a1" }];
+  assertEquals(sumInvariantMismatches([[300]], [311], [10], windows), []);
+  assertEquals(sumInvariantMismatches([[290]], [311], [10], windows).length, 1);
+});
+
+Deno.test("invariantToleranceValues: per window, max(unresolved landing sessions, ceil(2% of the date-only total)) — both components, declared in GA4_INVARIANT_TOLERANCE_RULE", () => {
+  // window 0: measured 2026-09-05 current day — 23 unresolved beats ceil(0.02*311)=7
+  // window 1: 0 unresolved, ceil(0.02*64)=2 floor applies
+  // window 2: 4 unresolved vs ceil(0.02*97)=2 -> 4
+  // window 3: an empty window is tolerance 0, not NaN
+  assertEquals(invariantToleranceValues([23, 0, 4, 0], [311, 64, 97, 0]), [23, 2, 4, 0]);
+  assertEquals(GA4_INVARIANT_TOLERANCE_RULE.includes("max("), true);
+  assertEquals(GA4_INVARIANT_TOLERANCE_RULE.includes("2%"), true);
+  assertEquals(GA4_INVARIANT_TOLERANCE_RULE.includes("(not set)"), true);
 });
 
 Deno.test("sumInvariantMismatches: multiple disagreeing windows are all named, not just the first", () => {
@@ -561,13 +647,23 @@ Deno.test("sumInvariantMismatches: multiple disagreeing windows are all named, n
   ];
   const buckets = [[1, 1]];
   const siteTotals = [2, 3]; // window 0 agrees (1===2? no) -- both disagree
-  const mismatches = sumInvariantMismatches(buckets, siteTotals, windows);
+  const mismatches = sumInvariantMismatches(buckets, siteTotals, [0, 0], windows);
   assertEquals(mismatches.length, 2);
 });
 
 // --- gh-1639: buildAudienceVisitsSeries ------------------------------------
 
 const GA4_HOSTS_FIXTURE_1639 = ["otterquote.com", "www.otterquote.com", "app.otterquote.com"];
+
+// gh-1639 fix: a synthetic [date]-only site read that is ADDITIVE with the
+// given landingPage rows — what GA4 measurably returns for closed days (61/61
+// exact on 2026-09-05). The negative controls below deliberately do NOT use
+// it, handing in a site total that disagrees instead.
+function additiveSiteRows(rows: Array<{ date: string; sessions: number }>): Array<{ date: string; sessions: number }> {
+  const byDate = new Map<string, number>();
+  for (const r of rows) byDate.set(r.date, (byDate.get(r.date) ?? 0) + r.sessions);
+  return [...byDate.entries()].map(([date, sessions]) => ({ date, sessions }));
+}
 
 Deno.test("buildAudienceVisitsSeries: a GA4 fetch failure is not_run on ALL FOUR audiences, each still carrying scope/property_id/hosts/note", () => {
   const windows = buildWeekWindows(NOW, 12);
@@ -590,7 +686,7 @@ Deno.test("buildAudienceVisitsSeries: a GA4 fetch failure is not_run on ALL FOUR
   }
 });
 
-Deno.test("buildAudienceVisitsSeries: buckets rows by pagePath into the correct audience and each carries its own note", () => {
+Deno.test("buildAudienceVisitsSeries: buckets rows by landingPage into the correct audience and each carries its own note", () => {
   const windows = buildWeekWindows(NOW, 12);
   const dayInLastWindow = "20260901"; // NOW is 2026-09-01T18:00:00Z
   const result = buildAudienceVisitsSeries(
@@ -599,11 +695,17 @@ Deno.test("buildAudienceVisitsSeries: buckets rows by pagePath into the correct 
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE_1639,
       rows: [
-        { date: dayInLastWindow, pagePath: "/get-started", sessions: 100 }, // homeowner
-        { date: dayInLastWindow, pagePath: "/contractor-join", sessions: 50 }, // contractor
-        { date: dayInLastWindow, pagePath: "/ref", sessions: 10 }, // referral_partner
-        { date: dayInLastWindow, pagePath: "/login", sessions: 5 }, // unattributed
+        { date: dayInLastWindow, landingPage: "/get-started", sessions: 100 }, // homeowner
+        { date: dayInLastWindow, landingPage: "/contractor-join", sessions: 50 }, // contractor
+        { date: dayInLastWindow, landingPage: "/ref", sessions: 10 }, // referral_partner
+        { date: dayInLastWindow, landingPage: "/login", sessions: 5 }, // unattributed
       ],
+      site_rows: additiveSiteRows([
+        { date: dayInLastWindow, landingPage: "/get-started", sessions: 100 }, // homeowner
+        { date: dayInLastWindow, landingPage: "/contractor-join", sessions: 50 }, // contractor
+        { date: dayInLastWindow, landingPage: "/ref", sessions: 10 }, // referral_partner
+        { date: dayInLastWindow, landingPage: "/login", sessions: 5 }, // unattributed
+      ]),
     },
     windows,
   );
@@ -620,7 +722,7 @@ Deno.test("buildAudienceVisitsSeries: buckets rows by pagePath into the correct 
   }
 });
 
-Deno.test("buildAudienceVisitsSeries: the four buckets sum, window by window, to the independently-computed site-wide total (item 5's invariant, exercised end to end)", () => {
+Deno.test("buildAudienceVisitsSeries: the four buckets agree, window by window, with the SEPARATE date-only site read (item 5's invariant, exercised end to end, gh-1639 fix)", () => {
   const windows = buildWeekWindows(NOW, 12);
   const dayInLastWindow = "20260901";
   const earlierDay = "20260701";
@@ -630,11 +732,17 @@ Deno.test("buildAudienceVisitsSeries: the four buckets sum, window by window, to
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE_1639,
       rows: [
-        { date: dayInLastWindow, pagePath: "/get-started", sessions: 100 },
-        { date: dayInLastWindow, pagePath: "/contractor-join", sessions: 50 },
-        { date: earlierDay, pagePath: "/ref", sessions: 10 },
-        { date: earlierDay, pagePath: "/some-future-page", sessions: 5 },
+        { date: dayInLastWindow, landingPage: "/get-started", sessions: 100 },
+        { date: dayInLastWindow, landingPage: "/contractor-join", sessions: 50 },
+        { date: earlierDay, landingPage: "/ref", sessions: 10 },
+        { date: earlierDay, landingPage: "/some-future-page", sessions: 5 },
       ],
+      site_rows: additiveSiteRows([
+        { date: dayInLastWindow, landingPage: "/get-started", sessions: 100 },
+        { date: dayInLastWindow, landingPage: "/contractor-join", sessions: 50 },
+        { date: earlierDay, landingPage: "/ref", sessions: 10 },
+        { date: earlierDay, landingPage: "/some-future-page", sessions: 5 },
+      ]),
     },
     windows,
   );
@@ -642,10 +750,136 @@ Deno.test("buildAudienceVisitsSeries: the four buckets sum, window by window, to
   const bucketTotal = result.homeowner.total + result.contractor.total + result.referral_partner.total +
     result.unattributed.total;
   assertEquals(bucketTotal, siteTotal);
-  // Never not_run when the invariant holds.
+  // Never not_run when the invariant holds, and the payload says so with
+  // the numbers it was checked against.
   for (const aud of ["homeowner", "contractor", "referral_partner", "unattributed"] as const) {
     assertEquals(result[aud].kind !== "not_run", true);
+    assertEquals(result[aud].invariant.status, "passed");
+    assertEquals(result[aud].invariant.rule, GA4_INVARIANT_TOLERANCE_RULE);
+    assertEquals(result[aud].invariant.mismatches, []);
+    assertEquals(result[aud].invariant.bucket_sum_values[11], 150);
+    assertEquals(result[aud].invariant.site_total_values[11], 150);
   }
+});
+
+// --- gh-1639 fix: the NON-tautological invariant, negative controls --------
+//
+// The v13 defect, replayed as a fixture: the four buckets carry the measured
+// pagePath-dimensioned totals (639/431/250/144 = 1,464 over 84 days) while
+// the separate date-only read says 827. v13's invariant summed the same rows
+// on both sides and passed; this one must fail closed.
+Deno.test("buildAudienceVisitsSeries NEGATIVE CONTROL: a non-additive row set (v13's measured 1,464 pagePath buckets vs 827 site-wide) fails the invariant closed — all four not_run, invariant.status 'failed', reason names the window", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+      rows: [
+        { date: "20260901", landingPage: "/", sessions: 639 },
+        { date: "20260901", landingPage: "/recruit", sessions: 431 },
+        { date: "20260901", landingPage: "/partners", sessions: 250 },
+        { date: "20260901", landingPage: "/login", sessions: 144 },
+      ],
+      site_rows: [{ date: "20260901", sessions: 827 }],
+    },
+    windows,
+  );
+  for (const aud of ["homeowner", "contractor", "referral_partner", "unattributed"] as const) {
+    assertEquals(result[aud].kind, "not_run");
+    assertEquals(result[aud].total, 0);
+    assertEquals(result[aud].invariant.status, "failed");
+    assertEquals(result[aud].invariant.bucket_sum_values[11], 1464);
+    assertEquals(result[aud].invariant.site_total_values[11], 827);
+    assertEquals(result[aud].invariant.tolerance_values[11], 17); // ceil(0.02 * 827), no unresolved rows
+    assertEquals(result[aud].invariant.mismatches.length, 1);
+    assertEquals(String(result[aud].reason).includes("gh-1639 sum invariant failed"), true);
+    assertEquals(String(result[aud].reason).includes("buckets sum to 1464"), true);
+    assertEquals(String(result[aud].reason).includes("date-only site total is 827"), true);
+    assertEquals(String(result[aud].reason).includes("window 11"), true);
+  }
+});
+
+// The measured 2026-09-05 current-day shape: landingPage buckets 331 vs
+// date-only 311 with 23 blank/"(not set)" landing rows. Within the declared
+// tolerance (23 unresolved >= the 20 gap) -> passes, and the unresolved rows
+// are unattributed, not dropped.
+Deno.test("buildAudienceVisitsSeries: an intraday gap bounded by unresolved (blank / '(not set)') landing rows is within the declared tolerance — passes, unresolved rows counted as unattributed", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+      rows: [
+        { date: "20260901", landingPage: "/", sessions: 200 },
+        { date: "20260901", landingPage: "/recruit", sessions: 80 },
+        { date: "20260901", landingPage: "/partners", sessions: 28 },
+        { date: "20260901", landingPage: "(not set)", sessions: 13 },
+        { date: "20260901", landingPage: "", sessions: 10 },
+      ], // 331
+      site_rows: [{ date: "20260901", sessions: 311 }],
+    },
+    windows,
+  );
+  assertEquals(result.homeowner.kind, "measured");
+  assertEquals(result.homeowner.total, 200);
+  assertEquals(result.unattributed.total, 23);
+  assertEquals(result.homeowner.invariant.status, "passed");
+  assertEquals(result.homeowner.invariant.bucket_sum_values[11], 331);
+  assertEquals(result.homeowner.invariant.site_total_values[11], 311);
+  assertEquals(result.homeowner.invariant.tolerance_values[11], 23); // max(23 unresolved, ceil(0.02*311)=7)
+});
+
+Deno.test("buildAudienceVisitsSeries NEGATIVE CONTROL: a gap LARGER than the unresolved rows and the 2% floor fails closed even when small in absolute terms", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+      rows: [
+        { date: "20260901", landingPage: "/", sessions: 100 },
+        { date: "20260901", landingPage: "(not set)", sessions: 2 },
+      ], // 102 vs 90: gap 12 > max(2 unresolved, ceil(0.02*90)=2)
+      site_rows: [{ date: "20260901", sessions: 90 }],
+    },
+    windows,
+  );
+  assertEquals(result.homeowner.kind, "not_run");
+  assertEquals(result.homeowner.invariant.status, "failed");
+  assertEquals(result.homeowner.invariant.tolerance_values[11], 2);
+});
+
+Deno.test("buildAudienceVisitsSeries: a window where the date-only read has sessions but the landingPage read has none fails closed (a short denominator is the conversion-inflating direction)", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const result = buildAudienceVisitsSeries(
+    {
+      ok: true,
+      property_id: "541423859",
+      hosts: GA4_HOSTS_FIXTURE_1639,
+      rows: [{ date: "20260901", landingPage: "/", sessions: 100 }],
+      site_rows: [
+        { date: "20260901", sessions: 100 },
+        { date: "20260701", sessions: 50 }, // an earlier window the buckets have nothing for
+      ],
+    },
+    windows,
+  );
+  assertEquals(result.homeowner.kind, "not_run");
+  assertEquals(result.homeowner.invariant.status, "failed");
+  assertEquals(result.homeowner.invariant.mismatches.length, 1);
+  assertEquals(result.homeowner.invariant.mismatches[0].includes("buckets sum to 0"), true);
+});
+
+Deno.test("buildAudienceVisitsSeries: a GA4 fetch failure carries invariant.status 'not_run' (the check never ran) — distinct from 'failed'", () => {
+  const windows = buildWeekWindows(NOW, 12);
+  const result = buildAudienceVisitsSeries(
+    { ok: false, reason: "GA4 Data API returned HTTP 500 (site-total read)", property_id: "541423859", hosts: GA4_HOSTS_FIXTURE_1639 },
+    windows,
+  );
+  assertEquals(result.contractor.invariant.status, "not_run");
+  assertEquals(result.contractor.invariant.rule, GA4_INVARIANT_TOLERANCE_RULE);
 });
 
 Deno.test("buildAudienceVisitsSeries: an audience with zero rows this window is a real measured_zero, not not_run and not dropped", () => {
@@ -655,7 +889,8 @@ Deno.test("buildAudienceVisitsSeries: an audience with zero rows this window is 
       ok: true,
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE_1639,
-      rows: [{ date: "20260901", pagePath: "/get-started", sessions: 10 }], // homeowner only
+      rows: [{ date: "20260901", landingPage: "/get-started", sessions: 10 }], // homeowner only
+      site_rows: additiveSiteRows([{ date: "20260901", landingPage: "/get-started", sessions: 10 }]),
     },
     windows,
   );
@@ -665,7 +900,7 @@ Deno.test("buildAudienceVisitsSeries: an audience with zero rows this window is 
   assertEquals(result.unattributed.kind, "measured_zero");
 });
 
-Deno.test("buildAudienceVisitsSeries: multiple pagePaths in the same audience in the same week accumulate rather than overwrite", () => {
+Deno.test("buildAudienceVisitsSeries: multiple landingPages in the same audience in the same week accumulate rather than overwrite", () => {
   const windows = buildWeekWindows(NOW, 12);
   const result = buildAudienceVisitsSeries(
     {
@@ -673,10 +908,15 @@ Deno.test("buildAudienceVisitsSeries: multiple pagePaths in the same audience in
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE_1639,
       rows: [
-        { date: "20260901", pagePath: "/get-started", sessions: 100 },
-        { date: "20260901", pagePath: "/claim", sessions: 20 }, // also homeowner
-        { date: "20260901", pagePath: "/blog/roofing", sessions: 5 }, // also homeowner (prefix)
+        { date: "20260901", landingPage: "/get-started", sessions: 100 },
+        { date: "20260901", landingPage: "/claim", sessions: 20 }, // also homeowner
+        { date: "20260901", landingPage: "/blog/roofing", sessions: 5 }, // also homeowner (prefix)
       ],
+      site_rows: additiveSiteRows([
+        { date: "20260901", landingPage: "/get-started", sessions: 100 },
+        { date: "20260901", landingPage: "/claim", sessions: 20 }, // also homeowner
+        { date: "20260901", landingPage: "/blog/roofing", sessions: 5 }, // also homeowner (prefix)
+      ]),
     },
     windows,
   );
@@ -684,7 +924,7 @@ Deno.test("buildAudienceVisitsSeries: multiple pagePaths in the same audience in
 });
 
 // gh-1639 fix (fresh-context refuter comment 5548057089, PR #1674): the raw
-// GA4 pagePath for the /guides and /blog section-index pages themselves
+// GA4 landingPage (then pagePath) for the /guides and /blog section-index pages themselves
 // (not a sub-page under them) is exactly "/guides/" / "/blog/" — with the
 // trailing slash, since that IS the real page. Before this fix,
 // normalizePagePath stripped that slash to "/guides"/"/blog" and
@@ -701,9 +941,13 @@ Deno.test("buildAudienceVisitsSeries: /guides/ and /blog/ section-index visits (
       property_id: "541423859",
       hosts: GA4_HOSTS_FIXTURE_1639,
       rows: [
-        { date: "20260901", pagePath: "/guides/", sessions: 40 },
-        { date: "20260901", pagePath: "/blog/", sessions: 25 },
+        { date: "20260901", landingPage: "/guides/", sessions: 40 },
+        { date: "20260901", landingPage: "/blog/", sessions: 25 },
       ],
+      site_rows: additiveSiteRows([
+        { date: "20260901", landingPage: "/guides/", sessions: 40 },
+        { date: "20260901", landingPage: "/blog/", sessions: 25 },
+      ]),
     },
     windows,
   );

@@ -75,17 +75,27 @@
  * half) and #1639 can render what was actually counted instead of assuming.
  *
  * gh-1639 (#1340 phase 5c): each audience's `marketing.visits` is now ITS
- * OWN series (not the shared site-wide one) — the same GA4 read now also
- * carries a `pagePath` dimension, normalised and bucketed by
- * longest-matching prefix (ga4.ts: normalizePagePath, bucketPagePath) into
- * homeowner / contractor / referral_partner / unattributed
- * (buildAudienceVisitsSeries below). The four buckets are asserted to sum,
- * window by window, to the SAME site-wide total computed independently from
- * the same rows — any disagreement fails all four to `not_run` rather than
- * risk a silently short (conversion-inflating) denominator. The site-wide
- * total and the unattributed bucket both move to the line-level payload
- * (`lines[key=otterquotes].visits_site_total` / `.visits_unattributed`),
- * since neither belongs to one specific audience tab.
+ * OWN series (not the shared site-wide one) — the GA4 client issues a
+ * `[date, landingPage]` read, normalised and bucketed by longest-matching
+ * prefix (ga4.ts: normalizePagePath, bucketPagePath) into homeowner /
+ * contractor / referral_partner / unattributed (buildAudienceVisitsSeries
+ * below). The site-wide total and the unattributed bucket both live on the
+ * line-level payload (`lines[key=otterquotes].visits_site_total` /
+ * `.visits_unattributed`), since neither belongs to one specific audience
+ * tab.
+ *
+ * gh-1639 fix (v13 defect, CTO verification comment 5549189354): v13
+ * dimensioned by `pagePath`, across which GA4 `sessions` is NOT additive
+ * (one count per page viewed) — measured 1,464 bucketed vs 827 site-wide
+ * over 84 days, and `visits_site_total` summed the same inflated rows, so
+ * every denominator moved +77% and the item-5 invariant (both sides from
+ * the same rows) could not see it. Now: buckets come from `landingPage`
+ * (one entry page per session — additive; measured exactly equal to the
+ * date-only read on all 61 closed days), `visits_site_total` comes from a
+ * SEPARATE `[date]`-only read on the identical filter, and the invariant
+ * compares the two reads window by window against a DECLARED tolerance
+ * (GA4_INVARIANT_TOLERANCE_RULE) — over it, all four audience series fail
+ * closed to `not_run` and carry `invariant.status = "failed"`.
  *
  * Read-only. No writes, no schema change, no other EF touched.
  *
@@ -110,6 +120,7 @@ import {
   AUDIENCE_PREFIX_NOTE,
   bucketPagePath,
   fetchGa4SessionsByDay,
+  isUnresolvedLandingPage,
   type Audience,
   type Ga4Exclusions,
   type Ga4SessionsByDayResult,
@@ -332,12 +343,42 @@ const GA4_VISITS_CAVEAT =
   "rule is a heuristic and the `(not set)` city bucket cannot be classified. The property " +
   "itself stays polluted by staging and localhost traffic for historical windows (#1619).";
 
-// gh-1574: all three audiences source the SAME site-wide GA4 property until
-// per-audience GA4 dimensions exist — the issue asks that this be said in
-// the payload, not just in this comment.
+// gh-1574: this note rode on every audience's `visits` while all three
+// shared one site-wide series. gh-1639 gave each audience its own
+// landingPage-bucketed series (AUDIENCE_PREFIX_NOTE in ga4.ts carries the
+// per-audience declaration); this note now describes only the line-level
+// `visits_site_total`, and says which read it is — the gh-1639 fix made it
+// a SEPARATE date-only read, not a sum of the bucketed rows.
 const GA4_VISITS_NOTE =
-  "Sourced from the site-wide GA4 property (541423859), not this audience specifically — " +
-  "per-audience GA4 dimensions do not exist yet (gh-1574).";
+  "Site-wide total from the GA4 `[date]`-only read of property 541423859 (sessions summed per " +
+  "day, the same read v12 used) — NOT a sum of the per-audience buckets. The per-audience " +
+  "denominators are the landingPage-bucketed split of the same property on the identical filter " +
+  "and are checked against this series window by window (see `invariant` on each; gh-1639).";
+
+// gh-1639 fix: the sum invariant's declared tolerance. Per window, the four
+// landingPage buckets may differ from the date-only site total by at most
+//   max( unresolved-landing sessions in that window,
+//        ceil(GA4_INVARIANT_TOLERANCE_PCT * site total for that window) ).
+// Why each component, measured 2026-09-05 (84 days, production andGroup
+// filter, property 541423859): the [date, landingPage] rows summed EXACTLY
+// to the [date]-only rows on all 61 closed days (0 difference); the only
+// gap (+20 sessions) sat on the current, still-processing day and was
+// bounded by that day's 23 blank / "(not set)" landing rows — GA4 has not
+// resolved those sessions' entry page yet, and they bucket to
+// unattributed. The percentage floor is a guard for a residual not seen
+// in that measurement (e.g. a midnight-spanning session dated differently
+// by the two reads), sized so that a 1.77x pagePath-style inflation — the
+// v13 defect — can never pass. Both components are declared on the payload
+// (invariant.rule) beside the per-window numbers, so no reader has to trust
+// a bare "passed".
+const GA4_INVARIANT_TOLERANCE_PCT = 0.02;
+const GA4_INVARIANT_TOLERANCE_RULE =
+  "Per window: |sum(four landingPage buckets) - date-only site total| must be <= " +
+  "max(sessions in that window whose landingPage GA4 left blank or \"(not set)\", " +
+  "ceil(2% of that window's date-only site total)). Over it, all four audience series are " +
+  "not_run (fail closed). Basis, measured 2026-09-05 over 84 days on the production filter: " +
+  "landingPage buckets equalled the date-only total exactly on all 61 closed days; the current " +
+  "day differed by +20 with 23 unresolved landing rows (gh-1639).";
 
 // gh-1637: `scope` / `property_id` / `hosts` are a PINNED payload contract —
 // #1638 (the page half) and #1639 are written against these exact key
@@ -349,6 +390,21 @@ const GA4_VISITS_NOTE =
 // gh-1649: `exclusions` joins the pinned contract — what the wire filter
 // removed, declared on the series so a reader can see the heuristic beside
 // the number. Comes straight off `ga4Result` like property_id/hosts.
+// gh-1639 fix: the sum invariant, declared on the payload. `status` is
+// "passed" | "failed" for the four audience series, "reference" on
+// `visits_site_total` (it IS the total the buckets are checked against),
+// "not_run" when GA4 itself was unreachable. `rule` is
+// GA4_INVARIANT_TOLERANCE_RULE verbatim; the three per-window arrays are
+// the numbers the rule was applied to, so a reader can re-check it by hand.
+interface VisitsInvariant {
+  status: "passed" | "failed" | "reference" | "not_run";
+  rule: string;
+  bucket_sum_values: number[];
+  site_total_values: number[];
+  tolerance_values: number[];
+  mismatches: string[];
+}
+
 interface VisitsSeries extends WeeklySeries {
   scope: string;
   property_id: string;
@@ -356,13 +412,31 @@ interface VisitsSeries extends WeeklySeries {
   exclusions: Ga4Exclusions;
   caveat: string;
   note: string;
+  invariant: VisitsInvariant;
 }
 
-// Turns a fetchGa4SessionsByDay result into the `visits` series honoring the
-// fail-loud contract: any GA4 failure is kind:"not_run" with the reason
-// attached (never zeros standing in for "unmeasured"). gh-1637: scope/
-// property_id/hosts are populated on BOTH branches — a not_run result still
-// says what it would have counted.
+// gh-1639 fix: the invariant block for a series that has no bucket check to
+// report — the reference total itself, or any not_run series.
+function invariantWithout(status: "reference" | "not_run", windows: WeekWindow[]): VisitsInvariant {
+  const zeros = () => new Array(windows.length).fill(0);
+  return {
+    status,
+    rule: GA4_INVARIANT_TOLERANCE_RULE,
+    bucket_sum_values: zeros(),
+    site_total_values: zeros(),
+    tolerance_values: zeros(),
+    mismatches: [],
+  };
+}
+
+// Turns a fetchGa4SessionsByDay result into the site-wide `visits` series
+// honoring the fail-loud contract: any GA4 failure is kind:"not_run" with
+// the reason attached (never zeros standing in for "unmeasured"). gh-1637:
+// scope/property_id/hosts are populated on BOTH branches — a not_run result
+// still says what it would have counted.
+// gh-1639 fix: sums `site_rows` — the [date]-only read — NEVER the
+// landingPage-dimensioned `rows`. Summing dimensioned rows is exactly how
+// v13 inflated this number by 1.77x.
 function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindow[]): VisitsSeries {
   const scope = "production";
   if (!ga4Result.ok) {
@@ -374,9 +448,10 @@ function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindo
       exclusions: ga4Result.exclusions,
       caveat: GA4_VISITS_CAVEAT,
       note: GA4_VISITS_NOTE,
+      invariant: invariantWithout("not_run", windows),
     };
   }
-  const dated = ga4Result.rows.map((r) => ({ iso: ga4DateToIso(r.date), value: r.sessions }));
+  const dated = ga4Result.site_rows.map((r) => ({ iso: ga4DateToIso(r.date), value: r.sessions }));
   const values = sumByWeek(dated, windows);
   const total = values.reduce((a, b) => a + b, 0);
   return {
@@ -391,52 +466,67 @@ function buildVisitsSeries(ga4Result: Ga4SessionsByDayResult, windows: WeekWindo
     exclusions: ga4Result.exclusions,
     caveat: GA4_VISITS_CAVEAT,
     note: GA4_VISITS_NOTE,
+    invariant: invariantWithout("reference", windows),
   };
 }
 
 // ── gh-1639 (#1340 phase 5c): per-audience visits denominators ──────────
 //
 // Item 5's sum invariant, factored into its own pure function so it is
-// directly testable against a synthetic mismatched row set — NOT only
-// reachable via buildAudienceVisitsSeries below, whose own partition
-// (bucketPagePath always returns exactly one of the four audiences, never
-// drops or duplicates a row) makes the buckets mathematically guaranteed to
-// sum correctly in that call path. This function is the belt-and-suspenders
-// check that would catch a FUTURE regression in that guarantee (e.g. a
-// refactor that filters rows before bucketing, or a bucketPagePath change
-// that returns something outside the four names) — never trust the
-// partition to stay total just because it is today.
+// directly testable against a synthetic non-additive row set.
+//
+// gh-1639 fix: v13's version compared the bucket sum against a total summed
+// from THE SAME rows, so it was a tautology — bucketPagePath is a total
+// function (every row lands in exactly one bucket), so the two sides could
+// never differ, and the 1.77x pagePath inflation passed it. Now the site
+// total comes from a SEPARATE [date]-only GA4 read (ga4.ts site_rows), and
+// the comparison is against a per-window tolerance (toleranceWeeklyValues,
+// computed by buildAudienceVisitsSeries from GA4_INVARIANT_TOLERANCE_RULE):
+// a window whose |bucket sum - site total| exceeds its tolerance is a
+// mismatch, and any mismatch fails all four audience series closed.
 function sumInvariantMismatches(
   bucketWeeklyValues: number[][],
   siteTotalWeeklyValues: number[],
+  toleranceWeeklyValues: number[],
   windows: WeekWindow[],
 ): string[] {
   const mismatches: string[] = [];
   for (let w = 0; w < windows.length; w++) {
     const bucketSum = bucketWeeklyValues.reduce((sum, values) => sum + values[w], 0);
-    if (bucketSum !== siteTotalWeeklyValues[w]) {
+    const tolerance = toleranceWeeklyValues[w] ?? 0;
+    if (Math.abs(bucketSum - siteTotalWeeklyValues[w]) > tolerance) {
       mismatches.push(
-        `window ${w} (${windows[w].week_start}..${windows[w].week_end}): buckets sum to ${bucketSum}, site total is ${siteTotalWeeklyValues[w]}`,
+        `window ${w} (${windows[w].week_start}..${windows[w].week_end}): buckets sum to ${bucketSum}, ` +
+          `date-only site total is ${siteTotalWeeklyValues[w]}, tolerance ${tolerance}`,
       );
     }
   }
   return mismatches;
 }
 
-// Splits the SAME GA4 result buildVisitsSeries reads (site-wide sessions)
-// into four VisitsSeries — homeowner / contractor / referral_partner /
-// unattributed — by bucketing each row's (already-normalised, see ga4.ts)
-// pagePath via bucketPagePath. This does not re-fetch or re-filter
-// anything; it is a second view over the same rows.
+// gh-1639 fix: the per-window tolerance, from GA4_INVARIANT_TOLERANCE_RULE.
+function invariantToleranceValues(unresolvedWeeklyValues: number[], siteTotalWeeklyValues: number[]): number[] {
+  return siteTotalWeeklyValues.map((siteTotal, w) =>
+    Math.max(unresolvedWeeklyValues[w] ?? 0, Math.ceil(GA4_INVARIANT_TOLERANCE_PCT * siteTotal))
+  );
+}
+
+// Splits the GA4 result's [date, landingPage] rows into four VisitsSeries —
+// homeowner / contractor / referral_partner / unattributed — by bucketing
+// each row's (already-normalised, see ga4.ts) landingPage via
+// bucketPagePath. No re-fetch, no re-filter: every landing row lands in
+// exactly one bucket.
 //
-// The four buckets' values must sum, window by window, to the SAME
-// site-wide total computed independently from the same rows (bucket-
-// agnostic) — checked via sumInvariantMismatches above rather than trusted.
-// If they disagree, the mapping dropped or double-counted rows — a short
-// denominator would inflate every conversion rate built on it, the same
-// failure direction #1637 already fixed once. So a mismatch fails ALL FOUR
-// audience buckets to kind:"not_run" with a reason naming which window(s)
-// disagreed, never a silently short series.
+// The four buckets' values must agree, window by window and within the
+// declared tolerance (GA4_INVARIANT_TOLERANCE_RULE), with the site total
+// from the SEPARATE [date]-only read (ga4Result.site_rows — the series
+// buildVisitsSeries publishes as visits_site_total). gh-1639 fix: this is
+// what makes the check non-tautological — a non-additive dimension (v13's
+// pagePath, 1.77x) shows up as buckets summing far above the date-only
+// read, which the old same-rows comparison could not see. A mismatch fails
+// ALL FOUR audience buckets to kind:"not_run" with a reason naming which
+// window(s) disagreed and `invariant.status: "failed"`, never a silently
+// wrong denominator in either direction.
 function buildAudienceVisitsSeries(
   ga4Result: Ga4SessionsByDayResult,
   windows: WeekWindow[],
@@ -444,7 +534,7 @@ function buildAudienceVisitsSeries(
   const scope = "production";
   const AUDIENCES: Audience[] = ["homeowner", "contractor", "referral_partner", "unattributed"];
 
-  const notRunForAll = (reason: string): Record<Audience, VisitsSeries> => {
+  const notRunForAll = (reason: string, invariant: VisitsInvariant): Record<Audience, VisitsSeries> => {
     const out = {} as Record<Audience, VisitsSeries>;
     for (const aud of AUDIENCES) {
       out[aud] = {
@@ -455,12 +545,13 @@ function buildAudienceVisitsSeries(
         exclusions: ga4Result.exclusions,
         caveat: GA4_VISITS_CAVEAT,
         note: AUDIENCE_PREFIX_NOTE[aud],
+        invariant,
       };
     }
     return out;
   };
 
-  if (!ga4Result.ok) return notRunForAll(ga4Result.reason);
+  if (!ga4Result.ok) return notRunForAll(ga4Result.reason, invariantWithout("not_run", windows));
 
   const byAudience: Record<Audience, WeightedDatedRow[]> = {
     homeowner: [],
@@ -468,29 +559,44 @@ function buildAudienceVisitsSeries(
     referral_partner: [],
     unattributed: [],
   };
+  const unresolvedRows: WeightedDatedRow[] = [];
   for (const row of ga4Result.rows) {
-    byAudience[bucketPagePath(row.pagePath)].push({ iso: ga4DateToIso(row.date), value: row.sessions });
+    const dated = { iso: ga4DateToIso(row.date), value: row.sessions };
+    byAudience[bucketPagePath(row.landingPage)].push(dated);
+    if (isUnresolvedLandingPage(row.landingPage)) unresolvedRows.push(dated);
   }
 
   const perAudienceValues: Record<Audience, number[]> = {} as Record<Audience, number[]>;
   for (const aud of AUDIENCES) perAudienceValues[aud] = sumByWeek(byAudience[aud], windows);
+  const bucketSumValues = windows.map((_, w) => AUDIENCES.reduce((sum, aud) => sum + perAudienceValues[aud][w], 0));
 
-  // The site total, computed INDEPENDENTLY from every row regardless of
-  // bucket — the same computation buildVisitsSeries performs — so the
-  // invariant check below compares two separately-derived numbers, not the
-  // same arithmetic checked against itself.
-  const allRows = ga4Result.rows.map((r) => ({ iso: ga4DateToIso(r.date), value: r.sessions }));
-  const siteTotalValues = sumByWeek(allRows, windows);
+  // The reference: the [date]-only read, summed per window — a DIFFERENT
+  // GA4 report from the one the buckets came from (gh-1639 fix), the same
+  // numbers buildVisitsSeries publishes as visits_site_total.
+  const siteRows = ga4Result.site_rows.map((r) => ({ iso: ga4DateToIso(r.date), value: r.sessions }));
+  const siteTotalValues = sumByWeek(siteRows, windows);
+  const toleranceValues = invariantToleranceValues(sumByWeek(unresolvedRows, windows), siteTotalValues);
 
   const mismatches = sumInvariantMismatches(
     AUDIENCES.map((aud) => perAudienceValues[aud]),
     siteTotalValues,
+    toleranceValues,
     windows,
   );
+  const invariant: VisitsInvariant = {
+    status: mismatches.length > 0 ? "failed" : "passed",
+    rule: GA4_INVARIANT_TOLERANCE_RULE,
+    bucket_sum_values: bucketSumValues,
+    site_total_values: siteTotalValues,
+    tolerance_values: toleranceValues,
+    mismatches,
+  };
   if (mismatches.length > 0) {
     return notRunForAll(
-      "gh-1639 sum invariant failed — the four audience buckets do not sum to the independently " +
-        `computed site-wide total (mapping dropped or double-counted rows): ${mismatches.join("; ")}`,
+      "gh-1639 sum invariant failed — the four landingPage buckets do not agree with the " +
+        "separate date-only site total within the declared tolerance (a non-additive dimension, " +
+        `or a mapping that dropped/double-counted rows): ${mismatches.join("; ")}`,
+      invariant,
     );
   }
 
@@ -510,6 +616,7 @@ function buildAudienceVisitsSeries(
       exclusions: ga4Result.exclusions,
       caveat: GA4_VISITS_CAVEAT,
       note: AUDIENCE_PREFIX_NOTE[aud],
+      invariant,
     };
   }
   return out;
@@ -1154,8 +1261,9 @@ serve(async (req: Request) => {
     // see otterQuotesLine.visits below — GA4_VISITS_NOTE above still
     // describes this one correctly: it is explicitly NOT audience-specific).
     //
-    // gh-1639 phase 5c — the SAME GA4 result is also split by pagePath into
-    // four per-audience series (buildAudienceVisitsSeries above). Each
+    // gh-1639 phase 5c — the GA4 result's [date, landingPage] rows are
+    // split into four per-audience series (buildAudienceVisitsSeries above)
+    // and checked against its separate [date]-only read (visitsSeries). Each
     // audience's `marketing.visits` below is now ITS OWN series, not the
     // shared site-wide one; the site-wide total moves to the line payload
     // alongside the unattributed bucket (item 6/8).
@@ -1187,7 +1295,7 @@ serve(async (req: Request) => {
         (leads as any[]).map((l) => ({ iso: l.created_at as string | null, group: l.source as string | null })),
         weekWindows,
       ),
-      // gh-1639: this audience's OWN series (pagePath-bucketed), not the
+      // gh-1639: this audience's OWN series (landingPage-bucketed), not the
       // shared site-wide one — see buildAudienceVisitsSeries above.
       visits: audienceVisits.homeowner,
     };
@@ -1236,7 +1344,7 @@ serve(async (req: Request) => {
           excluded_no_timestamp: firstBid.excludedNoTimestamp,
         },
       },
-      // gh-1639: this audience's OWN series (pagePath-bucketed).
+      // gh-1639: this audience's OWN series (landingPage-bucketed).
       visits: audienceVisits.contractor,
     };
 
@@ -1275,7 +1383,7 @@ serve(async (req: Request) => {
         caveat: REFERRAL_CLICK_CAVEAT,
         caveat_ref: "https://github.com/StellarEdgeServices/otterquote-platform/issues/1302",
       },
-      // gh-1639: this audience's OWN series (pagePath-bucketed).
+      // gh-1639: this audience's OWN series (landingPage-bucketed).
       visits: audienceVisits.referral_partner,
     };
 
@@ -1294,10 +1402,10 @@ serve(async (req: Request) => {
       // deliberately NOT inside stats: every stats value is a measured() DB
       // count, and this one can legitimately be "not_run".
       revenue_mtd: revenueMtd,
-      // gh-1639 (#1340 phase 5c) item 6/8: the site-wide GA4 total (same
-      // series #1637/#1638 already shipped, unchanged shape) and the
-      // unattributed bucket both live HERE, on the line payload, not on any
-      // one audience tab — the page renders unattributed's share of the
+      // gh-1639 (#1340 phase 5c) item 6/8: the site-wide GA4 total (the
+      // [date]-only read — gh-1639 fix, never a sum of dimensioned rows) and
+      // the unattributed bucket both live HERE, on the line payload, not on
+      // any one audience tab — the page renders unattributed's share of the
       // total on the line page per item 8, sourced from these, never
       // hardcoded.
       visits_site_total: visitsSeries,

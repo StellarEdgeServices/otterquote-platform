@@ -16,12 +16,16 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   AUDIENCE_PREFIX_NOTE,
+  buildDimensionFilter,
   buildRunReportRequestBody,
+  buildSiteTotalRequestBody,
   bucketPagePath,
   GA4_PRODUCTION_HOSTS,
+  isUnresolvedLandingPage,
   normalizePagePath,
   parseServiceAccountEnv,
   parseSessionsByDayResponse,
+  parseSiteTotalResponse,
   GA4_DATACENTER_CITIES,
   GA4_EXCLUDED_SOURCE_SUBSTRINGS,
   GA4_EXCLUDED_SOURCES_EXACT,
@@ -30,14 +34,15 @@ import {
 
 // --- parseSessionsByDayResponse -------------------------------------------
 //
-// gh-1639: the request's dimensions are now [date, pagePath], so every
+// gh-1639: the request's dimensions are now [date, landingPage] (the gh-1639
+// fix moved from pagePath — sessions are not additive across it), so every
 // fixture below carries a second dimensionValues entry and the parsed rows
-// carry a (normalised) `pagePath` field.
+// carry a (normalised) `landingPage` field.
 
-Deno.test("parseSessionsByDayResponse: extracts { date, pagePath, sessions } from a realistic stubbed GA4 runReport body", () => {
+Deno.test("parseSessionsByDayResponse: extracts { date, landingPage, sessions } from a realistic stubbed GA4 runReport body", () => {
   // Shape matches what GA4 Data API's runReport actually returns for
-  // dimensions: [{name:"date"},{name:"pagePath"}], metrics: [{name:"sessions"}]
-  // — one row per (day, pagePath) pair, dimensionValues in request order.
+  // dimensions: [{name:"date"},{name:"landingPage"}], metrics: [{name:"sessions"}]
+  // — one row per (day, landingPage) pair, dimensionValues in request order.
   const fixture = {
     rows: [
       { dimensionValues: [{ value: "20260830" }, { value: "/get-started" }], metricValues: [{ value: "412" }] },
@@ -48,13 +53,13 @@ Deno.test("parseSessionsByDayResponse: extracts { date, pagePath, sessions } fro
   };
   const rows = parseSessionsByDayResponse(fixture);
   assertEquals(rows, [
-    { date: "20260830", pagePath: "/get-started", sessions: 412 },
-    { date: "20260831", pagePath: "/contractor-join", sessions: 398 },
-    { date: "20260901", pagePath: "/ref", sessions: 421 },
+    { date: "20260830", landingPage: "/get-started", sessions: 412 },
+    { date: "20260831", landingPage: "/contractor-join", sessions: 398 },
+    { date: "20260901", landingPage: "/ref", sessions: 421 },
   ]);
 });
 
-Deno.test("parseSessionsByDayResponse: the pagePath dimension value is normalised before it is attached to the row", () => {
+Deno.test("parseSessionsByDayResponse: the landingPage dimension value is normalised before it is attached to the row", () => {
   const fixture = {
     rows: [
       { dimensionValues: [{ value: "20260901" }, { value: "/get-started.html" }], metricValues: [{ value: "33" }] },
@@ -62,7 +67,7 @@ Deno.test("parseSessionsByDayResponse: the pagePath dimension value is normalise
     ],
   };
   const rows = parseSessionsByDayResponse(fixture);
-  assertEquals(rows.map((r) => r.pagePath), ["/get-started", "/get-started"]);
+  assertEquals(rows.map((r) => r.landingPage), ["/get-started", "/get-started"]);
 });
 
 Deno.test("parseSessionsByDayResponse: a property with zero traffic in range returns an empty array, not an error", () => {
@@ -83,20 +88,70 @@ Deno.test("parseSessionsByDayResponse: rows with a malformed date dimension are 
     ],
   };
   const rows = parseSessionsByDayResponse(fixture);
-  assertEquals(rows, [{ date: "20260901", pagePath: "/get-started", sessions: 5 }]);
+  assertEquals(rows, [{ date: "20260901", landingPage: "/get-started", sessions: 5 }]);
 });
 
-Deno.test("parseSessionsByDayResponse: a missing pagePath dimension value normalises to empty, not root — never silently attributed to homeowner's exact '/' rule", () => {
+Deno.test("parseSessionsByDayResponse: a missing landingPage dimension value normalises to empty, not root — never silently attributed to homeowner's exact '/' rule", () => {
   const fixture = { rows: [{ dimensionValues: [{ value: "20260901" }], metricValues: [{ value: "5" }] }] };
   const rows = parseSessionsByDayResponse(fixture);
-  assertEquals(rows, [{ date: "20260901", pagePath: "", sessions: 5 }]);
-  assertEquals(bucketPagePath(rows[0].pagePath), "unattributed");
+  assertEquals(rows, [{ date: "20260901", landingPage: "", sessions: 5 }]);
+  assertEquals(bucketPagePath(rows[0].landingPage), "unattributed");
+});
+
+Deno.test("parseSessionsByDayResponse: GA4's '(not set)' landingPage survives normalisation verbatim and buckets to unattributed (gh-1639 fix — the unresolved-entry-page sentinel, 23 rows/84 d live)", () => {
+  const fixture = {
+    rows: [
+      { dimensionValues: [{ value: "20260904" }, { value: "(not set)" }], metricValues: [{ value: "23" }] },
+      { dimensionValues: [{ value: "20260904" }, { value: "" }], metricValues: [{ value: "23" }] },
+    ],
+  };
+  const rows = parseSessionsByDayResponse(fixture);
+  assertEquals(rows.map((r) => r.landingPage), ["(not set)", ""]);
+  for (const r of rows) {
+    assertEquals(bucketPagePath(r.landingPage), "unattributed");
+    assertEquals(isUnresolvedLandingPage(r.landingPage), true);
+  }
+});
+
+Deno.test("isUnresolvedLandingPage: only blank and '(not set)' — a real path, the root, and a table miss are all resolved entry pages", () => {
+  assertEquals(isUnresolvedLandingPage(""), true);
+  assertEquals(isUnresolvedLandingPage("(not set)"), true);
+  assertEquals(isUnresolvedLandingPage("/"), false);
+  assertEquals(isUnresolvedLandingPage("/login"), false);
+  assertEquals(isUnresolvedLandingPage("/get-started"), false);
 });
 
 Deno.test("parseSessionsByDayResponse: a missing sessions value defaults to a real measured 0 for that day, not a dropped row", () => {
   const fixture = { rows: [{ dimensionValues: [{ value: "20260901" }, { value: "/get-started" }], metricValues: [{}] }] };
   const rows = parseSessionsByDayResponse(fixture);
-  assertEquals(rows, [{ date: "20260901", pagePath: "/get-started", sessions: 0 }]);
+  assertEquals(rows, [{ date: "20260901", landingPage: "/get-started", sessions: 0 }]);
+});
+
+// --- parseSiteTotalResponse (gh-1639 fix: the [date]-only reference read) --
+
+Deno.test("parseSiteTotalResponse: extracts { date, sessions } from a [date]-only runReport body — no landingPage, no bucketing", () => {
+  const fixture = {
+    rows: [
+      { dimensionValues: [{ value: "20260830" }], metricValues: [{ value: "63" }] },
+      { dimensionValues: [{ value: "20260831" }], metricValues: [{ value: "72" }] },
+    ],
+  };
+  assertEquals(parseSiteTotalResponse(fixture), [
+    { date: "20260830", sessions: 63 },
+    { date: "20260831", sessions: 72 },
+  ]);
+});
+
+Deno.test("parseSiteTotalResponse: malformed dates are dropped, missing sessions is 0, null/empty input is no rows", () => {
+  const fixture = {
+    rows: [
+      { dimensionValues: [{ value: "nope" }], metricValues: [{ value: "9" }] },
+      { dimensionValues: [{ value: "20260901" }], metricValues: [{}] },
+    ],
+  };
+  assertEquals(parseSiteTotalResponse(fixture), [{ date: "20260901", sessions: 0 }]);
+  assertEquals(parseSiteTotalResponse(null), []);
+  assertEquals(parseSiteTotalResponse({ rowCount: 0 }), []);
 });
 
 Deno.test("parseSessionsByDayResponse: null/undefined input is treated as no rows, not a throw", () => {
@@ -139,7 +194,7 @@ Deno.test("parseServiceAccountEnv: a complete service account parses cleanly (sy
 // real serialised request body, not a separately-checked constant a future
 // refactor could drop without failing this test (work order clause 7).
 
-Deno.test("buildRunReportRequestBody: the body handed to fetch carries a hostName dimensionFilter for all three production hosts (gh-1637) AND a pagePath dimension alongside date (gh-1639)", () => {
+Deno.test("buildRunReportRequestBody: the body handed to fetch carries a hostName dimensionFilter for all three production hosts (gh-1637) AND a landingPage dimension alongside date (gh-1639 fix)", () => {
   const body = buildRunReportRequestBody("84daysAgo", "today");
   // Round-trip through JSON exactly like fetch's `body: JSON.stringify(...)`
   // does, so this asserts on the actual serialised shape sent over the wire.
@@ -150,7 +205,7 @@ Deno.test("buildRunReportRequestBody: the body handed to fetch carries a hostNam
   // would silently re-admit ~60% robots to every rate on the dashboard.
   assertEquals(serialised, {
     dateRanges: [{ startDate: "84daysAgo", endDate: "today" }],
-    dimensions: [{ name: "date" }, { name: "pagePath" }],
+    dimensions: [{ name: "date" }, { name: "landingPage" }],
     metrics: [{ name: "sessions" }],
     dimensionFilter: {
       andGroup: {
@@ -219,13 +274,43 @@ type AndGroupBody = {
   };
 };
 
-Deno.test("buildRunReportRequestBody: pagePath is a DIMENSION only, not folded into the andGroup filter (gh-1639 — 'do not filter paths out; bucket them' — survives gh-1649's andGroup rewrite)", () => {
+Deno.test("buildRunReportRequestBody: landingPage is a DIMENSION only, not folded into the andGroup filter (gh-1639 — 'do not filter paths out; bucket them' — survives gh-1649's andGroup rewrite)", () => {
   const body = buildRunReportRequestBody("84daysAgo", "today") as AndGroupBody;
-  assertEquals(body.dimensions, [{ name: "date" }, { name: "pagePath" }]);
+  assertEquals(body.dimensions, [{ name: "date" }, { name: "landingPage" }]);
   const fieldNames = body.dimensionFilter.andGroup.expressions.map(
     (e) => e.filter?.fieldName ?? e.notExpression?.filter.fieldName,
   );
+  assertEquals(fieldNames.includes("landingPage"), false);
   assertEquals(fieldNames.includes("pagePath"), false);
+});
+
+// gh-1639 fix: the bucket read must NEVER be dimensioned by pagePath again —
+// GA4 `sessions` is counted once per page viewed under that dimension
+// (measured 1,464 vs 827 site-wide over 84 days, v13). Pinned by name so a
+// "helpful" revert shows up as a red test, not a +77% denominator.
+Deno.test("buildRunReportRequestBody: the bucket dimension is landingPage, never pagePath (gh-1639 fix — sessions are non-additive across pagePath, 1.77x measured)", () => {
+  const body = buildRunReportRequestBody("84daysAgo", "today") as AndGroupBody;
+  assertEquals(body.dimensions.map((d) => d.name).includes("pagePath"), false);
+  assertEquals(body.dimensions.map((d) => d.name), ["date", "landingPage"]);
+});
+
+// gh-1639 fix: the site-total read the sum invariant compares against.
+Deno.test("buildSiteTotalRequestBody: [date] as the ONLY dimension, same metric, same range — the reference total the landingPage buckets are checked against", () => {
+  const body = buildSiteTotalRequestBody("90daysAgo", "today") as AndGroupBody & { dateRanges: unknown; metrics: unknown };
+  assertEquals(body.dimensions, [{ name: "date" }]);
+  assertEquals(body.dateRanges, [{ startDate: "90daysAgo", endDate: "today" }]);
+  assertEquals(body.metrics, [{ name: "sessions" }]);
+});
+
+Deno.test("buildSiteTotalRequestBody and buildRunReportRequestBody: identical serialised dimensionFilter (the #1666 andGroup, byte-for-byte on the wire) — the two reads differ in `dimensions` and nothing else", () => {
+  const bucket = JSON.parse(JSON.stringify(buildRunReportRequestBody("84daysAgo", "today")));
+  const site = JSON.parse(JSON.stringify(buildSiteTotalRequestBody("84daysAgo", "today")));
+  assertEquals(JSON.stringify(bucket.dimensionFilter), JSON.stringify(site.dimensionFilter));
+  assertEquals(JSON.stringify(bucket.dimensionFilter), JSON.stringify(JSON.parse(JSON.stringify(buildDimensionFilter()))));
+  const { dimensions: _bd, ...bucketRest } = bucket;
+  const { dimensions: _sd, ...siteRest } = site;
+  assertEquals(bucketRest, siteRest);
+  assertEquals(bucket.dimensionFilter.andGroup.expressions.length, 4);
 });
 
 Deno.test("buildRunReportRequestBody: the filter's host list is GA4_PRODUCTION_HOSTS itself, not a hand-copied duplicate", () => {
@@ -393,6 +478,14 @@ Deno.test("bucketPagePath ordering hazard 2: /contractor-join resolves via the /
 
 // --- gh-1639 item 7: AUDIENCE_PREFIX_NOTE is the single source for the
 // per-audience payload `note` and the page's scope-line text ---------------
+
+Deno.test("AUDIENCE_PREFIX_NOTE: every note declares the denominator as landingPage-bucketed, never pagePath-bucketed (gh-1639 fix, brief item 5)", () => {
+  for (const aud of ["homeowner", "contractor", "referral_partner", "unattributed"] as const) {
+    assertEquals(AUDIENCE_PREFIX_NOTE[aud].includes("bucketed by landingPage"), true);
+    assertEquals(AUDIENCE_PREFIX_NOTE[aud].includes("Counts pagePath"), false);
+  }
+  assertEquals(AUDIENCE_PREFIX_NOTE.unattributed.includes("(not set)"), true);
+});
 
 Deno.test("AUDIENCE_PREFIX_NOTE: every audience (including unattributed) has a non-empty note naming what it counts", () => {
   for (const aud of ["homeowner", "contractor", "referral_partner", "unattributed"] as const) {
