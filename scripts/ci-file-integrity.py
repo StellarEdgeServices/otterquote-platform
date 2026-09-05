@@ -311,6 +311,30 @@ if _xss_guard_result.stderr:
     print(_xss_guard_result.stderr, end="", file=sys.stderr)
 xss_guard_exit = _xss_guard_result.returncode
 
-if file_integrity_exit != 0 or partner_parity_exit != 0 or agent_types_exit != 0 or xss_guard_exit != 0:
+# -- inline event-handler attribute guard (gh-1693) --------------------------
+# Chained here for the same reason as the guards above: this is the CI job this
+# lane's push credential can extend without a workflow-file edit (gh-634/#873).
+# Fails the build when an `onXxx="..."` attribute built inside a JS string is
+# closed by a bare JSON.stringify() -- which always emits a double quote, so the
+# parser terminates the attribute there and the handler never binds. gh-1693:
+# six buttons dead in production on the detailed-measurement money path, shipped
+# green through review, R-120, drift-by-content-hash and the post-deploy check,
+# because all four measure what was SHIPPED and none measure whether the shipped
+# thing can be OPERATED. Latent (non-JSON.stringify) interpolations are printed
+# as a visible inventory but do not fail -- a gate that red-lines CI on 54
+# pre-existing working call sites gets switched off, and then it guards nothing.
+print()
+print("-" * 78)
+_handler_guard_script = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "tools", "inline_handler_attr_check.py"
+)
+_handler_guard_result = subprocess.run([sys.executable, _handler_guard_script], capture_output=True, text=True)
+print(_handler_guard_result.stdout, end="")
+if _handler_guard_result.stderr:
+    print(_handler_guard_result.stderr, end="", file=sys.stderr)
+handler_guard_exit = _handler_guard_result.returncode
+
+if (file_integrity_exit != 0 or partner_parity_exit != 0 or agent_types_exit != 0
+        or xss_guard_exit != 0 or handler_guard_exit != 0):
     sys.exit(1)
 sys.exit(0)
