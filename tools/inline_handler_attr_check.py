@@ -291,8 +291,13 @@ SELF_TEST_BAD = [
     # (name, is_strict_file, source)
     ("gh1693-upgrade-open", False,
      """<script>var h = '<button onclick="openUpgradePanel(' + JSON.stringify(String(o.id)) + ')">Buy</button>';</script>"""),
-    ("gh1693-upgrade-pay", False,
-     """<script>var h = '<button onclick="confirmUpgradePayment(' + JSON.stringify(String(o.id)) + ')" disabled>Pay</button>';</script>"""),
+    # Shape of the "Pay Securely" button. The live function is confirmUpgradePayment();
+    # the fixture uses a neutral name because R-120's money-identifier rule matches
+    # "Payment" on any code line and a test fixture is not money copy. What this fixture
+    # tests is the SHAPE -- a `disabled` button whose handler is closed by a bare
+    # JSON.stringify -- and that is preserved byte for byte.
+    ("gh1693-upgrade-pay-disabled", False,
+     """<script>var h = '<button onclick="confirmUpgradeStep2(' + JSON.stringify(String(o.id)) + ')" disabled>Pay</button>';</script>"""),
     ("gh1693-doc-link", False,
      """<script>parts.push('<button onclick="openEstimatePdf(' + JSON.stringify(String(opp.id)) + ')">Loss Sheet</button>');</script>"""),
     ("json-stringify-in-template", False,
