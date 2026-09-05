@@ -15,8 +15,11 @@
 // order) and the service-account config check (parseServiceAccountEnv).
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
+  AUDIENCE_PREFIX_NOTE,
   buildRunReportRequestBody,
+  bucketPagePath,
   GA4_PRODUCTION_HOSTS,
+  normalizePagePath,
   parseServiceAccountEnv,
   parseSessionsByDayResponse,
   GA4_DATACENTER_CITIES,
@@ -26,25 +29,40 @@ import {
 } from "./ga4.ts";
 
 // --- parseSessionsByDayResponse -------------------------------------------
+//
+// gh-1639: the request's dimensions are now [date, pagePath], so every
+// fixture below carries a second dimensionValues entry and the parsed rows
+// carry a (normalised) `pagePath` field.
 
-Deno.test("parseSessionsByDayResponse: extracts { date, sessions } from a realistic stubbed GA4 runReport body", () => {
+Deno.test("parseSessionsByDayResponse: extracts { date, pagePath, sessions } from a realistic stubbed GA4 runReport body", () => {
   // Shape matches what GA4 Data API's runReport actually returns for
-  // dimensions: [{name:"date"}], metrics: [{name:"sessions"}] — one row per
-  // day, dimensionValues[0] and metricValues[0] in request order.
+  // dimensions: [{name:"date"},{name:"pagePath"}], metrics: [{name:"sessions"}]
+  // — one row per (day, pagePath) pair, dimensionValues in request order.
   const fixture = {
     rows: [
-      { dimensionValues: [{ value: "20260830" }], metricValues: [{ value: "412" }] },
-      { dimensionValues: [{ value: "20260831" }], metricValues: [{ value: "398" }] },
-      { dimensionValues: [{ value: "20260901" }], metricValues: [{ value: "421" }] },
+      { dimensionValues: [{ value: "20260830" }, { value: "/get-started" }], metricValues: [{ value: "412" }] },
+      { dimensionValues: [{ value: "20260831" }, { value: "/contractor-join" }], metricValues: [{ value: "398" }] },
+      { dimensionValues: [{ value: "20260901" }, { value: "/ref" }], metricValues: [{ value: "421" }] },
     ],
     rowCount: 3,
   };
   const rows = parseSessionsByDayResponse(fixture);
   assertEquals(rows, [
-    { date: "20260830", sessions: 412 },
-    { date: "20260831", sessions: 398 },
-    { date: "20260901", sessions: 421 },
+    { date: "20260830", pagePath: "/get-started", sessions: 412 },
+    { date: "20260831", pagePath: "/contractor-join", sessions: 398 },
+    { date: "20260901", pagePath: "/ref", sessions: 421 },
   ]);
+});
+
+Deno.test("parseSessionsByDayResponse: the pagePath dimension value is normalised before it is attached to the row", () => {
+  const fixture = {
+    rows: [
+      { dimensionValues: [{ value: "20260901" }, { value: "/get-started.html" }], metricValues: [{ value: "33" }] },
+      { dimensionValues: [{ value: "20260901" }, { value: "/get-started" }], metricValues: [{ value: "557" }] },
+    ],
+  };
+  const rows = parseSessionsByDayResponse(fixture);
+  assertEquals(rows.map((r) => r.pagePath), ["/get-started", "/get-started"]);
 });
 
 Deno.test("parseSessionsByDayResponse: a property with zero traffic in range returns an empty array, not an error", () => {
@@ -58,20 +76,27 @@ Deno.test("parseSessionsByDayResponse: a property with zero traffic in range ret
 Deno.test("parseSessionsByDayResponse: rows with a malformed date dimension are dropped, not mis-bucketed", () => {
   const fixture = {
     rows: [
-      { dimensionValues: [{ value: "not-a-date" }], metricValues: [{ value: "10" }] },
-      { dimensionValues: [{ value: "2026090" }], metricValues: [{ value: "10" }] }, // 7 digits
-      { dimensionValues: [{}], metricValues: [{ value: "10" }] }, // missing value
-      { dimensionValues: [{ value: "20260901" }], metricValues: [{ value: "5" }] }, // the one good row
+      { dimensionValues: [{ value: "not-a-date" }, { value: "/get-started" }], metricValues: [{ value: "10" }] },
+      { dimensionValues: [{ value: "2026090" }, { value: "/get-started" }], metricValues: [{ value: "10" }] }, // 7 digits
+      { dimensionValues: [{}, { value: "/get-started" }], metricValues: [{ value: "10" }] }, // missing value
+      { dimensionValues: [{ value: "20260901" }, { value: "/get-started" }], metricValues: [{ value: "5" }] }, // the one good row
     ],
   };
   const rows = parseSessionsByDayResponse(fixture);
-  assertEquals(rows, [{ date: "20260901", sessions: 5 }]);
+  assertEquals(rows, [{ date: "20260901", pagePath: "/get-started", sessions: 5 }]);
+});
+
+Deno.test("parseSessionsByDayResponse: a missing pagePath dimension value normalises to empty, not root — never silently attributed to homeowner's exact '/' rule", () => {
+  const fixture = { rows: [{ dimensionValues: [{ value: "20260901" }], metricValues: [{ value: "5" }] }] };
+  const rows = parseSessionsByDayResponse(fixture);
+  assertEquals(rows, [{ date: "20260901", pagePath: "", sessions: 5 }]);
+  assertEquals(bucketPagePath(rows[0].pagePath), "unattributed");
 });
 
 Deno.test("parseSessionsByDayResponse: a missing sessions value defaults to a real measured 0 for that day, not a dropped row", () => {
-  const fixture = { rows: [{ dimensionValues: [{ value: "20260901" }], metricValues: [{}] }] };
+  const fixture = { rows: [{ dimensionValues: [{ value: "20260901" }, { value: "/get-started" }], metricValues: [{}] }] };
   const rows = parseSessionsByDayResponse(fixture);
-  assertEquals(rows, [{ date: "20260901", sessions: 0 }]);
+  assertEquals(rows, [{ date: "20260901", pagePath: "/get-started", sessions: 0 }]);
 });
 
 Deno.test("parseSessionsByDayResponse: null/undefined input is treated as no rows, not a throw", () => {
@@ -114,7 +139,7 @@ Deno.test("parseServiceAccountEnv: a complete service account parses cleanly (sy
 // real serialised request body, not a separately-checked constant a future
 // refactor could drop without failing this test (work order clause 7).
 
-Deno.test("buildRunReportRequestBody: the body handed to fetch carries a hostName dimensionFilter for all three production hosts (gh-1637)", () => {
+Deno.test("buildRunReportRequestBody: the body handed to fetch carries a hostName dimensionFilter for all three production hosts (gh-1637) AND a pagePath dimension alongside date (gh-1639)", () => {
   const body = buildRunReportRequestBody("84daysAgo", "today");
   // Round-trip through JSON exactly like fetch's `body: JSON.stringify(...)`
   // does, so this asserts on the actual serialised shape sent over the wire.
@@ -125,7 +150,7 @@ Deno.test("buildRunReportRequestBody: the body handed to fetch carries a hostNam
   // would silently re-admit ~60% robots to every rate on the dashboard.
   assertEquals(serialised, {
     dateRanges: [{ startDate: "84daysAgo", endDate: "today" }],
-    dimensions: [{ name: "date" }],
+    dimensions: [{ name: "date" }, { name: "pagePath" }],
     metrics: [{ name: "sessions" }],
     dimensionFilter: {
       andGroup: {
@@ -183,6 +208,7 @@ Deno.test("buildRunReportRequestBody: the body handed to fetch carries a hostNam
 });
 
 type AndGroupBody = {
+  dimensions: Array<{ name: string }>;
   dimensionFilter: {
     andGroup: {
       expressions: Array<{
@@ -192,6 +218,15 @@ type AndGroupBody = {
     };
   };
 };
+
+Deno.test("buildRunReportRequestBody: pagePath is a DIMENSION only, not folded into the andGroup filter (gh-1639 — 'do not filter paths out; bucket them' — survives gh-1649's andGroup rewrite)", () => {
+  const body = buildRunReportRequestBody("84daysAgo", "today") as AndGroupBody;
+  assertEquals(body.dimensions, [{ name: "date" }, { name: "pagePath" }]);
+  const fieldNames = body.dimensionFilter.andGroup.expressions.map(
+    (e) => e.filter?.fieldName ?? e.notExpression?.filter.fieldName,
+  );
+  assertEquals(fieldNames.includes("pagePath"), false);
+});
 
 Deno.test("buildRunReportRequestBody: the filter's host list is GA4_PRODUCTION_HOSTS itself, not a hand-copied duplicate", () => {
   const body = buildRunReportRequestBody("90daysAgo", "today") as AndGroupBody;
@@ -231,3 +266,138 @@ Deno.test("GA4_PRODUCTION_HOSTS: is exactly the three production hosts named in 
 // fetchGa4SessionsByDay in production; its "same resolution" contract with
 // the payload's visits.property_id is what buildVisitsSeries's tests in
 // marketing-series.test.ts (gh-1637) actually cover.
+
+// --- gh-1639 (#1340 phase 5c): normalizePagePath ---------------------------
+
+Deno.test("normalizePagePath: strips a trailing .html — /get-started.html and /get-started must bucket identically (production over 84 days: 557 vs 33 unnormalised)", () => {
+  assertEquals(normalizePagePath("/get-started.html"), "/get-started");
+  assertEquals(normalizePagePath("/get-started"), "/get-started");
+});
+
+Deno.test("normalizePagePath: strips a trailing slash, except the bare root", () => {
+  assertEquals(normalizePagePath("/get-started/"), "/get-started");
+  assertEquals(normalizePagePath("/"), "/");
+});
+
+Deno.test("normalizePagePath: strips a query string and a fragment, together or separately", () => {
+  assertEquals(normalizePagePath("/get-started?utm_source=x"), "/get-started");
+  assertEquals(normalizePagePath("/get-started#pricing"), "/get-started");
+  assertEquals(normalizePagePath("/get-started.html?utm_source=x#pricing"), "/get-started");
+});
+
+Deno.test("normalizePagePath: /recruit and /recruit.html normalise to the same key (production over 84 days: 47 vs 122 unnormalised)", () => {
+  assertEquals(normalizePagePath("/recruit"), normalizePagePath("/recruit.html"));
+  assertEquals(normalizePagePath("/recruit.html"), "/recruit");
+});
+
+Deno.test("normalizePagePath: /contractor-join and /contractor-join.html normalise to the same key (production over 84 days: 12 vs 16 unnormalised)", () => {
+  assertEquals(normalizePagePath("/contractor-join"), normalizePagePath("/contractor-join.html"));
+  assertEquals(normalizePagePath("/contractor-join.html"), "/contractor-join");
+});
+
+Deno.test("normalizePagePath: a trailing slash AFTER .html is stripped too (repeats until stable)", () => {
+  assertEquals(normalizePagePath("/get-started.html/"), "/get-started");
+});
+
+Deno.test("normalizePagePath: an empty/missing value normalises to empty, not root", () => {
+  assertEquals(normalizePagePath(""), "");
+});
+
+// --- gh-1639: bucketPagePath — the CTO's prefix table (a ruling, not an
+// inference target: do not extend it) ---------------------------------------
+
+Deno.test("bucketPagePath: homeowner's exact-match paths", () => {
+  for (
+    const p of [
+      "/",
+      "/index",
+      "/get-started",
+      "/trade-selector",
+      "/dashboard",
+      "/bids",
+      "/claim",
+      "/contract-signing",
+      "/faq",
+    ]
+  ) {
+    assertEquals(bucketPagePath(p), "homeowner", `expected ${p} -> homeowner`);
+  }
+});
+
+Deno.test("bucketPagePath: homeowner's prefix paths (/guides/, /blog/)", () => {
+  assertEquals(bucketPagePath("/guides/roofing-101"), "homeowner");
+  assertEquals(bucketPagePath("/blog/2026-08-launch"), "homeowner");
+});
+
+// gh-1639 fix (fresh-context refuter comment 5548057089, PR #1674):
+// /guides/ and /blog/ are section-index pages that GA4 records with a
+// trailing slash — normalizePagePath strips that slash before
+// bucketPagePath ever sees the value, so composing the two functions (the
+// real production pipeline, not calling bucketPagePath directly with a
+// sub-path already present) is the only way this regression is caught.
+Deno.test("bucketPagePath(normalizePagePath(...)): /guides and /blog section-index paths bucket to homeowner after trailing-slash normalisation", () => {
+  assertEquals(bucketPagePath(normalizePagePath("/guides/")), "homeowner");
+  assertEquals(bucketPagePath(normalizePagePath("/guides")), "homeowner");
+  assertEquals(bucketPagePath(normalizePagePath("/guides/foo.html")), "homeowner");
+  assertEquals(bucketPagePath(normalizePagePath("/blog/")), "homeowner");
+  assertEquals(bucketPagePath(normalizePagePath("/blog/post")), "homeowner");
+});
+
+Deno.test("bucketPagePath: /guidesfoo and /blogger are NOT caught by the /guides//blog/ slash-terminated prefixes (negative — a bare startsWith would wrongly match these)", () => {
+  assertEquals(bucketPagePath(normalizePagePath("/guidesfoo")), "unattributed");
+  assertEquals(bucketPagePath(normalizePagePath("/blogger")), "unattributed");
+});
+
+Deno.test("bucketPagePath: contractor's prefix paths (/contractor, /tools incl. /tools-crm, /recruit)", () => {
+  assertEquals(bucketPagePath("/contractor"), "contractor");
+  assertEquals(bucketPagePath("/contractor-join"), "contractor");
+  assertEquals(bucketPagePath("/tools"), "contractor");
+  assertEquals(bucketPagePath("/tools-crm"), "contractor");
+  assertEquals(bucketPagePath("/recruit"), "contractor");
+});
+
+Deno.test("bucketPagePath: referral_partner — /partner prefix, /ref and /ref-re exact", () => {
+  assertEquals(bucketPagePath("/partner"), "referral_partner");
+  assertEquals(bucketPagePath("/partner-dashboard"), "referral_partner");
+  assertEquals(bucketPagePath("/ref"), "referral_partner");
+  assertEquals(bucketPagePath("/ref-re"), "referral_partner");
+});
+
+Deno.test("bucketPagePath: anything not in the table is unattributed, never inferred onto the nearest-looking bucket", () => {
+  for (const p of ["/login", "/auth-callback", "/terms", "/some-future-page-not-in-the-table"]) {
+    assertEquals(bucketPagePath(p), "unattributed", `expected ${p} -> unattributed`);
+  }
+});
+
+// --- gh-1639 ordering hazard 1 (issue item 3): "/ref" as an EXACT match
+// must be tested before any prefix rule, or it will be swallowed by a
+// /re*-shaped prefix (the closest real one is /recruit, a contractor
+// PREFIX rule) ----------------------------------------------------------
+
+Deno.test("bucketPagePath ordering hazard 1: /ref (exact, referral_partner) is not swallowed by /recruit (prefix, contractor) despite sharing the 're' start", () => {
+  assertEquals(bucketPagePath("/ref"), "referral_partner");
+  assertEquals(bucketPagePath("/recruit"), "contractor");
+  assertEquals(bucketPagePath("/ref-re"), "referral_partner");
+});
+
+// --- gh-1639 ordering hazard 2 (issue item 3): "/contractor…" must be
+// tested before "/contract-signing" is (mis)treated as a broadened prefix —
+// this is production's own motivating example (26 pageviews/12 sessions in
+// 28 days on /contractor-join.html) ---------------------------------------
+
+Deno.test("bucketPagePath ordering hazard 2: /contractor-join resolves via the /contractor PREFIX rule and is never caught by a broadened /contract-signing-shaped rule", () => {
+  assertEquals(bucketPagePath("/contractor-join"), "contractor");
+  assertEquals(bucketPagePath(normalizePagePath("/contractor-join.html")), "contractor");
+  assertEquals(bucketPagePath("/contract-signing"), "homeowner");
+});
+
+// --- gh-1639 item 7: AUDIENCE_PREFIX_NOTE is the single source for the
+// per-audience payload `note` and the page's scope-line text ---------------
+
+Deno.test("AUDIENCE_PREFIX_NOTE: every audience (including unattributed) has a non-empty note naming what it counts", () => {
+  for (const aud of ["homeowner", "contractor", "referral_partner", "unattributed"] as const) {
+    const note = AUDIENCE_PREFIX_NOTE[aud];
+    assertEquals(typeof note, "string");
+    assertEquals(note.length > 0, true);
+  }
+});

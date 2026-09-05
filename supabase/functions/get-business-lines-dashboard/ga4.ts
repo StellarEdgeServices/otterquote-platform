@@ -43,7 +43,16 @@
 // included even though it reports zero sessions today, because it is a live
 // host that can begin serving at any time.
 //
-// GitHub: #1574, #1340, #1331, #1637
+// gh-1639 (#1340 phase 5c): the request now ALSO carries a `pagePath`
+// dimension alongside `date`, INSIDE the same hostName filter above — a
+// dimension, not a filter, so no row is excluded, only split further. Every
+// returned pagePath is normalised (normalizePagePath below) before it is
+// bucketed into one of four audiences (bucketPagePath below) by
+// longest-matching prefix, per the CTO's ruling table (dispatch comment
+// 2026-09-04T18:58:36Z) — that table is authoritative and is NOT extended
+// here on inference; anything it does not name resolves to "unattributed".
+//
+// GitHub: #1574, #1340, #1331, #1637, #1639
 
 const DEFAULT_PROPERTY_ID = "541423859";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -222,11 +231,159 @@ async function mintAccessToken(sa: ServiceAccount): Promise<string> {
 // Response shape
 // ---------------------------------------------------------------------------
 
-/** One calendar day's sessions. `date` is GA4's raw dimension value, "YYYYMMDD". */
+/**
+ * One calendar day's sessions for one normalised pagePath. `date` is GA4's
+ * raw dimension value, "YYYYMMDD". `pagePath` (gh-1639) has already been run
+ * through normalizePagePath below by the time it reaches this shape — it is
+ * never the raw GA4 dimension value.
+ */
 export interface Ga4DailyRow {
   date: string;
+  pagePath: string;
   sessions: number;
 }
+
+// ---------------------------------------------------------------------------
+// gh-1639 (#1340 phase 5c): pagePath normalisation and audience bucketing.
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalises a raw GA4 `pagePath` dimension value before it is bucketed:
+ * strips any query string and fragment, strips a trailing `/` (except the
+ * bare root), and strips a trailing `.html` — repeating until neither
+ * applies, since either can follow the other. This is not tidiness: Netlify
+ * serves both spellings and GA4 records both as DISTINCT pagePath values.
+ * Measured live on production over 84 days (issue body): `/get-started` 557
+ * vs `/get-started.html` 33; `/recruit` 47 vs `/recruit.html` 122;
+ * `/contractor-join` 12 vs `/contractor-join.html` 16. Skipping this step
+ * silently splits one audience's traffic across two buckets and understates
+ * it. An empty/missing value normalises to an empty string, NOT to the root
+ * "/" — a missing dimension must never be silently attributed to
+ * homeowner's exact "/" rule.
+ */
+export function normalizePagePath(raw: string): string {
+  let p = String(raw ?? "");
+  const hashIdx = p.indexOf("#");
+  if (hashIdx !== -1) p = p.slice(0, hashIdx);
+  const qIdx = p.indexOf("?");
+  if (qIdx !== -1) p = p.slice(0, qIdx);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    if (p.length > 1 && p.endsWith("/")) {
+      p = p.slice(0, -1);
+      changed = true;
+    }
+    if (p.length > ".html".length && p.toLowerCase().endsWith(".html")) {
+      p = p.slice(0, -".html".length);
+      changed = true;
+    }
+  }
+  return p;
+}
+
+export type Audience = "homeowner" | "contractor" | "referral_partner" | "unattributed";
+
+// gh-1639: THE prefix table, verbatim from the CTO's ruling (issue body +
+// dispatch comment 2026-09-04T18:58:36Z: "The prefix table is a ruling, not
+// a suggestion... Do not extend the table on inference; if a large
+// unattributed share shows up, that is a finding to report"). Split into
+// EXACT matches (checked first, unconditionally) and PREFIX matches
+// (checked only after every exact rule misses, longest-prefix-wins) — this
+// is what resolves both ordering hazards the issue names:
+//   1. "/ref" (exact, referral_partner) must not be swallowed by any
+//      prefix rule that happens to also start with "re" (e.g. "/recruit",
+//      a contractor PREFIX) — exact rules are checked first, full stop.
+//   2. "/contractor…" (prefix, contractor — e.g. production's own
+//      "/contractor-join", 26 pageviews/12 sessions in 28 days) must not be
+//      caught by a broadened form of "/contract-signing" (an EXACT
+//      homeowner rule, never a prefix) — because "/contract-signing" is
+//      exact-only, it can never expand to catch "/contractor-join".
+const EXACT_AUDIENCE_PATHS: Record<string, Audience> = {
+  "/": "homeowner",
+  "/index": "homeowner",
+  "/get-started": "homeowner",
+  "/trade-selector": "homeowner",
+  "/dashboard": "homeowner",
+  "/bids": "homeowner",
+  "/claim": "homeowner",
+  "/contract-signing": "homeowner",
+  "/faq": "homeowner",
+  "/ref": "referral_partner",
+  "/ref-re": "referral_partner",
+};
+
+// Longest-prefix-wins among these when more than one matches the same
+// normalised path (none do today under the pinned table, but the tie-break
+// is deterministic rather than "first array entry wins" so a future table
+// edit cannot silently depend on array order).
+//
+// gh-1639 fix (fresh-context refuter comment 5548057089, PR #1674):
+// `/guides/` and `/blog/` are written in the CTO's ruling WITH a trailing
+// slash — a slash-terminated prefix — while `/contractor`, `/tools`,
+// `/recruit`, `/partner` are bare prefixes (the ruling's own text: "matches
+// by the ruling's own text '/contractor (prefix)'"). `normalizePagePath`
+// strips a path's trailing slash (except bare root) before this table is
+// consulted, so the raw GA4 value `/guides/` normalises to `/guides` before
+// `.startsWith("/guides/")` ever runs — it can never match, and every visit
+// to the guides/blog section-index page silently fell to `unattributed`.
+// `slashTerminated: true` restores the ruling's intent post-normalisation
+// without reintroducing the bug a bare `startsWith("/guides")` would cause
+// (matching `/guidesfoo`, which is not in the table): match the bare root
+// (`/guides`, `/blog` — what `/guides/` normalises to) OR any child path
+// that still carries the slash in the middle (`/guides/foo` — untouched by
+// trailing-slash stripping). Bare prefixes are unaffected: `startsWith`
+// against the literal prefix, exactly as the ruling names them.
+const PREFIX_AUDIENCE_PATHS: Array<{ prefix: string; audience: Audience; slashTerminated?: boolean }> = [
+  { prefix: "/guides/", audience: "homeowner", slashTerminated: true },
+  { prefix: "/blog/", audience: "homeowner", slashTerminated: true },
+  { prefix: "/contractor", audience: "contractor" },
+  { prefix: "/tools", audience: "contractor" }, // covers /tools-crm
+  { prefix: "/recruit", audience: "contractor" },
+  { prefix: "/partner", audience: "referral_partner" },
+];
+
+/**
+ * Buckets an ALREADY-NORMALISED pagePath (see normalizePagePath) into one of
+ * four audiences by the CTO's ruling table above. Anything not matched by
+ * an exact or prefix rule is "unattributed" — never inferred onto the
+ * nearest-looking bucket (issue item 3: "the table is the spec").
+ */
+export function bucketPagePath(normalizedPath: string): Audience {
+  const exact = EXACT_AUDIENCE_PATHS[normalizedPath];
+  if (exact) return exact;
+  let best: { root: string; audience: Audience } | null = null;
+  for (const rule of PREFIX_AUDIENCE_PATHS) {
+    // Slash-terminated prefixes (/guides/, /blog/) match the bare root
+    // post-normalisation (/guides, /blog) OR a child path that still has
+    // the slash (/guides/foo) — never a bare startsWith, which would also
+    // wrongly catch /guidesfoo or /blogger.
+    const root = rule.slashTerminated ? rule.prefix.slice(0, -1) : rule.prefix;
+    const matches = rule.slashTerminated
+      ? normalizedPath === root || normalizedPath.startsWith(rule.prefix)
+      : normalizedPath.startsWith(rule.prefix);
+    if (matches) {
+      if (!best || root.length > best.root.length) best = { root, audience: rule.audience };
+    }
+  }
+  return best ? best.audience : "unattributed";
+}
+
+// gh-1639 item 7: the exact prefixes counted for each audience, exposed so
+// index.ts's payload can put this verbatim into each per-audience series'
+// `note` (and admin-dashboard.html can render it on the scope line) rather
+// than a hand-summarised restatement of the table above that could drift
+// from it.
+export const AUDIENCE_PREFIX_NOTE: Record<Audience, string> = {
+  homeowner:
+    "Counts pagePath /, /index, /get-started, /trade-selector, /dashboard, /bids, /claim, " +
+    "/contract-signing, /faq (exact) plus /guides/ and /blog/ (prefix) — see #1639.",
+  contractor: "Counts pagePath /contractor, /tools, /recruit (prefix) — see #1639.",
+  referral_partner: "Counts pagePath /partner (prefix) plus /ref, /ref-re (exact) — see #1639.",
+  unattributed:
+    "Every pagePath not matched by the homeowner/contractor/referral_partner rules above " +
+    "(e.g. /login, /auth-callback, /terms) — see #1639.",
+};
 
 // gh-1637: both branches carry property_id + hosts (not just the success
 // branch) so a `not_run` result can still say what it WOULD have counted —
@@ -261,7 +418,13 @@ export function buildRunReportRequestBody(startDate: string, endDate: string): u
   // andGroup, so the denominator every consumer receives is the same one.
   return {
     dateRanges: [{ startDate, endDate }],
-    dimensions: [{ name: "date" }],
+    // gh-1639: pagePath is a DIMENSION added alongside date, inside the
+    // unchanged hostName filter below — it does not exclude any row, it
+    // only splits each day's sessions further so the caller can bucket them
+    // by audience (see buildAudienceVisitsSeries in index.ts). Per the
+    // issue: "a pagePath dimension is not a filter — do not filter paths
+    // out; bucket them."
+    dimensions: [{ name: "date" }, { name: "pagePath" }],
     metrics: [{ name: "sessions" }],
     dimensionFilter: {
       andGroup: {
@@ -313,6 +476,12 @@ export function buildRunReportRequestBody(startDate: string, endDate: string): u
  * Rows whose date dimension is not exactly 8 digits are dropped rather than
  * mis-bucketed downstream — same "drop, don't guess" discipline as
  * countByWeek in index.ts.
+ *
+ * gh-1639: the request's dimensions are now [date, pagePath] (see
+ * buildRunReportRequestBody), so dimensionValues[1] is the pagePath — run
+ * through normalizePagePath before it is ever attached to the row, so every
+ * downstream consumer (bucketPagePath included) sees an already-normalised
+ * value and cannot forget the step.
  */
 export function parseSessionsByDayResponse(report: unknown): Ga4DailyRow[] {
   const rawRows = (report as { rows?: unknown[] } | null | undefined)?.rows ?? [];
@@ -323,7 +492,8 @@ export function parseSessionsByDayResponse(report: unknown): Ga4DailyRow[] {
   }>) {
     const date = String(r?.dimensionValues?.[0]?.value ?? "");
     if (!/^\d{8}$/.test(date)) continue;
-    out.push({ date, sessions: Number(r?.metricValues?.[0]?.value ?? 0) });
+    const pagePath = normalizePagePath(String(r?.dimensionValues?.[1]?.value ?? ""));
+    out.push({ date, pagePath, sessions: Number(r?.metricValues?.[0]?.value ?? 0) });
   }
   return out;
 }
