@@ -149,8 +149,8 @@
 <footer id="site-footer"></footer>
 
 <!-- GA4 -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
-<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-D1Y1TLGEFY');</script>
+<script src="/js/ga-gate.js"></script>
+<script>gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
@@ -257,7 +257,10 @@ async function handleRecruit() {
     } catch (_) { /* nav is nice-to-have, never block the redirect */ }
 
     const params = new URLSearchParams(window.location.search);
-    const code = (params.get('code') || '').trim();
+    // gh-1648: mail and SMS clients case-fold URLs, and generate_recruit_code() emits
+    // 'r-' + 6 UPPERCASE alphanumerics, so a case-folded link 406'd at PostgREST and was
+    // silently voided. Normalise to the stored shape before lookup, storage and forwarding.
+    const code = (params.get('code') || '').trim().toUpperCase().replace(/^R-/, 'r-');
 
     // No code &mdash; nothing to route on. Ask the visitor explicitly rather
     // than guessing (gh-865 AC1).
@@ -276,6 +279,7 @@ async function handleRecruit() {
 
     let agentType = null;
     let resolved = false;
+    let lookupError = null;
     try {
         if (typeof sb !== 'undefined' && sb) {
             const { data: recruiter, error } = await sb
@@ -286,6 +290,7 @@ async function handleRecruit() {
                 .maybeSingle();
 
             if (error) {
+                lookupError = error;
                 console.warn('Recruit lookup failed:', error.message);
             } else if (recruiter) {
                 agentType = recruiter.agent_type;
@@ -295,6 +300,7 @@ async function handleRecruit() {
             console.warn('Supabase client not initialized &mdash; skipping recruit lookup');
         }
     } catch (err) {
+        lookupError = err;
         console.warn('Recruit lookup threw:', err);
     }
 
@@ -304,9 +310,14 @@ async function handleRecruit() {
     // ?recruit= for whichever type the visitor picks.
     if (!resolved) {
         if (typeof gtag === 'function') {
+            // gh-1648: `recruiter_type` was dead on this branch (a found row sets resolved=true,
+            // so agentType is always null here). Report WHY instead, so 'their link was mangled'
+            // is distinguishable from 'our client or our lookup failed them'.
             gtag('event', 'recruit_lookup_unresolved', {
                 recruit_code: code,
-                recruiter_type: agentType || 'unknown'
+                reason: (typeof sb === 'undefined' || !sb) ? 'client_unavailable'
+                      : lookupError ? 'lookup_error'
+                      : 'code_not_found'
             });
         }
         showChooser(code);

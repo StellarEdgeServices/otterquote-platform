@@ -46,16 +46,11 @@
     <link rel="stylesheet" href="css/nav.css">
 
     <!-- Google Analytics 4 -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-D1Y1TLGEFY', {
+    <script src="/js/ga-gate.js"></script>
+    <script>gtag('config', 'G-D1Y1TLGEFY', {
             'allow_google_signals': false,
             'allow_ad_personalization_signals': false
-        });
-    </script>
+        });</script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
