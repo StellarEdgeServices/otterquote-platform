@@ -659,7 +659,9 @@ const GA4_HOSTS_FIXTURE_1639 = ["otterquote.com", "www.otterquote.com", "app.ott
 // given landingPage rows — what GA4 measurably returns for closed days (61/61
 // exact on 2026-09-05). The negative controls below deliberately do NOT use
 // it, handing in a site total that disagrees instead.
-function additiveSiteRows(rows: Array<{ date: string; sessions: number }>): Array<{ date: string; sessions: number }> {
+function additiveSiteRows(
+  rows: Array<{ date: string; landingPage?: string; sessions: number }>,
+): Array<{ date: string; sessions: number }> {
   const byDate = new Map<string, number>();
   for (const r of rows) byDate.set(r.date, (byDate.get(r.date) ?? 0) + r.sessions);
   return [...byDate.entries()].map(([date, sessions]) => ({ date, sessions }));
