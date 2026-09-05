@@ -68,11 +68,12 @@ export default async (req: Request, context: any) => {
 
 // gh-1598 (2026-09-05): was '/admin-*.html' only — '/admin-dashboard' (extensionless,
 // and the target of the '/Admin-Dashboard.html' / '/admin-dashboard/' 301s) bypassed
-// the gate. '/admin-*' alone matches every shape (URLPattern '*' spans '/'); the
-// trailing-slash and .html forms are listed explicitly so the intent is readable.
-// The service worker and manifest are public static assets with no admin data and
-// the manifest is fetched without cookies, so they stay outside the gate.
+// the gate. A `path` glob is case-sensitive (measured on deploy-preview-1684:
+// '/Admin-Dashboard.html' fell through to Pretty URLs' 301), so this is a regex
+// `pattern`: any case of 'admin-' at the root, with or without '.html' or a
+// trailing slash. The service worker and manifest are public static assets with
+// no admin data and the manifest is fetched without cookies, so they stay outside.
 export const config = {
-  path: ['/admin-*', '/admin-*/', '/admin-*.html'],
-  excludedPath: ['/admin-sw.js', '/admin-app.webmanifest'],
+  pattern: '^/[Aa][Dd][Mm][Ii][Nn]-.*$',
+  excludedPattern: ['^/admin-sw\\.js$', '^/admin-app\\.webmanifest$'],
 };
