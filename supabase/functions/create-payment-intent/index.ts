@@ -33,6 +33,11 @@ import {
   REFUSAL_CODE,
 } from "./live-charge-guard.ts";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
+import {
+  evaluateMeasurementUpgradeGate,
+  UPGRADE_CHARGE_DESCRIPTION,
+  VENDOR_CREDIT_EXPECTED_CENTS,
+} from "./measurement-upgrade-gate.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -141,7 +146,15 @@ serve(async (req) => {
       console.log("[hover_measurement] Server-side price enforced:", amount, "(client sent:", clientAmount, ")");
     }
 
-    if (!amount || typeof amount !== "number" || amount <= 0 || !Number.isInteger(amount)) {
+    // measurement_upgrade's amount is entirely server-derived from the SQ
+    // tier gate below (never trusted from the client — same reasoning as
+    // D-181's hover_measurement price), so it is not known yet at this point
+    // and is exempted from this pre-authorization check rather than made to
+    // pass with a meaningless placeholder.
+    if (
+      metadata?.type !== "measurement_upgrade" &&
+      (!amount || typeof amount !== "number" || amount <= 0 || !Number.isInteger(amount))
+    ) {
       return new Response(JSON.stringify({ error: "Invalid amount. Must be a positive integer (in cents)." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -154,7 +167,7 @@ serve(async (req) => {
         error: "Missing required metadata fields: claim_id and type (hover_measurement, deductible_escrow, or platform_fee).",
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const validTypes = ["hover_measurement", "deductible_escrow", "platform_fee"];
+    const validTypes = ["hover_measurement", "deductible_escrow", "platform_fee", "measurement_upgrade"];
     if (!validTypes.includes(metadata.type)) {
       return new Response(JSON.stringify({ error: `Invalid metadata.type. Must be one of: ${validTypes.join(", ")}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -249,6 +262,81 @@ serve(async (req) => {
           });
         }
       }
+    } else if (metadata.type === "measurement_upgrade") {
+      // ===== gh-1411 / D-317 cl. 4-5: contractor detailed-measurement upgrade =====
+      // Contractor-initiated, so ownership is "does this contractor belong to
+      // this caller," not "does this caller own the claim" (the branch below).
+      if (!callerId) {
+        return new Response(JSON.stringify({ error: "Forbidden: this operation requires user authentication" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!contractor_id || typeof contractor_id !== "string") {
+        return new Response(JSON.stringify({ error: "Missing contractor_id." }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: contractorRow, error: contractorErr } = await supabase
+        .from("contractors")
+        .select("id, user_id")
+        .eq("id", contractor_id)
+        .maybeSingle();
+      if (contractorErr || !contractorRow || contractorRow.user_id !== callerId) {
+        return new Response(JSON.stringify({ error: "Forbidden: caller does not own this contractor account." }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // select('*'): per #1410 (js/measurement-shape.js), claims.measurement_shape
+      // may not exist in the live schema yet, and an explicit column list
+      // naming it is a 42703 error against today's schema. hover_measurements
+      // (for squares) and the #1467 guard columns all ride along on '*'.
+      const { data: upgradeClaimRow, error: upgradeClaimErr } = await supabase
+        .from("claims")
+        .select("*")
+        .eq("id", metadata.claim_id)
+        .maybeSingle();
+      if (upgradeClaimErr) {
+        console.error(`[${FUNCTION_NAME}] measurement_upgrade claim lookup failed:`, upgradeClaimErr);
+      }
+
+      const { data: basicOrderRow } = await supabase
+        .from("hover_orders")
+        .select("status")
+        .eq("claim_id", metadata.claim_id)
+        .eq("product_code", "roof_basic")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const gate = evaluateMeasurementUpgradeGate(upgradeClaimRow, basicOrderRow?.status ?? null);
+      if (!gate.allow) {
+        if (gate.code === "TEST_CLAIM_CHARGE_REFUSED") {
+          const guardMessage = describeGuardVerdict(
+            evaluateLiveChargeGuard(upgradeClaimRow),
+            metadata.claim_id,
+            null,
+          );
+          console.error(`[${FUNCTION_NAME}] ${guardMessage}`);
+          try {
+            await supabase.from("platform_alerts_log").insert({
+              alert_type: "measurement_upgrade_refused_unauthorized_test",
+              function_name: FUNCTION_NAME,
+              message: guardMessage,
+              sent_at: new Date().toISOString(),
+            });
+          } catch (alertErr) {
+            console.error("platform_alerts_log insert failed:", alertErr);
+          }
+        }
+        return new Response(
+          JSON.stringify({ error: gate.error, code: gate.code }),
+          { status: gate.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // Server-side price, from the tier gate — never trusted from the client.
+      amount = gate.amountCents;
     } else {
       // hover_measurement / deductible_escrow: must be an authenticated user who owns the claim.
       if (!callerId) {
@@ -457,13 +545,26 @@ serve(async (req) => {
         await supabase.from("quotes").update(quoteUpdate).eq("id", metadata.quote_id);
       }
     } else {
-      // ===== Standard flow (hover_measurement, deductible_escrow) =====
+      // ===== Standard flow (hover_measurement, deductible_escrow, measurement_upgrade) =====
       const form = new URLSearchParams();
       form.append("amount", String(amount));
       form.append("currency", currency);
-      form.append("description", description || "");
+      // measurement_upgrade: description is server-enforced, never the
+      // client-sent value — D-312/#1414 scrubbed vendor names from every
+      // customer-facing string and this must never regress that.
+      const chargeDescription = metadata.type === "measurement_upgrade"
+        ? UPGRADE_CHARGE_DESCRIPTION
+        : (description || "");
+      form.append("description", chargeDescription);
       form.append("metadata[claim_id]", metadata.claim_id);
       form.append("metadata[type]", metadata.type);
+      if (metadata.type === "measurement_upgrade") {
+        form.append("metadata[contractor_id]", contractor_id);
+        // Bookkeeping only (Marty, #1411 cto-2026-09-02T13:45:25Z: "does not
+        // net it against the charge") — the contractor is still charged the
+        // full tier amount above.
+        form.append("metadata[vendor_credit_expected_cents]", String(VENDOR_CREDIT_EXPECTED_CENTS));
+      }
       form.append("automatic_payment_methods[enabled]", "true");
       const idempotencyKey = `${metadata.type}-${metadata.claim_id}`;
       const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {

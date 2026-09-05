@@ -11,7 +11,22 @@
  * parseAddress() is the single parser both write sites in page.tsx route
  * through (profiles upsert + claims insert/update) so the two call sites
  * can no longer drift out of sync with each other.
+ *
+ * gh-1579 RULING (b) (CTO ruling, comment 2026-09-04T19:15:12Z): a
+ * whitelist of valid state codes alone can't distinguish a real state
+ * token from a same-letters street word ("...In 46201" -- the word "In",
+ * not Indiana) or a USPS street-suffix abbreviation that also happens to
+ * be a real state code ("...Ct 12345" -- "Court", not Connecticut). A US
+ * ZIP code determines its state deterministically, so the captured token
+ * is now cross-checked against the state its ZIP resolves to (see
+ * ./zip3-state.ts, a static table -- no network, no vendor). Agreement
+ * keeps the token; disagreement means the token was a street word/suffix,
+ * so the ZIP's state wins; an unresolvable ZIP keeps the token only if it
+ * was already unambiguous under the derived-set logic below, else NULL.
+ * Failure to resolve is always NULL, never a guess.
  */
+
+import { zip3ToState } from './zip3-state';
 
 export interface ParsedAddress {
   street: string | null;
@@ -143,14 +158,22 @@ function isTrustworthyStateMatch(token: string, head: string): boolean {
  *    (VALID_STATE_CODES) — not just any two letters. When both hold, split
  *    everything before the token into street/city on the last comma — or,
  *    if there is no comma at all, on the last whitespace-separated word.
- * 3. When no such trailing token is found, OR the token is found but is
- *    not a real state code, OR it is one of the codes that are both a real
- *    state and a 2-letter USPS street-suffix abbreviation (CT/KY/MT/PR/WY —
- *    see AMBIGUOUS_STATE_SUFFIX_CODES, derived by intersecting the USPS
- *    Pub-28 2-letter suffix table against VALID_STATE_CODES) appearing on a
- *    fully comma-less address, fall back unchanged to the original
- *    4-segment comma split — identical treatment to a regex miss, so this
- *    never invents a third behavior.
+ * 3. RULING (b): whichever way step 2 comes out, cross-check the captured
+ *    token against the state its ZIP resolves to via a static ZIP3 table
+ *    (./zip3-state.ts — no network, no vendor):
+ *      - Token trustworthy (real state code, and not an ambiguous USPS-
+ *        suffix collision on a comma-less address) + ZIP agrees or is
+ *        unresolvable -> keep the token.
+ *      - Token trustworthy + ZIP resolves to a DIFFERENT state -> the
+ *        token was actually a street word/suffix; the ZIP's state wins.
+ *      - Token NOT trustworthy (not a real state code, or one of the
+ *        AMBIGUOUS_STATE_SUFFIX_CODES on a comma-less address) + ZIP
+ *        resolves -> take the ZIP's state (no reliable city boundary in
+ *        this shape, so the whole head + token stays street).
+ *      - Token not trustworthy + ZIP unresolvable -> fall back unchanged
+ *        to the original 4-segment comma split — identical treatment to a
+ *        regex miss, so this never invents a fourth behavior. Failure to
+ *        resolve is always NULL, never a guess.
  *    This also covers the legacy "street, city, state, zip" shape, where
  *    state and zip are themselves comma-separated and so never match the
  *    trailing-token regex to begin with.
@@ -165,28 +188,54 @@ export function parseAddress(raw: string | null | undefined): ParsedAddress {
   const match = withoutCountry.match(TRAILING_STATE_ZIP_RE);
   const head = match ? match[1].trim().replace(/,\s*$/, '') : '';
 
-  if (match && isTrustworthyStateMatch(match[2], head)) {
-    const [, , state, zip] = match;
-    let street: string | null = null;
-    let city: string | null = null;
+  if (match) {
+    const [, , rawToken, zip] = match;
+    const token = rawToken.toUpperCase();
+    // RULING (b): the ZIP is a real signal, checked regardless of which
+    // branch below the token takes.
+    const zipState = zip3ToState(zip);
 
-    if (head) {
-      if (head.includes(',')) {
-        const parts = head.split(',').map((s) => s.trim()).filter(Boolean);
-        city = parts.pop() || null;
-        street = parts.join(', ') || null;
-      } else {
-        const words = head.split(/\s+/).filter(Boolean);
-        if (words.length > 1) {
-          city = words.pop() || null;
-          street = words.join(' ') || null;
+    if (isTrustworthyStateMatch(rawToken, head)) {
+      // Agreement, or a ZIP that can't be resolved, keeps the token as
+      // before; a resolvable disagreement means the token was actually a
+      // street word/suffix, not the state, so the ZIP overrides it.
+      const finalState = zipState && zipState !== token ? zipState : token;
+      let street: string | null = null;
+      let city: string | null = null;
+
+      if (head) {
+        if (head.includes(',')) {
+          const parts = head.split(',').map((s) => s.trim()).filter(Boolean);
+          city = parts.pop() || null;
+          street = parts.join(', ') || null;
         } else {
-          street = head;
+          const words = head.split(/\s+/).filter(Boolean);
+          if (words.length > 1) {
+            city = words.pop() || null;
+            street = words.join(' ') || null;
+          } else {
+            street = head;
+          }
         }
       }
+
+      return { street: street || null, city: city || null, state: cleanState(finalState), zip };
     }
 
-    return { street: street || null, city: city || null, state: cleanState(state), zip };
+    // The token alone was not trustworthy (not a real state code, or an
+    // ambiguous USPS-suffix collision on a comma-less address). RULING (b):
+    // don't give up to the full-string fallback when the ZIP resolves a
+    // state on its own -- that repairs the disclosed comma-less CT/KY/MT/
+    // PR/WY regression without fabricating anything (gh-1579 review round
+    // 3). There is no reliable city boundary in this shape, only a
+    // resolved state and a validated zip, so the whole head + token stays
+    // street rather than being split into a guessed city.
+    if (zipState) {
+      const street = [head, rawToken].filter(Boolean).join(' ').trim();
+      return { street: street || null, city: null, state: zipState, zip };
+    }
+    // ZIP unresolvable and the token was untrustworthy -> fall through to
+    // the legacy fallback below. Never guess.
   }
 
   // Fallback: legacy 4-segment comma split — unchanged shape/semantics for

@@ -46,13 +46,8 @@
 
     <!-- Stripe.js &mdash; required for card payment on measurement report purchase -->
     <script src="https://js.stripe.com/v3/"></script>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-D1Y1TLGEFY');
-    </script>
+    <script src="/js/ga-gate.js"></script>
+    <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
@@ -605,7 +600,7 @@
                     <p>Request measurements from your insurance adjuster. Many adjusters take measurements during their inspection and can share them at no cost.</p>
                     <ul class="path-card-features">
                         <li>No cost to you</li>
-                        <li>We send a professional email on your behalf</li>
+                        <li>We send your adjuster a written request for a copy of your file</li>
                         <li>Auto-captured when adjuster replies</li>
                         <li>May not always be available</li>
                     </ul>

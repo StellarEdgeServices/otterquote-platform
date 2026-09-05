@@ -44,13 +44,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-D1Y1TLGEFY');
-    </script>
+    <script src="/js/ga-gate.js"></script>
+    <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
@@ -656,7 +651,7 @@
                     </ul>
                 </div>
 
-                <p>Still can't find it? We can send a professional request to your adjuster on your behalf.</p>
+                <p>Still can't find it? We can send your adjuster a written request for a copy of your estimate.</p>
 
                 <div class="button-row">
                     <button class="action-btn" onclick="switchToEmailFlow()">Request from Adjuster</button>
@@ -707,7 +702,7 @@
                         </div>
                         <div class="email-field">
                             <span class="email-field-label">From:</span>
-                            <span class="email-field-value">Otter Quotes (on behalf of <span id="emailFromName">you</span>)</span>
+                            <span class="email-field-value">Sent by Otter Quotes at your request &mdash; replies come to <span id="emailFromName">you</span></span>
                         </div>
                         <div class="email-field">
                             <span class="email-field-label">Subject:</span>
