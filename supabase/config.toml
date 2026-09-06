@@ -331,6 +331,13 @@ verify_jwt = true
 [functions.get-business-lines-dashboard]
 verify_jwt = false
 
+# gh-1653: admin homeowner list (one row per claim + dwell). profiles carries
+# no admin RLS, so this reads with the service role behind the admin
+# allow-list — same shape as get-business-lines-dashboard. Read-only. Auth
+# performed in-handler. Pinned at creation.
+[functions.get-homeowner-list]
+verify_jwt = false
+
 # gh-1412: manual measurement-fulfilment loop notifications. Both do auth
 # in-handler (the project-wide ES256/HS256 gateway mismatch makes verify_jwt
 # unreliable for these callers) and are pinned at creation so a flagless
@@ -353,4 +360,24 @@ verify_jwt = false
 # (dustinstohler1@gmail.com) — defense in depth for a function whose entire
 # purpose is minting sessions. Pinned at creation per spec.
 [functions.mint-test-session]
+verify_jwt = true
+
+# gh-1580: Cron-exception, same pattern as send-incomplete-onboarding-reminders —
+# JWT verification disabled; access is gated by CRON_SECRET header check inside
+# the function.
+[functions.send-homeowner-next-steps]
+verify_jwt = false
+
+# gh-1313: Cron-exception, same pattern as send-homeowner-next-steps — JWT
+# verification disabled; access is gated by the CRON_SECRET / service-role
+# Bearer check inside the function. Read-only on contractor_templates; writes
+# platform_alerts_log only.
+[functions.watch-template-mapping]
+verify_jwt = false
+
+# gh-1531: vault-resync rewrites the pg_cron Vault secrets (cron_service_role_key,
+# cron_secret) from its own injected env after a rotation. Gateway JWT
+# verification ON, plus an in-handler single-admin gate (PRIMARY_ADMIN_EMAIL,
+# gh-1534 semantics). Pinned so a flagless `functions deploy` can't flip it.
+[functions.vault-resync]
 verify_jwt = true

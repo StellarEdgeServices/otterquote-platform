@@ -254,6 +254,57 @@ const Services = {
   },
 
   /**
+   * [gh-1411] Create a PaymentIntent for the contractor detailed-measurement
+   * upgrade purchase (D-317 cl. 4/5, $25 under 50 SQ / $55 at-or-over).
+   *
+   * Price is NEVER sent from the client -- create-payment-intent's
+   * measurement_upgrade branch derives it server-side from the claim's
+   * basic-report squares (measurement-upgrade-gate.ts) and returns the
+   * authoritative amount in the response. Raw fetch rather than
+   * sb.functions.invoke, matching createMeasurementOrder below: the gate's
+   * refusal codes (ALREADY_DETAILED, BASIC_REPORT_NOT_READY, SQUARES_UNKNOWN,
+   * TEST_CLAIM_CHARGE_REFUSED) are attached to the thrown error as `.code`
+   * so the caller can show a specific message instead of a generic failure.
+   *
+   * @param {Object} params
+   * @param {string} params.claim_id
+   * @param {string} params.contractor_id -- the buying contractor's own row id
+   * @returns {Object} { client_secret, payment_intent_id, amount, currency, status }
+   */
+  async createMeasurementUpgradePaymentIntent(params) {
+    const { claim_id, contractor_id } = params || {};
+
+    if (!claim_id) throw new Error('Missing claim_id.');
+    if (!contractor_id) throw new Error('Missing contractor_id.');
+
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('You need to be signed in to buy this report.');
+
+    const res = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/create-payment-intent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: CONFIG.SUPABASE_ANON,
+      },
+      body: JSON.stringify({
+        currency: 'usd',
+        contractor_id,
+        metadata: { claim_id, type: 'measurement_upgrade' },
+      }),
+    });
+
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(payload.error || 'Could not start the upgrade purchase. Please try again.');
+      err.code = payload.code || null;
+      throw err;
+    }
+    return payload; // { client_secret, payment_intent_id, amount, currency, status, succeeded, pending }
+  },
+
+
+  /**
    * Create a payment intent for deductible escrow collection.
    */
   async createDeductiblePaymentIntent(params) {

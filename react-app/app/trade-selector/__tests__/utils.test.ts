@@ -105,23 +105,24 @@ describe('parseAddress (gh-1579)', () => {
     // torn apart, with the suffix mis-captured as "state" (some of these,
     // like "CT", are real state codes — worse than the NULL this PR set
     // out to fix, since a wrong-but-valid state silently passes the
-    // downstream D-178 state gate). These must now fall through to the
-    // legacy comma-split fallback — same as any other regex miss — which
-    // returns the *entire* string as street and leaves city/state/zip
-    // null, rather than fabricating a state and truncating the street.
+    // downstream D-178 state gate).
+    //
+    // RULING (b) update: these no longer fall all the way to "state: null".
+    // Each ZIP below is a real, resolvable ZIP, so the ZIP3->state table
+    // recovers the correct state instead of fabricating the suffix as one
+    // — "removes NULLs rather than adds them" per the ruling. The street
+    // keeps the full "head + suffix" text (no guessed city boundary); the
+    // point of this test is still that the suffix is never mistaken for
+    // the state.
     it.each([
-      '123 Oak Ct 12345',
-      '45 Elm Rd 60614',
-      '9 Bay Ln 30301',
-      '12 Sunset Dr 90210',
-      '500 Main Pl 10001',
-    ])('does not mangle "%s" into a fabricated state', (address) => {
-      expect(parseAddress(address)).toEqual({
-        street: address,
-        city: null,
-        state: null,
-        zip: null,
-      });
+      ['123 Oak Ct 12345', '123 Oak Ct', 'NY'], // 123xx is Schenectady, NY — not CT
+      ['45 Elm Rd 60614', '45 Elm Rd', 'IL'], // 606xx is Chicago, IL — not a state at all pre-ZIP
+      ['9 Bay Ln 30301', '9 Bay Ln', 'GA'], // 303xx is Atlanta, GA
+      ['12 Sunset Dr 90210', '12 Sunset Dr', 'CA'], // 902xx is Beverly Hills, CA
+      ['500 Main Pl 10001', '500 Main Pl', 'NY'], // 100xx is Manhattan, NY
+    ])('resolves "%s" via ZIP instead of fabricating the suffix as state', (address, street, state) => {
+      const zip = address.match(/(\d{5})$/)![1];
+      expect(parseAddress(address)).toEqual({ street, city: null, state, zip });
     });
 
     // "Ct" is both the Court street suffix AND a real state code
@@ -147,24 +148,29 @@ describe('parseAddress (gh-1579)', () => {
     // these cases lock in every member of that derived set, not just the
     // one a reviewer happened to notice.
 
+    // RULING (b) update: these used to bottom out at "state: null" because
+    // the suffix collision made the token untrustworthy on a comma-less
+    // address. Each is now resolved via the ZIP3->state table instead —
+    // note '20 Rolling Pr 78701' resolves to TX (Austin), NOT Puerto Rico:
+    // the ZIP proves the suffix collision was right to distrust the token,
+    // without fabricating PR just because "Pr" looked like Prairie.
     it.each([
       // Wy = Way, collides with Wyoming. The exact inputs from the FAIL
-      // review that caught the round-2 gap.
-      ['100 Sunset Wy 90210', 'WY/Way'],
-      ['400 Fair Wy 82001', 'WY/Way'],
-      // Ky = Key, collides with Kentucky.
-      ['12 Compass Ky 40202', 'KY/Key'],
-      // Mt = Mount, collides with Montana.
-      ['5 Fair Mt 59601', 'MT/Mount'],
-      // Pr = Prairie, collides with Puerto Rico.
-      ['20 Rolling Pr 78701', 'PR/Prairie'],
-    ])('does not mangle comma-less "%s" (%s) into a fabricated state', (address) => {
-      expect(parseAddress(address)).toEqual({
-        street: address,
-        city: null,
-        state: null,
-        zip: null,
-      });
+      // review that caught the round-2 gap. 90210 is Beverly Hills, CA —
+      // proving this really was a street word, not Wyoming.
+      ['100 Sunset Wy 90210', 'CA'],
+      // 82001 really is Cheyenne, WY — one of the five disclosed-regression
+      // addresses named in the CTO's ruling.
+      ['400 Fair Wy 82001', 'WY'],
+      // Ky = Key, collides with Kentucky. 40202 really is Louisville, KY.
+      ['12 Compass Ky 40202', 'KY'],
+      // Mt = Mount, collides with Montana. 59601 really is Helena, MT.
+      ['5 Fair Mt 59601', 'MT'],
+      // Pr = Prairie, collides with Puerto Rico. 78701 is Austin, TX.
+      ['20 Rolling Pr 78701', 'TX'],
+    ])('resolves comma-less "%s" via ZIP instead of fabricating a state', (address, state) => {
+      const [, street, zip] = address.match(/^(.*)\s(\d{5})$/)!;
+      expect(parseAddress(address)).toEqual({ street, city: null, state, zip });
     });
 
     it.each([
@@ -174,6 +180,80 @@ describe('parseAddress (gh-1579)', () => {
       ['20 Main St, San Juan PR 00901', '20 Main St', 'San Juan', 'PR', '00901'],
     ])('still trusts "%s" as a real state when a comma marks a real city segment', (address, street, city, state, zip) => {
       expect(parseAddress(address)).toEqual({ street, city, state, zip });
+    });
+  });
+
+  describe('gh-1579 RULING (b): validate the parsed state against the ZIP', () => {
+    // The word-collision class the whitelist alone can't catch: "In" is a
+    // real state code (Indiana) but not a USPS street-suffix abbreviation,
+    // so it was already "trustworthy" under the old whitelist logic even
+    // on a comma-less address — a fabrication the ruling calls out by name.
+    // 46201 really is Indianapolis, IN, so the ZIP confirms it rather than
+    // exposing it as wrong; this locks in that the word-collision case is
+    // now ZIP-verified, not merely lucky.
+    it('confirms the word-collision case via ZIP: "123 Foo In 46201" -> IN', () => {
+      expect(parseAddress('123 Foo In 46201')).toEqual({
+        street: '123',
+        city: 'Foo',
+        state: 'IN',
+        zip: '46201',
+      });
+    });
+
+    // Token/ZIP disagreement on an otherwise-trustworthy token (valid,
+    // non-ambiguous, comma-separated city) — the ZIP wins outright, not
+    // just on the ambiguous-suffix set. 62701 really is Springfield, IL,
+    // not TX, so "IL" overrides the typed "TX".
+    it('a resolvable disagreement overrides an otherwise-trustworthy token', () => {
+      expect(parseAddress('123 Main St, Springfield TX 62701')).toEqual({
+        street: '123 Main St',
+        city: 'Springfield',
+        state: 'IL',
+        zip: '62701',
+      });
+    });
+
+    // ZIP unresolvable (096xx falls in the Armed-Forces-Europe military
+    // block, not a real state) + a trustworthy token -> keep the token,
+    // exactly as before ZIP validation existed. Never guess a replacement.
+    it('keeps an unambiguous token when the ZIP cannot be resolved', () => {
+      expect(parseAddress('5 Main St, Metropolis TX 09612')).toEqual({
+        street: '5 Main St',
+        city: 'Metropolis',
+        state: 'TX',
+        zip: '09612',
+      });
+    });
+
+    // ZIP unresolvable (969xx is shared by Guam and the Northern Mariana
+    // Islands — genuinely ambiguous at 3-digit resolution) + an
+    // untrustworthy token ("Rd" is not a state code at all) -> NULL, never
+    // a guess. Falls all the way back to the legacy comma-split fallback,
+    // same shape as any other unresolvable case.
+    it('returns null when neither the token nor the ZIP resolves', () => {
+      expect(parseAddress('10 Beach Rd 96910')).toEqual({
+        street: '10 Beach Rd 96910',
+        city: null,
+        state: null,
+        zip: null,
+      });
+    });
+
+    // The five real addresses named in the CTO's ruling as the disclosed
+    // regression this change repairs: comma-less CT/KY/MT/PR/WY addresses
+    // that the round-3 whitelist fix made return "state: null". Each now
+    // resolves via its ZIP instead.
+    describe('repairs the disclosed comma-less CT/KY/MT/PR/WY regression', () => {
+      it.each([
+        ['10 Main St Hartford CT 06103', 'Hartford, CT', 'CT'],
+        ['88 Key St Louisville KY 40202', 'Louisville, KY', 'KY'],
+        ['200 Bridger Dr Bozeman MT 59715', 'Bozeman, MT', 'MT'],
+        ['5 Calle Sol San Juan PR 00901', 'San Juan, PR', 'PR'],
+        ['300 Capitol Ave Cheyenne WY 82001', 'Cheyenne, WY', 'WY'],
+      ])('%s (%s) resolves to %s via ZIP, not null', (address, _label, state) => {
+        const [, street, zip] = address.match(/^(.*)\s(\d{5})$/)!;
+        expect(parseAddress(address)).toEqual({ street, city: null, state, zip });
+      });
     });
   });
 });

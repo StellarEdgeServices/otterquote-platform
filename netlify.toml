@@ -49,7 +49,7 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
 
 # Admin auth gate — W4-P1 (May 1, 2026)
-# Intercepts /admin-*.html before static HTML is served.
+# Intercepts /admin-* (with or without .html / trailing slash) before static HTML is served.
 # Unauthenticated or non-admin sessions redirect to /login.html?reason=admin_required.
 # Source: netlify/edge-functions/admin-auth-gate.ts
 # PWA — Partner App (2026-08-03)
@@ -86,8 +86,19 @@
   [headers.values]
     Cache-Control = "no-cache"
 
+# gh-1598 REFUTED-REOPENED fix (2026-09-05): the glob was "/admin-*.html", so
+# the extensionless form "/admin-dashboard" (which Netlify Pretty URLs also
+# 301s "/Admin-Dashboard.html" and "/admin-dashboard/" onto) served the full
+# admin HTML shell to an anonymous request. A `path` glob is case-sensitive
+# (measured on deploy-preview-1684: "/Admin-Dashboard.html" fell through to
+# Pretty URLs' 301 instead of the gate), so this is a regex `pattern`: any
+# case of "admin-" at the root, with or without ".html" or a trailing slash.
+# The two public PWA assets (service worker + manifest, no admin data) are
+# excluded so the manifest fetch — which sends no cookie — keeps working.
+# The inline config in admin-auth-gate.ts declares the same and takes precedence.
 [[edge_functions]]
-  path = "/admin-*.html"
+  pattern = '^/[Aa][Dd][Mm][Ii][Nn]-.*$'
+  excludedPattern = ['^/admin-sw\.js$', '^/admin-app\.webmanifest$']
   function = "admin-auth-gate"
 
 # Referral short-link query passthrough — #630 (2026-08-06)
@@ -103,3 +114,20 @@
 [[edge_functions]]
   path = "/ref/*"
   function = "ref-redirect"
+
+# gh-1540 REFUTED-REOPENED fix (2026-09-03): /recruit/ and /Recruit.html
+# were measuring 301 (not the required 200) because Netlify's built-in
+# Pretty URLs post-processing normalizes trailing slashes and .html-case
+# ahead of `_redirects`, pre-empting the 200-rewrite rules already declared
+# there. A sitewide `pretty_urls = false` toggle was rejected on review — it
+# strips that canonicalization for every other page on the site too. This
+# edge function intercepts only these two literal paths, ahead of Pretty
+# URLs, so the rest of the site's behavior is unchanged.
+# Source: netlify/edge-functions/recruit-redirect.ts
+[[edge_functions]]
+  path = "/recruit/"
+  function = "recruit-redirect"
+
+[[edge_functions]]
+  path = "/Recruit.html"
+  function = "recruit-redirect"

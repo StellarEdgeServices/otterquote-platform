@@ -81,6 +81,14 @@
         .status-validated{ background: #D1FAE5; color: #065F46; }
         .status-rejected { background: #FCE7F3; color: #9F1239; }
 
+        /* [#1313] Age column — how long a row has sat in its current status.
+           Pending rows past the watcher threshold (24h) are flagged red; the
+           same rows are what watch-template-mapping writes platform_alerts_log
+           entries for. */
+        .age-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .age-stale { color: #991B1B; font-weight: 700; }
+        .age-stale::after { content: " \26A0"; }
+
         .anchor-summary { font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 0.8rem; color: var(--slate); }
         .anchor-summary strong { color: var(--navy); }
 
@@ -121,13 +129,8 @@
         }
     </style>
 <!-- GA4 -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-D1Y1TLGEFY');
-</script>
+<script src="/js/ga-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
 </head>
 <body>
 
@@ -189,6 +192,7 @@
                     <th>Anchors Found</th>
                     <th>Status</th>
                     <th>Submitted</th>
+                    <th title="Time in current status. Rows waiting on a contractor or the admin for more than 24 hours are flagged (#1313 watcher).">Age</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -303,6 +307,37 @@
         renderTable();
     }
 
+    // [#1313] Statuses where somebody must act — the same set the
+    // watch-template-mapping Edge Function watches. Mirror any change there.
+    const WATCHED_STATUSES = ['manual_mapping_pending', 'pending_validation', 'submitted_for_admin_review'];
+    const STALE_THRESHOLD_HOURS = 24;
+
+    function ageHours(t, nowMs) {
+        const since = Date.parse(t.updated_at || t.created_at || '');
+        if (Number.isNaN(since)) return null;
+        return Math.max(0, (nowMs - since) / 3600000);
+    }
+
+    function formatAge(hours) {
+        if (hours === null) return '—';
+        if (hours < 1) return Math.round(hours * 60) + 'm';
+        if (hours < 48) return Math.round(hours) + 'h';
+        const days = Math.floor(hours / 24);
+        return days + 'd ' + Math.round(hours - days * 24) + 'h';
+    }
+
+    function ageCell(t, nowMs) {
+        const td = document.createElement('td');
+        td.className = 'age-cell';
+        const hours = ageHours(t, nowMs);
+        td.textContent = formatAge(hours);
+        if (hours !== null && WATCHED_STATUSES.includes(t.status) && hours >= STALE_THRESHOLD_HOURS) {
+            td.classList.add('age-stale');
+            td.title = 'Waiting in ' + t.status + ' for ' + hours.toFixed(1) + ' hours — past the ' + STALE_THRESHOLD_HOURS + 'h watcher threshold';
+        }
+        return td;
+    }
+
     function statusBadge(status) {
         const map = {
             'pending_validation':         { cls: 'status-pending',   label: 'Pending Validation' },
@@ -344,6 +379,7 @@
         emptyEl.style.display = 'none';
 
         tbody.innerHTML = '';
+        const renderNowMs = Date.now();
         filtered.forEach(t => {
             const tr = document.createElement('tr');
 
@@ -389,6 +425,8 @@
             const ts = new Date(t.updated_at || t.created_at);
             tdSubmitted.textContent = ts.toLocaleDateString() + ' ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             tr.appendChild(tdSubmitted);
+
+            tr.appendChild(ageCell(t, renderNowMs));
 
             const tdActions = document.createElement('td');
             tdActions.className = 'actions';

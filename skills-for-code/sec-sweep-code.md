@@ -130,6 +130,54 @@ Pull from each available source. Collect raw findings; do not filter yet.
 If GitHub MCP available:
 - Query open Dependabot alerts for `StellarEdgeServices/otterquote-platform`
 - Extract: package name, severity (CVSS score if available), ecosystem, affected version, patched version, CVE ID, created date
+- Also query `StellarEdgeServices/otter-crm`. **Never assert a cause this run did not measure** —
+  an honest "cause not determined" beats a confident wrong one; a wrong cause sends the next
+  reader to fix a token when the real answer is a feature switched off, or the reverse. This
+  principle must survive the next edit to this section (GitHub #1380, PR #1603 rounds 1–2).
+  - `403` whose response body indicates the feature is disabled (e.g. contains `disabled` or
+    `must be enabled`) → `otter-crm: NOT MEASURED (403, Dependabot alerts not enabled on this
+    repository)`, quoting the observed body snippet. Per CTO ruling comment 5518451236 — two
+    separate, non-contiguous sentences from that comment, quoted verbatim rather than stitched
+    into one: **"The token works. The features are switched off on the target repo."** and **"A
+    403 saying the feature is disabled is not a 403 saying you lack scope."** That ruling's own
+    measured data for this exact endpoint — `otter-crm dependabot alerts 403 "Dependabot alerts
+    are disabled for this repository"` — is the basis. Do NOT report a body-confirmed
+    disabled-feature 403 as a token, permission, or SSO problem — that was the round-2 defect per
+    PR #1603 review 5533717774.
+  - `403` whose response body does NOT indicate the feature is disabled → report the raw observed
+    status and a short body snippet, explicitly unclassified: `otter-crm: NOT MEASURED (403,
+    <short body snippet>, cause not determined)`. This case could genuinely be a permission or
+    SSO problem — asserting a feature-disabled cause without the body actually saying so would
+    reintroduce the round-1/round-2 defect by the back door. Key the classification on the
+    response body, never on the status code alone.
+  - `404` → `otter-crm: NOT MEASURED (404, repository not visible to this token)`. GitHub returns
+    404, not 403, when a fine-grained PAT cannot see a repo at all. Measured this session: this
+    lane's `GITHUB_PERSONAL_ACCESS_TOKEN` returns HTTP 404 on both
+    `GET /repos/StellarEdgeServices/otter-crm` and its `/dependabot/alerts` sub-endpoint.
+  - `200` with the alerts array present → report the actual count. Per the same CTO ruling, this
+    endpoint returns 403 (not 200) when Dependabot alerts are disabled on the repo — so once the
+    403 and 404 cases above are correctly routed, a 200 response is a genuine measurement of the
+    real alert count, including zero; the ruling's own same-run comparison
+    (`otterquote-platform dependabot 200 count=0`) shows a clean 200/zero is a real,
+    distinguishable outcome, not a disguised failure. Report it as `otter-crm: 0 open Dependabot
+    alerts (measured, HTTP 200)` — state plainly that it is a measured zero, and if this
+    endpoint's disabled-vs-empty behavior is ever found to differ from the ruling's data, say so
+    rather than silently assuming this mapping still holds.
+  - `401`, `429`, a network failure with no HTTP response at all (timeout, DNS failure, connection
+    reset), or anything else not covered above → report the raw observed status (or `no response`
+    if none was received) plus a short response-body snippet, explicitly unclassified:
+    `otter-crm: NOT MEASURED (<observed status, or "no response">, <short body snippet>, cause not
+    determined)`. `NOT MEASURED (status 429, cause not determined)` is correct and useful; a line
+    that guesses a cause is the defect this revision exists to remove.
+  Carry the same status/cause on the `scanner-telemetry.md` row
+  (`Claude's Memories/scanner-telemetry.md`) for this run. An unreadable repo must be named in
+  BOTH the digest body and the telemetry row — never omitted, never reported as OK (gh-1419
+  convention, wording from `scripts/drift-detector-age.py`).
+  Per gh-1419: UNMEASURED MUST FAIL AS LOUDLY AS STALE. Per PR #1603 reviews 5533662551 and
+  5533717774: a confidently wrong branch is worse than an honest unknown — the cause is always
+  derived from the response actually received and from what a ruling or measurement has
+  established about that exact endpoint, never assumed, never hardcoded, never swapped against
+  ground truth.
 
 **Source 2: Snyk**
 

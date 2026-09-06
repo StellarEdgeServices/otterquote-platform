@@ -36,6 +36,34 @@
 # schedule + workflow_dispatch, per the CTO's own filing instruction on #1549.
 # See scripts/netlify-deploy-drift.py's docstring for the two independent signals
 # it checks (BEHIND vs BUILD_FAILING) and the CROSS-REPO SCOPE GAP it documents.
+#
+# CORRECTED 2026-09-05 (gh-1549 continued): the cross-repo secret was named
+# `GITHUB_PERSONAL_ACCESS_TOKEN`, but GitHub Actions rejects any repository
+# secret name starting with `GITHUB_` outright ("Secret names must not start
+# with GITHUB_."). It was never creatable, so `secrets.GITHUB_PERSONAL_ACCESS_TOKEN`
+# always evaluated empty and the `|| github.token` fallback fired on every run.
+# otter-crm's UNMEASURED/404 verdict was never a repo-grant gap in practice --
+# it was this naming defect. Renamed to GH_CROSS_REPO_PAT (a fine-grained PAT
+# scoped to Contents+Metadata+Administration read on both otterquote-platform
+# and otter-crm). The job-local env var stays GITHUB_PERSONAL_ACCESS_TOKEN
+# since the script reads that name and only the *secret's* name is restricted.
+#
+# gh-1700 (2026-09-06): the `drift` job above has only ever covered
+# otterquote-platform's own Supabase project -- it never looked at otter-crm's
+# SEPARATE Supabase project (ref lreqwnqvlerdgukpklwb) at all, while (as of
+# PR #1698) the netlify-drift job below now reports green for otter-crm. A
+# green Netlify row next to zero Edge Function coverage made the page look
+# fully covered when it was not. scripts/edge-function-drift-remote.py adds
+# that coverage as new steps in THIS job (reusing edge-function-drift-check.py's
+# proven comparison logic via importlib, per its own docstring) rather than a
+# hardcoded second project ref -- REMOTE_PROJECTS in that file is the list to
+# extend. It reads otter-crm's repo source via the EXISTING GH_CROSS_REPO_PAT
+# (Contents read only -- it does not need the Administration scope issue #1727
+# proposes removing) and otter-crm's deployed functions via a NEW secret,
+# SUPABASE_CRM_ACCESS_TOKEN, which must be created before this job's new step
+# can measure anything. Until that secret exists, the step below fails LOUD
+# (UNMEASURED, exit 2) by design -- per gh-1419, that is correct behavior, not
+# a bug to silence.
 
 name: Edge Function Drift
 
@@ -53,6 +81,8 @@ on:
     paths:
       - 'scripts/edge-function-drift-check.py'
       - 'scripts/edge-function-drift-check.test.py'
+      - 'scripts/edge-function-drift-remote.py'
+      - 'scripts/edge-function-drift-remote.test.py'
       - 'scripts/netlify-deploy-drift.py'
       - 'scripts/netlify-deploy-drift.test.py'
       - '.github/workflows/edge-function-drift.yml'
@@ -70,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -93,6 +123,22 @@ jobs:
           # unbundle, so the verdict no longer depends on Docker's presence.
           # Keep the pin anyway: a tool whose output you hash should not float.
           version: 2.116.0
+
+      # gh-1700: fixture-driven, no network, no credentials, and (gh-1737
+      # review) no dependency on the Supabase CLI actually being on PATH --
+      # edge-function-drift-remote.test.py now injects a fake require_cli()
+      # for every happy-path case, so this step is hermetic and its outcome
+      # cannot depend on step order or on the runner already having the CLI
+      # installed. It is placed after "Install Supabase CLI" anyway, as
+      # defence in depth: a unit/fixture suite must not need an external
+      # binary, but a step that could still reach for one should not run
+      # before that binary exists either. Proves the remote-project
+      # orchestration fires on drift, stays silent on none, and reports
+      # UNMEASURED (never silent, never "clean") for a project it cannot
+      # read, including the two side by side in one run. See that file's own
+      # test module docstring for the full case list.
+      - name: Self-test the remote-project detector (otter-crm)
+        run: python3 scripts/edge-function-drift-remote.test.py
 
       # The former "Debug -- fetch one function source" step is REMOVED
       # (gh-1295, 2026-08-31). It ran `supabase functions download` from a
@@ -126,6 +172,22 @@ jobs:
             --json-out drift-report.json \
             ${{ inputs.allow_undeployed && '--allow-undeployed' || '' }}
 
+      # gh-1700. Deliberately continue-on-error is NOT set: an UNMEASURED
+      # result here must fail this job exactly as loudly as a real drift
+      # finding on the line above (gh-1419) -- that is the whole point of the
+      # issue this closes on. Until SUPABASE_CRM_ACCESS_TOKEN is created as a
+      # repo secret (see scripts/edge-function-drift-remote.py's docstring for
+      # the exact scope needed), this step is EXPECTED to fail red. That red
+      # is honest signal, not a regression to silence.
+      - name: "Check deployed Edge Functions against main (remote projects: otter-crm)"
+        env:
+          GH_CROSS_REPO_PAT: ${{ secrets.GH_CROSS_REPO_PAT }}
+          SUPABASE_CRM_ACCESS_TOKEN: ${{ secrets.SUPABASE_CRM_ACCESS_TOKEN }}
+        run: |
+          python3 scripts/edge-function-drift-remote.py \
+            --markdown-out drift-report-remote.md \
+            --json-out drift-report-remote.json
+
       # Runs even on failure -- the report is most useful precisely when the step
       # above went red.
       - name: Publish drift table to the job summary
@@ -141,6 +203,16 @@ jobs:
               echo "See the step log above. This is a failure, not a clean run."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [ -f drift-report-remote.md ]; then
+            cat drift-report-remote.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "# Edge Function drift — remote projects (gh-1700)"
+              echo
+              echo "No report produced — the detector could not measure."
+              echo "See the step log above. This is a failure, not a clean run."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload drift report
         if: always()
@@ -150,6 +222,8 @@ jobs:
           path: |
             drift-report.md
             drift-report.json
+            drift-report-remote.md
+            drift-report-remote.json
           if-no-files-found: ignore
 
   netlify-drift:
@@ -165,7 +239,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -187,11 +261,16 @@ jobs:
       # scoped only to the repo the workflow runs in and 404s on a different private
       # repo it cannot see at all. Confirmed live 2026-09-02 (gh-1549 build): the
       # Code-lane fine-grained PAT available while writing this detector could read
-      # otterquote-platform but 404'd on otter-crm's `commits/main`. Provisioning a
-      # PAT scoped to both repos (or adding a second otter-crm-scoped secret and a
-      # second script invocation) is an owner/unblock item -- until then this job's
-      # otter-crm row will legitimately report UNMEASURED, which is the correct,
-      # loud, non-silent behavior for a scope gap, not a bug to silence.
+      # otterquote-platform but 404'd on otter-crm's `commits/main`.
+      #
+      # CORRECTED 2026-09-05: the secret backing this env var was originally named
+      # GITHUB_PERSONAL_ACCESS_TOKEN, which GitHub Actions refuses to let any
+      # repository secret be named ("Secret names must not start with GITHUB_.").
+      # It was never creatable, so this line's `|| github.token` fallback fired on
+      # every single run since #1549 was built -- otter-crm's UNMEASURED verdict
+      # was this naming bug, not (only) a scope gap. Now backed by GH_CROSS_REPO_PAT,
+      # a fine-grained PAT with Contents+Metadata+Administration read on both
+      # otterquote-platform and otter-crm.
       #
       # `--file-issue` posts to gh-1549 itself on any BEHIND/BUILD_FAILING site
       # (never on UNMEASURED alone -- a measurement gap is not a drift finding).
@@ -200,11 +279,13 @@ jobs:
       - name: Check Netlify production deploys against main
         env:
           NETLIFY_PAT: ${{ secrets.NETLIFY_PAT }}
-          # Fall back to the workflow's own token: it reads this repo's commits,
-          # which covers the two otterquote-platform sites. otter-crm still needs
-          # a cross-repo PAT secret (the documented scope gap above) and reports
-          # UNMEASURED until one exists.
-          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_PERSONAL_ACCESS_TOKEN || github.token }}
+          # GH_CROSS_REPO_PAT is the cross-repo credential (see the CORRECTED note
+          # above); the job-local env var name stays GITHUB_PERSONAL_ACCESS_TOKEN
+          # because that's the name the script reads. Falls back to the workflow's
+          # own token if the secret is ever removed: it reads this repo's commits,
+          # which covers the two otterquote-platform sites, but otter-crm will
+          # report UNMEASURED again without the cross-repo PAT.
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_CROSS_REPO_PAT || github.token }}
         # pipefail is load-bearing: without it, `| tee` swallows the script's
         # exit code and an UNMEASURED (exit 3) run concludes success -- measured
         # on schedule run 33761892324, the silent-detector shape this file exists

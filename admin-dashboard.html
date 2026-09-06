@@ -111,6 +111,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 .tab-btn.disabled { cursor: not-allowed; opacity: 0.6; }
 
 /* ── Marketing tab (gh-1470 / #1340 phase 2b) ── */
+/* gh-1638 (#1340 phase 5b): one denominator-scope statement per Marketing
+ * tab, not per tile -- sourced from the payload's visits.property_id /
+ * visits.hosts (see visitsDenominatorScopeHtml() below). */
+.visits-denominator-scope { font-size: 0.8rem; color: var(--slate); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 0.4rem; padding: 0.5rem 0.8rem; margin-bottom: 1rem; }
 .marketing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
 .marketing-card { background: var(--white); border-radius: 0.75rem; padding: 1.25rem 1.4rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .marketing-card h4 { margin: 0 0 0.5rem; color: var(--navy); font-size: 1rem; }
@@ -148,6 +152,16 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 .roster-empty { background: var(--white); border-radius: 0.75rem; padding: 2rem; text-align: center; }
 .roster-empty.measured-zero { border: 1px solid #A7F3D0; background: #ECFDF5; color: #047857; font-weight: 600; }
 .roster-empty.plain { color: var(--slate); }
+
+/* gh-1580: NEW — no activity since signup strip, pinned above the stuck-first
+   table so a claim with zero movement is never invisible just because its
+   fresh created_at/updated_at buckets it "green" in the sort below. */
+.new-strip { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 0.75rem; padding: 0.85rem 1.1rem; margin-bottom: 1rem; }
+.new-strip-header { font-weight: 700; font-size: 0.8rem; color: #1E40AF; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.5rem; }
+.new-strip-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0; font-size: 0.86rem; color: var(--navy); }
+.new-strip-row + .new-strip-row { border-top: 1px solid #DBEAFE; }
+.new-strip-age { color: #1D4ED8; font-weight: 600; font-size: 0.78rem; }
+.new-badge { display: inline-block; margin-left: 0.4rem; font-size: 0.85rem; }
 
 .table-wrapper { background: var(--white); border-radius: 0.75rem; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .crm-table { width: 100%; border-collapse: collapse; min-width: 960px; }
@@ -199,6 +213,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 
   <nav class="admin-nav">
     <a href="admin-dashboard.html" class="active">Business Lines</a>
+    <a href="admin-homeowners.html">Homeowners</a>
     <a href="admin-contractors.html">Contractors</a>
     <a href="admin-incomplete-profiles.html">Incomplete Profiles</a>
     <a href="admin-template-review.html">Template Review</a>
@@ -444,6 +459,11 @@ function renderLinePage() {
     revenueTileHtml(line.revenue_mtd) +
   '</div>';
 
+  // gh-1639 (#1340 phase 5c) item 8: unattributed visits + their share of
+  // the site-wide GA4 total render HERE, on the line page — never on an
+  // audience tab, since neither number belongs to one specific audience.
+  html += '<div class="marketing-grid">' + unattributedVisitsHtml(line.visits_unattributed, line.visits_site_total) + '</div>';
+
   html += '<div class="audience-cards">';
   ['homeowner', 'contractor', 'referral_partner'].forEach(function (aud) {
     var rows = d[aud].rows;
@@ -541,6 +561,20 @@ async function loadCrmData() {
   }
 }
 
+// gh-1580: a row is "new and untouched" when it has never had an
+// activity_log row (first_activity_at === null, set only on homeownerRows —
+// contractor/referral rows lack the field entirely and are excluded here)
+// AND its signup is under 72h old. Kept as one predicate so the strip above
+// the table and the row badge below can never disagree with each other.
+var NEW_UNTOUCHED_WINDOW_MS = 72 * 60 * 60 * 1000;
+function isNewUntouched(r) {
+  if (!r || r.first_activity_at !== null || !r.created_at) return false;
+  return (Date.now() - new Date(r.created_at).getTime()) < NEW_UNTOUCHED_WINDOW_MS;
+}
+function newUntouchedAgeHours(r) {
+  return Math.max(0, Math.floor((Date.now() - new Date(r.created_at).getTime()) / 3600000));
+}
+
 function renderAudiencePage(audience, tab) {
   var isMarketing = tab === 'marketing';
   var rows = state.data.audiences[audience].rows;
@@ -596,6 +630,25 @@ function renderAudiencePage(audience, tab) {
       html += '<div class="roster-empty measured-zero">MEASURED ZERO &mdash; 0 non-test ' + esc(AUDIENCE_LABELS[audience].toLowerCase()) + ' rows. ' + rows.length + ' test row' + (rows.length === 1 ? '' : 's') + ' exist; toggle above to see them.</div>';
     }
   } else {
+    // gh-1580: claims < 72h old with zero movement since signup — pinned
+    // above the stuck-first table below, oldest (most overdue) first, so a
+    // brand-new claim that has never done anything is never invisible just
+    // because bucketFor(days-since-updated_at) reads it as fresh/"green".
+    var newUntouched = visibleRows.filter(isNewUntouched).sort(function (a, b) {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+    if (newUntouched.length > 0) {
+      html += '<div class="new-strip">' +
+        '<div class="new-strip-header">&#x1F195; NEW &mdash; no activity since signup (' + newUntouched.length + ')</div>' +
+        newUntouched.map(function (r) {
+          return '<div class="new-strip-row">' +
+            '<span class="member-label">' + esc(r.label) + '</span>' +
+            '<span class="new-strip-age">' + newUntouchedAgeHours(r) + 'h since signup, no activity</span>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+    }
+
     // Stuck-first: red, then yellow, then green, complete last.
     var order = { red: 0, yellow: 1, green: 2, unknown: 3, complete: 4 };
     var sorted = visibleRows.slice().sort(function (a, b) {
@@ -617,7 +670,7 @@ function renderAudiencePage(audience, tab) {
       // closes it.
       var rowId = audienceEsc + '-' + i;
       html += '<tr class="member-row' + (r.is_test ? ' is-test' : '') + '" onclick="toggleDetail(\'' + rowId + '\')">' +
-        '<td><span class="member-label">' + esc(r.label) + '</span>' + (r.is_test ? '<span class="test-badge">TEST</span>' : '') + '</td>' +
+        '<td><span class="member-label">' + esc(r.label) + '</span>' + (r.is_test ? '<span class="test-badge">TEST</span>' : '') + (isNewUntouched(r) ? '<span class="new-badge" title="No activity since signup">&#x1F195;</span>' : '') + '</td>' +
         '<td>' + checklistHtml(r.checklist) + '</td>' +
         '<td>' + movementHtml(r.movement) + '</td>' +
       '</tr>';
@@ -698,22 +751,36 @@ function safeNum(n) {
 // no-drift discipline as referral_clicks' caveat below) rides along on every
 // tile that gets a rate line, since every such tile is now making a claim
 // against that denominator.
-function visitsRateHtml(metricTotal, visitsSeries) {
+// gh-1638 (#1340 phase 5b): the GA4 caveat box, factored out so callers that
+// invoke visitsRateHtml more than once per tab (contractorFunnelHtml, once
+// per funnel stage) can suppress the per-call copy and render this once
+// instead -- never duplicated, never dropped, always sourced from
+// visitsSeries.caveat.
+function visitsCaveatHtml(visitsSeries) {
+  return (visitsSeries && visitsSeries.caveat) ? '<div class="click-caveat">⚠️ ' + esc(visitsSeries.caveat) + '</div>' : '';
+}
+
+function visitsRateHtml(metricTotal, visitsSeries, includeCaveat) {
   var n = safeNum(metricTotal);
   if (!visitsSeries || visitsSeries.kind === 'not_run') {
     var reason = (visitsSeries && visitsSeries.reason) ? visitsSeries.reason : 'Visits series unavailable in this response (deploy owed).';
-    return '<div class="visits-rate not-run-note">Rate of visits: NOT RUN &mdash; ' + esc(reason) + '</div>';
+    return '<div class="visits-rate not-run-note">Rate of production visits: NOT RUN &mdash; ' + esc(reason) + '</div>';
   }
   var m = safeNum(visitsSeries.total);
   var line;
   if (m === 0) {
-    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' &mdash; rate of visits unavailable (GA4 measured 0 visits this window)</div>';
+    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' &mdash; rate of production visits unavailable (GA4 measured 0 production visits this window)</div>';
   } else {
     var pct = (n / m) * 100;
-    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' of ' + m.toLocaleString('en-US') + ' visits (' + pct.toFixed(1) + '%)</div>';
+    line = '<div class="visits-rate">' + n.toLocaleString('en-US') + ' of ' + m.toLocaleString('en-US') + ' production visits (' + pct.toFixed(1) + '%)</div>';
   }
-  var caveat = visitsSeries.caveat ? '<div class="click-caveat">⚠️ ' + esc(visitsSeries.caveat) + '</div>' : '';
-  return line + caveat;
+  // gh-1638: includeCaveat defaults to true so the existing single-call
+  // sites (weeklySeriesCardHtml, groupedWeeklySeriesCardHtml,
+  // referralClicksCardHtml's rate line) are unchanged; only
+  // contractorFunnelHtml's per-stage loop passes false to avoid rendering
+  // the same caveat box three times.
+  var wantCaveat = includeCaveat !== false;
+  return line + (wantCaveat ? visitsCaveatHtml(visitsSeries) : '');
 }
 
 function fmtWeekLabel(w) {
@@ -822,13 +889,17 @@ function contractorFunnelHtml(funnel, visitsSeries) {
       var note = excluded > 0
         ? excluded + ' contractor' + (excluded === 1 ? '' : 's') + ' reached this stage with no timestamp to bucket by &mdash; excluded from the weekly count above, not silently dropped from the total.'
         : '';
-      var rate = (series && series.kind !== 'not_run') ? visitsRateHtml(series.total, visitsSeries) : '';
+      // gh-1638: suppress the per-call caveat -- three stages would otherwise
+      // render the same GA4 caveat box three times. Rendered once below the
+      // funnel instead (visitsCaveatHtml() call after this .map()).
+      var rate = (series && series.kind !== 'not_run') ? visitsRateHtml(series.total, visitsSeries, false) : '';
       return '<div class="funnel-row"><span class="funnel-label">' + esc(s.label) + '</span>' +
         '<div class="funnel-body">' + seriesTotalHtml(series) + sparklineHtml(series, false) +
         rate +
         (note ? '<div class="excluded-note">' + note + '</div>' : '') +
         '</div></div>';
     }).join('') +
+    visitsCaveatHtml(visitsSeries) +
   '</div>';
 }
 
@@ -840,21 +911,96 @@ function referralClicksCardHtml(series, visitsSeries) {
   var html = '<div class="marketing-card"><h4>Referral clicks</h4>' +
     '<div>' + seriesTotalHtml(series) + '</div>' +
     sparklineHtml(series, false);
-  if (series.kind !== 'not_run') html += visitsRateHtml(series.total, visitsSeries);
+  // gh-1638: suppress visitsRateHtml's own caveat copy -- it is merged below
+  // with the gh-1302 caveat into a single .click-caveat box instead of two
+  // stacked boxes.
+  if (series.kind !== 'not_run') html += visitsRateHtml(series.total, visitsSeries, false);
   // gh-1302 caveat text/link come from the EF payload (series.caveat /
   // series.caveat_ref, gh-1469) — never hardcoded here, so the two cannot
   // drift apart. caveat_ref is shape-constrained to a known-safe
   // https://github.com/... prefix before it is ever used as an href; if it
   // doesn't match, the caveat text still renders, just without a link.
+  // gh-1638: both the gh-1302 double-counting caveat and the GA4 visits
+  // caveat (visitsSeries.caveat) are independently true statements about
+  // this card and both must survive -- merged into ONE .click-caveat box as
+  // two lines rather than two stacked boxes.
+  var caveatLines = [];
   if (series.caveat) {
     var ref = (typeof series.caveat_ref === 'string' && series.caveat_ref.indexOf('https://github.com/') === 0)
       ? series.caveat_ref : null;
-    html += '<div class="click-caveat">⚠️ ' + esc(series.caveat) +
-      (ref ? ' <a href="' + esc(ref) + '" target="_blank" rel="noopener">Details &rarr;</a>' : '') +
-    '</div>';
+    caveatLines.push('⚠️ ' + esc(series.caveat) +
+      (ref ? ' <a href="' + esc(ref) + '" target="_blank" rel="noopener">Details &rarr;</a>' : ''));
+  }
+  if (visitsSeries && visitsSeries.caveat) {
+    caveatLines.push('⚠️ ' + esc(visitsSeries.caveat));
+  }
+  if (caveatLines.length) {
+    html += '<div class="click-caveat">' + caveatLines.join('<br>') + '</div>';
   }
   html += '</div>';
   return html;
+}
+
+// gh-1638 (#1340 phase 5b): a single denominator-scope statement per
+// Marketing tab, sourced ONLY from the payload's visits series
+// (visits.property_id / visits.hosts, see get-business-lines-dashboard's
+// buildVisitsSeries) -- never hardcoded, same no-drift discipline as
+// visitsSeries.caveat. Every value renders through esc(). hosts is
+// defensively checked for Array-ness -- a payload from before gh-1637
+// deployed, or any future shape drift, renders "hosts unavailable" rather
+// than throwing or printing "undefined".
+//
+// gh-1639 (#1340 phase 5c) item 7: gains a second line naming the prefixes
+// THIS audience counted, sourced from visitsSeries.note (see ga4.ts
+// AUDIENCE_PREFIX_NOTE / get-business-lines-dashboard's
+// buildAudienceVisitsSeries) -- never hardcoded here, same no-drift
+// discipline. A payload predating gh-1639 (or any future shape drift) has
+// no `note` string; the line is simply omitted rather than printing
+// "undefined".
+function visitsDenominatorScopeHtml(visitsSeries) {
+  var propertyId = (visitsSeries && typeof visitsSeries.property_id === 'string' && visitsSeries.property_id)
+    ? esc(visitsSeries.property_id) : 'unavailable';
+  var hostsText = (visitsSeries && Array.isArray(visitsSeries.hosts) && visitsSeries.hosts.length)
+    ? visitsSeries.hosts.map(function (h) { return esc(String(h)); }).join(' · ')
+    : 'hosts unavailable';
+  var html = '<div class="visits-denominator-scope">Visits denominator: GA4 property ' + propertyId +
+    ', hosts ' + hostsText + '</div>';
+  if (visitsSeries && typeof visitsSeries.note === 'string' && visitsSeries.note) {
+    html += '<div class="visits-denominator-scope">' + esc(visitsSeries.note) + '</div>';
+  }
+  return html;
+}
+
+// gh-1639 (#1340 phase 5c) item 8: the unattributed bucket renders on the
+// LINE page (not an audience tab), with its share of the site-wide total --
+// sourced from the payload's `visits_unattributed` / `visits_site_total`
+// (get-business-lines-dashboard's buildAudienceVisitsSeries /
+// buildVisitsSeries), never hardcoded. A large share here is meant to be
+// visible without reading code -- per the issue, that is the signal the
+// prefix table (ga4.ts) needs extending.
+function unattributedVisitsHtml(unattributed, siteTotal) {
+  if (!unattributed || unattributed.kind === 'not_run') {
+    var reason = (unattributed && unattributed.reason)
+      ? unattributed.reason
+      : 'Visits series unavailable in this response (deploy owed).';
+    return '<div class="marketing-card"><h4>Unattributed visits</h4>' +
+      '<div class="not-run-note">NOT RUN &mdash; ' + esc(reason) + '</div></div>';
+  }
+  var total = safeNum(unattributed.total);
+  var site = (siteTotal && siteTotal.kind !== 'not_run') ? safeNum(siteTotal.total) : 0;
+  var shareHtml = (site > 0)
+    ? '<div class="visits-rate">' + total.toLocaleString('en-US') + ' of ' + site.toLocaleString('en-US') +
+      ' site-wide production visits (' + (total / site * 100).toFixed(1) + '%)</div>'
+    : '<div class="visits-rate not-run-note">Share of site-wide visits: NOT RUN &mdash; site-wide total unavailable</div>';
+  var noteHtml = (typeof unattributed.note === 'string' && unattributed.note)
+    ? '<div class="visits-denominator-scope">' + esc(unattributed.note) + '</div>'
+    : '';
+  return '<div class="marketing-card"><h4>Unattributed visits</h4>' +
+    '<div>' + seriesTotalHtml(unattributed) + '</div>' +
+    sparklineHtml(unattributed, false) +
+    shareHtml +
+    noteHtml +
+  '</div>';
 }
 
 function renderMarketingSection(audience) {
@@ -870,6 +1016,9 @@ function renderMarketingSection(audience) {
   // now, so `marketing.visits` is passed to every card below and each tile
   // carries its own "of visits" rate line (visitsRateHtml()) instead.
   var visits = marketing.visits;
+  // gh-1638 (#1340 phase 5b): one denominator-scope statement per Marketing
+  // tab (not per tile) -- see visitsDenominatorScopeHtml() above.
+  html += visitsDenominatorScopeHtml(visits);
   html += '<div class="marketing-grid">';
   if (audience === 'homeowner') {
     html += weeklySeriesCardHtml('Signups', marketing.signups, null, visits);
