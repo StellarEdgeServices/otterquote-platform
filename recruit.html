@@ -29,8 +29,8 @@
     <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
     <title>Otter Quotes &mdash; Recruit Router</title>
     <meta name="robots" content="noindex,nofollow">
-    <link rel="stylesheet" href="css/design-system.css">
-    <link rel="stylesheet" href="css/nav.css">
+    <link rel="stylesheet" href="/css/design-system.css">
+    <link rel="stylesheet" href="/css/nav.css">
     <style>
         body {
             background-color: var(--navy, #0D1B2E);
@@ -151,21 +151,14 @@
 <!-- GA4 -->
 <script src="/js/ga-gate.js"></script>
 <script>gtag('config','G-D1Y1TLGEFY');</script>
-<!-- Microsoft Clarity -->
-<script type="text/javascript">
-    (function(c,l,a,r,i,t,y){
-        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-    })(window, document, "clarity", "script", "wwr7qlk8g5");
-</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase UMD (must come before config.js) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/agent-types.js"></script>
+<script src="/js/cookie-storage.js"></script>
+<script src="/js/config.js"></script>
+<script src="/js/nav.js"></script>
+<script src="/js/agent-types.js"></script>
 
 <script>
 /**
@@ -257,7 +250,10 @@ async function handleRecruit() {
     } catch (_) { /* nav is nice-to-have, never block the redirect */ }
 
     const params = new URLSearchParams(window.location.search);
-    const code = (params.get('code') || '').trim();
+    // gh-1648: mail and SMS clients case-fold URLs, and generate_recruit_code() emits
+    // 'r-' + 6 UPPERCASE alphanumerics, so a case-folded link 406'd at PostgREST and was
+    // silently voided. Normalise to the stored shape before lookup, storage and forwarding.
+    const code = (params.get('code') || '').trim().toUpperCase().replace(/^R-/, 'r-');
 
     // No code &mdash; nothing to route on. Ask the visitor explicitly rather
     // than guessing (gh-865 AC1).
@@ -276,6 +272,7 @@ async function handleRecruit() {
 
     let agentType = null;
     let resolved = false;
+    let lookupError = null;
     try {
         if (typeof sb !== 'undefined' && sb) {
             const { data: recruiter, error } = await sb
@@ -286,6 +283,7 @@ async function handleRecruit() {
                 .maybeSingle();
 
             if (error) {
+                lookupError = error;
                 console.warn('Recruit lookup failed:', error.message);
             } else if (recruiter) {
                 agentType = recruiter.agent_type;
@@ -295,6 +293,7 @@ async function handleRecruit() {
             console.warn('Supabase client not initialized &mdash; skipping recruit lookup');
         }
     } catch (err) {
+        lookupError = err;
         console.warn('Recruit lookup threw:', err);
     }
 
@@ -304,9 +303,14 @@ async function handleRecruit() {
     // ?recruit= for whichever type the visitor picks.
     if (!resolved) {
         if (typeof gtag === 'function') {
+            // gh-1648: `recruiter_type` was dead on this branch (a found row sets resolved=true,
+            // so agentType is always null here). Report WHY instead, so 'their link was mangled'
+            // is distinguishable from 'our client or our lookup failed them'.
             gtag('event', 'recruit_lookup_unresolved', {
                 recruit_code: code,
-                recruiter_type: agentType || 'unknown'
+                reason: (typeof sb === 'undefined' || !sb) ? 'client_unavailable'
+                      : lookupError ? 'lookup_error'
+                      : 'code_not_found'
             });
         }
         showChooser(code);

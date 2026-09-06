@@ -24,11 +24,21 @@ name: R-120 signed review
 #
 # Make the job below ("R-120 signed review") a required status check on main.
 
+# Why merge_group: "R-120 signed review" is a required context and main uses
+# a merge queue. GitHub builds each queued PR on gh-readonly-queue/main/pr-<n>-*
+# and a required check that never reports there dequeues the PR after 1 h
+# (gh-1596). In a merge group the PR number is taken from head_ref and the
+# signature is verified against THAT PR's own head sha — the merge-group commit
+# is main + exactly that head, so a signature over the PR head still attests
+# the content being merged.
+
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read        # read verify.mjs + pubkey from the base branch
@@ -36,13 +46,13 @@ permissions:
   actions: write        # issue_comment path: re-run the head's pull_request_target run
 
 concurrency:
-  group: r120-signed-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: r120-signed-review-${{ github.event.pull_request.number || github.event.issue.number || github.event.merge_group.head_ref }}
   cancel-in-progress: false
 
 jobs:
   r120-signed-review:
     name: R-120 signed review
-    if: ${{ github.event_name == 'pull_request_target' || github.event.issue.pull_request }}
+    if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' || github.event.issue.pull_request }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out BASE branch only (never PR head)
@@ -72,9 +82,17 @@ jobs:
 
             const { owner, repo } = context.repo;
             const eventName = context.eventName;
-            const prNumber = eventName === 'pull_request_target'
-              ? context.payload.pull_request.number
-              : context.payload.issue.number;
+            let prNumber;
+            if (eventName === 'pull_request_target') {
+              prNumber = context.payload.pull_request.number;
+            } else if (eventName === 'merge_group') {
+              // gh-readonly-queue/<base>/pr-<n>-<base sha>
+              const m = /\/pr-(\d+)-/.exec(context.payload.merge_group.head_ref || '');
+              if (!m) { core.setFailed(`merge_group head_ref not understood: ${context.payload.merge_group.head_ref}`); return; }
+              prNumber = Number(m[1]);
+            } else {
+              prNumber = context.payload.issue.number;
+            }
 
             // Always take head sha from the API, not the event payload, so a
             // comment-triggered run judges the CURRENT head.
@@ -83,9 +101,14 @@ jobs:
             const baseRef = pr.base.ref;
             const defaultBranch = context.payload.repository.default_branch;
 
-            if (pr.state !== 'open') {
+            if (pr.state !== 'open' && eventName !== 'merge_group') {
               core.info(`PR #${prNumber} is ${pr.state}; nothing to gate.`);
               return;
+            }
+            if (eventName === 'merge_group') {
+              // The queue may have grouped an older head; refuse anything but the PR's current head.
+              const mgHeadRef = context.payload.merge_group.head_ref;
+              core.info(`merge_group ${mgHeadRef} -> PR #${prNumber}, verifying against PR head ${headSha}`);
             }
 
             // Diff as TEXT via the API. Never checked out, never executed.

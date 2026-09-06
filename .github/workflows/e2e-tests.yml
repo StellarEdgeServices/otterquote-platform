@@ -48,6 +48,9 @@ jobs:
       - name: Partner-signup consent checkbox link guard (D-278, gh-943)
         run: python3 scripts/check-partner-consent-link.py
 
+      - name: Analytics loader single-source guard (gtag.js + clarity.ms behind the host gate, gh-1619)
+        run: python3 scripts/check-gtag-single-source.py
+
   typescript-check:
     name: TypeScript Check
     runs-on: ubuntu-latest
@@ -71,6 +74,24 @@ jobs:
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit
+
+  ci-test-function-parity:
+    name: CI-test Edge Function Parity Check (gh-1584)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # No continue-on-error: this is the mechanism the CTO ruled for on gh-1584
+    # ("only-as-needed *plus* a check that fails a PR whose test path calls a
+    # function the CI-test project lacks") -- it must actually be able to
+    # fail a PR, unlike the `test` job below.
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Edge Function parity check against the CI-test project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: python3 scripts/ci-test-function-parity.py
 
   edge-function-tests:
     name: Edge Function Tests (Deno)
@@ -110,6 +131,12 @@ jobs:
     # red is not a signal, so this job no longer blocks a merge. Tests stay
     # in place and still run; only their power to fail the workflow is cut.
     continue-on-error: true
+    # gh-1584: exposes the seed step's outcome to the new seed-must-pass job
+    # below, since continue-on-error above hides it from this job's own
+    # conclusion. This is what lets the RUN fail on a seed failure without
+    # un-neutralizing Playwright flakiness.
+    outputs:
+      seed_outcome: ${{ steps.seed.outcome }}
     # gh-689: DB traffic now targets the dedicated otterquote-ci-test project
     # (zsdvaqilfdclwosmiheh), not production — see the Seed/Run/Teardown steps
     # below. Concurrency serialization is KEPT for now: every run still shares
@@ -208,6 +235,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Seed test database
+        id: seed
         working-directory: tests/e2e
         env:
           # gh-689: repointed off production (yeszghaspzwwstvsrioa) onto the
@@ -224,6 +252,10 @@ jobs:
         run: npm run seed
 
       - name: Run Playwright tests
+        # gh-1584: a skipped test step must not read as a pass. If the seed
+        # failed, don't run Playwright against an unseeded/half-seeded
+        # database -- seed-must-pass below is what turns that into a red run.
+        if: steps.seed.outcome == 'success'
         working-directory: tests/e2e
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
@@ -254,3 +286,30 @@ jobs:
           name: test-videos
           path: tests/e2e/test-results/
           retention-days: 7
+
+  seed-must-pass:
+    name: Seed Must Pass (gh-1584)
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    # No continue-on-error, deliberately: this is the gate. The `test` job
+    # above stays continue-on-error (gh-1261, do not remove -- see header
+    # comment) so Playwright flakiness doesn't block a merge, but that same
+    # continue-on-error hides a failed SEED from the run conclusion, which
+    # is exactly the defect the CTO flagged on gh-1584 2026-09-04T19:16:26Z:
+    # "the E2E workflow must fail the run when the seed fails, rather than
+    # skipping the tests and concluding success. A skipped test step is not
+    # a pass." This job has no continue-on-error, so a failed/skipped seed
+    # turns the overall RUN conclusion red even though `test` itself stays
+    # green-with-skips.
+    steps:
+      - name: Fail the run if the E2E seed step did not succeed
+        run: |
+          outcome="${{ needs.test.outputs.seed_outcome }}"
+          echo "Seed test database step outcome: ${outcome:-<unset>}"
+          if [ "$outcome" != "success" ]; then
+            echo "::error::E2E seed failed (outcome='${outcome:-<unset>}'). The 'test' job's continue-on-error masks this from its own conclusion, so this gate job exists to fail the RUN when the seed itself fails (gh-1584). A skipped Playwright run because the seed failed is not a pass."
+            exit 1
+          fi
+          echo "Seed succeeded."
