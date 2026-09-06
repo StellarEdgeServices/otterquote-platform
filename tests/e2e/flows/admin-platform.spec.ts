@@ -84,6 +84,19 @@ test.describe('Flow C — Admin & Platform Features (Phase 5)', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // C1b: gh-1598 — the gate must also fire on the extensionless, trailing-slash
+  // and case variants (Pretty URLs 301s the latter two onto the bare form, which
+  // used to slip past the "/admin-*.html" glob and serve the admin shell).
+  // ──────────────────────────────────────────────────────────────────────────
+  for (const variant of ['/admin-dashboard', '/admin-dashboard/', '/Admin-Dashboard.html']) {
+    test(`C1b: unauthenticated request to ${variant} redirects to login`, async ({ page }) => {
+      await page.goto(variant);
+      await page.waitForURL(/login\.html/, { timeout: 15_000 });
+      expect(page.url()).toContain('reason=admin_required');
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   // C2: cron_health table — recent entries from last 24h
   // ──────────────────────────────────────────────────────────────────────────
   test('C2: cron_health table has been populated (platform health check)', async () => {
