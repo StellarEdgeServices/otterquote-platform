@@ -222,6 +222,78 @@ def main():
     check("GREEN: zero violations", len(result2["violations"]), 0)
 
     # -------------------------------------------------------------------
+    # UNMEASURED -- zero-discovery root (PR #1742 cycle-3 REVIEW: FAIL, comment
+    # 5561884929; known-but-unrecorded since cycle 2, comment 5561758212). A root
+    # with no scripts/ and no .github/workflows/ directory must never read the
+    # same as a clean PASS -- run_all() found nothing to inspect, which is a
+    # distinct, non-clean verdict (see ZERO_DISCOVERY_MESSAGE / LIMITATIONS).
+    # -------------------------------------------------------------------
+    print()
+    print("=" * 70)
+    print("UNMEASURED -- zero-discovery root (no scripts/, no .github/workflows/)")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        # Deliberately empty: no scripts/ dir, no .github/ dir at all.
+        result3 = neg.run_all(root)
+
+    for line in result3["info"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result3["verdict"], result3["code"]))
+
+    check("EMPTY ROOT: gate verdict is UNMEASURED, not PASS", result3["verdict"], "UNMEASURED")
+    check("EMPTY ROOT: gate exit code is 3 (distinct from 0=PASS and 1=FAIL)", result3["code"], 3)
+    check("EMPTY ROOT: measured flag is False", result3["measured"], False)
+    check("EMPTY ROOT: zero violations (this is not a FAIL either)", len(result3["violations"]), 0)
+    check_true(
+        "EMPTY ROOT: info is non-empty -- 'nothing inspected' is never silent",
+        len(result3["info"]) > 0,
+    )
+    check_true(
+        "EMPTY ROOT: the UNMEASURED explanation names itself as such, not a clean bill",
+        any("UNMEASURED" in i for i in result3["info"]),
+    )
+
+    # A root with a real, populated .github/workflows/ dir but an empty (or
+    # absent) scripts/ dir is NOT zero-discovery -- CHECK 3 has real work to do
+    # and reports it visibly, so this must stay a normal PASS, not UNMEASURED.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(
+            root / ".github" / "workflows" / "only.yml",
+            "name: Only\non:\n  push:\n    branches: [main]\njobs:\n  x:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n",
+        )
+        result4 = neg.run_all(root)
+
+    check(
+        "WORKFLOWS-ONLY ROOT: measured is True (workflows dir alone counts as discovery)",
+        result4["measured"],
+        True,
+    )
+    check_true(
+        "WORKFLOWS-ONLY ROOT: gate verdict is not UNMEASURED",
+        result4["verdict"] != "UNMEASURED",
+    )
+
+    # Regression coverage for the other half of the same review comment: CHECK 3
+    # used to return completely bare (no info line at all) when
+    # .github/workflows/ does not exist, indistinguishable from "scanned every
+    # workflow file and found nothing wrong." It must now say so explicitly, even
+    # in isolation (i.e. this is CHECK 3's own fix, independent of the run_all()
+    # UNMEASURED guard exercised above).
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        no_wf_violations, no_wf_info, no_wf_refs = neg.check_secret_names(root)
+        check_true(
+            "check_secret_names: missing .github/workflows/ is reported, not silent",
+            len(no_wf_info) > 0,
+        )
+        check("check_secret_names: missing workflows dir raises no violation", len(no_wf_violations), 0)
+        check("check_secret_names: missing workflows dir checks zero refs", no_wf_refs, 0)
+
+    # -------------------------------------------------------------------
     print()
     print("Unit-level coverage of the harder pieces (no filesystem, pure functions)")
     # -------------------------------------------------------------------

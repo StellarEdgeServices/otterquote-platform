@@ -85,6 +85,62 @@ to only what got built. Instances 1 and 3 need a different mechanism; this issue
 mechanism is not a census of all five, only of shapes #2, #4, and (the harder half)
 #5.
 
+Zero-discovery roots -- history of this gap, and its current state
+--------------------------------------------------------------------
+A root with no scripts/ directory and no .github/workflows/ directory makes every
+for-loop in all three checks a no-op: zero violations and zero info lines, which
+run_all() used to read as GATE: PASS -- a checker that inspected nothing reporting
+the same verdict as a checker that inspected everything and found it clean. That is
+this issue's own founding shape, reproduced inside its own fix.
+
+This gap was found TWICE before it was fixed, and lost the first time: cycle 2's
+refuter (PR #1742 comment 5561758212) named it explicitly ("check_wiring(<root with
+no scripts/ dir>) -> violations=[], info=[], files_verified=0 ... this asymmetry is
+specific to CHECK 2") and left a repro script in the review session's own scratch
+directory -- but it was never fixed in a following commit and never added here.
+Cycle 3's refuter (comment 5561884929) found the repro script still sitting there,
+confirmed the gap was real and broader than cycle 2 described (CHECK 3 goes silent
+too, on directory-absence specifically, not just emptiness -- see check_secret_names
+below), and this is the fix. Recorded here per that review's own instruction, so a
+finding that already reached one review does not need a third cycle to become part
+of the record.
+
+Fixed by two changes, both auditing every place an empty/unresolvable result could
+previously reach a verdict silently:
+  - check_secret_names() no longer returns bare on a missing .github/workflows/
+    directory; it now appends an explicit info line distinguishing "directory
+    absent" from "directory present, 0 files, 0 checked" (the latter was already
+    visible; only directory-absence was silent).
+  - run_all() computes a root-level `measured` flag -- true iff scripts/ contains
+    at least one detector-shaped script OR .github/workflows/ exists -- and reports
+    GATE: UNMEASURED (exit 3) instead of GATE: PASS (exit 0) when neither is true,
+    regardless of how many of the three checks individually would have gone quiet.
+    This is deliberately a root-level guard, not three separate per-check patches,
+    so a fourth check added later inherits the same protection by construction
+    rather than needing its own bespoke zero-result branch remembered and audited
+    again.
+
+Paths NOT already self-disclosing before this fix, audited and confirmed safe:
+  - CHECK 1 (check_firing_tests): a non-empty discover_detector_scripts() result
+    always produces a PASS/WARN/FAIL line per script; the only silent case was zero
+    scripts discovered, which is exactly what the root-level `measured` guard above
+    now catches.
+  - CHECK 2 (check_wiring): a script found but declaring zero real files under its
+    extension set still prints an explicit "0 real matching file(s)" PASS line
+    (self-disclosing, not hidden); the only silent case was zero extension-declaring
+    scripts AND zero detector scripts overall, again caught by `measured` above.
+  - CHECK 2 / CHECK 3 workflow-file counts: an existing-but-empty
+    .github/workflows/ directory already prints "0 real file(s)" / "0 workflow
+    file(s) ... 0 checked" explicitly -- a visible zero, not a silent one. Only
+    directory ABSENCE was silent (CHECK 3, fixed above).
+Residual, disclosed tradeoff: `measured` is intentionally coarse (script discovery
+OR workflows-dir existence) rather than tracking each check's own discovery count
+separately. A root with an empty scripts/ dir but a real, populated
+.github/workflows/ dir is `measured=True` even though CHECK 1/CHECK 2 individually
+found nothing to do there -- accepted because CHECK 3 in that root is doing real
+work and already reports it visibly (see above), so the aggregate verdict is never
+"clean" without at least one check having actually looked at something.
+
 CHECK 2's find_referencing_workflows -- what "invokes" still can't resolve
 ----------------------------------------------------------------------------
 (Added after gh-1738 instance 7, PR #1742 comment 5561758212: the original
@@ -121,6 +177,10 @@ USAGE
 EXIT
     0  GATE: PASS -- every check above is clean
     1  GATE: FAIL -- one or more violations found (printed above the summary)
+    3  GATE: UNMEASURED -- no scripts/ and no .github/workflows/ directory were
+       found under this root, so nothing was actually inspected. Distinct from
+       PASS on purpose (gh-1419 precedent) -- see ZERO_DISCOVERY_MESSAGE and the
+       LIMITATIONS section below.
 """
 import json
 import os
@@ -723,6 +783,18 @@ def check_secret_names(root: Path):
 
     wf_dir = root / ".github" / "workflows"
     if not wf_dir.exists():
+        # PR #1742 cycle-3 REVIEW: FAIL (comment 5561884929): this used to return
+        # bare, with no info line at all -- CHECK 3 going completely silent
+        # whenever .github/workflows/ is absent, indistinguishable from "scanned
+        # every workflow file and found nothing wrong." A missing directory is a
+        # different, non-clean fact from "0 workflow files scanned, 0 checked"
+        # (which the loop below already reports explicitly when the directory
+        # exists but is empty) -- say so instead of going quiet.
+        info.append(
+            "WARN  no .github/workflows directory found under this root -- "
+            "CHECK 3 measured zero workflow files (not the same as scanning "
+            "workflows and finding none)."
+        )
         return violations, info, refs_checked
 
     for wf in sorted(wf_dir.glob("*.yml")):
@@ -754,6 +826,18 @@ def check_secret_names(root: Path):
 # Main
 # ---------------------------------------------------------------------------
 
+ZERO_DISCOVERY_MESSAGE = (
+    "UNMEASURED -- no scripts/ directory (no detector-shaped scripts) and no "
+    ".github/workflows/ directory were found under this root. Every check above "
+    "ran with nothing to inspect: for-loops over an empty glob() never execute, "
+    "so zero violations and zero info lines is what 'inspected nothing' looks "
+    "like from the outside -- identical, before this guard, to 'inspected "
+    "everything and found it clean.' UNMEASURED IS NOT A PASS (gh-1419 "
+    "precedent: backup-age.py / drift-detector-age.py -- unmeasured must fail "
+    "as loudly as stale)."
+)
+
+
 def run_all(root: Path):
     firing_violations, firing_info, total_assertions = check_firing_tests(root)
     wiring_violations, wiring_info, files_verified = check_wiring(root)
@@ -762,9 +846,33 @@ def run_all(root: Path):
     all_violations = firing_violations + wiring_violations + secret_violations
     all_info = firing_info + wiring_info + secret_info
 
+    # Zero-discovery guard (PR #1742 cycle-3 REVIEW: FAIL, comment 5561884929;
+    # known-but-unrecorded since cycle 2, comment 5561758212 -- see LIMITATIONS).
+    # A root with no scripts/ directory and no .github/workflows/ directory makes
+    # CHECK 1, CHECK 2, and (pre-fix) CHECK 3 every one a silent no-op: nothing to
+    # discover means no violations *and* no info lines, which used to collapse
+    # to GATE: PASS -- the exact "measured nothing, reported clean" shape this
+    # whole issue exists to close. This is a root-level guard rather than a
+    # per-check patch precisely so it covers the general property (see the
+    # module LIMITATIONS section for the enumeration of every empty-result path
+    # audited here, including the two that already degrade safely on their own).
+    measured = bool(discover_detector_scripts(root)) or (root / ".github" / "workflows").exists()
+
+    if not measured:
+        verdict = "UNMEASURED"
+        code = 3
+        all_info = [ZERO_DISCOVERY_MESSAGE] + all_info
+    elif all_violations:
+        verdict = "FAIL"
+        code = 1
+    else:
+        verdict = "PASS"
+        code = 0
+
     result = {
-        "verdict": "FAIL" if all_violations else "PASS",
-        "code": 1 if all_violations else 0,
+        "verdict": verdict,
+        "code": code,
+        "measured": measured,
         "violations": all_violations,
         "info": all_info,
         "counts": {
@@ -799,6 +907,15 @@ def print_report(result: dict):
         )
     )
     print("VIOLATIONS: %d" % len(result["violations"]))
+    if result["verdict"] == "UNMEASURED":
+        # Loud on purpose, matching backup-age.py / drift-detector-age.py's
+        # UNMEASURED banner convention (gh-1419). The full explanation already
+        # rode along in `info` above (and therefore in --json output too, so
+        # loudness is not a function of output format); this is the emphasis on
+        # top of that, in text mode, at the one place a human's eye lands last.
+        print("!" * 78)
+        print(">> UNMEASURED IS NOT A PASS. <<")
+        print("!" * 78)
     print("GATE: %s" % result["verdict"])
 
 
