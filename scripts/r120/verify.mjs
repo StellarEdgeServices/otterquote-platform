@@ -137,7 +137,10 @@ export const GATE_FILES = new Set([
 
 /** Files/dirs whose content is never scanned. (GATE_FILES are reported once as a whole, not line by line.) */
 const EXCLUDED_PATH_RES = [
-  /(^|\/)[^/]*\.test\.[^/]+$/i,     // *.test.*
+  // gh-1701: `.spec.` is the sibling of `.test.` and is what Playwright uses.
+  // #1720 produced 19 hits, every one a fixture in a `*.spec.ts`, because only
+  // `*.test.*` was listed here.
+  /(^|\/)[^/]*\.(test|spec)\.[^/]+$/i, // *.test.* and *.spec.*
   /(^|\/)__tests__\//,               // __tests__/
   /(^|\/)package-lock\.json$/,
   /^\.github\/workflows\//,
@@ -146,11 +149,74 @@ const EXCLUDED_PATH_RES = [
   /^In Flight\//,
 ];
 
+// gh-1701 (measured 2026-09-06 against the 15 open PRs): harness paths — test
+// helpers, CI detectors, one-off utilities. Their strings are operator-facing
+// CLI output and fixture data, not customer copy, and nothing here is the
+// executable money path. Every false positive on the open queue that was not a
+// SQL GRANT lived here: #1720 (19 hits, Playwright fixtures), #1735 (R-120's
+// OWN text, quoted in a Python string), #1733 ("Netlify credit/billing" in a
+// --help string), #1742 (detector filenames in a dict).
+//
+// These paths keep the CURRENCY rules — a hard-coded `$15` or `_CENTS =` does
+// not stop being a price because it lives in a script — and lose the prose word
+// rules and the identifier rule.
+const HARNESS_PATH_RES = [
+  /^tests\//,
+  /^scripts\//,
+  /^tools\//,
+];
+
+// The exception: files under those paths that hold, quote or emit customer
+// money/legal COPY. Weakening one of these is precisely the diff R-120 exists to
+// put in front of a human — #1646 both removes "licensed, insured" sitewide AND
+// adds the guard that keeps it removed — so they are scanned in full.
+//
+// Listing a file here only ever makes the gate scan MORE, so over-inclusion is
+// safe by construction. The list is kept honest by
+// `COPY_GUARD_FILES covers every copy-holding file under scripts/ and tools/`
+// in scripts/r120/verify.scope.test.mjs, which walks the tree and FAILS if a file
+// carrying customer copy vocabulary is missing from it. Entries that do not
+// exist yet are allowed on purpose: check-credential-claims.py is added by
+// #1646 and could not otherwise have been covered on its own PR.
+export const COPY_GUARD_FILES = new Set([
+  'scripts/check-10k-floor-phrasing.py',
+  'scripts/check-credential-claims.py',
+  'scripts/check-email-parts.py',
+  'scripts/check-legal-surface-links.py',
+  'scripts/check-partner-consent-link.py',
+  'scripts/check-payout-timing-copy-drift.py',
+  'scripts/credential-sweep.py',
+  'scripts/find-legal-surface-links.py',
+  'scripts/smoke-test.sh',
+  'tools/generate_contractor_pages.py',
+  'tools/generate_location_pages.py',
+  'tools/generate_partner_pages.py',
+  'tools/live_charge_guard_parity_check.py',
+  'tools/partner_parity_check.py',
+]);
+
 // Money-path IDENTIFIERS (code, not prose). \b treats `_` as a word char, so the
 // prose money-word rule never sees `has_payment_method` or `accept_bid` — measured
 // 2026-09-05 on PR #1670 (a BEFORE UPDATE trigger + accept_bid rewrite on the
 // money path) which the prose rules passed as "no R-120 content".
-const MONEY_IDENT_RE = /(payment|payout|stripe|refund|charge|invoice|price|pricing|fee_|_fee|cents|amount|award|accept_bid|is_test|live_charge|balance|commission|rebate|credit)/i;
+// gh-1701: `is_test` removed 2026-09-06 — a generic environment flag, not a
+// money identifier. It fired on `is_test boolean NOT NULL` in an unrelated DDL
+// trace (#1683). Test-vs-live CHARGE state is still covered by `live_charge`.
+const MONEY_IDENT_RE = /(payment|payout|stripe|refund|charge|invoice|price|pricing|fee_|_fee|cents|amount|award|accept_bid|live_charge|balance|commission|rebate|credit)/i;
+
+// gh-1701: SQL permission statements and database docstrings. In
+// `REVOKE EXECUTE ON FUNCTION public.get_platform_fee_percentage() FROM anon;`
+// the money words are the OPERAND'S NAME, not wording anyone reads; #1634
+// produced 20 identical rows this way.
+//
+// This deliberately does NOT stop the gate firing. An authorisation change on a
+// money-path function is exactly the thing a human should see, and until a
+// dedicated permissions-ratchet check exists (gh-1767) R-120 is the only place
+// that would catch one. It collapses the file to ONE `money-permission` hit so
+// the verdict comment stays readable instead of 20 identical rows. `COMMENT ON`
+// is a database docstring and is treated like a code comment.
+const SQL_PERMISSION_RE = /^\s*(REVOKE|GRANT)\b/i;
+const SQL_COMMENT_ON_RE = /^\s*COMMENT\s+ON\b/i;
 
 const RULES = [
   { rule: 'currency-amount', re: /\$\s?\d/ },
@@ -166,9 +232,19 @@ const URL_ONLY_RE = /^\s*[\-*'"`,(\[]*\s*(https?:\/\/\S+|\/[\w./-]+)\s*[\]),;'"`
 // gh-1622 false positive: analytics/script-tag lines (gtag/GTM/ga-gate.js) are never legal or money copy.
 const ANALYTICS_RE = /(googletagmanager|\bgtag\b|ga-gate\.js)/i;
 
-function isExcludedPath(file) {
-  if (GATE_FILES.has(file)) return true; // reported as a single 'gate-file' hit instead
-  return EXCLUDED_PATH_RES.some((re) => re.test(file));
+/**
+ * How much of a file's diff to scan.
+ *   'none'          — not scanned (GATE_FILES are reported as one 'gate-file' hit instead)
+ *   'currency-only' — literal currency amounts only (harness paths, see HARNESS_PATH_RES)
+ *   'full'          — every rule
+ */
+export function scanModeFor(file) {
+  if (!file) return 'none';
+  if (GATE_FILES.has(file)) return 'none'; // reported as a single 'gate-file' hit instead
+  if (EXCLUDED_PATH_RES.some((re) => re.test(file))) return 'none';
+  if (COPY_GUARD_FILES.has(file)) return 'full';
+  if (HARNESS_PATH_RES.some((re) => re.test(file))) return 'currency-only';
+  return 'full';
 }
 
 export function isNoiseLine(text) {
@@ -193,7 +269,8 @@ export function isCodeComment(text, file) {
   return !!file && CODE_FILE_RE.test(file) && COMMENT_LINE_RE.test(text);
 }
 
-export function classifyLine(text, file) {
+export function classifyLine(text, file, mode = 'full') {
+  if (mode === 'none') return null;
   if (isNoiseLine(text)) return null;
   const comment = isCodeComment(text, file);
   for (const { rule, re } of RULES) {
@@ -201,13 +278,34 @@ export function classifyLine(text, file) {
     if (comment && !/_CENTS\s*=/.test(text)) continue; // "$25" in a comment is prose
     if (re.test(text)) return rule;
   }
-  if (!comment && file && CODE_FILE_RE.test(file) && MONEY_IDENT_RE.test(text)) return 'money-identifier';
+  // Harness paths stop here: a literal price in a script is still a price, but a
+  // fixture's `acvPayout` and a --help string's "credit" are not money wording.
+  if (mode === 'currency-only') return null;
+  if (!comment && file && CODE_FILE_RE.test(file) && MONEY_IDENT_RE.test(text)) {
+    if (SQL_COMMENT_ON_RE.test(text)) return null;          // database docstring, not money logic
+    if (SQL_PERMISSION_RE.test(text)) return 'money-permission';
+    return 'money-identifier';
+  }
   if (comment) return null;
   for (const { rule, re } of RULES) {
     if (rule === 'currency-amount') continue;
     if (re.test(text)) return rule;
   }
   return null;
+}
+
+// gh-1701: a GRANT/REVOKE migration names the same money-path function on every
+// line; 20 identical rows train the reader to scroll past the verdict instead of
+// reading it, so the file is reported once. The gate still fires.
+function pushHit(out, seenPermission, file, line, rule, side, text) {
+  if (!rule) return;
+  if (rule === 'money-permission') {
+    if (seenPermission.has(file)) return;
+    seenPermission.add(file);
+    out.push({ file, line, rule, side, text: `GRANT/REVOKE on a money-path function — an authorisation change, read it: ${text.trim().slice(0, 140)}` });
+    return;
+  }
+  out.push({ file, line, rule, side, text: text.trim().slice(0, 200) });
 }
 
 function stripDiffPath(p) {
@@ -229,8 +327,9 @@ export function detectR120Content(diffText) {
   const out = [];
   const files = [];
   const seenGate = new Set();
+  const seenPermission = new Set(); // gh-1701: one 'money-permission' hit per file
   let file = null;
-  let excluded = true;
+  let mode = 'none';
   let oldLine = 0;
   let newLine = 0;
   let inHunk = false;
@@ -243,7 +342,7 @@ export function detectR120Content(diffText) {
       const m = /^diff --git a\/(.+?) b\/(.+)$/.exec(raw);
       file = m ? m[2] : null;
       if (file) files.push(file);
-      excluded = file ? isExcludedPath(file) : true;
+      mode = scanModeFor(file);
       if (file && GATE_FILES.has(file) && !seenGate.has(file)) {
         seenGate.add(file);
         out.push({ file, line: 0, rule: 'gate-file', side: '+', text: `(any change to ${file} requires a signed approval under the pubkey currently on main)` });
@@ -252,13 +351,13 @@ export function detectR120Content(diffText) {
     }
     if (raw.startsWith('+++ ')) {
       const p = stripDiffPath(raw.slice(4));
-      if (p) { file = p; excluded = isExcludedPath(file); }
+      if (p) { file = p; mode = scanModeFor(file); }
       continue;
     }
     if (raw.startsWith('--- ')) {
       if (!inHunk) {
         const p = stripDiffPath(raw.slice(4));
-        if (p && !file) { file = p; excluded = isExcludedPath(file); }
+        if (p && !file) { file = p; mode = scanModeFor(file); }
       }
       continue;
     }
@@ -273,10 +372,10 @@ export function detectR120Content(diffText) {
     const side = raw[0];
     const text = raw.slice(1);
     if (side === '+') {
-      if (!excluded && file) { const rule = classifyLine(text, file); if (rule) out.push({ file, line: newLine, rule, side: '+', text: text.trim().slice(0, 200) }); }
+      if (file && mode !== 'none') pushHit(out, seenPermission, file, newLine, classifyLine(text, file, mode), '+', text);
       newLine++;
     } else if (side === '-') {
-      if (!excluded && file) { const rule = classifyLine(text, file); if (rule) out.push({ file, line: oldLine, rule, side: '-', text: text.trim().slice(0, 200) }); }
+      if (file && mode !== 'none') pushHit(out, seenPermission, file, oldLine, classifyLine(text, file, mode), '-', text);
       oldLine++;
     } else {
       // context line (' ') or anything else
@@ -287,4 +386,4 @@ export function detectR120Content(diffText) {
   return { hit: out.length > 0, lines: out, files };
 }
 
-export default { detectR120Content, verifySignedApproval, approvalMessage, APPROVAL_LINE_RE, GATE_FILES };
+export default { detectR120Content, verifySignedApproval, approvalMessage, APPROVAL_LINE_RE, GATE_FILES, COPY_GUARD_FILES, scanModeFor };
