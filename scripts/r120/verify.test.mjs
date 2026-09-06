@@ -1,5 +1,5 @@
 // node --test scripts/r120/verify.test.mjs   (Node 20+, no deps)
-import { test, describe } from 'node:test';
+import { test, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { verifySignedApproval, detectR120Content, approvalMessage, classifyLine, bytesToBase64url } from './verify.mjs';
 import { signApproval } from './sign.mjs';
@@ -203,5 +203,25 @@ describe('detectR120Content', () => {
 
   test('empty diff -> no hit', () => {
     assert.deepEqual(detectR120Content(''), { hit: false, lines: [], files: [] });
+  });
+});
+
+// 2026-09-05 (CTO RUN 23): the predicate discriminated on vocabulary, not money.
+describe('detectR120Content — comments vs money identifiers (2026-09-05)', () => {
+  const diff = (file, lines) => `diff --git a/${file} b/${file}\n--- a/${file}\n+++ b/${file}\n@@ -1,1 +1,${lines.length + 1} @@\n x\n${lines.map((l) => '+' + l).join('\n')}\n`;
+  it('does NOT fire on "Agreement" / "guarantee" / "/terms" inside code comments (#1673, #1674)', () => {
+    const d = diff('react-app/app/trade-selector/utils.ts', ['  // Agreement, or a ZIP that cannot be resolved, keeps the token', '  /* mathematically guaranteed to */', '  // (e.g. /login, /auth-callback, /terms) — see #1639.']);
+    assert.equal(detectR120Content(d).hit, false);
+  });
+  it('DOES fire on money-path identifiers in code (#1670 accept_bid / has_payment_method)', () => {
+    const d = diff('supabase/migrations/20260904_accept_bid_guard.sql', ['  IF NEW.has_payment_method IS FALSE THEN', "    RAISE EXCEPTION 'contractor_no_payment_method';"]);
+    const r = detectR120Content(d); assert.equal(r.hit, true); assert.ok(r.lines.some((l) => l.rule === 'money-identifier'));
+  });
+  it('still fires on a real currency constant in code, and on prose in HTML', () => {
+    assert.equal(detectR120Content(diff('x.ts', ['const UPGRADE_PRICE_UNDER_CENTS = 2500;'])).hit, true);
+    assert.equal(detectR120Content(diff('faq.html', ['<p>Agreement terms apply to every project</p>'])).hit, true);
+  });
+  it('a "$25" inside a code comment is prose, not a change of price', () => {
+    assert.equal(detectR120Content(diff('x.ts', ['  // costs $25 under 50 SQ'])).hit, false);
   });
 });

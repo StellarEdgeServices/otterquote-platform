@@ -146,12 +146,18 @@ const EXCLUDED_PATH_RES = [
   /^In Flight\//,
 ];
 
+// Money-path IDENTIFIERS (code, not prose). \b treats `_` as a word char, so the
+// prose money-word rule never sees `has_payment_method` or `accept_bid` — measured
+// 2026-09-05 on PR #1670 (a BEFORE UPDATE trigger + accept_bid rewrite on the
+// money path) which the prose rules passed as "no R-120 content".
+const MONEY_IDENT_RE = /(payment|payout|stripe|refund|charge|invoice|price|pricing|fee_|_fee|cents|amount|award|accept_bid|is_test|live_charge|balance|commission|rebate|credit)/i;
+
 const RULES = [
   { rule: 'currency-amount', re: /\$\s?\d/ },
   { rule: 'currency-amount', re: /\b\d+(\.\d+)?\s?(USD|dollars)\b/i },
   { rule: 'currency-amount', re: /_CENTS\s*=/ },
   { rule: 'money-word', re: /\b(price|pricing|fee|fees|refund|charge|charges|rebate|credit|payout|commission|discount|invoice)\b/i },
-  { rule: 'legal-consent-word', re: /\b(licens(e|ed|ing)|insured|bonded|vetted|certified|guarantee[ds]?|warrant(y|ies|ed)|consent|agree(ment|s)?|terms|on behalf of|public adjuster|arbitration|disclaimer|liab(le|ility))\b/i },
+  { rule: 'legal-consent-word', re: /\b(licens(e|ed|ing)|insured|bonded|vetted|certified|guarantee[ds]?|warrant(y|ies|ed)|consent|agree(ment|s)?|(?<![/\w-])terms|on behalf of|public adjuster|arbitration|disclaimer|liab(le|ility))\b/i },
 ];
 
 // Lines that are obviously not user-facing content.
@@ -174,9 +180,31 @@ export function isNoiseLine(text) {
   return false;
 }
 
-export function classifyLine(text) {
+// Code comments are neither customer-visible copy nor executable money logic.
+// Measured 2026-09-05: a ZIP-code parser (#1673) and an analytics bucketing
+// change (#1674) were blocked on the words "Agreement" / "guarantee" / "/terms"
+// inside comments. A comment line is skipped for the WORD rules; currency amounts
+// and money identifiers on real code lines still fire. HTML/Markdown/prose files
+// are not code, so their lines are never treated as comments.
+const CODE_FILE_RE = /\.(m?[jt]sx?|py|sql|toml|ya?ml|sh|go|rs|java|kt|swift|c|cc|cpp|h)$/i;
+const COMMENT_LINE_RE = /^\s*(\/\/|\/\*|\*|#(?!\{)|--|<!--)/;
+
+export function isCodeComment(text, file) {
+  return !!file && CODE_FILE_RE.test(file) && COMMENT_LINE_RE.test(text);
+}
+
+export function classifyLine(text, file) {
   if (isNoiseLine(text)) return null;
+  const comment = isCodeComment(text, file);
   for (const { rule, re } of RULES) {
+    if (rule !== 'currency-amount') continue;
+    if (comment && !/_CENTS\s*=/.test(text)) continue; // "$25" in a comment is prose
+    if (re.test(text)) return rule;
+  }
+  if (!comment && file && CODE_FILE_RE.test(file) && MONEY_IDENT_RE.test(text)) return 'money-identifier';
+  if (comment) return null;
+  for (const { rule, re } of RULES) {
+    if (rule === 'currency-amount') continue;
     if (re.test(text)) return rule;
   }
   return null;
@@ -245,10 +273,10 @@ export function detectR120Content(diffText) {
     const side = raw[0];
     const text = raw.slice(1);
     if (side === '+') {
-      if (!excluded && file) { const rule = classifyLine(text); if (rule) out.push({ file, line: newLine, rule, side: '+', text: text.trim().slice(0, 200) }); }
+      if (!excluded && file) { const rule = classifyLine(text, file); if (rule) out.push({ file, line: newLine, rule, side: '+', text: text.trim().slice(0, 200) }); }
       newLine++;
     } else if (side === '-') {
-      if (!excluded && file) { const rule = classifyLine(text); if (rule) out.push({ file, line: oldLine, rule, side: '-', text: text.trim().slice(0, 200) }); }
+      if (!excluded && file) { const rule = classifyLine(text, file); if (rule) out.push({ file, line: oldLine, rule, side: '-', text: text.trim().slice(0, 200) }); }
       oldLine++;
     } else {
       // context line (' ') or anything else
