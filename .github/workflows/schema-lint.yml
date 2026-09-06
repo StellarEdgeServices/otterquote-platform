@@ -15,22 +15,17 @@ on:
       - 'scripts/migration-filename-lint.py'
   pull_request:
     branches: [main]
-    # gh-1731: this trigger had no `paths:` while the `push` trigger above did --
-    # every PR ran this regardless of whether it touched anything the linter
-    # checks (measured: ~25% of a 20-PR sample touched none of these paths).
-    # Mirrors the push list exactly plus this workflow's own file, so editing
-    # the lint itself still gets tested.
-    paths:
-      - '**.html'
-      - 'js/**.js'
-      - 'supabase/functions/**'
-      - 'sql/schema-snapshot.json'
-      - 'scripts/schema-column-lint.py'
-      - 'supabase/migrations/**.sql'
-      - 'sql/**.sql'
-      - 'scripts/schema-secret-lint.py'
-      - 'scripts/migration-filename-lint.py'
-      - '.github/workflows/schema-lint.yml'
+    # gh-1731 PR #1740 REVIEW: FAIL (comment 5560891984) -- a `paths:` filter
+    # mirroring `push` was added here and reverted. The shared filter list
+    # omits react-app/**/*.{ts,tsx,jsx}, which scripts/schema-column-lint.py's
+    # own SCAN_EXTENSIONS (line 40) explicitly scans. That would have let a
+    # PR touching only e.g. react-app/app/(homeowner)/bids/actions.ts skip
+    # schema-contract checking entirely. Deliberately left unfiltered: this
+    # is a fail-hard check (see Claude's Memories send-adjuster-email-prod-drift.md)
+    # and the workflow already hits GitHub's 1-minute billing floor regardless
+    # of whether it runs, so a path filter here saves ~0 real minutes against
+    # a real money-path coverage hole. See PR #1740 for the withdrawn attempt
+    # and #1731 for the cost-reduction context.
 
 # gh-1731: dedupe repeat-push churn on open PRs -- the linter re-checks the
 # full repo tree each run, so only the newest commit's result is useful.
