@@ -8,8 +8,6 @@
 // pdfjs-extracted text), so a starter that passes here passes in production for
 // the same reason.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import * as pdfjsLib from "npm:pdfjs-dist@4.0.379/legacy/build/pdf.mjs";
-import "npm:pdfjs-dist@4.0.379/legacy/build/pdf.worker.mjs";
 import { PDFDocument, StandardFonts } from "npm:pdf-lib@1.17.1";
 import {
   buildExecutionPagePdf,
@@ -21,35 +19,12 @@ import {
   type ManifestRequirement,
 } from "./starter-template.ts";
 
-// ─── the real v3 manifest, lifted out of index.ts ────────────────────────────
-const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-const tagFn = src.slice(src.indexOf("function tag("), src.indexOf("const CONTRACTOR_IDX"));
-const mStart = src.indexOf("const MANIFEST: any = {");
-let depth = 0, mEnd = -1;
-for (let i = src.indexOf("{", mStart); i < src.length; i++) {
-  if (src[i] === "{") depth++;
-  else if (src[i] === "}") { depth--; if (depth === 0) { mEnd = i + 1; break; } }
-}
-const modSrc = tagFn + "\nconst CONTRACTOR_IDX = 1;\nconst HOMEOWNER_IDX = 2;\n" +
-  src.slice(mStart, mEnd) + ";\nexport { MANIFEST };\n";
-// deno-lint-ignore no-explicit-any
-const { MANIFEST } = await import("data:application/typescript," + encodeURIComponent(modSrc)) as any;
-
-// The Edge Function's own extractor. pdfjs DETACHES the buffer it is handed,
-// so every call gets its own copy — without the slice a second read of the same
-// bytes fails with "No PDF header found".
-async function extractPdfText(pdfBytes: Uint8Array): Promise<string> {
-  // deno-lint-ignore no-explicit-any
-  (pdfjsLib as any).GlobalWorkerOptions.workerSrc = "";
-  const pdf = await pdfjsLib.getDocument({ data: pdfBytes.slice(), isEvalSupported: false, disableFontFace: true }).promise;
-  let full = "";
-  for (let n = 1; n <= pdf.numPages; n++) {
-    const tc = await (await pdf.getPage(n)).getTextContent();
-    // deno-lint-ignore no-explicit-any
-    full += tc.items.map((it: any) => it.str ?? "").join(" ") + "\n";
-  }
-  return full;
-}
+// ─── the real v3 manifest and the Edge Function's own extractor ─────────────
+// [gh-1315] Both now live in importable modules (manifest.ts, pdf-text.ts), so
+// the source-slicing trick this test used to lift MANIFEST out of index.ts is
+// gone: this test and the deployed validator import the same objects.
+import { MANIFEST } from "./manifest.ts";
+import { extractPdfText } from "./pdf-text.ts";
 
 const SLOTS: Array<[string, string]> = [
   ["roofing", "retail"], ["roofing", "insurance"],
