@@ -158,13 +158,16 @@ serve(async (req) => {
       );
     }
 
-    // User-JWT callers must own the claim behind this request.
+    // Claim lookup: needed both for the ownership check (user-JWT callers)
+    // and to resolve the homeowner's email for Reply-To (gh-1625 item 2 —
+    // service-role callers need it too, so this now runs unconditionally).
+    const { data: claimRow, error: claimErr } = await supabase
+      .from("claims")
+      .select("user_id")
+      .eq("id", reqRow.claim_id)
+      .single();
+
     if (!isServiceRole) {
-      const { data: claimRow, error: claimErr } = await supabase
-        .from("claims")
-        .select("user_id")
-        .eq("id", reqRow.claim_id)
-        .single();
       if (claimErr || !claimRow || claimRow.user_id !== callerId) {
         return new Response(
           JSON.stringify({ error: "Forbidden: caller does not own this claim" }),
@@ -183,7 +186,33 @@ serve(async (req) => {
       );
     }
     const recipientName = String(reqRow.to_name || "").replace(/[\r\n<>,"]+/g, " ").trim();
-    const replyTo = String(reqRow.ingest_email || "").replace(/[\r\n]+/g, "").trim();
+
+    // Reply-To (gh-1625 item 2): the message body tells the adjuster replies
+    // go straight to the homeowner, so Reply-To must actually point there —
+    // not at our ingest address, which contradicted the body and falsified
+    // the published disclaimer that Otter Quotes does not handle insurer
+    // communications. Resolve the homeowner's email from their claim
+    // (profiles row, falling back to auth — same pattern as
+    // send-homeowner-next-steps) rather than from reqRow.ingest_email.
+    let replyTo = "";
+    if (claimRow?.user_id) {
+      const { data: homeownerProfile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", claimRow.user_id)
+        .maybeSingle();
+      let homeownerEmail = homeownerProfile?.email || null;
+      if (!homeownerEmail) {
+        const { data: authUser } = await supabase.auth.admin.getUserById(claimRow.user_id);
+        homeownerEmail = authUser?.user?.email || null;
+      }
+      replyTo = String(homeownerEmail || "").replace(/[\r\n]+/g, "").trim();
+    }
+    if (!replyTo) {
+      console.warn(
+        `[${FUNCTION_NAME}] No homeowner email resolved for claim ${reqRow.claim_id} — sending without Reply-To`
+      );
+    }
 
     // ========== RATE LIMIT CHECK (per-user; null => global bucket for service-role) ==========
     const { data: rateLimitResult, error: rlError } = await supabase.rpc(

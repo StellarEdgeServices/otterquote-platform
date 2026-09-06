@@ -720,6 +720,180 @@ def main():
             nd.os.environ[nd.GITHUB_TOKEN_ENV_VAR] = saved_pat
 
     # -------------------------------------------------------------------------------
+    print("\nBASE-DIRECTORY SITES + NO-CONTENT CANCELS (gh-1549, CTO run cto-2026-09-05T03:07:58Z)")
+    print("Recorded live 2026-09-05T04:31Z on otterquote-app (base=react-app): the pre-fix")
+    print("detector printed 'BUILD_FAILING (... Canceled build due to no content change)' and")
+    print("'7 commits behind' while production was correctly at 3424c60b, the last main")
+    print("commit touching react-app/ -- the later commits touched only supabase/functions,")
+    print("scripts/ and .github/. Netlify's ignore-build rule cancels those; that is not a")
+    print("build failure and not drift.")
+    # -------------------------------------------------------------------------------
+    NO_CONTENT = ("Failed during stage 'checking build content for changes': "
+                  "Canceled build due to no content change")
+    CREDIT = "Skipped due to account credit usage exceeded"
+    APP_SITE = {"key": "otterquote-app", "label": "app.otterquote.com (otterquote-app)",
+                "site_id": "26316673-212a-4f20-a95e-902ece8387c4",
+                "repo": "StellarEdgeServices/otterquote-platform"}
+
+    # (1) no-content cancel, production == last main commit touching the base dir -> IDENTICAL
+    r = nd.evaluate_site(APP_SITE, "3424c60b608f", "2026-09-05T02:04:49Z", "cd89cfbff617", 0,
+                         "error", NO_CONTENT, None, base_dir="react-app",
+                         base_head_sha="3424c60b608f", main_ahead_of_production=7)
+    check("no-content cancel on a base-dir site -> IDENTICAL (was BUILD_FAILING pre-fix)",
+          r["verdict"], nd.IDENTICAL)
+    check("no-content cancel is flagged SKIPPED_NO_CONTENT on the row", r["no_content_skip"], True)
+    check("no-content cancel detail names main HEAD as past production, not as drift",
+          "main HEAD is 7 commits past production, none touching the base dir" in r["detail"], True)
+    check("SKIPPED_NO_CONTENT is not a verdict and never in FAILING_VERDICTS",
+          nd.SKIPPED_NO_CONTENT in nd.FAILING_VERDICTS, False)
+    check("no-content cancel -> exit 0 (clean), the alarm does not cry wolf on every merge",
+          nd.report_exit_code([r]), 0)
+
+    # (1b) the base-dir head is a branch commit already merged into what production serves
+    #      (GitHub's path-filtered commit list returns the branch commit, not the merge):
+    #      compare(published...base_head).ahead_by == 0 -> IDENTICAL, never BEHIND.
+    r = nd.evaluate_site(APP_SITE, "3424c60b608f", "2026-09-05T02:04:49Z", "a9a9f690018d", 0,
+                         "error", NO_CONTENT, None, base_dir="react-app",
+                         base_head_sha="d3787ae09571", main_ahead_of_production=15)
+    check("base-dir head already contained in production (ahead_by 0) -> IDENTICAL", r["verdict"], nd.IDENTICAL)
+    check("detail says 'already contains' and names the base-dir head",
+          "already contains the last main commit touching base dir 'react-app/' (d3787ae09571)" in r["detail"], True)
+
+    # (2) credit-exceeded (#1548) stays BUILD_FAILING, loud -- Dustin's ruling 2026-09-04
+    #     (gh-1549 comment 5545292885): auto-topup stays off, "Let it stop and alert me."
+    r = nd.evaluate_site(APP_SITE, "3424c60b608f", "2026-09-05T02:04:49Z", "cd89cfbff617", 0,
+                         "error", CREDIT, True, base_dir="react-app",
+                         base_head_sha="3424c60b608f", main_ahead_of_production=7)
+    check("credit-exceeded on a base-dir site -> BUILD_FAILING (not softened by the base-dir logic)",
+          r["verdict"], nd.BUILD_FAILING)
+    check("credit-exceeded detail is the message verbatim", r["detail"], CREDIT)
+    check("credit-exceeded -> exit 2", nd.report_exit_code([r]), 2)
+    r = nd.evaluate_site(APP_SITE, "3424c60b608f", "2026-09-05T02:04:49Z", "cd89cfbff617", 7,
+                         "error", "Build script returned non-zero exit code: 2", None,
+                         base_dir="react-app", base_head_sha="cd89cfbff617")
+    check("a REAL build error on otterquote-app still alarms (matched on message, not site name)",
+          r["verdict"], nd.BUILD_FAILING)
+
+    # (3) genuinely behind: a later main commit DID touch react-app/ and production did not move
+    r = nd.evaluate_site(APP_SITE, "3424c60b608f", "2026-09-05T02:04:49Z", "cd89cfbff617", 2,
+                         "error", NO_CONTENT, None, base_dir="react-app",
+                         base_head_sha="0123456789ab", main_ahead_of_production=7)
+    check("genuinely behind on a base-dir site -> BEHIND", r["verdict"], nd.BEHIND)
+    check("BEHIND N is counted against the base-dir head, and says so",
+          r["detail"].startswith("2 commits behind, since 2026-09-05 (counted against the last main "
+                                 "commit touching base dir 'react-app/', not main HEAD)"), True)
+    check("genuinely behind -> exit 2", nd.report_exit_code([r]), 2)
+    # No base dir: unchanged behaviour, the #1517 shape.
+    r = nd.evaluate_site(SITE, "1" * 40, "2026-08-11T09:15:22Z", "2" * 40, 9, "ready", None, False)
+    check("no base dir -> plain main HEAD compare, BEHIND 9 (the #1517 shape)",
+          r["detail"], "9 commits behind, since 2026-08-11")
+
+    # select_signal_deploy: the newest NON-benign deploy is the signal.
+    d, n = nd.select_signal_deploy([
+        {"id": "c1", "state": "error", "created_at": "2026-09-05T04:18:48Z", "error_message": NO_CONTENT},
+        {"id": "real", "state": "error", "created_at": "2026-09-05T03:00:00Z", "error_message": CREDIT},
+        {"id": "ok", "state": "ready", "created_at": "2026-09-05T02:04:49Z", "error_message": None},
+    ])
+    check("select_signal_deploy skips newer no-content cancels down to the unresolved real error",
+          (d["id"], n), ("real", 1))
+    d, n = nd.select_signal_deploy([
+        {"id": "c1", "state": "error", "created_at": "2026-09-05T04:18:48Z", "error_message": NO_CONTENT},
+        {"id": "ok", "state": "ready", "created_at": "2026-09-05T02:04:49Z", "error_message": None},
+    ])
+    check("select_signal_deploy: cancel newer than a ready deploy -> the ready one is the signal",
+          (d["id"], n), ("ok", 1))
+    d, n = nd.select_signal_deploy([
+        {"id": "c1", "state": "error", "created_at": "2026-09-05T04:18:48Z", "error_message": NO_CONTENT},
+    ])
+    check("select_signal_deploy: only benign deploys -> returns the newest benign, count 0",
+          (d["id"], n), ("c1", 0))
+    check("select_signal_deploy: empty list -> (None, 0)", nd.select_signal_deploy([]), (None, 0))
+
+    # check_site end-to-end for a base-dir site: the router serves the site's
+    # build_settings.base, the path-filtered commits list, and both compares.
+    def _base_dir_router(published, base_head, main_head, ahead_published_to_base,
+                         ahead_published_to_main, deploys):
+        def _router(req, timeout=20):
+            url = req.full_url
+            if "api.netlify.com" in url and "/deploys" in url:
+                return _json_response(deploys)
+            if "api.netlify.com" in url and "/builds" in url:
+                return _json_response([])
+            if "api.netlify.com" in url:
+                return _json_response({
+                    "published_deploy": {"commit_ref": published, "published_at": "2026-09-05T02:04:49Z"},
+                    "build_settings": {"base": "react-app", "repo_url":
+                                       "https://github.com/StellarEdgeServices/otterquote-platform"},
+                })
+            if "api.github.com" in url and "/commits?sha=main&path=react-app&per_page=1" in url:
+                return _json_response([{"sha": base_head}])
+            if "api.github.com" in url and "/commits/main" in url:
+                return _json_response({"sha": main_head})
+            if "api.github.com" in url and "/compare/%s...%s" % (published, base_head) in url:
+                return _json_response({"ahead_by": ahead_published_to_base})
+            if "api.github.com" in url and "/compare/%s...%s" % (published, main_head) in url:
+                return _json_response({"ahead_by": ahead_published_to_main})
+            raise AssertionError("unexpected URL in base-dir test router: %s" % url)
+        return _router
+
+    live_deploys = [  # the 2026-09-05T04:31Z shape, verbatim states/messages
+        {"state": "error", "created_at": "2026-09-05T04:18:48Z", "error_message": NO_CONTENT},
+        {"state": "error", "created_at": "2026-09-05T03:19:31Z", "error_message": NO_CONTENT},
+        {"state": "error", "created_at": "2026-09-05T03:12:37Z", "error_message": NO_CONTENT},
+        {"state": "ready", "created_at": "2026-09-05T02:04:49Z", "error_message": None},
+    ]
+    nd.urllib.request.urlopen = _base_dir_router("3424c60b608f", "3424c60b608f", "cd89cfbff617",
+                                                 0, 7, live_deploys)
+    try:
+        row = nd.check_site(APP_SITE, "fake-netlify-token", "fake-github-token")
+        check("check_site end-to-end base-dir site, no-content cancels -> IDENTICAL", row["verdict"], nd.IDENTICAL)
+        check("check_site end-to-end carries base_dir", row["base_dir"], "react-app")
+        check("check_site end-to-end carries the base-dir head", row["base_head_sha"], "3424c60b608f")
+        check("check_site end-to-end counts the 3 newer no-content cancels",
+              "newest 3 production deploy attempts were" in row["detail"], True)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    nd.urllib.request.urlopen = _base_dir_router("3424c60b608f", "0123456789ab", "cd89cfbff617",
+                                                 2, 7, live_deploys)
+    try:
+        row = nd.check_site(APP_SITE, "fake-netlify-token", "fake-github-token")
+        check("check_site end-to-end base-dir site, base dir touched after production -> BEHIND", row["verdict"], nd.BEHIND)
+        check("check_site end-to-end BEHIND count is against the base-dir head (2), not main (7)", row["ahead_by"], 2)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    nd.urllib.request.urlopen = _base_dir_router(
+        "3424c60b608f", "3424c60b608f", "cd89cfbff617", 0, 7,
+        [{"state": "error", "created_at": "2026-09-05T04:18:48Z", "error_message": NO_CONTENT},
+         {"state": "error", "created_at": "2026-09-05T03:19:31Z", "error_message": CREDIT},
+         {"state": "ready", "created_at": "2026-09-05T02:04:49Z", "error_message": None}])
+    try:
+        row = nd.check_site(APP_SITE, "fake-netlify-token", "fake-github-token")
+        check("check_site end-to-end: credit-exceeded behind a newer no-content cancel still BUILD_FAILING",
+              row["verdict"], nd.BUILD_FAILING)
+        check("check_site end-to-end: BUILD_FAILING detail is the credit message", row["detail"], CREDIT)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # The path-filtered commits call failing -> UNMEASURED, never a silent fallback to main HEAD.
+    def _base_head_404(req, timeout=20):
+        url = req.full_url
+        if "/commits?sha=main&path=" in url:
+            raise urllib.error.HTTPError(url=url, code=404, msg="Not Found", hdrs=None, fp=None)
+        return _base_dir_router("3424c60b608f", "3424c60b608f", "cd89cfbff617", 0, 7, live_deploys)(req, timeout)
+    nd.urllib.request.urlopen = _base_head_404
+    try:
+        row = nd.check_site(APP_SITE, "fake-netlify-token", "fake-github-token")
+        check("base-dir head fetch failing -> UNMEASURED (no silent fallback to main HEAD)", row["verdict"], nd.UNMEASURED)
+        check("base-dir head UNMEASURED reason names the base dir",
+              "base dir 'react-app'" in row["detail"], True)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    check("--self-test built into the script passes", nd.self_test(), 0)
+
+    # -------------------------------------------------------------------------------
     print("\nRECORDED LIVE FIXTURE -- otterquote-platform, captured 2026-09-02 ~20:30Z")
     print("(gh-1549 dispatch rw-f22-20260902T181106-lnoj: no NETLIFY_PAT was reachable in")
     print("this Code-lane session -- see the script's CROSS-REPO SCOPE GAP note and the")

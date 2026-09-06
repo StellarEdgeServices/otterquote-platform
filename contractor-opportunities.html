@@ -32,14 +32,7 @@
     <!-- GA4 -->
     <script src="/js/ga-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
-<!-- Microsoft Clarity -->
-<script type="text/javascript">
-    (function(c,l,a,r,i,t,y){
-        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-    })(window, document, "clarity", "script", "wwr7qlk8g5");
-</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
     <!-- Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -875,16 +868,16 @@
             oppDocMap[opp.id] = { estimateFilename: opp.estimateFilename || null, measurementsFilename: opp.measurementsFilename || null, measurementsAvailable: !!opp.measurementsAvailable };
             const parts = [];
             if (opp.estimateFilename) {
-                parts.push('<button class="doc-link-btn" id="loss-' + opp.id + '" onclick="openEstimatePdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4C4; Loss Sheet</button>');
+                parts.push('<button class="doc-link-btn" id="loss-' + opp.id + '" data-oq-action="doc-estimate" data-oq-claim="' + escHtml(String(opp.id)) + '">&#x1F4C4; Loss Sheet</button>');
             }
             // gh-484: homeowner-uploaded measurement file — independent of the measurement-
             // PDF button / hover_orders row state below. Guarded by the sentinel above
             // so contractors never get a "View Measurements" link that can only fail.
             if (opp.measurementsFilename) {
-                parts.push('<button class="doc-link-btn" id="measurements-' + opp.id + '" onclick="openMeasurementsPdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4D0; View Measurements</button>');
+                parts.push('<button class="doc-link-btn" id="measurements-' + opp.id + '" data-oq-action="doc-measurements" data-oq-claim="' + escHtml(String(opp.id)) + '">&#x1F4D0; View Measurements</button>');
             }
             if (opp.measurementsAvailable) {
-                parts.push('<button class="doc-link-btn" id="hover-' + opp.id + '" onclick="openHoverPdf(' + JSON.stringify(String(opp.id)) + ')">&#x1F4CF; Measurement PDF</button>');
+                parts.push('<button class="doc-link-btn" id="hover-' + opp.id + '" data-oq-action="doc-hover" data-oq-claim="' + escHtml(String(opp.id)) + '">&#x1F4CF; Measurement PDF</button>');
             }
             if (!parts.length) return '';
             return '<div class="docs-section"><span class="docs-label">Documents</span>' + parts.join('') + '</div>';
@@ -923,7 +916,7 @@
 
             const priceCents = upgradeTierPriceCents(o.hoverSquares);
             return '<div class="upgrade-section">'
-                + '<button class="upgrade-buy-btn" id="upgrade-btn-' + safeId + '" onclick="openUpgradePanel(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')">'
+                + '<button class="upgrade-buy-btn" id="upgrade-btn-' + safeId + '" data-oq-action="upgrade-open" data-oq-claim="' + escHtml(String(o.id)) + '" data-oq-safe="' + safeId + '">'
                 + '&#x1F4D0; Buy Detailed Measurement Report &mdash; ' + fmtCents(priceCents)
                 + '</button>'
                 + '<div class="upgrade-panel" id="upgrade-panel-' + safeId + '">'
@@ -933,8 +926,8 @@
                 + '<div class="upgrade-card-element" id="upgrade-card-element-' + safeId + '"></div>'
                 + '<div class="upgrade-card-errors" id="upgrade-card-errors-' + safeId + '"></div>'
                 + '<div class="upgrade-panel-actions">'
-                + '<button class="btn btn-primary" id="upgrade-pay-btn-' + safeId + '" onclick="confirmUpgradePayment(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')" disabled>Pay Securely</button>'
-                + '<button class="btn btn-secondary" type="button" id="upgrade-cancel-btn-' + safeId + '" onclick="cancelUpgradePanel(' + JSON.stringify(String(o.id)) + ', ' + JSON.stringify(safeId) + ')">Cancel</button>'
+                + '<button class="btn btn-primary" id="upgrade-pay-btn-' + safeId + '" data-oq-action="upgrade-pay" data-oq-claim="' + escHtml(String(o.id)) + '" data-oq-safe="' + safeId + '" disabled>Pay Securely</button>'
+                + '<button class="btn btn-secondary" type="button" id="upgrade-cancel-btn-' + safeId + '" data-oq-action="upgrade-cancel" data-oq-claim="' + escHtml(String(o.id)) + '" data-oq-safe="' + safeId + '">Cancel</button>'
                 + '</div>'
                 + '<p style="font-size:0.72rem;color:#64748B;margin:var(--sp-2) 0 0;">&#x1F512; Payment secured by Stripe. Your card details are never stored on our servers.</p>'
                 + '</div>'
@@ -1286,8 +1279,53 @@
             }
         }
 
+        // ── gh-1693: card actions are bound, not inlined ──────────────────────
+        // Every button in a rendered opportunity card used to carry an inline
+        // `onclick="fn(' + JSON.stringify(id) + ')"`. `onclick="` opens a DOUBLE-quoted
+        // HTML attribute and JSON.stringify emits a DOUBLE-quoted string, so the parser
+        // terminated the attribute at the first interpolated quote and the handler never
+        // bound. Six buttons -- all three document links and all three upgrade-panel
+        // actions -- were dead in production, including the only entry point to the
+        // detailed-measurement purchase (gh-1411 / gh-1621 money path). Nothing caught it:
+        // the markup was valid, the deploy was byte-identical to main, and the functions
+        // themselves were fine. Only clicking the button in a browser could have found it.
+        //
+        // So the fix is the render layer, not the quoting: no card element carries an
+        // inline handler at all. One delegated listener on the container reads
+        // `data-oq-action` and dispatches. It is bound once and survives every re-render
+        // (render() replaces the container's children, never the container), and
+        // tools/inline_handler_attr_check.py keeps this file inline-handler-free in CI.
+        const OQ_CARD_ACTIONS = {
+            'doc-estimate':    function (d) { openEstimatePdf(d.oqClaim); },
+            'doc-measurements':function (d) { openMeasurementsPdf(d.oqClaim); },
+            'doc-hover':       function (d) { openHoverPdf(d.oqClaim); },
+            'upgrade-open':    function (d) { openUpgradePanel(d.oqClaim, d.oqSafe); },
+            'upgrade-pay':     function (d) { confirmUpgradePayment(d.oqClaim, d.oqSafe); },
+            'upgrade-cancel':  function (d) { cancelUpgradePanel(d.oqClaim, d.oqSafe); },
+            'scope-toggle':    function (d) { toggleScope(d.oqSafe); },
+            'details':         function (d) { showDetails(d.oqClaim); }
+        };
+
+        function onOpportunityCardClick(event) {
+            const btn = event.target.closest('[data-oq-action]');
+            if (!btn) return;
+            // Clicks on a disabled control do not fire in modern browsers, but a few
+            // still bubble one from a child element. The old `disabled` attribute on
+            // the pay button was load-bearing; preserve that behaviour explicitly.
+            if (btn.disabled) return;
+            const fn = OQ_CARD_ACTIONS[btn.dataset.oqAction];
+            if (fn) fn(btn.dataset);
+        }
+
+        function bindOpportunityCardActions(el) {
+            if (!el || el.dataset.oqActionsBound) return;
+            el.addEventListener('click', onOpportunityCardClick);
+            el.dataset.oqActionsBound = '1';
+        }
+
         function render(opps) {
             const el = document.getElementById('opportunitiesContainer');
+            bindOpportunityCardActions(el);
             // GH-1411 review round 2: if any claim's payment is in flight,
             // rebuilding this container would rip its mounted card
             // Element's iframe out of the document mid-confirmCardPayment()
@@ -1373,7 +1411,7 @@
                     const safeId = String(o.id).replace(/[^a-zA-Z0-9_-]/g, '_');
                     const scopeLabel = (o.fundingType === 'insurance') ? 'Insurance Scope of Work' : 'Scope of Work';
                     scopeHtml = '<div class="scope-toggle-row">'
-                        + '<button class="btn-scope" id="scope-btn-' + safeId + '" onclick="toggleScope(\'' + safeId + '\')">'
+                        + '<button class="btn-scope" id="scope-btn-' + safeId + '" data-oq-action="scope-toggle" data-oq-safe="' + safeId + '">'
                         + '&#x1F4CB; View Scope <span id="scope-arrow-' + safeId + '">&#x25BC;</span>'
                         + '</button>'
                         + '</div>'
@@ -1417,7 +1455,7 @@
                     + '</div>'
                     + feeHtml
                     + (o.hasExpiredBid ? '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:0.5rem;padding:0.5rem 0.875rem;margin-bottom:var(--sp-4);font-size:0.82rem;color:#92400E;display:flex;align-items:center;gap:0.5rem;"><span>⏰</span><span>Your previous bid on this project expired. <strong>Renew it</strong> to stay in contention.</span></div>' : '')
-                    + '<div class="actions-row"><button class="btn btn-secondary" onclick="showDetails(\'' + o.id + '\')">Details</button>'
+                    + '<div class="actions-row"><button class="btn btn-secondary" data-oq-action="details" data-oq-claim="' + escHtml(String(o.id)) + '">Details</button>'
                     + (o.hasExpiredBid
                         ? '<a href="contractor-bid-form.html?renew=true&quote_id=' + o.expiredQuoteId + '&claim_id=' + o.id + '" class="btn btn-primary" style="background:#15803D;">🔄 Renew Bid</a>'
                         : '<a href="contractor-bid-form.html?project=' + o.id + '" class="btn btn-primary">Submit Bid</a>')
