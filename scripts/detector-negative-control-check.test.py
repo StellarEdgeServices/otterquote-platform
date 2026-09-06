@@ -361,6 +361,140 @@ def main():
         check("secret scan [bracket, reserved]: refs_checked counts it", rb_refs, 1)
         check("secret scan [bracket, reserved]: reserved secrets.GITHUB_TOKEN is never a violation", len(rb_violations), 0)
 
+    # -------------------------------------------------------------------
+    # CHECK 2 structural invocation detection (gh-1738 instance 7, regression
+    # for PR #1742's second REVIEW: FAIL, comment 5561758212): the original
+    # find_referencing_workflows() was a raw whole-file substring match, so a
+    # script's filename appearing ANYWHERE in a workflow file -- a `#`
+    # comment, a job/step name, an echo string -- counted as "this workflow
+    # invokes this script," producing a genuine false all-clear. Fixed by
+    # parsing the YAML and inspecting real execution sites (run: steps,
+    # interpreter invocations, args:/entrypoint:) instead of regexing raw
+    # file text -- a structural read that makes "the name is in a comment"
+    # unrepresentable, since comments do not survive YAML parsing.
+    # -------------------------------------------------------------------
+    print()
+    print("=" * 70)
+    print("CHECK 2 structural invocation: mention vs. real invocation")
+    print("=" * 70)
+
+    # 1. A comment-only mention (plus a job name and an echo string, for good
+    #    measure) must NOT count as invocation -- the script must be reported
+    #    as an unreconciled orphan (WARN), never as covered (PASS).
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(
+            root / "scripts" / "orphan-scanner.py",
+            DETECTOR_SOURCE + '\nSCAN_EXTENSIONS = {".txt"}\n',
+        )
+        write(root / "data" / "sample.txt", "hello\n")
+        write(
+            root / ".github" / "workflows" / "unrelated.yml",
+            "name: Unrelated\n"
+            "# this header just mentions orphan-scanner.py in prose while\n"
+            "# describing a different, unrelated check -- it never runs it.\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main]\n"
+            "jobs:\n"
+            "  x:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: orphan-scanner.py is named in this step title too\n"
+            "        run: echo \"see orphan-scanner.py for context\"\n",
+        )
+        wfs = neg.find_referencing_workflows(root, "scripts/orphan-scanner.py")
+        check("CHECK2 structural: comment/job-name/echo mention is NOT an invocation", wfs, [])
+
+        w_violations, w_info, w_files = neg.check_wiring(root)
+        check_true(
+            "CHECK2 structural: mention-only script correctly WARNs as unreconciled",
+            any("orphan-scanner.py" in i and "WARN" in i for i in w_info),
+        )
+        check_true(
+            "CHECK2 structural: mention-only script never produces a false 'covered' PASS",
+            not any("orphan-scanner.py" in i and "PASS" in i for i in w_info),
+        )
+        check("CHECK2 structural: mention-only script raises no violation either (WARN, not FAIL)", len(w_violations), 0)
+
+    # 2. A genuine invocation -- including the real repo's own multi-line,
+    #    backslash-continued `run: |` shape (see schema-lint.yml) -- DOES
+    #    count, and a fully-reconciled one reports PASS with no violation.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(
+            root / "scripts" / "real-scanner.py",
+            DETECTOR_SOURCE + '\nSCAN_EXTENSIONS = {".txt"}\n',
+        )
+        write(root / "data" / "sample.txt", "hello\n")
+        write(
+            root / ".github" / "workflows" / "real.yml",
+            "name: Real\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main]\n"
+            "    paths:\n"
+            "      - 'data/**.txt'\n"
+            "      - 'scripts/real-scanner.py'\n"
+            "jobs:\n"
+            "  x:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: |\n"
+            "          python3 scripts/real-scanner.py \\\n"
+            "            --root .\n",
+        )
+        wfs2 = neg.find_referencing_workflows(root, "scripts/real-scanner.py")
+        check("CHECK2 structural: a real multi-line, backslash-continued run: invocation IS found", wfs2, [".github/workflows/real.yml"])
+
+        r_violations, r_info, r_files = neg.check_wiring(root)
+        check_true(
+            "CHECK2 structural: genuinely-invoked, fully-covered script reports PASS",
+            any("real-scanner.py" in i and "PASS" in i for i in r_info),
+        )
+        check("CHECK2 structural: genuinely-invoked, fully-covered script raises no violation", len(r_violations), 0)
+
+    # 3. A composite/Docker action's `args:` (list form) is also a real
+    #    invocation site, not just a `run:` step -- per the work order's
+    #    design guidance not to narrow so far that genuine invocations
+    #    (a composite action, in this shape) are missed.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(
+            root / "scripts" / "docker-scanner.py",
+            DETECTOR_SOURCE + '\nSCAN_EXTENSIONS = {".txt"}\n',
+        )
+        write(root / "data" / "sample.txt", "hello\n")
+        write(
+            root / ".github" / "workflows" / "docker.yml",
+            "name: Docker\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main]\n"
+            "jobs:\n"
+            "  x:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: docker://python:3.11\n"
+            "        with:\n"
+            "          args:\n"
+            "            - scripts/docker-scanner.py\n"
+            "            - --root\n"
+            "            - .\n",
+        )
+        wfs3 = neg.find_referencing_workflows(root, "scripts/docker-scanner.py")
+        check("CHECK2 structural: a Docker action's args: list IS an invocation site", wfs3, [".github/workflows/docker.yml"])
+
+    # NOTE: whether this fix still rediscovers instance 5 against the REAL
+    # repo tree (schema-column-lint.py / schema-lint.yml) is verified as a
+    # separate, standalone run (`python scripts/detector-negative-control-check.py`
+    # against this checkout) rather than as an assertion in this file. This
+    # suite's own docstring commits to never touching this repo's real
+    # scripts/ or .github/workflows/ -- an assertion pinned to today's real
+    # workflow content would silently start failing this BUILD-FAILING
+    # self-test the moment someone fixes instance 5 for real, for reasons
+    # having nothing to do with a regression in this checker's logic.
+
     print()
     if FAILURES:
         print("FAILED -- %d assertion(s): %s" % (len(FAILURES), ", ".join(FAILURES)))

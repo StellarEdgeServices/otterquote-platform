@@ -85,6 +85,34 @@ to only what got built. Instances 1 and 3 need a different mechanism; this issue
 mechanism is not a census of all five, only of shapes #2, #4, and (the harder half)
 #5.
 
+CHECK 2's find_referencing_workflows -- what "invokes" still can't resolve
+----------------------------------------------------------------------------
+(Added after gh-1738 instance 7, PR #1742 comment 5561758212: the original
+version of this function was a raw whole-file substring match, so ANY mention
+of a script's filename anywhere in a workflow file -- including this very
+file's own header comment naming schema-column-lint.py -- counted as "this
+workflow invokes this script," producing a genuine false all-clear. It is now
+a structural YAML read of each job's steps: a `run:` invocation (direct, or
+via python/python3/py/bash/sh/node), or a composite/Docker action's
+args:/entrypoint:/script:/command:.)
+
+This still cannot resolve, and by design falls through to WARN
+("not invoked from any workflow -- cannot reconcile") rather than guessing:
+  - Indirection through a shell variable (`SCRIPT=scripts/foo.py; python
+    $SCRIPT`) or a wrapper function.
+  - A Makefile target, shell script, or other file the workflow shells out to
+    that itself invokes the script -- this function inspects the workflow
+    YAML only, not files a `run:` step goes on to execute.
+  - A composite action DEFINED in a separate action.yml (`uses: ./.github/
+    actions/foo`) -- only the calling workflow's own steps are inspected, not
+    the target action's internals.
+  - PyYAML not being importable, or a workflow file that fails to parse as
+    YAML -- both degrade to "no reference found" for every script in that
+    file, i.e. WARN, never a false PASS.
+A false WARN (a genuinely-invoked script reported as unreconciled) is the
+accepted failure direction here, per this issue's own instruction: ambiguity
+must resolve to a visible gap, never to silent coverage.
+
 USAGE
     python scripts/detector-negative-control-check.py
     python scripts/detector-negative-control-check.py --json
@@ -100,6 +128,16 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover -- CI installs PyYAML explicitly (see
+    # .github/workflows/detector-negative-control.yml); degrade safely rather
+    # than crash if it's ever missing. See find_referencing_workflows: with
+    # yaml unavailable it returns no references for every script, which falls
+    # through to check_wiring's WARN branch -- the fail-toward-WARN direction,
+    # never a false PASS.
+    yaml = None
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_ROOT = HERE.parent
@@ -311,15 +349,158 @@ def extract_skip_dirs(script_text: str):
     return set(STRING_LITERAL_RE.findall(m.group(1))) | DEFAULT_SKIP_DIRS
 
 
+# Interpreters that make an immediately-following token the invocation
+# target, e.g. `python scripts/foo.py`, `python3 foo.py`, `bash foo.sh`.
+_INTERPRETER_TOKENS = {"python", "python3", "py", "bash", "sh", "node"}
+
+# `with:` keys (composite / Docker actions) whose string or list-of-string
+# values are themselves an execution site -- a Docker action's
+# `args:`/`entrypoint:`, or a composite action's `script:`/`command:` input.
+_WITH_INVOCATION_KEYS = {"args", "entrypoint", "script", "command"}
+
+
+def _basename_of_path(token: str) -> str:
+    return token.rsplit("/", 1)[-1]
+
+
+def _iter_command_segments(run_text: str):
+    """Split a `run:` (or `with:` args/entrypoint) block's shell text into
+    individual command segments.
+
+    Two things happen before splitting, both load-bearing for not
+    mistaking a mention for an invocation:
+      1. Full-line shell comments (`#...`) are dropped. A workflow-syntax
+         `#` comment already can't survive YAML parsing (that's the fix for
+         the bug this function replaces), but a `run: |` block's own
+         CONTENTS are shell text, not YAML syntax, so a `#`-prefixed line
+         *inside* a run: block is a separate residual case this handles too.
+      2. A backslash line-continuation is joined into one line, so a
+         multi-line invocation like `python3 foo.py \\`  /  `  --root .`
+         tokenizes as one command, not two.
+    Then each statement is split on `;`, `&&`, `||`, and newline (top-level
+    separators), and each of those further split on a single `|` (a piped
+    command's right-hand side is its own invocation site, e.g.
+    `cat x | python foo.py`).
+    """
+    lines = [line for line in run_text.splitlines() if not line.strip().startswith("#")]
+    text = "\n".join(lines)
+    text = re.sub(r"\\\s*\n\s*", " ", text)
+    for stmt in re.split(r"\n|;|&&|\|\|", text):
+        for seg in re.split(r"(?<!\|)\|(?!\|)", stmt):
+            seg = seg.strip()
+            if seg:
+                yield seg
+
+
+def _segment_invokes(segment: str, basename: str) -> bool:
+    """True if `segment` (one shell command) invokes `basename` in command
+    position -- as the direct executable, or as the argument immediately
+    following a known interpreter. Deliberately conservative: a mention
+    anywhere else in the segment (an echo string, a flag value, prose) does
+    not count, by construction of only inspecting these two positions."""
+    tokens = segment.split()
+    if not tokens:
+        return False
+    idx = 0
+    while idx < len(tokens) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[idx]):
+        idx += 1  # skip a leading FOO=bar env-var assignment prefix
+    if idx < len(tokens) and tokens[idx] == "sudo":
+        idx += 1
+    if idx >= len(tokens):
+        return False
+
+    first = tokens[idx]
+    if _basename_of_path(first) in _INTERPRETER_TOKENS:
+        for tok in tokens[idx + 1 :]:
+            if tok.startswith("-"):
+                continue
+            return _basename_of_path(tok) == basename
+        return False
+    return _basename_of_path(first) == basename
+
+
+def _with_invokes(with_block, basename: str) -> bool:
+    """True if a step's `with:` mapping (composite/Docker action inputs)
+    names `basename` as something it runs -- `args:`/`entrypoint:` (string or
+    list-of-strings) or `script:`/`command:`."""
+    if not isinstance(with_block, dict):
+        return False
+    for key, value in with_block.items():
+        if key not in _WITH_INVOCATION_KEYS:
+            continue
+        values = value if isinstance(value, list) else [value]
+        for v in values:
+            if not isinstance(v, str):
+                continue
+            if any(_segment_invokes(seg, basename) for seg in _iter_command_segments(v)):
+                return True
+            # A bare path value (e.g. `entrypoint: scripts/foo.py`, no shell
+            # verbs at all) -- not a command segment, just a path token.
+            if any(_basename_of_path(t) == basename for t in v.split()):
+                return True
+    return False
+
+
+def _job_invokes_script(job, basename: str) -> bool:
+    if not isinstance(job, dict):
+        return False
+    for step in job.get("steps") or []:
+        if not isinstance(step, dict):
+            continue
+        run_text = step.get("run")
+        if isinstance(run_text, str) and any(
+            _segment_invokes(seg, basename) for seg in _iter_command_segments(run_text)
+        ):
+            return True
+        if _with_invokes(step.get("with"), basename):
+            return True
+    return False
+
+
 def find_referencing_workflows(root: Path, script_rel: str):
+    """Workflows that actually EXECUTE this script -- a real `run:`
+    invocation (direct or via a known interpreter), or a composite/Docker
+    action's `args:`/`entrypoint:`/`script:`/`command:` -- never a mere
+    mention (a `#` comment, a job/step name, an echo string, prose).
+
+    Structural: each workflow is parsed as YAML and its jobs/steps are
+    inspected, rather than a raw whole-file substring search. This is what
+    makes "the name appears in a comment" unrepresentable rather than merely
+    unlikely -- a YAML comment does not survive `yaml.safe_load`, so this bug
+    class is turned off by construction, not by pattern. (gh-1738 instance 7,
+    PR #1742 review comment 5561758212: the prior substring version matched
+    detector-negative-control.yml's own header comment naming
+    schema-column-lint.py and reported that workflow as invoking it -- a
+    checker meant to catch checkers-that-can't-fire, itself producing a false
+    all-clear, in the exact check meant to catch that shape.)
+
+    Fails toward WARN, never toward a false PASS: a workflow this function
+    cannot confirm invokes the script (indirection through a variable, a
+    Makefile target, a separately-defined composite action, PyYAML being
+    unavailable, or a YAML parse error) is simply left out of the returned
+    list. check_wiring's caller then reports that script as "not invoked from
+    any workflow -- cannot reconcile" (WARN), never as covered. See
+    LIMITATIONS in this file's module docstring for what that leaves
+    unresolved."""
     basename = Path(script_rel).name
     out = []
     wf_dir = root / ".github" / "workflows"
     if not wf_dir.exists():
         return out
+    if yaml is None:
+        return out
     for wf in sorted(wf_dir.glob("*.yml")):
         text = wf.read_text(encoding="utf-8", errors="replace")
-        if basename in text:
+        try:
+            doc = yaml.safe_load(text)
+        except yaml.YAMLError:
+            continue
+        if not isinstance(doc, dict):
+            continue
+        jobs = doc.get("jobs")
+        if not isinstance(jobs, dict):
+            continue
+        if any(_job_invokes_script(job, basename) for job in jobs.values()):
             out.append(".github/workflows/" + wf.name)
     return out
 

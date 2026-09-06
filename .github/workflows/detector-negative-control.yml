@@ -83,6 +83,17 @@ jobs:
         with:
           python-version: '3.11'
 
+      # CHECK 2's find_referencing_workflows() parses workflow YAML
+      # structurally (post-PR-#1742-review fix for gh-1738 instance 7: a raw
+      # substring match previously mistook a script's name inside a workflow
+      # comment for that workflow invoking it). setup-python's interpreter
+      # ships with no third-party packages, and no other workflow in this
+      # repo installs one (they're deliberately stdlib-only) -- this is the
+      # one new dependency this gate introduces, so it gets its own explicit
+      # install rather than assuming the runner image happens to have it.
+      - name: Install PyYAML
+        run: pip install --quiet --disable-pip-version-check pyyaml
+
       # BUILD-FAILING. This proves the gate's own detection logic still works
       # (firing-coverage bookkeeping, wiring reconciliation, and the CHECK 3
       # secret-syntax matching fixed on PR #1742) before trusting its verdict
