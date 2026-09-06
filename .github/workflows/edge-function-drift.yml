@@ -223,6 +223,18 @@ jobs:
           # which covers the two otterquote-platform sites, but otter-crm will
           # report UNMEASURED again without the cross-repo PAT.
           GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_CROSS_REPO_PAT || github.token }}
+          # gh-1721: GH_CROSS_REPO_PAT is a fine-grained PAT scoped to
+          # Contents+Metadata+Administration READ only -- it has no Issues
+          # permission, so `--file-issue`'s comment POST to gh-1549 got HTTP 403
+          # every time it was ever attempted (confirmed live 2026-09-06) even
+          # though the drift READS above worked fine with the same token. The
+          # script's post_issue_comment() reads GITHUB_TOKEN first and only falls
+          # back to GITHUB_PERSONAL_ACCESS_TOKEN, so handing it the ambient
+          # job token here -- which DOES carry `issues: write` via this job's own
+          # `permissions:` block, scoped correctly since ALARM_ISSUE_NUMBER lives
+          # in this same repo -- fixes the POST without touching the cross-repo
+          # read path at all.
+          GITHUB_TOKEN: ${{ github.token }}
         # pipefail is load-bearing: without it, `| tee` swallows the script's
         # exit code and an UNMEASURED (exit 3) run concludes success -- measured
         # on schedule run 33761892324, the silent-detector shape this file exists
