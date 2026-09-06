@@ -1,0 +1,940 @@
+#!/usr/bin/env python3
+"""
+detector-negative-control-check.py -- gh-1738 gate: a detector is not trusted until
+it has been observed rejecting the thing it exists to reject, AND a scanner's
+declared input set is reconciled against what it actually receives.
+
+WHY THIS EXISTS
+----------------
+Filed after FIVE detectors in one day could not fire, and none of them showed it
+(gh-1738). Four were the same shape -- a detector that could not run, rendering as
+silence, a false green, or an UNMEASURED nobody could act on:
+  1. PR #1720 e2e spec installed its spy BEFORE the click, creating the binding it
+     asserted -- "11 passed" while four money-path handlers threw ReferenceError.
+  2. PR #1735 asked for `secrets.GITHUB_PERSONAL_ACCESS_TOKEN` -- a name Actions
+     structurally refuses to create -- so the check would read UNMEASURED forever.
+  3. PR #1737's require_cli() crashed before the pre-existing drift step ran,
+     silently short-circuiting the job.
+  4. scripts/drift-detector-age.py reads a dead env PAT, and its own recovery
+     diagnostic names that same uncreatable secret.
+
+The FIFTH was categorically different, and is the harder half of this gate:
+  5. .github/workflows/schema-lint.yml's `push.paths` never lists react-app
+     TS/TSX/JSX files, while scripts/schema-column-lint.py's own SCAN_EXTENSIONS
+     scans them. The linter is fine -- it correctly scans everything it is given.
+     It was simply never given the files. A firing self-test on the detector would
+     NOT have caught this, because the detector is not the broken part; the wiring
+     that feeds it is.
+
+Per R-148 (a recurring defect closes on a mechanism, never a rule alone) and the
+precedent of queue-adapter-check.py, this is a script with a printed verdict, not a
+paragraph asking people to remember something.
+
+THREE INDEPENDENT CHECKS
+------------------------
+CHECK 1 -- Firing self-test coverage (catches shape #1/#2/#4; NOT #1720's ordering
+  bug specifically -- see LIMITATIONS below).
+    For every scripts/*.py file that looks like a detector (this directory's whole
+    job), a sibling <name>.test.py must exist and, when run, must exit 0 and print
+    at least one self-reported PASS/FAIL assertion line (the repo's existing
+    convention). Scripts enriched in DETECTOR_REGISTRY are additionally required to
+    demonstrate a PASS line naming each of that detector's declared "bad verdict"
+    tokens (its negative-control fixture actually ran and actually passed, not just
+    exists in source). A brand-new detector-shaped script with NO test file at all
+    fails this gate outright unless explicitly grandfathered in LEGACY_EXEMPT with a
+    reason -- so the gate does not silently stay quiet on the next instance of this
+    class, per gh-1738's "five is a lower bound, not a census."
+
+CHECK 2 -- Declared-input reconciliation (catches shape #5, the harder half).
+    Auto-discovers every scripts/*.py that declares a top-level SCAN_EXTENSIONS or
+    EXTENSIONS set, finds the workflow(s) that invoke it, and -- for any push
+    trigger with a `paths:` filter -- walks the REAL repo tree for files matching
+    those extensions and checks each one against the filter. Any real file the
+    scanner would scan but the workflow's push trigger would never hand it is a
+    violation. This is driven by the actual filesystem, not a hardcoded list of
+    "react-app" or any other directory, so it generalizes past today's instance.
+
+CHECK 3 -- Uncreatable secret-name scan (catches shape #2, generically).
+    Every .github/workflows/*.yml is scanned for `secrets.GITHUB_*` other than the
+    one GitHub-reserved exception, `secrets.GITHUB_TOKEN`. Both dot notation
+    (`secrets.GITHUB_X`, including spaced as `secrets . GITHUB_X`) and bracket
+    notation (`secrets['GITHUB_X']`, `secrets["GITHUB_X"]`) are matched, tolerant
+    of whitespace (including a reference split across lines). GitHub Actions
+    refuses to let a repository secret be created with a `GITHUB_` prefix, so any
+    such reference is dead on arrival and would read UNMEASURED forever -- exactly
+    #2 and the recovery-path half of #4.
+
+LIMITATIONS -- read before trusting this gate as complete
+---------------------------------------------------------
+This gate does NOT generically catch:
+  - #1720's shape (a spy/mock installed before the action it should observe,
+    creating the very binding it asserts exists). That is a test-authoring-order
+    defect in a Playwright spec, not a static, checkable property of a script's
+    declared inputs or its test file's assertion count. Catching it in general
+    would require semantic understanding of *when* an assertion's precondition was
+    established relative to the action under test -- out of reach for a static
+    check at this scope. The nearest structural mitigation this repo has is
+    "installed a spy BEFORE the click" style code review, not automation.
+  - #1737's shape (a new step that crashes and short-circuits a job BEFORE a
+    pre-existing, unrelated check runs later in the same job). This is a
+    job-ordering / fail-open-vs-fail-closed property of a workflow's step sequence,
+    not a declared-input mismatch. CHECK 2's reconciliation logic does not model
+    step ordering or step-to-step data flow within a job.
+Per gh-1738's own instruction: say this plainly rather than quietly narrowing scope
+to only what got built. Instances 1 and 3 need a different mechanism; this issue's
+mechanism is not a census of all five, only of shapes #2, #4, and (the harder half)
+#5.
+
+Zero-discovery roots -- history of this gap, and its current state
+--------------------------------------------------------------------
+A root with no scripts/ directory and no .github/workflows/ directory makes every
+for-loop in all three checks a no-op: zero violations and zero info lines, which
+run_all() used to read as GATE: PASS -- a checker that inspected nothing reporting
+the same verdict as a checker that inspected everything and found it clean. That is
+this issue's own founding shape, reproduced inside its own fix.
+
+This gap was found TWICE before it was fixed, and lost the first time: cycle 2's
+refuter (PR #1742 comment 5561758212) named it explicitly ("check_wiring(<root with
+no scripts/ dir>) -> violations=[], info=[], files_verified=0 ... this asymmetry is
+specific to CHECK 2") and left a repro script in the review session's own scratch
+directory -- but it was never fixed in a following commit and never added here.
+Cycle 3's refuter (comment 5561884929) found the repro script still sitting there,
+confirmed the gap was real and broader than cycle 2 described (CHECK 3 goes silent
+too, on directory-absence specifically, not just emptiness -- see check_secret_names
+below), and this is the fix. Recorded here per that review's own instruction, so a
+finding that already reached one review does not need a third cycle to become part
+of the record.
+
+Fixed by two changes, both auditing every place an empty/unresolvable result could
+previously reach a verdict silently:
+  - check_secret_names() no longer returns bare on a missing .github/workflows/
+    directory; it now appends an explicit info line distinguishing "directory
+    absent" from "directory present, 0 files, 0 checked" (the latter was already
+    visible; only directory-absence was silent).
+  - run_all() computes a root-level `measured` flag -- true iff scripts/ contains
+    at least one detector-shaped script OR .github/workflows/ exists -- and reports
+    GATE: UNMEASURED (exit 3) instead of GATE: PASS (exit 0) when neither is true,
+    regardless of how many of the three checks individually would have gone quiet.
+    This is deliberately a root-level guard, not three separate per-check patches,
+    so a fourth check added later inherits the same protection by construction
+    rather than needing its own bespoke zero-result branch remembered and audited
+    again.
+
+Paths NOT already self-disclosing before this fix, audited and confirmed safe:
+  - CHECK 1 (check_firing_tests): a non-empty discover_detector_scripts() result
+    always produces a PASS/WARN/FAIL line per script; the only silent case was zero
+    scripts discovered, which is exactly what the root-level `measured` guard above
+    now catches.
+  - CHECK 2 (check_wiring): a script found but declaring zero real files under its
+    extension set still prints an explicit "0 real matching file(s)" PASS line
+    (self-disclosing, not hidden); the only silent case was zero extension-declaring
+    scripts AND zero detector scripts overall, again caught by `measured` above.
+  - CHECK 2 / CHECK 3 workflow-file counts: an existing-but-empty
+    .github/workflows/ directory already prints "0 real file(s)" / "0 workflow
+    file(s) ... 0 checked" explicitly -- a visible zero, not a silent one. Only
+    directory ABSENCE was silent (CHECK 3, fixed above).
+Residual, disclosed tradeoff: `measured` is intentionally coarse (script discovery
+OR workflows-dir existence) rather than tracking each check's own discovery count
+separately. A root with an empty scripts/ dir but a real, populated
+.github/workflows/ dir is `measured=True` even though CHECK 1/CHECK 2 individually
+found nothing to do there -- accepted because CHECK 3 in that root is doing real
+work and already reports it visibly (see above), so the aggregate verdict is never
+"clean" without at least one check having actually looked at something.
+
+CHECK 2's find_referencing_workflows -- what "invokes" still can't resolve
+----------------------------------------------------------------------------
+(Added after gh-1738 instance 7, PR #1742 comment 5561758212: the original
+version of this function was a raw whole-file substring match, so ANY mention
+of a script's filename anywhere in a workflow file -- including this very
+file's own header comment naming schema-column-lint.py -- counted as "this
+workflow invokes this script," producing a genuine false all-clear. It is now
+a structural YAML read of each job's steps: a `run:` invocation (direct, or
+via python/python3/py/bash/sh/node), or a composite/Docker action's
+args:/entrypoint:/script:/command:.)
+
+This still cannot resolve, and by design falls through to WARN
+("not invoked from any workflow -- cannot reconcile") rather than guessing:
+  - Indirection through a shell variable (`SCRIPT=scripts/foo.py; python
+    $SCRIPT`) or a wrapper function.
+  - A Makefile target, shell script, or other file the workflow shells out to
+    that itself invokes the script -- this function inspects the workflow
+    YAML only, not files a `run:` step goes on to execute.
+  - A composite action DEFINED in a separate action.yml (`uses: ./.github/
+    actions/foo`) -- only the calling workflow's own steps are inspected, not
+    the target action's internals.
+  - PyYAML not being importable, or a workflow file that fails to parse as
+    YAML -- both degrade to "no reference found" for every script in that
+    file, i.e. WARN, never a false PASS.
+A false WARN (a genuinely-invoked script reported as unreconciled) is the
+accepted failure direction here, per this issue's own instruction: ambiguity
+must resolve to a visible gap, never to silent coverage.
+
+USAGE
+    python scripts/detector-negative-control-check.py
+    python scripts/detector-negative-control-check.py --json
+    python scripts/detector-negative-control-check.py --root PATH   # for self-tests
+
+EXIT
+    0  GATE: PASS -- every check above is clean
+    1  GATE: FAIL -- one or more violations found (printed above the summary)
+    3  GATE: UNMEASURED -- no scripts/ and no .github/workflows/ directory were
+       found under this root, so nothing was actually inspected. Distinct from
+       PASS on purpose (gh-1419 precedent) -- see ZERO_DISCOVERY_MESSAGE and the
+       LIMITATIONS section below.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover -- CI installs PyYAML explicitly (see
+    # .github/workflows/detector-negative-control.yml); degrade safely rather
+    # than crash if it's ever missing. See find_referencing_workflows: with
+    # yaml unavailable it returns no references for every script, which falls
+    # through to check_wiring's WARN branch -- the fail-toward-WARN direction,
+    # never a false PASS.
+    yaml = None
+
+HERE = Path(__file__).resolve().parent
+DEFAULT_ROOT = HERE.parent
+
+# ---------------------------------------------------------------------------
+# CHECK 1 configuration
+# ---------------------------------------------------------------------------
+
+# Detectors with a negative-control manifest: the specific "bad verdict" tokens
+# their test file must demonstrate PASSING (not merely mentioning) before this
+# gate trusts the detector. Add an entry here when a detector's test file grows
+# a real negative-control fixture; until then it still gets the generic check
+# below (test exists, runs clean, self-reports >0 assertions).
+DETECTOR_REGISTRY = {
+    "scripts/netlify-deploy-drift.py": {
+        "test": "scripts/netlify-deploy-drift.test.py",
+        "negative_tokens": ["BEHIND", "BUILD_FAILING", "UNMEASURED"],
+    },
+    "scripts/drift-detector-age.py": {
+        "test": "scripts/drift-detector-age.test.py",
+        "negative_tokens": ["STALE", "UNMEASURED"],
+    },
+}
+
+# Detector-shaped scripts that predate this gate (gh-1738) and have no test file
+# at all. Grandfathered so this gate does not retroactively fail the whole repo in
+# one PR -- but each is real, uncovered debt, and this dict is the visible list
+# (WARN, not silent). When one of these gains a <name>.test.py, remove it from
+# here; it will then be picked up by the generic check automatically.
+LEGACY_EXEMPT = {
+    "scripts/check-10k-floor-phrasing.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/check-email-parts.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/check-gtag-single-source.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/check-partner-consent-link.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/check-partner-surface-single-source.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/check-partner-sw-version.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/check-payout-timing-copy-drift.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/check-sb-auth-guards.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/check-script-load-order.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/check-spec-files-closed.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/ci-file-integrity.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/migration-filename-lint.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/patch-fatigue-detector.py": "no negative-control test yet (pre-gh-1738)",
+    "scripts/schema-column-lint.py": (
+        "firing is not this detector's gap -- CHECK 2 (wiring reconciliation) is "
+        "what covers it; see gh-1738 instance 5"
+    ),
+    "scripts/schema-secret-lint.py": "no negative-control test yet (pre-gh-1738)",
+}
+
+# Scripts in scripts/ that are not themselves a detector with a pass/fail verdict
+# (helper libraries invoked as subprocesses by a real detector, generators, etc).
+NOT_A_DETECTOR = {
+    "scripts/find-legal-surface-links.py",  # generator invoked by check-legal-surface-links.py
+    "scripts/detector-negative-control-check.py",  # this file
+}
+
+PASS_LINE_RE = re.compile(r"^\s*PASS\s", re.MULTILINE)
+FAIL_LINE_RE = re.compile(r"^\s*FAIL\s", re.MULTILINE)
+# Fallback for test files written against stdlib unittest (e.g.
+# ci-test-function-parity.test.py) instead of this repo's hand-rolled
+# check()/PASS/FAIL convention -- unittest's own summary line is the
+# self-reported count in that case.
+UNITTEST_RAN_RE = re.compile(r"^Ran (\d+) tests? in", re.MULTILINE)
+
+
+def discover_detector_scripts(root: Path):
+    """Every scripts/*.py file (excluding *.test.py) that is a candidate detector."""
+    scripts_dir = root / "scripts"
+    out = []
+    for p in sorted(scripts_dir.glob("*.py")):
+        if p.name.endswith(".test.py"):
+            continue
+        rel = "scripts/" + p.name
+        if rel in NOT_A_DETECTOR:
+            continue
+        out.append(rel)
+    return out
+
+
+def run_test_file(root: Path, test_rel: str, timeout=60):
+    """Run a <name>.test.py the same way a human/CI would: `python <path>`."""
+    path = root / test_rel
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return proc.returncode, proc.stdout + proc.stderr
+    except Exception as exc:  # noqa: BLE001
+        return None, "could not execute test file: %s: %s" % (type(exc).__name__, exc)
+
+
+def count_assertions(output: str):
+    pass_n = len(PASS_LINE_RE.findall(output))
+    fail_n = len(FAIL_LINE_RE.findall(output))
+    if pass_n + fail_n == 0:
+        m = UNITTEST_RAN_RE.search(output)
+        if m:
+            # unittest's exit code (checked separately by the caller) already
+            # tells us pass vs fail; its own text output does not reliably give a
+            # per-line failure count the way this repo's check()/PASS/FAIL
+            # convention does, so the whole total is reported as the assertion
+            # count and left to the caller's exit-code check to gate PASS/FAIL.
+            return int(m.group(1)), 0
+    return pass_n, fail_n
+
+
+def check_firing_tests(root: Path):
+    """CHECK 1. Returns (violations: list[str], info_lines: list[str], total_assertions: int)."""
+    violations = []
+    info = []
+    total_assertions = 0
+
+    for rel in discover_detector_scripts(root):
+        test_rel = rel[:-3] + ".test.py"
+        test_path = root / test_rel
+        manifest = DETECTOR_REGISTRY.get(rel)
+
+        if not test_path.exists():
+            if rel in LEGACY_EXEMPT:
+                info.append("WARN  %-55s no self-test (grandfathered: %s)" % (rel, LEGACY_EXEMPT[rel]))
+                continue
+            violations.append(
+                "FAIL  %s -- detector-shaped script has NO self-test and is not in "
+                "LEGACY_EXEMPT. Add scripts/%s.test.py with a negative-control fixture "
+                "before this ships, or add an explicit, justified LEGACY_EXEMPT entry."
+                % (rel, Path(rel).stem)
+            )
+            continue
+
+        code, output = run_test_file(root, test_rel)
+        pass_n, fail_n = count_assertions(output)
+        total_assertions += pass_n + fail_n
+
+        if code != 0:
+            violations.append(
+                "FAIL  %s -- self-test %s exited %s (expected 0). Assertions observed: "
+                "%d pass / %d fail." % (rel, test_rel, code, pass_n, fail_n)
+            )
+            continue
+
+        if pass_n + fail_n == 0:
+            violations.append(
+                "FAIL  %s -- self-test %s exited 0 but self-reported ZERO assertions "
+                "(PASS/FAIL lines). A test that asserts nothing proves nothing." % (rel, test_rel)
+            )
+            continue
+
+        if manifest is None:
+            info.append(
+                "PASS  %-55s self-test ran clean, %d assertion(s) self-reported "
+                "(no negative-control token manifest registered -- generic check only)"
+                % (rel, pass_n)
+            )
+            continue
+
+        missing_tokens = []
+        for token in manifest["negative_tokens"]:
+            token_pattern = re.compile(
+                r"^\s*PASS\s.*\b%s\b.*$" % re.escape(token), re.MULTILINE
+            )
+            if not token_pattern.search(output):
+                missing_tokens.append(token)
+
+        if missing_tokens:
+            violations.append(
+                "FAIL  %s -- self-test passed (%d assertions) but never demonstrated a "
+                "PASSING assertion naming the negative-control token(s) %s. A detector "
+                "whose suite contains only clean-input fixtures fails this gate."
+                % (rel, pass_n, ", ".join(missing_tokens))
+            )
+            continue
+
+        info.append(
+            "PASS  %-55s self-test ran clean, %d assertion(s) self-reported, "
+            "negative-control tokens observed passing: %s"
+            % (rel, pass_n, ", ".join(manifest["negative_tokens"]))
+        )
+
+    return violations, info, total_assertions
+
+
+# ---------------------------------------------------------------------------
+# CHECK 2 -- declared-input reconciliation
+# ---------------------------------------------------------------------------
+
+EXT_SET_RE = re.compile(r"^(?:SCAN_EXTENSIONS|EXTENSIONS)\s*=\s*\{([^}]*)\}", re.MULTILINE)
+STRING_LITERAL_RE = re.compile(r"""['"]([^'"]+)['"]""")
+SKIP_DIRS_RE = re.compile(r"^SKIP_DIRS\s*:?\s*(?:set\[str\])?\s*=\s*\{([^}]*)\}", re.MULTILINE)
+
+DEFAULT_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".github"}
+
+
+def extract_extension_set(script_text: str):
+    m = EXT_SET_RE.search(script_text)
+    if not m:
+        return None
+    return {s for s in STRING_LITERAL_RE.findall(m.group(1)) if s.startswith(".")}
+
+
+def extract_skip_dirs(script_text: str):
+    m = SKIP_DIRS_RE.search(script_text)
+    if not m:
+        return set(DEFAULT_SKIP_DIRS)
+    return set(STRING_LITERAL_RE.findall(m.group(1))) | DEFAULT_SKIP_DIRS
+
+
+# Interpreters that make an immediately-following token the invocation
+# target, e.g. `python scripts/foo.py`, `python3 foo.py`, `bash foo.sh`.
+_INTERPRETER_TOKENS = {"python", "python3", "py", "bash", "sh", "node"}
+
+# `with:` keys (composite / Docker actions) whose string or list-of-string
+# values are themselves an execution site -- a Docker action's
+# `args:`/`entrypoint:`, or a composite action's `script:`/`command:` input.
+_WITH_INVOCATION_KEYS = {"args", "entrypoint", "script", "command"}
+
+
+def _basename_of_path(token: str) -> str:
+    return token.rsplit("/", 1)[-1]
+
+
+def _iter_command_segments(run_text: str):
+    """Split a `run:` (or `with:` args/entrypoint) block's shell text into
+    individual command segments.
+
+    Two things happen before splitting, both load-bearing for not
+    mistaking a mention for an invocation:
+      1. Full-line shell comments (`#...`) are dropped. A workflow-syntax
+         `#` comment already can't survive YAML parsing (that's the fix for
+         the bug this function replaces), but a `run: |` block's own
+         CONTENTS are shell text, not YAML syntax, so a `#`-prefixed line
+         *inside* a run: block is a separate residual case this handles too.
+      2. A backslash line-continuation is joined into one line, so a
+         multi-line invocation like `python3 foo.py \\`  /  `  --root .`
+         tokenizes as one command, not two.
+    Then each statement is split on `;`, `&&`, `||`, and newline (top-level
+    separators), and each of those further split on a single `|` (a piped
+    command's right-hand side is its own invocation site, e.g.
+    `cat x | python foo.py`).
+    """
+    lines = [line for line in run_text.splitlines() if not line.strip().startswith("#")]
+    text = "\n".join(lines)
+    text = re.sub(r"\\\s*\n\s*", " ", text)
+    for stmt in re.split(r"\n|;|&&|\|\|", text):
+        for seg in re.split(r"(?<!\|)\|(?!\|)", stmt):
+            seg = seg.strip()
+            if seg:
+                yield seg
+
+
+def _segment_invokes(segment: str, basename: str) -> bool:
+    """True if `segment` (one shell command) invokes `basename` in command
+    position -- as the direct executable, or as the argument immediately
+    following a known interpreter. Deliberately conservative: a mention
+    anywhere else in the segment (an echo string, a flag value, prose) does
+    not count, by construction of only inspecting these two positions."""
+    tokens = segment.split()
+    if not tokens:
+        return False
+    idx = 0
+    while idx < len(tokens) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[idx]):
+        idx += 1  # skip a leading FOO=bar env-var assignment prefix
+    if idx < len(tokens) and tokens[idx] == "sudo":
+        idx += 1
+    if idx >= len(tokens):
+        return False
+
+    first = tokens[idx]
+    if _basename_of_path(first) in _INTERPRETER_TOKENS:
+        for tok in tokens[idx + 1 :]:
+            if tok.startswith("-"):
+                continue
+            return _basename_of_path(tok) == basename
+        return False
+    return _basename_of_path(first) == basename
+
+
+def _with_invokes(with_block, basename: str) -> bool:
+    """True if a step's `with:` mapping (composite/Docker action inputs)
+    names `basename` as something it runs -- `args:`/`entrypoint:` (string or
+    list-of-strings) or `script:`/`command:`."""
+    if not isinstance(with_block, dict):
+        return False
+    for key, value in with_block.items():
+        if key not in _WITH_INVOCATION_KEYS:
+            continue
+        values = value if isinstance(value, list) else [value]
+        for v in values:
+            if not isinstance(v, str):
+                continue
+            if any(_segment_invokes(seg, basename) for seg in _iter_command_segments(v)):
+                return True
+            # A bare path value (e.g. `entrypoint: scripts/foo.py`, no shell
+            # verbs at all) -- not a command segment, just a path token.
+            if any(_basename_of_path(t) == basename for t in v.split()):
+                return True
+    return False
+
+
+def _job_invokes_script(job, basename: str) -> bool:
+    if not isinstance(job, dict):
+        return False
+    for step in job.get("steps") or []:
+        if not isinstance(step, dict):
+            continue
+        run_text = step.get("run")
+        if isinstance(run_text, str) and any(
+            _segment_invokes(seg, basename) for seg in _iter_command_segments(run_text)
+        ):
+            return True
+        if _with_invokes(step.get("with"), basename):
+            return True
+    return False
+
+
+def find_referencing_workflows(root: Path, script_rel: str):
+    """Workflows that actually EXECUTE this script -- a real `run:`
+    invocation (direct or via a known interpreter), or a composite/Docker
+    action's `args:`/`entrypoint:`/`script:`/`command:` -- never a mere
+    mention (a `#` comment, a job/step name, an echo string, prose).
+
+    Structural: each workflow is parsed as YAML and its jobs/steps are
+    inspected, rather than a raw whole-file substring search. This is what
+    makes "the name appears in a comment" unrepresentable rather than merely
+    unlikely -- a YAML comment does not survive `yaml.safe_load`, so this bug
+    class is turned off by construction, not by pattern. (gh-1738 instance 7,
+    PR #1742 review comment 5561758212: the prior substring version matched
+    detector-negative-control.yml's own header comment naming
+    schema-column-lint.py and reported that workflow as invoking it -- a
+    checker meant to catch checkers-that-can't-fire, itself producing a false
+    all-clear, in the exact check meant to catch that shape.)
+
+    Fails toward WARN, never toward a false PASS: a workflow this function
+    cannot confirm invokes the script (indirection through a variable, a
+    Makefile target, a separately-defined composite action, PyYAML being
+    unavailable, or a YAML parse error) is simply left out of the returned
+    list. check_wiring's caller then reports that script as "not invoked from
+    any workflow -- cannot reconcile" (WARN), never as covered. See
+    LIMITATIONS in this file's module docstring for what that leaves
+    unresolved."""
+    basename = Path(script_rel).name
+    out = []
+    wf_dir = root / ".github" / "workflows"
+    if not wf_dir.exists():
+        return out
+    if yaml is None:
+        return out
+    for wf in sorted(wf_dir.glob("*.yml")):
+        text = wf.read_text(encoding="utf-8", errors="replace")
+        try:
+            doc = yaml.safe_load(text)
+        except yaml.YAMLError:
+            continue
+        if not isinstance(doc, dict):
+            continue
+        jobs = doc.get("jobs")
+        if not isinstance(jobs, dict):
+            continue
+        if any(_job_invokes_script(job, basename) for job in jobs.values()):
+            out.append(".github/workflows/" + wf.name)
+    return out
+
+
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _get_block(lines, start_idx, key_indent):
+    """Lines strictly more indented than key_indent, following lines[start_idx]."""
+    block = []
+    i = start_idx + 1
+    while i < len(lines):
+        line = lines[i]
+        if line.strip() == "":
+            i += 1
+            continue
+        if _indent_of(line) <= key_indent:
+            break
+        block.append(line)
+        i += 1
+    return block
+
+
+def _find_key(lines, key):
+    """First line (anywhere in `lines`) whose stripped text starts with `key:`."""
+    for idx, line in enumerate(lines):
+        if line.strip().startswith(key + ":"):
+            return idx, _indent_of(line)
+    return None, None
+
+
+NO_PUSH_TRIGGER = "NO_PUSH_TRIGGER"
+NO_PATH_FILTER = "NO_PATH_FILTER"
+
+
+def extract_push_paths(workflow_text: str):
+    """Returns a list of path-glob patterns from `on.push.paths`, or one of the two
+    sentinels above: NO_PUSH_TRIGGER (this workflow has no push trigger at all -- not
+    applicable to this reconciliation) or NO_PATH_FILTER (push trigger exists with no
+    `paths:` key -- fires unconditionally, i.e. full coverage by construction)."""
+    lines = workflow_text.splitlines()
+    on_idx, on_indent = _find_key(lines, "on")
+    if on_idx is None:
+        return NO_PUSH_TRIGGER
+    on_block = _get_block(lines, on_idx, on_indent)
+
+    push_idx, push_indent = _find_key(on_block, "push")
+    if push_idx is None:
+        return NO_PUSH_TRIGGER
+    push_block = _get_block(on_block, push_idx, push_indent)
+
+    paths_idx, paths_indent = _find_key(push_block, "paths")
+    if paths_idx is None:
+        return NO_PATH_FILTER
+    paths_block = _get_block(push_block, paths_idx, paths_indent)
+
+    patterns = []
+    for line in paths_block:
+        s = line.strip()
+        if s.startswith("- "):
+            val = s[2:].strip()
+            if val and val[0] in ("'", '"') and val[-1] == val[0]:
+                val = val[1:-1]
+            patterns.append(val)
+    return patterns
+
+
+def path_pattern_to_regex(pattern: str):
+    out = []
+    i = 0
+    n = len(pattern)
+    while i < n:
+        if pattern[i : i + 2] == "**":
+            out.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            out.append(".")
+            i += 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("^" + "".join(out) + "$")
+
+
+def enumerate_real_files(root: Path, extensions: set, skip_dirs: set):
+    out = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
+        parts = [] if rel_dir == "." else rel_dir.split("/")
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in skip_dirs and not any(p in skip_dirs for p in parts)
+        ]
+        for fname in filenames:
+            ext = Path(fname).suffix
+            if ext in extensions:
+                rel_file = (rel_dir + "/" + fname) if rel_dir != "." else fname
+                out.append(rel_file.replace(os.sep, "/"))
+    return out
+
+
+def check_wiring(root: Path):
+    """CHECK 2. Returns (violations: list[str], info_lines: list[str], files_verified: int)."""
+    violations = []
+    info = []
+    files_verified = 0
+
+    scripts_dir = root / "scripts"
+    for p in sorted(scripts_dir.glob("*.py")):
+        rel = "scripts/" + p.name
+        text = p.read_text(encoding="utf-8", errors="replace")
+        extensions = extract_extension_set(text)
+        if not extensions:
+            continue
+
+        skip_dirs = extract_skip_dirs(text)
+        workflows = find_referencing_workflows(root, rel)
+        if not workflows:
+            info.append(
+                "WARN  %-40s declares %s but is not invoked from any "
+                ".github/workflows/*.yml -- cannot reconcile wiring."
+                % (rel, sorted(extensions))
+            )
+            continue
+
+        real_files = enumerate_real_files(root, extensions, skip_dirs)
+
+        for wf_rel in workflows:
+            wf_text = (root / wf_rel).read_text(encoding="utf-8", errors="replace")
+            push_paths = extract_push_paths(wf_text)
+
+            if push_paths == NO_PUSH_TRIGGER:
+                info.append(
+                    "PASS  %-40s <- %-40s no push trigger (not applicable)"
+                    % (rel, wf_rel)
+                )
+                continue
+            if push_paths == NO_PATH_FILTER:
+                info.append(
+                    "PASS  %-40s <- %-40s push trigger has no paths: filter "
+                    "(fires on every push -- full coverage by construction, %d real "
+                    "file(s) verified moot)" % (rel, wf_rel, len(real_files))
+                )
+                files_verified += len(real_files)
+                continue
+
+            regexes = [path_pattern_to_regex(pat) for pat in push_paths]
+            uncovered_by_ext = {}
+            for f in real_files:
+                if not any(rx.match(f) for rx in regexes):
+                    ext = Path(f).suffix
+                    uncovered_by_ext.setdefault(ext, []).append(f)
+
+            if uncovered_by_ext:
+                for ext, files in sorted(uncovered_by_ext.items()):
+                    examples = ", ".join(files[:3])
+                    more = "" if len(files) <= 3 else " (+%d more)" % (len(files) - 3)
+                    violations.append(
+                        "FAIL  %s declares %s in its scanned extension set, and %s's "
+                        "push.paths trigger this scanner from, but push.paths has NO "
+                        "pattern matching real '%s' files under this repo -- e.g. %s%s. "
+                        "%s runs but is never handed these files on a direct push."
+                        % (rel, sorted(extensions), wf_rel, ext, examples, more, rel)
+                    )
+            else:
+                files_verified += len(real_files)
+                info.append(
+                    "PASS  %-40s <- %-40s every one of %d real matching file(s) is "
+                    "covered by push.paths" % (rel, wf_rel, len(real_files))
+                )
+
+    return violations, info, files_verified
+
+
+# ---------------------------------------------------------------------------
+# CHECK 3 -- uncreatable secret-name scan
+# ---------------------------------------------------------------------------
+
+# Catches both GitHub Actions syntaxes for referencing a secret, tolerant of
+# stray whitespace (including newlines, since `\s` matches them) around the
+# dot or inside the brackets:
+#   secrets.GITHUB_X            (dot notation)
+#   secrets . GITHUB_X          (dot notation, spaced -- confirmed live syntax)
+#   secrets['GITHUB_X']         (bracket notation, single-quoted)
+#   secrets["GITHUB_X"]         (bracket notation, double-quoted)
+# A prior version of this check only matched the first form -- refuter
+# fixture-tested on PR #1742 and confirmed 0 references counted for the
+# other three, meaning refs_checked itself silently read 0 rather than
+# flagging a miss. `\bsecrets\b` avoids matching an unrelated identifier that
+# merely ends in "secrets" (e.g. `my_secrets.GITHUB_X`).
+SECRET_REF_RE = re.compile(
+    r"\bsecrets\b\s*(?:\.\s*(GITHUB_[A-Za-z0-9_]*)"
+    r"|\[\s*(['\"])(GITHUB_[A-Za-z0-9_]*)\2\s*\])"
+)
+ALLOWED_GITHUB_SECRET = "GITHUB_TOKEN"  # the one GitHub-reserved, always-creatable exception
+
+
+def _blank_full_line_comments(text: str) -> str:
+    """Replace every `#`-prefixed comment line with an empty line, preserving
+    line count (and therefore line numbers) so a narrative comment documenting
+    a past secrets.GITHUB_* incident (e.g. edge-function-drift.yml's own
+    postmortem header) is never mistaken for a live reference. Only full-line
+    comments are blanked, matching this check's original, narrower scope --
+    a trailing `# ...` after code on the same line is left alone."""
+    return "\n".join(
+        "" if line.strip().startswith("#") else line
+        for line in text.splitlines()
+    )
+
+
+def check_secret_names(root: Path):
+    """CHECK 3. Returns (violations: list[str], info_lines: list[str], refs_checked: int)."""
+    violations = []
+    info = []
+    refs_checked = 0
+
+    wf_dir = root / ".github" / "workflows"
+    if not wf_dir.exists():
+        # PR #1742 cycle-3 REVIEW: FAIL (comment 5561884929): this used to return
+        # bare, with no info line at all -- CHECK 3 going completely silent
+        # whenever .github/workflows/ is absent, indistinguishable from "scanned
+        # every workflow file and found nothing wrong." A missing directory is a
+        # different, non-clean fact from "0 workflow files scanned, 0 checked"
+        # (which the loop below already reports explicitly when the directory
+        # exists but is empty) -- say so instead of going quiet.
+        info.append(
+            "WARN  no .github/workflows directory found under this root -- "
+            "CHECK 3 measured zero workflow files (not the same as scanning "
+            "workflows and finding none)."
+        )
+        return violations, info, refs_checked
+
+    for wf in sorted(wf_dir.glob("*.yml")):
+        text = wf.read_text(encoding="utf-8", errors="replace")
+        rel = ".github/workflows/" + wf.name
+        # Scanned as one block (not line-by-line) so an expression split across
+        # lines -- e.g. `${{ secrets\n  .GITHUB_TOKEN }}` -- is still caught;
+        # `\s` in the pattern above matches the embedded newline. Line numbers
+        # for reporting are recovered from the match offset.
+        scrubbed = _blank_full_line_comments(text)
+        for m in SECRET_REF_RE.finditer(scrubbed):
+            refs_checked += 1
+            name = m.group(1) or m.group(3)
+            if name == ALLOWED_GITHUB_SECRET:
+                continue
+            line_no = scrubbed.count("\n", 0, m.start()) + 1
+            violations.append(
+                "FAIL  %s:%d -- references secrets.%s. GitHub Actions refuses to let a "
+                "repository secret be created with a GITHUB_ prefix (only the reserved "
+                "secrets.GITHUB_TOKEN is exempt), so this reference is dead on arrival "
+                "and would read UNMEASURED forever." % (rel, line_no, name)
+            )
+    info.append("PASS  scanned %d workflow file(s) for secrets.GITHUB_* references, %d checked, %d violation(s)"
+                % (len(list(wf_dir.glob('*.yml'))), refs_checked, len(violations)))
+    return violations, info, refs_checked
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+ZERO_DISCOVERY_MESSAGE = (
+    "UNMEASURED -- no scripts/ directory (no detector-shaped scripts) and no "
+    ".github/workflows/ directory were found under this root. Every check above "
+    "ran with nothing to inspect: for-loops over an empty glob() never execute, "
+    "so zero violations and zero info lines is what 'inspected nothing' looks "
+    "like from the outside -- identical, before this guard, to 'inspected "
+    "everything and found it clean.' UNMEASURED IS NOT A PASS (gh-1419 "
+    "precedent: backup-age.py / drift-detector-age.py -- unmeasured must fail "
+    "as loudly as stale)."
+)
+
+
+def run_all(root: Path):
+    firing_violations, firing_info, total_assertions = check_firing_tests(root)
+    wiring_violations, wiring_info, files_verified = check_wiring(root)
+    secret_violations, secret_info, refs_checked = check_secret_names(root)
+
+    all_violations = firing_violations + wiring_violations + secret_violations
+    all_info = firing_info + wiring_info + secret_info
+
+    # Zero-discovery guard (PR #1742 cycle-3 REVIEW: FAIL, comment 5561884929;
+    # known-but-unrecorded since cycle 2, comment 5561758212 -- see LIMITATIONS).
+    # A root with no scripts/ directory and no .github/workflows/ directory makes
+    # CHECK 1, CHECK 2, and (pre-fix) CHECK 3 every one a silent no-op: nothing to
+    # discover means no violations *and* no info lines, which used to collapse
+    # to GATE: PASS -- the exact "measured nothing, reported clean" shape this
+    # whole issue exists to close. This is a root-level guard rather than a
+    # per-check patch precisely so it covers the general property (see the
+    # module LIMITATIONS section for the enumeration of every empty-result path
+    # audited here, including the two that already degrade safely on their own).
+    measured = bool(discover_detector_scripts(root)) or (root / ".github" / "workflows").exists()
+
+    if not measured:
+        verdict = "UNMEASURED"
+        code = 3
+        all_info = [ZERO_DISCOVERY_MESSAGE] + all_info
+    elif all_violations:
+        verdict = "FAIL"
+        code = 1
+    else:
+        verdict = "PASS"
+        code = 0
+
+    result = {
+        "verdict": verdict,
+        "code": code,
+        "measured": measured,
+        "violations": all_violations,
+        "info": all_info,
+        "counts": {
+            "check1_firing_total_assertions": total_assertions,
+            "check2_wiring_files_verified": files_verified,
+            "check3_secret_refs_checked": refs_checked,
+        },
+    }
+    return result
+
+
+def print_report(result: dict):
+    print("=" * 78)
+    print("CHECK 1 -- firing self-test coverage / CHECK 2 -- wiring reconciliation /")
+    print("CHECK 3 -- uncreatable secret-name scan   (gh-1738)")
+    print("=" * 78)
+    for line in result["info"]:
+        print(line)
+    if result["violations"]:
+        print("-" * 78)
+        for line in result["violations"]:
+            print(line)
+    print("-" * 78)
+    c = result["counts"]
+    print(
+        "SELF-REPORTED COUNTS: check1_assertions=%d  check2_files_verified=%d  "
+        "check3_secret_refs_checked=%d"
+        % (
+            c["check1_firing_total_assertions"],
+            c["check2_wiring_files_verified"],
+            c["check3_secret_refs_checked"],
+        )
+    )
+    print("VIOLATIONS: %d" % len(result["violations"]))
+    if result["verdict"] == "UNMEASURED":
+        # Loud on purpose, matching backup-age.py / drift-detector-age.py's
+        # UNMEASURED banner convention (gh-1419). The full explanation already
+        # rode along in `info` above (and therefore in --json output too, so
+        # loudness is not a function of output format); this is the emphasis on
+        # top of that, in text mode, at the one place a human's eye lands last.
+        print("!" * 78)
+        print(">> UNMEASURED IS NOT A PASS. <<")
+        print("!" * 78)
+    print("GATE: %s" % result["verdict"])
+
+
+def main():
+    argv = sys.argv[1:]
+    as_json = "--json" in argv
+    root = DEFAULT_ROOT
+    if "--root" in argv:
+        root = Path(argv[argv.index("--root") + 1]).resolve()
+
+    result = run_all(root)
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+    else:
+        print_report(result)
+
+    return result["code"]
+
+
+if __name__ == "__main__":
+    sys.exit(main())
