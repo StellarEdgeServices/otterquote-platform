@@ -47,6 +47,23 @@
 # scoped to Contents+Metadata+Administration read on both otterquote-platform
 # and otter-crm). The job-local env var stays GITHUB_PERSONAL_ACCESS_TOKEN
 # since the script reads that name and only the *secret's* name is restricted.
+#
+# gh-1700 (2026-09-06): the `drift` job above has only ever covered
+# otterquote-platform's own Supabase project -- it never looked at otter-crm's
+# SEPARATE Supabase project (ref lreqwnqvlerdgukpklwb) at all, while (as of
+# PR #1698) the netlify-drift job below now reports green for otter-crm. A
+# green Netlify row next to zero Edge Function coverage made the page look
+# fully covered when it was not. scripts/edge-function-drift-remote.py adds
+# that coverage as new steps in THIS job (reusing edge-function-drift-check.py's
+# proven comparison logic via importlib, per its own docstring) rather than a
+# hardcoded second project ref -- REMOTE_PROJECTS in that file is the list to
+# extend. It reads otter-crm's repo source via the EXISTING GH_CROSS_REPO_PAT
+# (Contents read only -- it does not need the Administration scope issue #1727
+# proposes removing) and otter-crm's deployed functions via a NEW secret,
+# SUPABASE_CRM_ACCESS_TOKEN, which must be created before this job's new step
+# can measure anything. Until that secret exists, the step below fails LOUD
+# (UNMEASURED, exit 2) by design -- per gh-1419, that is correct behavior, not
+# a bug to silence.
 
 name: Edge Function Drift
 
@@ -64,6 +81,8 @@ on:
     paths:
       - 'scripts/edge-function-drift-check.py'
       - 'scripts/edge-function-drift-check.test.py'
+      - 'scripts/edge-function-drift-remote.py'
+      - 'scripts/edge-function-drift-remote.test.py'
       - 'scripts/netlify-deploy-drift.py'
       - 'scripts/netlify-deploy-drift.test.py'
       - '.github/workflows/edge-function-drift.yml'
@@ -92,6 +111,14 @@ jobs:
       # identical -- see gh-1295 rule 3.
       - name: Self-test the detector
         run: python3 scripts/edge-function-drift-check.test.py
+
+      # gh-1700: fixture-driven, no network, no credentials -- proves the
+      # remote-project orchestration fires on drift, stays silent on none, and
+      # reports UNMEASURED (never silent, never "clean") for a project it
+      # cannot read, including the two side by side in one run. See that
+      # file's own test module docstring for the full case list.
+      - name: Self-test the remote-project detector (otter-crm)
+        run: python3 scripts/edge-function-drift-remote.test.py
 
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v3
@@ -137,6 +164,22 @@ jobs:
             --json-out drift-report.json \
             ${{ inputs.allow_undeployed && '--allow-undeployed' || '' }}
 
+      # gh-1700. Deliberately continue-on-error is NOT set: an UNMEASURED
+      # result here must fail this job exactly as loudly as a real drift
+      # finding on the line above (gh-1419) -- that is the whole point of the
+      # issue this closes on. Until SUPABASE_CRM_ACCESS_TOKEN is created as a
+      # repo secret (see scripts/edge-function-drift-remote.py's docstring for
+      # the exact scope needed), this step is EXPECTED to fail red. That red
+      # is honest signal, not a regression to silence.
+      - name: "Check deployed Edge Functions against main (remote projects: otter-crm)"
+        env:
+          GH_CROSS_REPO_PAT: ${{ secrets.GH_CROSS_REPO_PAT }}
+          SUPABASE_CRM_ACCESS_TOKEN: ${{ secrets.SUPABASE_CRM_ACCESS_TOKEN }}
+        run: |
+          python3 scripts/edge-function-drift-remote.py \
+            --markdown-out drift-report-remote.md \
+            --json-out drift-report-remote.json
+
       # Runs even on failure -- the report is most useful precisely when the step
       # above went red.
       - name: Publish drift table to the job summary
@@ -152,6 +195,16 @@ jobs:
               echo "See the step log above. This is a failure, not a clean run."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [ -f drift-report-remote.md ]; then
+            cat drift-report-remote.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "# Edge Function drift — remote projects (gh-1700)"
+              echo
+              echo "No report produced — the detector could not measure."
+              echo "See the step log above. This is a failure, not a clean run."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload drift report
         if: always()
@@ -161,6 +214,8 @@ jobs:
           path: |
             drift-report.md
             drift-report.json
+            drift-report-remote.md
+            drift-report-remote.json
           if-no-files-found: ignore
 
   netlify-drift:
