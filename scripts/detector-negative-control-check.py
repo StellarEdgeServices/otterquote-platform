@@ -56,10 +56,13 @@ CHECK 2 -- Declared-input reconciliation (catches shape #5, the harder half).
 
 CHECK 3 -- Uncreatable secret-name scan (catches shape #2, generically).
     Every .github/workflows/*.yml is scanned for `secrets.GITHUB_*` other than the
-    one GitHub-reserved exception, `secrets.GITHUB_TOKEN`. GitHub Actions refuses to
-    let a repository secret be created with a `GITHUB_` prefix, so any such
-    reference is dead on arrival and would read UNMEASURED forever -- exactly #2 and
-    the recovery-path half of #4.
+    one GitHub-reserved exception, `secrets.GITHUB_TOKEN`. Both dot notation
+    (`secrets.GITHUB_X`, including spaced as `secrets . GITHUB_X`) and bracket
+    notation (`secrets['GITHUB_X']`, `secrets["GITHUB_X"]`) are matched, tolerant
+    of whitespace (including a reference split across lines). GitHub Actions
+    refuses to let a repository secret be created with a `GITHUB_` prefix, so any
+    such reference is dead on arrival and would read UNMEASURED forever -- exactly
+    #2 and the recovery-path half of #4.
 
 LIMITATIONS -- read before trusting this gate as complete
 ---------------------------------------------------------
@@ -499,8 +502,36 @@ def check_wiring(root: Path):
 # CHECK 3 -- uncreatable secret-name scan
 # ---------------------------------------------------------------------------
 
-SECRET_REF_RE = re.compile(r"secrets\.(GITHUB_[A-Za-z0-9_]*)")
+# Catches both GitHub Actions syntaxes for referencing a secret, tolerant of
+# stray whitespace (including newlines, since `\s` matches them) around the
+# dot or inside the brackets:
+#   secrets.GITHUB_X            (dot notation)
+#   secrets . GITHUB_X          (dot notation, spaced -- confirmed live syntax)
+#   secrets['GITHUB_X']         (bracket notation, single-quoted)
+#   secrets["GITHUB_X"]         (bracket notation, double-quoted)
+# A prior version of this check only matched the first form -- refuter
+# fixture-tested on PR #1742 and confirmed 0 references counted for the
+# other three, meaning refs_checked itself silently read 0 rather than
+# flagging a miss. `\bsecrets\b` avoids matching an unrelated identifier that
+# merely ends in "secrets" (e.g. `my_secrets.GITHUB_X`).
+SECRET_REF_RE = re.compile(
+    r"\bsecrets\b\s*(?:\.\s*(GITHUB_[A-Za-z0-9_]*)"
+    r"|\[\s*(['\"])(GITHUB_[A-Za-z0-9_]*)\2\s*\])"
+)
 ALLOWED_GITHUB_SECRET = "GITHUB_TOKEN"  # the one GitHub-reserved, always-creatable exception
+
+
+def _blank_full_line_comments(text: str) -> str:
+    """Replace every `#`-prefixed comment line with an empty line, preserving
+    line count (and therefore line numbers) so a narrative comment documenting
+    a past secrets.GITHUB_* incident (e.g. edge-function-drift.yml's own
+    postmortem header) is never mistaken for a live reference. Only full-line
+    comments are blanked, matching this check's original, narrower scope --
+    a trailing `# ...` after code on the same line is left alone."""
+    return "\n".join(
+        "" if line.strip().startswith("#") else line
+        for line in text.splitlines()
+    )
 
 
 def check_secret_names(root: Path):
@@ -516,24 +547,23 @@ def check_secret_names(root: Path):
     for wf in sorted(wf_dir.glob("*.yml")):
         text = wf.read_text(encoding="utf-8", errors="replace")
         rel = ".github/workflows/" + wf.name
-        # Line-by-line, skipping full-line comments: this repo documents past
-        # secrets.GITHUB_* incidents in `#`-prefixed narrative comments (e.g.
-        # edge-function-drift.yml's own postmortem header), and those must not
-        # be mistaken for a live reference to the same dead name.
-        for line_no, line in enumerate(text.splitlines(), start=1):
-            if line.strip().startswith("#"):
+        # Scanned as one block (not line-by-line) so an expression split across
+        # lines -- e.g. `${{ secrets\n  .GITHUB_TOKEN }}` -- is still caught;
+        # `\s` in the pattern above matches the embedded newline. Line numbers
+        # for reporting are recovered from the match offset.
+        scrubbed = _blank_full_line_comments(text)
+        for m in SECRET_REF_RE.finditer(scrubbed):
+            refs_checked += 1
+            name = m.group(1) or m.group(3)
+            if name == ALLOWED_GITHUB_SECRET:
                 continue
-            for m in SECRET_REF_RE.finditer(line):
-                refs_checked += 1
-                name = m.group(1)
-                if name == ALLOWED_GITHUB_SECRET:
-                    continue
-                violations.append(
-                    "FAIL  %s:%d -- references secrets.%s. GitHub Actions refuses to let a "
-                    "repository secret be created with a GITHUB_ prefix (only the reserved "
-                    "secrets.GITHUB_TOKEN is exempt), so this reference is dead on arrival "
-                    "and would read UNMEASURED forever." % (rel, line_no, name)
-                )
+            line_no = scrubbed.count("\n", 0, m.start()) + 1
+            violations.append(
+                "FAIL  %s:%d -- references secrets.%s. GitHub Actions refuses to let a "
+                "repository secret be created with a GITHUB_ prefix (only the reserved "
+                "secrets.GITHUB_TOKEN is exempt), so this reference is dead on arrival "
+                "and would read UNMEASURED forever." % (rel, line_no, name)
+            )
     info.append("PASS  scanned %d workflow file(s) for secrets.GITHUB_* references, %d checked, %d violation(s)"
                 % (len(list(wf_dir.glob('*.yml'))), refs_checked, len(violations)))
     return violations, info, refs_checked

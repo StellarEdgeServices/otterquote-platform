@@ -296,6 +296,71 @@ def main():
         violations3, info3, refs3 = neg.check_secret_names(root)
         check("secret scan: the reserved secrets.GITHUB_TOKEN is never a violation", len(violations3), 0)
 
+    # Regression coverage for PR #1742's REVIEW: FAIL (comment 5561074287, MAJOR):
+    # a refuter confirmed by fixture test that only the plain dot-notation form
+    # was ever matched -- bracket notation (both quote styles), a spaced dot, and
+    # a reference split across lines all read refs_checked=0, i.e. the scan did
+    # not even know it had seen anything. One fixture per named syntax variant,
+    # each run through the real check_secret_names() (not the regex in
+    # isolation), asserting BOTH refs_checked > 0 (the miss was invisible, not
+    # just unflagged) and that the reference is reported as a violation.
+    SECRET_SYNTAX_VARIANTS = [
+        ("bracket-single-quoted", "secrets['GITHUB_PERSONAL_ACCESS_TOKEN']"),
+        ("bracket-double-quoted", 'secrets["GITHUB_PERSONAL_ACCESS_TOKEN"]'),
+        ("spaced-dot", "secrets . GITHUB_PERSONAL_ACCESS_TOKEN"),
+    ]
+    for variant_label, expr in SECRET_SYNTAX_VARIANTS:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(
+                root / ".github" / "workflows" / "variant.yml",
+                "name: v\non:\n  push: {}\njobs:\n  v:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n      - run: echo ${{ %s }}\n" % expr,
+            )
+            v_violations, v_info, v_refs = neg.check_secret_names(root)
+            check_true(
+                "secret scan [%s]: reference is counted (refs_checked > 0)" % variant_label,
+                v_refs > 0,
+            )
+            check_true(
+                "secret scan [%s]: reference IS flagged as a violation" % variant_label,
+                any("GITHUB_PERSONAL_ACCESS_TOKEN" in v for v in v_violations),
+            )
+
+    # A reference split across lines inside ${{ }} -- "expressions split across
+    # lines" per the work order. `\s` in SECRET_REF_RE matches the embedded
+    # newline, and the comment-blanking pass preserves line count so this still
+    # reports a sane line number.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(
+            root / ".github" / "workflows" / "multiline.yml",
+            "name: m\non:\n  push: {}\njobs:\n  m:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - run: |\n"
+            "          echo ${{ secrets\n"
+            "            .GITHUB_PERSONAL_ACCESS_TOKEN }}\n",
+        )
+        ml_violations, ml_info, ml_refs = neg.check_secret_names(root)
+        check_true("secret scan [split-across-lines]: reference is counted (refs_checked > 0)", ml_refs > 0)
+        check_true(
+            "secret scan [split-across-lines]: reference IS flagged as a violation",
+            any("GITHUB_PERSONAL_ACCESS_TOKEN" in v for v in ml_violations),
+        )
+
+    # A bracket-notation reference to the one reserved, always-creatable secret
+    # must stay clean -- the fix must not turn every bracket reference into a
+    # false positive.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(
+            root / ".github" / "workflows" / "reserved-bracket.yml",
+            "name: rb\non:\n  push: {}\njobs:\n  rb:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - run: echo ${{ secrets['GITHUB_TOKEN'] }}\n",
+        )
+        rb_violations, rb_info, rb_refs = neg.check_secret_names(root)
+        check("secret scan [bracket, reserved]: refs_checked counts it", rb_refs, 1)
+        check("secret scan [bracket, reserved]: reserved secrets.GITHUB_TOKEN is never a violation", len(rb_violations), 0)
+
     print()
     if FAILURES:
         print("FAILED -- %d assertion(s): %s" % (len(FAILURES), ", ".join(FAILURES)))

@@ -1,0 +1,132 @@
+name: Detector Negative Control Gate
+
+# gh-1738 -- "every detector needs a negative control that RUNS IN CI." This
+# workflow is that wiring for scripts/detector-negative-control-check.py
+# (PR #1742), which itself checks that OTHER detectors have been observed
+# rejecting the thing they exist to reject, and that a scanner's declared
+# inputs are reconciled against what its own workflow trigger actually hands
+# it. Landing that script with no workflow invoking it would have been
+# instance 6 of the exact class gh-1738 exists to close -- a checker that
+# cannot fire, shipped inside the fix for checkers that cannot fire. A PR
+# review on #1742 caught this before merge; this file is the fix.
+#
+# TWO STEPS, DELIBERATELY DIFFERENT FAILURE SEMANTICS -- see each step's
+# comment for the reasoning:
+#   1. Self-test the gate's OWN logic       -> BUILD-FAILING (hard gate)
+#   2. Run the gate against this repo       -> ADVISORY (report-only, see below)
+#
+# WHY ADVISORY FOR STEP 2, NOT BUILD-FAILING:
+# Run cold against `main` as of this workflow's landing, the gate already
+# reports GATE: FAIL with two pre-existing, known findings that predate this
+# workflow and are not this PR's defect: scripts/check-legal-surface-links.py
+# has one stale fixture (a 404 the fixture expects, #766, appears since
+# fixed), and scripts/schema-column-lint.py's declared extensions are not
+# fully reconciled against schema-lint.yml's push.paths (the .js/.ts/.tsx gap
+# this very gate exists to catch -- ironic, but real, and already true before
+# this workflow existed). Wiring this in as a REQUIRED, build-failing check
+# today would make it red on every single PR regardless of what that PR
+# touches, which is exactly this repo's Credential Shape Sweep since #1717:
+# a check nobody can ever make green trains everyone to ignore it, which is
+# worse than not having the check. Advisory-first, with a loud and complete
+# summary every run (never silent, never truncated), is the honest choice
+# until the two pre-existing findings above are cleared or explicitly
+# exempted -- at which point flipping this job's exit code to build-failing
+# is a one-line change (see step 2 below) and the natural next step.
+#
+# NOT REPEATING INSTANCE 3 (PR #1737: a new step crashed and silently
+# short-circuited a job, killing a pre-existing check that ran later in the
+# same job): this gate is its OWN job in its OWN workflow file, with no
+# `needs:` on or from any other job. GitHub Actions runs jobs independently
+# unless a `needs:` edge links them; none does here in either direction, so
+# nothing this job does -- crash, hang, or fail -- can affect any other job's
+# execution. Additionally, step 2 below cannot itself fail the job even if
+# the checker script raises an uncaught exception, because its exit code is
+# captured (`|| true`) rather than allowed to propagate.
+#
+# NOT REPEATING INSTANCE 5 (a scanner's declared inputs not reconciled
+# against its own workflow's push.paths filter -- the harder half of what
+# this very gate's CHECK 2 exists to catch): deliberately NO `paths:` filter
+# on the triggers below. scripts/detector-negative-control-check.py does not
+# scan a fixed set of changed files -- CHECK 1 walks the whole scripts/
+# directory, CHECK 2 walks the WHOLE repo tree for extension-declaring
+# scanners, and CHECK 3 scans every workflow file -- so it must see the
+# repo's full, current state on every run regardless of which files a given
+# PR touched. A paths: filter here would silently stop catching a violation
+# introduced by editing some other file (e.g. a new secrets.GITHUB_X
+# reference added to a workflow this PR doesn't otherwise touch), which is
+# precisely the instance-5 shape. Self-check disclosure: the checker's own
+# CHECK 2 does not evaluate this reasoning, because it only reconciles
+# scripts that declare a top-level SCAN_EXTENSIONS/EXTENSIONS set, and this
+# script declares neither (it walks directories directly). CHECK 2 is
+# therefore silent on this workflow's wiring by construction, not because it
+# verified "no paths: filter" is correct -- that verification is the human
+# reasoning in this comment, not the tool's. Said explicitly per the work
+# order: the checker cannot check itself here.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  detector-negative-control:
+    name: Detector Negative Control Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # BUILD-FAILING. This proves the gate's own detection logic still works
+      # (firing-coverage bookkeeping, wiring reconciliation, and the CHECK 3
+      # secret-syntax matching fixed on PR #1742) before trusting its verdict
+      # on the rest of the repo below. A regression here means the gate
+      # itself is broken, not that the repo has new debt -- that is always
+      # worth blocking on, independent of the advisory posture of step 2.
+      - name: Self-test the gate's own detection logic
+        run: python scripts/detector-negative-control-check.test.py
+
+      # ADVISORY. See the workflow-level comment above for why. The step's
+      # own exit code is captured and neutralized (`|| true`) so a crash or a
+      # FAIL verdict here can never fail this job or block a merge; the full,
+      # untruncated report is always written to the job summary instead, so
+      # a finding is loud without being a gate. `set +e` / manual exit-code
+      # capture is used instead of `continue-on-error: true` so the step's
+      # own status still reads green in the Actions UI rather than showing a
+      # misleading "failed but continued" warning icon for a state that is
+      # working exactly as designed.
+      - name: Run the gate against this repo (report-only)
+        id: gate
+        run: |
+          set +e
+          python scripts/detector-negative-control-check.py > gate-report.txt 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          cat gate-report.txt
+
+      - name: Publish gate report to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Detector Negative Control Gate (gh-1738)"
+            echo
+            echo "Exit code: \`${{ steps.gate.outputs.exit_code }}\` -- ADVISORY, does not block this PR."
+            echo
+            echo '```'
+            cat gate-report.txt 2>/dev/null || echo "(no report produced -- see the step log above)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: detector-negative-control-report
+          path: gate-report.txt
+          if-no-files-found: ignore
