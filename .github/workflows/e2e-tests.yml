@@ -15,11 +15,28 @@ on:
     branches:
       - staging
       - main
+    paths-ignore:
+      - '**.md'
+      - 'Docs/**'
+      - 'handoffs/**'
   pull_request:
     branches:
       - staging
       - main
+    paths-ignore:
+      - '**.md'
+      - 'Docs/**'
+      - 'handoffs/**'
 
+# gh-1731: skip this whole (non-required, continue-on-error) suite for pure
+# prose/doc changes. Measured against a 20-PR recent sample: 0 of 20 were
+# docs-only, so this repo's actual PR traffic gets ~no benefit from it today --
+# kept anyway because it is zero-risk and free for the docs-only PR that does
+# show up. Deliberately NOT touching the `test` job's concurrency block below:
+# that group is scoped repo-wide (not per-PR) because overlapping runs corrupt
+# shared fixtures on the ci-test Supabase project, and narrowing it is called
+# out in that job's own comment as needing a multi-day soak first -- see this
+# PR's body for why that is a Q to @exec:cto, not a change made here.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 

@@ -8,6 +8,17 @@ on:
   schedule:
     - cron: '30 1 * * 1'
 
+# gh-1731: dedupe repeat-push churn on open PRs -- only the newest push's scan
+# result is ever useful (an older commit's SAST result is moot once superseded),
+# so cancel a still-running scan for the same PR/ref rather than let both finish.
+# Scoped per-PR (falls back to the ref for push/schedule) so unrelated PRs never
+# cancel each other. No fixture/DB state here (pure static analysis), so
+# cancelling mid-run is safe -- unlike e2e-tests.yml's job, which is NOT
+# touched here for exactly that reason (see this PR's body).
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 

@@ -15,6 +15,28 @@ on:
       - 'scripts/migration-filename-lint.py'
   pull_request:
     branches: [main]
+    # gh-1731: this trigger had no `paths:` while the `push` trigger above did --
+    # every PR ran this regardless of whether it touched anything the linter
+    # checks (measured: ~25% of a 20-PR sample touched none of these paths).
+    # Mirrors the push list exactly plus this workflow's own file, so editing
+    # the lint itself still gets tested.
+    paths:
+      - '**.html'
+      - 'js/**.js'
+      - 'supabase/functions/**'
+      - 'sql/schema-snapshot.json'
+      - 'scripts/schema-column-lint.py'
+      - 'supabase/migrations/**.sql'
+      - 'sql/**.sql'
+      - 'scripts/schema-secret-lint.py'
+      - 'scripts/migration-filename-lint.py'
+      - '.github/workflows/schema-lint.yml'
+
+# gh-1731: dedupe repeat-push churn on open PRs -- the linter re-checks the
+# full repo tree each run, so only the newest commit's result is useful.
+concurrency:
+  group: schema-lint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
