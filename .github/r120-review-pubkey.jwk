@@ -1,0 +1,9 @@
+{
+  "kty": "EC",
+  "crv": "P-256",
+  "x": "aRGpse8ISM51FbGOEjkAcd4VKrlDolFCBRLxXSBVcck",
+  "y": "XgRBg9ZNJiPGD9C5uJnIBri2fr-EcUAUrNSi9hQcz1s",
+  "use": "sig",
+  "alg": "ES256",
+  "kid": "r120-review"
+}

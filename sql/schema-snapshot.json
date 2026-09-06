@@ -192,7 +192,11 @@
     "is_test",
     "carrier_name",
     "hover_measurements",
-    "project_confirmation_signed_at"
+    "project_confirmation_signed_at",
+    "referrer_updates_opt_out",
+    "measurement_shape",
+    "live_charge_authorized_at",
+    "live_charge_authorized_by"
   ],
   "coming_soon_waitlist": [
     "id",
@@ -375,7 +379,8 @@
     "wc_cert_reminder_30_sent_at",
     "needs_cpa_reattestation",
     "public_directory_optin",
-    "is_test"
+    "is_test",
+    "service_states"
   ],
   "contribution_summary": [
     "contribution_type",
@@ -455,6 +460,22 @@
     "rescinded_at",
     "rescission_reason",
     "created_at"
+  ],
+  "funnel_abandonment_facts": [
+    "id",
+    "source_claim_id",
+    "status_at_redaction",
+    "claim_created_at",
+    "claim_last_updated_at",
+    "job_type",
+    "funding_type",
+    "trades",
+    "has_measurements",
+    "has_material_selection",
+    "ready_for_bids",
+    "is_test",
+    "redacted_at",
+    "redaction_reason"
   ],
   "home_profiles": [
     "id",
@@ -648,6 +669,7 @@
     "reminder_sent_at",
     "notification_sent_at",
     "created_at",
+    "is_test",
     "paid_at"
   ],
   "platform_alerts_log": [
@@ -740,7 +762,8 @@
     "warranty_uploaded_at",
     "platform_fee_pct",
     "platform_fee_basis",
-    "fee_accepted_at"
+    "fee_accepted_at",
+    "is_test"
   ],
   "rate_limit_config": [
     "function_name",
@@ -792,7 +815,17 @@
     "w9_submitted_at",
     "w9_verified_at",
     "payments_blocked",
-    "w9_notification_sent_at"
+    "w9_notification_sent_at",
+    "public_directory_optin",
+    "is_test",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_content",
+    "partner_agreement_version",
+    "partner_agreement_accepted_at",
+    "partner_agreement_attestation",
+    "needs_partner_reacceptance"
   ],
   "referral_network": [
     "id",
@@ -823,7 +856,20 @@
     "utm_campaign",
     "metadata",
     "recruit_commission_amount",
-    "recruit_paid_at"
+    "recruit_paid_at",
+    "is_test"
+  ],
+  "scope_records": [
+    "id",
+    "claim_id",
+    "trade",
+    "catalog_version",
+    "scope_json",
+    "content_hash",
+    "version",
+    "source",
+    "generated_at",
+    "superseded_at"
   ],
   "state_summary": [
     "state",

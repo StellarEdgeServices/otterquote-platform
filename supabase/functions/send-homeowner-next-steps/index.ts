@@ -11,6 +11,12 @@
  *
  * Runs on pg_cron (recommended cadence: hourly) with an empty POST body.
  * Batch-scans is_test=false claims where:
+ *   - status           = 'documents_needed' (the column DEFAULT — the only
+ *                        state a stalled post-signup claim sits in; `draft`
+ *                        is explicitly excluded: that is a homeowner still
+ *                        mid-intake, not "one step from bids". CTO RUN 22
+ *                        defect 1 — the scan had no status predicate and
+ *                        targeted a draft claim.)
  *   - ready_for_bids   = false
  *   - has_measurements = false
  *   - no hover_orders row for the claim
@@ -19,12 +25,17 @@
  *     (excluded so sending the +2h nudge doesn't make the claim look
  *     "active" and suppress the +48h nudge — see isRealActivity below).
  *
- * For each eligible claim:
- *   - hours since created_at >= 2  and no prior '2h'  stage sent  -> send, stamp
- *   - hours since created_at >= 48 and no prior '48h' stage sent  -> send, stamp
- * Both stages can fire in the same run if a claim is old enough and neither
- * has been sent yet (e.g. catching up after a gap) — "once at +2h and once
- * at +48h" are independent gates, not mutually exclusive.
+ * For each eligible claim, selectStage (./select-stage.ts) picks AT MOST ONE
+ * stage per run — CTO RUN 22 defect 2 was that the two stages were
+ * independent gates, so a first run over a >48h backlog sent BOTH emails
+ * back-to-back (7 emails to 4 people):
+ *   - nothing recorded, 2h <= age < 48h                      -> '2h'
+ *   - nothing recorded, age >= 48h (first-run backlog)       -> '48h' only,
+ *     ever — the age-appropriate stage; the '2h' stage is never back-filled
+ *   - '2h' recorded, age >= 48h, '2h' stamp >= 46h old       -> '48h'
+ *   - '48h' recorded                                         -> nothing
+ * So the '48h' email depends on the '2h' record (steady state) and no claim
+ * receives more than one email per run.
  *
  * Idempotency: activity_log has no claim_id column (see get-business-lines-
  * dashboard's lastActivityByUser reduction), so — matching the existing
@@ -33,9 +44,10 @@
  *   { event_type: 'next_steps_nudge_sent',
  *     metadata: { claim_id, nudge_stage: '2h' | '48h', system_generated: true } }
  * keyed by user_id, filtered by metadata.claim_id + nudge_stage per claim.
+ * The stamp row's created_at is what selectStage reads as the '2h' send time.
  *
  * Concurrency (gh-1580 Q&A, CTO ruling 2026-09-03T21:40:09Z, "condition 2"):
- * the in-memory nudgeSentByClaimStage snapshot + stamp-before-send order
+ * the in-memory nudgeSentByClaim snapshot + stamp-before-send order
  * above only close the SEQUENTIAL race (one run retrying after a partial
  * failure). Two OVERLAPPING invocations (a manual trigger racing the cron
  * tick, or a retried call while the first is still mid-Mailgun-loop) would
@@ -98,18 +110,23 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import {
+  isNudgeEligibleStatus,
+  NUDGE_ELIGIBLE_STATUS,
+  NUDGE_EXCLUDED_STATUS,
+  type NudgeStage,
+  selectStage,
+  TWO_HOURS_MS,
+} from "./select-stage.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
-const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 const BATCH_LIMIT = 200;
 const NUDGE_EVENT_TYPE = "next_steps_nudge_sent";
-
-type NudgeStage = "2h" | "48h";
 
 interface ClaimRow {
   id: string;
   user_id: string;
+  status: string;
   created_at: string;
   is_test: boolean;
 }
@@ -121,7 +138,7 @@ interface ScanResult {
   // the race) — counted explicitly per condition 2, not folded silently
   // into stages_sent or dropped.
   stages_skipped_already_sent?: NudgeStage[];
-  skipped_reason?: "has_hover_order" | "real_activity_since_created" | "no_email";
+  skipped_reason?: "has_hover_order" | "real_activity_since_created" | "no_email" | "ineligible_status";
 }
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
@@ -312,12 +329,16 @@ serve(async (req: Request) => {
   const now = Date.now();
   const twoHoursAgoIso = new Date(now - TWO_HOURS_MS).toISOString();
 
-  // ── Candidate scan: is_test=false, ready_for_bids=false, has_measurements
-  // =false, created at least 2h ago (nothing is eligible before then) ──────
+  // ── Candidate scan: is_test=false, status='documents_needed' (and never
+  // 'draft' — redundant with the equality but stated explicitly per CTO RUN
+  // 22 defect 1), ready_for_bids=false, has_measurements=false, created at
+  // least 2h ago (nothing is eligible before then) ───────────────────────────
   const { data: claims, error: scanErr } = await supabase
     .from("claims")
-    .select("id, user_id, created_at, is_test")
+    .select("id, user_id, status, created_at, is_test")
     .eq("is_test", false)
+    .eq("status", NUDGE_ELIGIBLE_STATUS)
+    .neq("status", NUDGE_EXCLUDED_STATUS)
     .eq("ready_for_bids", false)
     .eq("has_measurements", false)
     .lte("created_at", twoHoursAgoIso)
@@ -362,14 +383,25 @@ serve(async (req: Request) => {
 
   // Real (non-self-generated) activity per user, latest timestamp.
   const realActivityByUser = new Map<string, string>();
-  // Already-sent nudge stages per claim: `${claim_id}:${stage}` -> true.
-  const nudgeSentByClaimStage = new Set<string>();
+  // Already-sent nudge stages per claim: claim_id -> (stage -> stamp
+  // created_at). The stamp time is what selectStage uses to space the '48h'
+  // send after the '2h' one; if the same stage was stamped more than once
+  // (pre-unique-index race) the EARLIEST stamp wins.
+  const nudgeSentByClaim = new Map<string, Map<NudgeStage, string>>();
 
   for (const row of (activity || []) as any[]) {
     if (row.event_type === NUDGE_EVENT_TYPE) {
       const md = row.metadata || {};
       if (md.claim_id && (md.nudge_stage === "2h" || md.nudge_stage === "48h")) {
-        nudgeSentByClaimStage.add(`${md.claim_id}:${md.nudge_stage}`);
+        let stages = nudgeSentByClaim.get(md.claim_id);
+        if (!stages) {
+          stages = new Map<NudgeStage, string>();
+          nudgeSentByClaim.set(md.claim_id, stages);
+        }
+        const prevStamp = stages.get(md.nudge_stage as NudgeStage);
+        if (!prevStamp || row.created_at < prevStamp) {
+          stages.set(md.nudge_stage as NudgeStage, row.created_at);
+        }
       }
       continue; // our own stamp never counts as "real" homeowner activity
     }
@@ -381,7 +413,16 @@ serve(async (req: Request) => {
 
   const results: ScanResult[] = [];
 
+  const emptySends: ReadonlyMap<NudgeStage, string> = new Map();
+
   for (const claim of claims as ClaimRow[]) {
+    // Defense in depth for CTO RUN 22 defect 1: the query already filters on
+    // status, but a claim that somehow arrives here in any other state (a
+    // `draft` above all) must never be told "You're one step from bids".
+    if (!isNudgeEligibleStatus(claim.status)) {
+      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "ineligible_status" });
+      continue;
+    }
     if (claimIdsWithHoverOrder.has(claim.id)) {
       results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "has_hover_order" });
       continue;
@@ -392,18 +433,14 @@ serve(async (req: Request) => {
       continue;
     }
 
-    const ageMs = now - new Date(claim.created_at).getTime();
-    const stagesToSend: NudgeStage[] = [];
-    if (ageMs >= TWO_HOURS_MS && !nudgeSentByClaimStage.has(`${claim.id}:2h`)) {
-      stagesToSend.push("2h");
-    }
-    if (ageMs >= FORTY_EIGHT_HOURS_MS && !nudgeSentByClaimStage.has(`${claim.id}:48h`)) {
-      stagesToSend.push("48h");
-    }
-    if (stagesToSend.length === 0) {
+    // CTO RUN 22 defect 2: at most ONE stage per claim per run (see
+    // ./select-stage.ts for the full decision table and its tests).
+    const stage = selectStage(claim, nudgeSentByClaim.get(claim.id) ?? emptySends, now);
+    if (stage === null) {
       results.push({ claim_id: claim.id, stages_sent: [] });
       continue;
     }
+    const stagesToSend: NudgeStage[] = [stage];
 
     // Resolve homeowner contact info (profile row, falling back to auth).
     let homeownerEmail: string | null = null;
