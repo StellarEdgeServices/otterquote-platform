@@ -44,9 +44,18 @@ r120 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(r120)
 
 FAILURES = []
+TOTAL_CHECKS = 0
 
 
 def check(label, actual, expected):
+    # TOTAL_CHECKS is incremented here, once per call, so the final summary reports the
+    # real assertion count it just ran rather than a number typed by hand elsewhere
+    # (PR #1735 review MAJOR: the PR body claimed "112 assertions" -- transposed from
+    # the diff's own numstat -- when the real count of check() call sites was 54, i.e.
+    # 53 assertions once the def itself is excluded from that grep). This counter makes
+    # the number self-reporting so a future claim about it can be pasted, not guessed.
+    global TOTAL_CHECKS
+    TOTAL_CHECKS += 1
     if actual == expected:
         print(f"  PASS  {label}: {actual}")
     else:
@@ -113,6 +122,44 @@ FIXTURE_POST_FIX = {
     "enforce_admins": {"enabled": False},
     "required_pull_request_reviews": None,
     "restrictions": None,
+}
+
+# checks[]-only shape (PR #1735 review MINOR): GitHub's newer `checks` parameter, with
+# NO `contexts` key at all. R-120 signed review is present via checks[].context. Before
+# the union fix, extract_contexts() ignored this field entirely and read []  -> MISSING,
+# even though the gate is genuinely armed -- a permanent false alarm on this shape,
+# never a false ARMED (fails safe, but cries wolf forever). Not invented data shape-wise:
+# `checks` is GitHub's own documented alternative to `contexts` on this endpoint.
+FIXTURE_CHECKS_ONLY_ARMED = {
+    "required_status_checks": {
+        "strict": True,
+        "checks": [
+            {"context": "Null-Byte & Size Sanity Check", "app_id": None},
+            {"context": "5-Page Revenue-Path Smoke Check", "app_id": None},
+            {"context": "R-120 signed review", "app_id": None},
+        ],
+    },
+    "enforce_admins": {"enabled": False},
+    "required_pull_request_reviews": None,
+    "restrictions": None,
+}
+
+# Mixed shape: `contexts[]` is stale (R-120 fell off it) but `checks[]` still lists it --
+# exactly the "checks[] has R-120 but contexts[] stale/missing it" case PR #1735's review
+# fed the pre-fix logic and got MISSING back. The union must catch this via checks[].
+FIXTURE_CONTEXTS_STALE_CHECKS_HAS_R120 = {
+    "required_status_checks": {
+        "strict": True,
+        "contexts": [
+            "Null-Byte & Size Sanity Check",
+            "5-Page Revenue-Path Smoke Check",
+        ],
+        "checks": [
+            {"context": "Null-Byte & Size Sanity Check"},
+            {"context": "5-Page Revenue-Path Smoke Check"},
+            {"context": "R-120 signed review"},
+        ],
+    },
 }
 
 
@@ -185,6 +232,72 @@ def main():
         ["ok"],
     )
     check("extract_contexts('not-a-dict') -> []", r120.extract_contexts("not-a-dict"), [])
+
+    # -------------------------------------------------------------------------------
+    print("\nextract_contexts unions checks[].context with contexts[] (PR #1735 review MINOR)")
+    # -------------------------------------------------------------------------------
+    check(
+        "checks[]-only, no contexts key -> contexts extracted via .context",
+        r120.extract_contexts(FIXTURE_CHECKS_ONLY_ARMED),
+        [
+            "Null-Byte & Size Sanity Check",
+            "5-Page Revenue-Path Smoke Check",
+            "R-120 signed review",
+        ],
+    )
+    result = r120.evaluate_contexts(
+        r120.extract_contexts(FIXTURE_CHECKS_ONLY_ARMED),
+        r120.DEFAULT_REQUIRED_CONTEXT,
+        "fixture: checks[]-only, no contexts key",
+    )
+    check("checks[]-only shape now reads ARMED (previously a permanent false MISSING)", result["verdict"], "ARMED")
+    check("checks[]-only shape -> exit 0", result["code"], 0)
+
+    check(
+        "contexts[] stale but checks[] has R-120 -> union catches it via checks[]",
+        r120.extract_contexts(FIXTURE_CONTEXTS_STALE_CHECKS_HAS_R120),
+        [
+            "Null-Byte & Size Sanity Check",
+            "5-Page Revenue-Path Smoke Check",
+            "R-120 signed review",
+        ],
+    )
+    result = r120.evaluate_contexts(
+        r120.extract_contexts(FIXTURE_CONTEXTS_STALE_CHECKS_HAS_R120),
+        r120.DEFAULT_REQUIRED_CONTEXT,
+        "fixture: contexts[] stale, checks[] has R-120",
+    )
+    check("stale-contexts/checks-has-R120 -> ARMED via the union, not MISSING", result["verdict"], "ARMED")
+
+    check(
+        "union dedupes overlapping names between contexts[] and checks[], order preserved",
+        r120.extract_contexts({"required_status_checks": {"contexts": ["A"], "checks": [{"context": "A"}, {"context": "B"}]}}),
+        ["A", "B"],
+    )
+    check(
+        "checks[] with malformed entries (non-dict, non-string context, missing key) is filtered defensively",
+        r120.extract_contexts(
+            {
+                "required_status_checks": {
+                    "checks": ["not-a-dict", {"context": 42}, {"no_context_key": True}, {"context": "OK"}]
+                }
+            }
+        ),
+        ["OK"],
+    )
+    check(
+        "extract_contexts({'required_status_checks': {'checks': None}}) -> [] (neither field present)",
+        r120.extract_contexts({"required_status_checks": {"checks": None}}),
+        [],
+    )
+    check(
+        "extract_contexts on the original pre-fix/post-fix fixtures is unchanged by the union (no checks[] key present)",
+        (r120.extract_contexts(FIXTURE_PRE_FIX), r120.extract_contexts(FIXTURE_POST_FIX)),
+        (
+            ["Null-Byte & Size Sanity Check", "5-Page Revenue-Path Smoke Check"],
+            ["Null-Byte & Size Sanity Check", "5-Page Revenue-Path Smoke Check", "R-120 signed review"],
+        ),
+    )
 
     # -------------------------------------------------------------------------------
     print("\n_token() reads GITHUB_PERSONAL_ACCESS_TOKEN from the environment only")
@@ -401,9 +514,12 @@ def main():
 
     print()
     if FAILURES:
-        print(f"FAILED — {len(FAILURES)} assertion(s): {', '.join(FAILURES)}")
+        print(f"FAILED — {len(FAILURES)} of {TOTAL_CHECKS} assertion(s) failed: {', '.join(FAILURES)}")
         return 1
-    print("r120-gate-armed-check: all assertions passed (real firing + negative control both verified).")
+    print(
+        f"r120-gate-armed-check: all {TOTAL_CHECKS} assertions passed "
+        "(real firing + negative control both verified)."
+    )
     return 0
 
 

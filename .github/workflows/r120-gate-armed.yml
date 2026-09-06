@@ -24,12 +24,28 @@
 # generate-contractor-pages.yml uses :00) and inside the R-031 off-peak window
 # (3 PM - 7 AM ET); 09:43 UTC is 04:43-05:43 ET depending on DST.
 #
-# CREDENTIAL: reading branch protection needs Administration:Read on this repo. Per
-# gh-1728, GITHUB_PERSONAL_ACCESS_TOKEN (the Actions SECRET, a different store from the
-# local environment-variable copy that was measured dead/401 at 15:52Z on 2026-09-06)
-# is recorded as holding Administration:Read (403 was only ever seen on the PATCH,
-# i.e. reads work). This workflow makes no assumption that the secret is valid -- if it
-# is absent, wrong, or expired, scripts/r120-gate-armed-check.py reports UNMEASURED
+# CREDENTIAL: reading branch protection needs Administration:Read on this repo. The
+# Actions SECRET is named GH_BRANCH_PROTECTION_PAT -- NOT GITHUB_PERSONAL_ACCESS_TOKEN.
+# GitHub Actions structurally rejects any repository/org/environment secret whose name
+# starts with "GITHUB_" at creation time, so a secret with that name can never be
+# provisioned; this exact defect was hit and fixed in edge-function-drift.yml one day
+# before this workflow was written (30e10dc, gh-1549: "GITHUB_ prefix is reserved by
+# GitHub Actions"), and this file originally reintroduced it (caught on PR #1735 review).
+#
+# Do NOT reuse GH_CROSS_REPO_PAT (edge-function-drift.yml's cross-repo secret) for this.
+# Open issue #1727 proposes narrowing GH_CROSS_REPO_PAT to Contents+Metadata:Read,
+# explicitly removing Administration:Read -- wiring this detector to that token would
+# silently kill it the moment #1727 lands, the same class of failure as the bug this
+# comment documents, on a delay fuse. GH_BRANCH_PROTECTION_PAT is a separate, narrower
+# credential (Administration:Read only, this repo only) so it is immune to that
+# narrowing entirely.
+#
+# GH_BRANCH_PROTECTION_PAT does not exist yet -- Dustin must create it (fine-grained
+# PAT, Administration:Read on StellarEdgeServices/otterquote-platform, stored as the
+# repository secret GH_BRANCH_PROTECTION_PAT) before this job can measure anything.
+# Until then it correctly and loudly reports UNMEASURED on every run -- that is honest
+# behavior, not a bug. This workflow makes no assumption that the secret is valid -- if
+# it is absent, wrong, or expired, scripts/r120-gate-armed-check.py reports UNMEASURED
 # (exit 3) and this job goes red, exactly as loudly as a confirmed-missing gate. It
 # does NOT fall back to `github.token`: the default Actions token cannot read branch
 # protection on most repos, and a silent fallback that always resolves to UNMEASURED
@@ -81,7 +97,11 @@ jobs:
       # documents hitting once already on this workflow's sibling).
       - name: Check R-120 signed review is a required status check on main
         env:
-          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_PERSONAL_ACCESS_TOKEN }}
+          # The secret is named GH_BRANCH_PROTECTION_PAT (see CREDENTIAL comment above);
+          # the job-local env var stays GITHUB_PERSONAL_ACCESS_TOKEN because that is the
+          # name scripts/r120-gate-armed-check.py reads -- only the *secret's* name is
+          # restricted by GitHub Actions, not this step's env var name.
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_BRANCH_PROTECTION_PAT }}
         shell: bash
         run: |
           set -o pipefail

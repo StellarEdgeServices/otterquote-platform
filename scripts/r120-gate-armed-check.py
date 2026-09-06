@@ -44,13 +44,20 @@ VERDICTS
 CREDENTIAL
     Reads GITHUB_PERSONAL_ACCESS_TOKEN from the environment (os.environ) only -- same
     discipline as drift-detector-age.py, so this cannot reproduce backup-age.py's documented
-    _token() bug (matching a comment line that merely mentions the var name). Reading branch
-    protection needs Administration:Read on the target repo; per gh-1728, the Actions
-    *secret* named GITHUB_PERSONAL_ACCESS_TOKEN is a DIFFERENT store from the local
-    environment-variable copy that was measured dead (401) on 2026-09-06 -- this script
-    makes no assumption about which is valid and reports UNMEASURED with the HTTP status if
-    neither works. The token VALUE is never printed, logged, or included in any exception
-    message (R-089).
+    _token() bug (matching a comment line that merely mentions the var name). This is a
+    job-local ENV VAR name, not a secret name -- the workflow's Actions SECRET is named
+    GH_BRANCH_PROTECTION_PAT (a dedicated, narrowly-scoped credential: Administration:Read
+    on this repo only) and gets copied into this env var by
+    .github/workflows/r120-gate-armed.yml, because GitHub Actions rejects any secret named
+    GITHUB_* at creation time (caught on PR #1735 review; same defect edge-function-drift.yml
+    fixed in 30e10dc/gh-1549 the day before this script was first written). GH_CROSS_REPO_PAT
+    (that sibling workflow's secret) is deliberately NOT reused here: issue #1727 proposes
+    narrowing it to Contents+Metadata:Read, removing Administration:Read, which would
+    silently break this detector if it depended on that token. Reading branch protection
+    needs Administration:Read on the target repo; this script makes no assumption about
+    whether the credential is valid and reports UNMEASURED with the HTTP status if it is
+    not. The token VALUE is never printed, logged, or included in any exception message
+    (R-089).
 
 FIXTURE-BASED PROOF (gh-1728 design note: "run the check's logic against a saved protection
 payload with and without the context, reproducible in CI rather than a one-off manual
@@ -145,21 +152,44 @@ def fetch_protection_payload(repo, branch, token, timeout=20):
 
 
 def extract_contexts(payload):
-    """Pure, defensive extraction of required_status_checks.contexts from a branch
-    protection payload. Never raises: any missing/malformed nesting (required_status_checks
-    absent, null, or contexts not a list) resolves to an empty list -- "measured, and there
-    are zero required contexts" -- rather than an exception. This is the function the
+    """Pure, defensive extraction of required status check names from a branch protection
+    payload. Never raises: any missing/malformed nesting (required_status_checks absent,
+    null, or contexts not a list) resolves to an empty list -- "measured, and there are
+    zero required contexts" -- rather than an exception. This is the function the
     fixture-based test drives directly against the pre-fix and post-fix payloads gh-1728
-    recorded, so it IS the real-firing/negative-control logic, not a stand-in for it."""
+    recorded, so it IS the real-firing/negative-control logic, not a stand-in for it.
+
+    Reads BOTH `required_status_checks.contexts` (the legacy field) AND
+    `required_status_checks.checks[].context` (GitHub's newer `checks` parameter, which
+    can carry a required context that `contexts` never mirrors) and returns their union,
+    contexts-first, deduplicated, order preserved (PR #1735 review MINOR: a gate
+    administered only via `checks[]` used to read as permanently MISSING here, which
+    fails safe -- never a false ARMED -- but would cry wolf forever on that shape)."""
     if not isinstance(payload, dict):
         return []
     rsc = payload.get("required_status_checks")
     if not isinstance(rsc, dict):
         return []
+
     contexts = rsc.get("contexts")
-    if not isinstance(contexts, list):
-        return []
-    return [c for c in contexts if isinstance(c, str)]
+    contexts_list = [c for c in contexts if isinstance(c, str)] if isinstance(contexts, list) else []
+
+    checks = rsc.get("checks")
+    checks_list = []
+    if isinstance(checks, list):
+        for item in checks:
+            if isinstance(item, dict):
+                ctx = item.get("context")
+                if isinstance(ctx, str):
+                    checks_list.append(ctx)
+
+    seen = set(contexts_list)
+    unioned = list(contexts_list)
+    for ctx in checks_list:
+        if ctx not in seen:
+            unioned.append(ctx)
+            seen.add(ctx)
+    return unioned
 
 
 def evaluate_contexts(contexts, required_context, detail):
