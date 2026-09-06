@@ -36,6 +36,17 @@
 # schedule + workflow_dispatch, per the CTO's own filing instruction on #1549.
 # See scripts/netlify-deploy-drift.py's docstring for the two independent signals
 # it checks (BEHIND vs BUILD_FAILING) and the CROSS-REPO SCOPE GAP it documents.
+#
+# CORRECTED 2026-09-05 (gh-1549 continued): the cross-repo secret was named
+# `GITHUB_PERSONAL_ACCESS_TOKEN`, but GitHub Actions rejects any repository
+# secret name starting with `GITHUB_` outright ("Secret names must not start
+# with GITHUB_."). It was never creatable, so `secrets.GITHUB_PERSONAL_ACCESS_TOKEN`
+# always evaluated empty and the `|| github.token` fallback fired on every run.
+# otter-crm's UNMEASURED/404 verdict was never a repo-grant gap in practice --
+# it was this naming defect. Renamed to GH_CROSS_REPO_PAT (a fine-grained PAT
+# scoped to Contents+Metadata+Administration read on both otterquote-platform
+# and otter-crm). The job-local env var stays GITHUB_PERSONAL_ACCESS_TOKEN
+# since the script reads that name and only the *secret's* name is restricted.
 
 name: Edge Function Drift
 
@@ -187,11 +198,16 @@ jobs:
       # scoped only to the repo the workflow runs in and 404s on a different private
       # repo it cannot see at all. Confirmed live 2026-09-02 (gh-1549 build): the
       # Code-lane fine-grained PAT available while writing this detector could read
-      # otterquote-platform but 404'd on otter-crm's `commits/main`. Provisioning a
-      # PAT scoped to both repos (or adding a second otter-crm-scoped secret and a
-      # second script invocation) is an owner/unblock item -- until then this job's
-      # otter-crm row will legitimately report UNMEASURED, which is the correct,
-      # loud, non-silent behavior for a scope gap, not a bug to silence.
+      # otterquote-platform but 404'd on otter-crm's `commits/main`.
+      #
+      # CORRECTED 2026-09-05: the secret backing this env var was originally named
+      # GITHUB_PERSONAL_ACCESS_TOKEN, which GitHub Actions refuses to let any
+      # repository secret be named ("Secret names must not start with GITHUB_.").
+      # It was never creatable, so this line's `|| github.token` fallback fired on
+      # every single run since #1549 was built -- otter-crm's UNMEASURED verdict
+      # was this naming bug, not (only) a scope gap. Now backed by GH_CROSS_REPO_PAT,
+      # a fine-grained PAT with Contents+Metadata+Administration read on both
+      # otterquote-platform and otter-crm.
       #
       # `--file-issue` posts to gh-1549 itself on any BEHIND/BUILD_FAILING site
       # (never on UNMEASURED alone -- a measurement gap is not a drift finding).
@@ -200,11 +216,13 @@ jobs:
       - name: Check Netlify production deploys against main
         env:
           NETLIFY_PAT: ${{ secrets.NETLIFY_PAT }}
-          # Fall back to the workflow's own token: it reads this repo's commits,
-          # which covers the two otterquote-platform sites. otter-crm still needs
-          # a cross-repo PAT secret (the documented scope gap above) and reports
-          # UNMEASURED until one exists.
-          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_PERSONAL_ACCESS_TOKEN || github.token }}
+          # GH_CROSS_REPO_PAT is the cross-repo credential (see the CORRECTED note
+          # above); the job-local env var name stays GITHUB_PERSONAL_ACCESS_TOKEN
+          # because that's the name the script reads. Falls back to the workflow's
+          # own token if the secret is ever removed: it reads this repo's commits,
+          # which covers the two otterquote-platform sites, but otter-crm will
+          # report UNMEASURED again without the cross-repo PAT.
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_CROSS_REPO_PAT || github.token }}
         # pipefail is load-bearing: without it, `| tee` swallows the script's
         # exit code and an UNMEASURED (exit 3) run concludes success -- measured
         # on schedule run 33761892324, the silent-detector shape this file exists

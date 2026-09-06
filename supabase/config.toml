@@ -374,3 +374,10 @@ verify_jwt = false
 # platform_alerts_log only.
 [functions.watch-template-mapping]
 verify_jwt = false
+
+# gh-1531: vault-resync rewrites the pg_cron Vault secrets (cron_service_role_key,
+# cron_secret) from its own injected env after a rotation. Gateway JWT
+# verification ON, plus an in-handler single-admin gate (PRIMARY_ADMIN_EMAIL,
+# gh-1534 semantics). Pinned so a flagless `functions deploy` can't flip it.
+[functions.vault-resync]
+verify_jwt = true

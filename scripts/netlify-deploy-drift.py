@@ -55,6 +55,36 @@ not a mechanism; a firing one is")
      field that carried the signal while every usage-exceeded array stayed `[]`. See
      find_auto_topup_warnings().
 
+BASE-DIRECTORY SITES + NO-CONTENT CANCELS (gh-1549 CTO run cto-2026-09-05T03:07:58Z,
+measured 2026-09-05T03:5xZ -- read before "fixing" a red otterquote-app row)
+  otterquote-app (app.otterquote.com) builds from otterquote-platform with
+  build_settings.base = "react-app". Netlify's default ignore-build rule cancels every
+  commit that touches nothing under the base directory, and models that cancel as a
+  production deploy with state "error" and error_message "Failed during stage 'checking
+  build content for changes': Canceled build due to no content change". Two false alarms
+  followed from reading that as a failure:
+    - BUILD_FAILING fired on essentially every merge (5/5 recent production deploys
+      carried that message; the automated 2026-09-04T12:44Z / 13:31Z / 19:00Z comments
+      on gh-1549 are all this), which is how the next real alarm gets ignored.
+    - BEHIND counted commits against `main` HEAD, so the row read "7 commits behind"
+      while production was correctly at 3424c60b -- the LAST commit touching react-app/;
+      the seven later commits touched only supabase/functions, scripts/ and .github/.
+  So, for a site with a base directory:
+    - "behind" is computed against the LAST `main` commit that touches the base directory
+      (GET /repos/{repo}/commits?sha=main&path={base}&per_page=1), never `main` HEAD.
+      See fetch_github_last_commit_touching(). A site with no base directory keeps the
+      plain `main` HEAD compare -- every commit is buildable content for it.
+    - a deploy whose error_message matches BENIGN_DEPLOY_ERROR_SUBSTRINGS is
+      SKIPPED_NO_CONTENT: it is Netlify saying "nothing to build", not a build failure.
+      It never yields BUILD_FAILING; the verdict falls through to the sha compare, and the
+      newest NON-benign production deploy is the one BUILD_FAILING reads (a real error
+      followed only by no-content cancels is still unresolved and still alarms). The
+      match is on the MESSAGE, never on the site name -- a genuinely broken otterquote-app
+      must still alarm.
+    - the #1548 usage-exceeded skip stays BUILD_FAILING, loud (its literal message is the
+      recorded fixture in netlify-deploy-drift.test.py). Dustin's ruling 2026-09-04 (gh-1549 comment 5545292885): auto-topup stays OFF --
+      "Let it stop and alert me." -- so that class is the alarm that replaces the money.
+
 CROSS-REPO SCOPE GAP (found running this detector live, 2026-09-02 -- read before adding
 a third site or "fixing" a red otter-crm row)
   otter-crm is a SEPARATE private repo (StellarEdgeServices/otter-crm), not a directory
@@ -90,6 +120,10 @@ USAGE
                                                           # the alarm IS the comment)
 
   Options:
+    --self-test     run the built-in fixture suite (no network, no credentials) and
+                     exit 0/1. The full suite lives in netlify-deploy-drift.test.py; this
+                     is the three-case regression for the base-directory / no-content
+                     cancel / real-error shapes so it can run wherever the script is.
     --json          machine-readable {sites: [...], verdict, code, banner}. `banner`
                      carries the exact loud warning text text mode prints for a
                      non-clean run (null when every site is IDENTICAL) -- per gh-1501
@@ -142,6 +176,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # ---------------------------------------------------------------------------
@@ -183,6 +218,44 @@ FAILING_VERDICTS = {BEHIND, BUILD_FAILING, QUEUED_STALE}
 # kept serving the last commit from before the lockout) -- this is exactly the
 # #1548 shape this script exists to catch, not a one-off Netlify concurrency skip.
 FAILING_DEPLOY_STATES = {"error"}
+
+# Netlify error_message fragments that mean "nothing to build", NOT "the build failed".
+# Matched on the message, never on the site name (see BASE-DIRECTORY SITES + NO-CONTENT
+# CANCELS in the module docstring). Measured verbatim 2026-09-05 on otterquote-app:
+#   "Failed during stage 'checking build content for changes': Canceled build due to no
+#    content change"
+BENIGN_DEPLOY_ERROR_SUBSTRINGS = ("Canceled build due to no content change",)
+
+# Row-level note for the benign shape -- a display token, not a verdict, so it never
+# enters FAILING_VERDICTS and never shadows a real BUILD_FAILING / BEHIND.
+SKIPPED_NO_CONTENT = "SKIPPED_NO_CONTENT"
+
+
+def is_benign_deploy_error(error_message):
+    """True when a deploy's error_message is Netlify's no-content cancel (see
+    BENIGN_DEPLOY_ERROR_SUBSTRINGS). Pure, never raises."""
+    msg = error_message or ""
+    return any(frag in msg for frag in BENIGN_DEPLOY_ERROR_SUBSTRINGS)
+
+
+def select_signal_deploy(deploys):
+    """Pure: from a list of production-context deploys, pick the one BUILD_FAILING should
+    read -- the NEWEST (by created_at) deploy whose error_message is NOT a benign
+    no-content cancel. If every deploy is benign, the newest one is returned so the
+    caller still sees its state/message (and evaluate_site() classifies it as
+    SKIPPED_NO_CONTENT rather than BUILD_FAILING). Returns (deploy, benign_newer_count):
+    benign_newer_count is how many benign cancels were newer than the chosen deploy, for
+    the row's detail line. Returns (None, 0) for an empty list."""
+    if not deploys:
+        return None, 0
+    ordered = sorted(deploys, key=lambda d: d.get("created_at") or "", reverse=True)
+    benign_newer = 0
+    for d in ordered:
+        if is_benign_deploy_error(d.get("error_message")):
+            benign_newer += 1
+            continue
+        return d, benign_newer
+    return ordered[0], 0
 
 
 def _plural(n):
@@ -242,6 +315,10 @@ def unmeasured_row(site, reason):
         "deploy_error_message": None,
         "deploy_skipped": None,
         "queued_stale_build_id": None,
+        "base_dir": None,
+        "base_head_sha": None,
+        "main_ahead_of_production": None,
+        "no_content_skip": False,
     }
 
 
@@ -255,8 +332,22 @@ def evaluate_site(
     deploy_error_message,
     deploy_skipped,
     queued_stale_build=None,
+    base_dir=None,
+    base_head_sha=None,
+    main_ahead_of_production=None,
+    benign_newer_count=0,
 ):
     """Pure verdict logic given already-fetched fields. No network, no I/O.
+
+    base_dir / base_head_sha (BASE-DIRECTORY SITES in the module docstring): when the
+    site builds from a base directory, `ahead_by` and the IDENTICAL/BEHIND compare are
+    against base_head_sha -- the last `main` commit touching that directory -- and
+    `main_sha` is reported for context only. When base_dir is None the compare target
+    is `main_sha` exactly as before.
+
+    A deploy_error_message matching BENIGN_DEPLOY_ERROR_SUBSTRINGS is SKIPPED_NO_CONTENT,
+    never BUILD_FAILING: the verdict falls through to the sha compare and the row carries
+    no_content_skip=True so the detail line says why the newest attempt "errored".
 
     Priority order (gh-1549 CTO comment 5524997596: three independent signals, none
     of which may shadow another into looking clean):
@@ -281,9 +372,17 @@ def evaluate_site(
         "deploy_error_message": deploy_error_message,
         "deploy_skipped": deploy_skipped,
         "queued_stale_build_id": None,
+        "base_dir": base_dir or None,
+        "base_head_sha": base_head_sha if base_dir else None,
+        "main_ahead_of_production": main_ahead_of_production if base_dir else None,
+        "no_content_skip": False,
     }
 
-    if deploy_state in FAILING_DEPLOY_STATES:
+    benign = is_benign_deploy_error(deploy_error_message)
+    if benign:
+        row["no_content_skip"] = True
+
+    if deploy_state in FAILING_DEPLOY_STATES and not benign:
         detail = deploy_error_message or (
             "deploy state=%s skipped=%s, no error_message provided by the API"
             % (deploy_state, deploy_skipped)
@@ -305,13 +404,44 @@ def evaluate_site(
         row["queued_stale_build_id"] = build_id
         return row
 
-    if published_commit == main_sha:
+    compare_target = base_head_sha if base_dir else main_sha
+    suffix = ""
+    if benign or benign_newer_count:
+        n = benign_newer_count or 1
+        suffix = " (newest %d production deploy %s Netlify's no-content cancel: %s, not a build failure)" % (
+            n,
+            "attempt was" if n == 1 else "attempts were",
+            SKIPPED_NO_CONTENT,
+        )
+
+    # ahead_by == 0 with differing shas means the compare target is already an ancestor
+    # of what production serves (e.g. the last commit touching the base dir is a branch
+    # commit whose merge commit is the one Netlify built) -- nothing is missing.
+    if published_commit == compare_target or ahead_by == 0:
         row["verdict"] = IDENTICAL
-        row["detail"] = "production commit_ref matches main HEAD"
+        if base_dir:
+            base_label = base_dir.rstrip("/") + "/"
+            if published_commit == compare_target:
+                head = "production commit_ref is the last main commit touching base dir %r" % base_label
+            else:
+                head = "production commit_ref already contains the last main commit touching base dir %r (%s)" % (
+                    base_label, (compare_target or "?")[:12])
+            past = main_ahead_of_production
+            if past is not None:
+                head += " -- main HEAD is %d %s past production, none touching the base dir" % (
+                    past, _plural(past))
+            row["detail"] = head + suffix
+        else:
+            row["detail"] = "production commit_ref matches main HEAD" + suffix
         return row
 
     row["verdict"] = BEHIND
     row["detail"] = "%d %s behind, since %s" % (ahead_by, _plural(ahead_by), row["since"])
+    if base_dir:
+        row["detail"] += " (counted against the last main commit touching base dir %r, not main HEAD)" % (
+            base_dir.rstrip("/") + "/"
+        )
+    row["detail"] += suffix
     return row
 
 
@@ -515,10 +645,18 @@ def render_text(rows, code, warnings=None):
     for r in rows:
         lines.append("  %-40s %s" % (r["label"], display_verdict(r)))
         if r["published_commit"] or r["main_sha"]:
-            lines.append(
-                "    production=%s  main=%s"
-                % ((r["published_commit"] or "?")[:12], (r["main_sha"] or "?")[:12])
+            line = "    production=%s  main=%s" % (
+                (r["published_commit"] or "?")[:12],
+                (r["main_sha"] or "?")[:12],
             )
+            if r.get("base_dir"):
+                line += "  base=%s/  last-main-commit-touching-base=%s" % (
+                    r["base_dir"].rstrip("/"),
+                    (r.get("base_head_sha") or "?")[:12],
+                )
+            lines.append(line)
+            if r["verdict"] == IDENTICAL and (r.get("base_dir") or r.get("no_content_skip")):
+                lines.append("    %s" % r["detail"])
     lines.append("")
     banner = _banner_lines(rows, code)
     if banner:
@@ -644,8 +782,12 @@ def fetch_netlify_newest_production_deploy(site_id, token):
         return None, reason
     if not isinstance(data, list) or not data:
         return None, "Netlify API reachable but returned zero production-context deploys"
-    newest = max(data, key=lambda d: d.get("created_at") or "")
-    return newest, "ok"
+    # The newest NON-benign deploy is the signal (see select_signal_deploy); a copy is
+    # returned carrying how many newer no-content cancels were skipped over.
+    chosen, benign_newer = select_signal_deploy(data)
+    chosen = dict(chosen)
+    chosen["_benign_newer_count"] = benign_newer
+    return chosen, "ok"
 
 
 def _annotate_github_404(reason):
@@ -683,6 +825,28 @@ def fetch_github_main_sha(repo, token):
     if not sha:
         return None, "GitHub API response for %s commits/main had no sha" % repo
     return sha, "ok"
+
+
+def fetch_github_last_commit_touching(repo, path, token, branch="main"):
+    """The sha of the newest commit on `branch` that touches `path` (a directory or
+    file) -- GET /repos/{repo}/commits?sha={branch}&path={path}&per_page=1. This is
+    the compare target for a base-directory site: Netlify does not build commits
+    that touch nothing under the base directory, so "behind main HEAD" is not a
+    defect for such a site while "behind the last commit that touched the base
+    directory" is. Returns (sha_or_None, reason)."""
+    if not token:
+        return None, "no %s found in the environment" % GITHUB_TOKEN_ENV_VAR
+    data, reason = _get_json(
+        "https://api.github.com/repos/%s/commits?sha=%s&path=%s&per_page=1"
+        % (repo, urllib.parse.quote(branch, safe=""), urllib.parse.quote(path.strip("/"), safe="")),
+        token,
+        accept_github=True,
+    )
+    if data is None:
+        return None, _annotate_github_404(reason)
+    if not isinstance(data, list) or not data or not (data[0] or {}).get("sha"):
+        return None, "GitHub API returned no commit on %s touching %r for %s" % (branch, path, repo)
+    return data[0]["sha"], "ok"
 
 
 def fetch_github_ahead_by(repo, base_sha, head_sha, token):
@@ -786,7 +950,27 @@ def check_site(site, netlify_token, github_token, now=None, queued_stale_minutes
     if main_sha is None:
         return unmeasured_row(site, "GitHub main HEAD fetch failed: %s" % reason)
 
-    ahead_by, reason = fetch_github_ahead_by(site["repo"], published_commit, main_sha, github_token)
+    # Base-directory sites (BASE-DIRECTORY SITES in the module docstring): the compare
+    # target is the last main commit touching the base dir, read from the Netlify
+    # site's own build_settings.base -- the same field Netlify's ignore rule uses.
+    base_dir = ((site_data.get("build_settings") or {}).get("base") or "").strip().strip("/") or None
+    base_head_sha = None
+    main_ahead_of_production = None
+    compare_target = main_sha
+    if base_dir:
+        base_head_sha, reason = fetch_github_last_commit_touching(site["repo"], base_dir, github_token)
+        if base_head_sha is None:
+            return unmeasured_row(
+                site, "GitHub last-commit-touching base dir %r fetch failed: %s" % (base_dir, reason)
+            )
+        compare_target = base_head_sha
+        # Context-only number for the detail line ("main HEAD is N past production");
+        # a failure here never fails the measurement -- the row just omits it.
+        main_ahead_of_production, _ctx_reason = fetch_github_ahead_by(
+            site["repo"], published_commit, main_sha, github_token
+        )
+
+    ahead_by, reason = fetch_github_ahead_by(site["repo"], published_commit, compare_target, github_token)
     if ahead_by is None:
         return unmeasured_row(site, "GitHub compare failed: %s" % reason)
 
@@ -806,6 +990,10 @@ def check_site(site, netlify_token, github_token, now=None, queued_stale_minutes
         deploy_error_message=deploy_data.get("error_message"),
         deploy_skipped=deploy_data.get("skipped"),
         queued_stale_build=queued_stale_build,
+        base_dir=base_dir,
+        base_head_sha=base_head_sha,
+        main_ahead_of_production=main_ahead_of_production,
+        benign_newer_count=deploy_data.get("_benign_newer_count") or 0,
     )
 
 
@@ -862,8 +1050,82 @@ def resolve_site_rows(netlify_token, github_token, queued_stale_minutes=DEFAULT_
     ]
 
 
+def self_test():
+    """Three-case regression for the 2026-09-05 fixes, runnable anywhere the script is
+    (no network, no token): no-content cancel -> IDENTICAL; a real error (#1517's bare
+    "Canceled build" bulk-sweep, and a build-script failure) -> BUILD_FAILING; genuinely
+    behind -> BEHIND N. The values are the ones measured live on otterquote-app /
+    otter-crm (gh-1549), not hand-imagined shapes. The #1548 usage-exceeded message is
+    the recorded fixture in scripts/netlify-deploy-drift.test.py (the full suite), which
+    CI runs on every change to this file."""
+    site = {"key": "otterquote-app", "label": "app.otterquote.com (otterquote-app)",
+            "repo": "StellarEdgeServices/otterquote-platform"}
+    no_content = ("Failed during stage 'checking build content for changes': "
+                  "Canceled build due to no content change")
+    failures = []
+
+    def expect(label, actual, wanted):
+        ok = actual == wanted
+        print("  %s  %s: %r" % ("PASS" if ok else "FAIL", label, actual))
+        if not ok:
+            failures.append(label)
+
+    # 1. No-content cancel (measured 2026-09-05T04:31Z): production 3424c60b == last main
+    #    commit touching react-app/; main HEAD cd89cfbf is 7 commits past production; newest
+    #    deploy is the no-content cancel modelled as state=error.
+    r = evaluate_site(site, "3424c60b608f", "2026-09-05T02:04:49Z", "cd89cfbff617", 0,
+                      "error", no_content, None, base_dir="react-app",
+                      base_head_sha="3424c60b608f", main_ahead_of_production=7)
+    expect("no-content cancel on a base-dir site -> IDENTICAL", r["verdict"], IDENTICAL)
+    expect("no-content cancel is flagged SKIPPED_NO_CONTENT, not BUILD_FAILING", r["no_content_skip"], True)
+    expect("no-content cancel never enters FAILING_VERDICTS", r["verdict"] in FAILING_VERDICTS, False)
+    # 2. A REAL error stays loud (Dustin: "Let it stop and alert me."). (a) otter-crm's
+    #    bulk-swept "Canceled build" (#1517, 2026-08-24, verbatim) -- the bare message is
+    #    NOT the benign no-content cancel and must still alarm; (b) a build-script failure.
+    r = evaluate_site(site, "9cf92d30836a", "2026-09-03T11:23:11Z", "9cf92d30836a", 0,
+                      "error", "Canceled build", None)
+    expect("bare 'Canceled build' (#1517 bulk-sweep) -> BUILD_FAILING, not benign", r["verdict"], BUILD_FAILING)
+    expect("bare 'Canceled build' detail is the message", r["detail"], "Canceled build")
+    r = evaluate_site(site, "3424c60b608f", "2026-09-05T02:04:49Z", "cd89cfbff617", 0,
+                      "error", "Build script returned non-zero exit code: 2", None,
+                      base_dir="react-app", base_head_sha="3424c60b608f", main_ahead_of_production=7)
+    expect("real build error on a base-dir site -> BUILD_FAILING (message-matched, not site-matched)",
+           r["verdict"], BUILD_FAILING)
+    # 3. Genuinely behind on a base-dir site: a later main commit DID touch react-app/,
+    #    the newest deploy attempt is still a no-content cancel (or anything benign),
+    #    production has not moved -> BEHIND N, counted against the base-dir head.
+    r = evaluate_site(site, "3424c60b608f", "2026-09-05T02:04:49Z", "cd89cfbff617", 2,
+                      "error", no_content, None, base_dir="react-app",
+                      base_head_sha="deadbeef0001", main_ahead_of_production=1)
+    expect("genuinely behind on a base-dir site -> BEHIND", r["verdict"], BEHIND)
+    expect("BEHIND N counts against the base-dir head", r["detail"].startswith("2 commits behind, since 2026-09-05"), True)
+    # 3b. Genuinely behind, no base dir (the #1517 shape) -> BEHIND 9.
+    r = evaluate_site(site, "1" * 40, "2026-08-11T09:15:22Z", "2" * 40, 9, "ready", None, None)
+    expect("genuinely behind, no base dir -> BEHIND 9", r["detail"], "9 commits behind, since 2026-08-11")
+    # 4. Newest deploy benign but an older REAL error is unresolved -> the real one is the signal.
+    d, n = select_signal_deploy([
+        {"id": "c1", "state": "error", "created_at": "2026-09-05T04:18:48Z", "error_message": no_content},
+        {"id": "real", "state": "error", "created_at": "2026-09-05T03:00:00Z",
+         "error_message": "Canceled build"},
+        {"id": "ok", "state": "ready", "created_at": "2026-09-05T02:04:49Z", "error_message": None},
+    ])
+    expect("select_signal_deploy skips newer no-content cancels to the real error", (d["id"], n), ("real", 1))
+    d, n = select_signal_deploy([
+        {"id": "c1", "state": "error", "created_at": "2026-09-05T04:18:48Z", "error_message": no_content},
+        {"id": "c0", "state": "error", "created_at": "2026-09-05T03:19:31Z", "error_message": no_content},
+    ])
+    expect("select_signal_deploy with only benign deploys returns the newest benign one", (d["id"], n), ("c1", 0))
+
+    if failures:
+        print("SELF-TEST FAILED: %d assertion(s): %s" % (len(failures), ", ".join(failures)))
+        return 1
+    print("netlify-deploy-drift --self-test: all assertions passed.")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--file-issue", action="store_true")
     parser.add_argument(
@@ -873,6 +1135,9 @@ def main():
         help="Age threshold in minutes for the QUEUED_STALE signal (default: %(default)s)",
     )
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     netlify_token = os.environ.get(NETLIFY_TOKEN_ENV_VAR, "").strip() or None
     github_token = os.environ.get(GITHUB_TOKEN_ENV_VAR, "").strip() or None
