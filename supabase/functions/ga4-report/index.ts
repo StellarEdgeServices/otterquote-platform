@@ -18,8 +18,16 @@
  * Input:  GET, or POST { start_date?, end_date?, metrics?: string[] }
  *         Defaults to sessions + totalUsers over the last 7 days, which is the
  *         shape gh-1331's closes-on asks for.
- * Output: { ok: true, property_id, date_range, metrics: { sessions: N, ... },
- *           rows_returned, queried_at }
+ * Output: { ok: true, property_id, date_range, hosts, exclusions,
+ *           metrics: { sessions: N, ... }, rows_returned, queried_at }
+ *
+ * gh-1649: every report carries the SAME dimensionFilter as
+ * get-business-lines-dashboard (production hostName allow-list AND the
+ * netlify.app / accounts.google.com / datacenter-city notExpressions, one
+ * andGroup — see ./ga4-filter.ts), and the response declares `hosts` and
+ * `exclusions` so no reader mistakes the number for an unfiltered count.
+ * Before this the body was { dateRanges, metrics } only: 29,113 sessions /
+ * 84 d unfiltered vs 831 filtered on 2026-09-05.
  *
  * Read-only. Calls Google's token endpoint and the GA4 Data API and writes
  * nothing anywhere — no DB write, no email, no payment. Tier 3A under D-182.
@@ -34,6 +42,10 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+// gh-1649: co-located copy of get-business-lines-dashboard/ga4.ts's wire
+// filter (hostName allow-list + bot/datacenter exclusions). See that file's
+// header for why it is a same-directory copy and not a _shared import.
+import { GA4_EXCLUSIONS, GA4_PRODUCTION_HOSTS, buildGa4ReportRequestBody } from "./ga4-filter.ts";
 
 const FUNCTION_NAME = "ga4-report";
 // gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
@@ -328,10 +340,7 @@ serve(async (req: Request) => {
     const reportRes = await fetch(`${GA4_DATA_API}/properties/${propertyId}:runReport`, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dateRanges: [{ startDate, endDate }],
-        metrics: metrics.map((name) => ({ name })),
-      }),
+      body: JSON.stringify(buildGa4ReportRequestBody(startDate, endDate, metrics)),
     });
     const reportText = await reportRes.text();
 
@@ -388,6 +397,10 @@ serve(async (req: Request) => {
         ok: true,
         property_id: propertyId,
         date_range: { start_date: startDate, end_date: endDate },
+        // gh-1649: what the wire filter counted and excluded, declared with
+        // the number (same shape as get-business-lines-dashboard's visits.*).
+        hosts: GA4_PRODUCTION_HOSTS,
+        exclusions: GA4_EXCLUSIONS,
         metrics: out,
         // A property with genuinely zero traffic returns no rows, which is a
         // valid answer and not an error. Surfaced so a caller can tell "zero

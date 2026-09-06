@@ -70,8 +70,8 @@ export function EmailFlow({ claim, homeownerName, homeownerPhone, onSent, onBack
     <div>
       <h2 className="he-section-heading">Request Your Estimate from Your Adjuster</h2>
       <p className="he-section-intro">
-        We&apos;ll send a professional email to your adjuster on your behalf requesting your
-        insurance estimate (scope of loss).
+        We&apos;ll send your adjuster a written request for a copy of your insurance estimate
+        (scope of loss).
       </p>
 
       {errorMsg && <div className="he-status error">{errorMsg}</div>}
@@ -127,7 +127,7 @@ export function EmailFlow({ claim, homeownerName, homeownerPhone, onSent, onBack
           <div className="he-preview-row">
             <span className="he-preview-label">From:</span>
             <span className="he-preview-value">
-              Otter Quotes (on behalf of {preview.fromName})
+              Sent by Otter Quotes at your request &mdash; replies come to {preview.fromName}
             </span>
           </div>
           <div className="he-preview-row">
