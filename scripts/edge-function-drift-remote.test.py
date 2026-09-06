@@ -48,6 +48,26 @@ def check(label, actual, expected):
         FAILURES.append(label)
 
 
+def expect_measured(result, label):
+    """Guard rail (gh-1737 review): a happy-path fixture that unexpectedly
+    degrades to UNMEASURED (e.g. a future regression re-introduces a real,
+    unmocked dependency into check_project()) must fail with a clear, asserted
+    message naming the reason -- never crash the test runner with a raw
+    `TypeError: 'NoneType' object is not subscriptable` from indexing
+    `result["report"]` blind. Returns the report dict on success, or None
+    (after recording a FAILURE) so callers can skip the indexing that would
+    otherwise crash."""
+    if result["status"] != "MEASURED" or result["report"] is None:
+        msg = (
+            f"expected status=MEASURED with a report, got status={result['status']!r} "
+            f"reason={result['reason']!r}"
+        )
+        print(f"  FAIL  {label}: {msg}")
+        FAILURES.append(label)
+        return None
+    return result["report"]
+
+
 PROJECT = {
     "name": "otter-crm",
     "github_repo": "StellarEdgeServices/otter-crm",
@@ -77,6 +97,15 @@ def fake_list_slugs_factory(slugs: list):
     return _list
 
 
+def fake_require_cli():
+    """Stand-in for efdc.require_cli() -- returns a fake CLI path without
+    touching shutil.which("supabase") or the real filesystem/PATH at all.
+    This is what makes the fixture suite hermetic (gh-1737 review): the
+    happy-path tests below must pass identically whether or not the Supabase
+    CLI is installed on the machine running them."""
+    return "/fake/path/to/supabase"
+
+
 def fake_fetch_all_factory(deployed_files: dict):
     """Returns a stand-in for efdc.fetch_all() that writes `deployed_files`
     ({slug: {relpath: bytes}}) straight to dest_root -- no CLI, no subprocess,
@@ -101,9 +130,12 @@ def fake_fetch_all_factory(deployed_files: dict):
 
 def run_check(project, github_files, deployed_files, slugs):
     """Drive check_project() end to end with fakes standing in for every
-    network call, and both credential env vars present (this exercises the
-    happy-path plumbing; the UNMEASURED tests below separately exercise the
-    missing-credential and unreachable-fetch paths)."""
+    network call AND the Supabase CLI presence check, and both credential env
+    vars present (this exercises the happy-path plumbing; the UNMEASURED tests
+    below separately exercise the missing-credential and unreachable-fetch
+    paths). `require_cli` is faked here too (gh-1737 review) so this suite
+    never touches shutil.which("supabase") -- it must pass identically with
+    or without the real CLI on PATH."""
     import os
 
     fetch = fake_github_fetch_factory(github_files)
@@ -113,7 +145,13 @@ def run_check(project, github_files, deployed_files, slugs):
     os.environ[drift_remote.GITHUB_TOKEN_ENV_VAR] = "fake-gh-token"
     os.environ[project["supabase_token_env"]] = "fake-sbp-token"
     try:
-        return drift_remote.check_project(project, github_fetch=fetch, list_slugs=list_slugs, fetch_all=fetch_all)
+        return drift_remote.check_project(
+            project,
+            github_fetch=fetch,
+            list_slugs=list_slugs,
+            fetch_all=fetch_all,
+            require_cli=fake_require_cli,
+        )
     finally:
         os.environ.pop(drift_remote.GITHUB_TOKEN_ENV_VAR, None)
         os.environ.pop(project["supabase_token_env"], None)
@@ -126,7 +164,9 @@ def test_project_measured_identical():
     result = run_check(PROJECT, github_files, deployed_files, ["stripe-webhook"])
 
     check("identical: status", result["status"], "MEASURED")
-    check("identical: verdict", result["report"]["functions"][0]["verdict"], "IDENTICAL")
+    report = expect_measured(result, "identical: expected a MEASURED report to index")
+    if report is not None:
+        check("identical: verdict", report["functions"][0]["verdict"], "IDENTICAL")
     check("identical: overall_exit_code", drift_remote.overall_exit_code([result]), 0)
     md = drift_remote.render_markdown([result])
     check("identical: markdown mentions project", "otter-crm" in md, True)
@@ -141,7 +181,9 @@ def test_project_measured_drifted():
     result = run_check(PROJECT, github_files, deployed_files, ["stripe-webhook"])
 
     check("drifted: status", result["status"], "MEASURED")
-    check("drifted: verdict", result["report"]["functions"][0]["verdict"], "DRIFTED")
+    report = expect_measured(result, "drifted: expected a MEASURED report to index")
+    if report is not None:
+        check("drifted: verdict", report["functions"][0]["verdict"], "DRIFTED")
     check("drifted: overall_exit_code", drift_remote.overall_exit_code([result]), 1)
     md = drift_remote.render_markdown([result])
     check("drifted: markdown flags DRIFTED", "DRIFTED" in md, True)
@@ -206,7 +248,9 @@ def test_overall_report_shows_passing_and_unreadable_side_by_side():
 
     results = [passing_result, unreadable_result]
     check("mixed: both rows present", {r["name"] for r in results}, {"otter-crm-readable", "otter-crm-unreadable"})
-    check("mixed: passing row is MEASURED/IDENTICAL", passing_result["report"]["functions"][0]["verdict"], "IDENTICAL")
+    passing_report = expect_measured(passing_result, "mixed: expected passing row's report to index")
+    if passing_report is not None:
+        check("mixed: passing row is MEASURED/IDENTICAL", passing_report["functions"][0]["verdict"], "IDENTICAL")
     check("mixed: unreadable row is UNMEASURED", unreadable_result["status"], "UNMEASURED")
     check("mixed: aggregate exit code is 2, not 0", drift_remote.overall_exit_code(results), 2)
 
@@ -218,19 +262,63 @@ def test_overall_report_shows_passing_and_unreadable_side_by_side():
 def test_github_fetch_empty_tree_is_unreadable_not_empty_clean():
     """Zero files under functions_dir on main is treated as unmeasurable (same
     convention as list_deployed_slugs()'s 'zero functions is a credential/path
-    problem, not a clean empty project'), not as a trivially-passing project."""
-    def empty_fetch(repo, functions_dir, token):
-        raise drift_remote.RemoteFetchError(f"{repo}: zero files found under {functions_dir} on main")
+    problem, not a clean empty project'), not as a trivially-passing project.
 
+    gh-1737 review: the prior version of this test injected a fake
+    `github_fetch` that raised RemoteFetchError ITSELF, so it only re-proved
+    the already-covered "a RemoteFetchError becomes UNMEASURED" path -- it
+    never called `fetch_github_function_tree()` at all, so its `if not
+    blobs: raise RemoteFetchError(...)` guard could be deleted and this test
+    would still pass. This version monkeypatches only the network-calling
+    seam, `drift_remote._github_get()`, to return a real-shaped tree payload
+    with zero blobs under `functions_dir` -- so `fetch_github_function_tree()`
+    itself runs its real prefix-filter and its real `if not blobs:` guard,
+    and THAT is what raises. No network, no credentials."""
     import os
 
-    os.environ[drift_remote.GITHUB_TOKEN_ENV_VAR] = "fake-gh-token"
-    os.environ[PROJECT["supabase_token_env"]] = "fake-sbp-token"
+    original_github_get = drift_remote._github_get
+
+    def fake_github_get(url, token):
+        # A well-formed tree response containing files, but none under
+        # PROJECT["functions_dir"] -- exercises the real filter + guard
+        # rather than a pre-baked failure.
+        return {
+            "tree": [
+                {"type": "blob", "path": "some-other-dir/unrelated.ts", "sha": "deadbeef"},
+                {"type": "tree", "path": PROJECT["functions_dir"], "sha": "cafef00d"},
+            ]
+        }
+
+    drift_remote._github_get = fake_github_get
     try:
-        result = drift_remote.check_project(PROJECT, github_fetch=empty_fetch)
+        raised_directly = False
+        direct_message = None
+        try:
+            drift_remote.fetch_github_function_tree(
+                PROJECT["github_repo"], PROJECT["functions_dir"], "fake-gh-token"
+            )
+        except drift_remote.RemoteFetchError as exc:
+            raised_directly = True
+            direct_message = str(exc)
+
+        check("empty-tree: real fetch_github_function_tree() raises the guard", raised_directly, True)
+        if direct_message is not None:
+            check("empty-tree: guard message mentions zero files", "zero files" in direct_message, True)
+
+        os.environ[drift_remote.GITHUB_TOKEN_ENV_VAR] = "fake-gh-token"
+        os.environ[PROJECT["supabase_token_env"]] = "fake-sbp-token"
+        try:
+            # Pass the REAL fetch_github_function_tree through check_project()
+            # (not a stub) so the full path -- including the guard above --
+            # runs through the same seam production code calls.
+            result = drift_remote.check_project(
+                PROJECT, github_fetch=drift_remote.fetch_github_function_tree
+            )
+        finally:
+            os.environ.pop(drift_remote.GITHUB_TOKEN_ENV_VAR, None)
+            os.environ.pop(PROJECT["supabase_token_env"], None)
     finally:
-        os.environ.pop(drift_remote.GITHUB_TOKEN_ENV_VAR, None)
-        os.environ.pop(PROJECT["supabase_token_env"], None)
+        drift_remote._github_get = original_github_get
 
     check("empty-tree: status", result["status"], "UNMEASURED")
     check("empty-tree: reason mentions zero files", "zero files" in result["reason"], True)

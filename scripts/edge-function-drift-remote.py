@@ -215,9 +215,15 @@ def fetch_github_function_tree(repo: str, functions_dir: str, token: str) -> dic
 
 
 # ---------------------------------------------------------------------------
-# Orchestration -- one project. `github_fetch`/`list_slugs`/`fetch_all` are
-# injectable so the test suite can drive this with fixtures and zero network
-# or credentials -- they default to the real network calls.
+# Orchestration -- one project. `github_fetch`/`list_slugs`/`fetch_all`/
+# `require_cli` are ALL injectable so the fixture suite can drive this with
+# zero network, zero credentials, AND zero dependency on an external binary
+# actually being on PATH -- a unit/fixture suite must be hermetic. Every one
+# of the four defaults to the real call; only the test module substitutes
+# fakes. (gh-1737 review: `require_cli` was the one seam missing here, and its
+# absence let the fixture suite's "happy path" cases silently degrade to
+# UNMEASURED -- and then crash indexing a None report -- on any runner/machine
+# without the Supabase CLI already on PATH.)
 # ---------------------------------------------------------------------------
 
 
@@ -248,16 +254,29 @@ def _unmeasured(project: dict, reason: str) -> dict:
     }
 
 
-def check_project(project: dict, github_fetch=fetch_github_function_tree, list_slugs=None, fetch_all=None) -> dict:
+def check_project(
+    project: dict,
+    github_fetch=fetch_github_function_tree,
+    list_slugs=None,
+    fetch_all=None,
+    require_cli=None,
+) -> dict:
     """Compare one remote project's deployed Edge Functions against its own
     repo's `main`. Returns {name, project_ref, github_repo, status, reason,
     report}. NEVER raises -- every failure mode becomes status=UNMEASURED with
     a `reason`, so a caller iterating N projects always gets N rows back, and
     a project is never silently dropped from the output (gh-1419, and this
     issue's own thesis: a missing row is what let the otter-crm gap hide
-    behind a green Netlify row)."""
+    behind a green Netlify row).
+
+    `require_cli` is injectable (defaults to `efdc.require_cli`, the real
+    `shutil.which("supabase")` check) for the identical reason `list_slugs`
+    and `fetch_all` are: a fixture suite that calls the real one is not
+    hermetic, and depends on whichever machine happens to run it already
+    having the Supabase CLI on PATH (gh-1737 review)."""
     list_slugs = list_slugs or efdc.list_deployed_slugs
     fetch_all = fetch_all or efdc.fetch_all
+    require_cli = require_cli or efdc.require_cli
 
     token_env = project["supabase_token_env"]
     github_token = os.environ.get(GITHUB_TOKEN_ENV_VAR, "").strip()
@@ -285,7 +304,7 @@ def check_project(project: dict, github_fetch=fetch_github_function_tree, list_s
 
         with _supabase_token_env(supabase_token):
             try:
-                cli = efdc.require_cli()
+                cli = require_cli()
                 slugs = list_slugs(cli, project["project_ref"])
             except SystemExit:
                 return _unmeasured(project, "Supabase CLI/token check failed -- see step log above")

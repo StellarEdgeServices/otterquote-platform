@@ -112,14 +112,6 @@ jobs:
       - name: Self-test the detector
         run: python3 scripts/edge-function-drift-check.test.py
 
-      # gh-1700: fixture-driven, no network, no credentials -- proves the
-      # remote-project orchestration fires on drift, stays silent on none, and
-      # reports UNMEASURED (never silent, never "clean") for a project it
-      # cannot read, including the two side by side in one run. See that
-      # file's own test module docstring for the full case list.
-      - name: Self-test the remote-project detector (otter-crm)
-        run: python3 scripts/edge-function-drift-remote.test.py
-
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v3
         with:
@@ -131,6 +123,22 @@ jobs:
           # unbundle, so the verdict no longer depends on Docker's presence.
           # Keep the pin anyway: a tool whose output you hash should not float.
           version: 2.116.0
+
+      # gh-1700: fixture-driven, no network, no credentials, and (gh-1737
+      # review) no dependency on the Supabase CLI actually being on PATH --
+      # edge-function-drift-remote.test.py now injects a fake require_cli()
+      # for every happy-path case, so this step is hermetic and its outcome
+      # cannot depend on step order or on the runner already having the CLI
+      # installed. It is placed after "Install Supabase CLI" anyway, as
+      # defence in depth: a unit/fixture suite must not need an external
+      # binary, but a step that could still reach for one should not run
+      # before that binary exists either. Proves the remote-project
+      # orchestration fires on drift, stays silent on none, and reports
+      # UNMEASURED (never silent, never "clean") for a project it cannot
+      # read, including the two side by side in one run. See that file's own
+      # test module docstring for the full case list.
+      - name: Self-test the remote-project detector (otter-crm)
+        run: python3 scripts/edge-function-drift-remote.test.py
 
       # The former "Debug -- fetch one function source" step is REMOVED
       # (gh-1295, 2026-08-31). It ran `supabase functions download` from a
