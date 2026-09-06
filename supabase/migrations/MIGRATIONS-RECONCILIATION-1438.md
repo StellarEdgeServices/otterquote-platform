@@ -165,3 +165,48 @@ select version, name, statements[1] from supabase_migrations.schema_migrations w
 ls supabase/migrations/*.sql | xargs -n1 basename | sort
 ls supabase/migrations_drafts/
 ```
+
+
+## 2026-09-05 addendum — CTO run `cto-2026-09-05T03:07:58Z` (gh-1438 slice)
+
+Live ledger `supabase_migrations.schema_migrations` read 2026-09-05T05:1xZ: **143 rows**.
+Repo `supabase/migrations/` distinct 14-digit versions on this branch: **105**.
+
+| direction | before this PR | after this PR |
+|---|---|---|
+| applied, no repo file | 71 | **70** |
+| repo file, not applied (by ledger) | 32 | **32** |
+
+(The CI ratchet's own report reads "105 / 35 (baseline 29)" — it counts against the
+frozen 2026-09-01 baseline manifest, not the live ledger; the live numbers above are
+the ones conjunct 2 of the amended `closes-on` tracks.)
+
+### Sets touched or recorded this run
+
+| set | live status | repo status after this PR | rule applied |
+|---|---|---|---|
+| `funnel_abandonment_facts` (gh-1585) | **APPLIED LIVE** 2026-09-04T21:20:48Z via Management API SQL — **no ledger row** (that path never writes `schema_migrations`) | filed `20260904212048_gh1585_funnel_abandonment_facts.sql` — idempotent (`CREATE TABLE IF NOT EXISTS` + `ENABLE ROW LEVEL SECURITY`, zero policies, matching live); rollback in `migrations_rollbacks/` | applied → lives in `supabase/migrations/` under its real applied timestamp; replay-safe because the ledger cannot vouch for it |
+| `gh1411_vendor_credit_expected` | APPLIED LIVE, ledger version **20260904224528** | file was `20260903190000_*` (read as never-applied, and its `_rollback.sql` twin sat in the replay path) → **renamed** to `20260904224528_*`; rollback moved to `migrations_rollbacks/` | file carries the real applied version, never the draft's |
+| `gh1531_cron_vault_resync` | APPLIED LIVE, ledger version 20260905044823 | already filed under the same version (PR #1680) | no action |
+| `claims_status_check` (gh-1532, file `20260904132600_gh1532_claims_status_check.sql`, #1627) | **NOT APPLIED** — `pg_constraint` has no `claims_status_check` on `public.claims` | present in `supabase/migrations/` — **in-repo-but-not-applied**, tier:3b, applies on #1532's R-097 window, NOT by this PR | recorded, not applied (this issue is tier:3a: repo-only) |
+| the 10 `migrations_drafts/` sets | unchanged from the table above | unchanged | — |
+
+### The stated rule (unchanged, restated so it is quotable)
+
+Once a migration has been applied to production it lives in `supabase/migrations/`
+under the **real applied timestamp from `schema_migrations`** (never the draft's
+name or a fresh stamp); rollback and pre-flight companions live in
+`supabase/migrations_rollbacks/`; SQL that is written but not applied lives in
+`supabase/migrations_drafts/` until it is applied. A migration applied through a
+path that bypasses the ledger (Management API SQL, dashboard) must be filed
+idempotently, because `db push` will treat its file as pending.
+
+### Residual defects observed, not fixed here (out of this slice)
+
+- 20 `*_rollback.sql` / `*_pre-flight.md` companions still sit inside
+  `supabase/migrations/` with a 14-digit prefix (e.g. `20260901132754_gh1304_*_rollback.sql`,
+  `20260904132600_gh1532_*_rollback.sql`). Every `_rollback.sql` there is replayed
+  FORWARD on a fresh branch — the exact defect `MIGRATIONS-RECONCILIATION-385.md`
+  defect 2 documented. Belongs to the backfill/hygiene batches.
+- Batch 3 (PR #1604, 70 → 49) — check its merge state; the live count of 71 before
+  this PR says it had not landed at measurement time.
