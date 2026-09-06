@@ -711,13 +711,101 @@ def main():
     try:
         nd.os.environ.pop("GITHUB_TOKEN", None)
         nd.os.environ.pop(nd.GITHUB_TOKEN_ENV_VAR, None)
-        posted = nd.post_issue_comment("test body")
-        check("post_issue_comment with no token -> returns False, does not raise", posted, False)
+        posted, detail = nd.post_issue_comment("test body")
+        check("post_issue_comment with no token -> returns (False, reason), does not raise", posted, False)
+        check("post_issue_comment with no token -> reason names the missing env vars",
+              "GITHUB_TOKEN" in detail and nd.GITHUB_TOKEN_ENV_VAR in detail, True)
     finally:
         if saved_gh_token is not None:
             nd.os.environ["GITHUB_TOKEN"] = saved_gh_token
         if saved_pat is not None:
             nd.os.environ[nd.GITHUB_TOKEN_ENV_VAR] = saved_pat
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-1721: --file-issue's POST result is no longer a stderr-only side note")
+    print("(the swallow: a failed POST used to change nothing about the run's outcome)")
+    # -------------------------------------------------------------------------------
+    saved_gh_token = nd.os.environ.get("GITHUB_TOKEN")
+    saved_pat = nd.os.environ.get(nd.GITHUB_TOKEN_ENV_VAR)
+    try:
+        nd.os.environ["GITHUB_TOKEN"] = "fake-token-for-test-never-a-real-credential"
+        nd.os.environ.pop(nd.GITHUB_TOKEN_ENV_VAR, None)
+
+        # A 403 is exactly the shape gh-1721 measured live: a credential present and
+        # accepted by GitHub's auth layer, but lacking the `issues: write` scope.
+        def fake_urlopen_403(req, timeout=None):
+            raise urllib.error.HTTPError(req.full_url, 403, "Resource not accessible by "
+                                          "personal access token", hdrs=None, fp=None)
+
+        nd.urllib.request.urlopen = fake_urlopen_403
+        posted, detail = nd.post_issue_comment("test body")
+        check("post_issue_comment on HTTP 403 -> returns (False, ...)", posted, False)
+        check("403 detail names the status code (never the token value)",
+              "403" in detail and "fake-token-for-test-never-a-real-credential" not in detail, True)
+
+        # The success path: GitHub's real response to a comment POST is the created
+        # comment object, including html_url -- captured here as evidence the caller
+        # can paste, same convention as the rest of this repo's detectors surfacing a
+        # concrete artifact rather than a bare boolean.
+        def fake_urlopen_201(req, timeout=None):
+            return _json_response({"html_url": "https://github.com/StellarEdgeServices/"
+                                                 "otterquote-platform/issues/1549#issuecomment-999"})
+
+        nd.urllib.request.urlopen = fake_urlopen_201
+        posted, detail = nd.post_issue_comment("test body")
+        check("post_issue_comment on success -> returns (True, ...)", posted, True)
+        check("success detail carries the comment's html_url",
+              detail, "https://github.com/StellarEdgeServices/otterquote-platform/issues/1549#issuecomment-999")
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+        if saved_gh_token is not None:
+            nd.os.environ["GITHUB_TOKEN"] = saved_gh_token
+        else:
+            nd.os.environ.pop("GITHUB_TOKEN", None)
+        if saved_pat is not None:
+            nd.os.environ[nd.GITHUB_TOKEN_ENV_VAR] = saved_pat
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-1721: final_exit_code() escalates 2 -> 4 on a failed alarm POST, never")
+    print("touches 0/3 -- the fix's actual observable behavior change")
+    # -------------------------------------------------------------------------------
+    check("code 2, alarm posted -> stays 2", nd.final_exit_code(2, "posted"), 2)
+    check("code 2, alarm failed -> escalates to ALARM_POST_FAILED_EXIT (4)",
+          nd.final_exit_code(2, "failed"), nd.ALARM_POST_FAILED_EXIT)
+    check("code 2, alarm not attempted (None) -> stays 2", nd.final_exit_code(2, None), 2)
+    check("code 3 (UNMEASURED), alarm failed -> stays 3, never escalated",
+          nd.final_exit_code(3, "failed"), 3)
+    check("code 0, alarm failed (can't happen via main(), but the function must not "
+          "invent an escalation) -> stays 0", nd.final_exit_code(0, "failed"), 0)
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-1721: alarm_post_status/detail surface in both render_json and render_text,")
+    print("not just stderr -- loudness must not depend on output format (same principle")
+    print("as the existing banner tests, gh-1501 ruling 2c)")
+    # -------------------------------------------------------------------------------
+    behind_row_for_alarm = nd.evaluate_site(SITE, "b" * 40, "2026-08-11T09:15:22Z", "c" * 40, 3,
+                                             "ready", None, False)
+    failed_json = json.loads(nd.render_json([behind_row_for_alarm], 2,
+                                             alarm_post_status="failed",
+                                             alarm_post_detail="HTTP 403 (Forbidden)"))
+    check("render_json carries alarm_post_status", failed_json["alarm_post_status"], "failed")
+    check("render_json carries alarm_post_detail", failed_json["alarm_post_detail"], "HTTP 403 (Forbidden)")
+    check("a failed alarm POST is loud in the JSON banner too",
+          "REDUNDANT GITHUB ALARM COMMENT FAILED" in (failed_json["banner"] or ""), True)
+    failed_text = nd.render_text([behind_row_for_alarm], 2,
+                                  alarm_post_status="failed", alarm_post_detail="HTTP 403 (Forbidden)")
+    check("render_text is loud about a failed alarm POST too",
+          "REDUNDANT GITHUB ALARM COMMENT FAILED" in failed_text, True)
+    check("render_text names the failure detail", "HTTP 403 (Forbidden)" in failed_text, True)
+
+    posted_json = json.loads(nd.render_json([behind_row_for_alarm], 2,
+                                             alarm_post_status="posted",
+                                             alarm_post_detail="https://github.com/.../999"))
+    check("a successful alarm POST is NOT reported as a failure in the banner",
+          "REDUNDANT GITHUB ALARM COMMENT FAILED" in (posted_json["banner"] or ""), False)
+    not_requested_json = json.loads(nd.render_json([behind_row_for_alarm], 2))
+    check("alarm_post_status defaults to None (not requested / no failing verdict)",
+          not_requested_json["alarm_post_status"], None)
 
     # -------------------------------------------------------------------------------
     print("\nBASE-DIRECTORY SITES + NO-CONTENT CANCELS (gh-1549, CTO run cto-2026-09-05T03:07:58Z)")
