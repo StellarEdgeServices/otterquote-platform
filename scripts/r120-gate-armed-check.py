@@ -92,7 +92,11 @@ import urllib.request
 DEFAULT_REPO = "StellarEdgeServices/otterquote-platform"
 DEFAULT_BRANCH = "main"
 DEFAULT_REQUIRED_CONTEXT = "R-120 signed review"
-NO_TOKEN_REASON = "no GITHUB_PERSONAL_ACCESS_TOKEN found in the environment"
+NO_TOKEN_REASON = (
+    "no credential found in the environment -- create Actions secret "
+    "GH_BRANCH_PROTECTION_PAT (fine-grained PAT, Administration: Read on "
+    "StellarEdgeServices/otterquote-platform)"
+)
 
 
 def _token():

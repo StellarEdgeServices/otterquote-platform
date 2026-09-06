@@ -321,8 +321,8 @@ def main():
     # -------------------------------------------------------------------------------
     payload, detail = r120.fetch_protection_payload(r120.DEFAULT_REPO, r120.DEFAULT_BRANCH, token=None)
     check("fetch with token=None -> payload is None", payload, None)
-    check("fetch with token=None -> detail mentions the missing token",
-          "GITHUB_PERSONAL_ACCESS_TOKEN" in detail, True)
+    check("fetch with token=None -> detail names the secret to create",
+          "GH_BRANCH_PROTECTION_PAT" in detail, True)
 
     # -------------------------------------------------------------------------------
     print("\nUNMEASURED on unreachable API (fetch_protection_payload, urlopen monkeypatched)")
