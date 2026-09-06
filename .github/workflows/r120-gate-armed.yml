@@ -1,0 +1,112 @@
+# R-120 gate armed check -- gh-1728, follow-up 1.
+#
+# "Nothing re-arms the gate." Disarming `.github/workflows/r120-signed-review.yml`'s
+# "R-120 signed review" required status check is a legitimate, recurring need -- every
+# future rotation of the R-120 signing keypair needs it, because the gate verifies
+# signatures against the pubkey as it exists on `main` and cannot let its own
+# replacement through while armed. But re-arming afterwards is a manual step with no
+# owner, no timer, and no detector. On 2026-09-06 it silently did not happen for ~73
+# minutes after PR #1717's key-rotation merge, and the only thing that noticed was a
+# human reading the branch protection payload by hand (CTO RUN 26, see gh-1728). This
+# workflow is the mechanism that notices instead, on a schedule.
+#
+# THIS WORKFLOW DOES NOT TOUCH BRANCH PROTECTION. It is a read-only monitor, not a
+# gate: it never PATCHes required_status_checks, is never itself registered as a
+# required context, and does not modify r120-signed-review.yml or
+# r120-review-gate.yml. Scope explicitly excludes all three per gh-1728.
+#
+# Same shape as .github/workflows/edge-function-drift.yml's drift job and
+# scripts/drift-detector-age.py: scheduled, self-tested before the live check, and a
+# verdict that can never look like a pass when it could not measure (gh-1419,
+# "UNMEASURED IS NOT A PASS").
+#
+# 43 9 * * * = off the top of the hour (edge-function-drift.yml already uses :17;
+# generate-contractor-pages.yml uses :00) and inside the R-031 off-peak window
+# (3 PM - 7 AM ET); 09:43 UTC is 04:43-05:43 ET depending on DST.
+#
+# CREDENTIAL: reading branch protection needs Administration:Read on this repo. Per
+# gh-1728, GITHUB_PERSONAL_ACCESS_TOKEN (the Actions SECRET, a different store from the
+# local environment-variable copy that was measured dead/401 at 15:52Z on 2026-09-06)
+# is recorded as holding Administration:Read (403 was only ever seen on the PATCH,
+# i.e. reads work). This workflow makes no assumption that the secret is valid -- if it
+# is absent, wrong, or expired, scripts/r120-gate-armed-check.py reports UNMEASURED
+# (exit 3) and this job goes red, exactly as loudly as a confirmed-missing gate. It
+# does NOT fall back to `github.token`: the default Actions token cannot read branch
+# protection on most repos, and a silent fallback that always resolves to UNMEASURED
+# would be indistinguishable from this secret actually being tested.
+
+name: R-120 Gate Armed Check
+
+on:
+  schedule:
+    - cron: '43 9 * * *'
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/r120-gate-armed-check.py'
+      - 'scripts/r120-gate-armed-check.test.py'
+      - '.github/workflows/r120-gate-armed.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  r120-gate-armed:
+    name: R-120 signed review required-check presence
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # This is where gh-1728's closes-on criterion actually lives: the fixture-driven
+      # real firing (pre-fix payload, R-120 absent -> MISSING) and negative control
+      # (post-fix payload, R-120 present -> ARMED, silent) both run here, on every
+      # invocation, against the exact payloads gh-1728's own body pasted -- not a
+      # one-off manual observation.
+      - name: Self-test the detector (real firing + negative control)
+        run: python3 scripts/r120-gate-armed-check.test.py
+
+      # NOT a soft skip when the token is absent or invalid. Per gh-1419 ("UNMEASURED
+      # IS NOT A PASS"), the script exits 3 on a missing token, a dead/scope-short
+      # token, a network failure, or a malformed response -- and 3 fails this step
+      # exactly as red as verdict 2 (MISSING) does. pipefail is load-bearing: without
+      # it, `| tee` would swallow a non-zero exit and an UNMEASURED run would report
+      # success (the exact silent-detector shape gh-1501/edge-function-drift.yml
+      # documents hitting once already on this workflow's sibling).
+      - name: Check R-120 signed review is a required status check on main
+        env:
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_PERSONAL_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/r120-gate-armed-check.py --json | tee r120-gate-armed-report.json
+
+      - name: Publish verdict to the job summary
+        if: always()
+        run: |
+          {
+            echo "# R-120 gate armed check"
+            echo
+            if [ -s r120-gate-armed-report.json ]; then
+              echo '```json'
+              cat r120-gate-armed-report.json
+              echo '```'
+            else
+              echo "No report produced -- the detector could not measure. This is a"
+              echo "failure, not a clean run. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload verdict report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: r120-gate-armed-report
+          path: r120-gate-armed-report.json
+          if-no-files-found: ignore
