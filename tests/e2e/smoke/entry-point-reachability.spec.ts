@@ -122,6 +122,67 @@ async function readSpyLog(page: Page): Promise<unknown[][]> {
   return page.evaluate(() => (window as any).__oqSpyCalls || []);
 }
 
+/**
+ * Installs a reachability spy on `window[name]`.
+ *
+ * DEFECT 1 (PR #1720 comment 5560323618): the prior version of this spec
+ * replaced each target global outright, so a renamed/missing handler was
+ * indistinguishable from a bound one -- the spy CREATED the binding this
+ * spec's own assertions exist to verify. That let the spec report `11
+ * passed` while an independent no-spy probe showed every renamed target
+ * throwing `ReferenceError` on a real click. Asserting `typeof
+ * window[name] === 'function'` BEFORE installing anything makes that
+ * failure loud instead of invisible.
+ *
+ * DEFECT 3 (same comment): the prior replacement discarded the original
+ * function entirely, so Assertion 3 could not distinguish a genuinely dead
+ * handler from one that merely changed declaration shape (e.g. `async
+ * function f(` -> `const f = async function (`) -- both looked identical
+ * once replaced. WRAPPING the original -- calling through to it after
+ * recording the call -- means a real click still reaches real, live code,
+ * so a live handler can no longer report as dead.
+ *
+ * Both checks below use the BARE identifier (`new Function('return ' +
+ * name)`), not `window[name]`: a top-level `const`/`let`/`class` in a
+ * classic (non-module) <script> is visible by name throughout the page's
+ * global scope -- exactly how OQ_CARD_ACTIONS' delegated dispatcher and
+ * bids.html/admin-payouts.html's inline `onclick="fn(...)"` markup resolve
+ * these identifiers -- but it is NOT a `window` property. Checking only
+ * `window[name]` would misreport a live `const`-declared handler as
+ * nonexistent, which is DEFECT 3's own shape. Reassigning the bare
+ * identifier (rather than only `window[name]`) is what makes the wrap
+ * visible to those same call sites for every real handler in this
+ * codebase today (each one is a `function` declaration or an explicit
+ * `window.x = ...`, for which the identifier binding and the `window`
+ * property ARE the same binding). A `const`/`let`/`class`-bound handler
+ * cannot be reassigned this way -- JS forbids it outright -- so that
+ * specific declaration style is reported as its own distinct, named
+ * failure below rather than being conflated with "does not exist".
+ */
+async function installSpy(page: Page, name: string) {
+  await page.evaluate((targetName) => {
+    const original = new Function(
+      `return (typeof ${targetName} !== 'undefined') ? ${targetName} : undefined;`
+    )();
+    if (typeof original !== 'function') {
+      throw new Error(
+        `[gh-1697] installSpy('${targetName}') FAILED: typeof ${targetName} is '${typeof original}', not 'function'. Refusing to install a spy on a target that doesn't exist -- doing so would create the very binding this spec's assertions exist to verify (see PR #1720 comment 5560323618).`
+      );
+    }
+    const wrapper = (...args: unknown[]) => {
+      (window as any).__oqSpyCalls.push([targetName, ...args]);
+      return original.apply(window, args);
+    };
+    try {
+      new Function(`${targetName} = arguments[0];`)(wrapper);
+    } catch (err) {
+      throw new Error(
+        `[gh-1697] installSpy('${targetName}') FAILED: ${targetName} exists and is a live function, but its binding could not be reassigned (${(err as Error).message}). This spy can only intercept a 'function' declaration or an explicit window.${targetName} assignment -- a const/let/class-bound handler cannot be spied this way and needs a different verification strategy.`
+      );
+    }
+  }, name);
+}
+
 async function outerHtmlOf(locator: Locator): Promise<string> {
   try {
     return await locator.evaluate((el) => (el as Element).outerHTML);
@@ -279,18 +340,21 @@ test.describe('contractor-opportunities.html entry points', () => {
     // Replace the six target globals with spies BEFORE render() so the
     // delegated click handler (OQ_CARD_ACTIONS' closures resolve these
     // identifiers at call time, not at definition time) picks up the spy.
+    // installSpy() asserts each real handler exists first, then WRAPS it
+    // rather than replacing it -- see installSpy()'s own comment.
     await page.evaluate(() => {
       (window as any).__oqSpyCalls = [];
-      const spy = (name: string) => (...args: unknown[]) => {
-        (window as any).__oqSpyCalls.push([name, ...args]);
-      };
-      (window as any).openEstimatePdf = spy('openEstimatePdf');
-      (window as any).openMeasurementsPdf = spy('openMeasurementsPdf');
-      (window as any).openHoverPdf = spy('openHoverPdf');
-      (window as any).openUpgradePanel = spy('openUpgradePanel');
-      (window as any).confirmUpgradePayment = spy('confirmUpgradePayment');
-      (window as any).cancelUpgradePanel = spy('cancelUpgradePanel');
     });
+    for (const name of [
+      'openEstimatePdf',
+      'openMeasurementsPdf',
+      'openHoverPdf',
+      'openUpgradePanel',
+      'confirmUpgradePayment',
+      'cancelUpgradePanel',
+    ]) {
+      await installSpy(page, name);
+    }
 
     await page.evaluate((opps) => {
       // @ts-expect-error -- global defined by contractor-opportunities.html's own inline script
@@ -405,10 +469,8 @@ test.describe('bids.html entry points', () => {
 
     await page.evaluate(() => {
       (window as any).__oqSpyCalls = [];
-      (window as any).selectContractor = (...args: unknown[]) => {
-        (window as any).__oqSpyCalls.push(['selectContractor', ...args]);
-      };
     });
+    await installSpy(page, 'selectContractor');
 
     const card = page.locator('#bidsGrid .bid-card', { hasText: DEMO_CONTRACTOR_NAME });
     const loc = card.getByRole('button', { name: 'Select This Contractor' });
@@ -439,12 +501,10 @@ test.describe('admin-payouts.html entry points', () => {
 
     await page.evaluate(() => {
       (window as any).__oqSpyCalls = [];
-      const spy = (name: string) => (...args: unknown[]) => {
-        (window as any).__oqSpyCalls.push([name, ...args]);
-      };
-      (window as any).handleApprove = spy('handleApprove');
-      (window as any).showRejectForm = spy('showRejectForm');
     });
+    for (const name of ['handleApprove', 'showRejectForm']) {
+      await installSpy(page, name);
+    }
 
     await page.evaluate((payout) => {
       // @ts-expect-error -- globals defined by admin-payouts.html's own inline script
