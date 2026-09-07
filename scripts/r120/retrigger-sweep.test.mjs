@@ -564,16 +564,39 @@ describe('FIX ROUND 2 — recovery-pass comment fetch, real API shape (>30 comme
 
 // ── SECOND FINDING (PR #1785 review): human override ────────────────────
 describe('human override — an explicit, honored, reported opt-out', () => {
-  test('isOverrideComment matches the documented token, case-insensitively, as a substring', () => {
+  test('isOverrideComment matches the token only as its own line, case-insensitively, trimmed', () => {
+    // Deliberate, single-line invocations — the intended use.
     assert.equal(isOverrideComment(OVERRIDE_TOKEN), true);
     assert.equal(isOverrideComment(OVERRIDE_TOKEN.toUpperCase()), true);
-    assert.equal(isOverrideComment(`Leaving this closed — ${OVERRIDE_TOKEN} — see thread`), true);
+    assert.equal(isOverrideComment(`  ${OVERRIDE_TOKEN}  `), true, 'surrounding whitespace on the line is trimmed');
+    // Deliberate invocation with explanatory prose on OTHER lines is still honored.
+    assert.equal(
+      isOverrideComment(`Saw this stranded — leaving it closed on purpose.\n\n${OVERRIDE_TOKEN}`),
+      true,
+      'the token alone on its own line is still an invocation even with prose on other lines'
+    );
+    assert.equal(
+      isOverrideComment(`${OVERRIDE_TOKEN}\n\nReason: contractor asked us to hold this one.`),
+      true,
+      'order does not matter — the token just needs a line to itself somewhere in the body'
+    );
+    // FIX ROUND 3 — the footgun this round closes: the phrase merely
+    // mentioned or quoted inline, sharing a line with other text, must NOT
+    // match. (See the dedicated regression-test suite below for the fuller
+    // demonstration against the real recovery pipeline.)
+    assert.equal(isOverrideComment(`Leaving this closed — ${OVERRIDE_TOKEN} — see thread`), false);
+    assert.equal(
+      isOverrideComment(`... containing that phrase anywhere on the PR is the chronologically-last signal ` +
+        `the recovery pass honors: \`${OVERRIDE_TOKEN}\`.`),
+      false,
+      'a backtick-quoted mention inside a sentence describing the mechanism is not an invocation'
+    );
     assert.equal(isOverrideComment('just a normal comment'), false);
     assert.equal(isOverrideComment(''), false);
     assert.equal(isOverrideComment(undefined), false);
   });
 
-  test('a stranded PR with a later human override comment is reported as overridden, NOT reopened', () => {
+  test('a stranded PR with a later, DELIBERATE human override comment is reported as overridden, NOT reopened', () => {
     const headSha = '22'.repeat(20);
     const closedPrs = [{ number: 1900, state: 'closed', merged_at: null }];
     const commentsByPr = new Map([
@@ -581,7 +604,10 @@ describe('human override — an explicit, honored, reported opt-out', () => {
         1900,
         [
           { body: `x ${closingMarker(headSha)}`, created_at: '2026-09-07T14:00:00Z' },
-          { body: `Saw this — ${OVERRIDE_TOKEN}, leaving it.`, created_at: '2026-09-07T15:00:00Z' },
+          {
+            body: `Saw this one — leaving it closed on purpose.\n\n${OVERRIDE_TOKEN}`,
+            created_at: '2026-09-07T15:00:00Z',
+          },
         ],
       ],
     ]);
@@ -655,6 +681,184 @@ describe('human override — an explicit, honored, reported opt-out', () => {
     const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
     assert.equal(stranded.length, 0);
     assert.equal(overridden.length, 0);
+  });
+});
+
+// ── FIX ROUND 3 (PR #1785 review, round 3 BLOCKER): the override footgun ─
+//
+// Round 2's `isOverrideComment` matched the token as a case-insensitive
+// SUBSTRING anywhere in a comment body. The round-3 reviewer demonstrated
+// that a GENUINELY STRANDED PR — a real dangling `closing` marker, no `done`
+// follow-up, exactly the case the round-1 recovery pass exists to fix — gets
+// silently reclassified as intentionally overridden the moment ANY LATER
+// comment merely quotes or discusses the phrase in prose, with zero intent
+// to invoke it. This suite proves that failure against the real recovery
+// pipeline, not a description of it, then proves the fix, then proves a
+// deliberate invocation still works.
+//
+// The "BEFORE" case below intentionally reproduces round 2's `isOverrideComment`
+// verbatim, INLINE, in this test file — it is no longer exported from
+// retrigger-sweep.mjs (this fix replaced it), so the old behavior has to be
+// reconstructed here to demonstrate what it used to do. This mirrors exactly
+// how FIX ROUND 2's own "BEFORE" test reproduced the pre-fix workflow line
+// inline rather than reverting real source.
+describe('FIX ROUND 3 — override matching tightened from substring to exact-line', () => {
+  /** Round-2 behavior, reproduced verbatim for the BEFORE case only. */
+  function oldSubstringIsOverrideComment(body) {
+    return (body || '').toLowerCase().includes(OVERRIDE_TOKEN);
+  }
+  /** Round-2 commentSignal, wired to the OLD override matcher, for the BEFORE case only. */
+  function oldCommentSignal(body) {
+    const m = parseMarker(body);
+    if (m) return m;
+    if (oldSubstringIsOverrideComment(body)) return { kind: 'override', sha: null };
+    return null;
+  }
+  /** Round-2 planRecovery, structurally identical, wired to oldCommentSignal, for the BEFORE case only. */
+  function oldPlanRecovery(closedPrs, commentsByPr) {
+    const stranded = [];
+    const overridden = [];
+    for (const pr of closedPrs) {
+      if (pr.state !== 'closed' || pr.merged_at) continue;
+      const comments = [...(commentsByPr.get(pr.number) || [])].sort(
+        (a, b) => new Date(a.created_at) - new Date(b.created_at)
+      );
+      let last = null;
+      for (const c of comments) {
+        const s = oldCommentSignal(c.body);
+        if (s) last = s;
+      }
+      if (!last) continue;
+      if (last.kind === 'override') {
+        overridden.push({ prNumber: pr.number, headSha: last.sha, reason: 'human override (old)' });
+        continue;
+      }
+      if (last.kind === 'closing') {
+        stranded.push({ prNumber: pr.number, headSha: last.sha, reason: 'stranded (old)' });
+      }
+    }
+    return { stranded, overridden };
+  }
+
+  // A realistic prose comment: someone explaining the override MECHANISM —
+  // e.g. a reviewer or a fix-round author describing how it works — with NO
+  // intent whatsoever to invoke it on THIS PR. Modeled directly on this PR's
+  // own review thread, which repeatedly quoted the literal token this way.
+  const proseMentionComment = {
+    body:
+      `Note for future readers: this tool's recovery pass honors a human ` +
+      `override — posting a plain comment containing the phrase ` +
+      `\`${OVERRIDE_TOKEN}\` anywhere on the PR tells the sweep to leave it ` +
+      `closed. Just documenting how it works, not using it here.`,
+    created_at: '2026-09-07T16:00:00Z',
+  };
+
+  function strandedPrFixture() {
+    const headSha = '66'.repeat(20);
+    const closedPrs = [{ number: 1950, state: 'closed', merged_at: null }];
+    const commentsByPr = new Map([
+      [
+        1950,
+        [
+          // A real crash-stranding: closing marker posted, no "done" ever followed.
+          { body: `x ${closingMarker(headSha)}`, created_at: '2026-09-07T14:00:00Z' },
+          // A later comment that only DISCUSSES the override, doesn't invoke it.
+          proseMentionComment,
+        ],
+      ],
+    ]);
+    return { headSha, closedPrs, commentsByPr };
+  }
+
+  test('CASE 1 — BEFORE (round-2 substring match): a genuinely stranded PR is silently reclassified as overridden by a prose mention', () => {
+    const { closedPrs, commentsByPr } = strandedPrFixture();
+    const { stranded, overridden } = oldPlanRecovery(closedPrs, commentsByPr);
+    assert.equal(
+      stranded.length,
+      0,
+      'BEFORE fix: the genuinely-stranded PR silently disappears from the stranded list'
+    );
+    assert.equal(overridden.length, 1, 'BEFORE fix: reclassified as overridden by a comment that never intended to invoke it');
+    assert.equal(overridden[0].prNumber, 1950);
+  });
+
+  test('CASE 2 — AFTER (this fix): the same prose-mention comment does NOT suppress recovery — the real, unmodified planRecovery correctly flags the PR stranded', () => {
+    const { headSha, closedPrs, commentsByPr } = strandedPrFixture();
+    // Real exported planRecovery — no reimplementation.
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
+    assert.equal(overridden.length, 0, 'AFTER fix: a mere mention no longer registers as an override at all');
+    assert.equal(stranded.length, 1, 'AFTER fix: the genuinely-stranded PR is correctly recovered');
+    assert.equal(stranded[0].prNumber, 1950);
+    assert.equal(stranded[0].headSha, headSha);
+  });
+
+  test('CASE 2b — AFTER (this fix), end-to-end: the recovered PR is actually reopened by the real executeRecovery, not just planned', async () => {
+    const { closedPrs, commentsByPr } = strandedPrFixture();
+    const { stranded } = planRecovery(closedPrs, commentsByPr);
+    const github = fakeGithub({ initialState: 'closed' });
+    const { results, actionsUsed } = await executeRecovery({ github, owner: 'o', repo: 'r', stranded, dryRun: false });
+    assert.equal(actionsUsed, 1);
+    assert.equal(results[0].action, 'recovered (reopened)');
+    assert.ok(github.calls.some(([method, num]) => method === 'pulls.update' && num === 1950));
+  });
+
+  test('CASE 3 — AFTER (this fix): a DELIBERATE, deliberate-invocation comment on the SAME stranded PR is still honored', () => {
+    const headSha = '77'.repeat(20);
+    const closedPrs = [{ number: 1951, state: 'closed', merged_at: null }];
+    const commentsByPr = new Map([
+      [
+        1951,
+        [
+          { body: `x ${closingMarker(headSha)}`, created_at: '2026-09-07T14:00:00Z' },
+          {
+            // Deliberate: the token alone on its own line, with explanatory
+            // prose on OTHER lines — exactly the shape the closing-PR
+            // comment's own instructions now describe.
+            body: `Please leave this one closed — we're not ready for it yet.\n\n${OVERRIDE_TOKEN}`,
+            created_at: '2026-09-07T16:30:00Z',
+          },
+        ],
+      ],
+    ]);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
+    assert.equal(stranded.length, 0, 'a deliberate invocation must still suppress recovery');
+    assert.equal(overridden.length, 1);
+    assert.equal(overridden[0].prNumber, 1951);
+  });
+
+  test('REGRESSION GUARD (rail 2): isOverrideComment must reject a prose mention as a substring, specifically — fails if the match is ever loosened back to .includes()', () => {
+    // This is the narrowest possible reproduction of the exact defect this
+    // round fixes: a comment whose ONLY relationship to the token is
+    // containing it as a substring within other text. If a future change
+    // reintroduces `.includes(OVERRIDE_TOKEN)` semantics (e.g. "helpfully"
+    // trimming this down, or a refactor that drops the line-splitting), this
+    // is the test that must fail.
+    const sentenceContainingToken = `... so I'm applying ${OVERRIDE_TOKEN} on this one`;
+    assert.equal(
+      isOverrideComment(sentenceContainingToken),
+      false,
+      'a substring match (the pre-round-3 behavior) must NOT be treated as an invocation'
+    );
+    // Sanity: confirm this fixture WOULD have matched under the old rule,
+    // so this test is actually exercising the boundary it claims to.
+    assert.equal(oldSubstringIsOverrideComment(sentenceContainingToken), true);
+  });
+
+  test('own added text sanity check: none of this fix\'s own doc/comment/test strings put the token alone on its own line', () => {
+    // Rail 4: "check your own added text ... for anything that would itself
+    // arm the override under the new matching rule." Statically scans this
+    // fix's two source files for a line that, trimmed, exactly equals the
+    // token — the thing that WOULD arm it.
+    const target = OVERRIDE_TOKEN.toLowerCase();
+    for (const file of ['retrigger-sweep.mjs', 'retrigger-sweep.test.mjs']) {
+      const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
+      const offendingLine = src.split(/\r\n|\r|\n/).find((line) => line.trim().toLowerCase() === target);
+      assert.equal(
+        offendingLine,
+        undefined,
+        `${file} must not contain a line that is, trimmed, exactly the override token`
+      );
+    }
   });
 });
 

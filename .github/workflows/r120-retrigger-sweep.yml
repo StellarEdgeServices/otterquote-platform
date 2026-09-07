@@ -96,19 +96,36 @@ name: R-120 retrigger sweep
 # scripts/r120/retrigger-sweep.mjs for the full rationale and
 # scripts/r120/retrigger-sweep.test.mjs for the driven before/after proof.
 #
-# HUMAN OVERRIDE (PR #1785 review round 2, SECOND FINDING): a person who
-# sees a stranded PR and wants it to STAY closed can post a plain comment
-# anywhere on it containing the exact phrase
-# `r120-retrigger-sweep: do-not-recover` (case-insensitive substring match —
-# no special formatting needed). The recovery pass treats that as the
-# chronologically-last signal on the PR (same precedence rule already used
-# for closing/done markers) and will never reopen it while that remains the
-# most recent signal. Overridden PRs are reported every dispatch as
+# HUMAN OVERRIDE (PR #1785 review round 2, SECOND FINDING; matching rule
+# TIGHTENED in round 3 — see below): a person who sees a stranded PR and
+# wants it to STAY closed can post a plain comment anywhere on it containing
+# a LINE — by itself, nothing else sharing that line — that, once trimmed,
+# is case-insensitively identical to the exact phrase
+# `r120-retrigger-sweep: do-not-recover` (no special/hidden formatting
+# needed — a human just types that one line). The recovery pass treats that
+# as the chronologically-last signal on the PR (same precedence rule already
+# used for closing/done markers) and will never reopen it while that remains
+# the most recent signal. Overridden PRs are reported every dispatch as
 # `skipped-human-override`, not silently dropped — see the "SECOND FINDING"
 # section in scripts/r120/retrigger-sweep.mjs for the full design. Removing
 # the phrase (posting a later comment without it — the override itself
 # cannot be edited away without a fresh comment, this pass never edits or
 # deletes anything) re-enables recovery on the next dispatch.
+#
+# FIX ROUND 3 (PR #1785 review, round 3 BLOCKER): round 2's match was a
+# case-insensitive SUBSTRING anywhere in the comment body, which the round-3
+# reviewer showed reclassifies a genuinely stranded PR as intentionally
+# overridden the moment ANY later comment merely quotes or discusses the
+# phrase in prose — including, demonstrably, this very PR's own review
+# thread, which had already quoted the literal value several times before
+# this fix landed. `isOverrideComment` (scripts/r120/retrigger-sweep.mjs) now
+# requires the phrase ALONE on its own line, so ordinary discussion of the
+# mechanism no longer arms it — see that file's "FIX ROUND 3" docstring for
+# the full rationale, including the deliberate decision NOT to add a
+# commenter-privilege check (stated there: this is a convenience control,
+# not an authorisation boundary, and it can only ever suppress this tool's
+# own automatic reopen — it performs no writes and never blocks a human from
+# reopening the PR manually at any time).
 #
 # COST (gh-1731, R-031): `workflow_dispatch` ONLY, no `schedule:` trigger —
 # standing cost is zero; it runs only when someone explicitly dispatches it.

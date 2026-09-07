@@ -114,6 +114,55 @@
 // `closing`/`done` came last. An overridden PR is never reopened, and is
 // reported in its own `overridden` list so the override is visible in every
 // run's output, not just honored silently.
+//
+// ── FIX ROUND 3 (PR #1785 review, round 3 BLOCKER — the override is a
+// footgun) ──────────────────────────────────────────────────────────────
+// Round 2's `isOverrideComment` matched the token as a CASE-INSENSITIVE
+// SUBSTRING ANYWHERE IN THE COMMENT BODY. The round-3 reviewer demonstrated
+// (test suite below, "FIX ROUND 3") that this reclassifies a GENUINELY
+// STRANDED PR (a real dangling `closing` marker, no `done` follow-up — the
+// exact case round 1 built the recovery pass to fix) as intentionally
+// overridden the moment ANY later comment merely quotes or discusses the
+// phrase in prose, with zero intent to invoke it — and this PR's own review
+// thread already contains several such mentions (this file's round-1/round-2
+// docstrings, and two prior REVIEW comments, all quote the literal value).
+// A control meant to be a deliberate, rare opt-out was reachable by an
+// ordinary, well-meaning comment describing the mechanism.
+//
+// FIX: `isOverrideComment` no longer matches a substring anywhere. It
+// requires the token to appear as its OWN LINE — trimmed of surrounding
+// whitespace, matched case-insensitively against the WHOLE line, anchored at
+// both the start and the end of that line. A sentence that merely mentions
+// the phrase (inline, backtick-quoted, or otherwise sharing its line with
+// any other text) no longer matches; a person choosing to invoke the
+// override still only has to type one plain line, unadorned, no HTML/hidden
+// markup required (preserving round 2's original human-friendliness intent)
+// — but that line must be deliberately its own, which prose discussing the
+// mechanism does not naturally produce. This is the same "distinctive,
+// deliberately-typed form" property `closingMarker`/`doneMarker` get from
+// being hidden HTML comments, achieved here without requiring invisible
+// markup, since asking a human to paste markup to be understood was the
+// thing round 2 explicitly wanted to avoid.
+//
+// PRIVILEGE — decided, not left implicit: the override requires NO special
+// permission beyond the ability to comment on the PR (already true before
+// this fix, and left unchanged here). This is a stated decision, not an
+// oversight: the override is a convenience control, not an authorisation
+// boundary — it can only ever SUPPRESS this tool's own automatic reopen of
+// a PR the underlying user (or anyone with write access) could reopen
+// manually at any time regardless of the override's state, and it performs
+// zero writes of its own. The worst case of misuse is a stranded PR staying
+// closed somewhat longer than it otherwise would, which is recoverable by
+// any later comment that lacks the exact-line form (removing the override
+// re-enables recovery on the very next dispatch — see `planRecovery`).
+// Adding an author/permission check would require a new live API call
+// (checking the commenting user's repository permission level) that this
+// module does not otherwise make, on the very endpoint class (a live GitHub
+// API shape assumed rather than proven) that has produced this PR's last two
+// structural blockers — introducing that risk to guard a reversible,
+// non-destructive convenience toggle is not a trade this round makes. If a
+// future incident shows override abuse is a real, not merely theoretical,
+// problem, add the permission check then, deliberately, not here.
 
 export const CHECK_NAME = 'R-120 signed review';
 export const MARKER_PREFIX = 'r120-retrigger-sweep';
@@ -137,20 +186,37 @@ export function parseMarker(body) {
 }
 
 /**
- * Human override opt-out (PR #1785 review, SECOND FINDING). A person who
- * wants a stranded PR to stay closed posts a plain, visible comment
- * containing this exact phrase anywhere on the PR — unlike `closingMarker`/
- * `doneMarker`, this is NOT a hidden HTML comment, because a human composing
- * a reply should not have to paste invisible markup to be understood. The
- * match is a case-insensitive substring, so the phrase can appear inside a
- * sentence ("... so I'm applying r120-retrigger-sweep: do-not-recover on
- * this one").
+ * Human override opt-out (PR #1785 review, SECOND FINDING; matching rule
+ * tightened in FIX ROUND 3 — see the module docstring). A person who wants a
+ * stranded PR to stay closed posts a plain, visible comment somewhere on the
+ * PR containing a LINE — by itself, nothing else on that line — that is,
+ * once trimmed, case-insensitively equal to this exact phrase:
+ * `r120-retrigger-sweep: do-not-recover`
+ *
+ * Unlike `closingMarker`/`doneMarker` this is NOT a hidden HTML comment — a
+ * human composing a reply should not have to paste invisible markup to be
+ * understood — but it is no longer a bare substring either: a sentence that
+ * merely mentions or quotes the phrase inline (e.g. discussing this
+ * mechanism, as this very PR's review thread repeatedly does) does not put
+ * it alone on its own line, so it does not match. Other lines in the same
+ * comment (an explanation before or after) are unaffected.
  */
 export const OVERRIDE_TOKEN = 'r120-retrigger-sweep: do-not-recover';
 
-/** True if a comment body contains the human override token (case-insensitive). Pure, no I/O. */
+/**
+ * True if `body` contains a line — once trimmed of surrounding whitespace —
+ * that is case-insensitively identical to `OVERRIDE_TOKEN`, start to end.
+ * Deliberately NOT a substring match (FIX ROUND 3): a comment that mentions
+ * the phrase as part of a longer sentence, or backtick-quotes it inline
+ * within prose, does not satisfy this and must not be treated as an
+ * invocation. Pure, no I/O.
+ */
 export function isOverrideComment(body) {
-  return (body || '').toLowerCase().includes(OVERRIDE_TOKEN);
+  if (!body) return false;
+  const target = OVERRIDE_TOKEN.toLowerCase();
+  return body
+    .split(/\r\n|\r|\n/)
+    .some((line) => line.trim().toLowerCase() === target);
 }
 
 /**
@@ -457,8 +523,11 @@ export async function executeSweep({
           `"${CHECK_NAME}" evaluation on reopen. If this PR is still closed and no follow-up comment ` +
           `appears below, the run that did this crashed before it could reopen — every sweep dispatch ` +
           `runs an automatic recovery pass first and will detect and reopen it. If you want this PR to ` +
-          `stay closed instead, comment anywhere on it: \`${OVERRIDE_TOKEN}\` — a later dispatch will ` +
-          `honor that and report it, not reopen this PR.\n` +
+          `stay closed instead, reply with a comment containing this phrase, alone on its own line and ` +
+          `nothing else on that line, exactly as written (case doesn't matter): "${OVERRIDE_TOKEN}" — a ` +
+          `later dispatch will honor that and report it, not reopen this PR. (Merely mentioning the ` +
+          `phrase inside a sentence, as this very instruction just did, does NOT invoke it — it has to ` +
+          `be its own line.)\n` +
           closingMarker(item.headSha),
       });
 
