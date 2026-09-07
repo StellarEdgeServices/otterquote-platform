@@ -84,6 +84,32 @@ name: R-120 retrigger sweep
 # with auto_merge armed and reports `skipped-auto-merge-armed` — a human
 # needs to retrigger that PR (and re-arm auto-merge if desired) manually.
 #
+# RECOVERY-PASS COMMENT FETCH (PR #1785 review round 2, BLOCKER): the
+# recovery scan above now fetches EVERY comment on each closed candidate PR
+# via scripts/r120/retrigger-sweep.mjs's `fetchAllComments` (full pagination
+# through `github.paginate`), not a single `per_page:30` page. The per-issue
+# comments endpoint returns oldest-first with no documented sort/direction
+# override, so a bounded single page could — and, demonstrated on this PR,
+# did — silently miss a closing marker on any PR with more than 30 total
+# comments (routine here: Netlify, CI bots, the R-120 gate, prior run-work
+# comments). See the FIX ROUND 2 section at the top of
+# scripts/r120/retrigger-sweep.mjs for the full rationale and
+# scripts/r120/retrigger-sweep.test.mjs for the driven before/after proof.
+#
+# HUMAN OVERRIDE (PR #1785 review round 2, SECOND FINDING): a person who
+# sees a stranded PR and wants it to STAY closed can post a plain comment
+# anywhere on it containing the exact phrase
+# `r120-retrigger-sweep: do-not-recover` (case-insensitive substring match —
+# no special formatting needed). The recovery pass treats that as the
+# chronologically-last signal on the PR (same precedence rule already used
+# for closing/done markers) and will never reopen it while that remains the
+# most recent signal. Overridden PRs are reported every dispatch as
+# `skipped-human-override`, not silently dropped — see the "SECOND FINDING"
+# section in scripts/r120/retrigger-sweep.mjs for the full design. Removing
+# the phrase (posting a later comment without it — the override itself
+# cannot be edited away without a fresh comment, this pass never edits or
+# deletes anything) re-enables recovery on the next dispatch.
+#
 # COST (gh-1731, R-031): `workflow_dispatch` ONLY, no `schedule:` trigger —
 # standing cost is zero; it runs only when someone explicitly dispatches it.
 # A single run (list open PRs + recovery scan of recently-updated closed PRs
@@ -157,7 +183,7 @@ jobs:
             const path = require('path');
             const { pathToFileURL } = require('url');
             const ws = process.env.GITHUB_WORKSPACE;
-            const { planSweep, executeSweep, planRecovery, executeRecovery, formatReport, CHECK_NAME } =
+            const { planSweep, executeSweep, planRecovery, executeRecovery, fetchAllComments, formatReport, CHECK_NAME } =
               await import(pathToFileURL(path.join(ws, 'scripts/r120/retrigger-sweep.mjs')).href);
 
             const { owner, repo } = context.repo;
@@ -176,14 +202,25 @@ jobs:
               owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 50,
             });
             const candidateClosed = recentClosed.data.filter((pr) => !pr.merged_at);
+            // FIX ROUND 2 (PR #1785 review): issues.listComments documents no
+            // sort/direction parameter and returns comments oldest-first, so a
+            // single per_page:30 page silently misses a marker posted late in
+            // a long thread. fetchAllComments paginates to exhaustion instead —
+            // see its docstring in retrigger-sweep.mjs for why that is the
+            // only option correct by the documented API contract.
             const commentsByPr = new Map();
             for (const pr of candidateClosed) {
-              const resp = await github.rest.issues.listComments({ owner, repo, issue_number: pr.number, per_page: 30 });
-              commentsByPr.set(pr.number, resp.data);
+              const allComments = await fetchAllComments({ github, owner, repo, issueNumber: pr.number });
+              commentsByPr.set(pr.number, allComments);
             }
-            const stranded = planRecovery(candidateClosed, commentsByPr);
-            const { results: recoveryResults, actionsUsed: recoveryUsed } =
+            const { stranded, overridden } = planRecovery(candidateClosed, commentsByPr);
+            // Human override (PR #1785 review, SECOND FINDING): PRs a person
+            // has explicitly told this tool to leave closed are reported here
+            // — zero API calls, they are simply excluded from `stranded`.
+            const overriddenResults = overridden.map((item) => ({ ...item, action: 'skipped-human-override' }));
+            const { results: recoveryResultsRaw, actionsUsed: recoveryUsed } =
               await executeRecovery({ github, owner, repo, stranded, dryRun, maxActions });
+            const recoveryResults = [...overriddenResults, ...recoveryResultsRaw];
 
             // --- Main sweep: open PRs missing a completed check.
             const prs = await github.paginate(github.rest.pulls.list, {

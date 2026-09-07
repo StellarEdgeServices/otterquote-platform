@@ -74,6 +74,46 @@
 //      repair what a crashed run left behind, on the very next dispatch —
 //      including a dispatch someone runs for an unrelated reason, or one a
 //      human runs specifically because they noticed a PR they didn't close.
+//
+// ── FIX ROUND 2 (PR #1785 review, second FAIL) ─────────────────────────
+// The recovery pass in round 1 was "recoverable by construction" only for
+// PRs with a small comment count. The `.yml`'s recovery-scan fetched
+// comments with a single `issues.listComments({ per_page: 30 })` call — no
+// `page`, no ordering guarantee requested. GitHub documents that endpoint's
+// comments as "ordered by ascending ID" (oldest first) and does NOT
+// document a `sort`/`direction` parameter for it (confirmed against
+// GitHub's own REST reference — unlike `issues.listCommentsForRepo`, the
+// per-issue endpoint only accepts `since`/`per_page`/`page`). The closing
+// marker is posted immediately before the close call, so on any PR with
+// more than 30 comments it is — by construction — among the NEWEST
+// comments, i.e. exactly the ones a single 30-row, oldest-first page never
+// reaches. `planRecovery` never sees it, never flags the PR — silently,
+// indistinguishable from a healthy PR. Netlify preview bots, CI bots, the
+// R-120 gate's own comments, and prior run-work status comments make >30 a
+// routine count on this repo; the previous review demonstrated PR #1785
+// itself crossing that mark within the hour. That is exactly the
+// population (long-lived, heavily-commented, quiescent PRs) this tool
+// exists to serve.
+//
+// FIX: `fetchAllComments` below exhausts every page via `github.paginate`
+// rather than relying on a `sort`/`direction` parameter this endpoint does
+// not document — adding an unsupported query parameter is the kind of fix
+// that looks correct and is silently a no-op (GitHub typically ignores
+// unrecognized query parameters instead of erroring on them), which is the
+// same class of "unverified live API call" defect flagged twice on this PR
+// already. Full pagination is the one option that is correct by the
+// documented contract regardless of comment count or ordering.
+//
+// SECOND FINDING (human override): the recovery pass had no way for a
+// person to say "I saw this stranded PR and I want it to stay closed" — a
+// dangling `closing` marker would be rediscovered and reopened on every
+// future dispatch forever. `OVERRIDE_TOKEN` / `isOverrideComment` below add
+// an explicit, documented, human-typable opt-out: posting a plain comment
+// containing that phrase anywhere on the PR is the chronologically-last
+// signal the recovery pass honors, same as it already honors whichever of
+// `closing`/`done` came last. An overridden PR is never reopened, and is
+// reported in its own `overridden` list so the override is visible in every
+// run's output, not just honored silently.
 
 export const CHECK_NAME = 'R-120 signed review';
 export const MARKER_PREFIX = 'r120-retrigger-sweep';
@@ -94,6 +134,68 @@ export function parseMarker(body) {
   const re = new RegExp(`<!-- ${MARKER_PREFIX}:(closing|done):([0-9a-f]{40}) -->`);
   const m = re.exec(body || '');
   return m ? { kind: m[1], sha: m[2] } : null;
+}
+
+/**
+ * Human override opt-out (PR #1785 review, SECOND FINDING). A person who
+ * wants a stranded PR to stay closed posts a plain, visible comment
+ * containing this exact phrase anywhere on the PR — unlike `closingMarker`/
+ * `doneMarker`, this is NOT a hidden HTML comment, because a human composing
+ * a reply should not have to paste invisible markup to be understood. The
+ * match is a case-insensitive substring, so the phrase can appear inside a
+ * sentence ("... so I'm applying r120-retrigger-sweep: do-not-recover on
+ * this one").
+ */
+export const OVERRIDE_TOKEN = 'r120-retrigger-sweep: do-not-recover';
+
+/** True if a comment body contains the human override token (case-insensitive). Pure, no I/O. */
+export function isOverrideComment(body) {
+  return (body || '').toLowerCase().includes(OVERRIDE_TOKEN);
+}
+
+/**
+ * Classify one comment body as a recognized recovery-pass signal
+ * (`closing`/`done` markers this tool posts, or a human's `override`
+ * token), or null if it carries none. `planRecovery` takes whichever signal
+ * is chronologically LAST across a PR's full comment history — so a human
+ * can post the override token at any point and it is honored for as long as
+ * it remains the most recent signal. Pure, no I/O.
+ */
+function commentSignal(body) {
+  const m = parseMarker(body);
+  if (m) return m;
+  if (isOverrideComment(body)) return { kind: 'override', sha: null };
+  return null;
+}
+
+/**
+ * Fetch every comment on an issue/PR, exhausting all pages.
+ *
+ * FIX ROUND 2 (PR #1785 review): `issues.listComments` documents no
+ * `sort`/`direction` parameter — comments are fixed "ordered by ascending
+ * ID" (oldest first) per GitHub's own REST reference. A single bounded page
+ * (the round-1 recovery scan used `per_page: 30` with no `page` loop) can
+ * therefore never see a marker posted late in a long comment thread. Full
+ * pagination via octokit's own `paginate` helper (the same helper this
+ * module's caller already uses for `pulls.list`) is correct by the
+ * documented contract regardless of comment count or ordering — it does not
+ * depend on an unsupported query parameter that GitHub would likely just
+ * ignore.
+ *
+ * @param {object} opts
+ * @param {object} opts.github — octokit-shaped client; needs `.paginate` + `rest.issues.listComments`
+ * @param {string} opts.owner
+ * @param {string} opts.repo
+ * @param {number} opts.issueNumber
+ * @returns {Promise<Array<{body:string, created_at:string}>>}
+ */
+export async function fetchAllComments({ github, owner, repo, issueNumber }) {
+  return github.paginate(github.rest.issues.listComments, {
+    owner,
+    repo,
+    issue_number: issueNumber,
+    per_page: 100,
+  });
 }
 
 /**
@@ -157,41 +259,57 @@ export function planSweep(prs, checkRunsByPr) {
 /**
  * Scan CLOSED, non-merged PRs for ones this tool itself stranded: a
  * dangling `closing` marker comment with no later `done` marker for the
- * same head sha. Pure function, no I/O.
+ * same head sha — OR for ones a human has explicitly told this tool to
+ * leave alone (the `override` token, PR #1785 review, SECOND FINDING).
+ * Pure function, no I/O.
  *
- * A PR closed by a human, or merged, is never flagged — only a PR whose
- * OWN last marker-bearing comment from this tool says "closing" and was
- * never followed by "done" looks stranded. Repeated retrigger cycles on
- * the same PR are handled correctly because only the CHRONOLOGICALLY LAST
- * marker matters: a healthy closing→reopen pair always ends on "done".
+ * A PR closed by a human with no recognized signal, or merged, is never
+ * flagged either way. Repeated retrigger cycles and a human's override are
+ * both handled correctly by the same rule: only the CHRONOLOGICALLY LAST
+ * signal on the PR matters. A healthy closing→reopen pair always ends on
+ * "done"; an overridden PR's last signal is the human's token, whether they
+ * posted it before or after a stranding.
  *
  * @param {Array<{number:number, state:string, merged_at:string|null}>} closedPrs
- * @param {Map<number, Array<{body:string, created_at:string}>>} commentsByPr
- * @returns {Array<{prNumber:number, headSha:string, reason:string}>}
+ * @param {Map<number, Array<{body:string, created_at:string}>>} commentsByPr — MUST be every comment on the PR, not a truncated page (see fetchAllComments)
+ * @returns {{stranded: Array<{prNumber:number, headSha:string, reason:string}>, overridden: Array<{prNumber:number, headSha:string|null, reason:string}>}}
  */
 export function planRecovery(closedPrs, commentsByPr) {
   const stranded = [];
+  const overridden = [];
   for (const pr of closedPrs) {
     if (pr.state !== 'closed' || pr.merged_at) continue;
     const comments = [...(commentsByPr.get(pr.number) || [])].sort(
       (a, b) => new Date(a.created_at) - new Date(b.created_at)
     );
-    let lastMarker = null;
+    let last = null;
     for (const c of comments) {
-      const m = parseMarker(c.body);
-      if (m) lastMarker = m;
+      const s = commentSignal(c.body);
+      if (s) last = s;
     }
-    if (lastMarker && lastMarker.kind === 'closing') {
+    if (!last) continue;
+    if (last.kind === 'override') {
+      overridden.push({
+        prNumber: pr.number,
+        headSha: last.sha,
+        reason:
+          `human override present ("${OVERRIDE_TOKEN}" is the most recent recovery-pass signal on this PR) ` +
+          '— intentionally left closed; the recovery pass will not reopen it. Post a new comment without ' +
+          'that phrase to re-enable recovery.',
+      });
+      continue;
+    }
+    if (last.kind === 'closing') {
       stranded.push({
         prNumber: pr.number,
-        headSha: lastMarker.sha,
+        headSha: last.sha,
         reason:
           'closed with a dangling "closing" marker and no matching "reopened" follow-up — ' +
           'a previous sweep run almost certainly crashed before it could reopen this PR',
       });
     }
   }
-  return stranded;
+  return { stranded, overridden };
 }
 
 /**
@@ -338,7 +456,9 @@ export async function executeSweep({
           `**R-120 retrigger sweep** (gh-1753): closing this PR now to retrigger a fresh ` +
           `"${CHECK_NAME}" evaluation on reopen. If this PR is still closed and no follow-up comment ` +
           `appears below, the run that did this crashed before it could reopen — every sweep dispatch ` +
-          `runs an automatic recovery pass first and will detect and reopen it.\n` +
+          `runs an automatic recovery pass first and will detect and reopen it. If you want this PR to ` +
+          `stay closed instead, comment anywhere on it: \`${OVERRIDE_TOKEN}\` — a later dispatch will ` +
+          `honor that and report it, not reopen this PR.\n` +
           closingMarker(item.headSha),
       });
 

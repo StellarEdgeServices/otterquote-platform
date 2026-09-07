@@ -35,10 +35,13 @@ import {
   executeSweep,
   planRecovery,
   executeRecovery,
+  fetchAllComments,
   formatReport,
   closingMarker,
   doneMarker,
   parseMarker,
+  OVERRIDE_TOKEN,
+  isOverrideComment,
   CHECK_NAME,
 } from './retrigger-sweep.mjs';
 
@@ -319,10 +322,11 @@ describe('BLOCKER 1 fix — recovery pass rediscovers and repairs what a crashed
     const commentsByPr = new Map([
       [1786, [{ body: closingBody, created_at: '2026-09-07T14:10:00Z' }]],
     ]);
-    const stranded = planRecovery(closedPrs, commentsByPr);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
     assert.equal(stranded.length, 1);
     assert.equal(stranded[0].prNumber, 1786);
     assert.equal(stranded[0].headSha, headSha);
+    assert.equal(overridden.length, 0);
 
     // Step 3: the REAL executeRecovery reopens it.
     const recoveryGithub = fakeGithub({ headShaOverride: headSha, initialState: 'closed' });
@@ -356,23 +360,26 @@ describe('BLOCKER 1 fix — recovery pass rediscovers and repairs what a crashed
         ],
       ],
     ]);
-    const stranded = planRecovery(closedPrs, commentsByPr);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
     assert.equal(stranded.length, 0, 'a "closing" marker followed by a "done" marker is a completed cycle, not a stranding');
+    assert.equal(overridden.length, 0);
   });
 
   test('a merged PR is never flagged even with a dangling closing marker (should not occur, but must not be treated as a stranding)', () => {
     const headSha = 'dd'.repeat(20);
     const closedPrs = [{ number: 1701, state: 'closed', merged_at: '2026-09-07T15:00:00Z' }];
     const commentsByPr = new Map([[1701, [{ body: `x ${closingMarker(headSha)}`, created_at: '2026-09-07T14:00:00Z' }]]]);
-    const stranded = planRecovery(closedPrs, commentsByPr);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
     assert.equal(stranded.length, 0);
+    assert.equal(overridden.length, 0);
   });
 
   test('a closed PR with no marker comments at all (closed by a human, unrelated) is not flagged', () => {
     const closedPrs = [{ number: 1702, state: 'closed', merged_at: null }];
     const commentsByPr = new Map([[1702, [{ body: 'closing this, going a different direction', created_at: '2026-09-07T14:00:00Z' }]]]);
-    const stranded = planRecovery(closedPrs, commentsByPr);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
     assert.equal(stranded.length, 0);
+    assert.equal(overridden.length, 0);
   });
 
   test('executeRecovery respects dryRun -> zero write calls', async () => {
@@ -412,6 +419,242 @@ describe('BLOCKER 1 fix — recovery pass rediscovers and repairs what a crashed
     const { results } = await executeRecovery({ github, owner: 'o', repo: 'r', stranded, dryRun: false });
     assert.equal(results[0].action, 'skipped-no-longer-closed');
     assert.deepEqual(github.calls, [['pulls.get', 1786]]);
+  });
+});
+
+// ── FIX ROUND 2 (PR #1785 review, BLOCKER): the recovery pass's comment
+// fetch, API-shape coverage ────────────────────────────────────────────
+//
+// Everything above drives `planRecovery` with `commentsByPr` built by hand
+// in memory — it never exercises the actual API-shape defect, which lived
+// entirely in how `.github/workflows/r120-retrigger-sweep.yml` FETCHED
+// comments before ever calling `planRecovery`. This section builds a fake
+// octokit client whose `issues.listComments` behaves like the real REST
+// endpoint (oldest-first, page/per_page only, no sort/direction) and whose
+// `.paginate` behaves like octokit's real paginate helper (follow pages
+// until a short page), then demonstrates:
+//   1. the OLD single-page fetch (per_page:30, no loop — literally the code
+//      that was in the workflow) missing a marker that is comment #31 of 40.
+//   2. the NEW `fetchAllComments` (this fix) finding it.
+//   3. `planRecovery` correctly flagging the PR as stranded only when fed
+//      the complete comment set — silently missing it when fed the
+//      truncated one, i.e. the exact silent failure the review demonstrated.
+describe('FIX ROUND 2 — recovery-pass comment fetch, real API shape (>30 comments)', () => {
+  /**
+   * A fake octokit-shaped client whose issues.listComments mimics the real
+   * REST endpoint: `page`/`per_page` only (no sort/direction — matches
+   * GitHub's own docs, confirmed by fetch during this review round), and
+   * returns comments in the FIXED oldest-first order GitHub documents.
+   * `.paginate` mimics octokit's real pagination helper: call repeatedly
+   * with incrementing `page`, stop once a page comes back shorter than
+   * `per_page`.
+   */
+  function fakeGithubWithComments(allCommentsOldestFirst) {
+    const listCalls = [];
+    const listComments = async ({ page = 1, per_page = 30 }) => {
+      listCalls.push({ page, per_page });
+      const start = (page - 1) * per_page;
+      return { data: allCommentsOldestFirst.slice(start, start + per_page) };
+    };
+    return {
+      listCalls,
+      rest: { issues: { listComments } },
+      paginate: async (fn, params) => {
+        let page = 1;
+        let all = [];
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { data } = await fn({ ...params, page });
+          all = all.concat(data);
+          if (data.length < (params.per_page || 30)) break;
+          page += 1;
+        }
+        return all;
+      },
+    };
+  }
+
+  // 40 comments, oldest (id/creation order) first — the closing marker is
+  // comment #31 (i.e. the newest one at the time the PR went stranded,
+  // matching how executeSweep actually posts it: immediately before close).
+  function buildFortyCommentsWithMarkerAt(index, marker) {
+    const comments = [];
+    for (let i = 0; i < 40; i += 1) {
+      comments.push({
+        body: i === index ? `... ${marker} ...` : `routine bot/status comment #${i}`,
+        created_at: new Date(2026, 8, 7, 0, i).toISOString(),
+      });
+    }
+    return comments;
+  }
+
+  test('BEFORE (current-code reproduction): a single per_page:30, no-loop fetch misses a marker at position 31/40', async () => {
+    const headSha = 'ff'.repeat(20);
+    const marker = closingMarker(headSha);
+    const allComments = buildFortyCommentsWithMarkerAt(31, marker); // 0-indexed: position 31 is the 32nd comment, well past 30
+    const github = fakeGithubWithComments(allComments);
+
+    // This IS the pre-fix workflow line, reproduced verbatim:
+    //   const resp = await github.rest.issues.listComments({ owner, repo, issue_number: pr.number, per_page: 30 });
+    //   commentsByPr.set(pr.number, resp.data);
+    const resp = await github.rest.issues.listComments({ owner: 'o', repo: 'r', issue_number: 1785, per_page: 30 });
+    const truncatedComments = resp.data;
+
+    assert.equal(truncatedComments.length, 30, 'the old code only ever sees one 30-row page');
+    assert.ok(
+      !truncatedComments.some((c) => c.body.includes(marker)),
+      'the marker at position 31 must NOT be present in the truncated (old-code) page'
+    );
+
+    // Feed the truncated set into the real, unmodified planRecovery — this
+    // is the demonstrated failure: a genuinely stranded PR is NOT flagged.
+    const closedPrs = [{ number: 1785, state: 'closed', merged_at: null }];
+    const commentsByPr = new Map([[1785, truncatedComments]]);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
+    assert.equal(stranded.length, 0, 'BEFORE fix: the stranded PR is silently invisible to recovery');
+    assert.equal(overridden.length, 0);
+  });
+
+  test('AFTER (this fix): fetchAllComments finds the same marker regardless of position, and planRecovery flags the PR', async () => {
+    const headSha = 'ff'.repeat(20);
+    const marker = closingMarker(headSha);
+    const allComments = buildFortyCommentsWithMarkerAt(31, marker);
+    const github = fakeGithubWithComments(allComments);
+
+    const fetched = await fetchAllComments({ github, owner: 'o', repo: 'r', issueNumber: 1785 });
+
+    assert.equal(fetched.length, 40, 'fetchAllComments must return every comment, not one page');
+    assert.ok(fetched.some((c) => c.body.includes(marker)), 'the marker at position 31 must be present');
+    assert.equal(github.listCalls.length, 1, '40 comments fit in a single per_page:100 page, so exactly one call is made');
+    assert.deepEqual(github.listCalls[0], { page: 1, per_page: 100 });
+
+    const closedPrs = [{ number: 1785, state: 'closed', merged_at: null }];
+    const commentsByPr = new Map([[1785, fetched]]);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
+    assert.equal(stranded.length, 1, 'AFTER fix: the same stranded PR IS flagged for recovery');
+    assert.equal(stranded[0].prNumber, 1785);
+    assert.equal(stranded[0].headSha, headSha);
+    assert.equal(overridden.length, 0);
+  });
+
+  test('AFTER (this fix), exhaustive pagination: marker beyond 100 comments (forces a 2nd page) is still found', async () => {
+    const headSha = '11'.repeat(20);
+    const marker = closingMarker(headSha);
+    const comments = [];
+    for (let i = 0; i < 140; i += 1) {
+      comments.push({
+        body: i === 137 ? `... ${marker} ...` : `routine comment #${i}`,
+        created_at: new Date(2026, 8, 7, 0, 0, i).toISOString(),
+      });
+    }
+    const github = fakeGithubWithComments(comments);
+
+    const fetched = await fetchAllComments({ github, owner: 'o', repo: 'r', issueNumber: 9999 });
+
+    assert.equal(fetched.length, 140);
+    assert.equal(github.listCalls.length, 2, 'must span exactly two 100-row pages to reach comment #137');
+    assert.ok(fetched.some((c) => c.body.includes(marker)));
+
+    const closedPrs = [{ number: 9999, state: 'closed', merged_at: null }];
+    const { stranded } = planRecovery(closedPrs, new Map([[9999, fetched]]));
+    assert.equal(stranded.length, 1);
+    assert.equal(stranded[0].prNumber, 9999);
+  });
+});
+
+// ── SECOND FINDING (PR #1785 review): human override ────────────────────
+describe('human override — an explicit, honored, reported opt-out', () => {
+  test('isOverrideComment matches the documented token, case-insensitively, as a substring', () => {
+    assert.equal(isOverrideComment(OVERRIDE_TOKEN), true);
+    assert.equal(isOverrideComment(OVERRIDE_TOKEN.toUpperCase()), true);
+    assert.equal(isOverrideComment(`Leaving this closed — ${OVERRIDE_TOKEN} — see thread`), true);
+    assert.equal(isOverrideComment('just a normal comment'), false);
+    assert.equal(isOverrideComment(''), false);
+    assert.equal(isOverrideComment(undefined), false);
+  });
+
+  test('a stranded PR with a later human override comment is reported as overridden, NOT reopened', () => {
+    const headSha = '22'.repeat(20);
+    const closedPrs = [{ number: 1900, state: 'closed', merged_at: null }];
+    const commentsByPr = new Map([
+      [
+        1900,
+        [
+          { body: `x ${closingMarker(headSha)}`, created_at: '2026-09-07T14:00:00Z' },
+          { body: `Saw this — ${OVERRIDE_TOKEN}, leaving it.`, created_at: '2026-09-07T15:00:00Z' },
+        ],
+      ],
+    ]);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
+    assert.equal(stranded.length, 0, 'an overridden PR must not also appear in the actionable stranded list');
+    assert.equal(overridden.length, 1);
+    assert.equal(overridden[0].prNumber, 1900);
+    assert.match(overridden[0].reason, /human override/);
+  });
+
+  test('override honored end-to-end: executeRecovery is never even asked about an overridden PR', async () => {
+    const headSha = '33'.repeat(20);
+    const closedPrs = [{ number: 1901, state: 'closed', merged_at: null }];
+    const commentsByPr = new Map([
+      [
+        1901,
+        [
+          { body: `x ${closingMarker(headSha)}`, created_at: '2026-09-07T14:00:00Z' },
+          { body: OVERRIDE_TOKEN, created_at: '2026-09-07T14:05:00Z' },
+        ],
+      ],
+    ]);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
+    assert.equal(stranded.length, 0);
+    assert.equal(overridden.length, 1);
+
+    // Mirrors exactly how the workflow wires this: only `stranded` (never
+    // `overridden`) is passed to executeRecovery, so an overridden PR incurs
+    // zero write calls and zero API calls beyond the comment fetch already done.
+    const github = fakeGithub({ initialState: 'closed' });
+    const { results, actionsUsed } = await executeRecovery({ github, owner: 'o', repo: 'r', stranded, dryRun: false });
+    assert.equal(results.length, 0);
+    assert.equal(actionsUsed, 0);
+    assert.deepEqual(github.calls, [], 'an overridden PR must generate zero API calls from the recovery executor');
+  });
+
+  test('override posted BEFORE a later re-stranding is superseded — chronologically-last signal still wins', () => {
+    // Not a realistic sequence in production (an overridden PR is never
+    // reopened, so it can never be re-closed by this tool either) but
+    // proves the precedence rule is symmetric, not hardcoded to "override
+    // always wins" regardless of order.
+    const headSha = '44'.repeat(20);
+    const closedPrs = [{ number: 1902, state: 'closed', merged_at: null }];
+    const commentsByPr = new Map([
+      [
+        1902,
+        [
+          { body: OVERRIDE_TOKEN, created_at: '2026-09-07T13:00:00Z' },
+          { body: `x ${closingMarker(headSha)}`, created_at: '2026-09-07T14:00:00Z' },
+        ],
+      ],
+    ]);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
+    assert.equal(overridden.length, 0, 'a stale override predating the current closing marker must not suppress recovery');
+    assert.equal(stranded.length, 1);
+    assert.equal(stranded[0].prNumber, 1902);
+  });
+
+  test('a healthy done-marker PR is unaffected by isOverrideComment (no false-positive substring collision)', () => {
+    const headSha = '55'.repeat(20);
+    const closedPrs = [{ number: 1903, state: 'closed', merged_at: null }];
+    const commentsByPr = new Map([
+      [
+        1903,
+        [
+          { body: `x ${closingMarker(headSha)}`, created_at: '2026-09-07T14:00:00Z' },
+          { body: `y ${doneMarker(headSha)}`, created_at: '2026-09-07T14:00:05Z' },
+        ],
+      ],
+    ]);
+    const { stranded, overridden } = planRecovery(closedPrs, commentsByPr);
+    assert.equal(stranded.length, 0);
+    assert.equal(overridden.length, 0);
   });
 });
 
