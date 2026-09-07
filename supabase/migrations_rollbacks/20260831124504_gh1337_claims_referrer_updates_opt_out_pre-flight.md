@@ -2,7 +2,7 @@
 
 **Tier:** 3A (additive, autonomous per D-261).
 **Status:** **DRAFTED, NOT APPLIED.** Nothing in this PR has touched production
-(`yeszghaspzwwstvsrioa`) or any Supabase branch. Requires Dustin's read (R-120)
+(`yeszghaspzwwstvsrioa`) or any Supabase branch. Requires the R-177 legal read (a LEGAL-READ comment from a fresh-context refuter agent plus the CEO's `R-177 SIGNED:` line; was Dustin's read under R-120)
 alongside the rest of the PR, because it is the storage for a consent record.
 
 ## Exact object
