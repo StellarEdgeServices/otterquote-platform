@@ -15,19 +15,33 @@ name: R-120 retrigger sweep
 # and #1668 is stacked on #1646 — a signature covers a specific head sha, so
 # they need manual conflict resolution by someone with write access before
 # either can be signed; this sweep deliberately does not touch them, see the
-# `exclude_prs` default below).
+# `exclude_prs` default below). BECAUSE those two are excluded by default,
+# this tool's classification logic has, as of this fix, only ever been
+# exercised against synthetic test fixtures — never against a real GitHub
+# API response shape for the exact case it exists to serve. That is a
+# genuine gap, not resolved by this fix (a live dispatch is out of scope for
+# the fix itself — see PR #1785). Before flipping `dry_run` to `false`
+# against the real population, dispatch once with `dry_run: true` (report
+# only, confirmed inert by reading executeSweep/executeRecovery — dryRun
+# short-circuits before any write call) to sanity-check classification
+# against live data with zero risk, before ever writing.
 #
 # ⛔ WHAT THIS WORKFLOW CANNOT DO, ENFORCED STRUCTURALLY, NOT BY INTENT:
-#   - `permissions:` below grants `pull-requests: write` (to list PRs, read
-#     their head sha, and — for a MISSING PR only — close it and reopen it,
-#     plus post one informational comment) and `contents: read` (to check
-#     out scripts/r120/retrigger-sweep.mjs from `main`, same sparse pattern
-#     r120-signed-review.yml itself uses). It does NOT hold `checks: write`,
-#     so it has no API path that could create or update a check-run — it
-#     cannot manufacture a green "R-120 signed review" context even if a bug
-#     tried to. It does not hold `contents: write`, so it cannot push a
-#     commit to any PR branch, and it never checks out or reads PR head
-#     content — only PR *metadata* (number, state, head sha) via the API.
+#   - `permissions:` below grants `pull-requests: write` (to list/get PRs,
+#     read their head sha and auto_merge state, and — for a MISSING PR, or
+#     one a previous crashed run stranded closed, only — close/reopen it
+#     plus post plain informational/marker comments), `checks: read` (the
+#     ONLY thing this workflow reads via the Checks API — `checks.listForRef`
+#     — to see whether a completed "R-120 signed review" run already exists;
+#     no other checks.* call is made anywhere in this workflow), and
+#     `contents: read` (to check out scripts/r120/retrigger-sweep.mjs from
+#     `main`, same sparse pattern r120-signed-review.yml itself uses). It
+#     does NOT hold `checks: write`, so it has no API path that could create
+#     or update a check-run — it cannot manufacture a green "R-120 signed
+#     review" context even if a bug tried to. It does not hold
+#     `contents: write`, so it cannot push a commit to any PR branch, and it
+#     never checks out or reads PR head content — only PR *metadata*
+#     (number, state, head sha, auto_merge) via the API.
 #   - The verdict logic lives ENTIRELY in scripts/r120/verify.mjs, imported
 #     by r120-signed-review.yml, which this workflow never imports, edits,
 #     or triggers directly. This workflow's only effect on that gate is
@@ -41,19 +55,54 @@ name: R-120 retrigger sweep
 #     file's docstring and its own structural-incapacity test). A PR whose
 #     check already ran, green or red, is left alone; so is one whose check
 #     is still queued/in_progress. Fixture-driven proof of both the
-#     retrigger action and the "leave it alone" declines lives in
-#     scripts/r120/retrigger-sweep.test.mjs (`node --test`).
+#     retrigger action and the "leave it alone" declines — including a
+#     driven, not described, crash-and-recover cycle for BLOCKER 1 — lives
+#     in scripts/r120/retrigger-sweep.test.mjs (`node --test`).
+#
+# RECOVERABILITY (PR #1785 review, BLOCKER 1): the original close→reopen was
+# two unguarded API calls, and a crash between them left a PR permanently
+# closed with no trace and no way for this tool to rediscover it. Every
+# dispatch of this workflow now runs a RECOVERY PASS FIRST: it scans
+# recently-updated, non-merged, CLOSED PRs for a dangling "closing" marker
+# comment (posted by this tool BEFORE it ever closes a PR) with no later
+# "done" marker — i.e. a PR this tool itself stranded closed on some earlier,
+# crashed run — and reopens it. See scripts/r120/retrigger-sweep.mjs for the
+# full design rationale and scripts/r120/retrigger-sweep.test.mjs for the
+# driven proof.
+#
+# BLAST RADIUS (PR #1785 review, MINOR 1): `max_actions` bounds the TOTAL
+# number of close/reopen write actions (recovery reopens + new retriggers,
+# combined) a single dispatch will perform. Defaults low (5) on purpose —
+# this sweep exists to serve a rare-event population (a handful of PRs at
+# most as of this writing), not to be a tool that can act on every open PR
+# in one invocation. Anything beyond the cap is explicitly reported as
+# `skipped-cap-reached`, never silently dropped.
+#
+# AUTO-MERGE (PR #1785 review, MINOR 2): closing a PR clears GitHub's
+# auto_merge setting; reopening does not restore it. Rather than guess at
+# restoring a setting this tool did not set, it refuses to act on any PR
+# with auto_merge armed and reports `skipped-auto-merge-armed` — a human
+# needs to retrigger that PR (and re-arm auto-merge if desired) manually.
 #
 # COST (gh-1731, R-031): `workflow_dispatch` ONLY, no `schedule:` trigger —
 # standing cost is zero; it runs only when someone explicitly dispatches it.
-# A single run (list open PRs + one check-runs lookup per PR + at most a
-# handful of close/reopen pairs) is a single short job, well under a minute
-# of runner time per invocation — call it ~1-2 job-minutes when dispatched,
-# 0 job-minutes/month otherwise. Not scheduled because the population this
-# closes (a check silently never running) is created by rare events — adding
-# a required check, rotating the signing key — not by routine PR activity;
-# a human or the CTO lane dispatches it after either of those, or whenever
-# gh-1753-style symptoms recur.
+# A single run (list open PRs + recovery scan of recently-updated closed PRs
+# + one check-runs lookup per open PR + at most `max_actions` close/reopen
+# pairs) is a single short job, well under a minute of runner time per
+# invocation — call it ~1-2 job-minutes when dispatched, 0 job-minutes/month
+# otherwise. Not scheduled because the population this closes (a check
+# silently never running) is created by rare events — adding a required
+# check, rotating the signing key — not by routine PR activity; a human or
+# the CTO lane dispatches it after either of those, or whenever gh-1753-style
+# symptoms recur.
+#
+# Reopening a MISSING/stranded PR fires GitHub's default `pull_request`
+# event types (`opened, synchronize, reopened`), not just
+# r120-signed-review.yml — this repo's codeql.yml, credential-sweep.yml,
+# e2e-smoke.yml, e2e-tests.yml, post-deploy-verify.yml, schema-lint.yml, and
+# (pre-existing, superseded, advisory-only) r120-review-gate.yml all also
+# listen for those events and will re-run as a side effect. `max_actions`
+# bounds how many PRs can trigger this cascade in one dispatch.
 #
 # Defaults to `dry_run: true` — the report-only mode — so a manual dispatch
 # with no inputs never writes anything. Flip `dry_run` to `false` to act.
@@ -62,17 +111,22 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'true = report only, no writes. false = actually close+reopen MISSING PRs.'
+        description: 'true = report only, no writes. false = actually recover stranded PRs and close+reopen MISSING PRs.'
         type: boolean
         default: true
       exclude_prs:
-        description: 'Comma-separated PR numbers to never act on even if MISSING (default: the known-dirty gh-1753 population).'
+        description: 'Comma-separated PR numbers to never act on even if MISSING (default: the known-dirty gh-1753 population — see the top-of-file comment for why).'
         type: string
         default: '1646,1668'
+      max_actions:
+        description: 'Cap on total close/reopen write actions this dispatch will perform (recovery + retrigger combined). Kept low on purpose.'
+        type: string
+        default: '5'
 
 permissions:
   contents: read        # sparse-checkout retrigger-sweep.mjs from main only
-  pull-requests: write  # list/get open PRs, and — MISSING only — close+reopen+comment
+  pull-requests: write  # list/get open+closed PRs, and — MISSING or stranded only — close+reopen+comment
+  checks: read          # checks.listForRef — the only Checks API call this workflow makes, read-only
 
 concurrency:
   group: r120-retrigger-sweep
@@ -97,19 +151,41 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry_run }}
           EXCLUDE_PRS: ${{ inputs.exclude_prs }}
+          MAX_ACTIONS: ${{ inputs.max_actions }}
         with:
           script: |
             const path = require('path');
             const { pathToFileURL } = require('url');
             const ws = process.env.GITHUB_WORKSPACE;
-            const { planSweep, executeSweep, formatReport, CHECK_NAME } =
+            const { planSweep, executeSweep, planRecovery, executeRecovery, formatReport, CHECK_NAME } =
               await import(pathToFileURL(path.join(ws, 'scripts/r120/retrigger-sweep.mjs')).href);
 
             const { owner, repo } = context.repo;
             const dryRun = process.env.DRY_RUN !== 'false';
             const excludeNumbers = (process.env.EXCLUDE_PRS || '')
               .split(',').map((s) => s.trim()).filter(Boolean).map(Number);
+            const maxActions = Number(process.env.MAX_ACTIONS || '5');
 
+            // --- Recovery pass FIRST, every dispatch (BLOCKER 1 fix): find
+            // PRs a previous, crashed run of this same tool left stranded
+            // closed, and reopen them. Bounded to the most-recently-updated
+            // closed PRs — a stranding is necessarily recent (this tool
+            // only started existing with this PR), so there is no need to
+            // paginate the repo's full closed-PR history.
+            const recentClosed = await github.rest.pulls.list({
+              owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 50,
+            });
+            const candidateClosed = recentClosed.data.filter((pr) => !pr.merged_at);
+            const commentsByPr = new Map();
+            for (const pr of candidateClosed) {
+              const resp = await github.rest.issues.listComments({ owner, repo, issue_number: pr.number, per_page: 30 });
+              commentsByPr.set(pr.number, resp.data);
+            }
+            const stranded = planRecovery(candidateClosed, commentsByPr);
+            const { results: recoveryResults, actionsUsed: recoveryUsed } =
+              await executeRecovery({ github, owner, repo, stranded, dryRun, maxActions });
+
+            // --- Main sweep: open PRs missing a completed check.
             const prs = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', per_page: 100,
             });
@@ -123,8 +199,11 @@ jobs:
             }
 
             const plan = planSweep(prs, checkRunsByPr);
-            const results = await executeSweep({ github, owner, repo, plan, dryRun, excludeNumbers });
-            const report = formatReport(results, { dryRun });
+            const remainingActions = Math.max(0, maxActions - recoveryUsed);
+            const { results } = await executeSweep({
+              github, owner, repo, plan, dryRun, excludeNumbers, maxActions: remainingActions,
+            });
+            const report = formatReport(results, { dryRun, recoveryResults });
 
             core.info(report);
             await core.summary
