@@ -4194,7 +4194,15 @@
         document.body.removeChild(hoverPdfLink);
       } catch (err) {
         console.error('Failed to open measurement PDF:', err);
-        alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
+        // gh-1748: get-hover-pdf (index.ts:166-182, D-317 cl. 7 / #1636) returns
+        // 403 when the caller is not entitled to a manual-fulfilment PDF — that
+        // is a policy refusal, not a missing file, so it gets its own honest
+        // copy instead of the "still in progress" 404 wording.
+        if (err?.context?.status === 403) {
+          alert('The measurement report is internal to the homeowner\'s file and not part of the bid packet.');
+        } else {
+          alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
+        }
       } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; View Measurement PDF'; }
       }
