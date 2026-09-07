@@ -205,6 +205,29 @@ export function showCompareToggle(bids: BidRow[]): boolean {
   return activeBids(bids).length >= 2;
 }
 
+// ── Award-refusal copy (gh-1532) ────────────────────────────────────────
+
+/**
+ * Sentinel raised by `claims_enforce_payment_method_on_award()` and by
+ * `accept_bid()` when the selected contractor has no payment method on file.
+ * It is an INTERNAL identifier: match on it, never render it.
+ */
+export const NO_PAYMENT_METHOD_SENTINEL = 'contractor_no_payment_method';
+
+/** Homeowner-facing wording for that refusal (mirrors bids.html + contractor-about.html). */
+export const NO_PAYMENT_METHOD_MESSAGE =
+  "This contractor hasn't added a payment method yet, so the project can't be awarded to them.";
+
+/**
+ * Map a raw Postgres/PostgREST error message onto homeowner-facing text.
+ * Anything that is not a recognised sentinel is passed through unchanged.
+ */
+export function mapAwardError(raw: string | null | undefined): string {
+  const msg = raw ?? '';
+  if (msg.includes(NO_PAYMENT_METHOD_SENTINEL)) return NO_PAYMENT_METHOD_MESSAGE;
+  return msg;
+}
+
 // ── Action button state machine (bids.html:1184-1199) ────────────────────────
 
 export type BidActionKind =
