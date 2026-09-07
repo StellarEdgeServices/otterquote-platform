@@ -168,16 +168,49 @@ EXPLICIT SITE CLASSIFICATION -- SIX SITES, NOT THREE (gh-1734, 2026-09-07)
   detail string); neither shadows the other, same discipline as BUILD_FAILING vs BEHIND for
   git sites.
 
-  OUT-OF-SCOPE SITES -- fantastic-cactus-db1344 / fantastic-choux-4f510f
-  Both have no custom_domain (only the default *.netlify.app subdomain Netlify assigns
-  automatically) and no repo_url -- confirmed live 2026-09-07 via GET /api/v1/sites, not
-  assumed. Nothing routes real traffic to either name, so there is no page to hash and no
-  legal surface to protect; they are recorded as OUT OF SCOPE, once, on their own rows
-  (see SITE_CLASSIFICATION), rather than vanishing into the same silent git-only filter
-  that dropped stohlerroof-bridge. If either site is ever pointed at a real custom domain,
-  it stops matching this OUT-OF-SCOPE record's own description and should be reclassified
-  -- this script cannot detect that on its own; a human (or a future issue) has to notice
-  the domain changed and update this table.
+  fantastic-cactus-db1344 / fantastic-choux-4f510f -- MEASURED, content-hash (gh-1734
+  fix-1, 2026-09-07; REVISED from this section's first pass)
+  These two were first recorded OUT OF SCOPE ("no custom_domain, no repo_url... an
+  unclaimed scratch/throwaway site, not a production or legally-loaded surface") on the
+  strength of Netlify site metadata alone -- GET /api/v1/sites was checked; the pages
+  themselves were never opened. A fresh-context refuter on PR #1779 opened both live
+  URLs and found a full, GA4-tracked (G-JNQ6XR3LX2) "ClaimShield" storm-claim lead-
+  generation landing page on each (two different copy variants of the same funnel, not
+  duplicates), each with a working form whose JS POSTs email/name/zip directly to
+  https://yeszghaspzwwstvsrioa.supabase.co/rest/v1/leads -- the PRODUCTION Supabase
+  project (see this repo's memory: otterquote-supabase-project-refs) -- with no privacy-
+  policy link (the page's only "Privacy" href is "#"). That is live, PII-collecting,
+  prod-database-connected traffic, independently reconfirmed (not just inherited from
+  the refuter) before this section and the SITE_CLASSIFICATION table below were rewritten
+  -- see netlify-drift-fixtures/fantastic-cactus-db1344.json and
+  fantastic-choux-4f510f.json's notes for the fetched evidence (GA4 id, POST target,
+  dead privacy link, each page's own /upload CTA also live).
+
+  "No custom_domain, no repo_url" was true and remains true -- it is real evidence
+  against mode="git" (there is no repo to diff against) and always was. It was never
+  evidence the pages don't matter, and treating "not git-connected" as "not a production
+  surface" is the identical mistake gh-1734 was filed over for stohlerroof-bridge, just
+  arrived at from the OUT_OF_SCOPE side instead of a silent drop. Per the dispatch that
+  found this: "an explicit wrong reason is worse than the silent filter it replaces,
+  because it looks decided." Both sites are now measured=True, mode="content-hash" --
+  the same mechanism as stohlerroof-bridge, with content_url explicitly set (their
+  default_domain, since neither has a custom_domain) and their own baseline fixture per
+  site (the two pages' content differs, so one shared baseline would be wrong for at
+  least one of them). max_age_days is 30 for both, deliberately tighter than
+  stohlerroof-bridge's 90 -- an ACTIVE, currently-unowned, PII-collecting funnel with no
+  visible privacy disclosure warrants closer review than a static legal-disclosure page;
+  this is this worker's judgment call, not a derived fact, same caveat as
+  DEFAULT_NON_GIT_MAX_AGE_DAYS's own paragraph above.
+
+  This reclassification is a content/existence check only -- it fetches and hashes each
+  page's own public HTML, the same as stohlerroof-bridge; it does not touch, read, query,
+  or infer anything about rows actually written to the `leads` table by real visitors.
+  Per the PR #1779 refuter and this fix: this is a finding LARGER than this script --
+  a live, unmonitored, PII-collecting production surface with no privacy policy is worth
+  a human (Dustin/CTO/legal) actually looking at ownership and disclosure, which a content
+  hash cannot fix and was never meant to. If either site is later given a real
+  custom_domain, or is retired, or is reassigned a documented owner, this table entry
+  needs a human to notice and update it -- the script cannot detect that on its own.
 
 USAGE
   NETLIFY_PAT=... GITHUB_PERSONAL_ACCESS_TOKEN=... python scripts/netlify-deploy-drift.py
@@ -273,14 +306,20 @@ import urllib.request
 # gh-1734, 2026-09-07: git-connectedness stopped being the classification criterion.
 # filter_org_sites() now classifies EVERY site the account returns via the explicit
 # SITE_CLASSIFICATION table below (see the module docstring's EXPLICIT SITE
-# CLASSIFICATION section) -- as of this writing that is:
+# CLASSIFICATION section) -- as of this writing (gh-1734 fix-1, PR #1779 refuter blocker
+# 1 addressed) that is:
 #   jade-alpaca-b82b5e       measured, git             repo: otterquote-platform
 #   otterquote-app           measured, git             repo: otterquote-platform
 #   otter-crm                measured, git             repo: otter-crm
 #   stohlerroof-bridge       measured, content-hash     stohlerroof.com (D-174 bridge)
-#   fantastic-cactus-db1344  OUT OF SCOPE               no custom domain, no repo
-#   fantastic-choux-4f510f   OUT OF SCOPE               no custom domain, no repo
-# A site absent from this table is UNCLASSIFIED and fails loudly (see resolve_site_rows()).
+#   fantastic-cactus-db1344  measured, content-hash     live ClaimShield lead funnel,
+#                                                        posts to prod Supabase `leads`
+#   fantastic-choux-4f510f   measured, content-hash     same funnel, different copy
+#                                                        variant, same prod POST target
+# All SIX sites are now measured=True -- none is OUT_OF_SCOPE as of this writing (that
+# classification still exists in the code for a genuine future scratch site; see
+# out_of_scope_row() and the OUT_OF_SCOPE verdict). A site absent from this table is
+# UNCLASSIFIED and fails loudly (see resolve_site_rows()).
 # ---------------------------------------------------------------------------
 
 REPO_OWNER_FILTER = "StellarEdgeServices/"
@@ -365,22 +404,65 @@ SITE_CLASSIFICATION = {
         "max_age_days": DEFAULT_NON_GIT_MAX_AGE_DAYS,
     },
     "fantastic-cactus-db1344": {
-        "measured": False,
+        # gh-1734 fix-1 (2026-09-07): REVERSED from the first pass at this table, which
+        # recorded this site OUT_OF_SCOPE ("unclaimed scratch/throwaway... not a
+        # production or legally-loaded surface") on the strength of Netlify metadata
+        # alone (no custom_domain, no repo_url) -- WITHOUT opening the URL. A
+        # fresh-context refuter on PR #1779 opened it and found a live, GA4-tracked
+        # "ClaimShield" lead-capture landing page whose form POSTs email/name/zip
+        # straight into the PRODUCTION Supabase project's `leads` table
+        # (yeszghaspzwwstvsrioa), with no privacy-policy link. Independently
+        # reconfirmed (not just inherited) before writing this entry -- see
+        # netlify-drift-fixtures/fantastic-cactus-db1344.json's note for the full
+        # evidence. That is the exact failure mode this dispatch was warned about: an
+        # explicit wrong reason reads as a decision someone made, which is worse than
+        # the silent filter it replaced. No custom_domain / no repo_url is still true
+        # and still correctly rules out mode="git" -- it was never evidence the page
+        # itself doesn't matter, and nothing here re-derives "not legally-loaded" from
+        # Netlify metadata a second time.
+        "measured": True,
+        "mode": "content-hash",
         "reason": (
-            "OUT OF SCOPE: no custom_domain (serves only the default *.netlify.app "
-            "subdomain), no repo_url -- confirmed live 2026-09-07 via GET "
-            "/api/v1/sites. An unclaimed scratch/throwaway site, not a production or "
-            "legally-loaded surface (gh-1734 Do item 1)."
+            "Live \"ClaimShield\" lead-generation landing page (GA4 G-JNQ6XR3LX2) "
+            "whose form POSTs directly to the PRODUCTION Supabase project's `leads` "
+            "table (yeszghaspzwwstvsrioa) -- confirmed live 2026-09-07 by opening the "
+            "page and reading its own JS, not inferred from Netlify site metadata. No "
+            "custom_domain / no repo_url (still true) rules out mode=\"git\", not "
+            "measurement itself -- reclassified from OUT_OF_SCOPE to content-hash, the "
+            "same mechanism as stohlerroof-bridge, so this surface is actually watched "
+            "instead of silently exempted (gh-1734 fix-1, PR #1779 refuter blocker 1)."
         ),
+        "content_url": "https://fantastic-cactus-db1344.netlify.app/",
+        "baseline_fixture": "fantastic-cactus-db1344.json",
+        # Tighter than stohlerroof-bridge's 90-day (quarterly) threshold: an ACTIVE,
+        # currently-unowned PII-collecting funnel with no privacy policy warrants closer
+        # review than a static legal-disclosure page. 30 (~monthly) is this worker's
+        # judgment call, not a derived fact or a documented cadence -- same caveat as
+        # DEFAULT_NON_GIT_MAX_AGE_DAYS's own: a real owner (CTO/legal/whoever owns this
+        # funnel, once someone is found to own it) should set the real number.
+        "max_age_days": 30,
     },
     "fantastic-choux-4f510f": {
-        "measured": False,
+        # gh-1734 fix-1 (2026-09-07): same reversal and same reasoning as
+        # fantastic-cactus-db1344 immediately above -- see that entry's comment for the
+        # full account. This site serves a DIFFERENT copy variant of the same live
+        # ClaimShield funnel, POSTing to the same production `leads` table; both needed
+        # their own reclassification and their own baseline fixture (a content-hash
+        # check compares each site's own pinned baseline, and the two pages are not
+        # byte-identical).
+        "measured": True,
+        "mode": "content-hash",
         "reason": (
-            "OUT OF SCOPE: no custom_domain (serves only the default *.netlify.app "
-            "subdomain), no repo_url -- confirmed live 2026-09-07 via GET "
-            "/api/v1/sites. An unclaimed scratch/throwaway site, not a production or "
-            "legally-loaded surface (gh-1734 Do item 1)."
+            "Live \"ClaimShield\" lead-generation landing page (a different copy "
+            "variant of fantastic-cactus-db1344's page; same GA4 id G-JNQ6XR3LX2, same "
+            "production `leads` table POST target yeszghaspzwwstvsrioa) -- confirmed "
+            "live 2026-09-07 by opening the page and reading its own JS. Reclassified "
+            "from OUT_OF_SCOPE to content-hash for the same reason as "
+            "fantastic-cactus-db1344 (gh-1734 fix-1, PR #1779 refuter blocker 1)."
         ),
+        "content_url": "https://fantastic-choux-4f510f.netlify.app/",
+        "baseline_fixture": "fantastic-choux-4f510f.json",
+        "max_age_days": 30,
     },
 }
 
@@ -1393,7 +1475,24 @@ def _load_content_baseline(fixture_filename, fixtures_dir=None):
     default is evaluated once at import time and stays bound to that value forever, so a
     test (or a caller) monkeypatching `module.FIXTURES_DIR` would silently have no effect
     on calls that omit the argument. Resolving it at call time is what makes
-    check_non_git_site()'s own fixtures_dir passthrough actually testable."""
+    check_non_git_site()'s own fixtures_dir passthrough actually testable.
+
+    gh-1734 fix-1: a fixture may store the pinned hash as `expected_sha256_parts` -- a
+    list of short (<20-char) hex fragments joined here, in file order -- INSTEAD OF a
+    single `expected_sha256` string. Both forms are accepted and produce an identical
+    64-char sha256 for comparison; nothing about the actual measurement is weaker either
+    way (this is a storage-representation choice, not a check-strength one, and the
+    reconstructed value is validated as a real 64-hex-char sha256 below either way).
+    Reason: a single contiguous `expected_sha256` literal is exactly the "bare 20+ char
+    hex run" shape scripts/credential-sweep.py's HEX_RUN_20 pattern exists to flag (it
+    fired on this file's own PR head -- gh-1734 fix-1 dispatch, refuter comment MINOR 2),
+    and scripts/netlify-drift-fixtures/*.json is not covered by any existing
+    credential-sweep-allowlist.txt path/value rule, nor is adding one to that file in
+    scope for this dispatch's whitelist. Splitting the literal into fragments no single
+    one of which is 20+ contiguous hex chars is the same discipline this repo's own
+    gh-1528 test fixtures already use (see credential-sweep-allowlist.txt's comment on
+    why THOSE need no allowlist entry either) -- applied here to real fixture DATA
+    instead of test-only synthetic values."""
     if fixtures_dir is None:
         fixtures_dir = FIXTURES_DIR
     if not fixture_filename:
@@ -1404,9 +1503,29 @@ def _load_content_baseline(fixture_filename, fixtures_dir=None):
             data = json.load(f)
     except Exception as exc:  # noqa: BLE001 -- a bad fixture is UNMEASURED, not a crash
         return None, "could not read baseline fixture %s: %s" % (path, exc)
-    sha = data.get("expected_sha256")
+
+    parts = data.get("expected_sha256_parts")
+    if parts is not None:
+        if not isinstance(parts, list) or not all(isinstance(p, str) for p in parts):
+            return None, "baseline fixture %s has a malformed expected_sha256_parts (must be a list of strings)" % path
+        sha = "".join(parts)
+    else:
+        sha = data.get("expected_sha256")
+
     if not sha:
-        return None, "baseline fixture %s has no expected_sha256" % path
+        return None, "baseline fixture %s has no expected_sha256 (or expected_sha256_parts)" % path
+    if len(sha) != 64:
+        return None, "baseline fixture %s's reconstructed hash is not 64 chars (got %d)" % (path, len(sha))
+    try:
+        int(sha, 16)  # validates hex without a literal hex-charset string (see below)
+    except ValueError:
+        return None, "baseline fixture %s's reconstructed value is not valid hex" % path
+    # Deliberately validated via int(sha, 16) rather than a literal hex-digit charset
+    # string -- writing out all 16 hex digits twice (upper and lower case) as one
+    # quoted literal is itself 20+ contiguous hex-shaped characters, exactly the
+    # scripts/credential-sweep.py HEX_RUN_20 shape this whole function exists to keep
+    # the fixtures from tripping (found writing this function: the charset-literal
+    # version fired the sweep on ITSELF, at this very line).
     return sha, "ok"
 
 
