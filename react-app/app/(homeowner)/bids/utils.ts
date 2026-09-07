@@ -216,7 +216,7 @@ export const NO_PAYMENT_METHOD_SENTINEL = 'contractor_no_payment_method';
 
 /** Homeowner-facing wording for that refusal (mirrors bids.html + contractor-about.html). */
 export const NO_PAYMENT_METHOD_MESSAGE =
-  "This contractor hasn't added a payment method yet, so the project can't be awarded to them. We've let them know.";
+  "This contractor hasn't added a payment method yet, so the project can't be awarded to them.";
 
 /**
  * Map a raw Postgres/PostgREST error message onto homeowner-facing text.

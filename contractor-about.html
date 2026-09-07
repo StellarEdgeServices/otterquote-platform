@@ -989,7 +989,7 @@
         var awardErrMessage = 'There was a problem awarding this project. Please try again.';
         if (err.message && err.message.includes('contractor_no_payment_method')) {
           awardErrTitle = 'This Contractor Can\'t Be Awarded Yet';
-          awardErrMessage = 'This contractor hasn\'t added a payment method yet, so the project can\'t be awarded to them. We\'ve let them know.';
+          awardErrMessage = 'This contractor hasn\'t added a payment method yet, so the project can\'t be awarded to them.';
         }
         document.getElementById('modalTitle').textContent = awardErrTitle;
         document.getElementById('modalBody').textContent = awardErrMessage;

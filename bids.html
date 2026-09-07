@@ -2134,7 +2134,7 @@
           // raises 'contractor_no_payment_method: ...'. Match the sentinel, never
           // show it — the homeowner gets plain English and no retry instruction.
           errorTitle = 'This Contractor Can\'t Be Awarded Yet';
-          errorMessage = 'This contractor hasn\'t added a payment method yet, so the project can\'t be awarded to them. We\'ve let them know.';
+          errorMessage = 'This contractor hasn\'t added a payment method yet, so the project can\'t be awarded to them.';
         } else if (err.message && err.message.includes('Payment')) {
           errorTitle = 'Unable to Process Payment';
           errorMessage = 'Unable to process the contractor\'s payment method. Please select another contractor or contact support.';
