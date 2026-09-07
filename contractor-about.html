@@ -983,12 +983,26 @@
 
       } catch (err) {
         console.error('Selection error:', err);
-        document.getElementById('modalTitle').textContent = 'Something Went Wrong';
-        document.getElementById('modalBody').textContent = 'There was a problem awarding this project. Please try again.';
+        // gh-1532: surface the accept_bid payment-method refusal in plain English
+        // instead of the generic retry message; never show the raw sentinel.
+        var awardErrTitle = 'Something Went Wrong';
+        var awardErrMessage = 'There was a problem awarding this project. Please try again.';
+        if (err.message && err.message.includes('contractor_no_payment_method')) {
+          awardErrTitle = 'This Contractor Can\'t Be Awarded Yet';
+          awardErrMessage = 'This contractor hasn\'t added a payment method yet, so the project can\'t be awarded to them.';
+        }
+        document.getElementById('modalTitle').textContent = awardErrTitle;
+        document.getElementById('modalBody').textContent = awardErrMessage;
         document.getElementById('modalSpinner').style.display = 'none';
         document.getElementById('modalActions').style.display = 'flex';
         document.getElementById('modalConfirmBtn').disabled = false;
         document.getElementById('modalTitle').textContent = 'Confirm Your Selection';
+        // gh-1532: the line above is pre-existing and unconditionally resets the
+        // heading; re-apply ONLY the payment-method heading so the refusal is not
+        // shown under "Confirm Your Selection". No other error path is altered.
+        if (awardErrTitle !== 'Something Went Wrong') {
+          document.getElementById('modalTitle').textContent = awardErrTitle;
+        }
       }
     };
 

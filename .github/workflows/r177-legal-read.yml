@@ -1,0 +1,171 @@
+name: R-177 legal-read needed
+
+# R-177 (2026-09-07) retired R-120's human-signature gate. Constitution entry 6
+# now reads: a diff that touches legal wording, consent language, pricing or
+# money movement merges only after (a) a fresh-context refuter agent that is NOT
+# the PR's author posts `LEGAL-READ: PASS|FAIL …` on the PR, and (b) the CEO
+# posts `R-177 SIGNED: pr=<n> sha=<40-hex head sha> — Ben, CEO` over that head
+# sha. Dustin is never in the loop on a diff; legal/money text that shipped is
+# reported to him on the next CEO board as a notify-after.
+#
+# THIS WORKFLOW IS NOT A GATE. It is a LABELLER, and it ALWAYS exits 0.
+# It runs the R-120 path/keyword predicate (kept, unchanged in behaviour, at
+# scripts/r177/predicate.mjs) and, when the predicate fires:
+#   (a) adds the label `r177:legal-read` to the PR, and
+#   (b) posts ONE comment telling the humans and agents what R-177 requires,
+#       only if no such comment exists yet.
+# The R-177 comment pair is enforced by the CTO's merge tooling
+# (In Flight/bin/merge.py), not by a required status check. What was removed:
+# the ECDSA signature verification, the committed public key
+# (.github/r120-review-pubkey.jwk), the `R-120 SIGNED:` comment parsing, the
+# offline signing page, and the `R-120 signed review` required status check on
+# main (removed from branch protection 2026-09-07T21:04Z).
+#
+# Why pull_request_target: the predicate and this workflow definition are taken
+# from the BASE branch, so a PR cannot edit the labeller that reads it, and the
+# job has the `pull-requests: write` token it needs to label. The PR head is
+# never checked out and never executed — the diff is fetched as text through
+# the API and only scanned.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: r177-legal-read-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  r177-legal-read:
+    name: R-177 legal-read needed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out BASE branch only (never PR head)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/r177/predicate.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Run the legal/money predicate and label (never fails)
+        uses: actions/github-script@v9
+        env:
+          LABEL: r177:legal-read
+          MARKER: '<!-- r177-legal-read -->'
+        with:
+          script: |
+            const path = require('path');
+            const { pathToFileURL } = require('url');
+
+            const LABEL = process.env.LABEL;
+            const MARKER = process.env.MARKER;
+            const NOTICE =
+              'R-177: this diff touches legal/money text — a LEGAL-READ and a CEO R-177 SIGNED ' +
+              'comment are required before merge (constitution entry 6)';
+
+            try {
+              const ws = process.env.GITHUB_WORKSPACE;
+              const { detectLegalMoneyContent } = await import(
+                pathToFileURL(path.join(ws, 'scripts/r177/predicate.mjs')).href
+              );
+
+              const { owner, repo } = context.repo;
+              const prNumber = context.payload.pull_request.number;
+
+              const pr = (await github.rest.pulls.get({ owner, repo, pull_number: prNumber })).data;
+              const headSha = pr.head.sha;
+              const short = headSha.slice(0, 12);
+
+              if (pr.state !== 'open') {
+                core.info(`PR #${prNumber} is ${pr.state}; nothing to label.`);
+                return;
+              }
+
+              const diffResp = await github.rest.pulls.get({
+                owner, repo, pull_number: prNumber, mediaType: { format: 'diff' },
+              });
+              const diffText = typeof diffResp.data === 'string' ? diffResp.data : String(diffResp.data);
+
+              const detection = detectLegalMoneyContent(diffText);
+
+              if (!detection.hit) {
+                core.info(`R-177 legal-read needed: no legal/money content at head ${short}. No label, no comment.`);
+                await core.summary
+                  .addHeading('R-177 legal-read needed: no legal/money content')
+                  .addRaw(`\nNo added or removed line at head \`${short}\` matched the money, pricing, legal or consent rules (see \`scripts/r177/predicate.mjs\`).\n`)
+                  .write();
+                return;
+              }
+
+              // (a) label — create it on the repo first if it does not exist yet.
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: LABEL });
+              } catch (e) {
+                if (e.status === 404) {
+                  try {
+                    await github.rest.issues.createLabel({
+                      owner, repo, name: LABEL, color: 'B60205',
+                      description: 'Diff touches legal/money text — needs a LEGAL-READ + CEO R-177 SIGNED pair (R-177)',
+                    });
+                    core.info(`created label ${LABEL}`);
+                  } catch (e2) {
+                    core.warning(`could not create label ${LABEL}: ${e2.message}`);
+                  }
+                } else {
+                  core.warning(`could not read label ${LABEL}: ${e.message}`);
+                }
+              }
+              try {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [LABEL] });
+                core.info(`labelled PR #${prNumber} with ${LABEL}`);
+              } catch (e) {
+                core.warning(`could not add label ${LABEL}: ${e.message}`);
+              }
+
+              // (b) exactly one notice comment, ever — never edited, never repeated.
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: prNumber, per_page: 100,
+              });
+              const already = comments.some(
+                (c) => typeof c.body === 'string' && (c.body.includes(MARKER) || c.body.includes(NOTICE))
+              );
+
+              const grouped = detection.lines.slice(0, 60)
+                .map((l) => `- \`${l.file}:${l.line}\` (${l.rule}, ${l.side === '-' ? 'removed' : 'added'}) \`${l.text.replace(/`/g, "'").slice(0, 120)}\``)
+                .join('\n');
+              const more = detection.lines.length > 60 ? `\n- … and ${detection.lines.length - 60} more` : '';
+
+              if (already) {
+                core.info('R-177 notice comment already present; not posting another.');
+              } else {
+                const body =
+                  `${MARKER}\n${NOTICE}\n\n` +
+                  `**What has to happen before this merges** (R-177, constitution entry 6):\n` +
+                  `1. A fresh-context refuter agent that is **not** this PR's author reads the full diff at head \`${short}\` against \`otterquote-D-registry.md\`, \`otterquote-ref-legal.md\` and the governing copy quoted on the issue, and posts:\n` +
+                  `   \`LEGAL-READ: PASS | FAIL — implements D-<n> …; new claims/prices/promises/consent text introduced: none | <list>\`\n` +
+                  `2. The CEO posts \`R-177 SIGNED: pr=${prNumber} sha=${headSha} — Ben, CEO\`.\n\n` +
+                  `Any later commit voids both and needs a fresh pair. A \`LEGAL-READ: FAIL\`, or any legal position, price, promise or consent text with no D-number behind it, does not merge — it goes to Dustin as Tier C with the CEO's recommendation. **Dustin is never asked to read a diff.**\n\n` +
+                  `Lines the predicate flagged:\n${grouped}${more}\n\n` +
+                  `<sub>This check is a labeller, not a gate: it always passes. See \`Docs/r177-legal-read.md\`.</sub>`;
+                try {
+                  await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+                  core.info('posted the R-177 notice comment');
+                } catch (e) {
+                  core.warning(`could not post the R-177 notice comment: ${e.message}`);
+                }
+              }
+
+              await core.summary
+                .addHeading('R-177 legal-read needed')
+                .addRaw(`\nThe predicate flagged ${detection.lines.length} line(s) at head \`${short}\`. Labelled \`${LABEL}\`.\n\n${grouped}${more}\n`)
+                .write();
+            } catch (e) {
+              // A labeller must never block a merge, not even by crashing.
+              core.warning(`R-177 labeller error (ignored, this check never fails): ${e.stack || e.message}`);
+            }
