@@ -1,0 +1,55 @@
+name: R-177 predicate tests
+
+# gh-1768 (as "R-120 verifier tests"), renamed by R-177 (2026-09-07).
+#
+# scripts/r177/predicate.test.mjs and predicate.scope.test.mjs are the only
+# automated thing holding the legal/money predicate honest. The predicate is now
+# a LABELLER, not a gate ("R-177 legal-read needed",
+# .github/workflows/r177-legal-read.yml, which always exits 0), so this suite is
+# the only place a scope regression is caught at all — the COPY_GUARD_FILES
+# ratchet in predicate.scope.test.mjs walks scripts/ and tools/ and fails,
+# naming the file, when something carrying customer copy vocabulary drops out of
+# the predicate's view.
+#
+# Runs every *.test.mjs under scripts/r177/ via a glob rather than a hardcoded
+# list, so a new control file is picked up with no CI-wiring edit.
+#
+# Deliberately narrow triggers (gh-1731: PR-churn CI cost): the predicate itself
+# and the two trees the scope ratchet walks.
+#
+# Advisory by design. Under R-177 nothing in CI blocks a legal/money diff; the
+# `LEGAL-READ: PASS` + `R-177 SIGNED:` comment pair is enforced by the CTO's
+# merge tooling. See Docs/r177-legal-read.md.
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/r177/**'
+      - 'scripts/**'
+      - 'tools/**'
+      - '.github/workflows/r177-predicate-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/r177/**'
+      - 'scripts/**'
+      - 'tools/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r177-predicate-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  predicate-tests:
+    name: R-177 predicate tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: node --test scripts/r177/*.test.mjs
+        run: node --test scripts/r177/*.test.mjs
