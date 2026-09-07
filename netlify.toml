@@ -131,3 +131,36 @@
 [[edge_functions]]
   path = "/Recruit.html"
   function = "recruit-redirect"
+
+# gh-1745 fix round 1 (2026-09-07): REVIEW: FAIL on PR #1789 found the plain
+# `_redirects` 301 rules added for gh-1745 never fire — Pretty URLs dual-
+# serves the extensionless /blog/ and /guides/ paths as a 200 ahead of
+# `_redirects`, the identical failure mode already fixed twice in this repo
+# (gh-1540, gh-1598; see that comment block above). Same remedy: an edge
+# function scoped to exactly these 6 literal paths, running ahead of Pretty
+# URLs. The `_redirects` rules stay in place unchanged as documented intent;
+# this is what actually executes. No other path is affected.
+# Source: netlify/edge-functions/blog-guides-redirect.ts
+[[edge_functions]]
+  path = "/blog/what-to-do-after-storm-damages-roof"
+  function = "blog-guides-redirect"
+
+[[edge_functions]]
+  path = "/blog/how-to-negotiate-better-roof-repair-insurance-claim"
+  function = "blog-guides-redirect"
+
+[[edge_functions]]
+  path = "/guides/how-to-file-property-damage-claim"
+  function = "blog-guides-redirect"
+
+[[edge_functions]]
+  path = "/guides/how-to-choose-contractor"
+  function = "blog-guides-redirect"
+
+[[edge_functions]]
+  path = "/guides/how-to-negotiate-with-insurer"
+  function = "blog-guides-redirect"
+
+[[edge_functions]]
+  path = "/guides/how-to-read-contractor-estimate"
+  function = "blog-guides-redirect"
