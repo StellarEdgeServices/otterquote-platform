@@ -290,7 +290,20 @@ jobs:
   seed-must-pass:
     name: Seed Must Pass (gh-1584)
     needs: [test]
-    if: always()
+    # gh-1584 follow-up (cto27, 2026-09-06): `always()` alone also fires when
+    # `test` was CANCELLED or SKIPPED, and a cancelled job has EMPTY outputs --
+    # so `needs.test.outputs.seed_outcome` comes back unset and this gate reds
+    # the run for a seed that never even ran. Measured: every PR run today logs
+    # "Seed test database step outcome: <unset>" with `Run E2E Tests` =
+    # cancelled, because the repo-wide `e2e-test-project-fixtures` concurrency
+    # group (kept deliberately for #689 fixture corruption -- do NOT narrow it
+    # here, see PR #1740) supersedes the pending run. A constant red is not a
+    # gate. Control: on push-to-main runs where `test` actually ran, the seed
+    # succeeded and this gate was `success` (runs 34053807928, 34038548040).
+    # Excluding cancelled/skipped preserves gh-1584's intent exactly: a seed
+    # that genuinely FAILS still fails the gate, because `test` then completes
+    # (continue-on-error) with a real, non-empty seed_outcome.
+    if: always() && needs.test.result != 'cancelled' && needs.test.result != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     # No continue-on-error, deliberately: this is the gate. The `test` job
