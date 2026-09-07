@@ -724,43 +724,35 @@ def main():
         check("_load_content_baseline with a valid fixture -> the pinned hash",
               (sha, reason), ("f" * 64, "ok"))
 
-        # gh-1734 fix-1: expected_sha256_parts -- the fixture-storage format actually used
-        # by the three real committed fixtures (see netlify-drift-fixtures/*.json), added
-        # to dodge scripts/credential-sweep.py's HEX_RUN_20 pattern (a bare 20+ char hex
-        # run), which fired on this file's stohlerroof-bridge.json when it held the hash
-        # as one 64-char literal. The reconstructed value must be identical to what a
-        # plain expected_sha256 field would have produced -- this is a storage change,
-        # never a weaker check.
-        parts_hash = "".join(["1234567890abcdef"] * 4)  # 4x16 = 64 hex chars, deterministic
-        (tmp_fixtures / "parts-good.json").write_text(
-            json.dumps({"expected_sha256_parts": ["1234567890abcdef"] * 4})
+        # gh-1734 fix-2: expected_sha256 must be exactly 64 hex chars, validated without a
+        # literal hex-charset string (see _load_content_baseline()'s own comment on why).
+        # A short/truncated value is a malformed baseline, never silently used.
+        (tmp_fixtures / "wrong-length.json").write_text(
+            json.dumps({"expected_sha256": "abc123"})
         )
-        sha, reason = nd._load_content_baseline("parts-good.json", fixtures_dir=tmp_fixtures)
-        check("_load_content_baseline with expected_sha256_parts -> joined into the same "
-              "64-char hash a single-literal fixture would have produced",
-              (sha, reason), (parts_hash, "ok"))
+        sha, reason = nd._load_content_baseline("wrong-length.json", fixtures_dir=tmp_fixtures)
+        check("_load_content_baseline with expected_sha256 != 64 chars -> None, not used",
+              sha, None)
+        check("wrong-length reason names it as not 64 chars", "not 64 chars" in reason, True)
 
-        # A malformed parts list (not a list of strings) is UNMEASURED, not a crash and
-        # never silently coerced into something that happens to compare true or false.
-        (tmp_fixtures / "parts-malformed.json").write_text(
-            json.dumps({"expected_sha256_parts": [1, 2, 3]})
+        # A non-hex expected_sha256 (same length, invalid chars) is also caught, not
+        # silently treated as a valid baseline that could never actually match anything.
+        (tmp_fixtures / "not-hex.json").write_text(
+            json.dumps({"expected_sha256": "g" * 64})
         )
-        sha, reason = nd._load_content_baseline("parts-malformed.json", fixtures_dir=tmp_fixtures)
-        check("_load_content_baseline with non-string expected_sha256_parts entries -> "
-              "None, not a crash", sha, None)
-        check("malformed-parts reason names the problem", "malformed expected_sha256_parts" in reason, True)
+        sha, reason = nd._load_content_baseline("not-hex.json", fixtures_dir=tmp_fixtures)
+        check("_load_content_baseline with non-hex expected_sha256 -> None, not used",
+              sha, None)
+        check("not-hex reason names it as invalid hex", "not valid hex" in reason, True)
 
-        # A parts list that joins to the wrong length (typo'd a fragment, dropped one) is
-        # caught as a malformed baseline, never silently used as a truncated/padded hash
-        # that could compare true or false by accident.
-        (tmp_fixtures / "parts-wrong-length.json").write_text(
-            json.dumps({"expected_sha256_parts": ["1234567890abcdef", "deadbeef"]})
-        )
-        sha, reason = nd._load_content_baseline("parts-wrong-length.json", fixtures_dir=tmp_fixtures)
-        check("_load_content_baseline with expected_sha256_parts joining to != 64 chars "
-              "-> None, not a truncated/padded hash used silently", sha, None)
-        check("wrong-length reason names it as not 64 chars",
-              "not 64 chars" in reason, True)
+        # gh-1734 fix-1 briefly stored this value split into expected_sha256_parts
+        # fragments to dodge scripts/credential-sweep.py's HEX_RUN_20 pattern; fix-2
+        # reverted that (a fresh-context re-reviewer on PR #1779 called it a
+        # generalizable credential-sweep-evasion technique landed on real fixture data)
+        # in favor of a plain expected_sha256 literal plus explicit
+        # scripts/credential-sweep-allowlist.txt value: entries. The parts mechanism no
+        # longer exists in _load_content_baseline() -- a fixture using the old key is
+        # simply "no expected_sha256", covered by the "no-hash-field" case above.
     finally:
         shutil.rmtree(tmp_fixtures, ignore_errors=True)
 

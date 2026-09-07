@@ -1477,22 +1477,17 @@ def _load_content_baseline(fixture_filename, fixtures_dir=None):
     on calls that omit the argument. Resolving it at call time is what makes
     check_non_git_site()'s own fixtures_dir passthrough actually testable.
 
-    gh-1734 fix-1: a fixture may store the pinned hash as `expected_sha256_parts` -- a
-    list of short (<20-char) hex fragments joined here, in file order -- INSTEAD OF a
-    single `expected_sha256` string. Both forms are accepted and produce an identical
-    64-char sha256 for comparison; nothing about the actual measurement is weaker either
-    way (this is a storage-representation choice, not a check-strength one, and the
-    reconstructed value is validated as a real 64-hex-char sha256 below either way).
-    Reason: a single contiguous `expected_sha256` literal is exactly the "bare 20+ char
-    hex run" shape scripts/credential-sweep.py's HEX_RUN_20 pattern exists to flag (it
-    fired on this file's own PR head -- gh-1734 fix-1 dispatch, refuter comment MINOR 2),
-    and scripts/netlify-drift-fixtures/*.json is not covered by any existing
-    credential-sweep-allowlist.txt path/value rule, nor is adding one to that file in
-    scope for this dispatch's whitelist. Splitting the literal into fragments no single
-    one of which is 20+ contiguous hex chars is the same discipline this repo's own
-    gh-1528 test fixtures already use (see credential-sweep-allowlist.txt's comment on
-    why THOSE need no allowlist entry either) -- applied here to real fixture DATA
-    instead of test-only synthetic values."""
+    gh-1734 fix-1 briefly stored this as `expected_sha256_parts` -- short hex fragments
+    joined at load time -- to dodge scripts/credential-sweep.py's HEX_RUN_20 pattern
+    (`\\b[0-9a-fA-F]{20,}\\b`), which flags a bare 64-char hash literal. gh-1734 fix-2
+    reverted that: a fresh-context re-reviewer correctly called it a working, generalizable
+    technique for defeating a credential-shape detector on real (non-test) fixture data,
+    landed for scope-convenience rather than through the sweep's own sanctioned escape
+    hatch. The fixture now stores the plain 64-char `expected_sha256` value, and
+    scripts/credential-sweep-allowlist.txt carries one `value:` entry per fixture's hash
+    (see that file for the inline justification) -- visible, greppable, and audited the
+    same way the repo's existing SRI-hash and commit-sha entries are, instead of hidden
+    behind a reconstruction the sweep can no longer see at all."""
     if fixtures_dir is None:
         fixtures_dir = FIXTURES_DIR
     if not fixture_filename:
@@ -1504,22 +1499,15 @@ def _load_content_baseline(fixture_filename, fixtures_dir=None):
     except Exception as exc:  # noqa: BLE001 -- a bad fixture is UNMEASURED, not a crash
         return None, "could not read baseline fixture %s: %s" % (path, exc)
 
-    parts = data.get("expected_sha256_parts")
-    if parts is not None:
-        if not isinstance(parts, list) or not all(isinstance(p, str) for p in parts):
-            return None, "baseline fixture %s has a malformed expected_sha256_parts (must be a list of strings)" % path
-        sha = "".join(parts)
-    else:
-        sha = data.get("expected_sha256")
-
+    sha = data.get("expected_sha256")
     if not sha:
-        return None, "baseline fixture %s has no expected_sha256 (or expected_sha256_parts)" % path
+        return None, "baseline fixture %s has no expected_sha256" % path
     if len(sha) != 64:
-        return None, "baseline fixture %s's reconstructed hash is not 64 chars (got %d)" % (path, len(sha))
+        return None, "baseline fixture %s's expected_sha256 is not 64 chars (got %d)" % (path, len(sha))
     try:
         int(sha, 16)  # validates hex without a literal hex-charset string (see below)
     except ValueError:
-        return None, "baseline fixture %s's reconstructed value is not valid hex" % path
+        return None, "baseline fixture %s's expected_sha256 is not valid hex" % path
     # Deliberately validated via int(sha, 16) rather than a literal hex-digit charset
     # string -- writing out all 16 hex digits twice (upper and lower case) as one
     # quoted literal is itself 20+ contiguous hex-shaped characters, exactly the
