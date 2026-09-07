@@ -134,7 +134,12 @@ USAGE
                      or GITHUB_PERSONAL_ACCESS_TOKEN with `issues: write`. Without this
                      flag the script still exits non-zero on a bad result (loud in CI
                      logs) but never touches the issue tracker -- used for local/test
-                     invocations so a manual run never spams the thread.
+                     invocations so a manual run never spams the thread. gh-1721: if the
+                     POST itself fails (bad credential, wrong scope, network), that
+                     failure is no longer a stderr-only side note -- it is folded into
+                     `alarm_post_status`/`alarm_post_detail` in both output formats and
+                     escalates the exit code to ALARM_POST_FAILED_EXIT (4). See EXIT
+                     below.
     --queued-stale-minutes N
                      Age threshold in minutes for the QUEUED_STALE signal (default 60).
 
@@ -163,6 +168,16 @@ EXIT
      that could not check one site does not get to report the others' clean verdicts as if
      the whole run were trustworthy (same "could not measure outranks drift" ordering as
      edge-function-drift-check.py's report_exit_code()).
+  4  gh-1721: --file-issue was requested, a real problem was measured (code would
+     otherwise be 2), and the redundant GitHub alarm-comment POST to issue #1549 itself
+     FAILED (bad credential, wrong scope, network, etc.). This is deliberately a
+     DIFFERENT number from 2, not merely "2 but read the log" -- the entire defect this
+     exit code exists to end is that a failed POST used to be indistinguishable from a
+     successful one because the drift's own exit code (2) fired either way and the
+     failure was one `print(..., file=sys.stderr)` away from being unread. Never fires
+     when code is 3 -- an UNMEASURED run already outranks everything above it and a
+     differently-numbered escalation must not be layered on top of it and read as
+     something else. See final_exit_code().
 
   The account-level auto-topup WARN (see HARDENING above) never affects this exit code by
   itself -- it is an advisory line, not a measured per-site verdict.
@@ -229,6 +244,11 @@ BENIGN_DEPLOY_ERROR_SUBSTRINGS = ("Canceled build due to no content change",)
 # Row-level note for the benign shape -- a display token, not a verdict, so it never
 # enters FAILING_VERDICTS and never shadows a real BUILD_FAILING / BEHIND.
 SKIPPED_NO_CONTENT = "SKIPPED_NO_CONTENT"
+
+# gh-1721: distinct exit code for "a real problem was measured AND the redundant
+# GitHub alarm-comment POST itself failed" -- see final_exit_code() and the EXIT
+# section of this module's docstring.
+ALARM_POST_FAILED_EXIT = 4
 
 
 def is_benign_deploy_error(error_message):
@@ -607,40 +627,83 @@ def report_exit_code(rows):
     return 0
 
 
-def _banner_lines(rows, code):
+def final_exit_code(code, alarm_post_status):
+    """gh-1721: escalate report_exit_code()'s plain 0/2/3 to ALARM_POST_FAILED_EXIT (4)
+    when --file-issue was requested, a real problem was measured (code == 2), and the
+    redundant GitHub alarm-comment POST itself failed. This is the "fail loudly, not
+    fail quietly" fix for the swallow: before this function existed, a failed POST was
+    a single stderr print that never changed the run's outcome, so a broken alarm
+    channel looked identical to a working one from the exit code alone.
+
+    Deliberately does NOT escalate a code == 3 (UNMEASURED) run: UNMEASURED already
+    outranks a measured drift in report_exit_code()'s own ordering ("could not measure
+    outranks drift"), and layering a differently-numbered escalation on top of it would
+    make code 4 ambiguous between "drift confirmed, alarm broken" (what it means) and
+    "couldn't even measure, and also the alarm broke" (a different, less certain
+    situation that 3 already covers). alarm_post_status is None when --file-issue was
+    not requested or no failing verdict existed to report -- never escalates then."""
+    if code == 2 and alarm_post_status == "failed":
+        return ALARM_POST_FAILED_EXIT
+    return code
+
+
+def _banner_lines(rows, code, alarm_post_status=None, alarm_post_detail=None):
     """Loud warning lines for a non-clean run (code != 0), or None when every site
     is IDENTICAL. Both text mode and --json build the banner from this single
     source so the loudness is never a function of output format (gh-1501 comment
-    5509656183, ruling 2c)."""
-    if code == 0:
-        return None
+    5509656183, ruling 2c).
 
-    lines = ["  " + "!" * 70]
-    if code == 3:
+    alarm_post_status is None (not requested / no failing verdict), "posted", or
+    "failed" -- when "failed", a SECOND loud section is appended (gh-1721) even on a
+    run that already had a banner for another reason, and a banner is fabricated even
+    for an otherwise-code-0 run so a failed alarm POST is never silent just because
+    render_text/_json's caller only looks at the banner for non-clean runs."""
+    lines = []
+    if code != 0:
+        lines.append("  " + "!" * 70)
+        if code == 3:
+            lines += [
+                "  >> UNMEASURED IS NOT A PASS. <<",
+                "  At least one site could not be checked at all -- that is the exact blind",
+                "  state #1548 and #1517 exposed: no alarm because nothing was measuring, not",
+                "  because nothing was wrong. This is UNKNOWN, not verified-healthy.",
+            ]
+        else:
+            lines += [
+                "  >> NETLIFY PRODUCTION DEPLOY DRIFT. <<",
+                "  At least one site's production deploy does not match `main`, its build",
+                "  pipeline is erroring, or a build has been queued for over an hour with no",
+                "  deploy and no error. See the per-site detail below. Do not silently",
+                "  redeploy everything -- diagnose the specific site (Netlify credit/billing,",
+                "  cancelled builds, a stuck queue) the way #1548 and #1517 were each",
+                "  diagnosed individually.",
+            ]
+        for r in rows:
+            if r["verdict"] != IDENTICAL:
+                lines.append("     %s: %s" % (r["label"], display_verdict(r)))
+        lines.append("  " + "!" * 70)
+
+    if alarm_post_status == "failed":
+        # gh-1721: the redundant GitHub alarm comment (the #1295 pattern -- the alarm
+        # IS the comment) failed to post. This is worth its own loud section
+        # independent of `code`'s banner above -- a swallowed POST failure here was the
+        # entire defect this section exists to prevent from repeating.
+        lines.append("  " + "!" * 70)
         lines += [
-            "  >> UNMEASURED IS NOT A PASS. <<",
-            "  At least one site could not be checked at all -- that is the exact blind",
-            "  state #1548 and #1517 exposed: no alarm because nothing was measuring, not",
-            "  because nothing was wrong. This is UNKNOWN, not verified-healthy.",
+            "  >> THE REDUNDANT GITHUB ALARM COMMENT FAILED TO POST. <<",
+            "  --file-issue attempted to comment on issue #%d and the POST itself failed:"
+            % ALARM_ISSUE_NUMBER,
+            "    %s" % (alarm_post_detail or "(no detail captured)"),
+            "  The primary channel (this run's own non-zero exit code) still fired, but",
+            "  the redundant comment channel did not -- fix the credential/scope for the",
+            "  POST, do not assume the drift itself is unreal because this section fired.",
         ]
-    else:
-        lines += [
-            "  >> NETLIFY PRODUCTION DEPLOY DRIFT. <<",
-            "  At least one site's production deploy does not match `main`, its build",
-            "  pipeline is erroring, or a build has been queued for over an hour with no",
-            "  deploy and no error. See the per-site detail below. Do not silently",
-            "  redeploy everything -- diagnose the specific site (Netlify credit/billing,",
-            "  cancelled builds, a stuck queue) the way #1548 and #1517 were each",
-            "  diagnosed individually.",
-        ]
-    for r in rows:
-        if r["verdict"] != IDENTICAL:
-            lines.append("     %s: %s" % (r["label"], display_verdict(r)))
-    lines.append("  " + "!" * 70)
-    return lines
+        lines.append("  " + "!" * 70)
+
+    return lines or None
 
 
-def render_text(rows, code, warnings=None):
+def render_text(rows, code, warnings=None, alarm_post_status=None, alarm_post_detail=None):
     lines = ["NETLIFY PRODUCTION DEPLOY DRIFT   repo=%s" % ISSUE_REPO, ""]
     for r in rows:
         lines.append("  %-40s %s" % (r["label"], display_verdict(r)))
@@ -658,11 +721,21 @@ def render_text(rows, code, warnings=None):
             if r["verdict"] == IDENTICAL and (r.get("base_dir") or r.get("no_content_skip")):
                 lines.append("    %s" % r["detail"])
     lines.append("")
-    banner = _banner_lines(rows, code)
+    banner = _banner_lines(rows, code, alarm_post_status, alarm_post_detail)
     if banner:
         lines.extend(banner)
     else:
         lines.append("Every site's production deploy is byte-for-commit identical to `main`.")
+    if alarm_post_status is not None:
+        lines.append("")
+        lines.append(
+            "Alarm comment (issue #%d): %s%s"
+            % (
+                ALARM_ISSUE_NUMBER,
+                alarm_post_status,
+                (" -- %s" % alarm_post_detail) if alarm_post_detail else "",
+            )
+        )
     if warnings:
         # Account-level WARNs (gh-1549 item 3) are independent of drift verdicts and
         # never change `code` -- printed after the drift banner, never folded into it.
@@ -671,8 +744,8 @@ def render_text(rows, code, warnings=None):
     return "\n".join(lines)
 
 
-def render_json(rows, code, warnings=None):
-    banner = _banner_lines(rows, code)
+def render_json(rows, code, warnings=None, alarm_post_status=None, alarm_post_detail=None):
+    banner = _banner_lines(rows, code, alarm_post_status, alarm_post_detail)
     verdict_names = {0: "CURRENT", 2: "DRIFTED", 3: "UNMEASURED"}
     return json.dumps(
         {
@@ -682,6 +755,12 @@ def render_json(rows, code, warnings=None):
             "sites": rows,
             "banner": "\n".join(banner) if banner else None,
             "warnings": list(warnings) if warnings else [],
+            # gh-1721: None = --file-issue not requested or no failing verdict to
+            # report; "posted" / "failed" otherwise. Never omitted when attempted --
+            # a failed POST must be visible in the machine-readable report too, not
+            # just the human banner.
+            "alarm_post_status": alarm_post_status,
+            "alarm_post_detail": alarm_post_detail,
         },
         indent=2,
     )
@@ -709,14 +788,21 @@ def render_issue_comment_body(rows, code):
 
 
 def post_issue_comment(body, timeout=TIMEOUT_SECONDS):
+    """POST the drift report as a comment on ALARM_ISSUE_NUMBER.
+
+    Returns (success, detail): detail is the comment's html_url on success, or a
+    human-readable failure reason on failure. NEVER just a bare bool (gh-1721) --
+    this function's only caller, main(), folds `detail` into the run's own JSON/text
+    report AND into its exit code (see ALARM_POST_FAILED_EXIT / final_exit_code()) so
+    a failed POST cannot be a print-to-stderr-and-forget: the #1295 pattern is that the
+    alarm IS the comment, and an alarm channel that can silently fail to fire is the
+    same defect class as no alarm at all. Never raises -- posting the comment must
+    never crash the run."""
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get(GITHUB_TOKEN_ENV_VAR)
     if not token:
-        print(
-            "!! --file-issue requested but no GITHUB_TOKEN / %s in environment -- skipping comment"
-            % GITHUB_TOKEN_ENV_VAR,
-            file=sys.stderr,
-        )
-        return False
+        reason = "no GITHUB_TOKEN / %s in environment -- skipping comment" % GITHUB_TOKEN_ENV_VAR
+        print("!! --file-issue requested but %s" % reason, file=sys.stderr)
+        return False, reason
     req = urllib.request.Request(
         "https://api.github.com/repos/%s/issues/%d/comments" % (ISSUE_REPO, ALARM_ISSUE_NUMBER),
         data=json.dumps({"body": body}).encode("utf-8"),
@@ -729,12 +815,24 @@ def post_issue_comment(body, timeout=TIMEOUT_SECONDS):
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            resp.read()
+            raw = resp.read()
+    except urllib.error.HTTPError as exc:
+        # Deliberately do not echo the response body -- may carry request metadata.
+        reason = "HTTP %s (%s) posting comment on #%d" % (exc.code, exc.reason, ALARM_ISSUE_NUMBER)
+        print("!! failed to post comment on #%d: %s" % (ALARM_ISSUE_NUMBER, reason), file=sys.stderr)
+        return False, reason
     except Exception as exc:  # noqa: BLE001 -- posting the comment must never crash the run
-        print("!! failed to post comment on #%d: %s" % (ALARM_ISSUE_NUMBER, exc), file=sys.stderr)
-        return False
-    print("Posted drift report to issue #%d." % ALARM_ISSUE_NUMBER, file=sys.stderr)
-    return True
+        reason = "%s: %s" % (type(exc).__name__, exc)
+        print("!! failed to post comment on #%d: %s" % (ALARM_ISSUE_NUMBER, reason), file=sys.stderr)
+        return False, reason
+    html_url = None
+    try:
+        html_url = json.loads(raw.decode("utf-8")).get("html_url")
+    except Exception:  # noqa: BLE001 -- a parse failure here doesn't change that the POST succeeded
+        pass
+    detail = html_url or "posted (no html_url in response)"
+    print("Posted drift report to issue #%d: %s" % (ALARM_ISSUE_NUMBER, detail), file=sys.stderr)
+    return True, detail
 
 
 # ---------------------------------------------------------------------------
@@ -1146,15 +1244,24 @@ def main():
     code = report_exit_code(rows)
     warnings = compute_account_warnings(netlify_token)
 
-    if args.json:
-        print(render_json(rows, code, warnings=warnings))
-    else:
-        print(render_text(rows, code, warnings=warnings))
-
+    # gh-1721: the alarm POST's own outcome is now first-class in the report, not a
+    # stderr-only side effect -- alarm_post_status is None unless --file-issue was
+    # requested AND a failing verdict actually triggered an attempt.
+    alarm_post_status = None
+    alarm_post_detail = None
     if args.file_issue and any(r["verdict"] in FAILING_VERDICTS for r in rows):
-        post_issue_comment(render_issue_comment_body(rows, code))
+        posted, detail = post_issue_comment(render_issue_comment_body(rows, code))
+        alarm_post_status = "posted" if posted else "failed"
+        alarm_post_detail = detail
 
-    return code
+    if args.json:
+        print(render_json(rows, code, warnings=warnings,
+                           alarm_post_status=alarm_post_status, alarm_post_detail=alarm_post_detail))
+    else:
+        print(render_text(rows, code, warnings=warnings,
+                           alarm_post_status=alarm_post_status, alarm_post_detail=alarm_post_detail))
+
+    return final_exit_code(code, alarm_post_status)
 
 
 if __name__ == "__main__":

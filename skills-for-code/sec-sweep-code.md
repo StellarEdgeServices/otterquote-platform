@@ -78,7 +78,7 @@ SECURITY_DIR.mkdir(parents=True, exist_ok=True)
 
 ## Hard Invariants
 
-1. Never fix vulnerabilities autonomously — triage and file GitHub issues (or ClickUp CEO-board tasks for CEO-facing items only); never modify production code
+1. Never fix vulnerabilities autonomously — never modify production code. File findings per the R-098 split (see Step 3, "Filing Regressions"): engineering findings (vulnerabilities, exposed secrets, patch gaps) go to **GitHub issues** on `StellarEdgeServices/otterquote-platform`; only a genuine CEO-facing decision (money/legal/brand/vendor action) goes to the **ClickUp CEO board**. Cross-filing is prohibited — see "Cross-filing is prohibited (R-098)" below.
 2. Never suppress or downgrade a CVSS Critical or High finding
 3. Secrets findings (GitGuardian) are always P0 — treat as live credential exposure until proven otherwise
 4. SLA clock starts at finding creation date (from the tool), not the date this skill runs
