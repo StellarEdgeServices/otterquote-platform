@@ -18,6 +18,12 @@ on:
       - 'react-app/**'
       - '.github/workflows/react-app-tests.yml'
 
+# gh-1731: dedupe repeat-push churn on open PRs -- unit tests have no shared
+# fixture state, so cancelling a superseded run is safe.
+concurrency:
+  group: react-app-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
