@@ -1,0 +1,92 @@
+name: Entry-Point Reachability (Live)
+
+# gh-1697 Part 2. Part 1 (the "Entry-Point Reachability" job in
+# .github/workflows/e2e-smoke.yml) proves the CODE is operable, pre-merge,
+# against a local static server. It cannot prove the bytes actually served by
+# a deploy are operable -- byte-identical-to-main was exactly what #1693
+# shipped, broken. This workflow runs the SAME spec
+# (tests/e2e/smoke/entry-point-reachability.spec.ts, completely unchanged)
+# against the live deployed site instead, via
+# tests/e2e/smoke/playwright.entrypoint-live.config.ts.
+#
+# Trigger: deployment_status, filtered to a successful deployment whose
+# target_url is the production otterquote.com site (Netlify's GitHub
+# integration creates a GitHub Deployment + deployment_status per deploy;
+# this also fires for deploy previews, which target_url filters out).
+#
+# KNOWN GAP (see gh-1697 closing comment): this workflow was authored and
+# reviewed for correctness but its trigger could not be exercised from the
+# authoring environment -- there is no way to generate a real
+# `deployment_status` event without an actual Netlify deploy completing
+# against this repo. Treat "does deployment_status actually fire the way
+# this workflow assumes" as an open follow-up until it is observed running
+# for a real deploy (see the gh-1697 closing comment's QUESTIONS/BLOCKER).
+#
+# Scope note: every entry point this spec clicks has its target function
+# replaced with a spy BEFORE the click (see entry-point-reachability.spec.ts)
+# -- the real Stripe/Supabase-backed implementations never run, against
+# local OR live. Submit Bid/Renew Bid are asserted by href only, never
+# clicked. Running this against production performs no purchase, no
+# approval, and no navigation away from the page under test.
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Base URL to run the reachability spec against'
+        required: false
+        default: 'https://otterquote.com'
+
+jobs:
+  entry-point-reachability-live:
+    name: Entry-Point Reachability (Live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       contains(github.event.deployment_status.target_url, 'otterquote.com') &&
+       !contains(github.event.deployment_status.target_url, 'deploy-preview'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: 'tests/e2e/package.json'
+
+      - name: Install E2E test dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
+
+      - name: Install Playwright browser (chromium)
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run entry-point reachability spec against the live site
+        working-directory: tests/e2e
+        env:
+          LIVE_BASE_URL: ${{ github.event.inputs.base_url || github.event.deployment_status.target_url || 'https://otterquote.com' }}
+        run: npx playwright test --config=smoke/playwright.entrypoint-live.config.ts
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: entry-point-reachability-live-report
+          path: tests/e2e/playwright-report/
+          retention-days: 14
