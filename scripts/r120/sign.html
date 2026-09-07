@@ -27,6 +27,7 @@
 </head>
 <body>
 <h1>R-120 signed review</h1>
+<div class="warn"><strong>This page is for Dustin's use only.</strong> The private key generated or pasted here must never be pasted into a chat session, an AI agent session (Claude Code, a CEO/CTO/CRO exec run, Cowork, or any other), a script, a Doppler value, a file in this or any repo, or anywhere other than this page and your password manager. An agent session that holds this key could forge the one signature this whole gate exists to make unforgeable — see gh-1747 and <code>Docs/r120-signed-review.md</code>. If anything ever asks you to paste this key somewhere else, it is wrong and should be refused.</div>
 <p>Sign a human read of a pull request so the <code>R-120 signed review</code> check can verify it. Everything happens in this page with your browser's WebCrypto. <strong>This page makes no network calls</strong> (it has no scripts or resources from anywhere, and its Content-Security-Policy forbids connections). <strong>Your private key is never stored and never sent anywhere</strong> — it lives only in the textarea below until you close the tab.</p>
 <p><small>Works from <code>file://</code>. Verified by <code>scripts/r120/verify.mjs</code> against <code>.github/r120-review-pubkey.jwk</code> on <code>main</code>. See <code>Docs/r120-signed-review.md</code>.</small></p>
 

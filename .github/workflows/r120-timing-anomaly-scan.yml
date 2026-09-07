@@ -1,0 +1,105 @@
+name: R-120 timing anomaly scan
+
+# gh-1747: R-120's signature (scripts/r120/verify.mjs, .github/workflows/r120-signed-review.yml)
+# proves possession of the private key, not who pressed Sign — and every
+# agent session in this system shares Dustin's own GitHub login, so
+# comment.user.login carries no attribution signal at all. This workflow is
+# NOT the gate and never touches it: it is an advisory, non-blocking detector
+# that flags (never fails, never blocks a merge) an `R-120 SIGNED:` comment
+# that lands close in time to a comment on the same thread carrying this
+# system's agent-run self-identification markers — the only signal left when
+# the login proves nothing. See scripts/r120/detect-timing-anomaly.mjs for
+# exactly what this can and honestly cannot catch (short version: it is a
+# tripwire on the public comment record, not proof that the private key
+# stayed out of an agent session — that guarantee comes from the key never
+# being put anywhere an agent session could read it, per
+# Docs/r120-signed-review.md's "Key custody invariant" section).
+#
+# A flag is surfaced as a sticky PR comment (marker below) for the Monday
+# sweep to look at by eye. This job's own pass/fail exit code is informational
+# only — it is never added to branch protection's required contexts, and it
+# must never be. Runs on the BASE repo in response to a comment event, so it
+# never checks out or executes PR-head code.
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'PR/issue number to scan (workflow_dispatch only)'
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: r120-timing-anomaly-${{ github.event.issue.number || github.event.inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: R-120 timing anomaly scan
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan thread for timing anomalies
+        uses: actions/github-script@v9
+        env:
+          MARKER: '<!-- r120-timing-anomaly -->'
+        with:
+          script: |
+            const path = require('path');
+            const { pathToFileURL } = require('url');
+            const ws = process.env.GITHUB_WORKSPACE;
+            const { detectTimingAnomaly, DEFAULT_WINDOW_SECONDS } =
+              await import(pathToFileURL(path.join(ws, 'scripts/r120/detect-timing-anomaly.mjs')).href);
+
+            const { owner, repo } = context.repo;
+            const issueNumber = context.eventName === 'workflow_dispatch'
+              ? Number(context.payload.inputs.issue_number)
+              : context.payload.issue.number;
+            const marker = process.env.MARKER;
+
+            // Don't re-scan in response to this job's own sticky comment.
+            if (context.eventName === 'issue_comment' && typeof context.payload.comment?.body === 'string'
+                && context.payload.comment.body.startsWith(marker)) {
+              core.info('Triggering comment is this workflow\'s own sticky comment; skipping.');
+              return;
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: issueNumber, per_page: 100,
+            });
+
+            const result = detectTimingAnomaly(comments);
+
+            core.info(`R-120 timing anomaly scan on #${issueNumber}: ${result.ok ? 'clean' : `${result.flagged.length} flag(s)`} (window ${DEFAULT_WINDOW_SECONDS}s, ${comments.length} comments scanned)`);
+
+            if (result.ok) {
+              // Nothing to surface. Deliberately does not touch or remove any
+              // existing sticky comment: a past flag stays visible for the
+              // sweep even if the thread has since gone quiet.
+              return;
+            }
+
+            const lines = result.flagged.map((f) => `- ${f.reason}`).join('\n');
+            const body = `${marker}\n**[R-120 TIMING FLAG — advisory only, does not block this PR]**\n\n`
+              + `An \`R-120 SIGNED:\` approval on this thread landed within ${DEFAULT_WINDOW_SECONDS}s of a comment carrying an agent-run attribution marker (the only signal available, since every agent session and Dustin share one GitHub login). `
+              + `This is a partial, honestly limited pattern check — see \`scripts/r120/detect-timing-anomaly.mjs\`'s header for what it cannot catch. It is not proof of a violation and it never fails the R-120 gate. Flagged for the Monday sweep.\n\n${lines}`;
+
+            const existing = comments.find((c) => typeof c.body === 'string' && c.body.startsWith(marker));
+            try {
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              }
+            } catch (e) {
+              core.warning(`could not post timing-anomaly sticky comment: ${e.message}`);
+            }
+
+            core.warning(`R-120 timing anomaly flagged on #${issueNumber} — see sticky comment (advisory, non-blocking)`);

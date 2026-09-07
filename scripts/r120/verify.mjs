@@ -11,6 +11,19 @@
 // session does not hold the private key, so it structurally cannot produce
 // one. See Docs/r120-signed-review.md.
 //
+// INVARIANT (gh-1747): the R-120 private JWK must never enter an agent
+// session, an agent-readable file, Doppler, or any repo. It is generated and
+// held ONLY in scripts/r120/sign.html's in-memory textarea (never stored,
+// never sent — that page makes no network calls) and from there goes only to
+// Dustin's password manager. This module never asks for it, never receives
+// it, and only ever imports the PUBLIC half (isP256PublicJwk() below
+// explicitly rejects any JWK carrying a "d" field). A signature proves
+// possession of the key, not who pressed Sign — see
+// scripts/r120/detect-timing-anomaly.mjs for the (partial, honestly limited)
+// detector that watches for the one symptom of a violation this system can
+// observe: an approval landing suspiciously close in time to an agent run's
+// own comment on the same thread.
+//
 // Exports:
 //   detectR120Content(diffText)                        -> { hit, lines: [{file, line, rule, side, text}] }
 //   verifySignedApproval({owner, repo, pr, headSha, comments, pubJwk})
