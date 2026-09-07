@@ -65,3 +65,25 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # otherwise (see the /inspector-landing.html rule above for the same
 # reasoning -- that one avoided the problem by deleting the file instead).
 /landing.html / 301!
+
+# gh-1745: every /blog/ and /guides/ content page is dual-served -- Netlify's
+# sitewide Pretty URLs feature (kept sitewide-enabled per the gh-1540
+# rejection above) implicitly serves the extensionless path as a second 200
+# alongside the .html file that's actually on disk, and the two have been
+# splitting search signal against each other (CEO RUN 32, 2026-09-06 GSC:
+# what-to-do-after-storm-damages-roof.html position 6 vs the extensionless
+# twin position 89). Each page's <link rel="canonical"> has pointed at the
+# .html form since at least 2026-07-03 without fixing this -- canonical is a
+# hint Google can and does ignore when both URLs independently return 200,
+# so these are 301s, not a second canonical pass. Direction (extensionless
+# -> .html) matches those existing canonical tags, sitemap.xml (which lists
+# only the .html form for every page below), and every internal link in the
+# repo -- none link to the extensionless form. No force flag: unlike
+# /landing.html above, no static file exists at the bare (extensionless)
+# path, so there's nothing for Netlify to prioritize over this rule.
+/blog/what-to-do-after-storm-damages-roof /blog/what-to-do-after-storm-damages-roof.html 301
+/blog/how-to-negotiate-better-roof-repair-insurance-claim /blog/how-to-negotiate-better-roof-repair-insurance-claim.html 301
+/guides/how-to-file-property-damage-claim /guides/how-to-file-property-damage-claim.html 301
+/guides/how-to-choose-contractor /guides/how-to-choose-contractor.html 301
+/guides/how-to-negotiate-with-insurer /guides/how-to-negotiate-with-insurer.html 301
+/guides/how-to-read-contractor-estimate /guides/how-to-read-contractor-estimate.html 301
