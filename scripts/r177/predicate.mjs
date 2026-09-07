@@ -1,141 +1,50 @@
-// scripts/r120/verify.mjs — R-120 signed-review gate: content detection +
-// ECDSA P-256 approval verification. Node 20+, no dependencies (WebCrypto).
+// scripts/r177/predicate.mjs — the R-177 legal/money LABELLER predicate.
 //
-// gh-1650: constitution entry 6 requires a human read before merging any diff
-// that touches legal wording, consent, pricing or money. The old gate
-// (.github/workflows/r120-review-gate.yml) authenticated the reviewer by a
-// GitHub login that every agent session shares, matched filenames instead of
-// content, and was advisory. This module is the base-branch half of the
-// replacement: an approval is only valid if it carries an ECDSA P-256
-// signature that verifies under the public key committed on main. An agent
-// session does not hold the private key, so it structurally cannot produce
-// one. See Docs/r120-signed-review.md.
+// R-177 (2026-09-07) retired R-120's human-signature gate. Constitution entry 6
+// now requires, on a diff that touches legal wording, consent language, pricing
+// or money movement: (a) a `LEGAL-READ: PASS|FAIL …` comment from a
+// fresh-context refuter agent that is not the PR's author, and (b) an
+// `R-177 SIGNED: pr=<n> sha=<40-hex head sha> — Ben, CEO` comment from the CEO
+// over that same head sha. Dustin is never asked to read a diff.
+//
+// THIS MODULE IS A LABELLER, NOT A GATE. Its only consumer is
+// .github/workflows/r177-legal-read.yml, the "R-177 legal-read needed" check,
+// which ALWAYS exits 0: when the predicate fires it labels the PR
+// `r177:legal-read` and posts one notice. The R-177 comment pair is enforced by
+// the CTO's merge tooling, not by a required status check.
+//
+// The predicate below is R-120's, carried over unchanged in behaviour (gh-1650
+// content detection + gh-1701 scope narrowing, measured on 15 open PRs). What
+// was REMOVED with R-120: `verifySignedApproval`, `approvalMessage`,
+// `APPROVAL_LINE_RE`, the base64url helpers, the ECDSA P-256 verification, the
+// committed public key `.github/r120-review-pubkey.jwk`, the offline signing
+// page `scripts/r120/sign.html`, `scripts/r120/sign.mjs`, and the
+// `R-120 signed review` required status check on main.
+//
+// Node 20+, no dependencies.
 //
 // Exports:
-//   detectR120Content(diffText)                        -> { hit, lines: [{file, line, rule, side, text}] }
-//   verifySignedApproval({owner, repo, pr, headSha, comments, pubJwk})
-//                                                      -> { ok, reason, matched }
-//   approvalMessage({owner, repo, pr, headSha})        -> the exact string that is signed
-//   APPROVAL_LINE_RE, base64urlToBytes, bytesToBase64url
-
-const subtle = globalThis.crypto?.subtle;
-if (!subtle) {
-  throw new Error('scripts/r120/verify.mjs needs WebCrypto (globalThis.crypto.subtle) — Node 20+ required');
-}
-
-// ---------------------------------------------------------------------------
-// Approval line format + signing message
-// ---------------------------------------------------------------------------
-
-/** One line of a PR comment: `R-120 SIGNED: pr=<n> sha=<40hex> sig=<base64url>` */
-export const APPROVAL_LINE_RE = /^R-120 SIGNED:\s+pr=(\d+)\s+sha=([0-9a-fA-F]{40})\s+sig=([A-Za-z0-9_-]+={0,2})\s*$/;
-
-/** The exact UTF-8 string that is signed. Any change here breaks every existing signature. */
-export function approvalMessage({ owner, repo, pr, headSha }) {
-  return `R-120 ${owner}/${repo}#${Number(pr)} ${String(headSha).toLowerCase()}`;
-}
-
-export function base64urlToBytes(s) {
-  const b64 = String(s).replace(/-/g, '+').replace(/_/g, '/');
-  const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
-  return new Uint8Array(Buffer.from(b64 + pad, 'base64'));
-}
-
-export function bytesToBase64url(bytes) {
-  return Buffer.from(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function isP256PublicJwk(jwk) {
-  return (
-    jwk && typeof jwk === 'object' && jwk.kty === 'EC' && jwk.crv === 'P-256' &&
-    typeof jwk.x === 'string' && typeof jwk.y === 'string' && !('d' in jwk)
-  );
-}
-
-async function importPublicKey(pubJwk) {
-  if (!isP256PublicJwk(pubJwk)) {
-    throw new Error('pubJwk is not an EC P-256 public JWK (kty=EC, crv=P-256, x, y, no d)');
-  }
-  // Only the public coordinates are imported; anything else in the file is ignored.
-  const { kty, crv, x, y } = pubJwk;
-  return subtle.importKey('jwk', { kty, crv, x, y, ext: true }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-}
-
-/**
- * Scan PR comments for a valid signed approval of the CURRENT head sha.
- *
- * @param {object} args
- * @param {string} args.owner
- * @param {string} args.repo
- * @param {number|string} args.pr          PR number
- * @param {string} args.headSha            current head sha (40 hex)
- * @param {Array<{body?: string, id?: number|string, user?: {login?: string}}>} args.comments
- * @param {object} args.pubJwk             EC P-256 public JWK from the base branch
- * @returns {Promise<{ok: boolean, reason: string, matched: null | {commentId, login, line, pr, sha}}>}
- */
-export async function verifySignedApproval({ owner, repo, pr, headSha, comments, pubJwk }) {
-  const prNum = Number(pr);
-  const sha = String(headSha || '').toLowerCase();
-  if (!Number.isInteger(prNum) || prNum <= 0) return { ok: false, reason: `invalid pr number: ${pr}`, matched: null };
-  if (!/^[0-9a-f]{40}$/.test(sha)) return { ok: false, reason: `invalid head sha: ${headSha}`, matched: null };
-
-  let key;
-  try {
-    key = await importPublicKey(pubJwk);
-  } catch (e) {
-    return { ok: false, reason: `public key unusable: ${e.message}`, matched: null };
-  }
-
-  const message = new TextEncoder().encode(approvalMessage({ owner, repo, pr: prNum, headSha: sha }));
-
-  const candidates = [];
-  for (const c of Array.isArray(comments) ? comments : []) {
-    const body = typeof c?.body === 'string' ? c.body : '';
-    for (const raw of body.split(/\r?\n/)) {
-      const line = raw.trim();
-      const m = APPROVAL_LINE_RE.exec(line);
-      if (!m) continue;
-      candidates.push({ commentId: c.id ?? null, login: c.user?.login ?? null, line, pr: Number(m[1]), sha: m[2].toLowerCase(), sig: m[3] });
-    }
-  }
-
-  if (candidates.length === 0) {
-    return { ok: false, reason: 'no `R-120 SIGNED:` line found in any PR comment (REVIEW: PASS / R-120 READ: comments are not signatures)', matched: null };
-  }
-
-  // Walk newest-last so the most recent valid approval is the one reported.
-  const reasons = [];
-  let matched = null;
-  for (const cand of candidates) {
-    if (cand.pr !== prNum) { reasons.push(`comment ${cand.commentId ?? '?'}: signed for pr=${cand.pr}, this is pr=${prNum}`); continue; }
-    if (cand.sha !== sha) { reasons.push(`comment ${cand.commentId ?? '?'}: signed for sha=${cand.sha.slice(0, 12)}, current head is ${sha.slice(0, 12)} (new commits invalidate approval)`); continue; }
-    let sigBytes;
-    try { sigBytes = base64urlToBytes(cand.sig); } catch { reasons.push(`comment ${cand.commentId ?? '?'}: sig is not base64url`); continue; }
-    if (sigBytes.length !== 64) { reasons.push(`comment ${cand.commentId ?? '?'}: sig length ${sigBytes.length} != 64 (raw r||s P-256)`); continue; }
-    let valid = false;
-    try { valid = await subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, sigBytes, message); } catch { valid = false; }
-    if (!valid) { reasons.push(`comment ${cand.commentId ?? '?'}: signature does not verify under the pubkey on main`); continue; }
-    matched = { commentId: cand.commentId, login: cand.login, line: cand.line, pr: cand.pr, sha: cand.sha };
-  }
-
-  if (matched) {
-    return { ok: true, reason: `valid R-120 signature for pr=${prNum} sha=${sha} (comment ${matched.commentId ?? '?'})`, matched };
-  }
-  return { ok: false, reason: reasons.join('; '), matched: null };
-}
+//   detectLegalMoneyContent(diffText) -> { hit, lines: [{file, line, rule, side, text}], files }
+//   classifyLine, scanModeFor, isNoiseLine, isCodeComment
+//   PREDICATE_FILES, COPY_GUARD_FILES
 
 // ---------------------------------------------------------------------------
 // Content detection
 // ---------------------------------------------------------------------------
 
-/** Files whose mere presence in a diff is R-120 content (gate integrity). */
-export const GATE_FILES = new Set([
-  '.github/r120-review-pubkey.jwk',
-  '.github/workflows/r120-signed-review.yml',
-  'scripts/r120/verify.mjs',
+/**
+ * Files whose mere presence in a diff is legal/money content: changing the
+ * predicate, or the labeller that runs it, is itself a change to how legal and
+ * money copy is watched, so it earns the R-177 pair. (Under R-120 this set also
+ * held `.github/r120-review-pubkey.jwk`; that key is deleted — R-177 has no
+ * signing key.)
+ */
+export const PREDICATE_FILES = new Set([
+  '.github/workflows/r177-legal-read.yml',
+  'scripts/r177/predicate.mjs',
 ]);
 
-/** Files/dirs whose content is never scanned. (GATE_FILES are reported once as a whole, not line by line.) */
+/** Files/dirs whose content is never scanned. (PREDICATE_FILES are reported once as a whole, not line by line.) */
 const EXCLUDED_PATH_RES = [
   // gh-1701: `*.spec.*` is deliberately NOT listed here. Measured on origin/main
   // (`git ls-tree -r --name-only origin/main | grep '\.spec\.'`): 12 `*.spec.*`
@@ -149,7 +58,7 @@ const EXCLUDED_PATH_RES = [
   /(^|\/)__tests__\//,               // __tests__/
   /(^|\/)package-lock\.json$/,
   /^\.github\/workflows\//,
-  /^scripts\/r120\//,
+  /^scripts\/r177\//,
   /^Docs\//,
   /^In Flight\//,
 ];
@@ -158,7 +67,7 @@ const EXCLUDED_PATH_RES = [
 // helpers, CI detectors, one-off utilities. Their strings are operator-facing
 // CLI output and fixture data, not customer copy, and nothing here is the
 // executable money path. Every false positive on the open queue that was not a
-// SQL GRANT lived here: #1720 (19 hits, Playwright fixtures), #1735 (R-120's
+// SQL GRANT lived here: #1720 (19 hits, Playwright fixtures), #1735 (the rule's
 // OWN text, quoted in a Python string), #1733 ("Netlify credit/billing" in a
 // --help string), #1742 (detector filenames in a dict).
 //
@@ -172,14 +81,14 @@ const HARNESS_PATH_RES = [
 ];
 
 // The exception: files under those paths that hold, quote or emit customer
-// money/legal COPY. Weakening one of these is precisely the diff R-120 exists to
-// put in front of a human — #1646 both removes "licensed, insured" sitewide AND
+// money/legal COPY. Weakening one of these is precisely the diff R-177 exists to
+// put in front of a second reader — #1646 both removes "licensed, insured" sitewide AND
 // adds the guard that keeps it removed — so they are scanned in full.
 //
 // Listing a file here only ever makes the gate scan MORE, so over-inclusion is
 // safe by construction. The list is kept honest by
 // `COPY_GUARD_FILES covers every copy-holding file under scripts/ and tools/`
-// in scripts/r120/verify.scope.test.mjs, which walks the tree and FAILS if a file
+// in scripts/r177/predicate.scope.test.mjs, which walks the tree and FAILS if a file
 // carrying customer copy vocabulary is missing from it. Entries that do not
 // exist yet are allowed on purpose: check-credential-claims.py is added by
 // #1646 and could not otherwise have been covered on its own PR.
@@ -203,7 +112,7 @@ export const COPY_GUARD_FILES = new Set([
 // Money-path IDENTIFIERS (code, not prose). \b treats `_` as a word char, so the
 // prose money-word rule never sees `has_payment_method` or `accept_bid` — measured
 // 2026-09-05 on PR #1670 (a BEFORE UPDATE trigger + accept_bid rewrite on the
-// money path) which the prose rules passed as "no R-120 content".
+// money path) which the prose rules passed as "no legal/money content".
 // gh-1701: `is_test` removed 2026-09-06 — a generic environment flag, not a
 // money identifier. It fired on `is_test boolean NOT NULL` in an unrelated DDL
 // trace (#1683). Test-vs-live CHARGE state is still covered by `live_charge`.
@@ -216,7 +125,7 @@ const MONEY_IDENT_RE = /(payment|payout|stripe|refund|charge|invoice|price|prici
 //
 // This deliberately does NOT stop the gate firing. An authorisation change on a
 // money-path function is exactly the thing a human should see, and until a
-// dedicated permissions-ratchet check exists (gh-1767) R-120 is the only place
+// dedicated permissions-ratchet check exists (gh-1767) this predicate is the only place
 // that would catch one. It collapses the file to ONE `money-permission` hit so
 // the verdict comment stays readable instead of 20 identical rows. `COMMENT ON`
 // is a database docstring and is treated like a code comment.
@@ -239,13 +148,13 @@ const ANALYTICS_RE = /(googletagmanager|\bgtag\b|ga-gate\.js)/i;
 
 /**
  * How much of a file's diff to scan.
- *   'none'          — not scanned (GATE_FILES are reported as one 'gate-file' hit instead)
+ *   'none'          — not scanned (PREDICATE_FILES are reported as one 'predicate-file' hit instead)
  *   'currency-only' — literal currency amounts only (harness paths, see HARNESS_PATH_RES)
  *   'full'          — every rule
  */
 export function scanModeFor(file) {
   if (!file) return 'none';
-  if (GATE_FILES.has(file)) return 'none'; // reported as a single 'gate-file' hit instead
+  if (PREDICATE_FILES.has(file)) return 'none'; // reported as a single 'predicate-file' hit instead
   if (EXCLUDED_PATH_RES.some((re) => re.test(file))) return 'none';
   if (COPY_GUARD_FILES.has(file)) return 'full';
   if (HARNESS_PATH_RES.some((re) => re.test(file))) return 'currency-only';
@@ -328,7 +237,7 @@ function stripDiffPath(p) {
  * @param {string} diffText
  * @returns {{hit: boolean, lines: Array<{file: string, line: number, rule: string, side: '+'|'-', text: string}>, files: string[]}}
  */
-export function detectR120Content(diffText) {
+export function detectLegalMoneyContent(diffText) {
   const out = [];
   const files = [];
   const seenGate = new Set();
@@ -348,9 +257,9 @@ export function detectR120Content(diffText) {
       file = m ? m[2] : null;
       if (file) files.push(file);
       mode = scanModeFor(file);
-      if (file && GATE_FILES.has(file) && !seenGate.has(file)) {
+      if (file && PREDICATE_FILES.has(file) && !seenGate.has(file)) {
         seenGate.add(file);
-        out.push({ file, line: 0, rule: 'gate-file', side: '+', text: `(any change to ${file} requires a signed approval under the pubkey currently on main)` });
+        out.push({ file, line: 0, rule: 'predicate-file', side: '+', text: `(any change to ${file} requires a signed approval under the pubkey currently on main)` });
       }
       continue;
     }
@@ -391,4 +300,4 @@ export function detectR120Content(diffText) {
   return { hit: out.length > 0, lines: out, files };
 }
 
-export default { detectR120Content, verifySignedApproval, approvalMessage, APPROVAL_LINE_RE, GATE_FILES, COPY_GUARD_FILES, scanModeFor };
+export default { detectLegalMoneyContent, PREDICATE_FILES, COPY_GUARD_FILES, scanModeFor, classifyLine, isNoiseLine, isCodeComment };
