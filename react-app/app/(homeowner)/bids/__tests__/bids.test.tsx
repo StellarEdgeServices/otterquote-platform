@@ -21,6 +21,9 @@ import {
   buildCompareModel,
   EXPIRY_TOOLTIP,
   EMPTY_STATE,
+  mapAwardError,
+  NO_PAYMENT_METHOD_MESSAGE,
+  NO_PAYMENT_METHOD_SENTINEL,
 } from '../utils';
 import type { BidRow, ContractorProfile } from '../types';
 
@@ -313,5 +316,35 @@ describe('(e) empty + error states', () => {
     expect(screen.queryByText(/updated their bid/)).not.toBeInTheDocument();
     rerender(<BidUpdatedBanner count={2} onDismiss={() => {}} />);
     expect(screen.getByText(/2 contractors updated their bids/)).toBeInTheDocument();
+  });
+});
+
+// ── (f) gh-1532 award-refusal copy ──────────────────────────────────────────
+describe('(f) award-refusal copy (gh-1532)', () => {
+  const RAW =
+    'contractor_no_payment_method: the selected contractor has not added a payment method, ' +
+    'so this bid cannot be accepted yet';
+
+  it('maps the payment-method guard refusal to plain-English homeowner copy', () => {
+    expect(mapAwardError(RAW)).toBe(NO_PAYMENT_METHOD_MESSAGE);
+  });
+
+  it('never leaks the internal sentinel to the homeowner', () => {
+    expect(mapAwardError(RAW)).not.toContain(NO_PAYMENT_METHOD_SENTINEL);
+    expect(NO_PAYMENT_METHOD_MESSAGE).not.toContain('_');
+  });
+
+  it('states the reason and does not tell the homeowner to retry', () => {
+    expect(NO_PAYMENT_METHOD_MESSAGE).toMatch(/payment method/i);
+    expect(NO_PAYMENT_METHOD_MESSAGE).not.toMatch(/try again/i);
+  });
+
+  // Negative control: the mapper is not a blanket rewrite -- unrelated errors
+  // pass through untouched, so a real failure is still legible in logs/UI.
+  it('passes unrelated errors through unchanged', () => {
+    expect(mapAwardError('permission denied for table claims')).toBe(
+      'permission denied for table claims',
+    );
+    expect(mapAwardError(null)).toBe('');
   });
 });
