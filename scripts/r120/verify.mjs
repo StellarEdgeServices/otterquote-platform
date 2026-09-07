@@ -137,10 +137,15 @@ export const GATE_FILES = new Set([
 
 /** Files/dirs whose content is never scanned. (GATE_FILES are reported once as a whole, not line by line.) */
 const EXCLUDED_PATH_RES = [
-  // gh-1701: `.spec.` is the sibling of `.test.` and is what Playwright uses.
-  // #1720 produced 19 hits, every one a fixture in a `*.spec.ts`, because only
-  // `*.test.*` was listed here.
-  /(^|\/)[^/]*\.(test|spec)\.[^/]+$/i, // *.test.* and *.spec.*
+  // gh-1701: `*.spec.*` is deliberately NOT listed here. Measured on origin/main
+  // (`git ls-tree -r --name-only origin/main | grep '\.spec\.'`): 12 `*.spec.*`
+  // files, 10 under tests/e2e/flows and 2 under tests/e2e/smoke, 0 anywhere else.
+  // So HARNESS_PATH_RES (`^tests/`) already scopes every one of them to
+  // `currency-only`, which is exactly what #1720 needed — all 19 of its hits were
+  // `money-identifier` (an `acvPayout`-shaped fixture field) and go quiet — while a
+  // literal `$500 platform fee` in a fixture still fires. Excluding `.spec.`
+  // outright would instead make that price invisible to the gate.
+  /(^|\/)[^/]*\.test\.[^/]+$/i,     // *.test.*
   /(^|\/)__tests__\//,               // __tests__/
   /(^|\/)package-lock\.json$/,
   /^\.github\/workflows\//,

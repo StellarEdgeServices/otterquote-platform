@@ -29,11 +29,19 @@ describe('detectR120Content — predicate scope (gh-1701, 2026-09-06)', () => {
   const hit = (file, lines) => detectR120Content(diff(file, lines));
 
   // ---- negative controls: each of these FIRED before this change -----------
-  it('N1 does NOT fire on Playwright fixtures — *.spec.* is excluded like *.test.* (#1720, 19 hits)', () => {
+  it('N1 Playwright fixture IDENTIFIERS do not fire, but a currency literal in the same file does (#1720, 19 hits)', () => {
+    // `*.spec.*` is NOT path-excluded. It sits under tests/, so HARNESS_PATH_RES
+    // scopes it to `currency-only`: the identifier half of #1720 goes quiet...
     assert.equal(hit('tests/e2e/smoke/entry-point-reachability.spec.ts', [
       "  const PAYOUT = { id: 'reach-payout-1', amount: 250, payout_type: 'commission_referral' };",
       "  await assertEntryPointReachable(page, loc, 'upgrade-pay', 'confirmUpgradePayment', []);",
     ]).hit, false);
+    // ...and the currency half does not. A price in a fixture is still a price.
+    const priced = hit('tests/e2e/smoke/entry-point-reachability.spec.ts', [
+      "  await expect(page.getByText('$500 platform fee')).toBeVisible();",
+    ]);
+    assert.equal(priced.hit, true);
+    assert.ok(priced.lines.some((l) => l.rule === 'currency-amount'));
   });
 
   it("N2 does NOT fire on R-120's OWN text quoted in a script (#1735)", () => {
@@ -129,13 +137,28 @@ describe('detectR120Content — predicate scope (gh-1701, 2026-09-06)', () => {
     assert.ok(r.lines.some((l) => l.rule === 'gate-file'));
   });
 
-  it('scanModeFor: harness paths are currency-only, copy guards are full, specs are none', () => {
+  // gh-1701 / cto28: the hole a full `'none'` exclusion for `*.spec.*` would open.
+  // A literal price inside a Playwright fixture is still a price. `.spec.` files
+  // live under `tests/`, so HARNESS_PATH_RES puts them in `currency-only`: the
+  // identifier false positives from #1720 stay quiet, this does not.
+  it('P11 fires on a literal currency amount inside a Playwright spec file', () => {
+    const r = hit('tests/e2e/flows/contractor-journey.spec.ts', ["  const PLATFORM_FEE = '$500';"]);
+    assert.equal(r.hit, true);
+    assert.ok(r.lines.some((l) => l.rule === 'currency-amount'));
+  });
+
+  it('scanModeFor: harness paths (specs included) are currency-only, copy guards full, *.test.* none', () => {
     assert.equal(scanModeFor('tests/e2e/helpers/seed.ts'), 'currency-only');
     assert.equal(scanModeFor('scripts/netlify-deploy-drift.py'), 'currency-only');
     assert.equal(scanModeFor('tools/inline_handler_attr_check.py'), 'currency-only');
     assert.equal(scanModeFor('tools/partner_parity_check.py'), 'full');
     assert.equal(scanModeFor('scripts/check-credential-claims.py'), 'full');
-    assert.equal(scanModeFor('tests/e2e/smoke/x.spec.ts'), 'none');
+    // `*.spec.*` is not path-excluded: it is harness scope, like the rest of tests/.
+    assert.equal(scanModeFor('tests/e2e/smoke/x.spec.ts'), 'currency-only');
+    assert.equal(scanModeFor('tests/e2e/flows/contractor-journey.spec.ts'), 'currency-only');
+    // `*.test.*` IS still excluded outright, anywhere in the tree.
+    assert.equal(scanModeFor('tests/e2e/helpers/seed.test.ts'), 'none');
+    assert.equal(scanModeFor('scripts/netlify-deploy-drift.test.py'), 'none');
     assert.equal(scanModeFor('faq.html'), 'full');
     assert.equal(scanModeFor('scripts/r120/verify.mjs'), 'none'); // GATE_FILES: reported whole
   });
@@ -163,7 +186,10 @@ describe('detectR120Content — predicate scope (gh-1701, 2026-09-06)', () => {
       for (const abs of walk(dir)) {
         const rel = path.relative(root, abs).split(path.sep).join('/');
         if (rel.startsWith('scripts/r120/')) continue;      // the gate's own directory is excluded
-        if (/\.(test|spec)\.[^/]+$/i.test(rel)) continue;   // hard-excluded anyway
+        if (/\.test\.[^/]+$/i.test(rel)) continue;          // hard-excluded anyway
+        // `*.spec.*` is NOT skipped: it is no longer path-excluded, so a spec file
+        // under scripts/ or tools/ would be `currency-only` and lose the prose word
+        // rules unless it is listed in COPY_GUARD_FILES. (0 such files today.)
         if (!TEXT_EXT.test(rel)) continue;
         let body;
         try { body = fs.readFileSync(abs, 'utf8'); } catch { continue; }
