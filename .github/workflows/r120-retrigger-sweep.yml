@@ -1,0 +1,133 @@
+name: R-120 retrigger sweep
+
+# gh-1753: R-120 required-check retrigger sweep. Ruled by the CTO
+# (2026-09-06T21:02:00Z, comment on gh-1753): "A workflow_dispatch-based
+# sweep that finds open PRs missing a completed R-120 signed review check
+# and re-triggers it. No verifier change, no pubkey change... Scope it to
+# re-trigger and report, never to interpret."
+#
+# ROOT CAUSE THIS SERVES: r120-signed-review.yml runs on `pull_request_target:
+# [opened, synchronize, reopened]`. GitHub has no way to fire that trigger
+# retroactively, so a PR that has gone quiet since the check was added to
+# branch protection, or since the signing key was rotated, keeps a required
+# context that is not green, not red — just ABSENT, with nothing to notice.
+# Confirmed live population as of this run: #1646 and #1668 (both `dirty`,
+# and #1668 is stacked on #1646 — a signature covers a specific head sha, so
+# they need manual conflict resolution by someone with write access before
+# either can be signed; this sweep deliberately does not touch them, see the
+# `exclude_prs` default below).
+#
+# ⛔ WHAT THIS WORKFLOW CANNOT DO, ENFORCED STRUCTURALLY, NOT BY INTENT:
+#   - `permissions:` below grants `pull-requests: write` (to list PRs, read
+#     their head sha, and — for a MISSING PR only — close it and reopen it,
+#     plus post one informational comment) and `contents: read` (to check
+#     out scripts/r120/retrigger-sweep.mjs from `main`, same sparse pattern
+#     r120-signed-review.yml itself uses). It does NOT hold `checks: write`,
+#     so it has no API path that could create or update a check-run — it
+#     cannot manufacture a green "R-120 signed review" context even if a bug
+#     tried to. It does not hold `contents: write`, so it cannot push a
+#     commit to any PR branch, and it never checks out or reads PR head
+#     content — only PR *metadata* (number, state, head sha) via the API.
+#   - The verdict logic lives ENTIRELY in scripts/r120/verify.mjs, imported
+#     by r120-signed-review.yml, which this workflow never imports, edits,
+#     or triggers directly. This workflow's only effect on that gate is
+#     closing-then-reopening an already-open PR, which is a metadata-only
+#     state transition (no file, ref or commit touched) that happens to fire
+#     GitHub's own `pull_request_target: reopened` event — the same event a
+#     human clicking "Close" then "Reopen" in the UI would fire. The real
+#     gate then runs unmodified and decides for itself.
+#   - scripts/r120/retrigger-sweep.mjs never branches on a check's PASS/FAIL
+#     conclusion — only on whether a completed run exists at all (see that
+#     file's docstring and its own structural-incapacity test). A PR whose
+#     check already ran, green or red, is left alone; so is one whose check
+#     is still queued/in_progress. Fixture-driven proof of both the
+#     retrigger action and the "leave it alone" declines lives in
+#     scripts/r120/retrigger-sweep.test.mjs (`node --test`).
+#
+# COST (gh-1731, R-031): `workflow_dispatch` ONLY, no `schedule:` trigger —
+# standing cost is zero; it runs only when someone explicitly dispatches it.
+# A single run (list open PRs + one check-runs lookup per PR + at most a
+# handful of close/reopen pairs) is a single short job, well under a minute
+# of runner time per invocation — call it ~1-2 job-minutes when dispatched,
+# 0 job-minutes/month otherwise. Not scheduled because the population this
+# closes (a check silently never running) is created by rare events — adding
+# a required check, rotating the signing key — not by routine PR activity;
+# a human or the CTO lane dispatches it after either of those, or whenever
+# gh-1753-style symptoms recur.
+#
+# Defaults to `dry_run: true` — the report-only mode — so a manual dispatch
+# with no inputs never writes anything. Flip `dry_run` to `false` to act.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true = report only, no writes. false = actually close+reopen MISSING PRs.'
+        type: boolean
+        default: true
+      exclude_prs:
+        description: 'Comma-separated PR numbers to never act on even if MISSING (default: the known-dirty gh-1753 population).'
+        type: string
+        default: '1646,1668'
+
+permissions:
+  contents: read        # sparse-checkout retrigger-sweep.mjs from main only
+  pull-requests: write  # list/get open PRs, and — MISSING only — close+reopen+comment
+
+concurrency:
+  group: r120-retrigger-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: R-120 retrigger sweep
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out BASE branch only (sparse)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/r120/retrigger-sweep.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Run sweep
+        uses: actions/github-script@v9
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          EXCLUDE_PRS: ${{ inputs.exclude_prs }}
+        with:
+          script: |
+            const path = require('path');
+            const { pathToFileURL } = require('url');
+            const ws = process.env.GITHUB_WORKSPACE;
+            const { planSweep, executeSweep, formatReport, CHECK_NAME } =
+              await import(pathToFileURL(path.join(ws, 'scripts/r120/retrigger-sweep.mjs')).href);
+
+            const { owner, repo } = context.repo;
+            const dryRun = process.env.DRY_RUN !== 'false';
+            const excludeNumbers = (process.env.EXCLUDE_PRS || '')
+              .split(',').map((s) => s.trim()).filter(Boolean).map(Number);
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+
+            const checkRunsByPr = new Map();
+            for (const pr of prs) {
+              const resp = await github.rest.checks.listForRef({
+                owner, repo, ref: pr.head.sha, check_name: CHECK_NAME, per_page: 20,
+              });
+              checkRunsByPr.set(pr.number, resp.data.check_runs);
+            }
+
+            const plan = planSweep(prs, checkRunsByPr);
+            const results = await executeSweep({ github, owner, repo, plan, dryRun, excludeNumbers });
+            const report = formatReport(results, { dryRun });
+
+            core.info(report);
+            await core.summary
+              .addHeading(`R-120 retrigger sweep — ${dryRun ? 'dry run' : 'live'}`)
+              .addCodeBlock(report, 'text')
+              .write();
