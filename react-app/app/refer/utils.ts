@@ -223,7 +223,7 @@ export function nextdoorShareMessage(url: string): string {
 export const EMAIL_SHARE_SUBJECT = 'Check out Otter Quotes — best way to get contractor quotes';
 
 export function emailShareBody(url: string): string {
-  return `Hi there!\n\nI recently used Otter Quotes to get my roof replaced, and I wanted to share it with you. The platform is amazing — you get competing bids from multiple licensed, insured contractors, which means you get the best deal and can compare options side-by-side.\n\nIf you need any exterior work done (roof, siding, gutters, etc.), check out Otter Quotes here:\n\n${url}\n\nBest regards`;
+  return `Hi there!\n\nI recently used Otter Quotes to get my roof replaced, and I wanted to share it with you. The platform is amazing — you get competing bids from multiple contractors, which means you get the best deal and can compare options side-by-side.\n\nIf you need any exterior work done (roof, siding, gutters, etc.), check out Otter Quotes here:\n\n${url}\n\nBest regards`;
 }
 
 /** Email-signature badge HTML the user copies (rendered as TEXT in a code box; never injected). */

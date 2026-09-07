@@ -31,6 +31,25 @@ reading every page's actual markup rather than assumed.
     than widened to a five-page exemption; see check_get_the_app_promo's old
     entry in git history if it needs reviving.)
 
+REACT PARITY (D-266, this file's second half): the four checks above read
+root-level *.html only, so they were structurally blind to react-app/ -- the
+Next.js port that a cutover would publish in place of those pages. D-266's
+disclaimer was dropped entirely in the port of refer-a-friend.html -> /refer
+and CI stayed green, because no check in this repo could see a .tsx file. The
+React half below closes that: for each React route with a static twin, if the
+twin carries the D-266 text then the React route must (a) carry the text
+verbatim in its route-local copy and (b) actually RENDER it from page.tsx.
+The requirement is DERIVED from the twin rather than asserted, so the two
+halves cannot drift apart. A React route that looks like a referral funnel
+surface but has no twin mapping is itself reported, so the next ported funnel
+cannot go invisible the way /refer did.
+
+Note on matching: the canonical sentence is compared with whitespace
+NORMALIZED, not as a literal substring. partners.html wraps it across four
+source lines (partners.html:215-218); a literal `in` test reports that page as
+missing the disclaimer when it plainly has it. Every comparison in this file
+runs through _norm().
+
 gh-634's 2026-08-11 adversarial review flagged partner-login.html's missing
 ?stay=1 escape as an open gap needing its own decision, tracked separately
 as gh-737 rather than resolved silently by this tool's exclusion list. gh-737
@@ -72,6 +91,28 @@ D266_TEXT = (
     "to make sure it is lawful for you to accept referral fees."
 )
 
+REACT_APP_DIR = REPO_ROOT / "react-app" / "app"
+
+# React route (relative to react-app/app) -> its static HTML twin. The D-266
+# requirement is DERIVED: a React route is only required to carry the
+# disclaimer when its twin carries it, so the static and React halves of this
+# check can never disagree about what is mandatory.
+REACT_TWINS = {
+    "partner/dashboard": "partner-dashboard.html",
+    "refer": "refer-a-friend.html",
+}
+
+# A react-app route that builds or displays a referral / recruit link is a
+# referral funnel surface. If one shows up that REACT_TWINS has no entry for,
+# say so instead of silently skipping it -- an unmapped funnel surface is
+# exactly how /refer stayed invisible to this script (D-266 gap).
+REACT_FUNNEL_RE = re.compile(
+    r"referralUrl|referralLink|recruitLink|referral-link|REFERRAL_FEE_DISCLAIMER"
+)
+
+# Exported `const NAME =` in a route-local copy module, for the render check.
+REACT_CONST_RE = re.compile(r"export const ([A-Z0-9_]+)\s*=")
+
 SITE_HEADER_RE = re.compile(r'<header\b[^>]*\bid=["\']site-header["\']')
 SITE_FOOTER_RE = re.compile(r'<footer\b[^>]*\bid=["\']site-footer["\']')
 # Matches both `=== '1'` (partner-other.html-style opt-out check) and
@@ -89,8 +130,19 @@ def check_site_chrome(html: str) -> bool:
     )
 
 
+def _norm(text: str) -> str:
+    """Collapse all whitespace runs to single spaces.
+
+    The canonical D-266 sentence is one sentence, but source files are free to
+    wrap it: partners.html:215-218 breaks it across four lines, and a literal
+    substring test calls that page non-compliant when it is compliant. Every
+    D-266 comparison in this file normalizes both sides first.
+    """
+    return re.sub(r"\s+", " ", text)
+
+
 def check_d266_disclaimer(html: str) -> bool:
-    return D266_TEXT in html
+    return _norm(D266_TEXT) in _norm(html)
 
 
 def check_signed_in_redirect(html: str) -> bool:
@@ -99,6 +151,81 @@ def check_signed_in_redirect(html: str) -> bool:
 
 def check_dashboard_access_block(html: str) -> bool:
     return "/partner-dashboard.html" in html and GO_TO_DASHBOARD_RE.search(html) is not None
+
+
+def _react_route_sources(route: str) -> dict[str, str]:
+    """Route-local .ts/.tsx sources, keyed by filename (non-recursive).
+
+    Non-recursive on purpose: __tests__/ pins the constant but never renders
+    it, so counting a test file as "the copy is present" would make the
+    render half of this check vacuous.
+    """
+    route_dir = REACT_APP_DIR / route
+    if not route_dir.is_dir():
+        return {}
+    return {
+        f.name: f.read_text(encoding="utf-8", errors="ignore")
+        for f in sorted(route_dir.iterdir())
+        if f.is_file() and f.suffix in (".ts", ".tsx")
+    }
+
+
+def check_react_d266(route: str) -> list[str]:
+    """Return failure strings for one React route (empty list == pass).
+
+    Two halves, because either alone is defeatable: the disclaimer must exist
+    verbatim in the route's copy, AND page.tsx must actually render it. A
+    constant nobody renders is not a disclosure.
+    """
+    sources = _react_route_sources(route)
+    if not sources:
+        return [f"react-app/app/{route}: MISSING ROUTE DIRECTORY"]
+
+    page = sources.get("page.tsx")
+    if page is None:
+        return [f"react-app/app/{route}: MISSING page.tsx"]
+
+    target = _norm(D266_TEXT)
+    carriers = [name for name, src in sources.items() if target in _norm(src)]
+    if not carriers:
+        return [
+            f"react-app/app/{route}: missing D-266 disclaimer verbatim text "
+            f"(react_d266_disclaimer)"
+        ]
+
+    # Rendered directly as a literal, or via a constant page.tsx references.
+    if target in _norm(page):
+        return []
+    for name in carriers:
+        for const in REACT_CONST_RE.findall(sources[name]):
+            body = sources[name].split(f"export const {const}", 1)[1]
+            # the constant whose value IS the disclaimer, not a later one
+            if target in _norm(body.split("export const", 1)[0]) and const in page:
+                return []
+
+    return [
+        f"react-app/app/{route}: D-266 disclaimer present in "
+        f"{'/'.join(carriers)} but never rendered by page.tsx "
+        f"(react_d266_rendered)"
+    ]
+
+
+def find_unmapped_react_funnels() -> list[str]:
+    """React routes that look like referral funnels but REACT_TWINS omits."""
+    if not REACT_APP_DIR.is_dir():
+        return []
+    findings = []
+    for page in sorted(REACT_APP_DIR.rglob("page.tsx")):
+        route = page.parent.relative_to(REACT_APP_DIR).as_posix()
+        if route in REACT_TWINS:
+            continue
+        if REACT_FUNNEL_RE.search(page.read_text(encoding="utf-8", errors="ignore")):
+            findings.append(
+                f"react-app/app/{route}: looks like a referral funnel surface but has "
+                f"no REACT_TWINS entry -- add it (with its static twin) or explain why "
+                f"D-266 does not apply (react_twin_unmapped)"
+            )
+    return findings
 
 
 CHECKS = [
@@ -157,15 +284,39 @@ def main() -> int:
         if not check_d266_disclaimer(html):
             failures.append(f"{page}.html: missing D-266 disclaimer verbatim text (d266_disclaimer)")
 
+    # ── React parity half (D-266) ────────────────────────────────────────────
+    # Root-level *.html is only what main publishes TODAY; react-app/ is what a
+    # cutover publishes instead. A disclaimer that survives in one and not the
+    # other is a gap this script previously could not see at all.
+    react_routes = []
+    for route, twin in sorted(REACT_TWINS.items()):
+        twin_path = REPO_ROOT / twin
+        if not twin_path.is_file():
+            failures.append(f"{twin}: MISSING FILE (static twin of react-app/app/{route})")
+            continue
+        if not check_d266_disclaimer(twin_path.read_text(encoding="utf-8", errors="ignore")):
+            # The twin itself lost it -- reported by the static half above for
+            # pages in D266_PAGES; nothing to require of the React port here.
+            continue
+        react_routes.append(route)
+        failures.extend(check_react_d266(route))
+    failures.extend(find_unmapped_react_funnels())
+
     checked_pages = sorted(set(ALL_PAGES) | set(D266_PAGES))
     if failures:
         print("Partner parity check: FAIL\n")
         for f in failures:
             print(f"  [FAIL] {f}")
-        print(f"\n{len(failures)} structural drift issue(s) found across {len(checked_pages)} partner pages.")
+        print(
+            f"\n{len(failures)} structural drift issue(s) found across "
+            f"{len(checked_pages)} partner pages and {len(react_routes)} React route(s)."
+        )
         return 1
 
-    print(f"Partner parity check: PASS -- {len(checked_pages)} pages, {len(CHECKS)} checks, no drift.")
+    print(
+        f"Partner parity check: PASS -- {len(checked_pages)} pages, {len(CHECKS)} checks, "
+        f"{len(react_routes)} React route(s) D-266-covered, no drift."
+    )
     return 0
 
 

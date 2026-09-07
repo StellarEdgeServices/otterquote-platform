@@ -6,7 +6,8 @@
  * The authenticated HOMEOWNER / CUSTOMER referral page: a customer's unique
  * referral link + QR, share tools (Facebook + before/after share card, SMS,
  * Nextdoor, email, email-signature badge), their referrals table, the D-172 W-9
- * banner, and the verbatim 1099 tax notice + D-180 commission disclosure.
+ * banner, and the verbatim 1099 tax notice + D-180 commission disclosure +
+ * D-266 referral-fee legality disclaimer.
  *
  * GATING (matches the static init() order):
  *   1. Homeowner coming-soon gate (mirrors the static <head> guard): if the
@@ -36,8 +37,9 @@
  * dangerouslySetInnerHTML). The email-signature badge HTML is shown as TEXT in a
  * code box for the user to copy — never injected.
  *
- * ⚠️ Tier-3 copy (1099 tax notice, FAQ tax answer, D-180 disclosure, W-9 banner)
- * is ported VERBATIM (copy.ts) and pinned in refer.test.ts.
+ * ⚠️ Tier-3 copy (1099 tax notice, FAQ tax answer, D-180 disclosure, D-266
+ * referral-fee legality disclaimer, W-9 banner) is ported VERBATIM (copy.ts)
+ * and pinned in refer.test.ts.
  */
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
@@ -81,6 +83,7 @@ import {
   FAQ,
   TAX_NOTICE,
   COMMISSION_APPROVAL_DISCLOSURE,
+  REFERRAL_FEE_DISCLAIMER,
   W9_BANNER,
   REFERRALS,
 } from './copy';
@@ -317,6 +320,11 @@ function ReferView({
       {/* D-180 commission approval disclosure (verbatim) */}
       <section className="refer-section">
         <p className="commission-disclosure">{COMMISSION_APPROVAL_DISCLOSURE}</p>
+      </section>
+
+      {/* D-266 referral-fee legality disclaimer (verbatim, mandatory) */}
+      <section className="refer-section">
+        <p className="referral-fee-disclaimer">{REFERRAL_FEE_DISCLAIMER}</p>
       </section>
     </main>
   );
@@ -913,6 +921,7 @@ const STYLES = `
   .tax-notice-label { font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--amber);margin-bottom:var(--sp-3); }
   .tax-notice-body { color: var(--slate); font-size:0.9rem; line-height:1.7; margin:0; }
   .commission-disclosure { color: var(--slate); font-size:0.85rem; line-height:1.6; text-align:center; margin:0; }
+  .referral-fee-disclaimer { color: var(--slate); font-size:0.85rem; line-height:1.6; text-align:center; margin:0; }
 
   .btn { padding: var(--sp-3) var(--sp-6); border-radius: var(--radius-md); font-weight:600; font-size:0.95rem; border:none; cursor:pointer; transition: all var(--duration) var(--ease); font-family: var(--font-body); display:inline-flex; align-items:center; justify-content:center; gap: var(--sp-2); text-decoration:none; }
   .btn-primary { background: var(--amber); color: var(--navy); font-weight:700; }
