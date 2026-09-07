@@ -1,0 +1,7 @@
+{
+  "site_key": "stohlerroof-bridge",
+  "content_url": "https://stohlerroof.com/",
+  "expected_sha256": "d684bf424f749a61b2436a8bbcdebf435efb59bc15f1f5240627bc44171bc0f8",
+  "captured_at": "2026-09-07T13:10:00Z",
+  "note": "Baseline sha256 of https://stohlerroof.com/'s raw HTML (the D-174 bridge domain carrying a mandatory legal disclosure -- see the netlify-deploy-drift.py module docstring's NON-GIT SITE CHECK section). This site has no repo_url and no `main` to diff against, so this pinned hash IS the compare target -- a mismatch in a live run is CONTENT_CHANGED, not noise. IMPORTANT (found capturing this baseline on gh-1734): the value MUST be captured via the script's own fetch_url_content() / urllib fetch with its fixed User-Agent, never via `curl` -- Cloudflare (in front of stohlerroof.com) auto-injects a Web Analytics beacon <script> tag for this script's User-Agent that a bare `curl -s` request does not receive, so a curl-captured baseline mismatches the script's own live reads on every single run even with zero real content change (confirmed live 2026-09-07: curl -> a23918238b0e..., this script's fetch_url_content() -> d684bf424f74..., stable across 3 repeated calls). Updating expected_sha256 (and captured_at) is a deliberate, reviewed act for whenever the disclosure copy is intentionally revised -- capture the new value the same way, via fetch_url_content(), never via curl or a browser -- and never an automatic self-heal in response to a live mismatch."
+}
