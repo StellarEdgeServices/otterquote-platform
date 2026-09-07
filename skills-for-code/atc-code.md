@@ -1,6 +1,6 @@
 ---
 name: atc-code
-description: "Claude Code-native Air Traffic Control for OtterQuote. Automated ops manager — monitors Wingman sessions, audits file integrity, manages the ClickUp queue, surfaces anomalies as ClickUp tasks, runs per-shift delta task hygiene. Reads /handoffs/ folder as part of shift review. Can run file integrity checks via bash. Merges Wingman shift-log shards from both Code and Cowork sessions. Surfaces anomalies as ClickUp tasks. Writes its own handoff file. Runs on a 30-min schedule. Never executes work tasks. Per R-034 (May 14 2026): Manager Mode task hygiene migrated to ATC as a per-shift delta operation. Triggers: 'run ATC', 'atc', 'ops check', 'shift review', 'quality check', 'run air traffic control', 'check on the workers'."
+description: "RETIRED 2026-08-06 (R-104/R-105) — duties absorbed into the Bridge; nightly trigger (atc-code-nightly.bat) unregistered 2026-08-07. Retained for historical reference only — do not trigger. [Historical description follows, unedited:] Claude Code-native Air Traffic Control for OtterQuote. Automated ops manager — monitors Wingman sessions, audits file integrity, manages the ClickUp queue, surfaces anomalies as ClickUp tasks, runs per-shift delta task hygiene. Reads /handoffs/ folder as part of shift review. Can run file integrity checks via bash. Merges Wingman shift-log shards from both Code and Cowork sessions. Surfaces anomalies as ClickUp tasks. Writes its own handoff file. Runs on a 30-min schedule. Never executes work tasks. Per R-034 (May 14 2026): Manager Mode task hygiene migrated to ATC as a per-shift delta operation. Former triggers (do not use): 'run ATC', 'atc', 'ops check', 'shift review', 'quality check', 'run air traffic control', 'check on the workers'."
 version: "1.7"
 tier: A
 sentinel: atc-code-v1.7-2026-05-21
@@ -15,9 +15,11 @@ sentinel: atc-code-v1.7-2026-05-21
 
 # [atc-code v1.7]
 
+> **RETIRED 2026-08-06 (R-104/R-105).** Duties absorbed into the Bridge; nightly trigger (`atc-code-nightly.bat`) unregistered 2026-08-07. Retained for historical reference only — **do not trigger, do not dispatch.** The ClickUp-writing instructions below (task queue management, anomaly filing) describe a pre-R-098/R-157 world where ClickUp was the engineering queue; they are void. The current engineering queue is GitHub Issues (`StellarEdgeServices/otterquote-platform`, `env:code`); ClickUp holds CEO-facing items only.
+
 Claude Code-native Air Traffic Control for OtterQuote. Automated operations manager — monitors Wingman sessions, audits file integrity, manages the ClickUp task queue, and surfaces anomalies as ClickUp tasks. Runs on a 30-min schedule. Never executes work tasks.
 
-**Triggers:** `run ATC`, `atc`, `ops check`, `shift review`, `quality check`, `run air traffic control`, `check on the workers`
+**Former triggers (historical — do not use):** `run ATC`, `atc`, `ops check`, `shift review`, `quality check`, `run air traffic control`, `check on the workers`
 
 ---
 
