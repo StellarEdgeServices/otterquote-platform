@@ -368,6 +368,15 @@ verify_jwt = true
 [functions.send-homeowner-next-steps]
 verify_jwt = false
 
+# gh-1786 / D-320: the unauthenticated opt-out endpoint behind the "Stop these
+# updates" footer link in send-homeowner-next-steps' emails. verify_jwt=false is
+# required, not a convenience — an email recipient clicking an unsubscribe link
+# has no JWT, and CAN-SPAM requires the mechanism to work without a sign-in. The
+# signed HMAC token in the URL is the authorization, and the handler is
+# write-only with one invariant response (see the function's header comment).
+[functions.homeowner-email-optout]
+verify_jwt = false
+
 # gh-1313: Cron-exception, same pattern as send-homeowner-next-steps — JWT
 # verification disabled; access is gated by the CRON_SECRET / service-role
 # Bearer check inside the function. Read-only on contractor_templates; writes

@@ -9,7 +9,16 @@
  * since signup — and nothing notified either the homeowner or Dustin
  * (`grep -rn documents_needed supabase/functions js/` returns 0 hits).
  *
- * Runs on pg_cron (recommended cadence: hourly) with an empty POST body.
+ * Runs on pg_cron. LIVE CADENCE, measured against production, not recommended:
+ * `select jobid, schedule, jobname, active from cron.job where jobid = 20;`
+ * -> jobid 20 | "*(slash)30 * * * *" | send-homeowner-next-steps — the literal
+ * cron string is written with "(slash)" in place of "/" only because a star
+ * followed by a slash would close this block comment. Every THIRTY minutes,
+ * twice as often as this comment claimed until gh-1786 corrected it. As of
+ * 2026-09-07 that job is `active = false`: it was disabled deliberately (D-320's
+ * own recommendation, Dustin's word) so nothing sends until the opt-out below is
+ * DEPLOYED. Re-enabling it is `select cron.alter_job(20, active := true);` and
+ * waits on that deploy. Invoked with an empty POST body.
  * Batch-scans is_test=false claims where:
  *   - status           = 'documents_needed' (the column DEFAULT — the only
  *                        state a stalled post-signup claim sits in; `draft`
@@ -65,8 +74,15 @@
  *     raises 23505 here — the INSERT always succeeds and the catch branch
  *     below is simply unreachable. Behavior is unchanged from before this
  *     comment: the sequential guard still holds, the concurrent race still
- *     exists (as the CTO's ruling accepts — there is no live cron trigger
- *     yet, so the race has no window to fire in). Nothing here depends on
+ *     exists. NOTE (gh-1786): the parenthetical that used to sit here — "there
+ *     is no live cron trigger yet, so the race has no window to fire in" — was
+ *     FALSE when it was written. cron.job 20 existed and was active, at
+ *     "*(slash)30 * * * *" — same substitution as above. The race's window was
+ *     open the whole time; it simply never
+ *     fired because the candidate pool was empty. The job is now disabled
+ *     (see the cadence note at the top of this file), which is what actually
+ *     closes the window, and it stays disabled until this function's opt-out
+ *     is deployed. Nothing here depends on
  *     the index existing, and nothing here crashes for its absence.
  *   - INDEX PRESENT (after the Tier 3B migration lands): a losing INSERT
  *     raises 23505, is caught, counted as a skip (not a silent return —
@@ -105,7 +121,10 @@
  * Bearer, or permissive when CRON_SECRET is unset (dev/staging).
  *
  * Environment variables:
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MAILGUN_API_KEY, SITE_URL, CRON_SECRET
+ *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MAILGUN_API_KEY, SITE_URL, CRON_SECRET,
+ *   HOMEOWNER_OPTOUT_SECRET (gh-1786 / D-320 — REQUIRED to send; with it unset
+ *   this function sends nothing rather than send without a working opt-out),
+ *   HOMEOWNER_OPTOUT_SECRET_PREVIOUS (optional, verification only, for rotation)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -118,6 +137,18 @@ import {
   selectStage,
   TWO_HOURS_MS,
 } from "./select-stage.ts";
+import { buildEmailContent } from "./email-content.ts";
+import {
+  canSendWithOptOut,
+  collectOptedOutClaimIds,
+  isOptedOut,
+} from "./optout-filter.ts";
+import {
+  buildOptOutUrl,
+  OPTOUT_EVENT_TYPE,
+  OPTOUT_SECRET_ENV,
+  signOptOutToken,
+} from "./optout-token.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
 const BATCH_LIMIT = 200;
@@ -138,7 +169,13 @@ interface ScanResult {
   // the race) — counted explicitly per condition 2, not folded silently
   // into stages_sent or dropped.
   stages_skipped_already_sent?: NudgeStage[];
-  skipped_reason?: "has_hover_order" | "real_activity_since_created" | "no_email" | "ineligible_status";
+  skipped_reason?:
+    | "has_hover_order"
+    | "real_activity_since_created"
+    | "no_email"
+    | "ineligible_status"
+    // gh-1786 / D-320: this homeowner asked for the series to stop.
+    | "opted_out";
 }
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
@@ -168,91 +205,20 @@ function jsonResponse(data: unknown, status: number, corsHeaders: Record<string,
   });
 }
 
-// ─── Copy (locked — Tier B, gh-1580) ───────────────────────────────────────
-
-const NUDGE_TEXT =
-  "You're one step from bids — order or upload your roof measurements, then pick your material.";
-
-function buildEmailContent(
-  homeownerName: string,
-  measurementsUrl: string,
-  colorUrl: string
-): { subject: string; textBody: string; htmlBody: string } {
-  const firstName = (homeownerName || "there").split(" ")[0] || "there";
-  const subject = "You're one step from bids";
-
-  const textBody = [
-    `Hi ${firstName},`,
-    "",
-    NUDGE_TEXT,
-    "",
-    `Order or upload measurements: ${measurementsUrl}`,
-    `Pick your material: ${colorUrl}`,
-    "",
-    "— The Otter Quotes Team",
-  ].join("\n");
-
-  const htmlBody = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subject}</title></head>
-<body style="margin:0;padding:0;background:#F8FAFC;font-family:Arial,Helvetica,sans-serif;color:#1F2937;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F8FAFC;">
-    <tr>
-      <td align="center" style="padding:2rem 1rem;">
-        <table role="presentation" width="600" cellspacing="0" cellpadding="0"
-               style="max-width:600px;width:100%;background:#ffffff;border-radius:0.75rem;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-          <tr>
-            <td style="background:#0D1B2E;padding:1.5rem 2rem;text-align:center;">
-              <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Otter Quotes</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:2rem 2rem 1.5rem;">
-              <p style="margin:0 0 1rem;line-height:1.6;">Hi ${firstName},</p>
-              <p style="margin:0 0 1.5rem;line-height:1.6;">${NUDGE_TEXT}</p>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 1rem;">
-                <tr>
-                  <td style="background:#E07B00;border-radius:8px;padding:14px 28px;">
-                    <a href="${measurementsUrl}" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;display:block;">Order or Upload Measurements &rarr;</a>
-                  </td>
-                </tr>
-              </table>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 1rem;">
-                <tr>
-                  <td style="background:#0EA5E9;border-radius:8px;padding:14px 28px;">
-                    <a href="${colorUrl}" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;display:block;">Pick Your Material &rarr;</a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:0;font-size:14px;color:#64748B;">
-                Questions? Reply to this email or contact
-                <a href="mailto:support@otterquote.com" style="color:#E07B00;">support@otterquote.com</a>.
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#64748B;">
-              &mdash; The Otter Quotes Team
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-
-  return { subject, textBody, htmlBody };
-}
+// ─── Copy ──────────────────────────────────────────────────────────────────
+// MOVED to ./email-content.ts by gh-1786 / D-320 (verbatim, plus the required
+// opt-out footer) so the footer is testable without importing this file. See
+// that file's header.
 
 async function sendMailgunEmail(
   apiKey: string,
   to: string,
   homeownerName: string,
   measurementsUrl: string,
-  colorUrl: string
+  colorUrl: string,
+  optOutUrl: string
 ): Promise<{ ok: boolean; error?: string }> {
-  const { subject, textBody, htmlBody } = buildEmailContent(homeownerName, measurementsUrl, colorUrl);
+  const { subject, textBody, htmlBody } = buildEmailContent(homeownerName, measurementsUrl, colorUrl, optOutUrl);
   const formData = new URLSearchParams();
   formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
   formData.append("to", to);
@@ -305,6 +271,12 @@ serve(async (req: Request) => {
   const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY");
   const siteUrl = (Deno.env.get("SITE_URL") || "https://otterquote.com").replace(/\/$/, "");
   const cronSecret = Deno.env.get("CRON_SECRET");
+  // gh-1786 / D-320: the opt-out signing secret. No secret -> no verifiable
+  // "stop these updates" link -> no send at all. Fails CLOSED (see
+  // canSendWithOptOut in ./optout-filter.ts).
+  const optOutSecret = Deno.env.get(OPTOUT_SECRET_ENV);
+  // Functions base URL for the opt-out endpoint: same project, sibling function.
+  const functionsBaseUrl = `${(supabaseUrl || "").replace(/\/$/, "")}/functions/v1`;
 
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ ok: false, error: "Server configuration error" }, 500, corsHeaders);
@@ -323,6 +295,22 @@ serve(async (req: Request) => {
   }
   if (!authorized) {
     return jsonResponse({ ok: false, error: "Unauthorized" }, 401, corsHeaders);
+  }
+
+  // gh-1786 / D-320 — CAN-SPAM gate, ahead of any candidate scan. A commercial
+  // email with no working opt-out is the violation this issue was filed on, so
+  // an unset HOMEOWNER_OPTOUT_SECRET stops the whole run rather than degrading
+  // to the pre-D-320 behaviour. 200 with a named reason, not 500: nothing is
+  // broken, the function is correctly refusing.
+  if (!canSendWithOptOut(optOutSecret)) {
+    console.error(
+      `[${FUNCTION_NAME}] ${OPTOUT_SECRET_ENV} is not set — refusing to send: D-320 requires a working opt-out link in every message`,
+    );
+    return jsonResponse(
+      { ok: true, processed: 0, skipped_no_optout_secret: true, results: [] },
+      200,
+      corsHeaders,
+    );
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -388,8 +376,17 @@ serve(async (req: Request) => {
   // send after the '2h' one; if the same stage was stamped more than once
   // (pre-unique-index race) the EARLIEST stamp wins.
   const nudgeSentByClaim = new Map<string, Map<NudgeStage, string>>();
+  // gh-1786 / D-320: claim ids whose homeowner clicked "Stop these updates".
+  // Read from the SAME activity_log rows the nudge stamps come from — no schema
+  // change, per D-320's no-migration constraint.
+  const optedOutClaimIds = collectOptedOutClaimIds((activity || []) as any[]);
 
   for (const row of (activity || []) as any[]) {
+    // An opt-out is not homeowner progress on the claim. Like our own nudge
+    // stamp, it must never count as "real activity" — otherwise clicking the
+    // opt-out link would ALSO look like movement and change what the admin
+    // dashboard's "no activity since signup" strip shows.
+    if (row.event_type === OPTOUT_EVENT_TYPE) continue;
     if (row.event_type === NUDGE_EVENT_TYPE) {
       const md = row.metadata || {};
       if (md.claim_id && (md.nudge_stage === "2h" || md.nudge_stage === "48h")) {
@@ -421,6 +418,13 @@ serve(async (req: Request) => {
     // `draft` above all) must never be told "You're one step from bids".
     if (!isNudgeEligibleStatus(claim.status)) {
       results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "ineligible_status" });
+      continue;
+    }
+    // gh-1786 / D-320: the homeowner asked us to stop. Checked BEFORE any
+    // stage selection, contact lookup or stamp, so an opted-out claim costs no
+    // reads and can never be stamped as sent.
+    if (isOptedOut(optedOutClaimIds, claim.id)) {
+      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "opted_out" });
       continue;
     }
     if (claimIdsWithHoverOrder.has(claim.id)) {
@@ -467,6 +471,14 @@ serve(async (req: Request) => {
 
     const measurementsUrl = `${siteUrl}/help-measurements.html`;
     const colorUrl = `${siteUrl}/color-selection.html?claim_id=${claim.id}`;
+    // gh-1786 / D-320: per-claim signed opt-out link. Payload is the claim UUID
+    // only — no email, no name, no user id; and the claim UUID is already in
+    // colorUrl above, so the footer adds no identifier this message did not
+    // already carry.
+    const optOutUrl = buildOptOutUrl(
+      functionsBaseUrl,
+      await signOptOutToken(claim.id, optOutSecret as string),
+    );
 
     const sentStages: NudgeStage[] = [];
     const skippedAlreadySentStages: NudgeStage[] = [];
@@ -522,7 +534,7 @@ serve(async (req: Request) => {
         continue;
       }
 
-      const sendResult = await sendMailgunEmail(mailgunApiKey, homeownerEmail, homeownerName, measurementsUrl, colorUrl);
+      const sendResult = await sendMailgunEmail(mailgunApiKey, homeownerEmail, homeownerName, measurementsUrl, colorUrl, optOutUrl);
       if (!sendResult.ok) {
         console.error(`[${FUNCTION_NAME}] STAMPED BUT SEND FAILED for claim ${claim.id} stage ${stage} — will NOT auto-retry (stamp already committed); needs manual follow-up: ${sendResult.error}`);
         continue; // do not count as sent — the stamp is already committed, deliberately not reversed
