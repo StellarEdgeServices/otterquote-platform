@@ -1,3 +1,5 @@
+-- Moved to migrations_rollbacks/ by gh-1438 reconciliation (cto-2026-09-05T03:07:58Z): rollback
+-- scripts must not carry a 14-digit prefix inside supabase/migrations/ (README.md replay-path contract).
 -- ============================================================================
 -- gh1411_vendor_credit_expected — ROLLBACK
 --
