@@ -1,3 +1,7 @@
+-- gh-1438 reconciliation (cto-2026-09-05T03:07:58Z): renamed from 20260903190000_* to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260904224528
+-- name=gh1411_vendor_credit_expected (applied 2026-09-04T22:45:28Z via apply_migration). Under the
+-- old prefix this file read as never-applied and its rollback twin sat in the replay path.
 -- ============================================================================
 -- gh1411_vendor_credit_expected — FORWARD
 --

@@ -175,6 +175,26 @@ def run_all(tmp_root: pathlib.Path):
     check("gitignore_coverage on an empty path list returns {}", sweep.gitignore_coverage(demo_root, []), {})
 
     # -------------------------------------------------------------------------------
+    print("\nshape scan (default mode, what CI invokes): AWS_ACCESS_KEY_ID (gh-1787)")
+    # -------------------------------------------------------------------------------
+    # gh-1787: the repo's CI gate carried no AKIA pattern at all, so a
+    # committed AWS access key ID would pass "Credential Shape Sweep"
+    # silently. This reconstructs that exact miss against scan_file(), the
+    # function the default (CI) mode calls per file. Fixture built from two
+    # pieces joined at runtime, same discipline as every other fake secret
+    # in this file — obviously fake, never real key material.
+    akia_allowlist = sweep.Allowlist()
+    akia_findings = []
+    _fake_akia_line = "AWS_ACCESS_KEY_ID=" + "AKIA" + ("C" * 16)
+    sweep.scan_file("fake/creds.env", _fake_akia_line, akia_allowlist, akia_findings)
+    check("shape scan flags exactly one AKIA-shaped finding", len(akia_findings), 1)
+    check(
+        "shape scan classifies it as AWS_ACCESS_KEY_ID, not a generic hex/base64 run",
+        akia_findings[0]["class"] if akia_findings else None,
+        "AWS_ACCESS_KEY_ID",
+    )
+
+    # -------------------------------------------------------------------------------
     print("\n--stores mode: classify_field_name (SECRET_LIKE wins ties; UNCLASSIFIED for neither)")
     # -------------------------------------------------------------------------------
     check("classify_field_name('STRIPE_API_KEY')", sweep.classify_field_name("STRIPE_API_KEY"), "SECRET_LIKE_NAME")
@@ -241,6 +261,20 @@ def run_all(tmp_root: pathlib.Path):
     check_true(
         "classify_value_shape(40 fake hex chars) -> HEX_RUN_20 (a secret-shaped class)",
         sweep.classify_value_shape("deadbeef" * 5) == "HEX_RUN_20",
+    )
+    # gh-1787: AKIA + 16 uppercase alphanumeric (AWS access key ID shape).
+    # Built from two pieces joined at runtime, like the Stripe/JWT fixtures
+    # above, so no matchable AKIA-shaped run appears in this file's
+    # committed source. Obviously fake — 16 repeated 'C's, never a real key.
+    _fake_akia_value = "AKIA" + ("C" * 16)
+    check(
+        "classify_value_shape(AKIA-shaped) -> AWS_ACCESS_KEY_ID",
+        sweep.classify_value_shape(_fake_akia_value),
+        "AWS_ACCESS_KEY_ID",
+    )
+    check_true(
+        "AWS_ACCESS_KEY_ID is registered as a secret-shaped class for --stores mode",
+        "AWS_ACCESS_KEY_ID" in sweep.VALUE_SHAPE_SECRET_CLASSES,
     )
 
     # -------------------------------------------------------------------------------
