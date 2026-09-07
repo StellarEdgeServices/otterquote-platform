@@ -1338,6 +1338,32 @@ serve(async (req) => {
               // wrote it. Set only on the succeeded path, alongside the status flip.
               updateData.platform_fee_charged = true;
 
+              // ── gh-1759 THE WRITER ──────────────────────────────────────
+              // claims.platform_fee_stripe_id and claims.platform_fee_amount
+              // had NO writer anywhere in the codebase (0 non-null across all
+              // 16 claims, measured 2026-09-07), yet stripe-webhook resolves a
+              // dispute to a claim by the first of them. This is the site that
+              // fills them, on the same confirmed-success branch that already
+              // flips platform_fee_charged — so the three fields are written
+              // together and cannot drift apart.
+              //
+              // Guarded, not unconditional: create-payment-intent returns
+              // charge_id = null on an intent that has no charge yet, and
+              // writing null over a value another path already set would be a
+              // silent regression. A null here is not an error — the ACH path
+              // settles later and stripe-webhook's payment_intent.succeeded
+              // handler fills the column in then.
+              if (typeof paymentResult.charge_id === "string" && paymentResult.charge_id) {
+                updateData.platform_fee_stripe_id = paymentResult.charge_id;
+              }
+              // numeric(10,2) in DOLLARS, matching quotes.fee_amount (175.00 for
+              // the $180.54 charge — the difference is the card surcharge, which
+              // is not the platform fee).
+              if (typeof paymentResult.platform_fee_cents === "number") {
+                updateData.platform_fee_amount =
+                  Math.round(paymentResult.platform_fee_cents) / 100;
+              }
+
               // Flag for contractor notification (only after successful payment)
               shouldNotifyContractor = true;
             }
