@@ -66,3 +66,60 @@ Deno.test("evaluatePrice returns unverified, never mismatch, when it cannot read
   assertEquals(evaluatePrice("TBD", 13560), { state: "unverified", reason: "unparseable", raw: "TBD", expected: 13560 });
   assertEquals(evaluatePrice("$13,560.00", null), { state: "unverified", reason: "no_expected", raw: "$13,560.00", expected: null });
 });
+
+// ── gh-1314 (2026-09-07): the field_absent promotion ────────────────────────
+// Before this change every one of these unverifiable states FLAGGED and the
+// contract proceeded to charge. `signed_price_unverified` fired three times in
+// production (2026-08-31 -> 2026-09-03) and `signed_price_mismatch` never fired
+// at all, because no production document carries a readable `contract_price` --
+// so the reconciliation existed and had never once protected a charge.
+import { dispositionFor } from "./price-verify.ts";
+
+Deno.test("gh-1314: an absent contract_price HALTS, it no longer flags", () => {
+  const verdict = evaluatePrice(null, 13560);
+  assertEquals(verdict, {
+    state: "unverified",
+    reason: "field_absent",
+    raw: null,
+    expected: 13560,
+  });
+  assertEquals(dispositionFor(verdict), "halt");
+});
+
+Deno.test("gh-1314: an unparseable contract_price HALTS", () => {
+  const verdict = evaluatePrice("see attached", 13560);
+  assertEquals(verdict.state, "unverified");
+  assertEquals(dispositionFor(verdict), "halt");
+});
+
+Deno.test("gh-1314: a missing accepted bid still only FLAGS", () => {
+  // Asymmetry on purpose: halt when the DOCUMENT cannot be shown to agree with
+  // the bid; flag when the question could not be asked because our own quote
+  // row carries no price. Nothing the contractor typed could clear this one.
+  const verdict = evaluatePrice("$13,560.00", null);
+  assertEquals(verdict.state, "unverified");
+  assertEquals(dispositionFor(verdict), "flag");
+});
+
+Deno.test("gh-1314: the original exposure — $15,000 signed against a $13,560 bid — HALTS", () => {
+  const verdict = evaluatePrice("$15,000.00", 13560);
+  assertEquals(verdict, { state: "mismatch", signed: 15000, expected: 13560, delta: 1440 });
+  assertEquals(dispositionFor(verdict), "halt");
+});
+
+Deno.test("gh-1314: a contract signed at the accepted bid still PROCEEDS", () => {
+  // The check must not become a wall. This is the case that must keep working.
+  const verdict = evaluatePrice("$13,560.00", 13560);
+  assertEquals(verdict, { state: "reconciled", signed: 13560, expected: 13560 });
+  assertEquals(dispositionFor(verdict), "proceed");
+});
+
+Deno.test("gh-1314: every unverifiable-price state is covered by the table", () => {
+  // A new `unverified` reason added later must be classified deliberately
+  // rather than inheriting whichever branch happens to catch it.
+  const reasons = ["no_expected", "field_absent", "unparseable"] as const;
+  const seen = reasons.map((r) =>
+    dispositionFor({ state: "unverified", reason: r, raw: null, expected: 1 })
+  );
+  assertEquals(seen, ["flag", "halt", "halt"]);
+});

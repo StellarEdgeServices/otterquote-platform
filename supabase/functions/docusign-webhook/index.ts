@@ -44,7 +44,7 @@ import { findCompletedContractSigner, parsePayload } from "./payload-parser.ts";
 import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
-import { evaluatePrice, extractSignedContractPrice } from "./price-verify.ts";
+import { dispositionFor, evaluatePrice, extractSignedContractPrice } from "./price-verify.ts";
 import {
   describeGuardVerdict,
   evaluateLiveChargeGuard,
@@ -813,23 +813,74 @@ serve(async (req) => {
             const rawSigned = extractSignedContractPrice(signerStatus);
             const verdict = evaluatePrice(rawSigned, expected);
 
+            // [#1314, 2026-09-07] `field_absent` and `unparseable` were PROMOTED
+            // from flag to halt. price-verify.ts's `dispositionFor` carries the
+            // reasoning and the evidence; the short version is that the
+            // BoldSign formFields shape this module waited on is now confirmed
+            // against two live completed envelopes, so an unreadable
+            // contract_price is no longer plausibly a shape artefact -- it is
+            // the accurate report of a document whose price we cannot verify
+            // against the accepted bid. Charging a platform fee on a contract
+            // we cannot show agrees with the bid is the exposure this issue
+            // was filed for, and flagging it did not close that exposure:
+            // `signed_price_unverified` fired three times in production and
+            // every one of those contracts proceeded to charge.
+            const disposition = dispositionFor(verdict);
+
             if (verdict.state === "unverified" && verdict.reason === "no_expected") {
+              // Still a flag, deliberately. There is no accepted bid amount on
+              // OUR side to compare against, so this is a gap in our quote row
+              // rather than a defect in the signed document, and nothing the
+              // contractor could have typed would clear it.
               console.warn(`[#1314] price reconciliation skipped: no accepted quote found for claim ${claim.id} / envelope ${envelopeId}`);
             } else if (verdict.state === "unverified") {
-              console.warn(`[#1314] contract_price not reconcilable on envelope ${envelopeId} (reason=${verdict.reason}, raw=${JSON.stringify(verdict.raw)}) -- flagged, not halted`);
+              const { raw, reason } = verdict;
+              console.error(`[#1314] CONTRACT PRICE UNVERIFIABLE on envelope ${envelopeId} (reason=${reason}, raw=${JSON.stringify(raw)}) -- HALTED before charging`);
               try {
                 await supabase.from("platform_alerts_log").insert({
                   alert_type: "signed_price_unverified",
                   function_name: "docusign-webhook",
                   message:
                     `#1314: could not reconcile contract_price from BoldSign for envelope ${envelopeId} ` +
-                    `(claim ${claim.id}, quote ${acceptedQuote?.id}; reason=${verdict.reason}, ` +
-                    `raw=${JSON.stringify(verdict.raw)}). Accepted bid was ${expected}. ` +
-                    `Completion proceeded; the signed price is UNVERIFIED. Check the document by hand.`,
+                    `(claim ${claim.id}, quote ${acceptedQuote?.id}; reason=${reason}, ` +
+                    `raw=${JSON.stringify(raw)}). Accepted bid was ${expected}. ` +
+                    `Completion HALTED before charging: contract_signed not set, no platform fee charged, ` +
+                    `no invoice. The signed document does not carry a readable contract price -- re-issue ` +
+                    `the envelope from a template that does, or record a disposition by hand.`,
                 });
               } catch (alertErr) {
                 console.error("platform_alerts_log insert failed:", alertErr);
               }
+              await reportToSentry(
+                new Error(`#1314 contract price unverifiable: envelope ${envelopeId} reason=${reason}`),
+                { fn: "docusign-webhook", op: "price-reconciliation", extra: { envelope_id: envelopeId, claim_id: claim.id, reason, expected } }
+              );
+              try {
+                const { data: existingUnverified } = await supabase
+                  .from("notifications")
+                  .select("id")
+                  .eq("notification_type", "price_unverified_pending")
+                  .like("message_preview", `envelope=${envelopeId};%`)
+                  .limit(1)
+                  .maybeSingle();
+                if (!existingUnverified) {
+                  await supabase.from("notifications").insert({
+                    claim_id: claim.id,
+                    channel: "system",
+                    notification_type: "price_unverified_pending",
+                    recipient: "ops",
+                    message_preview: `envelope=${envelopeId};reason=${reason};accepted=${expected}`,
+                  });
+                }
+              } catch (recErr) {
+                console.error("notifications insert failed:", recErr);
+              }
+              // 200 so BoldSign does not retry forever. Remediation is manual by
+              // design -- same convention as the mismatch branch below.
+              return new Response(
+                JSON.stringify({ received: true, defect: "contract_price_unverified", claim_id: claim.id, reason, expected }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
             } else if (verdict.state === "mismatch") {
               const { signed } = verdict;
               console.error(`[#1314] PRICE MISMATCH on envelope ${envelopeId}: signed ${signed} vs accepted ${expected} (delta ${verdict.delta})`);
@@ -877,7 +928,7 @@ serve(async (req) => {
                 { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
               );
             } else {
-              console.log(`[#1314] signed price reconciled for envelope ${envelopeId}: ${verdict.signed} == accepted ${expected}`);
+              console.log(`[#1314] signed price reconciled for envelope ${envelopeId}: ${verdict.signed} == accepted ${expected} (disposition=${disposition})`);
             }
           }
         } catch (priceErr) {

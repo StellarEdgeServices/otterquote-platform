@@ -82,11 +82,23 @@ export function parseMoney(raw: string | null | undefined): number | null {
  * The three states map to deliberately asymmetric handling at the call site:
  *   - `reconciled` -> proceed.
  *   - `mismatch`   -> HALT before charging. Money is provably wrong.
- *   - `unverified` -> FLAG, do not halt. The BoldSign formFields shape is
- *     unconfirmed against a live document, so an "absent" reading is more
- *     likely a shape mismatch than a real defect, and halting on it would
- *     strand every legitimately signed contract. Promote `field_absent` to a
- *     halt once the shape is confirmed.
+ *   - `unverified` -> depends on WHY, see `dispositionFor` below.
+ *
+ * [#1314, 2026-09-07] THE SHAPE IS NOW CONFIRMED, so `field_absent` no longer
+ * flags. `GET /v1/document/properties` was run against both completed
+ * envelopes (`5637c633-...`, `4c94ea89-...`), both HTTP 200 / `Completed`, and
+ * the response carries `signerDetails[].formFields[]` with entries exposing
+ * exactly `{ id, value, type }`. The reader above is correct as written. That
+ * was the single stated precondition for the promotion, and it is met.
+ *
+ * What the probe also showed is why the promotion matters: the completed
+ * contract carries THREE form fields -- `contractor_initial_sow`,
+ * `otterquote_acknowledgment`, `homeowner_initial_sow` -- and `contract_price`
+ * is not among them. So `field_absent` is not a shape artefact. It is the
+ * accurate report of a document on which the contract price was never a
+ * readable field at all, and the price the homeowner is bound by is whatever
+ * static text the contractor's own PDF happens to carry. Flagging that and
+ * charging anyway is the exposure #1314 was filed for.
  */
 export function evaluatePrice(rawSigned: string | null, expected: number | null): PriceEvaluation {
   if (expected === null || !Number.isFinite(expected)) {
@@ -104,4 +116,40 @@ export function evaluatePrice(rawSigned: string | null, expected: number | null)
     return { state: "mismatch", signed, expected, delta };
   }
   return { state: "reconciled", signed, expected };
+}
+
+/** What the call site must DO about a verdict. */
+export type PriceDisposition = "proceed" | "halt" | "flag";
+
+/**
+ * [#1314, 2026-09-07] The disposition table, kept here rather than at the call
+ * site so the money decision is unit-testable without a network.
+ *
+ *   reconciled                -> proceed. The signed price is the accepted bid.
+ *   mismatch                  -> halt.    Money is provably wrong.
+ *   unverified/field_absent   -> halt.    NEW. The contract price could not be
+ *                                         read off the signed document, so the
+ *                                         instrument the homeowner is bound by
+ *                                         is unknown to us. Charging a fee on
+ *                                         an amount we cannot show the contract
+ *                                         agrees with is the #1314 exposure.
+ *   unverified/unparseable    -> halt.    Same reasoning: a value we cannot
+ *                                         parse is a price we cannot verify.
+ *   unverified/no_expected    -> flag.    Different failure entirely -- there is
+ *                                         no accepted bid amount on our side to
+ *                                         compare against. Halting here would
+ *                                         punish a signed contract for a gap in
+ *                                         our own quote row, and there is
+ *                                         nothing the contractor could have
+ *                                         typed that would clear it.
+ *
+ * Note the asymmetry is deliberate: `halt` is the answer whenever the DOCUMENT
+ * cannot be shown to agree with the bid, and `flag` is the answer when the
+ * question could not be asked.
+ */
+export function dispositionFor(verdict: PriceEvaluation): PriceDisposition {
+  if (verdict.state === "reconciled") return "proceed";
+  if (verdict.state === "mismatch") return "halt";
+  if (verdict.reason === "no_expected") return "flag";
+  return "halt";
 }
