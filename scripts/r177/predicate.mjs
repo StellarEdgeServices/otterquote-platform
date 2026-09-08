@@ -25,7 +25,7 @@
 //
 // Exports:
 //   detectLegalMoneyContent(diffText) -> { hit, lines: [{file, line, rule, side, text}], files }
-//   classifyLine, scanModeFor, isNoiseLine, isCodeComment
+//   classifyLine, scanModeFor, isNoiseLine, isCodeComment, nextHtmlBlockState
 //   PREDICATE_FILES, COPY_GUARD_FILES
 
 // ---------------------------------------------------------------------------
@@ -178,18 +178,52 @@ export function isNoiseLine(text) {
 // change (#1674) were blocked on the words "Agreement" / "guarantee" / "/terms"
 // inside comments. A comment line is skipped for the WORD rules; currency amounts
 // and money identifiers on real code lines still fire. HTML/Markdown/prose files
-// are not code, so their lines are never treated as comments.
+// are not code, so their lines are never treated as comments -- EXCEPT the
+// `<script>`/`<style>` blocks inside an `.html` file (gh-1701 instance 1, below):
+// most of our JS lives inline in those blocks, and a `//`/`/* */` comment there
+// is exactly as much "not customer copy" as the same comment in a `.js` file.
+// HTML TEXT NODES and attribute copy are NOT script/style content and keep
+// scanning exactly as before -- this only narrows what happens INSIDE the two
+// block types.
 const CODE_FILE_RE = /\.(m?[jt]sx?|py|sql|toml|ya?ml|sh|go|rs|java|kt|swift|c|cc|cpp|h)$/i;
 const COMMENT_LINE_RE = /^\s*(\/\/|\/\*|\*|#(?!\{)|--|<!--)/;
 
-export function isCodeComment(text, file) {
-  return !!file && CODE_FILE_RE.test(file) && COMMENT_LINE_RE.test(text);
+// gh-1701 instance 1: track whether a given `.html` diff line sits inside a
+// `<script>` or `<style>` block. Diff-only, best-effort like every other rule
+// in this file -- it only ever sees the diff text, never the whole file, so a
+// block whose opening tag falls outside the visible hunk context is not
+// detected. `nextHtmlBlockState` is called for EVERY visible line (context
+// lines included), in order, so the state carries forward correctly whether
+// the open/close tag is itself part of the hunk's change or just context.
+const HTML_FILE_RE = /\.html?$/i;
+const SCRIPT_OPEN_RE = /<script(?:\s[^>]*)?>/i;
+const SCRIPT_CLOSE_RE = /<\/script\s*>/i;
+const STYLE_OPEN_RE = /<style(?:\s[^>]*)?>/i;
+const STYLE_CLOSE_RE = /<\/style\s*>/i;
+
+export function nextHtmlBlockState(state, text) {
+  if (state === 'script') return SCRIPT_CLOSE_RE.test(text) ? 'text' : 'script';
+  if (state === 'style') return STYLE_CLOSE_RE.test(text) ? 'text' : 'style';
+  const scriptOpen = SCRIPT_OPEN_RE.exec(text);
+  if (scriptOpen && !SCRIPT_CLOSE_RE.test(text.slice(scriptOpen.index))) return 'script';
+  const styleOpen = STYLE_OPEN_RE.exec(text);
+  if (styleOpen && !STYLE_CLOSE_RE.test(text.slice(styleOpen.index))) return 'style';
+  return 'text';
 }
 
-export function classifyLine(text, file, mode = 'full') {
+export function isCodeComment(text, file, htmlBlock = 'text') {
+  if (!file) return false;
+  if (CODE_FILE_RE.test(file)) return COMMENT_LINE_RE.test(text);
+  if (HTML_FILE_RE.test(file) && (htmlBlock === 'script' || htmlBlock === 'style')) {
+    return COMMENT_LINE_RE.test(text);
+  }
+  return false;
+}
+
+export function classifyLine(text, file, mode = 'full', htmlBlock = 'text') {
   if (mode === 'none') return null;
   if (isNoiseLine(text)) return null;
-  const comment = isCodeComment(text, file);
+  const comment = isCodeComment(text, file, htmlBlock);
   for (const { rule, re } of RULES) {
     if (rule !== 'currency-amount') continue;
     if (comment && !/_CENTS\s*=/.test(text)) continue; // "$25" in a comment is prose
@@ -247,6 +281,7 @@ export function detectLegalMoneyContent(diffText) {
   const seenPermission = new Set(); // gh-1701: one 'money-permission' hit per file
   let file = null;
   let mode = 'none';
+  let htmlBlock = 'text'; // gh-1701: 'text' | 'script' | 'style', reset per file
   let oldLine = 0;
   let newLine = 0;
   let inHunk = false;
@@ -260,6 +295,7 @@ export function detectLegalMoneyContent(diffText) {
       file = m ? m[2] : null;
       if (file) files.push(file);
       mode = scanModeFor(file);
+      htmlBlock = 'text';
       if (file && PREDICATE_FILES.has(file) && !seenGate.has(file)) {
         seenGate.add(file);
         out.push({ file, line: 0, rule: 'predicate-file', side: '+', text: `(any change to ${file} requires a signed approval under the pubkey currently on main)` });
@@ -268,13 +304,13 @@ export function detectLegalMoneyContent(diffText) {
     }
     if (raw.startsWith('+++ ')) {
       const p = stripDiffPath(raw.slice(4));
-      if (p) { file = p; mode = scanModeFor(file); }
+      if (p) { file = p; mode = scanModeFor(file); htmlBlock = 'text'; }
       continue;
     }
     if (raw.startsWith('--- ')) {
       if (!inHunk) {
         const p = stripDiffPath(raw.slice(4));
-        if (p && !file) { file = p; mode = scanModeFor(file); }
+        if (p && !file) { file = p; mode = scanModeFor(file); htmlBlock = 'text'; }
       }
       continue;
     }
@@ -288,11 +324,16 @@ export function detectLegalMoneyContent(diffText) {
 
     const side = raw[0];
     const text = raw.slice(1);
+    // gh-1701: advance the <script>/<style> tracker on EVERY visible line
+    // (context included) before classifying, so a comment inside the block is
+    // recognised even when the block's own open/close tag is only context.
+    const lineHtmlBlock = htmlBlock;
+    if (file && HTML_FILE_RE.test(file)) htmlBlock = nextHtmlBlockState(htmlBlock, text);
     if (side === '+') {
-      if (file && mode !== 'none') pushHit(out, seenPermission, file, newLine, classifyLine(text, file, mode), '+', text);
+      if (file && mode !== 'none') pushHit(out, seenPermission, file, newLine, classifyLine(text, file, mode, lineHtmlBlock), '+', text);
       newLine++;
     } else if (side === '-') {
-      if (file && mode !== 'none') pushHit(out, seenPermission, file, oldLine, classifyLine(text, file, mode), '-', text);
+      if (file && mode !== 'none') pushHit(out, seenPermission, file, oldLine, classifyLine(text, file, mode, lineHtmlBlock), '-', text);
       oldLine++;
     } else {
       // context line (' ') or anything else
@@ -303,4 +344,4 @@ export function detectLegalMoneyContent(diffText) {
   return { hit: out.length > 0, lines: out, files };
 }
 
-export default { detectLegalMoneyContent, PREDICATE_FILES, COPY_GUARD_FILES, scanModeFor, classifyLine, isNoiseLine, isCodeComment };
+export default { detectLegalMoneyContent, PREDICATE_FILES, COPY_GUARD_FILES, scanModeFor, classifyLine, isNoiseLine, isCodeComment, nextHtmlBlockState };
