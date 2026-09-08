@@ -138,6 +138,7 @@ import {
   TWO_HOURS_MS,
 } from "./select-stage.ts";
 import { buildEmailContent } from "./email-content.ts";
+import { candidateIsTestFlag, parseDryRun, type WouldSend } from "./dry-run.ts";
 import {
   canSendWithOptOut,
   fetchOptedOutClaimIds,
@@ -297,6 +298,18 @@ serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "Unauthorized" }, 401, corsHeaders);
   }
 
+  // gh-1570 / gh-1580 — dry-run fixture mode, read AFTER the authorization
+  // gate so an unauthenticated caller cannot use it to enumerate fixtures.
+  // See ./dry-run.ts for why it exists and what it deliberately does not do
+  // (it writes no activity_log row and sends no email — it cannot manufacture
+  // the artifact it is meant to help produce).
+  const dryRun = parseDryRun(await req.clone().json().catch(() => ({})));
+  const scanIsTest = candidateIsTestFlag(dryRun);
+  const wouldSend: WouldSend[] = [];
+  if (dryRun) {
+    console.log(`[${FUNCTION_NAME}] DRY RUN — scanning is_test=true fixtures; nothing will be sent or written`);
+  }
+
   // gh-1786 / D-320 — CAN-SPAM gate, ahead of any candidate scan. A commercial
   // email with no working opt-out is the violation this issue was filed on, so
   // an unset HOMEOWNER_OPTOUT_SECRET stops the whole run rather than degrading
@@ -324,7 +337,10 @@ serve(async (req: Request) => {
   const { data: claims, error: scanErr } = await supabase
     .from("claims")
     .select("id, user_id, status, created_at, is_test")
-    .eq("is_test", false)
+    // gh-1570: `false` on every production run (gh-1028 test-account
+    // suppression, unchanged). `true` only under dry_run — the two
+    // populations are disjoint by construction, see ./dry-run.ts.
+    .eq("is_test", scanIsTest)
     .eq("status", NUDGE_ELIGIBLE_STATUS)
     .neq("status", NUDGE_EXCLUDED_STATUS)
     .eq("ready_for_bids", false)
@@ -338,8 +354,12 @@ serve(async (req: Request) => {
   }
 
   if (!claims || claims.length === 0) {
-    console.log(`[${FUNCTION_NAME}] Batch: no candidate claims found`);
-    return jsonResponse({ ok: true, processed: 0, results: [] }, 200, corsHeaders);
+    console.log(`[${FUNCTION_NAME}] Batch: no candidate claims found (is_test=${scanIsTest})`);
+    return jsonResponse(
+      { ok: true, processed: 0, scanned_is_test: scanIsTest, ...(dryRun ? { dry_run: true, would_send: [] } : {}), results: [] },
+      200,
+      corsHeaders,
+    );
   }
 
   const claimIds = (claims as ClaimRow[]).map((c) => c.id);
@@ -514,6 +534,27 @@ serve(async (req: Request) => {
       // it's visible for manual follow-up rather than silently swallowed.
       // Skipping a nudge is recoverable; double-emailing a real homeowner
       // is not — this function is asymmetric about that on purpose.
+      // gh-1570 dry run: render the real message, report it, write nothing
+      // and send nothing. Placed AFTER selectStage and the contact lookup so
+      // the dry run exercises the same decisions a real send would, and
+      // BEFORE the stamp so it can never create a `next_steps_nudge_sent`
+      // row — the artifact this mode exists to help produce must come from a
+      // real send, not from the tool that previews one.
+      if (dryRun) {
+        const preview = buildEmailContent(homeownerName, measurementsUrl, colorUrl, optOutUrl);
+        wouldSend.push({
+          claim_id: claim.id,
+          user_id: claim.user_id,
+          stage,
+          to: homeownerEmail,
+          subject: preview.subject,
+          text_first_line: preview.textBody.split("\n")[0],
+          has_optout_link: preview.textBody.includes(optOutUrl),
+        });
+        console.log(`[${FUNCTION_NAME}] DRY RUN — would send ${stage} nudge for claim ${claim.id} (nothing sent, nothing written)`);
+        continue;
+      }
+
       const { error: stampError } = await supabase.from("activity_log").insert({
         user_id: claim.user_id,
         event_type: NUDGE_EVENT_TYPE,
@@ -571,5 +612,18 @@ serve(async (req: Request) => {
     (sum, r) => sum + (r.stages_skipped_already_sent?.length || 0),
     0
   );
-  return jsonResponse({ ok: true, processed, skipped_already_sent: skippedAlreadySent, results }, 200, corsHeaders);
+  return jsonResponse(
+    {
+      ok: true,
+      processed,
+      skipped_already_sent: skippedAlreadySent,
+      scanned_is_test: scanIsTest,
+      // gh-1570: on a dry run `processed` is 0 by construction (nothing is
+      // stamped), and `would_send` carries what a real run would have done.
+      ...(dryRun ? { dry_run: true, would_send: wouldSend } : {}),
+      results,
+    },
+    200,
+    corsHeaders,
+  );
 });
