@@ -262,3 +262,111 @@ Deno.test("gh-1314 F1: the disposition table covers ALL five unverified reasons"
   );
   assertEquals(seen, ["flag", "halt", "halt", "halt", "halt"]);
 });
+
+import { assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import {
+  type PriceEvaluation,
+  rawSignedPriceFrom,
+  signedPriceRecordFor,
+  UNVERIFIED_REASONS,
+} from "./price-verify.ts";
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * [#1314 step 4, 2026-09-08] PERSISTENCE MAPPING.
+ * The verdict is computed on every completed contract and, before this, thrown
+ * away. These assert the mapping onto the claim's columns, including the two
+ * reasons #1798 added that the 2026-09-06 draft migration's CHECK would have
+ * rejected.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+Deno.test("gh-1314 step 4: a reconciled verdict records the number that was read", () => {
+  const rec = signedPriceRecordFor({ state: "reconciled", signed: 13560, expected: 13560 }, "$13,560.00");
+  assertEquals(rec.signed_contract_price, 13560);
+  assertEquals(rec.signed_price_raw, "$13,560.00");
+  assertEquals(rec.signed_price_verdict, "reconciled");
+  assertEquals(rec.signed_price_reason, null);
+});
+
+Deno.test("gh-1314 step 4: a MISMATCH records the signed amount, not the accepted one", () => {
+  const rec = signedPriceRecordFor(
+    { state: "mismatch", signed: 15000, expected: 13560, delta: 1440 },
+    "$15,000.00",
+  );
+  // The whole point: the number the DOCUMENT carried becomes queryable. Recording
+  // `expected` here would reproduce the defect — two platform-side amounts that
+  // agree with each other and with nothing the homeowner signed.
+  assertEquals(rec.signed_contract_price, 15000);
+  assertEquals(rec.signed_price_verdict, "mismatch");
+  assertEquals(rec.signed_price_reason, null);
+});
+
+Deno.test("gh-1314 step 4: an unreadable price is NULL, never 0", () => {
+  const rec = signedPriceRecordFor(
+    { state: "unverified", reason: "field_absent", raw: null, expected: 13560 },
+    null,
+  );
+  assertEquals(rec.signed_contract_price, null);
+  assertEquals(rec.signed_price_verdict, "unverified");
+  assertEquals(rec.signed_price_reason, "field_absent");
+});
+
+Deno.test("gh-1314 step 4: an unparseable value keeps its pre-parse string", () => {
+  const rec = signedPriceRecordFor(
+    { state: "unverified", reason: "unparseable", raw: "thirteen thousand", expected: 13560 },
+    "thirteen thousand",
+  );
+  assertEquals(rec.signed_contract_price, null);
+  assertEquals(rec.signed_price_raw, "thirteen thousand");
+  assertEquals(rec.signed_price_reason, "unparseable");
+});
+
+Deno.test("gh-1314 step 4: every verdict dispositionFor HALTS on is recordable", () => {
+  for (const reason of UNVERIFIED_REASONS) {
+    const verdict: PriceEvaluation = { state: "unverified", reason, raw: null, expected: 100 };
+    const rec = signedPriceRecordFor(verdict, null);
+    assertEquals(rec.signed_price_reason, reason);
+    assertEquals(rec.signed_price_verdict, "unverified");
+  }
+});
+
+Deno.test("gh-1314 step 4: the reason list and the CHECK constraint cannot drift apart", async () => {
+  // The 2026-09-06 draft migration listed three reasons. #1798 added two more and
+  // made both of them HALT. Applied as drafted, the constraint would have rejected
+  // every write on the two newest halt paths and the non-fatal catch would have
+  // swallowed it — losing exactly the verdicts this column set exists to record.
+  const sql = await Deno.readTextFile(
+    new URL("../../migrations_drafts/gh1314_persist_signed_price.sql", import.meta.url),
+  );
+  const checkBody = sql.slice(sql.indexOf("claims_signed_price_reason_check"));
+  for (const reason of UNVERIFIED_REASONS) {
+    assertStringIncludes(
+      checkBody.slice(0, 600),
+      `'${reason}'`,
+      `REGRESSION (gh-1314 step 4): the reason CHECK does not accept '${reason}', so a verdict ` +
+        `carrying it would be rejected by the database and swallowed by the writer's non-fatal catch.`,
+    );
+  }
+  // Negative control: the same instrument must NOT find a value that is not a reason.
+  assertEquals(checkBody.slice(0, 600).includes("'flag'"), false);
+});
+
+Deno.test("gh-1314 step 4: rawSignedPriceFrom reports null when the READ failed, not when the field was empty", () => {
+  assertEquals(rawSignedPriceFrom({ kind: "properties_error", error: new Error("boom") }), null);
+  assertEquals(
+    rawSignedPriceFrom({
+      kind: "properties",
+      signers: [{ formFields: [{ id: "contract_price", value: "$15,000.00" }] }],
+    }),
+    "$15,000.00",
+  );
+  // Positive control that the two null cases are genuinely different upstream:
+  // a failed read is `properties_unreadable`, an absent field is `field_absent`.
+  assertEquals(
+    priceVerdictFor({ kind: "properties_error", error: new Error("boom") }, 100),
+    { state: "unverified", reason: "properties_unreadable", raw: null, expected: 100 },
+  );
+  assertEquals(
+    priceVerdictFor({ kind: "properties", signers: [] }, 100),
+    { state: "unverified", reason: "field_absent", raw: null, expected: 100 },
+  );
+});

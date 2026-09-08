@@ -46,10 +46,14 @@ import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.
 // for the same reason evaluateAcknowledgment is: it is a money check.
 import {
   dispositionFor,
+  type PriceEvaluation,
   priceVerdictFor,
+  rawSignedPriceFrom,
   reconciliationErrorVerdict,
   remediationFor,
   resolveSignerStatus,
+  signedPriceRecordFor,
+  type SignerStatusResult,
 } from "./price-verify.ts";
 import {
   describeGuardVerdict,
@@ -180,6 +184,49 @@ async function sendGA4Event(eventName: string, params: Record<string, unknown> =
 // body — any JSON re-serialization invalidates the signature. This function
 // is called with `rawBody` (the unparsed req.text() result) for exactly that
 // reason, mirroring the DocuSign implementation's same care.
+/**
+ * [#1314 step 4, 2026-09-08] Record the signed-price verdict ON THE CLAIM.
+ *
+ * Called BEFORE the disposition branches below, because the halt branches
+ * return early -- a write placed inside them would record every verdict except
+ * the two that matter most (mismatch, and an unverifiable price).
+ *
+ * NON-FATAL, and deliberately so: this is an audit write, and an audit write
+ * must never strand a signed contract. But it is non-fatal LOUDLY. PostgREST
+ * reports a rejected write in the `error` field of a RESOLVED promise -- it
+ * does not throw -- so a bare try/catch around this call would have swallowed a
+ * missing column or a violated CHECK in silence, which is the failure mode
+ * (#1538) this repo has already been bitten by once.
+ *
+ * Ordering note: the paired migration adds the five columns. Until it is
+ * applied, every call here logs a PostgREST "column does not exist" error and
+ * changes nothing else -- the gate above still halts, the fee is still not
+ * charged. That is the intended degradation, not an oversight.
+ */
+async function persistSignedPriceVerdict(
+  supabase: { from: (t: string) => any },
+  claimId: string,
+  status: SignerStatusResult<unknown[]> | null,
+  verdict: PriceEvaluation,
+): Promise<void> {
+  const record = signedPriceRecordFor(verdict, status ? rawSignedPriceFrom(status) : null);
+  try {
+    const { error } = await supabase
+      .from("claims")
+      .update({ ...record, signed_price_checked_at: new Date().toISOString() })
+      .eq("id", claimId);
+    if (error) {
+      console.error(
+        `[#1314] signed-price persistence REJECTED for claim ${claimId} ` +
+          `(verdict=${record.signed_price_verdict}, reason=${record.signed_price_reason}): ` +
+          `${error.message ?? JSON.stringify(error)}`,
+      );
+    }
+  } catch (persistErr) {
+    console.error(`[#1314] signed-price persistence threw for claim ${claimId} (non-fatal):`, persistErr);
+  }
+}
+
 function parseSignatureHeader(header: string): { timestamp: string | null; digests: string[] } {
   const parts = header.split(",").map((p) => p.trim());
   let timestamp: string | null = null;
@@ -851,6 +898,11 @@ serve(async (req) => {
             // the D-127 charge block.
             const verdict = priceVerdictFor(signerStatusResult, expected);
 
+            // [#1314 step 4] Persist the verdict BEFORE any branch: the halt
+            // branches below return early, so a write inside them would record
+            // every verdict except the halting ones.
+            await persistSignedPriceVerdict(supabase, claim.id, signerStatusResult, verdict);
+
             // [#1314, 2026-09-07] `field_absent` and `unparseable` were PROMOTED
             // from flag to halt. price-verify.ts's `dispositionFor` carries the
             // reasoning and the evidence; the short version is that the
@@ -992,6 +1044,10 @@ serve(async (req) => {
           // so it halts -- exactly like a mismatch.
           const verdict = reconciliationErrorVerdict(expectedForErrorVerdict);
           const reason = verdict.state === "unverified" ? verdict.reason : "reconciliation_error";
+          // [#1314 step 4] The error path is a verdict too, and it is the one a
+          // reader is most likely to want later. `status` is null here on
+          // purpose: whatever was read, the reconciliation never reached it.
+          await persistSignedPriceVerdict(supabase, claim.id, null, verdict);
           console.error(`[#1314] price reconciliation errored (reason=${reason}) -- HALTED before charging:`, priceErr);
           try {
             await supabase.from("platform_alerts_log").insert({
