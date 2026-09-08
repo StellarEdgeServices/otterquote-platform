@@ -318,7 +318,7 @@ xss_guard_exit = _xss_guard_result.returncode
 # closed by a bare JSON.stringify() -- which always emits a double quote, so the
 # parser terminates the attribute there and the handler never binds. gh-1693:
 # six buttons dead in production on the detailed-measurement money path, shipped
-# green through review, R-120, drift-by-content-hash and the post-deploy check,
+# green through review, the R-177 legal-read, drift-by-content-hash and the post-deploy check,
 # because all four measure what was SHIPPED and none measure whether the shipped
 # thing can be OPERATED. Latent (non-JSON.stringify) interpolations are printed
 # as a visible inventory but do not fail -- a gate that red-lines CI on 54

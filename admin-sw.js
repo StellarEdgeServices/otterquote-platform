@@ -24,7 +24,7 @@
  * next load.
  */
 
-const VERSION = 'oq-admin-v2-ae43f551';
+const VERSION = 'oq-admin-v2-bb1c01df';
 const CACHE_NAME = 'oq-admin-cache-' + VERSION;
 
 const ADMIN_PAGES = [

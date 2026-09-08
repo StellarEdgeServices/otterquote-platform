@@ -113,6 +113,37 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
 .toggle input { width: 1.4rem; height: 1.4rem; accent-color: var(--amber); }
 .btn-refresh { background: var(--amber); color: var(--navy); border: none; padding: 0 1.1rem; min-height: 44px; border-radius: 0.6rem; font-weight: 700; font-size: 0.95rem; cursor: pointer; font-family: inherit; }
 .btn-refresh:disabled { opacity: 0.6; }
+
+/* ── gh-1796: loss-sheet queue ── */
+.view-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 0.25rem; }
+.view-tab { background: rgba(255,255,255,0.06); color: var(--slate); border: 1px solid rgba(255,255,255,0.12); padding: 0.55rem 0.95rem; min-height: 44px; border-radius: 0.55rem; font-weight: 600; font-size: 0.9rem; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.view-tab:hover { background: rgba(255,255,255,0.12); color: var(--white); }
+.view-tab.active { background: var(--amber); color: var(--navy); border-color: var(--amber); }
+.view-tab .tab-count { display: inline-block; margin-left: 0.4rem; padding: 0.05rem 0.4rem; border-radius: 0.75rem; background: rgba(0,0,0,0.18); font-size: 0.78rem; font-weight: 700; }
+.view-tab.active .tab-count { background: rgba(13,27,46,0.16); }
+
+.warn-banner { background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.35); color: #FDE68A; padding: 0.7rem 0.9rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 0.85rem; line-height: 1.45; }
+
+.ls-state { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 1rem; font-size: 0.74rem; font-weight: 700; white-space: nowrap; }
+.ls-missing { background: #FEE2E2; color: #991B1B; }
+.ls-unreviewed { background: #FEF3C7; color: #92400E; }
+.ls-reviewed { background: #D1FAE5; color: #065F46; }
+.card.ls-row-missing { border-left-color: var(--red); }
+.card.ls-row-unreviewed { border-left-color: var(--yellow); }
+.ls-facts { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin-top: 0.55rem; font-size: 0.82rem; color: #475569; }
+.ls-facts b { color: var(--navy); font-weight: 600; }
+.ls-note { margin-top: 0.5rem; font-size: 0.8rem; color: #92400E; background: #FEF3C7; border-radius: 0.4rem; padding: 0.35rem 0.55rem; }
+.claim-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; color: #64748B; overflow-wrap: anywhere; }
+.ls-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.7rem; align-items: center; }
+.btn-doc { display: inline-block; background: #F1F5F9; color: var(--navy); border: 1px solid #CBD5E1; padding: 0 0.85rem; min-height: 40px; line-height: 38px; border-radius: 0.5rem; font-weight: 600; font-size: 0.85rem; text-decoration: none; }
+.btn-doc:hover { background: #E2E8F0; }
+.btn-doc.is-disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-review { background: var(--green); color: #FFFFFF; border: none; padding: 0 0.95rem; min-height: 40px; border-radius: 0.5rem; font-weight: 700; font-size: 0.85rem; cursor: pointer; font-family: inherit; }
+.btn-review:disabled { opacity: 0.55; cursor: default; }
+.btn-undo { background: transparent; color: #64748B; border: 1px solid #CBD5E1; padding: 0 0.75rem; min-height: 40px; border-radius: 0.5rem; font-weight: 600; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
+.row-msg { font-size: 0.8rem; margin-top: 0.4rem; }
+.row-msg.err { color: #991B1B; }
+.row-msg.ok { color: #065F46; }
 </style>
 </head>
 <body>
@@ -143,11 +174,27 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
     <a href="admin-measurements.html">Measurements</a>
   </nav>
 
-  <div class="info-banner">
+  <!-- gh-1796: two views over ONE fetch. Switching views never refetches. -->
+  <div class="view-tabs" id="viewTabs">
+    <button type="button" class="view-tab active" data-view="all" onclick="setView('all')">All claims<span class="tab-count" id="tabCountAll">—</span></button>
+    <button type="button" class="view-tab" data-view="loss" onclick="setView('loss')">Loss sheets<span class="tab-count" id="tabCountLoss">—</span></button>
+  </div>
+
+  <div class="info-banner" id="bannerAll">
     One row per claim, longest wait first. <strong>Days</strong> counts from the claim's
     last change (<code>updated_at</code>) — the platform does not yet record when a status
     was entered, so any edit to the claim resets it. Read it as "at least this long at this status".
   </div>
+
+  <div class="info-banner" id="bannerLoss" style="display:none">
+    Homeowners whose loss sheet you still need. <strong>Not uploaded</strong> means no file is on
+    record for the claim; <strong>Needs review</strong> means a file is there and you have not marked
+    it read. <em>Mark reviewed</em> removes the row from this list — it changes nothing the homeowner
+    or contractor sees, and sends no email. Upload date comes from the stored file itself; where that
+    is unavailable it falls back to when the parser first read the file, and says so.
+  </div>
+
+  <div class="warn-banner" id="bannerMigration" style="display:none"></div>
 
   <div id="errorBox" style="display:none" class="error-box"></div>
   <p class="count-line" id="countLine"></p>
@@ -176,10 +223,39 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
  * v1 scope (issue #1653, deliberately minimal): one list, one row per claim,
  * sorted longest-dwell first, test rows hidden by default. No editing, no
  * messaging, no notes, no other filters, no second screen.
+ *
+ * gh-1796 — Dustin's ruling on #1597, 2026-09-07: "I want the system to identify
+ * people who need their loss sheets and bring them to my attention in the
+ * administrative dashboard. This will need to be part of the homeowner tracking
+ * process." So this page gains a second VIEW over the SAME response, not a
+ * second page and not a second fetch: "Loss sheets" lists the claims whose
+ * loss_sheet state is `missing` or `uploaded_unreviewed`, and carries the one
+ * button that sets the reviewed marker.
+ *
+ * Every loss-sheet fact is computed server-side in get-homeowner-list, for the
+ * same reason dwell is: the state machine, the upload date and its basis, and
+ * the signed document URL all need the service role (there is NO admin SELECT
+ * policy on the claim-documents bucket, so this page cannot mint its own signed
+ * URL — it would 400 on every row). This file decides only what to show.
+ *
+ * No homeowner-facing copy is touched anywhere on this page, and nothing here
+ * states or implies an ACV/RCV determination — per Dustin's ruling that copy is
+ * explicitly unchanged.
  */
 var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
 
-var state = { user: null, rows: null, showTest: false };
+var state = {
+  user: null,
+  rows: null,
+  showTest: false,
+  // gh-1796: 'all' = the #1653 list; 'loss' = the loss-sheet queue.
+  view: 'all',
+  // gh-1796: response-level facts, for the banners.
+  meta: null,
+  // gh-1796: per-claim transient UI state for the Mark-reviewed button.
+  busy: {},
+  msg: {}
+};
 
 var _initFired = false;
 // Same top-level `if (sb) { ... }` shape as admin-measurements.html (gh-1376):
@@ -211,6 +287,14 @@ async function checkAdminAndInit(user) {
   document.getElementById('showTest').addEventListener('change', function (e) {
     state.showTest = !!e.target.checked;
     render();
+  });
+  // gh-1796 — one delegated listener for every Mark-reviewed / Undo button.
+  // Bound once here; render() replaces #viewRoot's innerHTML freely without
+  // needing to rebind, and no handler attribute carries interpolated data.
+  document.getElementById('viewRoot').addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('button.js-review') : null;
+    if (!btn || btn.disabled) return;
+    markReviewed(btn.getAttribute('data-claim-id'), btn.getAttribute('data-reviewed') === '1');
   });
   await loadRows();
 }
@@ -284,6 +368,13 @@ async function loadRows() {
     var body = await res.json();
     if (!res.ok || !body.ok) throw new Error(body.error || ('EF returned ' + res.status));
     state.rows = body.rows || [];
+    // gh-1796 — response-level facts the banners need.
+    state.meta = {
+      queue: body.loss_sheet_queue || null,
+      reviewedColumnPresent: body.loss_sheet_reviewed_column_present === true,
+      dirLookupsCapped: body.loss_sheet_dir_lookups_capped === true
+    };
+    state.msg = {};
     render();
   } catch (e) {
     errBox.textContent = 'Could not load homeowners: ' + e.message;
@@ -295,12 +386,251 @@ async function loadRows() {
   }
 }
 
+// ── gh-1796: view switching (pure display; never refetches) ────────────────
+function setView(view) {
+  state.view = view === 'loss' ? 'loss' : 'all';
+  var tabs = document.querySelectorAll('#viewTabs .view-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].classList.toggle('active', tabs[i].getAttribute('data-view') === state.view);
+  }
+  document.getElementById('bannerAll').style.display = state.view === 'all' ? 'block' : 'none';
+  document.getElementById('bannerLoss').style.display = state.view === 'loss' ? 'block' : 'none';
+  render();
+}
+
+/** Rows still owed a loss sheet: the two states #1796 names, reviewed excluded. */
+function lossQueueRows(rows) {
+  return rows.filter(function (r) {
+    return r.loss_sheet === 'missing' || r.loss_sheet === 'uploaded_unreviewed';
+  });
+}
+
+function lossStateChip(r) {
+  if (r.loss_sheet === 'reviewed') return '<span class="ls-state ls-reviewed">Reviewed</span>';
+  if (r.loss_sheet === 'uploaded_unreviewed') return '<span class="ls-state ls-unreviewed">Needs review</span>';
+  return '<span class="ls-state ls-missing">Not uploaded</span>';
+}
+
+/**
+ * Upload date, or the plain words "not uploaded". A date whose basis is the
+ * parser stamp rather than the stored file is labelled, because the two differ
+ * by hours on real rows and an unlabelled date would quietly overstate what the
+ * platform knows.
+ */
+function uploadedCell(r) {
+  if (r.loss_sheet === 'missing') return 'not uploaded';
+  if (!r.loss_sheet_uploaded_at) return 'uploaded, date unknown';
+  var when = fmtDate(r.loss_sheet_uploaded_at);
+  if (r.loss_sheet_uploaded_at_basis === 'loss_sheet_parsed_at') return when + ' (first read by parser)';
+  return when;
+}
+
+function signupCell(r) {
+  if (r.days_since_signup === null || r.days_since_signup === undefined) return '—';
+  var n = r.days_since_signup;
+  var suffix = r.signup_basis === 'claim_created_at' ? ' (from claim, no profile date)' : '';
+  return n + ' day' + (n === 1 ? '' : 's') + suffix;
+}
+
+function docLinkHtml(r) {
+  if (r.loss_sheet_url) {
+    return '<a class="btn-doc" href="' + esc(r.loss_sheet_url) + '" target="_blank" rel="noopener noreferrer">Open document</a>';
+  }
+  if (r.loss_sheet_path) {
+    return '<span class="btn-doc is-disabled" title="' + esc(r.loss_sheet_path) + '">Link unavailable</span>';
+  }
+  return '<span class="btn-doc is-disabled">No document</span>';
+}
+
+/**
+ * The Mark-reviewed / Undo button.
+ *
+ * The claim id travels in a data- attribute and the click is handled by ONE
+ * delegated listener on #viewRoot, rather than an interpolated inline
+ * `onclick="markReviewed('<id>')"`. scripts/ci-file-integrity.py's inline-handler
+ * guard (gh-1693) counts every interpolated handler attribute as latent breakage
+ * — it works only while the interpolated value happens to contain no quote — and
+ * this page had ZERO of them before gh-1796. Keeping it at zero is the repo's own
+ * prescribed remedy ("Convert a file to addEventListener + dataset").
+ */
+function reviewBtnHtml(r, reviewed, busy) {
+  var cls = reviewed ? 'btn-review' : 'btn-undo';
+  var label = busy ? 'Working…' : (reviewed ? 'Mark reviewed' : 'Undo');
+  return '<button type="button" class="' + cls + ' js-review"' +
+    ' data-claim-id="' + esc(r.claim_id) + '"' +
+    ' data-reviewed="' + (reviewed ? '1' : '0') + '"' +
+    (busy ? ' disabled' : '') + '>' + esc(label) + '</button>';
+}
+
+function rowMsgHtml(claimId) {
+  var m = state.msg[claimId];
+  if (!m) return '';
+  return '<div class="row-msg ' + (m.ok ? 'ok' : 'err') + '">' + esc(m.text) + '</div>';
+}
+
+/**
+ * One click sets (or clears) claims.loss_sheet_reviewed_at through
+ * mark-loss-sheet-reviewed. On success the row is updated in place and
+ * re-rendered — which, in the "Loss sheets" view, makes it disappear. That
+ * disappearance is the whole point, and `reviewed:false` reverses it, which is
+ * how #1796's negative control gets produced without hand-editing data.
+ */
+async function markReviewed(claimId, reviewed) {
+  var row = null;
+  for (var i = 0; i < (state.rows || []).length; i++) {
+    if (state.rows[i].claim_id === claimId) { row = state.rows[i]; break; }
+  }
+  if (!row) return;
+  state.busy[claimId] = true;
+  delete state.msg[claimId];
+  render();
+  try {
+    var { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+    var res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/mark-loss-sheet-reviewed', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + session.access_token,
+        'apikey': CONFIG.SUPABASE_ANON
+      },
+      body: JSON.stringify({ claim_id: claimId, reviewed: reviewed })
+    });
+    var body = await res.json();
+    if (!res.ok || !body.ok) {
+      // A pending migration is a specific, expected state — name it rather than
+      // surfacing a bare HTTP code.
+      throw new Error(body && body.migration_pending
+        ? 'Not available yet — the loss-sheet review column has not been added to the database.'
+        : ((body && body.error) || ('Server returned ' + res.status)));
+    }
+    row.loss_sheet_reviewed_at = body.loss_sheet_reviewed_at || null;
+    row.loss_sheet = row.loss_sheet_reviewed_at
+      ? 'reviewed'
+      : (row.loss_sheet_path ? 'uploaded_unreviewed' : 'missing');
+    // Tab counts are recomputed from state.rows on every render(), so mutating
+    // the row above is all that is needed — no refetch, no stale server total.
+    state.msg[claimId] = { ok: true, text: reviewed ? 'Marked reviewed.' : 'Mark removed.' };
+  } catch (e) {
+    state.msg[claimId] = { ok: false, text: e.message };
+  } finally {
+    delete state.busy[claimId];
+    render();
+  }
+}
+
+/** The loss-sheet queue: cards on a phone, table from 900px, same as the main list. */
+function renderLossView(shown, hidden) {
+  var root = document.getElementById('viewRoot');
+  var queue = lossQueueRows(shown);
+
+  document.getElementById('countLine').textContent =
+    queue.length + ' homeowner' + (queue.length === 1 ? '' : 's') + ' still owed a loss sheet' +
+    (hidden > 0 ? ' · ' + hidden + ' test hidden' : '');
+
+  if (queue.length === 0) {
+    root.innerHTML = '<div class="empty">' +
+      (shown.length === 0
+        ? 'No claims to show.'
+        : 'Every loss sheet here is uploaded and marked reviewed. Nothing waiting on you.') +
+      '</div>';
+    return;
+  }
+
+  var cards = queue.map(function (r) {
+    var busy = !!state.busy[r.claim_id];
+    return (
+      '<div class="card ' + (r.loss_sheet === 'missing' ? 'ls-row-missing' : 'ls-row-unreviewed') + '">' +
+        '<div class="card-top">' +
+          '<div class="who">' + whoHtml(r) + '<div class="claim-id">' + esc(r.claim_id) + '</div></div>' +
+          '<div>' + lossStateChip(r) + (r.is_test ? ' <span class="chip chip-test">TEST</span>' : '') + '</div>' +
+        '</div>' +
+        '<div class="ls-facts">' +
+          '<span>Loss sheet: <b>' + esc(uploadedCell(r)) + '</b></span>' +
+          '<span>Signed up: <b>' + esc(signupCell(r)) + '</b> ago</span>' +
+          '<span>Status: <b>' + esc(r.status_label) + '</b></span>' +
+        '</div>' +
+        (r.loss_sheet_note ? '<div class="ls-note">' + esc(r.loss_sheet_note) + '</div>' : '') +
+        '<div class="ls-actions">' +
+          docLinkHtml(r) +
+          reviewBtnHtml(r, true, busy) +
+        '</div>' +
+        rowMsgHtml(r.claim_id) +
+      '</div>'
+    );
+  }).join('');
+
+  var trs = queue.map(function (r) {
+    var busy = !!state.busy[r.claim_id];
+    return (
+      '<tr class="' + (r.loss_sheet === 'missing' ? 'dwell-hot' : 'dwell-warm') + '">' +
+        '<td>' + whoHtml(r) + (r.is_test ? '<span class="chip chip-test">TEST</span>' : '') + '</td>' +
+        '<td class="claim-id">' + esc(r.claim_id) + '</td>' +
+        '<td>' + lossStateChip(r) + '</td>' +
+        '<td>' + esc(uploadedCell(r)) + '</td>' +
+        '<td>' + esc(signupCell(r)) + '</td>' +
+        '<td>' + docLinkHtml(r) + '</td>' +
+        '<td>' + reviewBtnHtml(r, true, busy) + rowMsgHtml(r.claim_id) + '</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  // Rows already marked reviewed, kept visible and reversible so the queue can be
+  // audited (and so #1796's negative control is producible from the UI).
+  var done = shown.filter(function (r) { return r.loss_sheet === 'reviewed'; });
+  var doneHtml = '';
+  if (done.length > 0) {
+    doneHtml =
+      '<p class="count-line" style="margin-top:1.25rem">' + done.length +
+      ' marked reviewed</p><div class="list">' +
+      done.map(function (r) {
+        var busy = !!state.busy[r.claim_id];
+        return '<div class="card dwell-done">' +
+          '<div class="card-top"><div class="who">' + whoHtml(r) +
+            '<div class="claim-id">' + esc(r.claim_id) + '</div></div>' +
+            '<div>' + lossStateChip(r) + '</div></div>' +
+          '<div class="ls-facts"><span>Reviewed <b>' + esc(fmtDate(r.loss_sheet_reviewed_at)) + '</b></span></div>' +
+          '<div class="ls-actions">' + docLinkHtml(r) + reviewBtnHtml(r, false, busy) + '</div>' +
+          rowMsgHtml(r.claim_id) +
+        '</div>';
+      }).join('') + '</div>';
+  }
+
+  root.innerHTML =
+    '<div class="list">' + cards + '</div>' +
+    '<div class="table-wrapper"><table class="h-table"><thead><tr>' +
+      '<th>Homeowner</th><th>Claim id</th><th>Loss sheet</th><th>Uploaded</th>' +
+      '<th>Days since signup</th><th>Document</th><th>Action</th>' +
+    '</tr></thead><tbody>' + trs + '</tbody></table></div>' +
+    doneHtml;
+}
+
 function render() {
   if (!state.rows) return;
   var root = document.getElementById('viewRoot');
   var all = state.rows;
   var shown = state.showTest ? all : all.filter(function (r) { return !r.is_test; });
   var hidden = all.length - shown.length;
+
+  // ── gh-1796: tab counts + the pending-migration notice ───────────────────
+  // Counts are over the VISIBLE set, so they agree with what the tab opens onto
+  // rather than with a server-side total that includes hidden test rows.
+  document.getElementById('tabCountAll').textContent = shown.length;
+  document.getElementById('tabCountLoss').textContent = lossQueueRows(shown).length;
+
+  var migBanner = document.getElementById('bannerMigration');
+  if (state.meta && !state.meta.reviewedColumnPresent) {
+    migBanner.innerHTML =
+      '<strong>Mark reviewed is not live yet.</strong> The database column this queue writes to ' +
+      '(<code>claims.loss_sheet_reviewed_at</code>) has not been added — migration ' +
+      '<code>20260907220015_gh1796_claims_loss_sheet_reviewed_at.sql</code> is filed but not applied. ' +
+      'Until it is, every claim reads as unreviewed and the button will refuse rather than write.';
+    migBanner.style.display = 'block';
+  } else {
+    migBanner.style.display = 'none';
+  }
+
+  if (state.view === 'loss') { renderLossView(shown, hidden); return; }
 
   document.getElementById('countLine').textContent =
     shown.length + ' claim' + (shown.length === 1 ? '' : 's') +
@@ -320,7 +650,7 @@ function render() {
           '<div class="dwell"><div class="dwell-n">' + dwellNum(r) + '</div><div class="dwell-lbl">days · since last change</div></div>' +
         '</div>' +
         '<div class="status-line">' + esc(r.status_label) + '</div>' +
-        '<div class="meta">' + chips(r) + '</div>' +
+        '<div class="meta">' + chips(r) + lossStateChip(r) + '</div>' +
         '<div class="created">Created ' + esc(fmtDate(r.created_at)) + '</div>' +
       '</div>'
     );
@@ -335,6 +665,9 @@ function render() {
         '<td>' + esc(fmtDate(r.status_since)) + '</td>' +
         '<td>' + esc(fmtDate(r.created_at)) + '</td>' +
         '<td>' + chips(r) + '</td>' +
+        // gh-1796: the loss-sheet state is part of homeowner tracking, so it is
+        // visible in the main list too — the dedicated view is for working it.
+        '<td>' + lossStateChip(r) + '</td>' +
       '</tr>'
     );
   }).join('');
@@ -342,7 +675,7 @@ function render() {
   root.innerHTML =
     '<div class="list">' + cards + '</div>' +
     '<div class="table-wrapper"><table class="h-table"><thead><tr>' +
-      '<th>Homeowner</th><th>Status</th><th style="text-align:right">Days since last change</th><th>Last change</th><th>Created</th><th>Trade · Job · Funding</th>' +
+      '<th>Homeowner</th><th>Status</th><th style="text-align:right">Days since last change</th><th>Last change</th><th>Created</th><th>Trade · Job · Funding</th><th>Loss sheet</th>' +
     '</tr></thead><tbody>' + trs + '</tbody></table></div>';
 }
 </script>
