@@ -5,6 +5,7 @@ import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.208.0/
 import {
   buildRows, daysSince, homeownerLabel, statusLabel, STATUS_LABELS,
   lossSheetNote, lossSheetPath, lossSheetStatus, lossSheetUploadedAt, signupAt,
+  isMigrationPendingError, PG_UNDEFINED_COLUMN,
   type ClaimIn,
 } from "./rows.ts";
 
@@ -252,4 +253,33 @@ Deno.test("buildRows: pre-migration schema (no loss_sheet_reviewed_at anywhere) 
   );
   assertEquals(rows.map((r) => r.loss_sheet).sort(), ["missing", "uploaded_unreviewed"]);
   for (const r of rows) assertStrictEquals(r.loss_sheet_reviewed_at, null);
+});
+
+
+// gh-1796 (REVIEW: FAIL, PR #1804 comment 5577261841) — index.ts:297 used to
+// treat EVERY error class on the reviewed-marker read as "migration not
+// applied". Only 42703 (undefined_column) means that; everything else is a
+// real failure that must propagate as one. These tests pin the classifier
+// index.ts now calls, so a future regression back to "swallow everything"
+// fails here rather than only being catchable by reading the source.
+
+Deno.test("isMigrationPendingError: 42703 (undefined_column) IS the migration-pending signal", () => {
+  assertStrictEquals(isMigrationPendingError({ code: "42703" }), true);
+  assertStrictEquals(isMigrationPendingError({ code: PG_UNDEFINED_COLUMN }), true);
+});
+
+Deno.test("isMigrationPendingError: a non-42703 error is NOT migration-pending — it is a real failure", () => {
+  // The exact failure scenario named in the FAIL: a transient PostgREST 5xx,
+  // a statement timeout, a connection reset -- none of these mean "the
+  // column doesn't exist", and none may take the fail-open path.
+  assertStrictEquals(isMigrationPendingError({ code: "57014" }), false); // query_canceled
+  assertStrictEquals(isMigrationPendingError({ code: "08006" }), false); // connection_failure
+  assertStrictEquals(isMigrationPendingError({ code: "PGRST301" }), false); // PostgREST JWT/other
+  assertStrictEquals(isMigrationPendingError({ code: undefined }), false);
+});
+
+Deno.test("isMigrationPendingError: null/undefined error object does not crash and is not migration-pending", () => {
+  assertStrictEquals(isMigrationPendingError(null), false);
+  assertStrictEquals(isMigrationPendingError(undefined), false);
+  assertStrictEquals(isMigrationPendingError({}), false);
 });

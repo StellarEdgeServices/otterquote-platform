@@ -129,6 +129,27 @@ export interface ProfileIn {
   created_at?: string | null;
 }
 
+/**
+ * gh-1796 — Postgres's undefined_column code. Kept in sync with
+ * mark-loss-sheet-reviewed/index.ts's own PG_UNDEFINED_COLUMN so the two
+ * halves of this feature agree on what "migration not applied" means.
+ */
+export const PG_UNDEFINED_COLUMN = "42703";
+
+/**
+ * gh-1796 (REVIEW: FAIL, PR #1804 comment 5577261841) — classifies a failed
+ * `loss_sheet_reviewed_at` read. The ONLY error that means "the migration
+ * hasn't been applied yet" is Postgres 42703 (undefined_column). Every other
+ * error (a transient PostgREST 5xx, a timeout, a connection reset, ...) is a
+ * real failure and must not be treated the same way: doing so silently drops
+ * every reviewed marker from the response (already-reviewed claims reappear
+ * in the queue) and makes the admin page assert, falsely, that the column
+ * "has not been added".
+ */
+export function isMigrationPendingError(error: { code?: string | null } | null | undefined): boolean {
+  return error?.code === PG_UNDEFINED_COLUMN;
+}
+
 /** gh-1796 — the three states #1796 names, and nothing else. */
 export type LossSheetStatus = "missing" | "uploaded_unreviewed" | "reviewed";
 

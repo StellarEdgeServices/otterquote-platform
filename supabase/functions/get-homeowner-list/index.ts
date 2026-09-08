@@ -71,7 +71,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { buildRows, type ClaimIn, type HomeownerRow, type ProfileIn } from "./rows.ts";
+import { buildRows, isMigrationPendingError, type ClaimIn, type HomeownerRow, type ProfileIn } from "./rows.ts";
 
 const FUNCTION_NAME = "get-homeowner-list";
 // gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
@@ -295,6 +295,19 @@ serve(async (req: Request) => {
       .not("loss_sheet_reviewed_at", "is", null);
 
     if (reviewedRes.error) {
+      if (!isMigrationPendingError(reviewedRes.error)) {
+        // REVIEW: FAIL (PR #1804 comment 5577261841): this branch used to
+        // treat EVERY error class here as "migration not applied", which
+        // (1) silently drops every reviewed marker on a transient failure,
+        // making already-reviewed claims reappear in the queue, and (2)
+        // makes admin-homeowners.html falsely tell the operator the column
+        // "has not been added". Only the real pre-migration signal (42703,
+        // undefined_column -- matching mark-loss-sheet-reviewed/index.ts's
+        // own PG_UNDEFINED_COLUMN check) may take the fail-open path below;
+        // anything else is a real failure and must be reported as one.
+        console.error(`[${FUNCTION_NAME}] reviewed-marker query failed:`, reviewedRes.error.message);
+        return jsonResponse({ ok: false, error: "Read failed: loss_sheet_reviewed_at" }, 500, corsHeaders);
+      }
       console.warn(
         `[${FUNCTION_NAME}] loss_sheet_reviewed_at unavailable (migration 20260907220015 not applied?):`,
         reviewedRes.error.message,
