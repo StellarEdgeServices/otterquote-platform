@@ -63,8 +63,8 @@
  *   Approve                       | admin-payouts.html            | inline onclick
  *   Reject                        | admin-payouts.html            | inline onclick
  *   confirmSelection (Yes, Cont.) | bids.html                     | inline onclick
- *   feeAcceptanceCheckbox         | contractor-bid-form.html      | test.fixme (see gh-1730)
- *   submitBtn (Submit Bid)        | contractor-bid-form.html      | test.fixme (see gh-1730)
+ *   feeAcceptanceCheckbox         | contractor-bid-form.html      | addEventListener (2/3: assertion 3 gap, see gh-1730)
+ *   submitBtn (Submit Bid)        | contractor-bid-form.html      | addEventListener (2/3: assertion 3 gap, see gh-1730)
  *   signContractBtn (Continue)    | contract-signing.html         | addEventListener (own listener)
  *
  * The six #1693-regression entry points are the first six rows above --
@@ -84,8 +84,9 @@
  *
  *   1. `confirmSelection` (bids.html) -- full coverage below.
  *   2. `contractor-bid-form.html #feeAcceptanceCheckbox` / `#submitBtn` --
- *      test.fixme below. Neither control's real handler can be verified
- *      "bound" by this spec's existing techniques without an HTML change:
+ *      2/3 assertions below (exists + bound), Assertion 3 named as an open
+ *      gap rather than faked. Neither control's real handler can be spied
+ *      by this spec's installSpy() technique without an HTML change:
  *      `#submitBtn` submits `<form id="bidForm">` via a bare anonymous
  *      `bidForm.addEventListener('submit', async (e) => {...})` -- no named
  *      target function for installSpy() to wrap at all. `#feeAcceptanceCheckbox`
@@ -109,7 +110,17 @@
  *      are untouched by that conversion, so this fourth defect shape still
  *      applies to them unchanged; extending installSpy()/installListenerRegistry()
  *      to intercept the handler reference at registration time (not just
- *      record that a listener was attached) remains the follow-up next build.
+ *      record that a listener was attached) remains the follow-up next
+ *      build. Assertion 2 (installListenerRegistry()/assertListenerBound(),
+ *      already used below for #signContractBtn) DOES cover both controls
+ *      without any HTML change or timing extension -- it only needs to
+ *      observe the addEventListener() CALL, not what it captured -- and
+ *      that is exactly the check that catches the gh-1693 shape (wiring
+ *      that silently never ran). Fixed per REVIEW-B (PR #1833 comment
+ *      5578680509, FAIL 1): the two entry points below carry real,
+ *      non-fixme tests for Assertions 1+2; Assertion 3 stays an explicit,
+ *      named gap (`test.info().annotations`) rather than either a fake
+ *      pass or a fully-empty test.fixme.
  *   3. `contract-signing.html #signContractBtn` -- full coverage below.
  *      Bound via a THIRD binding kind neither `assertHandlerBound()` style
  *      recognizes: a plain, non-delegated `addEventListener('click', ...)`
@@ -646,90 +657,120 @@ test.describe('bids.html entry points', () => {
 // ── contractor-bid-form.html ──────────────────────────────────────────────
 // gh-1730 (CTO wave-4 dispatch, #1730 comment 5572644362, priority #2):
 // D-215 Layer 1, the point at which a contractor accepts the platform fee
-// before submitting a bid. NOT test.fixme because the controls are hard to
-// find or the money path is unclear -- both are exactly where the dispatch
-// says (#feeAcceptanceCheckbox / #submitBtn, wired around
-// contractor-bid-form.html:4964-5053/5295) -- but because neither control's
-// binding can be proven or disproven "bound" by this spec's existing
-// techniques without a TIMING change to the spec's own instrumentation
-// (installing a listener registry before these two addEventListener() calls
-// run, not an HTML change to the controls themselves -- gh-1730 Part 2 DID
-// edit contractor-bid-form.html, converting the unrelated STRICT_FILES call
-// sites at 2752/4803/4837 to delegated data-oq-action listeners, but left
-// #feeAcceptanceCheckbox/#submitBtn's own binding code untouched; see the PR
-// body and this file's own header comment, "gh-1730" section, for the full
-// reasoning on both):
+// before submitting a bid. Both entry points below are REAL (non-fixme)
+// tests carrying Assertions 1 (exists) and 2 (handler bound) -- fixed per
+// REVIEW-B, PR #1833 comment 5578680509, FAIL 1: installListenerRegistry()
+// as shipped in this spec records EVERY event type unconditionally (it
+// keys only on `this instanceof Element && this.id`, not on 'click'), so
+// it needs no extension to observe these two controls' 'change'/'submit'
+// bindings -- the earlier test.fixme annotations claiming otherwise were
+// wrong, and Assertion 2 is exactly the check that catches the gh-1693
+// shape (wiring that silently never ran), so leaving it undone was 0/3
+// when 2/3 was already writable.
 //
-//   #submitBtn   -- `<button type="submit" form="bidForm">`. Its behaviour
-//                   lives on `bidForm.addEventListener('submit', async (e)
-//                   => {...})` -- an anonymous inline arrow function, never
-//                   assigned a name. installSpy() requires a bare
-//                   identifier to reassign; there is no identifier here at
-//                   all, named or otherwise, to install a spy on.
+//   #feeAcceptanceCheckbox -- bound via `_feeAcceptanceCheckbox.
+//                   addEventListener('change', updateFeeCheckboxState)`
+//                   (contractor-bid-form.html:5093, element at :2340).
 //
-//   #feeAcceptanceCheckbox -- changes call `updateFeeCheckboxState`, which
-//                   IS a named function declaration (installSpy() can
-//                   locate and reassign the identifier without error) --
-//                   but `_feeAcceptanceCheckbox.addEventListener('change',
-//                   updateFeeCheckboxState)` already ran by the time this
-//                   spec could install a spy, and addEventListener()
-//                   captures the function BY VALUE at registration time.
-//                   Reassigning the `updateFeeCheckboxState` identifier
-//                   afterward does not change what that already-registered
-//                   listener calls -- a real click would keep silently
-//                   reaching the ORIGINAL function, and Assertion 3 would
-//                   report a pass regardless of whether the real handler is
-//                   alive or dead. Producing a green here would be exactly
-//                   the false-confidence failure mode this whole spec
-//                   exists to prevent (see PR #1720 comment 5560323618,
-//                   quoted in installSpy()'s own comment above).
+//   #submitBtn   -- `<button type="submit" form="bidForm">`
+//                   (contractor-bid-form.html:2345); its behaviour lives on
+//                   `bidForm.addEventListener('submit', async (e) => {...})`
+//                   (:5335, `bidForm` = `#bidForm` at :2731/:1442) -- the
+//                   registry entry to check is therefore keyed on 'bidForm',
+//                   not 'submitBtn'.
 //
-// Fixed by installing a listener registry (installListenerRegistry(), used
-// below for contract-signing.html's #signContractBtn) BEFORE
-// contractor-bid-form.html's script runs -- that observes the
-// addEventListener() call itself rather than trying to intercept what it
-// captured. That is a legitimate next step and does not require touching
-// the button markup, only the timing of instrumentation; it is left as
-// test.fixme rather than done here because implementing and proving it out
-// is more than this build's remaining scope, not because it needs an HTML
-// fix. Concrete next step, unblocked today: extend the
-// installListenerRegistry()/assertListenerBound() pair below to also
-// record 'submit'/'change' events (not just 'click'), then write these two
-// tests the same shape as signContractBtn's.
+// Assertion 3 (a real click reaches the target) is NOT implemented for
+// either control here -- both remain a named, explicit gap
+// (`test.info().annotations`, not a fake pass and not a fully-empty
+// test.fixme) rather than solved, matching what REVIEW-B itself asked for
+// ("I am not asking you to solve Assertion 3 for #feeAcceptanceCheckbox in
+// this build" / "keep the Assertion-3 gap as a named annotation on those
+// tests"):
+//
+//   #feeAcceptanceCheckbox -- `updateFeeCheckboxState` IS a named function
+//                   declaration (installSpy() can locate and reassign the
+//                   identifier without error), but
+//                   `_feeAcceptanceCheckbox.addEventListener('change',
+//                   updateFeeCheckboxState)` already ran by page-load time,
+//                   and addEventListener() captures the function BY VALUE
+//                   at registration -- reassigning the module-scope
+//                   identifier afterward does not change what the
+//                   already-registered listener calls, so a real click
+//                   would keep silently reaching the ORIGINAL function and
+//                   Assertion 3 would report a pass regardless of whether
+//                   the real handler is alive or dead. This is a fourth
+//                   defect shape, distinct from the three DEFECTs
+//                   installSpy()'s own comment names (assert-after,
+//                   replace-not-wrap, `window[name]`-only) -- capture-by-value
+//                   listeners need the spy installed BEFORE the
+//                   addEventListener() call that captures it.
+//
+//   #submitBtn   -- the listener is an anonymous inline arrow function --
+//                   no named target-function identifier exists anywhere for
+//                   installSpy() to spy on, and there is no click-time
+//                   argument to assert either (confirmSelection()'s shape).
+//
+// Concrete next step for both, unblocked today and not an HTML change:
+// extend installSpy()/installListenerRegistry() to intercept the actual
+// listener reference AT REGISTRATION TIME (wrap it before forwarding to the
+// real addEventListener(), the same ordering fix installSpy() itself uses
+// for DEFECT 1) rather than merely recording that a call happened -- that
+// closes the capture-by-value gap for #feeAcceptanceCheckbox and gives
+// #submitBtn's anonymous handler an interceptable reference for the first
+// time.
 test.describe('contractor-bid-form.html entry points', () => {
-  test.fixme(
-    'feeAcceptanceCheckbox (D-215 Layer 1 fee acceptance)',
-    {
-      annotation: {
-        type: 'fixme',
-        description:
-          "gh-1730: updateFeeCheckboxState is captured BY VALUE when " +
-          "_feeAcceptanceCheckbox.addEventListener('change', updateFeeCheckboxState) " +
-          "registers -- installSpy()'s bare-identifier reassignment happens too late to " +
-          'affect what that listener calls, so Assertion 3 cannot yet distinguish a live ' +
-          "handler from a dead one for this control. Needs installListenerRegistry() " +
-          "extended to 'change' events (see this file's contractor-bid-form.html header comment).",
-      },
-    },
-    async () => {}
-  );
+  const PAGE = '/contractor-bid-form.html';
 
-  test.fixme(
-    'submitBtn (Submit Bid)',
-    {
-      annotation: {
-        type: 'fixme',
-        description:
-          "gh-1730: #submitBtn's behaviour is bidForm's anonymous inline " +
-          "addEventListener('submit', async (e) => {...}) -- no named target function " +
-          'exists for installSpy() to spy on. Needs installListenerRegistry() extended to ' +
-          "'submit' events plus a different Assertion-3 technique (there is no target " +
-          'function identifier to assert was called with expected arguments, only that ' +
-          "the listener itself fired) -- see this file's contractor-bid-form.html header comment.",
-      },
-    },
-    async () => {}
-  );
+  test('feeAcceptanceCheckbox (D-215 Layer 1 fee acceptance)', async ({ page }) => {
+    // Must be installed before page.goto() -- see installListenerRegistry()'s
+    // own comment on why this ordering is load-bearing, same requirement as
+    // forceDemoMode()'s config.js patch immediately below. The binding this
+    // test checks runs as top-level script code (contractor-bid-form.html
+    // ~line 5093), before DOMContentLoaded fires and before init()'s
+    // Supabase-backed branches (which forceDemoMode() short-circuits
+    // anyway) -- so no demo fixture/init() drive is needed to observe it.
+    await installListenerRegistry(page);
+    await forceDemoMode(page);
+    await page.goto(PAGE, { waitUntil: 'load' });
+
+    const loc = page.locator('#feeAcceptanceCheckbox');
+    await assertExists(loc, 'feeAcceptanceCheckbox');
+    await assertListenerBound(page, 'feeAcceptanceCheckbox', 'change', 'feeAcceptanceCheckbox');
+
+    // Assertion 3 -- named gap, not solved here. See this describe block's
+    // header comment for the capture-by-value reason.
+    test.info().annotations.push({
+      type: 'known-gap',
+      description:
+        "gh-1730: Assertion 3 (click reaches target) not implemented -- updateFeeCheckboxState " +
+        "is captured BY VALUE when addEventListener('change', ...) registers, so installSpy()'s " +
+        'bare-identifier reassignment (installed after page load) cannot affect what the ' +
+        'already-registered listener calls. See this describe block\'s header comment.',
+    });
+  });
+
+  test('submitBtn (Submit Bid)', async ({ page }) => {
+    await installListenerRegistry(page);
+    await forceDemoMode(page);
+    await page.goto(PAGE, { waitUntil: 'load' });
+
+    const loc = page.locator('#submitBtn');
+    await assertExists(loc, 'submitBtn');
+    // #submitBtn's own behaviour lives on #bidForm's addEventListener --
+    // see this describe block's header comment for why the registry check
+    // is keyed on 'bidForm', not 'submitBtn'.
+    await assertListenerBound(page, 'bidForm', 'submit', 'submitBtn');
+
+    // Assertion 3 -- named gap, not solved here. See this describe block's
+    // header comment for the no-named-identifier reason.
+    test.info().annotations.push({
+      type: 'known-gap',
+      description:
+        "gh-1730: Assertion 3 (click reaches target) not implemented -- bidForm's submit " +
+        'handler is an anonymous inline arrow function with no named identifier for ' +
+        "installSpy() to spy on. See this describe block's header comment.",
+    });
+  });
 });
 
 // ── contract-signing.html ──────────────────────────────────────────────────
