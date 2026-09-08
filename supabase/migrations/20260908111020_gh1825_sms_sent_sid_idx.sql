@@ -1,0 +1,42 @@
+-- gh-1825: partial index supporting SID-keyed lookups of activity_log rows
+-- written by send-sms's new sms_sent logging (this PR).
+--
+-- NOT a schema change to activity_log's columns: `metadata` is already
+-- jsonb, so send-sms's `{sid, to_last4, status}` write and any future
+-- write-back of Twilio's final `status`/`error_code` per SID need no new
+-- column -- they are just more keys in the existing jsonb blob. This
+-- migration is purely an access-path optimization: an index on
+-- metadata->>'sid' for event_type='sms_sent' rows, so a future phase that
+-- looks up "the activity_log row for SID SM..." (to patch in the polled
+-- final status) does not sequential-scan activity_log to find it.
+--
+-- Explicitly OUT OF SCOPE for gh-1825's alarm itself: platform-health-check
+-- Phase 4 (sms-delivery-check.ts) reads Twilio's Messages.json directly and
+-- does not depend on this index, this migration, or send-sms's activity_log
+-- write existing at all -- per the issue's own instruction that the alarm
+-- must function before this apply. This migration only makes a *future*
+-- SID-keyed write-back cheaper; it changes no runtime behaviour by itself.
+--
+-- tier:3a (CTO ruling, #1825 comment 5583955467 -- this PR's whole surface
+-- is observability, not a send-behaviour change).
+--
+-- R-147 pre-flight, measured against production (yeszghaspzwwstvsrioa) at
+-- 2026-09-08T11:10:20Z, read-only:
+--   select indexname from pg_indexes where tablename='activity_log'
+--     -> activity_log_pkey, idx_activity_log_user_id, idx_activity_log_created_at,
+--        idx_activity_log_user_created -- no activity_log_sms_sent_sid_idx
+--   select count(*) from activity_log where event_type='sms_sent' -> 0
+--     (send-sms does not log yet as of main -- this PR adds that write)
+--   select count(*) from activity_log -> 1051
+--
+-- CREATE INDEX CONCURRENTLY cannot run inside a transaction block, so this
+-- file intentionally carries no BEGIN/COMMIT wrapper and must stay the only
+-- statement in its migration file (migration-author-code convention, same
+-- precedent as 20260908043202_gh1725_activity_log_nudge_once_uniq.sql).
+--
+-- Rollback:   20260908111020_gh1825_sms_sent_sid_idx_rollback.sql
+-- Pre-flight: 20260908111020_gh1825_sms_sent_sid_idx_pre-flight.md
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS activity_log_sms_sent_sid_idx
+  ON activity_log ((metadata->>'sid'))
+  WHERE event_type = 'sms_sent';
