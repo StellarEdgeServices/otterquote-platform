@@ -23,6 +23,13 @@ not merely exist:
        - the `env:` indirection form PASSES while direct interpolation into
          `run:` FAILS.
 
+Layer 3 (added after PR #1857's REVIEW: FAIL, comment 5584425701) carries the
+reviewer's three attacks inline as well as in the fixture directory, so
+deleting a fixture cannot quietly un-refute them: the flow-mapping trigger
+form, the one-`env:`-hop head checkout, and the `github-script` `script:`
+sink -- plus the gh-1419 rule that an empty root is UNMEASURED (exit 3), not
+a PASS.
+
 Run: python scripts/workflow-safety-ratchet.test.py
 """
 import importlib.util
@@ -113,7 +120,7 @@ jobs:
           echo "${{ github.event.pull_request.title }}"
 """
 rules, _ = rules_for(RUN_INTERP)
-check("untrusted expression interpolated into `run:` is FLAGGED", "UNTRUSTED_RUN" in rules, True)
+check("untrusted expression interpolated into `run:` is FLAGGED", "UNTRUSTED_SINK" in rules, True)
 
 ENV_INDIRECTION = """
 on:
@@ -149,9 +156,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - run: curl -H "apikey: $KEY" https://example.invalid
-        env:
+      - env:
           KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -H "apikey: $KEY" https://example.invalid
 """
 rules, _ = rules_for(NAMED_SECRET)
 check("a named repository secret in a PRT workflow is FLAGGED", "SECRETS_IN_PRT" in rules, True)
@@ -174,10 +182,106 @@ jobs:
 rules, _ = rules_for(TOKEN_ONLY)
 check("NEGATIVE CONTROL: the automatic GITHUB_TOKEN alone PASSES", rules, [])
 
+UNPARSEABLE = """
+on:
+  pull_request_target:
+jobs:
+  x:
+    steps:
+      - run: curl -H "apikey: $KEY" https://example.invalid
+"""
+rules, applicable = rules_for(UNPARSEABLE)
+check("an UNPARSEABLE workflow fails closed rather than passing", rules, ["UNPARSEABLE"])
+check("...and is not silently treated as not-PRT", applicable, True)
+
+# ── The three attacks from PR #1857's REVIEW: FAIL (comment 5584425701) ─────
+# Carried inline as well as in the fixture files, so a deleted fixture cannot
+# quietly un-refute them.
+
+FLOW_MAPPING_PWN = """
+name: evade flow map
+on: {pull_request_target: {types: [opened, synchronize]}}
+permissions: {contents: write}
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: echo "${{ github.event.pull_request.title }}"
+      - run: ./build.sh
+        env:
+          TOKEN: ${{ secrets.GITHUB_DEPLOY_PAT }}
+"""
+rules, applicable = rules_for(FLOW_MAPPING_PWN)
+check("REFUTER 1: the flow-MAPPING trigger form is recognised as PRT", applicable, True)
+check("REFUTER 1: ...and the pwn file trips all three rules",
+      sorted(rules), ["HEAD_CHECKOUT", "SECRETS_IN_PRT", "UNTRUSTED_SINK"])
+
+ENV_REF_PWN = """
+name: evade env ref
+on:
+  pull_request_target: {types: [opened]}
+env:
+  PR_HEAD: ${{ github.event.pull_request.head.sha }}
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PR_HEAD }}
+"""
+rules, _ = rules_for(ENV_REF_PWN)
+check("REFUTER 2a: one env: hop no longer hides a head checkout", "HEAD_CHECKOUT" in rules, True)
+
+SCRIPT_SINK_PWN = """
+on:
+  pull_request_target: {types: [opened]}
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            console.log("${{ github.event.pull_request.body }}")
+"""
+rules, _ = rules_for(SCRIPT_SINK_PWN)
+check("REFUTER 2b: github-script's `script:` input is walked as a sink", "UNTRUSTED_SINK" in rules, True)
+
+UNRESOLVABLE_REF = """
+on:
+  pull_request_target: {types: [opened]}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.NOT_DEFINED_HERE }}
+"""
+rules, _ = rules_for(UNRESOLVABLE_REF)
+check("a ref through an env this file never defines FAILS CLOSED", "UNRESOLVED_REF" in rules, True)
+
+# REFUTER 3 -- UNMEASURED is not a PASS (gh-1419). An empty root must exit 3.
+import tempfile
+with tempfile.TemporaryDirectory() as _tmp:
+    empty_code = wsr.main(["--root", _tmp, "--quiet"])
+check("REFUTER 3: an empty root exits 3 (UNMEASURED), not 0", empty_code, wsr.EXIT_UNMEASURED)
+with tempfile.TemporaryDirectory() as _tmp:
+    proc_empty = subprocess.run(
+        [sys.executable, str(HERE / "workflow-safety-ratchet.py"), "--root", _tmp],
+        capture_output=True, text=True)
+check("REFUTER 3: ...and says UNMEASURED out loud", "UNMEASURED" in proc_empty.stdout, True)
+
 # The live tree must be green, or this ratchet ships red on arrival.
 findings, applicable, skipped, files = wsr.scan_root(HERE.parent)
 check("live .github/workflows scan reports no findings", [f.rule for f in findings], [])
 check("...and it actually read some workflow files", len(files) > 0, True)
+check("...and it recognised at least one PRT workflow (r177-legal-read.yml)", len(applicable) >= 1, True)
+check("the accurate parser is the one that ran", wsr.HAVE_YAML, True)
 
 print()
 print("assertions: %d, failures: %d" % (TOTAL_CHECKS, len(FAILURES)))

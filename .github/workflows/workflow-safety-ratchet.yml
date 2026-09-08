@@ -43,6 +43,15 @@ jobs:
         with:
           python-version: '3.11'
 
+      # The ratchet reads triggers from PARSED YAML. Its line-based fallback
+      # is fail-safe but coarse, and PR #1857's REVIEW: FAIL showed exactly
+      # what a line-based reader misses (a flow-mapping trigger walked past
+      # it). `--require-yaml` below turns a missing parser into UNMEASURED
+      # (exit 3) rather than a quiet second-class pass, so this install is
+      # part of the gate, not a convenience.
+      - name: Install the YAML parser the gate requires
+        run: pip install "pyyaml==6.0.2"
+
       # BUILD-FAILING. Proves the ratchet's own rules before its verdict on
       # this PR's tree is trusted -- the same self-test-before-real-check
       # pattern permissions-ratchet.yml and detector-negative-control.yml use.
@@ -52,11 +61,19 @@ jobs:
       - name: Self-test the ratchet's own rules
         run: python3 scripts/workflow-safety-ratchet.py --self-test
 
+      # The gh-1738 sibling self-test, which carries PR #1857's three review
+      # attacks inline as well as in the fixture files.
+      - name: Run the detector's sibling self-test
+        run: python3 scripts/workflow-safety-ratchet.test.py
+
       # BUILD-FAILING. Whole-tree read of .github/workflows -- 19 files, green
       # on main at the time of writing, so there is no "can never go green"
       # backlog to justify an advisory posture.
+      # BUILD-FAILING. Exit 0 PASS / 1 findings / 3 UNMEASURED -- an empty or
+      # wrong root is not a pass (gh-1419 precedent, quoted in the sibling
+      # detector-negative-control-check.py).
       - name: Scan every workflow in this PR's tree
-        run: python3 scripts/workflow-safety-ratchet.py --root .
+        run: python3 scripts/workflow-safety-ratchet.py --root . --require-yaml
 
       - name: Publish report to the job summary
         if: always()
@@ -65,6 +82,6 @@ jobs:
             echo "# Workflow Safety Ratchet (gh-1651)"
             echo
             echo '```'
-            python3 scripts/workflow-safety-ratchet.py --root . || true
+            python3 scripts/workflow-safety-ratchet.py --root . --require-yaml || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

@@ -11,89 +11,120 @@ WHY THIS EXISTS (gh-1651)
     "No workflow in this repository uses `pull_request_target`. All 13 read;
      zero occurrences ... it must keep appearing nowhere."
 
-That sentence was written 2026-09-04T20:16:10Z. One hour fifty-three minutes
-later commit c1b0afb7 landed `r120-signed-review.yml`, which used
-`pull_request_target`, and nothing noticed for two days (#1651 comment
-5561638561). The invariant was a note in an issue, not a check, and a note
-cannot fail a build.
+That was written 2026-09-04T20:16:10Z. Commit c1b0afb7 landed
+`r120-signed-review.yml` -- which used `pull_request_target` -- at 22:09:24Z
+the same evening, and nothing noticed for two days (#1651 comment
+5561638561). The invariant was prose, and prose cannot fail a build.
 
 `pull_request_target` runs in BASE-branch context: the job gets the
 repository's secrets and a write-scoped `GITHUB_TOKEN`, on an event a
 stranger triggers by opening a pull request. That is safe only while the
 workflow never executes, and never interpolates, anything the PR head
-controls. Today's only instance -- `r177-legal-read.yml`, successor to the
-retired r120 gate -- is safe on exactly those terms: it checks out the BASE
-branch with `persist-credentials: false`, sparse-checks-out one script, takes
-the PR diff as an API STRING, and references zero secrets. This ratchet is
-that reasoning turned into a gate, so the next such workflow cannot quietly
-drop one of those properties.
+controls.
+
+WHAT THE FIRST VERSION GOT WRONG, AND WHY THIS ONE IS SHAPED THIS WAY
+---------------------------------------------------------------------
+A fresh-context refuter broke the first version three ways at head
+381597a5 (PR #1857 comment 5584425701), and every one of those attacks is
+now a fixture in scripts/workflow-safety-fixtures/ carrying the reviewer's
+own file:
+
+  1. TRIGGER PARSING. Detection was three anchored regexes over lines. A
+     valid flow-mapping trigger -- `on: {pull_request_target: {types: [...]}}`
+     -- matched none of them, so a complete pwn workflow (head checkout, PR
+     title into `run:`, a named secret) was reported "skipped, not
+     PRT-triggered" with zero findings. Triggers are now read from PARSED
+     YAML. (Note the YAML 1.1 "Norway problem" in reverse: `on:` parses as
+     the boolean key `True`, which is why _trigger_node checks both.)
+     Fixture: prt_flow_mapping_pwn_bad.yml.
+  2. INDIRECTION AND SINKS. `ref: ${{ env.PR_HEAD }}` defeated rule 1,
+     because rule 1 pattern-matched the literal text of the `ref:` line --
+     and `env:` indirection is the very shape this file's own docstring
+     teaches as safe for the `run:` rule, so a reader was actively
+     encouraged to write it. And `actions/github-script`'s `script:` input,
+     the other canonical injection sink, was never walked at all. Env values
+     defined anywhere in the file are now RESOLVED before rule 1 judges a
+     ref, an unresolvable `env.` reference in a ref FAILS CLOSED, and every
+     `with:` input (including `script:`) is walked for untrusted
+     expressions. Fixture: prt_env_indirection_checkout_bad.yml.
+  3. UNMEASURED-AS-PASS. An empty or wrong `--root` printed PASS and exited
+     0. scripts/detector-negative-control-check.py, in this same tree, rules
+     on that verbatim: "UNMEASURED IS NOT A PASS (gh-1419 precedent:
+     backup-age.py / drift-detector-age.py -- unmeasured must fail as loudly
+     as stale)." Zero workflow files is now UNMEASURED and exits 3, on
+     drift-detector-age.py's convention.
 
 WHAT IT IS NOT
 --------------
 It is not a YAML linter and it does not police `pull_request` workflows: a
 fork's `pull_request` run gets no secrets and a read-only token, which is the
 whole reason `pull_request_target` is the dangerous trigger and the ordinary
-one is not. Files that never mention `pull_request_target` are reported as
-`skipped` and can never fail this check.
+one is not. Files that do not trigger on it are reported `skipped` and can
+never fail this check.
 
-THE THREE RULES (each with a fixture observed failing on the bad shape and
-passing on the safe shape -- run `--self-test`)
------------------------------------------------------------------------
-  1. HEAD_CHECKOUT   -- a `ref:` (or `sha:`) input whose value interpolates
-     PR-head-controlled state: `github.event.pull_request.head.*`,
-     `github.event.pull_request.merge_commit_sha`, `github.head_ref`, or a
-     literal `refs/pull/...` ref. This is the classic pwn shape: base-context
-     secrets plus the attacker's tree checked out on top of them.
-  2. UNTRUSTED_RUN   -- an untrusted `${{ github.event.* }}` /
-     `${{ github.head_ref }}` expression interpolated directly into a `run:`
-     script. The PR title, body, branch name and label names are all
-     attacker-authored strings pasted into a shell. An `env:` indirection --
-     `env: { T: ${{ github.event.pull_request.title }} }` then `"$T"` in the
-     script -- is the documented safe form and is NOT flagged; only the
-     direct `run:`-body interpolation is.
-     Allowlisted as structurally non-injectable scalars:
-     `github.event.pull_request.number`, `github.event.number`,
-     `github.event.repository.default_branch`,
-     `github.event.pull_request.base.sha`, `github.event.pull_request.head.sha`
-     is NOT allowlisted here (it is attacker-CHOSEN, even though it is hex,
-     and checking it out is rule 1's business).
-  3. SECRETS_IN_PRT  -- any `secrets.<NAME>` other than `secrets.GITHUB_TOKEN`
-     referenced by a `pull_request_target` workflow. The automatic
-     `GITHUB_TOKEN` is already scoped by the file's own `permissions:` block;
-     a named repository secret in a stranger-triggered job is the exposure
-     #1651 § 4 describes, and there is no legitimate instance in this repo
-     today (measured: `r177-legal-read.yml` references zero).
+THE RULES (each with a fixture observed failing on the bad shape and passing
+on the safe one -- run `--self-test`)
+---------------------------------------------------------------------------
+  1. HEAD_CHECKOUT      a `ref:`/`sha:`/`commit:` input that resolves -- after
+                        expanding `env:` values defined in the same file --
+                        to PR-head-controlled state
+                        (`github.event.pull_request.head.*`,
+                        `merge_commit_sha`, `github.head_ref`, `refs/pull/`).
+  1b. UNRESOLVED_REF    a ref whose `${{ env.X }}` cannot be resolved from the
+                        file. Fails CLOSED: an unreadable ref on a
+                        stranger-triggered checkout is not evidence of safety.
+  2. UNTRUSTED_SINK     an untrusted `${{ github.event.* }}` / `${{ github.head_ref }}`
+                        expression reaching a code sink: a `run:` body, or any
+                        `with:` input (`script:` above all -- github-script
+                        takes the same attacker-authored strings a shell
+                        does). The `env:`-indirection form stays UNFLAGGED for
+                        these sinks; that remains the documented safe shape,
+                        and rule 1 is what covers the ref case it used to hide.
+  3. SECRETS_IN_PRT     any `secrets.<NAME>` other than `GITHUB_TOKEN`
+                        referenced by a pull_request_target workflow.
 
-SCOPE
------
-`.github/workflows/*.yml` and `*.yaml`, whole-tree (this is a small, bounded
-file set -- 19 files at the time of writing -- so the ratchet reads all of
-them rather than diffing; a repo-wide read that is GREEN today cannot have a
-"can never go green" problem, and the green state is this file's positive
-control).
+Allowlisted as structurally non-injectable scalars: see SAFE_EVENT_EXPRS.
+`github.event.pull_request.head.sha` is deliberately NOT allowlisted -- it is
+attacker-chosen even though it is hex, and checking it out is rule 1's
+business.
 
 PARSING
 -------
-Deliberately stdlib-only, no PyYAML: the CI job must not depend on a pip
-install to answer a security question, and the shapes this looks for are
-line-local. Full-line comments are dropped; inline comments are stripped
-quote-aware. A `run:` block scalar's body is taken by indentation.
+PyYAML when importable (accurate); a conservative line-based fallback when
+not. The fallback FAILS SAFE -- it treats the token appearing anywhere
+outside a `name:` value as a trigger -- and says loudly that it is degraded.
+`--require-yaml` (what CI passes) turns degraded parsing into UNMEASURED
+exit 3 rather than a quiet second-class pass.
+
+EXIT CODES
+----------
+  0  PASS        workflows read, no findings
+  1  FAIL        findings
+  3  UNMEASURED  nothing was read, or --require-yaml with no YAML parser
 
 Usage:
-  python3 scripts/workflow-safety-ratchet.py --root .        # gate (exit 1 on findings)
-  python3 scripts/workflow-safety-ratchet.py --self-test     # rule self-test
+  python3 scripts/workflow-safety-ratchet.py --root . --require-yaml   # CI gate
+  python3 scripts/workflow-safety-ratchet.py --self-test               # rule self-test
 """
 import argparse
-import os
 import re
 import sys
 from pathlib import Path
 
+try:
+    import yaml  # type: ignore
+    HAVE_YAML = True
+except Exception:  # pragma: no cover - exercised only on a host without PyYAML
+    HAVE_YAML = False
+
 WORKFLOW_DIR = ".github/workflows"
 FIXTURE_DIR = "scripts/workflow-safety-fixtures"
 
-# --- untrusted expression vocabulary -----------------------------------------
+EXIT_PASS, EXIT_FAIL, EXIT_UNMEASURED = 0, 1, 3
 
+TRIGGER = "pull_request_target"
+
+# State a fork controls the value of, on a pull_request_target event.
 HEAD_REF_PATTERNS = [
     r"github\.event\.pull_request\.head\.",
     r"github\.event\.pull_request\.merge_commit_sha",
@@ -101,29 +132,34 @@ HEAD_REF_PATTERNS = [
     r"refs/pull/",
 ]
 
-# Expressions a fork controls the CONTENT of. Anything matching
-# `github.event.` that is not allowlisted below counts as untrusted.
+# Expressions whose CONTENT a fork cannot author.
 SAFE_EVENT_EXPRS = {
     "github.event.pull_request.number",
     "github.event.number",
     "github.event.repository.default_branch",
     "github.event.pull_request.base.sha",
+    "github.event.pull_request.base.ref",
     "github.event.pull_request.state",
     "github.event.action",
 }
 
-EXPR_RE = re.compile(r"\$\{\{([^}]*)\}\}")
-REF_INPUT_RE = re.compile(r"^\s*(ref|sha|commit)\s*:\s*(.+?)\s*$")
-RUN_START_RE = re.compile(r"^(\s*)-?\s*run\s*:\s*(\|-?|>-?|)\s*(.*)$")
-SECRET_RE = re.compile(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)")
-# A trigger key, not the string. `name: No unsafe pull_request_target workflow`
-# is prose in a job name and must not arm the rules -- see the fixture
-# name_mentions_prt_good.yml, which is this repo's own workflow-safety-ratchet.yml
-# shape and was a live false positive before this was anchored.
-PRT_KEY_RE = re.compile(r"^\s*(?:-\s*)?pull_request_target\s*:\s*(\{.*\})?$")
-PRT_ITEM_RE = re.compile(r"^\s*-\s*pull_request_target\s*$")
-PRT_FLOW_RE = re.compile(r"^\s*on\s*:\s*\[[^\]]*\bpull_request_target\b[^\]]*\]\s*$")
+REF_KEYS = {"ref", "sha", "commit"}
 
+EXPR_RE = re.compile(r"\$\{\{([^}]*)\}\}")
+ENV_EXPR_RE = re.compile(r"\$\{\{\s*env\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+SECRET_RE = re.compile(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)")
+NAME_VALUE_RE = re.compile(r"^\s*(?:-\s*)?name\s*:")
+
+
+class Finding:
+    def __init__(self, rule, file, where, message):
+        self.rule, self.file, self.where, self.message = rule, file, where, message
+
+    def render(self):
+        return f"  [{self.rule}] {self.file} :: {self.where} -- {self.message}"
+
+
+# ── shared helpers ───────────────────────────────────────────────────────────
 
 def strip_comments(text: str) -> str:
     """Drop full-line comments; strip inline `#` comments outside quotes."""
@@ -133,9 +169,7 @@ def strip_comments(text: str) -> str:
             out.append("")
             continue
         cleaned, quote = [], None
-        i = 0
-        while i < len(line):
-            ch = line[i]
+        for ch in line:
             if quote:
                 cleaned.append(ch)
                 if ch == quote:
@@ -147,142 +181,249 @@ def strip_comments(text: str) -> str:
                 break
             else:
                 cleaned.append(ch)
-            i += 1
         out.append("".join(cleaned).rstrip())
     return "\n".join(out)
 
 
-def triggers_pull_request_target(lines) -> bool:
-    """True if `pull_request_target` appears as a trigger key, not in prose.
-
-    Comments are already stripped, so any surviving occurrence is YAML. The
-    match is anchored to the three legal spellings of the trigger -- a mapping
-    key, a sequence item, and a flow-sequence `on: [...]` -- because an
-    unanchored search matched this repo's own `name: No unsafe
-    pull_request_target workflow` job label and armed all three rules against
-    a `pull_request` workflow (observed live 2026-09-08; fixture
-    name_mentions_prt_good.yml).
-    """
-    return any(
-        PRT_KEY_RE.match(l) or PRT_ITEM_RE.match(l) or PRT_FLOW_RE.match(l)
-        for l in lines
-    )
-
-
 def untrusted_exprs(fragment: str):
-    """Untrusted `${{ ... }}` expressions inside a fragment of YAML/shell."""
+    """Untrusted `${{ ... }}` expressions inside a string."""
     found = []
-    for m in EXPR_RE.finditer(fragment):
-        expr = m.group(1).strip()
-        bare = expr.strip("() ")
+    for m in EXPR_RE.finditer(str(fragment)):
+        bare = m.group(1).strip().strip("() ")
         if bare in SAFE_EVENT_EXPRS:
             continue
         if bare.startswith("github.event.") or bare == "github.head_ref":
             found.append(bare)
         elif "github.event." in bare or "github.head_ref" in bare:
-            # e.g. `format('{0}', github.event.pull_request.title)`
             inner = re.findall(r"github\.(?:event\.[A-Za-z0-9_.]+|head_ref)", bare)
             found.extend(i for i in inner if i not in SAFE_EVENT_EXPRS)
     return found
 
 
-def run_bodies(lines):
-    """Yield (start_line_no, body_text) for every `run:` scalar."""
-    i = 0
-    while i < len(lines):
-        m = RUN_START_RE.match(lines[i])
-        if not m:
-            i += 1
-            continue
-        indent, block, inline = m.group(1), m.group(2), m.group(3)
-        start = i + 1
-        if not block:
-            yield start, inline
-            i += 1
-            continue
-        body, j = [], i + 1
-        base_indent = None
-        while j < len(lines):
-            line = lines[j]
-            if line.strip() == "":
-                body.append("")
-                j += 1
+def head_controlled(value: str):
+    for pat in HEAD_REF_PATTERNS:
+        if re.search(pat, str(value)):
+            return pat
+    return None
+
+
+def secret_findings(file_rel: str, text: str):
+    out = []
+    for n, line in enumerate(strip_comments(text).split("\n"), 1):
+        for m in SECRET_RE.finditer(line):
+            if m.group(1) == "GITHUB_TOKEN":
                 continue
-            cur = len(line) - len(line.lstrip())
-            if base_indent is None:
-                if cur <= len(indent):
-                    break
-                base_indent = cur
-            if cur < base_indent:
-                break
-            body.append(line)
-            j += 1
-        yield start, "\n".join(body)
-        i = j
+            out.append(Finding(
+                "SECRETS_IN_PRT", file_rel, f"line {n}",
+                f"`secrets.{m.group(1)}` referenced in a pull_request_target workflow -- "
+                "a stranger-triggered job must not hold a named repository secret",
+            ))
+    return out
 
 
-class Finding:
-    def __init__(self, rule, file, line, message):
-        self.rule, self.file, self.line, self.message = rule, file, line, message
+# ── YAML mode ────────────────────────────────────────────────────────────────
 
-    def render(self):
-        return f"  [{self.rule}] {self.file}:{self.line} -- {self.message}"
+def _trigger_node(doc):
+    """`on:` -- which PyYAML hands back as the boolean key True under YAML 1.1."""
+    if not isinstance(doc, dict):
+        return None
+    for key in (True, "on", "On", "ON"):
+        if key in doc:
+            return doc[key]
+    return None
 
+
+def triggers_prt_yaml(doc) -> bool:
+    node = _trigger_node(doc)
+    if node is None:
+        return False
+    if isinstance(node, str):
+        return node.strip() == TRIGGER
+    if isinstance(node, list):
+        return any(str(i).strip() == TRIGGER for i in node)
+    if isinstance(node, dict):
+        return any(str(k).strip() == TRIGGER for k in node)
+    return False
+
+
+def collect_env(doc):
+    """Every `env:` mapping in the file, flattened.
+
+    Deliberately file-wide rather than scope-accurate: a ref resolved through
+    ANY env key in the file is judged, so a workflow cannot hide an unsafe
+    value by defining it one scope over. Over-inclusive on purpose -- this
+    direction produces false FAILs, never false PASSes.
+    """
+    env = {}
+
+    def walk(node):
+        if isinstance(node, dict):
+            e = node.get("env")
+            if isinstance(e, dict):
+                for k, v in e.items():
+                    if isinstance(v, (str, int, float, bool)):
+                        env[str(k)] = str(v)
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(doc)
+    return env
+
+
+def resolve(value: str, env: dict, depth: int = 0):
+    """Expand `${{ env.X }}` from the file's own env. Returns (resolved, unresolved_names)."""
+    text = str(value)
+    unresolved = []
+    for _ in range(5):  # bounded: env values may themselves reference env
+        names = ENV_EXPR_RE.findall(text)
+        if not names:
+            break
+        progressed = False
+        for n in names:
+            if n in env:
+                text = ENV_EXPR_RE.sub(lambda m: env[m.group(1)] if m.group(1) in env else m.group(0), text)
+                progressed = True
+            else:
+                unresolved.append(n)
+        if not progressed:
+            break
+    return text, sorted(set(unresolved))
+
+
+def iter_steps(doc):
+    jobs = doc.get("jobs") if isinstance(doc, dict) else None
+    if not isinstance(jobs, dict):
+        return
+    for job_name, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            continue
+        for i, step in enumerate(steps):
+            if isinstance(step, dict):
+                yield str(job_name), i, step
+
+
+def evaluate_yaml(file_rel: str, text: str, doc):
+    findings = []
+    env = collect_env(doc)
+
+    for job_name, i, step in iter_steps(doc):
+        where = f"jobs.{job_name}.steps[{i}]"
+        with_block = step.get("with") if isinstance(step.get("with"), dict) else {}
+
+        # Rule 1 / 1b -- the checkout ref, AFTER env expansion.
+        for key, value in with_block.items():
+            if str(key).lower() not in REF_KEYS:
+                continue
+            resolved, unresolved = resolve(value, env)
+            pat = head_controlled(resolved)
+            if pat:
+                via = "" if str(resolved) == str(value) else f" (via env: `{value}` -> `{resolved}`)"
+                findings.append(Finding(
+                    "HEAD_CHECKOUT", file_rel, f"{where}.with.{key}",
+                    f"resolves to PR-head-controlled state ({pat!r}){via} in a "
+                    "pull_request_target workflow: base-context secrets would run the fork's tree",
+                ))
+            elif unresolved:
+                findings.append(Finding(
+                    "UNRESOLVED_REF", file_rel, f"{where}.with.{key}",
+                    f"`{value}` references env {unresolved} that this file does not define, so the "
+                    "checkout target cannot be read. Fails closed: an unreadable ref on a "
+                    "stranger-triggered checkout is not evidence of safety",
+                ))
+
+        # Rule 2 -- untrusted expressions reaching a code sink.
+        sinks = []
+        if isinstance(step.get("run"), str):
+            sinks.append(("run", step["run"]))
+        for key, value in with_block.items():
+            if str(key).lower() in REF_KEYS:
+                continue  # rule 1 owns these; do not double-report
+            if isinstance(value, str):
+                sinks.append((f"with.{key}", value))
+        for sink_name, value in sinks:
+            bad = untrusted_exprs(value)
+            if bad:
+                findings.append(Finding(
+                    "UNTRUSTED_SINK", file_rel, f"{where}.{sink_name}",
+                    "attacker-authored expression(s) interpolated into a code sink: "
+                    + ", ".join(sorted(set(bad)))
+                    + " -- pass them through `env:` and reference the variable instead",
+                ))
+
+    findings.extend(secret_findings(file_rel, text))
+    return findings
+
+
+# ── degraded (no PyYAML) mode ────────────────────────────────────────────────
+
+def triggers_prt_degraded(text: str) -> bool:
+    """Fail-safe: the token anywhere outside a `name:` value counts as a trigger.
+
+    Over-inclusive by design. The first version was UNDER-inclusive (three
+    anchored spellings) and a flow-mapping trigger walked straight past it.
+    """
+    for line in strip_comments(text).split("\n"):
+        if TRIGGER not in line:
+            continue
+        if NAME_VALUE_RE.match(line):
+            continue
+        return True
+    return False
+
+
+def evaluate_degraded(file_rel: str, text: str):
+    findings = []
+    lines = strip_comments(text).split("\n")
+    for n, line in enumerate(lines, 1):
+        m = re.match(r"^\s*(?:-\s*)?(ref|sha|commit)\s*:\s*(.+?)\s*$", line)
+        if m:
+            pat = head_controlled(m.group(2))
+            if pat:
+                findings.append(Finding("HEAD_CHECKOUT", file_rel, f"line {n}",
+                                        f"`{m.group(1)}:` resolves to PR-head-controlled state ({pat!r})"))
+            elif ENV_EXPR_RE.search(m.group(2)):
+                findings.append(Finding("UNRESOLVED_REF", file_rel, f"line {n}",
+                                        f"`{m.group(1)}: {m.group(2)}` uses env indirection that the "
+                                        "degraded parser cannot resolve -- fails closed"))
+        if re.search(r"^\s*(?:-\s*)?(run|script)\s*:", line) or "${{" in line:
+            bad = untrusted_exprs(line)
+            if bad and not NAME_VALUE_RE.match(line):
+                findings.append(Finding("UNTRUSTED_SINK", file_rel, f"line {n}",
+                                        "attacker-authored expression(s) near a code sink: "
+                                        + ", ".join(sorted(set(bad)))))
+    findings.extend(secret_findings(file_rel, text))
+    return findings
+
+
+# ── driver ───────────────────────────────────────────────────────────────────
 
 def evaluate(file_rel: str, text: str):
-    """Return (findings, applicable) for one workflow file."""
-    lines = strip_comments(text).split("\n")
-    if not triggers_pull_request_target(lines):
+    """Return (findings, is_prt_triggered)."""
+    if HAVE_YAML:
+        try:
+            doc = yaml.safe_load(text)
+        except Exception as exc:
+            # An unparseable workflow is not a pass either.
+            return [Finding("UNPARSEABLE", file_rel, "file",
+                            f"YAML could not be parsed ({exc.__class__.__name__}); "
+                            "cannot judge it, so it fails closed")], True
+        if not triggers_prt_yaml(doc):
+            return [], False
+        return evaluate_yaml(file_rel, text, doc), True
+    if not triggers_prt_degraded(text):
         return [], False
-
-    findings = []
-
-    # Rule 1 -- HEAD_CHECKOUT
-    for n, line in enumerate(lines, 1):
-        m = REF_INPUT_RE.match(line)
-        if not m:
-            continue
-        value = m.group(2)
-        for pat in HEAD_REF_PATTERNS:
-            if re.search(pat, value):
-                findings.append(Finding(
-                    "HEAD_CHECKOUT", file_rel, n,
-                    f"`{m.group(1)}:` resolves to PR-head-controlled state ({pat!r}) "
-                    f"in a pull_request_target workflow: base-context secrets would run the fork's tree",
-                ))
-                break
-
-    # Rule 2 -- UNTRUSTED_RUN
-    for start, body in run_bodies(lines):
-        bad = untrusted_exprs(body)
-        if bad:
-            findings.append(Finding(
-                "UNTRUSTED_RUN", file_rel, start,
-                "attacker-authored expression(s) interpolated directly into a `run:` script: "
-                + ", ".join(sorted(set(bad)))
-                + " -- pass them through `env:` and quote the variable instead",
-            ))
-
-    # Rule 3 -- SECRETS_IN_PRT
-    for n, line in enumerate(lines, 1):
-        for m in SECRET_RE.finditer(line):
-            name = m.group(1)
-            if name == "GITHUB_TOKEN":
-                continue
-            findings.append(Finding(
-                "SECRETS_IN_PRT", file_rel, n,
-                f"`secrets.{name}` referenced in a pull_request_target workflow -- "
-                f"a stranger-triggered job must not hold a named repository secret",
-            ))
-
-    return findings, True
+    return evaluate_degraded(file_rel, text), True
 
 
 def scan_root(root: Path):
     wf_dir = root / WORKFLOW_DIR
-    files = sorted(
-        [p for p in wf_dir.glob("*.yml")] + [p for p in wf_dir.glob("*.yaml")]
-    ) if wf_dir.is_dir() else []
+    files = sorted(list(wf_dir.glob("*.yml")) + list(wf_dir.glob("*.yaml"))) if wf_dir.is_dir() else []
     findings, applicable, skipped = [], [], []
     for p in files:
         rel = str(p.relative_to(root))
@@ -298,23 +439,29 @@ def self_test(root: Path):
     expectations = [
         ("prt_head_checkout_bad.yml", "HEAD_CHECKOUT"),
         ("prt_base_checkout_good.yml", None),
-        ("prt_untrusted_run_bad.yml", "UNTRUSTED_RUN"),
+        ("prt_untrusted_run_bad.yml", "UNTRUSTED_SINK"),
         ("prt_env_indirection_good.yml", None),
         ("prt_named_secret_bad.yml", "SECRETS_IN_PRT"),
         ("prt_github_token_only_good.yml", None),
         ("plain_pull_request_head_checkout_good.yml", None),
         ("name_mentions_prt_good.yml", None),
         ("prt_flow_sequence_trigger_bad.yml", "HEAD_CHECKOUT"),
+        # The three attacks from PR #1857's REVIEW: FAIL (comment 5584425701),
+        # carried verbatim so the refutation stays refuted.
+        ("prt_flow_mapping_pwn_bad.yml", "HEAD_CHECKOUT"),
+        ("prt_env_indirection_checkout_bad.yml", "HEAD_CHECKOUT"),
+        ("prt_github_script_sink_bad.yml", "UNTRUSTED_SINK"),
+        ("prt_unresolvable_env_ref_bad.yml", "UNRESOLVED_REF"),
     ]
     failures = 0
-    print("SELF-TEST -- each rule beside its negative control")
+    print(f"SELF-TEST -- each rule beside its negative control  (parser: {'yaml' if HAVE_YAML else 'DEGRADED line-based'})")
     for name, expect in expectations:
         p = fx / name
         if not p.exists():
-            print(f"  MISSING FIXTURE {name}")
+            print(f"  FAIL  MISSING FIXTURE {name}")
             failures += 1
             continue
-        found, applicable = evaluate(name, p.read_text(encoding="utf-8"))
+        found, _ = evaluate(name, p.read_text(encoding="utf-8"))
         rules = sorted({f.rule for f in found})
         if expect is None:
             ok = not found
@@ -322,37 +469,68 @@ def self_test(root: Path):
         else:
             ok = expect in rules
             detail = f"{rules}" if ok else f"expected {expect}, got {rules or 'none'}"
-        print(f"  {'ok  ' if ok else 'FAIL'} {name:48s} {detail}")
+        print(f"  {'PASS' if ok else 'FAIL'}  {name:44s} {detail}")
         if not ok:
             failures += 1
-    print(f"self-test: {len(expectations) - failures} passed | {failures} failed")
-    return 1 if failures else 0
+
+    # UNMEASURED must fail as loudly as a finding (gh-1419 precedent).
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        code = main(["--root", tmp, "--quiet"])
+    ok = code == EXIT_UNMEASURED
+    print(f"  {'PASS' if ok else 'FAIL'}  empty root exits {EXIT_UNMEASURED} (UNMEASURED), not 0: got {code}")
+    if not ok:
+        failures += 1
+
+    print(f"self-test: {len(expectations) + 1 - failures} passed | {failures} failed")
+    return EXIT_FAIL if failures else EXIT_PASS
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="gh-1651 pull_request_target safety ratchet")
     ap.add_argument("--root", default=".")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--require-yaml", action="store_true",
+                    help="treat a missing YAML parser as UNMEASURED (exit 3) rather than "
+                         "silently accepting the degraded line-based fallback")
+    ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
 
     if args.self_test:
         return self_test(root)
 
+    say = (lambda *a: None) if args.quiet else print
+
+    if args.require_yaml and not HAVE_YAML:
+        say("UNMEASURED -- --require-yaml was passed and PyYAML is not importable. "
+            "The degraded line-based parser is not accepted as a pass here "
+            "(gh-1419: unmeasured must fail as loudly as a finding).")
+        return EXIT_UNMEASURED
+
     findings, applicable, skipped, files = scan_root(root)
-    print(f"workflow-safety-ratchet (gh-1651) -- root {root}")
-    print(f"  workflow files read           : {len(files)}")
-    print(f"  pull_request_target workflows : {len(applicable)} {applicable}")
-    print(f"  skipped (not PRT-triggered)   : {len(skipped)}")
+    say(f"workflow-safety-ratchet (gh-1651) -- root {root}")
+    say(f"  parser                        : {'PyYAML' if HAVE_YAML else 'DEGRADED line-based (fail-safe)'}")
+    say(f"  workflow files read           : {len(files)}")
+    say(f"  pull_request_target workflows : {len(applicable)} {applicable}")
+    say(f"  skipped (not PRT-triggered)   : {len(skipped)}")
+
+    if not files:
+        say(f"UNMEASURED -- no workflow files were read under {root / WORKFLOW_DIR}. "
+            "Nothing was checked, so nothing passed (gh-1419 precedent: "
+            "unmeasured must fail as loudly as a finding).")
+        return EXIT_UNMEASURED
+
     if not findings:
-        print("PASS -- no pull_request_target workflow executes or interpolates "
-              "fork-controlled input, and none holds a named secret.")
-        return 0
-    print(f"FAIL -- {len(findings)} finding(s):")
+        say("PASS -- no pull_request_target workflow checks out fork-controlled state, "
+            "interpolates it into a code sink, or holds a named secret.")
+        return EXIT_PASS
+
+    say(f"FAIL -- {len(findings)} finding(s):")
     for f in findings:
-        print(f.render())
-    print("\nSee scripts/workflow-safety-ratchet.py's module docstring for why each rule exists.")
-    return 1
+        say(f.render())
+    say("\nSee scripts/workflow-safety-ratchet.py's module docstring for why each rule exists.")
+    return EXIT_FAIL
 
 
 if __name__ == "__main__":
