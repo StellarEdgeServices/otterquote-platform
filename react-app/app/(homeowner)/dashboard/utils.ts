@@ -77,7 +77,7 @@ export function deriveStatusBanner(
       variant: 'has_bids',
       icon: '🏆',
       title: bidCount === 1 ? 'You have 1 bid!' : `You have ${bidCount} bids!`,
-      text: 'Review the bids from qualified contractors and select the best offer for your project.',
+      text: 'Review the bids from contractors and select the best offer for your project.',
     };
   }
 

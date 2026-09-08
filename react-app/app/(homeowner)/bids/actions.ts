@@ -21,7 +21,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { extractOwnerPhotoPath, STATIC_ORIGIN } from './utils';
+import { extractOwnerPhotoPath, mapAwardError, STATIC_ORIGIN } from './utils';
 import type { BidRow, BidsClaim, ContractorProfile } from './types';
 
 export interface ActionResult {
@@ -113,7 +113,10 @@ export async function awardClaimToContractor(params: {
       status: 'awarded',
     })
     .eq('id', claim.id);
-  if (claimErr) return { ok: false, error: claimErr.message };
+  // gh-1532: the accept-award payment-method guard raises
+  // 'contractor_no_payment_method: ...'. Map it to homeowner-facing wording --
+  // the internal identifier is never shown to a customer.
+  if (claimErr) return { ok: false, error: mapAwardError(claimErr.message) };
 
   const { error: winErr } = await supabase.from('quotes').update({ status: 'selected' }).eq('id', bid.id);
   if (winErr) return { ok: false, error: winErr.message };

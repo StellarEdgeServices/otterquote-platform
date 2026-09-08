@@ -179,7 +179,23 @@ jobs:
       # repo secret (see scripts/edge-function-drift-remote.py's docstring for
       # the exact scope needed), this step is EXPECTED to fail red. That red
       # is honest signal, not a regression to silence.
+      # gh-1700 follow-up: this step must run even when the step above (the
+      # otterquote-platform check) fails. Without `if: always()`, a REAL
+      # drift finding on otterquote-platform (exit 1/2, by design -- that is
+      # the alarm working) short-circuits the job and this step reports
+      # `skipped`, not `failure` or `success` -- silently dropping otter-crm
+      # coverage exactly when a human is already looking at a red job for a
+      # different reason. Measured live: run 34163238073 (2026-09-07,
+      # otterquote-platform DRIFTED on validate-contract-template) skipped
+      # this step entirely. That is instance 3 of #1738's table -- "which
+      # makes the page look covered" relocated from the detector into the
+      # workflow that runs it. Authorised by CTO A: on #1700
+      # (2026-09-07T15:13:53Z): "if: always(), and it rides along" --
+      # rejected alternative was splitting the two projects into separate
+      # jobs, which would conflict with #1733/#1779's concurrent edits to
+      # this same file.
       - name: "Check deployed Edge Functions against main (remote projects: otter-crm)"
+        if: always()
         env:
           GH_CROSS_REPO_PAT: ${{ secrets.GH_CROSS_REPO_PAT }}
           SUPABASE_CRM_ACCESS_TOKEN: ${{ secrets.SUPABASE_CRM_ACCESS_TOKEN }}
@@ -286,6 +302,18 @@ jobs:
           # which covers the two otterquote-platform sites, but otter-crm will
           # report UNMEASURED again without the cross-repo PAT.
           GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_CROSS_REPO_PAT || github.token }}
+          # gh-1721: GH_CROSS_REPO_PAT is a fine-grained PAT scoped to
+          # Contents+Metadata+Administration READ only -- it has no Issues
+          # permission, so `--file-issue`'s comment POST to gh-1549 got HTTP 403
+          # every time it was ever attempted (confirmed live 2026-09-06) even
+          # though the drift READS above worked fine with the same token. The
+          # script's post_issue_comment() reads GITHUB_TOKEN first and only falls
+          # back to GITHUB_PERSONAL_ACCESS_TOKEN, so handing it the ambient
+          # job token here -- which DOES carry `issues: write` via this job's own
+          # `permissions:` block, scoped correctly since ALARM_ISSUE_NUMBER lives
+          # in this same repo -- fixes the POST without touching the cross-repo
+          # read path at all.
+          GITHUB_TOKEN: ${{ github.token }}
         # pipefail is load-bearing: without it, `| tee` swallows the script's
         # exit code and an UNMEASURED (exit 3) run concludes success -- measured
         # on schedule run 33761892324, the silent-detector shape this file exists
