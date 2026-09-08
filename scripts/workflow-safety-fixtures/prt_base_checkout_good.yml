@@ -1,0 +1,19 @@
+# FIXTURE (good): the shape r177-legal-read.yml actually uses.
+name: prt base checkout (good)
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/r177/predicate.mjs
+      - run: node scripts/r177/predicate.mjs --pr ${{ github.event.pull_request.number }}

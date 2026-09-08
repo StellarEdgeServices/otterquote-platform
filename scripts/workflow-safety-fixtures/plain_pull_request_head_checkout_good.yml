@@ -1,0 +1,18 @@
+# FIXTURE (good): the NEGATIVE CONTROL for the trigger itself. Identical to
+# prt_head_checkout_bad.yml except the trigger is `pull_request`, where a fork
+# run gets no secrets and a read-only token. This file must produce ZERO
+# findings -- if it ever fails, the ratchet has started policing the wrong
+# trigger and would fail most of this repo's CI.
+name: plain pull_request head checkout (good)
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: |
+          echo "Title: ${{ github.event.pull_request.title }}"
