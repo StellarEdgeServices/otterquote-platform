@@ -4211,12 +4211,31 @@
         document.body.removeChild(hoverPdfLink);
       } catch (err) {
         console.error('Failed to open measurement PDF:', err);
-        // gh-1748: get-hover-pdf (index.ts:166-182, D-317 cl. 7 / #1636) returns
-        // 403 when the caller is not entitled to a manual-fulfilment PDF — that
-        // is a policy refusal, not a missing file, so it gets its own honest
-        // copy instead of the "still in progress" 404 wording.
+        // gh-1748: get-hover-pdf returns 403 from TWO different refusals —
+        // (a) the D-317 cl. 7 / #1636 manual-fulfilment gate (index.ts:~177),
+        // an internal-artifact policy refusal, and (b) an ordinary
+        // canAccessClaim() denial (index.ts:~106) — bid window closed,
+        // contractor not yet quoted, etc. Both used to return the same
+        // status with a byte-identical body, so the client could not tell
+        // them apart and showed the internal-artifact copy for both,
+        // including the everyday (b) case where it is false. The server now
+        // sets `reason` on each; only "internal_artifact" gets that copy.
         if (err?.context?.status === 403) {
-          alert('The measurement report is internal to the homeowner\'s file and not part of the bid packet.');
+          let reason = null;
+          try {
+            const body = await err.context.clone().json();
+            reason = body?.reason ?? null;
+          } catch (parseErr) {
+            console.error('Failed to parse 403 response body:', parseErr);
+          }
+          if (reason === 'internal_artifact') {
+            alert('The measurement report is internal to the homeowner\'s file and not part of the bid packet.');
+          } else {
+            // Covers reason === 'access_denied' and any unrecognized/missing
+            // reason (parse failure, older cached response, etc.) — never
+            // assert the internal-artifact copy without the reason to back it.
+            alert('You do not have access to this claim\'s measurement report.');
+          }
         } else {
           alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
         }
