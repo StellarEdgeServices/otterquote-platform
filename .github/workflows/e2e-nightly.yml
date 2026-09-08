@@ -1,0 +1,183 @@
+name: Playwright E2E Tests (nightly)
+
+# gh-1731 (COST GATE): this workflow exists ONLY because the `test` job below
+# was the single largest Actions line item in the repo and produced no signal
+# on a PR. Measured, 7-day census Sep 1-7 2026 (GitHub Actions API, job-level
+# ceil(seconds/60) with GitHub's 1-minute-per-job billing floor):
+#
+#   Playwright E2E Tests, whole workflow : 452 runs / 7d, 9.00 billable job-min
+#                                          per run  -> 17,434 job-min/month
+#   of which `Run E2E Tests`             : 5.33 billable job-min per run
+#   of which `Seed Must Pass (gh-1584)`  : 0.33 billable job-min per run
+#                                          (it is `skipped` whenever `test`
+#                                          is cancelled)
+#   the two together                     : 5.66 min/run x 452 runs/7d
+#                                        = 2,558 min/7d = 10,963 job-min/month
+#
+# Moving those two jobs here costs 7 scheduled runs/week x 6.33 min = 190
+# job-min/month, so the net measured saving is -10,773 job-min/month -- the
+# largest single reduction available in this repo (see #1731 for the full
+# per-workflow table and PR body for the before/after).
+#
+# WHY THIS IS NOT A COVERAGE CUT, stated plainly so it can be refuted:
+#   * `Run E2E Tests` has been `continue-on-error: true` since 2026-08-26
+#     (gh-1261, Dustin's CEO ruling "strip") because it had failed on EVERY PR
+#     since 2026-06-23. It cannot fail a PR and has not been able to for 74
+#     days. Its measured conclusions in the Sep 1-7 census: 20 `cancelled`,
+#     10 `failure`, 0 `success` out of 30 sampled runs.
+#   * It is NOT a branch-protection-required context. Live
+#     `required_status_checks.contexts` on `main` (queried 2026-09-08T02:41Z)
+#     is exactly ["Null-Byte & Size Sanity Check",
+#     "5-Page Revenue-Path Smoke Check"]. Neither is touched by #1731's work.
+#   * Every step in the old `test` job that DID carry PR signal was moved into
+#     a job that still runs on every PR, not deleted -- see the header of
+#     .github/workflows/e2e-tests.yml for the step-by-step disposition.
+#
+# The tests themselves are unchanged and still run: nightly here, and on
+# demand via `workflow_dispatch` (which is how you should run them when
+# fixing what is actually broken -- gh-1261).
+
+on:
+  schedule:
+    # 07:20 UTC daily -- deliberately off the hour and not colliding with
+    # generate-contractor-pages.yml (02:00) or edge-function-drift.yml (09:17).
+    - cron: '20 7 * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Ref to run the E2E suite against (defaults to the branch this is dispatched on)'
+        required: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  test:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # gh-1261: kept exactly as it was on the PR-triggered workflow. This job
+    # still does not fail the run -- `seed-must-pass` below is what turns a
+    # genuinely failed SEED red (gh-1584). Do not remove continue-on-error
+    # without first fixing what is actually failing; see hazard-register.md.
+    continue-on-error: true
+    outputs:
+      seed_outcome: ${{ steps.seed.outcome }}
+    # gh-689: every run shares ONE set of fixtures on the otterquote-ci-test
+    # project (zsdvaqilfdclwosmiheh), so overlapping runs can corrupt each
+    # other's seeded rows (08-11 run-timestamp reconciliation, #703's
+    # claim-not-found failures). The group is kept repo-wide and
+    # cancel-in-progress stays FALSE for that reason. gh-1731 explicitly did
+    # NOT narrow it: PR #1740 flagged narrowing as a Supabase-adjacent
+    # correctness call needing a multi-day soak, and on a nightly cadence
+    # there is nothing left to contend with anyway.
+    concurrency:
+      group: e2e-test-project-fixtures
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: 'tests/e2e/package.json'
+
+      - name: Install E2E test dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Seed test database
+        id: seed
+        working-directory: tests/e2e
+        env:
+          # gh-689: the CI-test project, never production. The project URL is
+          # not secret (same status as a client-side NEXT_PUBLIC_SUPABASE_URL)
+          # so it is inlined; only the service-role key is a secret, and it is
+          # deliberately SUPABASE_TEST_SERVICE_ROLE_KEY rather than
+          # SUPABASE_SERVICE_ROLE_KEY, which generate-contractor-pages.yml
+          # consumes against production and must not be repointed.
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+          BASE_URL: ${{ secrets.BASE_URL }}
+        run: npm run seed
+
+      - name: Run Playwright tests
+        # gh-1584: a skipped test step must not read as a pass. If the seed
+        # failed, don't run Playwright against an unseeded/half-seeded
+        # database -- seed-must-pass below turns that into a red run.
+        if: steps.seed.outcome == 'success'
+        working-directory: tests/e2e
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+        run: npm test
+
+      - name: Teardown test database
+        if: always()
+        working-directory: tests/e2e
+        env:
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+        run: npm run teardown
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 30
+
+      - name: Upload test videos on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-videos
+          path: tests/e2e/test-results/
+          retention-days: 7
+
+  seed-must-pass:
+    name: Seed Must Pass (gh-1584)
+    needs: [test]
+    # gh-1584 follow-up (cto27, 2026-09-06): `always()` alone also fires when
+    # `test` was CANCELLED or SKIPPED, and a cancelled job has EMPTY outputs --
+    # so `needs.test.outputs.seed_outcome` comes back unset and this gate reds
+    # the run for a seed that never even ran. Excluding cancelled/skipped
+    # preserves gh-1584's intent exactly: a seed that genuinely FAILS still
+    # fails the gate, because `test` then completes (continue-on-error) with a
+    # real, non-empty seed_outcome.
+    if: always() && needs.test.result != 'cancelled' && needs.test.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    # No continue-on-error, deliberately: this is the gate. See gh-1584 and the
+    # `test` job's comment above.
+    steps:
+      - name: Fail the run if the E2E seed step did not succeed
+        run: |
+          outcome="${{ needs.test.outputs.seed_outcome }}"
+          echo "Seed test database step outcome: ${outcome:-<unset>}"
+          if [ "$outcome" != "success" ]; then
+            echo "::error::E2E seed failed (outcome='${outcome:-<unset>}'). The 'test' job's continue-on-error masks this from its own conclusion, so this gate job exists to fail the RUN when the seed itself fails (gh-1584). A skipped Playwright run because the seed failed is not a pass."
+            exit 1
+          fi
+          echo "Seed succeeded."

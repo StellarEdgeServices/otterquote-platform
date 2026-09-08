@@ -46,6 +46,9 @@ jobs:
   predicate-tests:
     name: R-177 predicate tests
     runs-on: ubuntu-latest
+    # gh-1731: explicit timeout. 0 minutes saved on a healthy run; caps a hung
+    # job at 10 minutes instead of GitHub's 6-hour default (360 billable min).
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
