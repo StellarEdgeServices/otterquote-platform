@@ -254,6 +254,114 @@ export function reconciliationErrorVerdict(expected: number | null): PriceEvalua
   return { state: "unverified", reason: "reconciliation_error", raw: null, expected };
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * [#1314 step 4, 2026-09-08] PERSIST WHAT THE RECONCILIATION READ.
+ *
+ * WHY. `evaluatePrice` runs on every completed contract and its verdict is then
+ * thrown away: the only durable trace is a message STRING in
+ * `platform_alerts_log`. Nothing in the schema records what the contractor
+ * actually typed, so the statement this issue has repeated for two weeks --
+ * "0 signed contracts had a price mismatch" -- cannot be made from the
+ * database. The two amounts that ARE stored (`claims.selected_bid_amount`,
+ * `quotes.total_price`) are both platform-side and would agree even in the
+ * exact defect #1314 describes.
+ *
+ * This mapping is pure and lives beside the verdict it mirrors so that the
+ * three states stay distinguishable in SQL, and so a column-name change is a
+ * test failure rather than a silent no-op inside a fire-and-forget update.
+ *
+ * NULL price means "not read". It never means $0 -- `parseMoney`'s own rule.
+ * `signed_price_raw` keeps the pre-parse string because `unparseable` is a real
+ * state and collapsing it into NULL destroys the only evidence of it.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** The `claims` columns the reconciliation owns. Mirrors PriceEvaluation. */
+export interface SignedPriceRecord {
+  signed_contract_price: number | null;
+  signed_price_raw: string | null;
+  signed_price_verdict: PriceEvaluation["state"];
+  signed_price_reason: UnverifiedReason | null;
+}
+
+/**
+ * The raw `contract_price` string as the document carried it, or null when the
+ * properties read itself failed. Kept here so the call site does not re-derive
+ * "what did we actually read" with a second, divergent expression.
+ */
+export function rawSignedPriceFrom(status: SignerStatusResult<unknown[]>): string | null {
+  if (status.kind !== "properties") return null;
+  return extractSignedContractPrice(status.signers);
+}
+
+/** Map a verdict (plus the raw string behind it) onto the claim's columns. */
+export function signedPriceRecordFor(
+  verdict: PriceEvaluation,
+  raw: string | null,
+): SignedPriceRecord {
+  if (verdict.state === "unverified") {
+    return {
+      signed_contract_price: null,
+      signed_price_raw: verdict.raw ?? raw,
+      signed_price_verdict: "unverified",
+      signed_price_reason: verdict.reason,
+    };
+  }
+  return {
+    signed_contract_price: verdict.signed,
+    signed_price_raw: raw,
+    signed_price_verdict: verdict.state,
+    signed_price_reason: null,
+  };
+}
+
+/**
+ * Every value `signed_price_reason` can ever hold.
+ *
+ * WHY A RECORD AND NOT AN ARRAY (PR #1856 REVIEW blocker 3). The first version
+ * of this was `readonly UnverifiedReason[]`, which guards only ONE direction:
+ * it stops the migration's CHECK from listing a value the union does not have.
+ * The direction that actually caused the defect this file documents is the
+ * OTHER one -- #1798 ADDED two members to `UnverifiedReason`, and a list that
+ * merely holds valid members stays perfectly type-correct while silently
+ * covering a subset. An array cannot notice that.
+ *
+ * `Record<UnverifiedReason, true>` can: every union member is a REQUIRED key,
+ * so adding a sixth reason to the union without adding it here fails
+ * `deno check` at the type level, before any test runs. The array below is
+ * derived from those keys, so the runtime list can never be a subset of the
+ * union either.
+ */
+const REASON_COVERAGE: Record<UnverifiedReason, true> = {
+  no_expected: true,
+  field_absent: true,
+  unparseable: true,
+  properties_unreadable: true,
+  reconciliation_error: true,
+};
+
+/**
+ * The reasons, as a list. Derived -- never hand-maintained -- so the database
+ * CHECK constraint and this module cannot drift apart unnoticed in either
+ * direction: the draft migration written on 2026-09-06 listed only three
+ * reasons, and #1798 added two more (`properties_unreadable`,
+ * `reconciliation_error`). Had it been applied as drafted, every write on the
+ * two NEW halt paths would have been rejected by the constraint and swallowed
+ * by the non-fatal handler, losing exactly the verdicts this issue exists to
+ * record.
+ */
+export const UNVERIFIED_REASONS: readonly UnverifiedReason[] =
+  Object.keys(REASON_COVERAGE) as UnverifiedReason[];
+
+/**
+ * Compile-time exhaustiveness backstop. Reachable only if a new
+ * `UnverifiedReason` is added and some switch below is not extended to handle
+ * it -- at which point `deno check` fails on the argument type rather than the
+ * code silently taking a `default:` branch.
+ */
+function assertNeverReason(reason: never): never {
+  throw new Error(`#1314 unhandled UnverifiedReason: ${JSON.stringify(reason)}`);
+}
+
 /** Operator-facing remediation, per unverified reason. */
 export function remediationFor(reason: UnverifiedReason): string {
   switch (reason) {
@@ -270,8 +378,12 @@ export function remediationFor(reason: UnverifiedReason): string {
         "the envelope or record a disposition by hand.";
     case "field_absent":
     case "no_expected":
-    default:
       return "The signed document does not carry a readable contract price -- re-issue the envelope from " +
         "a template that does, or record a disposition by hand.";
   }
+  // [PR #1856 REVIEW blocker 3] No `default:` here, deliberately. A default
+  // branch silently absorbs any reason added to the union later -- the exact
+  // one-directional blindness this review caught. With the switch exhaustive,
+  // adding a sixth reason makes `deno check` fail on this line instead.
+  return assertNeverReason(reason);
 }
