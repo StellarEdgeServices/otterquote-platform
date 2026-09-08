@@ -44,7 +44,13 @@ import { findCompletedContractSigner, parsePayload } from "./payload-parser.ts";
 import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
-import { dispositionFor, evaluatePrice, extractSignedContractPrice } from "./price-verify.ts";
+import {
+  dispositionFor,
+  priceVerdictFor,
+  reconciliationErrorVerdict,
+  remediationFor,
+  resolveSignerStatus,
+} from "./price-verify.ts";
 import {
   describeGuardVerdict,
   evaluateLiveChargeGuard,
@@ -668,10 +674,25 @@ serve(async (req) => {
         // per-field data (BoldSign's webhook payload carries none), and both the
         // D-269 acknowledgment backstop and the signed-price reconciliation below
         // need it. One call, two checks.
-        let signerStatus: Awaited<ReturnType<typeof fetchDocumentSignerStatus>> | null = null;
+        // [#1314 FIX / LEGAL-READ FAIL, 2026-09-08] The outcome of this ONE read is
+        // now an explicit value instead of a nullable assigned inside the D-269
+        // try. Before the fix, a failed document/properties call left
+        // `signerStatus` null, the D-269 catch below (deliberately "Loud but
+        // fail-open") proceeded, and the price block -- gated on
+        // `if (signerStatus)` -- was SKIPPED, so the platform fee was charged on
+        // a contract whose price was never read. Two checks with opposite
+        // failure directions must not share one catch: D-269 stays fail-OPEN on
+        // an API blip; the #1314 price gate is fail-CLOSED (CEO ruling
+        // 2026-09-08: a contract whose price cannot be read must not be
+        // fee-charged). `resolveSignerStatus` never throws.
+        const signerStatusResult = await resolveSignerStatus(() => fetchDocumentSignerStatus(envelopeId));
         try {
-          signerStatus = await fetchDocumentSignerStatus(envelopeId);
-          let ackEval = evaluateAcknowledgment(signerStatus);
+          // Re-raise into the D-269 catch so the acknowledgment backstop keeps
+          // its existing, deliberate fail-open behaviour on an infrastructure
+          // failure. The price gate below reads `signerStatusResult` directly
+          // and does NOT inherit this catch.
+          if (signerStatusResult.kind === "properties_error") throw signerStatusResult.error;
+          let ackEval = evaluateAcknowledgment(signerStatusResult.signers);
           if (ackEval.state === "indeterminate") {
             // The API answered but returned no field data at all — treat as
             // missing: acknowledgment cannot be demonstrated.
@@ -780,18 +801,30 @@ serve(async (req) => {
         // This runs BEFORE the D-127 charge block on purpose: a mismatch must
         // block the invoice, not be discovered after money moves.
         //
-        // FAILURE DIRECTIONS, chosen deliberately and not symmetric:
-        //   - Mismatch  -> HALT. Money is provably wrong; a human decides.
-        //   - Field absent / unparseable -> FLAG, DO NOT HALT. ack-verify.ts's own
-        //     header records that the exact shape of a per-signer formFields entry
-        //     from GET /v1/document/properties is UNVERIFIED against a real
-        //     sandbox document. Halting on "absent" would therefore most likely
-        //     fire on a shape mismatch rather than a real defect, and would strand
-        //     every legitimately signed contract. Once the shape is confirmed
-        //     against a live document, absent SHOULD be promoted to a halt --
-        //     an unreconcilable price is the same exposure as a wrong one.
+        // FAILURE DIRECTIONS (CURRENT, after the 2026-09-08 fix). The single
+        // source of truth is `dispositionFor` in price-verify.ts, which the
+        // if-chain below now branches on directly:
+        //   - Mismatch              -> HALT. Money is provably wrong.
+        //   - Field absent          -> HALT. Promoted from flag; the BoldSign
+        //     formFields shape is confirmed against two live completed
+        //     envelopes, so an unreadable field is not a shape artefact.
+        //   - Unparseable           -> HALT. A value we cannot parse is a price
+        //     we cannot verify.
+        //   - Properties unreadable -> HALT. The document/properties read itself
+        //     FAILED. This is the LEGAL-READ (R-177) defect: it used to skip the
+        //     whole block and charge.
+        //   - Reconciliation error  -> HALT (the catch below).
+        //   - No expected bid       -> FLAG only. Our own quote row carries no
+        //     price, so the question could not be asked; nothing the contractor
+        //     typed could clear it, and halting would punish a signed contract
+        //     for a gap on our side.
+        // The rule the asymmetry encodes: HALT whenever the DOCUMENT cannot be
+        // shown to agree with the bid; FLAG when the question could not be asked.
+        // NOTE (#1314 fix): deliberately NOT gated on a successful properties
+        // read. A failed read is a HALT below, not a skip.
+        let expectedForErrorVerdict: number | null = null;
         try {
-          if (signerStatus) {
+          {
             const { data: envQuote } = await supabase
               .from("quotes")
               .select("id, total_price")
@@ -809,9 +842,14 @@ serve(async (req) => {
               acceptedQuote = selQuote ?? null;
             }
             const expected = acceptedQuote?.total_price != null ? Number(acceptedQuote.total_price) : null;
+            expectedForErrorVerdict = expected;
 
-            const rawSigned = extractSignedContractPrice(signerStatus);
-            const verdict = evaluatePrice(rawSigned, expected);
+            // FAIL-CLOSED. `priceVerdictFor` returns
+            // `unverified/properties_unreadable` when the BoldSign
+            // document/properties read failed, and `dispositionFor` halts on it
+            // -- so an unreadable document can no longer walk past this gate to
+            // the D-127 charge block.
+            const verdict = priceVerdictFor(signerStatusResult, expected);
 
             // [#1314, 2026-09-07] `field_absent` and `unparseable` were PROMOTED
             // from flag to halt. price-verify.ts's `dispositionFor` carries the
@@ -827,13 +865,21 @@ serve(async (req) => {
             // every one of those contracts proceeded to charge.
             const disposition = dispositionFor(verdict);
 
-            if (verdict.state === "unverified" && verdict.reason === "no_expected") {
+            // [#1314 FIX / F3, 2026-09-08] The production chain now branches on
+            // `dispositionFor(verdict)` -- the same table the unit tests
+            // exercise. Before the fix `disposition` was computed and used only
+            // inside one console.log while the chain hardcoded its own
+            // conditions, so the mutation negative control ("dispositionFor ->
+            // always flag") reddened tests without changing one byte of
+            // deployed behaviour. It now changes behaviour: under that mutation
+            // every branch below falls into `flag` and no halt fires.
+            if (disposition === "flag") {
               // Still a flag, deliberately. There is no accepted bid amount on
               // OUR side to compare against, so this is a gap in our quote row
               // rather than a defect in the signed document, and nothing the
               // contractor could have typed would clear it.
               console.warn(`[#1314] price reconciliation skipped: no accepted quote found for claim ${claim.id} / envelope ${envelopeId}`);
-            } else if (verdict.state === "unverified") {
+            } else if (disposition === "halt" && verdict.state === "unverified") {
               const { raw, reason } = verdict;
               console.error(`[#1314] CONTRACT PRICE UNVERIFIABLE on envelope ${envelopeId} (reason=${reason}, raw=${JSON.stringify(raw)}) -- HALTED before charging`);
               try {
@@ -845,8 +891,7 @@ serve(async (req) => {
                     `(claim ${claim.id}, quote ${acceptedQuote?.id}; reason=${reason}, ` +
                     `raw=${JSON.stringify(raw)}). Accepted bid was ${expected}. ` +
                     `Completion HALTED before charging: contract_signed not set, no platform fee charged, ` +
-                    `no invoice. The signed document does not carry a readable contract price -- re-issue ` +
-                    `the envelope from a template that does, or record a disposition by hand.`,
+                    `no invoice. ${remediationFor(reason)}`,
                 });
               } catch (alertErr) {
                 console.error("platform_alerts_log insert failed:", alertErr);
@@ -881,7 +926,7 @@ serve(async (req) => {
                 JSON.stringify({ received: true, defect: "contract_price_unverified", claim_id: claim.id, reason, expected }),
                 { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
               );
-            } else if (verdict.state === "mismatch") {
+            } else if (disposition === "halt" && verdict.state === "mismatch") {
               const { signed } = verdict;
               console.error(`[#1314] PRICE MISMATCH on envelope ${envelopeId}: signed ${signed} vs accepted ${expected} (delta ${verdict.delta})`);
               try {
@@ -927,19 +972,72 @@ serve(async (req) => {
                 JSON.stringify({ received: true, defect: "contract_price_mismatch", claim_id: claim.id, signed, expected }),
                 { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
               );
-            } else {
+            } else if (disposition === "proceed" && verdict.state === "reconciled") {
               console.log(`[#1314] signed price reconciled for envelope ${envelopeId}: ${verdict.signed} == accepted ${expected} (disposition=${disposition})`);
+            } else {
+              // Unclassified verdict/disposition pair. Fail-closed by
+              // construction: this throw lands in the catch below, which HALTS.
+              // Nothing unclassified is allowed to reach the charge block.
+              throw new Error(
+                `#1314 unclassified price disposition=${disposition} state=${verdict.state} -- refusing to charge`
+              );
             }
           }
         } catch (priceErr) {
-          // Reconciliation is a backstop, not the money path. An error here is
-          // loud but must not strand a signed contract.
-          console.error("[#1314] price reconciliation errored (proceeding, alerted):", priceErr);
+          // [#1314 FIX, 2026-09-08] FAIL-CLOSED. This catch used to read
+          // "Reconciliation is a backstop, not the money path" and proceed to
+          // charge. It IS the money path: it is the only thing standing between
+          // an unverified price and a platform fee. An exception here means the
+          // reconciliation never reached a verdict, so the price is unverified,
+          // so it halts -- exactly like a mismatch.
+          const verdict = reconciliationErrorVerdict(expectedForErrorVerdict);
+          const reason = verdict.state === "unverified" ? verdict.reason : "reconciliation_error";
+          console.error(`[#1314] price reconciliation errored (reason=${reason}) -- HALTED before charging:`, priceErr);
+          try {
+            await supabase.from("platform_alerts_log").insert({
+              alert_type: "signed_price_unverified",
+              function_name: "docusign-webhook",
+              message:
+                `#1314: the signed-price reconciliation for envelope ${envelopeId} (claim ${claim.id}) ` +
+                `errored before reaching a verdict (reason=${reason}): ` +
+                `${priceErr instanceof Error ? priceErr.message : String(priceErr)}. Accepted bid was ` +
+                `${expectedForErrorVerdict}. Completion HALTED before charging: contract_signed not set, ` +
+                `no platform fee charged, no invoice. ${remediationFor("reconciliation_error")}`,
+            });
+          } catch (alertErr) {
+            console.error("platform_alerts_log insert failed:", alertErr);
+          }
           await reportToSentry(priceErr, {
             fn: "docusign-webhook",
             op: "price-reconciliation",
-            extra: { envelope_id: envelopeId, claim_id: claim.id },
+            extra: { envelope_id: envelopeId, claim_id: claim.id, reason, halted: true },
           });
+          try {
+            const { data: existingErrHalt } = await supabase
+              .from("notifications")
+              .select("id")
+              .eq("notification_type", "price_unverified_pending")
+              .like("message_preview", `envelope=${envelopeId};%`)
+              .limit(1)
+              .maybeSingle();
+            if (!existingErrHalt) {
+              await supabase.from("notifications").insert({
+                claim_id: claim.id,
+                channel: "system",
+                notification_type: "price_unverified_pending",
+                recipient: "ops",
+                message_preview: `envelope=${envelopeId};reason=${reason};accepted=${expectedForErrorVerdict}`,
+              });
+            }
+          } catch (recErr) {
+            console.error("notifications insert failed:", recErr);
+          }
+          // 200 so BoldSign does not retry forever -- same convention as the
+          // mismatch and unverified halts above.
+          return new Response(
+            JSON.stringify({ received: true, defect: "contract_price_unverified", claim_id: claim.id, reason }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
         }
 
         // ========== HANDLE PAYMENT CHARGING (D-127) ==========
