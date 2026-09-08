@@ -109,7 +109,6 @@ export const COPY_GUARD_FILES = new Set([
   'tools/generate_location_pages.py',
   'tools/generate_partner_pages.py',
   'tools/live_charge_guard_parity_check.py',
-  'tools/partner_parity_check.py',
 ]);
 
 // Money-path IDENTIFIERS (code, not prose). \b treats `_` as a word char, so the
