@@ -17,6 +17,10 @@ sentinel: atc-code-v1.7-2026-05-21
 
 > **RETIRED 2026-08-06 (R-104/R-105).** Duties absorbed into the Bridge; nightly trigger (`atc-code-nightly.bat`) unregistered 2026-08-07. Retained for historical reference only — **do not trigger, do not dispatch.** The ClickUp-writing instructions below (task queue management, anomaly filing) describe a pre-R-098/R-157 world where ClickUp was the engineering queue; they are void. The current engineering queue is GitHub Issues (`StellarEdgeServices/otterquote-platform`, `env:code`); ClickUp holds CEO-facing items only.
 
+## Changelog (retired procedure — historical only, gh-1757)
+
+Everything below this heading documents the pre-R-098/R-157 ATC procedure as it existed before its 2026-08-06 retirement (see banner above). It is not live, is not dispatched, and every ClickUp write instruction in it (task-queue management, anomaly filing, comment posting) describes historical behavior only. The current engineering queue is GitHub Issues; ClickUp holds CEO-facing items only.
+
 Claude Code-native Air Traffic Control for OtterQuote. Automated operations manager — monitors Wingman sessions, audits file integrity, manages the ClickUp task queue, and surfaces anomalies as ClickUp tasks. Runs on a 30-min schedule. Never executes work tasks.
 
 **Former triggers (historical — do not use):** `run ATC`, `atc`, `ops check`, `shift review`, `quality check`, `run air traffic control`, `check on the workers`
