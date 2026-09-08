@@ -3,16 +3,21 @@ name: Schema Column Lint
 on:
   push:
     branches: [staging, main]
-    paths:
-      - '**.html'
-      - 'js/**.js'
-      - 'supabase/functions/**'
-      - 'sql/schema-snapshot.json'
-      - 'scripts/schema-column-lint.py'
-      - 'supabase/migrations/**.sql'
-      - 'sql/**.sql'
-      - 'scripts/schema-secret-lint.py'
-      - 'scripts/migration-filename-lint.py'
+    # gh-1841 (detector-negative-control gate, CHECK 2): this paths: filter
+    # named '**.html' / 'js/**.js' / etc but never .ts/.tsx/.jsx, so a direct
+    # push touching only react-app/**/*.{ts,tsx,jsx} -- files
+    # scripts/schema-column-lint.py's own SCAN_EXTENSIONS explicitly scans --
+    # skipped this job entirely on push. This is the exact shape PR #1740's
+    # review (comment 5560891984, see the pull_request trigger below)
+    # already rejected for pull_request: a paths: filter here would let a
+    # money-path column-contract change bypass a fail-hard check. That
+    # review's reasoning applies identically to push -- the linter walks the
+    # whole tree regardless, and the job already hits GitHub's 1-minute
+    # billing floor whether or not this filter narrows it, so removing the
+    # filter costs ~0 real minutes against a real coverage hole. No
+    # paths: filter here now, matching pull_request's already-reviewed,
+    # unfiltered posture rather than adding more globs to a list that will
+    # go stale again the next time SCAN_EXTENSIONS changes.
   pull_request:
     branches: [main]
     # gh-1731 PR #1740 REVIEW: FAIL (comment 5560891984) -- a `paths:` filter
@@ -40,6 +45,9 @@ jobs:
   schema-lint:
     name: Schema contract check
     runs-on: ubuntu-latest
+    # gh-1731: explicit timeout. 0 minutes saved on a healthy run; caps a hung
+    # job at 10 minutes instead of GitHub's 6-hour default (360 billable min).
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4

@@ -36,7 +36,14 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { logNotificationFailure } from "./notification-failure.ts";
+import {
+  isVerifySendRequested,
+  logNotificationFailureLoud,
+} from "./notification-failure.ts";
+import {
+  footerPostalAddressHtml,
+  footerPostalAddressText,
+} from "./email-footer.ts";
 
 const FUNCTION_NAME = "send-measurement-ready";
 const NOTIFICATION_TYPE = "measurement_ready";
@@ -160,6 +167,10 @@ function buildEmailHtml(args: {
                      font-family:sans-serif;font-size:12px;color:#94A3B8;">
             Otter Quotes &nbsp;|&nbsp;
             <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
+            <!-- gh-1412/gh-1824: physical postal address, from the single
+                 constant in email-footer.ts. Resolving #1824 is a one-line
+                 change there, not an edit to this markup. -->
+            ${footerPostalAddressHtml()}
           </td>
         </tr>
       </table>
@@ -245,6 +256,16 @@ serve(async (req: Request) => {
       .eq("id", order.claim_id)
       .maybeSingle();
     const isTestClaim = claim?.is_test === true;
+    // gh-1538: an explicit, admin-only, per-request opt-out of the is_test
+    // send skip below. Computed only HERE — after the admin gate above has
+    // already returned 403 for a non-admin caller — so the header can never
+    // widen who may invoke this function. See notification-failure.ts for the
+    // full rationale and for why the artifact this issue closes on could not
+    // be produced without it.
+    const verifySend = isVerifySendRequested(req.headers);
+    if (verifySend) {
+      console.log(`[${FUNCTION_NAME}] X-Verify-Send: 1 — is_test send skip bypassed for order=${orderId} by admin=${user.email}`);
+    }
 
     // ── 1. Activity log FIRST (idempotent per order) ─────────────────────
     // The record outlives the email: even where the email is skipped (test
@@ -294,7 +315,7 @@ serve(async (req: Request) => {
       return json({ success: false, error: "No homeowner email on file" }, 422, corsHeaders);
     }
 
-    if (isTestClaim || isTestAccount(homeownerEmail)) {
+    if ((isTestClaim || isTestAccount(homeownerEmail)) && !verifySend) {
       console.log(`[${FUNCTION_NAME}] test order ${orderId} — logged, email skipped (${homeownerEmail})`);
       return json({ success: true, skipped: true, reason: "test_account" }, 200, corsHeaders);
     }
@@ -336,6 +357,10 @@ serve(async (req: Request) => {
       `Questions? Just reply to this email or write to support@otterquote.com.`,
       ``,
       `— Otter Quotes`,
+      ``,
+      // gh-1412/gh-1824: physical postal address, from the single constant
+      // in email-footer.ts.
+      footerPostalAddressText(),
     ].join("\n");
 
     const htmlBody = buildEmailHtml({ firstName, productLabel, address });
@@ -368,7 +393,7 @@ serve(async (req: Request) => {
       // written above; only the email send itself failed. Log it and
       // return a specific error instead.
       console.error(`[${FUNCTION_NAME}] send failed for order=${orderId}:`, sendErr);
-      await logNotificationFailure(
+      await logNotificationFailureLoud(
         (row) => sb.from("activity_log").insert(row),
         sendErr,
         {
@@ -376,8 +401,11 @@ serve(async (req: Request) => {
           recipientRole: order.requested_by_role || "homeowner",
           isTest: isTestClaim,
           userId: claim?.user_id ?? order.user_id,
-          extra: { order_id: orderId, claim_id: order.claim_id },
+          extra: { order_id: orderId, claim_id: order.claim_id, verify_send: verifySend },
         },
+        // gh-1538: platform_alerts_log is the surface an operator actually
+        // watches; the activity_log row alone left this failure silent.
+        (alert) => sb.from("platform_alerts_log").insert(alert),
       );
       return json({ error: "Failed to send notification" }, 502, corsHeaders);
     }

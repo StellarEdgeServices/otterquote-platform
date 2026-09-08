@@ -128,3 +128,74 @@ describe('detectLegalMoneyContent — comments vs money identifiers (2026-09-05)
     assert.equal(detectLegalMoneyContent(diff('x.ts', ['  // costs $25 under 50 SQ'])).hit, false);
   });
 });
+
+// gh-1701 closing criterion 2, verbatim: "a fixture proving the predicate still
+// FIRES on real customer money copy in an `.html` file -- specifically the
+// `$15 credit` sentence from #1692, which must keep tripping R-120. A fix that
+// quiets the false positives by also quieting the true ones is a regression,
+// not a fix."
+//
+// This is the TRUE-POSITIVE half of the gh-1701 narrowing, and it is the half
+// no other fixture covers: the suite already proves the predicate goes SILENT on
+// a comment in a `.ts` file, and silence is cheap to achieve by accident. What
+// nothing asserted until now is that the same narrowing left real homeowner-facing
+// money copy in an `.html` TEXT NODE still firing.
+//
+// The sentence is not invented for the test. It is the copy #1692 was filed to
+// cut, quoted from that issue's body:
+//   "OtterQuote's measurement partner applies a $15 credit toward this report's
+//    cost, so you are not covering its full price."
+// It is a price representation to a homeowner about who bears a cost, on a
+// production page (`help-measurements.html`), and it is exactly the class R-177
+// exists to route to a second reader.
+//
+// CAN THIS FIXTURE FAIL? Yes, and it was observed failing before it was trusted.
+// Ablation, run in a scratch copy of scripts/ and never committed: neuter the
+// `currency-amount` rule (`/\$\s?\d/` -> `/^\$NEVER_MATCHES_ABLATION/`). Result,
+// `node --test scripts/r177/predicate.test.mjs`: 21 tests, 19 pass, 2 FAIL --
+//   not ok  the #1692 "$15 credit" sentence in an .html TEXT NODE still fires
+//           error: 'expected currency-amount, got ["money-word"]'
+//   not ok  "you get $200 every time" fires        (pre-existing, same cause)
+//
+// READ THAT FAILURE MESSAGE, because it is the reason this fixture asserts the
+// RULE and not just `hit`. Under the ablation `hit` stays TRUE -- the sentence
+// contains the word "credit", which `money-word` catches -- so a fixture written
+// as `assert.equal(r.hit, true)` would have passed against a predicate with its
+// currency rule ripped out, and would have certified a gate that no longer sees
+// prices. The specific-rule assertion is what makes this a control rather than a
+// green tick.
+describe('gh-1701 criterion 2 -- the true positive that must survive the narrowing', () => {
+  const CREDIT_SENTENCE =
+    "OtterQuote's measurement partner applies a $15 credit toward this report's cost, so you are not covering its full price.";
+
+  it('the #1692 "$15 credit" sentence in an .html TEXT NODE still fires', () => {
+    const r = detectLegalMoneyContent(diff('help-measurements.html', [`                    <p>${CREDIT_SENTENCE}</p>`]));
+    assert.equal(r.hit, true, 'real homeowner money copy in HTML text must keep tripping the gate');
+    assert.ok(r.lines.some((l) => l.rule === 'currency-amount'), `expected currency-amount, got ${JSON.stringify(r.lines.map((l) => l.rule))}`);
+    assert.equal(r.lines[0].file, 'help-measurements.html');
+    assert.equal(r.lines[0].side, '+');
+  });
+
+  it('and it fires on REMOVAL too -- cutting a price representation is a legal/money diff', () => {
+    // #1692 was a diff that DELETED this sentence. A gate that only watches
+    // additions would let ruled-cut money copy leave (or return) unread.
+    const r = detectLegalMoneyContent(diff('help-measurements.html', [], [`                    <p>${CREDIT_SENTENCE}</p>`]));
+    assert.equal(r.hit, true);
+    assert.equal(r.lines[0].side, '-');
+  });
+
+  it('the DISCRIMINATING pair: the same sentence in a .js comment is silent, in .html text it is not', () => {
+    // If both halves fired, the narrowing did nothing. If both went silent, the
+    // narrowing ate the true positive. Only the split is a pass.
+    const inCode = detectLegalMoneyContent(diff('js/upgrade.js', [`  // ${CREDIT_SENTENCE}`]));
+    const inCopy = detectLegalMoneyContent(diff('help-measurements.html', [`                    <p>${CREDIT_SENTENCE}</p>`]));
+    assert.equal(inCode.hit, false, 'a JS comment quoting the sentence is prose, not a price change');
+    assert.equal(inCopy.hit, true, 'the same sentence as homeowner-visible copy must fire');
+  });
+
+  it('the word rules still fire on real .html legal copy (not only the currency rule)', () => {
+    const r = detectLegalMoneyContent(diff('help-measurements.html', ['                    <p>We guarantee the workmanship on every project.</p>']));
+    assert.equal(r.hit, true);
+    assert.ok(r.lines.some((l) => l.rule === 'legal-consent-word'));
+  });
+});

@@ -1,0 +1,381 @@
+name: Closure Guard
+
+# ---------------------------------------------------------------------------
+# README -- WHAT THIS IS, WHY IT EXISTS, AND HOW TO GET PAST IT
+#
+# THE RULE IT ENFORCES (EXEC-PROTOCOL Sec. 7.3b): an issue is closed by a
+# CLOSING COMMENT -- a comment that quotes the issue's own `closes-on`
+# criterion, names the closure class, and pastes a negative control -- and
+# the close follows the comment. The comment IS the closure; the state change
+# is bookkeeping.
+#
+# THE DEFECT IT CLOSES: `Closes #NNNN` / `Fixes #NNNN` in a PR body makes
+# GitHub close the issue the instant the PR merges, with NO comment at all.
+# The `closes-on` discipline is bypassed silently -- the thread's own stated
+# criterion, sometimes set twice, is never tested and never quoted. Four
+# measured instances before this workflow existed: gh-1295 (auto-closed one
+# second after merge, at 03:21:03Z, with no closing comment; its refuter
+# called it "SECOND INSTANCE of the PR-keyword-overrides-closes-on class"),
+# gh-1338, gh-1534, gh-1549.
+#
+# A rule cannot fix this, because the bypass is mechanical: nobody DECIDES to
+# skip the closing comment, GitHub just closes the issue. So the fix is
+# mechanical too -- this workflow.
+#
+# WHAT IT DOES: on every `issues: closed` event it asks two questions.
+#   1. Was this issue closed BY A PR OR A COMMIT (as opposed to by a person
+#      clicking Close)? -- read from the closing `closed` timeline event's
+#      `commit_id`, or from a cross-referenced PR whose merge is ANCHORED to
+#      this close (see "ATTRIBUTING THE CLOSE" below).
+#   2. Is the newest comment posted at or before `closed_at` + GRACE_S a
+#      CLOSING COMMENT? -- see "THE CLOSING-COMMENT TEST" below.
+# If (1) is yes and (2) is no, it REOPENS the issue, labels it
+# `closure-guard`, and comments saying what to do. Otherwise it does nothing.
+#
+# IT WAITS OUT THE GRACE WINDOW BEFORE IT LOOKS. The runner picks this job up
+# roughly 15-40s after `closed_at`. A closing comment posted a minute after an
+# accidental merge has not been written yet at that instant, so a guard that
+# read the comments immediately would reopen correctly-closed issues -- the
+# grace window would be dead code. Before listing comments (and only after the
+# two exemptions above, so an exempt close costs nothing) the job SLEEPS until
+# `closed_at + GRACE_S + 5s` of real wall-clock time. `timeout-minutes: 5`
+# covers that wait. This was defect 1 of REVIEW: FAIL 5587996889, reproduced
+# against a real clock.
+#
+# ATTRIBUTING THE CLOSE. `cross-referenced` fires on a bare `#NNNN` mention in
+# any PR, not only on a closing keyword, and a merged PR stays on the timeline
+# forever -- including across a reopen. So the cross-ref fallback is anchored:
+# the merge must have happened AFTER the last `reopened` event, AT OR BEFORE
+# `closed_at`, and within CLOSE_LINK_WINDOW_S (60s) of it. Without the anchor,
+# a person hand-closing an issue three minutes after this guard reopened it
+# was re-attributed to the PR that merged before the reopen and reopened
+# again, and a genuine human close minutes after any PR that merely MENTIONED
+# the issue was read as a machine close. Both were defect 2 of the same
+# review. 60s is chosen against the measured keyword-close latency of ONE
+# SECOND (gh-1295).
+#
+# THE CLOSING-COMMENT TEST (deliberately simple, and deliberately a MIRROR of
+# `In Flight/bin/observed-working.py --closures`, which is the real grader):
+#   A comment counts as a closing comment if EITHER
+#     (a) it carries a closure marker -- `closes-on` / `closes on`, `CLOSED:`,
+#         or `RW-EVIDENCE`; OR
+#     (b) it QUOTES THE CRITERION: after the same normalisation
+#         observed-working.py's `words()` applies (lowercase; the markdown
+#         characters ` * _ > # | \ replaced by spaces; tokens of [a-z0-9_]),
+#         the comment contains >= 8 CONSECUTIVE words of the criterion -- or
+#         the whole criterion when it is shorter than 8 words. This is CHECK 1
+#         of observed-working.py, same n=8, same normalisation.
+#   THE CRITERION is read exactly as `closes_on_paragraphs()` reads it,
+#   INCLUDING the RUN 37 4b heading-form extension: every line matching
+#   /^.*closes[- ]on\b.*$/im extended to the next blank line, capped at 1500
+#   chars -- and then, if what that produced is thin prose (< 6 words once the
+#   `closes-on: <class>` token itself is stripped, which is exactly what a
+#   heading-form body like "## `closes-on: artifact`" followed by a blank line
+#   produces), extended into up to 3 following blank-line-separated blocks,
+#   stopping at a heading or a horizontal rule. Same MIN_PROSE_WORDS = 6 and
+#   MAX_EXTEND_BLOCKS = 3 as observed-working.py and closes-on-lint.py.
+#   AND, as `evaluate()` does, the criterion is REPLACED by the newest
+#   deliberate `amend` comment posted at or before `closed_at - GRACE_S`
+#   (gh-1751 `is_amend_comment`: an `AMENDED closes-on` marker anywhere, or a
+#   `closes-on` line carrying an unnegated amend token). Before these two were
+#   ported the guard was STRICTER than the grader on heading-form and amended
+#   issues -- a closure that PASSES observed-working.py could be reopened,
+#   which is the wrong direction for a tripwire.
+#
+# THIS IS A TRIPWIRE, NOT A GRADER. It passes anything that LOOKS like a
+# closing comment. Whether the closure is actually sound -- class stable,
+# negative control present, criterion genuinely tested -- is still
+# observed-working.py's job, and still the refuter's. A closure that gets
+# past this workflow has not been graded; it has only been shown to exist.
+#
+# EXEMPT (the workflow does nothing):
+#   - `state_reason: not_planned` -- a not-planned disposal is not a closure
+#     against a criterion and is graded by the `disposal-traced` check, not
+#     this one.
+#   - Any close that is NOT attributable to a PR or a commit under the
+#     anchoring rule above (a person closing the issue in the UI). A human
+#     close with no closing comment is a DIFFERENT defect, caught by
+#     observed-working.py at sweep time; this workflow's whole subject is the
+#     mechanical bypass.
+#   - Any close where a closing comment already exists. That is the norm and
+#     the whole point.
+#
+# HOW TO BYPASS IT -- POST THE CLOSING COMMENT.
+#   There is no skip label, no magic phrase, no `[skip ci]`. The workflow is
+#   satisfied by doing the thing it exists to make you do:
+#     1. Post the closing comment on the issue -- criterion quoted verbatim,
+#        class named (`closes-on: artifact` / `query` / `judgment`), negative
+#        control pasted.
+#     2. Then merge the PR. The `Closes #NNNN` keyword closes the issue, this
+#        workflow finds the comment, and it stays closed.
+#   Posting it BEFORE the merge is the discipline. Posting it within GRACE_S
+#   (180s) AFTER an accidental merge also works, and genuinely works: the job
+#   sleeps past the end of that window before it reads the comments, so a
+#   comment you post in the first three minutes is seen.
+#   If the guard reopens you: post the closure, then close the issue by hand.
+#   A hand close is exempt -- and it stays exempt after a reopen, because the
+#   merge that triggered the reopen is older than the `reopened` event and the
+#   anchoring rule refuses to attribute it to your new close.
+#
+# SECRETS: none. It runs on the ambient `GITHUB_TOKEN`.
+# ---------------------------------------------------------------------------
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  closure-guard:
+    name: Reopen issues auto-closed by a PR with no closing comment
+    runs-on: ubuntu-latest
+    # Must exceed GRACE_S + 5s (185s) of deliberate sleep plus API time.
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # The workflow's only write: reopen + label + comment on the issue that
+      # triggered it. Scoped here rather than at workflow level so nothing
+      # else added to this file inherits it. This repo's
+      # default_workflow_permissions is `read`, so without this block every
+      # reopen 403s silently -- the same defect class gh-1721 recorded.
+      issues: write
+      # The cross-ref fallback reads `source.issue.pull_request.merged_at`
+      # off the timeline. Granted defensively (REVIEW: FAIL 5587996889).
+      pull-requests: read
+
+    steps:
+      - name: Grade the closure and reopen if the closing comment is missing
+        uses: actions/github-script@v7
+        env:
+          # 180s: observed-working.py GRACE_S. A comment posted within this
+          # window of closed_at still counts as the closing comment -- and the
+          # job SLEEPS past it before reading, so that is true at runtime and
+          # not only in a fixture.
+          GRACE_S: '180'
+          # 60s: how close to closed_at a cross-referenced PR's merge must be,
+          # on top of the anchoring conditions, for the close to be attributed
+          # to that PR. GitHub's keyword close is near-instant (gh-1295: one
+          # second). Was 900s with an unanchored Math.abs test; that produced
+          # a bounded reopen loop and false human-close attribution.
+          CLOSE_LINK_WINDOW_S: '60'
+          # RUN 37 4b thresholds, same values as observed-working.py and
+          # closes-on-lint.py. Do not diverge these without changing all three.
+          MIN_PROSE_WORDS: '6'
+          MAX_EXTEND_BLOCKS: '3'
+          GUARD_LABEL: closure-guard
+          # Every comment this workflow posts carries this marker, and every
+          # comment carrying it is IGNORED when looking for the closing
+          # comment. Without this the guard's own comment -- which contains
+          # the words "closes-on" -- would satisfy the marker test on the next
+          # close and the guard would exempt its own violation.
+          GUARD_MARKER: '<!-- closure-guard -->'
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const GRACE_MS   = Number(process.env.GRACE_S) * 1000;
+            const LINK_MS    = Number(process.env.CLOSE_LINK_WINDOW_S) * 1000;
+            const MIN_PROSE  = Number(process.env.MIN_PROSE_WORDS);
+            const MAX_EXTEND = Number(process.env.MAX_EXTEND_BLOCKS);
+            const LABEL      = process.env.GUARD_LABEL;
+            const MARKER     = process.env.GUARD_MARKER;
+            const owner      = context.repo.owner;
+            const repo       = context.repo.repo;
+            const issue      = context.payload.issue;
+            const number     = issue.number;
+            const closedAt   = Date.parse(issue.closed_at);
+
+            // ---------- mirror of observed-working.py words() ----------
+            function words(s) {
+              return ((s || '').toLowerCase().replace(/[`*_>#|\\]/g, ' ').match(/[a-z0-9_]+/g)) || [];
+            }
+            // ---------- mirror of prose_words() / STRIP_CLASS_TOKEN_RE ----------
+            const STRIP_CLASS_TOKEN_RE = /closes[- ]on\W{0,8}(query|judgment|artifact)?/gi;
+            function proseWords(criterion) {
+              return words(String(criterion || '').replace(STRIP_CLASS_TOKEN_RE, ' ')).length;
+            }
+            // ---------- mirror of closes_on_paragraphs(), incl. RUN 37 4b ----------
+            function closesOnParagraphs(body) {
+              const lines = (body || '').split(/\r?\n/);
+              const out = [];
+              let lastEnd = null;
+              for (let i = 0; i < lines.length; i++) {
+                if (!/closes[- ]on\b/i.test(lines[i])) continue;
+                const para = [lines[i]];
+                let j = i + 1;
+                while (j < lines.length && lines[j].trim() !== '' && para.join('\n').length < 1500) {
+                  para.push(lines[j]); j++;
+                }
+                out.push(para.join('\n'));
+                lastEnd = j;
+              }
+              if (out.length === 0) return out;
+              // RUN 37 4b heading-form extension: a bare `## `closes-on: artifact``
+              // followed by a blank line yields thin prose; reach into up to
+              // MAX_EXTEND blocks for the criterion that actually follows it.
+              let extended = 0;
+              while (proseWords(out.join('\n\n')) < MIN_PROSE && extended < MAX_EXTEND && lastEnd !== null) {
+                let k = lastEnd;
+                while (k < lines.length && lines[k].trim() === '') k++;
+                if (k >= lines.length) break;
+                const head = lines[k].replace(/^\s+/, '');
+                if (head.startsWith('#') || head.startsWith('---') ||
+                    head.startsWith('***') || head.startsWith('___')) break;
+                const para = [lines[k]];
+                let j = k + 1;
+                while (j < lines.length && lines[j].trim() !== '' && para.join('\n').length < 1500) {
+                  para.push(lines[j]); j++;
+                }
+                out.push(para.join('\n'));
+                lastEnd = j;
+                extended++;
+              }
+              return out;
+            }
+            // ---------- mirror of is_amend_comment() (gh-1751) ----------
+            const AMEND_MARKER_RE    = /\bamended\W{0,3}closes[- ]on\b/i;
+            const CLOSES_ON_TOKEN_RE = /closes[- ]on\b/i;
+            const AMEND_TOKEN_RE     = /\bamend(?:ed|ment|ments|s)?\b/i;
+            const AMEND_NEGATION_RE  = new RegExp(
+              '\\bunchanged\\b|\\bno\\s+amend\\w*|\\bnot\\s+(?:been\\s+)?amend\\w*|\\bnever\\s+amend\\w*|' +
+              '\\bwithout\\s+(?:an\\s+)?amend\\w*|\\bpre-amend\\w*|\\bun-?amended\\b|\\bhas\\s+not\\s+been\\s+amend\\w*', 'i');
+            function isAmendComment(body) {
+              body = body || '';
+              if (AMEND_MARKER_RE.test(body)) return true;
+              for (const line of body.split(/\r?\n/)) {
+                if (!CLOSES_ON_TOKEN_RE.test(line)) continue;
+                if (!AMEND_TOKEN_RE.test(line)) continue;
+                if (AMEND_NEGATION_RE.test(line)) continue;
+                return true;
+              }
+              return false;
+            }
+            // ---------- mirror of quoted_run(), n = 8 ----------
+            function quotedRun(criterion, closing, n) {
+              n = n || 8;
+              const cw = words(criterion), dw = words(closing);
+              if (cw.length === 0) return false;
+              n = Math.min(n, cw.length);
+              const grams = new Set();
+              for (let i = 0; i + n <= dw.length; i++) grams.add(dw.slice(i, i + n).join(' '));
+              for (let i = 0; i + n <= cw.length; i++) if (grams.has(cw.slice(i, i + n).join(' '))) return true;
+              return false;
+            }
+            const MARKER_RE = /closes[- ]on\b|\bCLOSED:|RW-EVIDENCE/i;
+            function isClosingComment(text, criterion) {
+              if (MARKER_RE.test(text || '')) return true;
+              return quotedRun(criterion, text || '', 8);
+            }
+
+            // ---------- EXEMPT 1: not_planned ----------
+            if (issue.state_reason === 'not_planned') {
+              core.info(`#${number}: state_reason=not_planned -- disposal, not a closure. Exempt.`);
+              return;
+            }
+
+            // ---------- was it closed by a PR or a commit? ----------
+            const timeline = await github.paginate(
+              github.rest.issues.listEventsForTimeline,
+              { owner, repo, issue_number: number, per_page: 100 }
+            );
+
+            let closedBy = null;
+            const closes = timeline.filter(e => e.event === 'closed');
+            const lastClose = closes.length ? closes[closes.length - 1] : null;
+            if (lastClose && lastClose.commit_id) {
+              closedBy = `commit ${String(lastClose.commit_id).slice(0, 12)}`;
+            }
+            if (!closedBy) {
+              // A `Closes #` keyword close does not always stamp commit_id on
+              // the event. Fall back to a cross-referenced PR whose merge is
+              // ANCHORED to THIS close: after the last reopen (so a merge
+              // cannot be re-used across a guard reopen -- the bounded loop of
+              // REVIEW: FAIL 5587996889), at or before closed_at (a merge
+              // dated after the close did not cause it), and within LINK_MS.
+              const reopens = timeline.filter(e => e.event === 'reopened');
+              const lastReopen = reopens.length ? reopens[reopens.length - 1] : null;
+              const reopenedAt = lastReopen ? Date.parse(lastReopen.created_at) : -Infinity;
+              for (const e of timeline) {
+                if (e.event !== 'cross-referenced') continue;
+                const src = e.source && e.source.issue;
+                if (!src || !src.pull_request) continue;
+                const merged = src.pull_request.merged_at;
+                if (!merged) continue;
+                const m = Date.parse(merged);
+                if (m > reopenedAt && m <= closedAt && closedAt - m <= LINK_MS) {
+                  closedBy = `PR #${src.number}`;
+                  break;
+                }
+              }
+            }
+            // ---------- EXEMPT 2: a human closed it ----------
+            if (!closedBy) {
+              core.info(`#${number}: no PR or commit attributable to this close -- human close. Exempt.`);
+              return;
+            }
+
+            // ---------- honour the grace window in REAL TIME ----------
+            // The runner starts this job ~15-40s after closed_at; a closing
+            // comment posted inside the window is not written yet. Sleep past
+            // the end of the window before reading, or GRACE_S is dead code.
+            // Placed after both exemptions so an exempt close costs nothing.
+            const waitMs = Math.max(0, closedAt + GRACE_MS + 5000 - Date.now());
+            if (waitMs > 0) {
+              core.info(`#${number}: closed by ${closedBy}; waiting ${Math.round(waitMs / 1000)}s for the grace window`);
+              await new Promise(r => setTimeout(r, waitMs));
+            }
+
+            // ---------- find the newest comment at or before closed_at + GRACE ----------
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: number, per_page: 100 }
+            );
+            const visible = comments
+              .filter(c => !String(c.body || '').includes(MARKER))
+              .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+            const candidates = visible.filter(c => Date.parse(c.created_at) <= closedAt + GRACE_MS);
+            const newest = candidates.length ? candidates[candidates.length - 1] : null;
+
+            // ---------- the criterion: body, then the newest deliberate amend ----------
+            let criterion = closesOnParagraphs(issue.body).join('\n\n');
+            let critSrc = 'body';
+            for (let i = visible.length - 1; i >= 0; i--) {
+              const c = visible[i];
+              if (Date.parse(c.created_at) > closedAt - GRACE_MS) continue;
+              if (isAmendComment(c.body)) { criterion = c.body || ''; critSrc = `amend@${c.id}`; break; }
+            }
+
+            // ---------- EXEMPT 3: a closing comment exists ----------
+            if (newest && isClosingComment(newest.body, criterion)) {
+              core.info(`#${number}: closed by ${closedBy}; comment ${newest.id} reads as a closing comment (criterion from ${critSrc}). Exempt.`);
+              return;
+            }
+
+            const why = newest
+              ? `newest comment before close (id ${newest.id}) carries no closes-on / CLOSED: / RW-EVIDENCE marker and quotes no 8-word run of the criterion (${critSrc})`
+              : `no comment at or before closed_at + ${process.env.GRACE_S}s`;
+            core.warning(`#${number}: VIOLATION -- closed by ${closedBy}; ${why}. Reopening.`);
+
+            // ---------- reopen, label, comment ----------
+            await github.rest.issues.update({
+              owner, repo, issue_number: number, state: 'open', state_reason: 'reopened'
+            });
+            try {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: number, labels: [LABEL]
+              });
+            } catch (err) {
+              core.warning(`could not add label ${LABEL} to #${number}: ${err.message}`);
+            }
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: number,
+              body:
+                `${MARKER}\n` +
+                `CLOSURE-GUARD: reopened — closed by ${closedBy} with no closing comment quoting its closes-on. ` +
+                `Post the closure (criterion quoted + class + negative control) then close. EXEC-PROTOCOL § 7.3b.\n\n` +
+                `<sub>Detected: ${why}. ` +
+                `Run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId} · ` +
+                `Rule and bypass: \`.github/workflows/closure-guard.yml\`. ` +
+                `A hand close after this reopen is exempt.</sub>`
+            });

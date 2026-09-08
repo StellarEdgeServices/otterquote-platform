@@ -215,19 +215,19 @@ ALLOWLIST = [
         "True, and says nothing about who is on our platform. (Prose + JSON-LD twin.)",
     ),
     (
-        "otterquote-deploy/blog/does-homeowners-insurance-cover-roof-damage.html",
+        "blog/does-homeowners-insurance-cover-roof-damage.html",
         "You can hire any licensed, insured contractor you choose",
         "Consumer advice about the homeowner's right to pick any contractor; the "
         "same paragraph says using OtterQuote is optional.",
     ),
     (
-        "otterquote-deploy/blog/what-is-recoverable-depreciation-roofing.html",
+        "blog/what-is-recoverable-depreciation-roofing.html",
         "Use licensed, insured contractors who provide complete documentation",
         "Consumer advice on what the homeowner should require of whoever they hire, "
         "in a list of claim-payout mistakes. No platform subject.",
     ),
     (
-        "otterquote-deploy/blog/why-roofers-quote-different-prices.html",
+        "blog/why-roofers-quote-different-prices.html",
         "A properly licensed, insured contractor carries general liability and workers' comp",
         "Explains an industry cost structure (why an uninsured operator bids lower). "
         "Generic, and makes no claim about our roster.",

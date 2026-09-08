@@ -679,6 +679,25 @@ serve(async (req) => {
     // listeners to finalize the outcome.
     const succeeded = paymentIntentData.status === "succeeded";
     const pending = paymentIntentData.status === "processing";
+    // ── gh-1759 ROOT CAUSE FIX: return Stripe's charge id ────────────────────
+    // claims.platform_fee_stripe_id had no writer, and could not have had one:
+    // this function never handed a charge id to any caller. stripe-webhook's
+    // charge.dispute.created handler resolves a dispute to a claim by that
+    // column (index.ts:422), so the dispute lookup was structurally dead.
+    //
+    // `latest_charge` is an id string when the PaymentIntent is not expanded,
+    // which is how every call site here creates it. It is null until the intent
+    // has an actual charge (requires_payment_method / requires_action), so a
+    // caller must treat null as "not settled yet" rather than as an error — the
+    // ACH path legitimately returns null here and stripe-webhook fills the
+    // column in later from payment_intent.succeeded.
+    //
+    // ADDITIVE ONLY. No existing field is renamed, removed or retyped, so
+    // docusign-webhook and process-dunning (the two consumers of this response)
+    // are unaffected unless they choose to read the new fields.
+    const latestCharge = typeof paymentIntentData.latest_charge === "string"
+      ? paymentIntentData.latest_charge
+      : (paymentIntentData.latest_charge?.id ?? null);
     return new Response(JSON.stringify({
       client_secret: paymentIntentData.client_secret || null,
       payment_intent_id: paymentIntentData.id,
@@ -687,6 +706,17 @@ serve(async (req) => {
       pending,
       amount: paymentIntentData.amount,
       currency: paymentIntentData.currency,
+      // gh-1759: the two new fields.
+      charge_id: latestCharge,
+      // The platform fee ITSELF in cents, distinct from `amount` above, which on
+      // the card path includes the 2.9% + $0.30 passthrough surcharge. Callers
+      // persisting claims.platform_fee_amount want the fee, not the surcharged
+      // total: the existing row convention is quotes.fee_amount = 175.00 dollars
+      // for the $180.54 charge. Null for non-fee charge types, which have no
+      // platform fee to report.
+      platform_fee_cents: metadata.type === "platform_fee" && typeof amount === "number"
+        ? amount
+        : null,
       rate_limit_counts: rateLimitResult?.counts,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error: any) {

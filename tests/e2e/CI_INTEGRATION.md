@@ -107,9 +107,17 @@ repository settings before the workflow is active:
 | `SUPABASE_SERVICE_ROLE_KEY` | service role key | `otterquote-memory.md` → Key Infrastructure Details |
 
 **Historical note (gh-689, 2026-08-17):** this document predates the actual
-implemented workflow (`.github/workflows/e2e-tests.yml`, push/pull_request
-triggered — see that file, not the `e2e.yml` sketch below) and originally
-pointed at the production Supabase project. The values above are corrected
+implemented workflow and originally pointed at the production Supabase project.
+
+**Where the Playwright suite actually runs now (gh-1731, 2026-09-08):** the
+`Run E2E Tests` job and its `Seed Must Pass (gh-1584)` gate live in
+`.github/workflows/e2e-nightly.yml` and run on a **nightly cron plus
+`workflow_dispatch`** — not on every push/PR. `.github/workflows/e2e-tests.yml`
+keeps the PR-triggered static/type/Deno/parity jobs only. The move was measured:
+those two jobs cost 10,963 billable job-minutes/month of the repo's ~35,558, and
+`Run E2E Tests` has carried `continue-on-error: true` since 2026-08-26 (gh-1261)
+so it could not fail a PR anyway. To run the suite against a branch on demand,
+dispatch `Playwright E2E Tests (nightly)` from the Actions UI. The values above are corrected
 to the dedicated `otterquote-ci-test` project so this plan document does not
 mislead a future reader into re-wiring CI back onto production.
 

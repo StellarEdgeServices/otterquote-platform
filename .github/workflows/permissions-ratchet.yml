@@ -1,0 +1,95 @@
+name: Permissions Ratchet
+
+# gh-1767 -- the only thing that previously noticed `GRANT EXECUTE ON
+# FUNCTION public.<x>() TO anon` was R-120's money-permission branch
+# (scripts/r177/predicate.mjs, formerly scripts/r120/verify.mjs before PR
+# #1803), and it only noticed by accident: it fires on the function's NAME
+# matching a money-word regex, so it misses `admin_delete_user()` entirely
+# and over-fires on #1634's all-REVOKE forward migration. See
+# scripts/permissions-ratchet.py's own module docstring for the full
+# reasoning, the allowlist enumeration, and the scope boundary
+# (supabase/migrations/** literal -- migrations_drafts/ and
+# migrations_rollbacks/ are sibling directories, excluded by construction).
+#
+# Per the issue's own instruction, R-120's money-permission branch is NOT
+# removed here -- that is its own follow-up, itself a GATE_FILE change
+# needing its own signature.
+#
+# BUILD-FAILING, not advisory (unlike detector-negative-control.yml's
+# report-only posture): this check is diff-scoped to lines a PR itself adds,
+# so -- unlike a whole-repo sweep -- it starts clean on every PR that doesn't
+# touch supabase/migrations/**, and a PR that does touch it only fails on
+# what THAT PR newly introduces, never on the repo's pre-existing 150+
+# migration files. There is no "can never go green" problem here to justify
+# an advisory posture.
+#
+# Runs on `pull_request` only (never `push`), because the label-bypass read
+# (`github.event.pull_request.labels`) only exists on a pull_request event
+# payload, and this ratchet's whole job is to gate what actually gets merged.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  permissions-ratchet:
+    name: No new GRANT to anon/PUBLIC/authenticated
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history -- the script diffs base...head itself
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # BUILD-FAILING. Proves the ratchet's own rule logic before trusting
+      # its verdict on this PR's actual diff below -- same self-test-before
+      # -real-check pattern as migrations-reconciliation-ratchet.yml and
+      # detector-negative-control.yml. Every rule has a fixture observed
+      # failing on the bad shape and passing on the safe shape (see
+      # scripts/permissions-ratchet-fixtures/ and --self-test).
+      - name: Self-test the ratchet's own rules
+        run: python scripts/permissions-ratchet.py --self-test
+
+      # BUILD-FAILING. Diff-scoped to supabase/migrations/**/*.sql lines
+      # THIS PR adds (base = the PR's target-branch sha, head = the PR's own
+      # tip; the script diffs with `git diff base...head`, i.e. against
+      # their merge-base, so it never sees unrelated commits landed on main
+      # after this PR branched). A bypass must "print loudly that it was
+      # used" (work order) -- `--labels` is read directly from the
+      # pull_request event's own label list via the `join()` expression
+      # below, never re-derived from any other source. Comma-joined so a
+      # label containing no comma (this repo's convention:
+      # "permissions-ratchet: reviewed") survives the script's own
+      # --labels split intact.
+      - name: Run permissions ratchet against this PR's diff
+        id: ratchet
+        env:
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          python scripts/permissions-ratchet.py \
+            --root . \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$PR_LABELS"
+
+      - name: Publish report to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Permissions Ratchet (gh-1767)"
+            echo
+            echo "Base: \`${{ github.event.pull_request.base.sha }}\`  Head: \`${{ github.event.pull_request.head.sha }}\`"
+            echo "Labels seen: \`$PR_LABELS\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}

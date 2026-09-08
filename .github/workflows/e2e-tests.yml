@@ -1,14 +1,56 @@
 name: Playwright E2E Tests
 
 # gh-1261 / Dustin's CEO ruling 2026-08-26 ("strip"): this suite's "Run E2E
-# Tests" job has failed on every PR since 2026-06-23 -- 64 days of a
-# required check that every merge routes around (re-verified red one last
-# time: conclusion:failure on PR #1256, checks run 2026-08-26T00:14Z). It is
-# neutralized below with continue-on-error, NOT deleted, so its tests
-# remain available to run by hand. Its replacement is the
+# Tests" job had failed on every PR since 2026-06-23. It was neutralized with
+# continue-on-error, NOT deleted. Its replacement as the merge gate is the
 # "5-Page Revenue-Path Smoke Check" (.github/workflows/e2e-smoke.yml).
-# Do not remove continue-on-error without first fixing what's actually
-# failing -- see hazard-register.md for the full history.
+#
+# gh-1731 (COST GATE), 2026-09-08: `Run E2E Tests` and `Seed Must Pass` have
+# MOVED to .github/workflows/e2e-nightly.yml (nightly cron +
+# workflow_dispatch). Measured, 7-day census Sep 1-7 2026 via the Actions API
+# with job-level ceil(seconds/60) and GitHub's 1-minute-per-job billing floor:
+# those two jobs cost 5.66 billable job-min per run x 452 runs/7d
+# = 2,558 min/7d = 10,963 job-min/month, against a repo total of ~35,558
+# job-min/month (independently confirmed against the org billing API:
+# 8,297 "Actions Linux" minutes for this repo Sep 1-7). Net saving after the
+# nightly run's own 190 job-min/month: -10,773 job-min/month. See #1731.
+#
+# NOTHING that carried PR signal was deleted. Step-by-step disposition of the
+# old `test` job, so this is auditable rather than asserted:
+#   * check-partner-sw-version.py, check-partner-surface-single-source.py,
+#     check-payout-timing-copy-drift.py  -> moved into `static-integrity`
+#     below (Python only, no new toolchain setup, no new job, so no new
+#     1-minute billing floor is paid).
+#   * `node --check` over js/**/*.js and the four tests/auth-*.mjs unit tests
+#     -> moved into `typescript-check` below, which already runs
+#     actions/setup-node, so again no new setup and no new job.
+#   * `deno test supabase/functions/notify-contractors/test-exclusion.test.ts`
+#     and `deno test supabase/functions/docusign-webhook/payload-parser.test.ts
+#     ack-verify.test.ts` -> DROPPED as provably redundant, not as a cut. The
+#     `edge-function-tests` job below already runs
+#     `deno test --allow-read=supabase/functions supabase/functions/`, which
+#     discovers every *.test.ts under that tree; all three files live under it
+#     (verified: `find supabase/functions -name '*.test.ts'` lists
+#     notify-contractors/test-exclusion.test.ts,
+#     docusign-webhook/payload-parser.test.ts and
+#     docusign-webhook/ack-verify.test.ts), and that job's own comment already
+#     counts them ("ack-verify 11, payload-parser 7, test-exclusion 11").
+#     They were being executed twice per PR, once for a 1-minute floor.
+#   * Playwright install / seed / npm test / teardown / report+video artifact
+#     uploads -> moved to e2e-nightly.yml unchanged.
+#
+# Not touched by gh-1731, deliberately, each with its measured reason:
+#   * The two branch-protection-required contexts. Live
+#     required_status_checks.contexts on `main` (2026-09-08T02:41Z) is exactly
+#     ["Null-Byte & Size Sanity Check", "5-Page Revenue-Path Smoke Check"].
+#     No `concurrency`/`paths` was added to either workflow: #1596 cost this
+#     repo an hour-long merge-group timeout when a required check stopped
+#     reporting, and the measured saving would have been ~0 anyway (both are
+#     single-job and both sit on the 1-minute floor).
+#   * Wider `paths` filters. Measured on a random 45 of the 155 PRs opened
+#     Sep 1-7: 1 was docs/evidence-only (2.2%), so path filtering is worth
+#     <=600 job-min/month across the whole repo. The `paths-ignore` below is
+#     kept because it is free, not because it pays.
 
 on:
   push:
@@ -27,16 +69,27 @@ on:
       - '**.md'
       - 'Docs/**'
       - 'handoffs/**'
+# gh-1731 (PR #1740, kept): skip this suite for pure prose/doc changes. Priced
+# again on this run against a random 45 of the 155 PRs opened Sep 1-7 2026: 1
+# was docs/evidence-only (2.2%), so this filter is worth well under 600
+# job-min/month. Kept because it is free, not because it pays. NOTE the jobs
+# below are NOT all advisory any more -- `ci-test-function-parity` and
+# `is-test-cross-table-guard` deliberately carry no continue-on-error and MUST
+# be able to fail a PR (gh-1584, gh-1763), so do not widen this filter without
+# checking what it would let through for those two.
 
-# gh-1731: skip this whole (non-required, continue-on-error) suite for pure
-# prose/doc changes. Measured against a 20-PR recent sample: 0 of 20 were
-# docs-only, so this repo's actual PR traffic gets ~no benefit from it today --
-# kept anyway because it is zero-risk and free for the docs-only PR that does
-# show up. Deliberately NOT touching the `test` job's concurrency block below:
-# that group is scoped repo-wide (not per-PR) because overlapping runs corrupt
-# shared fixtures on the ci-test Supabase project, and narrowing it is called
-# out in that job's own comment as needing a multi-day soak first -- see this
-# PR's body for why that is a Q to @exec:cto, not a change made here.
+# gh-1731: supersede a PR's own in-flight run when a new push lands. Measured
+# saving is ~0 job-minutes today -- the 155 PRs opened Sep 1-7 averaged 2.1
+# push events each, and every remaining job in this workflow sits on GitHub's
+# 1-minute billing floor, where a cancelled job bills the same minute a
+# completed one does (PR #1740 measured this and reported it). It is added for
+# queue depth and merge latency, which #1731 calls "the half that costs
+# throughput", NOT as a cost line. Scoped per-PR (never repo-wide) and never
+# applied to a merge_group-triggered required check.
+concurrency:
+  group: e2e-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
@@ -62,6 +115,9 @@ jobs:
       - name: $10,000 commission-floor phrasing guard (D-286, gh-920)
         run: python3 scripts/check-10k-floor-phrasing.py
 
+      - name: Contractor credential/screening claim guard (D-104, gh-1617)
+        run: python3 scripts/check-credential-claims.py
+
       - name: Partner-signup consent checkbox link guard (D-278, gh-943)
         run: python3 scripts/check-partner-consent-link.py
 
@@ -70,6 +126,18 @@ jobs:
 
       - name: supabase-js CDN pin + SRI guard (gh-1793)
         run: python3 scripts/check-supabase-js-sri.py
+
+      # gh-1731: moved here from the old `test` job (now nightly). Pure Python,
+      # no toolchain setup, so they cost this job 0 additional billable minutes
+      # instead of riding along inside a 5.33-min/run Playwright job.
+      - name: partner-sw.js VERSION-bump check (gh-831)
+        run: python3 scripts/check-partner-sw-version.py
+
+      - name: partner-surface single-source-of-truth check (gh-807)
+        run: python3 scripts/check-partner-surface-single-source.py
+
+      - name: payout-timing copy drift check (gh-832)
+        run: python3 scripts/check-payout-timing-copy-drift.py
 
   typescript-check:
     name: TypeScript Check
@@ -90,6 +158,42 @@ jobs:
       - name: Install react-app dependencies
         working-directory: react-app
         run: npm ci --no-audit --no-fund
+
+      # gh-1731: moved here from the old `test` job (now nightly). This job
+      # already runs actions/setup-node, so these steps add no setup, no new
+      # job and therefore no new 1-minute billing floor. They are cheap
+      # (<10s each) and every one of them is a named regression guard, so they
+      # keep running on every PR rather than moving to the nightly cadence.
+      - name: Lint vanilla JS for syntax errors
+        run: |
+          echo "Running node --check on js/**/*.js ..."
+          failed=0
+          while IFS= read -r -d '' file; do
+            if node --check "$file" 2>/tmp/node_check_err; then
+              echo "PASS: $file"
+            else
+              echo "FAIL [parse-error]: $file"
+              head -1 /tmp/node_check_err
+              failed=1
+            fi
+          done < <(find js/ -name "*.js" -print0 2>/dev/null)
+          if [ "$failed" -eq 1 ]; then
+            echo "One or more JS files failed syntax check."
+            exit 1
+          fi
+          echo "All js/ files passed syntax check."
+
+      - name: auth.js stale-session no-hang unit test (#602 regression)
+        run: node tests/auth-stale-session-no-hang.mjs
+
+      - name: auth.js partner-role-resolution unit test (#817/#643 regression)
+        run: node tests/auth-partner-role-resolution.mjs
+
+      - name: index.html bounce routing-outcome unit test (#817 A1b regression)
+        run: node tests/auth-index-bounce-routing.mjs
+
+      - name: auth.js partner-surface single-source-of-truth unit test (#807 regression)
+        run: node tests/auth-partner-surface-single-source.mjs
 
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
@@ -212,207 +316,3 @@ jobs:
       # are permitted, and the whole repo is already present on the runner's disk.
       - name: Edge Function unit tests (pure-unit, no secrets)
         run: deno test --allow-read=supabase/functions supabase/functions/
-
-  test:
-    name: Run E2E Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    # gh-1261: neutralized 2026-08-26, see header comment above -- 64 days
-    # red is not a signal, so this job no longer blocks a merge. Tests stay
-    # in place and still run; only their power to fail the workflow is cut.
-    continue-on-error: true
-    # gh-1584: exposes the seed step's outcome to the new seed-must-pass job
-    # below, since continue-on-error above hides it from this job's own
-    # conclusion. This is what lets the RUN fail on a seed failure without
-    # un-neutralizing Playwright flakiness.
-    outputs:
-      seed_outcome: ${{ steps.seed.outcome }}
-    # gh-689: DB traffic now targets the dedicated otterquote-ci-test project
-    # (zsdvaqilfdclwosmiheh), not production — see the Seed/Run/Teardown steps
-    # below. Concurrency serialization is KEPT for now: every run still shares
-    # ONE set of fixtures on that one test project, so overlapping runs can
-    # still corrupt each other's seeded rows exactly as documented on #689
-    # (08-11 run-timestamp reconciliation, #703's claim-not-found failures).
-    # Revisit relaxing this once a few days of green runs confirm the new
-    # project holds up under concurrent CI load — not done as part of this
-    # cutover so the isolation change and the concurrency change aren't
-    # conflated if something needs to be rolled back.
-    # GitHub semantics: at most 1 running + 1 pending per group; a newer
-    # queued run supersedes (cancels) the previously PENDING one. E2E is
-    # advisory, so a superseded run loses signal but blocks nothing — better
-    # than N concurrent runs producing N false reds against each other.
-    concurrency:
-      group: e2e-test-project-fixtures
-      cancel-in-progress: false
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: partner-sw.js VERSION-bump check (gh-831)
-        run: python3 scripts/check-partner-sw-version.py
-
-      - name: partner-surface single-source-of-truth check (gh-807)
-        run: python3 scripts/check-partner-surface-single-source.py
-
-      - name: payout-timing copy drift check (gh-832)
-        run: python3 scripts/check-payout-timing-copy-drift.py
-
-      - name: Lint vanilla JS for syntax errors
-        run: |
-          echo "Running node --check on js/**/*.js ..."
-          failed=0
-          while IFS= read -r -d '' file; do
-            if node --check "$file" 2>/tmp/node_check_err; then
-              echo "PASS: $file"
-            else
-              echo "FAIL [parse-error]: $file"
-              head -1 /tmp/node_check_err
-              failed=1
-            fi
-          done < <(find js/ -name "*.js" -print0 2>/dev/null)
-          if [ "$failed" -eq 1 ]; then
-            echo "One or more JS files failed syntax check."
-            exit 1
-          fi
-          echo "All js/ files passed syntax check."
-
-      - name: Setup Deno (notify-contractors unit tests)
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - name: notify-contractors fan-out symmetry unit tests (#564 regression, notification direction)
-        run: deno test supabase/functions/notify-contractors/test-exclusion.test.ts
-
-      - name: BoldSign webhook payload-parser + D-269 ack-backstop unit tests (D-274 / #631)
-        run: deno test supabase/functions/docusign-webhook/payload-parser.test.ts supabase/functions/docusign-webhook/ack-verify.test.ts
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-          cache-dependency-path: 'tests/e2e/package.json'
-
-      - name: auth.js stale-session no-hang unit test (#602 regression)
-        run: node tests/auth-stale-session-no-hang.mjs
-
-      - name: auth.js partner-role-resolution unit test (#817/#643 regression)
-        run: node tests/auth-partner-role-resolution.mjs
-
-      - name: index.html bounce routing-outcome unit test (#817 A1b regression)
-        run: node tests/auth-index-bounce-routing.mjs
-
-      - name: auth.js partner-surface single-source-of-truth unit test (#807 regression)
-        run: node tests/auth-partner-surface-single-source.mjs
-
-      - name: Install E2E test dependencies
-        working-directory: tests/e2e
-        run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
-          restore-keys: |
-            playwright-chromium-${{ runner.os }}-
-
-      - name: Install Playwright browsers
-        working-directory: tests/e2e
-        run: npx playwright install --with-deps chromium
-
-      - name: Seed test database
-        id: seed
-        working-directory: tests/e2e
-        env:
-          # gh-689: repointed off production (yeszghaspzwwstvsrioa) onto the
-          # dedicated otterquote-ci-test project. The project URL is not
-          # secret (same status as a client-side NEXT_PUBLIC_SUPABASE_URL) so
-          # it is inlined directly; only the service-role key needs a secret,
-          # and it is intentionally a NEW name (SUPABASE_TEST_SERVICE_ROLE_KEY)
-          # rather than reusing SUPABASE_SERVICE_ROLE_KEY, because that secret
-          # is also consumed by generate-contractor-pages.yml against
-          # production and must not be repointed.
-          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
-          BASE_URL: ${{ secrets.BASE_URL }}
-        run: npm run seed
-
-      - name: Run Playwright tests
-        # gh-1584: a skipped test step must not read as a pass. If the seed
-        # failed, don't run Playwright against an unseeded/half-seeded
-        # database -- seed-must-pass below is what turns that into a red run.
-        if: steps.seed.outcome == 'success'
-        working-directory: tests/e2e
-        env:
-          BASE_URL: ${{ secrets.BASE_URL }}
-          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
-        run: npm test
-
-      - name: Teardown test database
-        if: always()
-        working-directory: tests/e2e
-        env:
-          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
-        run: npm run teardown
-
-      - name: Upload test report on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report
-          path: tests/e2e/playwright-report/
-          retention-days: 30
-
-      - name: Upload test videos on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: test-videos
-          path: tests/e2e/test-results/
-          retention-days: 7
-
-  seed-must-pass:
-    name: Seed Must Pass (gh-1584)
-    needs: [test]
-    # gh-1584 follow-up (cto27, 2026-09-06): `always()` alone also fires when
-    # `test` was CANCELLED or SKIPPED, and a cancelled job has EMPTY outputs --
-    # so `needs.test.outputs.seed_outcome` comes back unset and this gate reds
-    # the run for a seed that never even ran. Measured: every PR run today logs
-    # "Seed test database step outcome: <unset>" with `Run E2E Tests` =
-    # cancelled, because the repo-wide `e2e-test-project-fixtures` concurrency
-    # group (kept deliberately for #689 fixture corruption -- do NOT narrow it
-    # here, see PR #1740) supersedes the pending run. A constant red is not a
-    # gate. Control: on push-to-main runs where `test` actually ran, the seed
-    # succeeded and this gate was `success` (runs 34053807928, 34038548040).
-    # Excluding cancelled/skipped preserves gh-1584's intent exactly: a seed
-    # that genuinely FAILS still fails the gate, because `test` then completes
-    # (continue-on-error) with a real, non-empty seed_outcome.
-    if: always() && needs.test.result != 'cancelled' && needs.test.result != 'skipped'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    # No continue-on-error, deliberately: this is the gate. The `test` job
-    # above stays continue-on-error (gh-1261, do not remove -- see header
-    # comment) so Playwright flakiness doesn't block a merge, but that same
-    # continue-on-error hides a failed SEED from the run conclusion, which
-    # is exactly the defect the CTO flagged on gh-1584 2026-09-04T19:16:26Z:
-    # "the E2E workflow must fail the run when the seed fails, rather than
-    # skipping the tests and concluding success. A skipped test step is not
-    # a pass." This job has no continue-on-error, so a failed/skipped seed
-    # turns the overall RUN conclusion red even though `test` itself stays
-    # green-with-skips.
-    steps:
-      - name: Fail the run if the E2E seed step did not succeed
-        run: |
-          outcome="${{ needs.test.outputs.seed_outcome }}"
-          echo "Seed test database step outcome: ${outcome:-<unset>}"
-          if [ "$outcome" != "success" ]; then
-            echo "::error::E2E seed failed (outcome='${outcome:-<unset>}'). The 'test' job's continue-on-error masks this from its own conclusion, so this gate job exists to fail the RUN when the seed itself fails (gh-1584). A skipped Playwright run because the seed failed is not a pass."
-            exit 1
-          fi
-          echo "Seed succeeded."
