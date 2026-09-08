@@ -7,19 +7,38 @@ prints PASS/FAIL lines in this repo's convention) so it is discovered and run
 by scripts/detector-negative-control-check.py's CHECK 1 the same way every
 other detector's <name>.test.py is.
 
-Also directly exercises scan_file() against the REAL, historically-recovered
-PR #1720 original spec (commit 133b2db, before its own review fix in commit
-4d542ba) and the REAL current tests/e2e/smoke/entry-point-reachability.spec.ts
-on `main` -- the actual incident this check exists to catch, not just a
-synthetic stand-in -- so a regression that only shows up against real-world
-shapes (nine install sites across three separate page.evaluate blocks, not
-one) does not slip past a fixture that is too minimal to exercise it.
+Also directly exercises scan_file() against a FROZEN, committed fixture of
+PR #1720's real original spec (scripts/fixtures/gh1840/spy-before-click.spec.ts.fixture
+-- see scripts/fixtures/gh1840/PROVENANCE.md for exactly which commit it was
+extracted from and why) and the REAL current
+tests/e2e/smoke/entry-point-reachability.spec.ts on `main` -- the actual
+incident this check exists to catch, not just a synthetic stand-in -- so a
+regression that only shows up against real-world shapes (nine install sites
+across three separate page.evaluate blocks, not one) does not slip past a
+fixture that is too minimal to exercise it.
+
+PR #1866 review (comment 5584552830) found the prior version of this file
+read the original spec live via `git show <sha>:<path>` at test time. That
+broke two ways at once, both fixed by freezing the content instead:
+  1. `actions/checkout@v4`'s default shallow (depth-1) clone means the old
+     commit is not present in CI's checkout, so `git show` exits 128 on
+     every real GitHub Actions run -- the real-recovery check silently
+     WARNed and skipped there, even though it ran fine locally (full
+     history). The PR's own headline evidence never actually executed in
+     the CI that gates `main`.
+  2. The old commit's full SHA, embedded as a literal `git show` argument,
+     tripped this repo's Credential Shape Sweep (HEX_RUN_20 -- any bare
+     20+ hex-char run, regardless of what it actually is).
+A missing fixture is now a HARD FAIL (non-zero exit, a named token,
+FIXTURE_MISSING) rather than a WARN-and-skip -- a silent downgrade from
+required-and-absent to skipped-and-invisible is exactly the #1840 issue
+class this detector exists to catch, and this test file is not exempt from
+its own rule.
 
 Run: python spec-spy-order-check.test.py
 """
 import importlib.util
 import pathlib
-import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -52,41 +71,32 @@ def main():
     print("scripts/spec-spy-order-check.py -- real-world regression fixtures")
     print("=" * 78)
 
-    # Recovered from git history directly, not committed as a duplicate file
-    # under scripts/fixtures/ -- this IS PR #1720's actual original spec
-    # (commit 133b2db on wm/gh1697), the real incident named in this
-    # script's own module docstring, not a stand-in for it.
-    proc = subprocess.run(
-        ["git", "show", "133b2db6a5cc1e192d15cbd324918d26b7b84122:"
-         "tests/e2e/smoke/entry-point-reachability.spec.ts"],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if proc.returncode != 0:
+    # FROZEN fixture, committed to the repo -- see the module docstring above
+    # and scripts/fixtures/gh1840/PROVENANCE.md for exactly which commit this
+    # is byte-for-byte extracted from and why it is no longer fetched live
+    # via `git show` at test time. Deliberately NOT a soft skip: a missing
+    # fixture is this test's own instance of the #1840 issue class (a
+    # required check silently downgrading to absent-and-unnoticed), so it is
+    # a hard, named-token failure instead.
+    real_buggy = HERE / "fixtures" / "gh1840" / "spy-before-click.spec.ts.fixture"
+    if not real_buggy.exists():
         print(
-            "  WARN  could not recover PR #1720's original commit 133b2db from local git "
-            "history (git show exit %d: %s) -- skipping the real-world regression check. "
-            "This is an environment limitation (shallow clone / commit not fetched), not a "
-            "detector failure; the fixture-based checks above already covered self_test()."
-            % (proc.returncode, proc.stderr.strip()[:200])
+            "  FAIL  FIXTURE_MISSING: frozen fixture not found at %s -- this is NOT an "
+            "environment limitation to WARN past. The fixture is committed to the repo "
+            "(see scripts/fixtures/gh1840/PROVENANCE.md); its absence means the real-world "
+            "regression check this test exists to run cannot run at all." % real_buggy
         )
+        FAILURES.append("FIXTURE_MISSING")
     else:
-        real_buggy = HERE / "fixtures" / "_scratch-pr1720-original.spec.ts"
-        real_buggy.write_text(proc.stdout, encoding="utf-8")
-        try:
-            violations, blocks = spy_order.scan_file(real_buggy, ROOT)
-            spy_tokens = [v for v in violations if spy_order.VERDICT_TOKEN in v]
-            check(
-                "REAL PR #1720 original (commit 133b2db) rejected with >=6 "
-                "SPY_UNVERIFIED violations (six money-path handlers, PR #1720 "
-                "comment 5560323618)",
-                len(spy_tokens) >= 6,
-                True,
-            )
-        finally:
-            real_buggy.unlink(missing_ok=True)
+        violations, blocks = spy_order.scan_file(real_buggy, ROOT)
+        spy_tokens = [v for v in violations if spy_order.VERDICT_TOKEN in v]
+        check(
+            "FROZEN FIXTURE (PR #1720 original, see scripts/fixtures/gh1840/"
+            "PROVENANCE.md) rejected with >=6 SPY_UNVERIFIED violations "
+            "(six money-path handlers, PR #1720 comment 5560323618)",
+            len(spy_tokens) >= 6,
+            True,
+        )
 
     real_clean = ROOT / "tests" / "e2e" / "smoke" / "entry-point-reachability.spec.ts"
     if real_clean.exists():
