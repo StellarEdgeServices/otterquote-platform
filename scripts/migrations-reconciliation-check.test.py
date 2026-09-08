@@ -13,17 +13,29 @@ disabled on day two"):
      applied-and-documented FAILS -- that is the one widening a repo diff can
      see.
 
+Also proves the gh-1438 amendment (issuecomment-5571428783, DECIDED
+2026-09-07): a `_rollback.sql` / `_pre-flight.md` companion file is excluded
+from `scan_repo_versions` on a real filesystem fixture (not just the
+fabricated in-memory sets above the fold), and the end-to-end negative
+control -- scan + compute_verdict together, against files actually on disk
+-- still FAILS when a documented-applied migration's forward file is deleted,
+even when a rollback companion for that same version is left behind.
+
 No network access and no credentials required -- this drives the pure
 `compute_verdict` comparison layer directly, the same importlib pattern this
 repo already uses in scripts/edge-function-drift-check.test.py for scripts
-whose filenames aren't valid Python module names.
+whose filenames aren't valid Python module names. The two new fixture-based
+tests below use `tempfile.TemporaryDirectory()` for the same reason --
+real `os.listdir()` behavior, no mocking.
 
 Run: python3 scripts/migrations-reconciliation-check.test.py
 """
 
 import importlib.util
+import os
 import pathlib
 import sys
+import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location(
@@ -143,6 +155,59 @@ def test_render_report_pass_case():
     check("report: contains PASS", "PASS" in report, True)
 
 
+def test_scan_repo_versions_excludes_orphan_rollback_and_preflight():
+    # gh-1438 amendment (issuecomment-5571428783): an orphan rollback/
+    # pre-flight companion -- no forward .sql sibling at the same version --
+    # would, before this fix, register as a brand-new "repo file but not
+    # applied" version that can never be resolved, since a rollback script
+    # is never itself applied. Real filesystem fixture, not a fabricated set.
+    with tempfile.TemporaryDirectory() as tmp:
+        mig_dir = os.path.join(tmp, "supabase", "migrations")
+        os.makedirs(mig_dir)
+        # A real, ordinary forward migration -- must still be scanned.
+        open(os.path.join(mig_dir, "20260101000000_gh1_real_migration.sql"), "w").close()
+        # An orphan rollback file at a version with NO forward sibling.
+        open(os.path.join(mig_dir, "20990101000000_gh9999_orphan_rollback.sql"), "w").close()
+        # An orphan pre-flight doc at a different orphan version.
+        open(os.path.join(mig_dir, "20990101000001_gh9999_orphan_pre-flight.md"), "w").close()
+        versions = ratchet.scan_repo_versions(tmp)
+    check(
+        "orphan rollback/pre-flight excluded from scan: only the real migration counted",
+        versions,
+        {"20260101000000"},
+    )
+
+
+def test_end_to_end_fixture_fails_when_documented_migration_file_deleted():
+    # Full negative control on a real directory tree (not the fabricated
+    # in-memory BASELINE_REPO_VERSIONS set used above): version 20's forward
+    # file is deleted -- only its rollback companion is left behind, the
+    # exact failure mode the CTO's ruling describes. Proves scan_repo_versions
+    # + compute_verdict together still catch the regression: the rollback
+    # companion does not mask it by supplying a same-named version, because
+    # it is excluded from the scan on both sides.
+    baseline = {
+        "applied_versions": ["20260101000010", "20260101000020", "20260101000030"],
+        "applied_no_repo_file_versions": ["20260101000030"],
+        "repo_file_no_applied_versions": [],
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        mig_dir = os.path.join(tmp, "supabase", "migrations")
+        os.makedirs(mig_dir)
+        open(os.path.join(mig_dir, "20260101000010_gh_a.sql"), "w").close()
+        # version 20260101000020's forward file is DELETED; only its
+        # rollback companion remains.
+        open(os.path.join(mig_dir, "20260101000020_gh_b_rollback.sql"), "w").close()
+        current = ratchet.scan_repo_versions(tmp)
+        verdict = ratchet.compute_verdict(baseline, current)
+    check("end-to-end fixture: ok is False", verdict["ok"], False)
+    check(
+        "end-to-end fixture: regression lists the deleted version, not masked by its rollback file",
+        verdict["regressions"],
+        ["20260101000020"],
+    )
+
+
 def main() -> int:
     test_unchanged_state_passes()
     test_legacy_debt_alone_passes()
@@ -153,6 +218,8 @@ def main() -> int:
     test_deleting_an_already_orphaned_version_is_not_double_counted()
     test_render_report_mentions_fail_and_versions()
     test_render_report_pass_case()
+    test_scan_repo_versions_excludes_orphan_rollback_and_preflight()
+    test_end_to_end_fixture_fails_when_documented_migration_file_deleted()
 
     if FAILURES:
         print(f"\n{len(FAILURES)} check(s) FAILED: {FAILURES}")
