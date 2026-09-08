@@ -1,0 +1,17 @@
+# FIXTURE (bad) -- BLOCKER 2 from PR #1857's REVIEW: FAIL, the reviewer's own
+# file. One `env:` hop defeated rule 1, which pattern-matched the literal text
+# of the `ref:` line -- and `env:` indirection is the shape this ratchet's own
+# docstring teaches as SAFE for the run: sink, so a reader was encouraged to
+# write exactly this. Env values are now resolved before the ref is judged.
+name: evade env ref
+on:
+  pull_request_target: {types: [opened]}
+env:
+  PR_HEAD: ${{ github.event.pull_request.head.sha }}
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PR_HEAD }}

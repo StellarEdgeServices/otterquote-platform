@@ -1,0 +1,15 @@
+# FIXTURE (bad): the classic pwn shape -- base-context secrets, attacker's tree.
+name: prt head checkout (bad)
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: npm ci

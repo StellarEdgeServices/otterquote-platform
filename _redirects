@@ -87,6 +87,27 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /guides/how-to-choose-contractor /guides/how-to-choose-contractor.html 301
 /guides/how-to-negotiate-with-insurer /guides/how-to-negotiate-with-insurer.html 301
 /guides/how-to-read-contractor-estimate /guides/how-to-read-contractor-estimate.html 301
+# gh-1745 wave 2 (CRO RUN 20): the remaining 12 /blog/ articles with a
+# .html twin and no rule above -- CLOSE-REVIEW: FAIL on the issue found
+# these still byte-identical duplicates (same sha256, same byte count,
+# canonical already pointing at the .html twin) on 2026-09-08. Same
+# direction, same reasoning as the six above. These rules alone do NOT
+# win the race against Netlify Pretty URLs -- see
+# netlify/edge-functions/blog-guides-redirect.ts, which is the mechanism
+# that actually fires; these lines stay as the documented source of
+# truth per that file's own header comment.
+/blog/aerial-roof-measurement-reports /blog/aerial-roof-measurement-reports.html 301
+/blog/does-homeowners-insurance-cover-roof-damage /blog/does-homeowners-insurance-cover-roof-damage.html 301
+/blog/hail-vs-wind-roof-damage /blog/hail-vs-wind-roof-damage.html 301
+/blog/public-adjuster-vs-diy-roof-claim /blog/public-adjuster-vs-diy-roof-claim.html 301
+/blog/rcv-vs-acv-roof-insurance /blog/rcv-vs-acv-roof-insurance.html 301
+/blog/roof-shingle-warranty-tiers-explained /blog/roof-shingle-warranty-tiers-explained.html 301
+/blog/roofing-estimate-red-flags /blog/roofing-estimate-red-flags.html 301
+/blog/storm-chaser-roofing-scams /blog/storm-chaser-roofing-scams.html 301
+/blog/what-is-recoverable-depreciation-roofing /blog/what-is-recoverable-depreciation-roofing.html 301
+/blog/what-is-scope-of-loss-roofing /blog/what-is-scope-of-loss-roofing.html 301
+/blog/when-not-to-file-roof-insurance-claim /blog/when-not-to-file-roof-insurance-claim.html 301
+/blog/why-roofers-quote-different-prices /blog/why-roofers-quote-different-prices.html 301
 
 # gh-1795: twelve blog articles promoted from otterquote-deploy/blog/ (a committed
 # May-2026 working-directory mirror, unstyled, canonicalising to a 404) to the real

@@ -256,10 +256,6 @@ LEGACY_EXEMPT = {
     "scripts/ci-file-integrity.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/migration-filename-lint.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/patch-fatigue-detector.py": "no negative-control test yet (pre-gh-1738)",
-    "scripts/schema-column-lint.py": (
-        "firing is not this detector's gap -- CHECK 2 (wiring reconciliation) is "
-        "what covers it; see gh-1738 instance 5"
-    ),
     "scripts/schema-secret-lint.py": "no negative-control test yet (pre-gh-1738)",
 }
 
@@ -329,6 +325,43 @@ def check_firing_tests(root: Path):
     violations = []
     info = []
     total_assertions = 0
+
+    # Registry-first pass (gh-1884): DETECTOR_REGISTRY must be enumerated on its
+    # own, not merely consulted per discovered script via .get(rel) below.
+    # discover_detector_scripts() only returns scripts that still exist on disk
+    # under scripts/, so a registered detector whose script file is deleted was
+    # previously simply never visited by the loop below -- a PR that deletes
+    # every DETECTOR_REGISTRY detector (and its self-test) sailed through as
+    # GATE: PASS / VIOLATIONS: 0. Walk the registry itself first so a missing
+    # script and/or a missing self-test for a *registered* detector is always a
+    # violation, independent of what discover_detector_scripts() finds.
+    for rel, manifest in DETECTOR_REGISTRY.items():
+        script_path = root / rel
+        test_rel = manifest["test"]
+        test_path = root / test_rel
+        script_missing = not script_path.exists()
+        test_missing = not test_path.exists()
+        if script_missing and test_missing:
+            violations.append(
+                "FAIL  %s -- registered in DETECTOR_REGISTRY but BOTH the "
+                "detector script and its self-test %s are missing. A registered "
+                "detector cannot be silently deleted; remove its DETECTOR_REGISTRY "
+                "entry explicitly (with justification) if it is being retired."
+                % (rel, test_rel)
+            )
+        elif script_missing:
+            violations.append(
+                "FAIL  %s -- registered in DETECTOR_REGISTRY but the detector "
+                "script itself is missing (self-test %s still present). A "
+                "registered detector's script cannot be silently deleted."
+                % (rel, test_rel)
+            )
+        elif test_missing:
+            violations.append(
+                "FAIL  %s -- registered in DETECTOR_REGISTRY but its self-test "
+                "%s is missing. A registered detector's self-test cannot be "
+                "silently deleted." % (rel, test_rel)
+            )
 
     for rel in discover_detector_scripts(root):
         test_rel = rel[:-3] + ".test.py"
@@ -871,7 +904,16 @@ def run_all(root: Path):
     # per-check patch precisely so it covers the general property (see the
     # module LIMITATIONS section for the enumeration of every empty-result path
     # audited here, including the two that already degrade safely on their own).
-    measured = bool(discover_detector_scripts(root)) or (root / ".github" / "workflows").exists()
+    # gh-1884: this used to be `... or (root / ".github" / "workflows").exists()`,
+    # a bare directory-existence check that is unconditionally True in this repo
+    # (the gate's own workflow file lives there) regardless of whether that
+    # directory actually holds anything -- so GATE: UNMEASURED could never fire
+    # from a real run here. Require the directory to actually contain a workflow
+    # file (the same "*.yml" glob check_secret_names() scans) so an existing-but-
+    # empty .github/workflows/ no longer masquerades as "measured".
+    measured = bool(discover_detector_scripts(root)) or bool(
+        list((root / ".github" / "workflows").glob("*.yml"))
+    )
 
     if not measured:
         verdict = "UNMEASURED"

@@ -1,0 +1,87 @@
+name: Workflow Safety Ratchet
+
+# gh-1651 -- turns this issue's own "it must keep appearing nowhere" note into
+# a check. #1651's body declared, at 2026-09-04T20:16:10Z, that no workflow in
+# this repository used `pull_request_target`; commit c1b0afb7 added one at
+# 22:09:24Z the same evening and nothing noticed for two days (#1651 comment
+# 5561638561). The rule existed only as prose, and prose cannot fail a build.
+#
+# BUILD-FAILING, and deliberately path-filtered: it runs only on PRs that
+# touch `.github/workflows/**` or the ratchet's own script/fixtures. That is
+# ~2% of this repo's PRs (gh-1731's own diff census of 45 sampled PRs), so it
+# adds roughly one billable job-minute per week against the #1731 Actions
+# budget -- the cheapest place to put this check, and the only PRs where its
+# verdict can change.
+#
+# `pull_request` (never `pull_request_target`) on purpose: this check needs no
+# secrets and no write token, so it takes the trigger that grants neither.
+# A fork PR therefore runs the fork's copy of the ratchet -- the general
+# weakness #1651 § 4 describes -- which is bounded by the repository's
+# fork-approval policy (`all_external_contributors`, re-read live 2026-09-08).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/workflow-safety-ratchet.py'
+      - 'scripts/workflow-safety-fixtures/**'
+
+permissions:
+  contents: read
+
+jobs:
+  workflow-safety-ratchet:
+    name: No unsafe pull_request_target workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # The ratchet reads triggers from PARSED YAML. Its line-based fallback
+      # is fail-safe but coarse, and PR #1857's REVIEW: FAIL showed exactly
+      # what a line-based reader misses (a flow-mapping trigger walked past
+      # it). `--require-yaml` below turns a missing parser into UNMEASURED
+      # (exit 3) rather than a quiet second-class pass, so this install is
+      # part of the gate, not a convenience.
+      - name: Install the YAML parser the gate requires
+        run: pip install "pyyaml==6.0.2"
+
+      # BUILD-FAILING. Proves the ratchet's own rules before its verdict on
+      # this PR's tree is trusted -- the same self-test-before-real-check
+      # pattern permissions-ratchet.yml and detector-negative-control.yml use.
+      # Each rule has a fixture observed failing on the bad shape and passing
+      # on the safe one, plus a trigger-level negative control
+      # (plain_pull_request_head_checkout_good.yml) that must stay green.
+      - name: Self-test the ratchet's own rules
+        run: python3 scripts/workflow-safety-ratchet.py --self-test
+
+      # The gh-1738 sibling self-test, which carries PR #1857's three review
+      # attacks inline as well as in the fixture files.
+      - name: Run the detector's sibling self-test
+        run: python3 scripts/workflow-safety-ratchet.test.py
+
+      # BUILD-FAILING. Whole-tree read of .github/workflows -- 19 files, green
+      # on main at the time of writing, so there is no "can never go green"
+      # backlog to justify an advisory posture.
+      # BUILD-FAILING. Exit 0 PASS / 1 findings / 3 UNMEASURED -- an empty or
+      # wrong root is not a pass (gh-1419 precedent, quoted in the sibling
+      # detector-negative-control-check.py).
+      - name: Scan every workflow in this PR's tree
+        run: python3 scripts/workflow-safety-ratchet.py --root . --require-yaml
+
+      - name: Publish report to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Workflow Safety Ratchet (gh-1651)"
+            echo
+            echo '```'
+            python3 scripts/workflow-safety-ratchet.py --root . --require-yaml || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

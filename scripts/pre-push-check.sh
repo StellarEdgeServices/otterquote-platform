@@ -29,6 +29,19 @@ WARN=0
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+echo "=== Shallow-clone guard (gh-1887) ==="
+# git merge-base --is-ancestor exits 1 both when a commit truly isn't an
+# ancestor AND when a shallow clone can't see far enough back to tell --
+# with no stderr distinction between the two. Any ancestry check downstream
+# of this script (this file or a caller) that relies on --is-ancestor is
+# only as trustworthy as this guard passing first.
+if bash "$ROOT/scripts/check-shallow-clone-guard.sh"; then
+  :
+else
+  FAIL=$((FAIL+1))
+fi
+
+echo ""
 echo "=== JS syntax check (js/**/*.js) ==="
 JS_FILES=$(find js -maxdepth 3 -name "*.js" -type f 2>/dev/null)
 for f in $JS_FILES; do

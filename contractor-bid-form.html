@@ -2367,35 +2367,35 @@
         </p>
       </div>
 
-      <!-- DocuSign Loading -->
-      <div id="contractorDocusignLoading" style="text-align: center; padding: var(--sp-8);">
+      <!-- E-signature: loading -->
+      <div id="contractorEsignLoading" style="text-align: center; padding: var(--sp-8);">
         <div style="width: 40px; height: 40px; border: 3px solid #E5E7EB; border-top-color: #E07B00; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto var(--sp-4);"></div>
         <p style="color: var(--navy); font-weight: 600;">Preparing your contract for signing...</p>
         <p style="color: #6B7280; font-size: 0.9rem;">This may take a few seconds.</p>
       </div>
 
-      <!-- DocuSign Error -->
-      <div id="contractorDocusignError" style="display: none; text-align: center; padding: var(--sp-6); background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius-md);">
+      <!-- E-signature: error -->
+      <div id="contractorEsignError" style="display: none; text-align: center; padding: var(--sp-6); background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius-md);">
         <div style="font-size: 2rem; margin-bottom: var(--sp-3);">⚠️</div>
-        <p style="color: #DC2626; font-weight: 600; margin-bottom: var(--sp-2);" id="contractorDocusignErrorTitle">Unable to prepare contract</p>
-        <p style="color: #6B7280; font-size: 0.9rem; margin-bottom: var(--sp-4);" id="contractorDocusignErrorDetail">Please try again or contact support.</p>
+        <p style="color: #DC2626; font-weight: 600; margin-bottom: var(--sp-2);" id="contractorEsignErrorTitle">Unable to prepare contract</p>
+        <p style="color: #6B7280; font-size: 0.9rem; margin-bottom: var(--sp-4);" id="contractorEsignErrorDetail">Please try again or contact support.</p>
         <button class="submit-button" onclick="initContractorSigning()" style="max-width: 200px; margin: 0 auto;">Retry</button>
       </div>
 
-      <!-- DocuSign Iframe -->
-      <div id="contractorDocusignContainer" style="display: none;">
-        <iframe id="contractorDocusignFrame" style="width: 100%; min-height: 600px; border: 1px solid #E5E7EB; border-radius: var(--radius-md); background: #fff;" allow="geolocation"></iframe>
+      <!-- E-signature: embedded signing frame -->
+      <div id="contractorEsignContainer" style="display: none;">
+        <iframe id="contractorEsignFrame" style="width: 100%; min-height: 600px; border: 1px solid #E5E7EB; border-radius: var(--radius-md); background: #fff;" allow="geolocation"></iframe>
       </div>
 
       <!-- Signed Confirmation -->
-      <div id="contractorDocusignSigned" style="display: none; text-align: center; padding: var(--sp-6); background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: var(--radius-md);">
+      <div id="contractorEsignSigned" style="display: none; text-align: center; padding: var(--sp-6); background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: var(--radius-md);">
         <div style="font-size: 2rem; margin-bottom: var(--sp-3);">✅</div>
         <p style="color: #16A34A; font-weight: 600; margin-bottom: var(--sp-2);">Contract Signed Successfully</p>
         <p style="color: #6B7280; font-size: 0.9rem; margin-bottom: var(--sp-4);">Your bid is now live. If the homeowner selects you, the contract will be sent to both of you for signature.</p>
         <a href="contractor-dashboard.html" style="color: var(--amber); font-weight: 600; text-decoration: none;">← Back to Dashboard</a>
       </div>
 
-      <!-- Skip option (for auto-bids or if DocuSign has issues) -->
+      <!-- Skip option (for auto-bids, or if the e-signature step has issues) -->
       <div id="contractorSignSkip" style="display: none; text-align: center; margin-top: var(--sp-4);">
         <p style="color: #6B7280; font-size: 0.85rem; margin-bottom: var(--sp-2);">Having trouble signing? You can complete this step later.</p>
         <a href="contractor-dashboard.html" style="color: #6B7280; font-size: 0.85rem; text-decoration: underline;">Skip for now → Dashboard</a>
@@ -2775,6 +2775,11 @@
     }
 
     // ── Gutter Guard Dynamic Entries ──
+    // gh-1730/gh-1693: this container's Remove button is delegated through
+    // OQ_BID_FORM_ACTIONS above rather than an inline onclick= built inside
+    // this template literal -- the bare ${idx} used to close the attribute,
+    // which tools/inline_handler_attr_check.py (STRICT_FILES) now catches
+    // here the same way it already does on contractor-opportunities.html.
     function addGutterGuardEntry(prefill) {
       gutterGuardCount++;
       const idx = gutterGuardCount;
@@ -4068,7 +4073,7 @@
 
     // gh-1504 copy check: bid_can_submit's `reason` strings were read live from
     // the DB (pg_proc.prosrc). Most are already contractor-readable. Two are
-    // not: 'manual_mapping_pending' names internal DocuSign anchor-mapping
+    // not: 'manual_mapping_pending' names internal e-signature anchor-mapping
     // terminology, and the input-validation failures (status: null -- missing
     // contractor_id/trade/funding_type) are pure engineer-facing guard clauses
     // that should never reach a contractor's screen. Keyed on `status` (a
@@ -4237,12 +4242,31 @@
         document.body.removeChild(hoverPdfLink);
       } catch (err) {
         console.error('Failed to open measurement PDF:', err);
-        // gh-1748: get-hover-pdf (index.ts:166-182, D-317 cl. 7 / #1636) returns
-        // 403 when the caller is not entitled to a manual-fulfilment PDF — that
-        // is a policy refusal, not a missing file, so it gets its own honest
-        // copy instead of the "still in progress" 404 wording.
+        // gh-1748: get-hover-pdf returns 403 from TWO different refusals —
+        // (a) the D-317 cl. 7 / #1636 manual-fulfilment gate (index.ts:~177),
+        // an internal-artifact policy refusal, and (b) an ordinary
+        // canAccessClaim() denial (index.ts:~106) — bid window closed,
+        // contractor not yet quoted, etc. Both used to return the same
+        // status with a byte-identical body, so the client could not tell
+        // them apart and showed the internal-artifact copy for both,
+        // including the everyday (b) case where it is false. The server now
+        // sets `reason` on each; only "internal_artifact" gets that copy.
         if (err?.context?.status === 403) {
-          alert('The measurement report is internal to the homeowner\'s file and not part of the bid packet.');
+          let reason = null;
+          try {
+            const body = await err.context.clone().json();
+            reason = body?.reason ?? null;
+          } catch (parseErr) {
+            console.error('Failed to parse 403 response body:', parseErr);
+          }
+          if (reason === 'internal_artifact') {
+            alert('The measurement report is internal to the homeowner\'s file and not part of the bid packet.');
+          } else {
+            // Covers reason === 'access_denied' and any unrecognized/missing
+            // reason (parse failure, older cached response, etc.) — never
+            // assert the internal-artifact copy without the reason to back it.
+            alert('You do not have access to this claim\'s measurement report.');
+          }
         } else {
           alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
         }
@@ -4823,6 +4847,12 @@
       { key: 'wind_damage', label: 'Wind Damage Warranty' },
     ];
 
+    // gh-1730/gh-1693: the two warranty controls below (Remove, Save as
+    // Template) are delegated through OQ_BID_FORM_ACTIONS above rather than
+    // the two inline onclick= attributes they used to carry, each built
+    // inside this template literal with a bare ${idx} closing them --
+    // STRICT_FILES now catches that shape here the same way it already does
+    // on contractor-opportunities.html.
     function addWarrantyCard(prefillData) {
       warrantyCardCount++;
       const idx = warrantyCardCount;
@@ -6167,10 +6197,10 @@
      * IC 24-5-11: Contractor signs first, then homeowner — both after selection.
      */
     async function initContractorSigning() {
-      const loadingEl = document.getElementById('contractorDocusignLoading');
-      const errorEl = document.getElementById('contractorDocusignError');
-      const containerEl = document.getElementById('contractorDocusignContainer');
-      const signedEl = document.getElementById('contractorDocusignSigned');
+      const loadingEl = document.getElementById('contractorEsignLoading');
+      const errorEl = document.getElementById('contractorEsignError');
+      const containerEl = document.getElementById('contractorEsignContainer');
+      const signedEl = document.getElementById('contractorEsignSigned');
       const skipEl = document.getElementById('contractorSignSkip');
 
       loadingEl.style.display = 'block';
@@ -6207,7 +6237,7 @@
         // Load signing URL in iframe
         loadingEl.style.display = 'none';
         containerEl.style.display = 'block';
-        const frame = document.getElementById('contractorDocusignFrame');
+        const frame = document.getElementById('contractorEsignFrame');
         if (frame && result.signing_url) {
           frame.src = result.signing_url;
         }
@@ -6215,7 +6245,7 @@
         console.error('[ContractorSigning] initContractorSigning error:', err);
         loadingEl.style.display = 'none';
         errorEl.style.display = 'block';
-        const errDetail = document.getElementById('contractorDocusignErrorDetail');
+        const errDetail = document.getElementById('contractorEsignErrorDetail');
         if (errDetail) errDetail.textContent = err.message || 'Please try again or contact support.';
       }
     }

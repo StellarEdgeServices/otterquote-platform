@@ -7,6 +7,14 @@ import {
   type TemplateUsability,
   isTemplateUsable,
 } from "./template-validity.ts";
+// gh-1842: readiness polling now distinguishes "still building" from
+// "permanently failed" and lives in its own module so it can be tested with
+// injected fetch/clock fixtures. The polling behaviour gh-1244 proved is
+// unchanged; what is new is the absence probe and the two distinct error types.
+import {
+  isPermanentCreationFailure,
+  waitForBoldSignDocumentReady as waitForBoldSignDocumentReadyImpl,
+} from "./boldsign-readiness.ts";
 // deno-lint-ignore no-explicit-any
 async function getHomeownerName(supabase, claimId) {
   const empty = {
@@ -113,35 +121,27 @@ function boldSignHeaders(extra = {}) {
     ...extra
   };
 }
-// gh-1244: POST /v1/document/send returns a documentId once BoldSign accepts
-// the request, but document creation (Text Tag discovery/validation) happens
-// asynchronously afterward. Calling getEmbeddedSignLink (or properties)
-// before that finishes returns 403 {"error":"Invalid Document ID"} -- NOT a
-// permission/scope problem. Proven live on gh-1244: the identical documentId,
-// key, and endpoint 403'd 2.5s after send and returned a signing URL 4
-// minutes later. Poll properties until it settles instead of failing on the
-// first 403 -- do not delete this as a nonsense retry-on-403, see the
-// gh-1244 comment thread for the full proof.
-async function waitForBoldSignDocumentReady(documentId, { intervalMs = 200, ceilingMs = 15000 } = {}) {
-  const deadline = Date.now() + ceilingMs;
-  let lastStatus = null;
-  let lastBody = "";
-  while (Date.now() < deadline) {
-    const res = await fetch(
-      `${BOLDSIGN_API_BASE}/v1/document/properties?documentId=${encodeURIComponent(documentId)}`,
-      { headers: boldSignHeaders() }
-    );
-    if (res.ok) return;
-    lastStatus = res.status;
-    lastBody = await res.text().catch(() => "");
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(
-    `BoldSign document ${documentId} did not finish background creation within ${ceilingMs}ms ` +
-    `(last response: ${lastStatus} ${lastBody}). This is a wait timeout, not a permission or ` +
-    `scope problem -- see gh-1244: BoldSign returns 403 for a document that exists but has not ` +
-    `finished background validation yet.`
-  );
+// gh-1244 / gh-1842: POST /v1/document/send returns a documentId once BoldSign
+// accepts the request, but document creation (Text Tag discovery/validation)
+// happens asynchronously afterward, and a read before it finishes returns 403
+// {"error":"Invalid Document ID"} -- NOT a permission/scope problem. Proven
+// live on gh-1244: the identical documentId, key and endpoint 403'd 2.5s after
+// send and returned a signing URL 4 minutes later. So we poll rather than fail
+// on the first 403 -- do not delete this as a nonsense retry-on-403.
+//
+// gh-1842: background validation can also fail PERMANENTLY (a malformed PDF is
+// the known cause), and the old helper could not tell that apart from slow --
+// it burned the full 15s and then threw a message asserting "This is a wait
+// timeout, not a permission or scope problem", which is the wrong diagnosis for
+// that case. The implementation now lives in ./boldsign-readiness.ts, where a
+// /v1/document/list absence probe separates the two and throws
+// BoldSignPermanentCreationFailure vs BoldSignReadinessTimeout accordingly.
+async function waitForBoldSignDocumentReady(documentId, opts = {}) {
+  return await waitForBoldSignDocumentReadyImpl(documentId, {
+    apiBase: BOLDSIGN_API_BASE,
+    headers: boldSignHeaders(),
+    ...opts
+  });
 }
 // ========== PDF RETRIEVAL ==========
 async function getTemplateFromStorage(supabase, contractorId, documentType) {
@@ -2255,14 +2255,52 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
     contract_sent_at: new Date().toISOString(),
     docusign_envelope_id: envelopeId
   }).eq("id", claim_id);
-  return await issueContractorSignLink(supabase, {
-    claim_id,
-    envelopeId,
-    signer,
-    return_url,
-    corsHeaders,
-    resumed: false
-  });
+  // gh-1842: gh-1400's write-first ordering above is kept exactly as it is --
+  // recording the pointer before handing out a link is what makes the resume
+  // lookup authoritative on a partial failure. What it could not handle is the
+  // case where the document will NEVER become readable: the id stays committed
+  // to quotes + claims, contract_sent_at is set, and every later retry resumes
+  // authoritatively onto a dead document that cannot be signed, cannot be
+  // audited and cannot be revoked through the API.
+  //
+  // So: on a PROVEN-permanent creation failure only, un-record what we just
+  // wrote, so the next attempt mints a fresh document instead of resuming a
+  // corpse. A timeout, a network error or any other failure does NOT clear the
+  // pointer -- isPermanentCreationFailure() is deliberately narrow, because
+  // clearing on an ambiguous failure would re-mint a second paid document over
+  // a first one that was merely slow, which is the gh-1400 failure inverted.
+  try {
+    return await issueContractorSignLink(supabase, {
+      claim_id,
+      envelopeId,
+      signer,
+      return_url,
+      corsHeaders,
+      resumed: false
+    });
+  } catch (err) {
+    if (!isPermanentCreationFailure(err)) throw err;
+    console.error(
+      `gh-1842: BoldSign document ${envelopeId} failed background creation permanently; ` +
+      `un-recording it from quotes/claims so the next attempt mints a new one.`
+    );
+    const quoteClearFilter = quote_id
+      ? supabase.from("quotes").update({ docusign_envelope_id: null }).eq("id", quote_id)
+      : supabase.from("quotes").update({ docusign_envelope_id: null })
+          .eq("claim_id", claim_id).eq("contractor_id", contractor_id);
+    const { error: quoteClearError } = await quoteClearFilter;
+    if (quoteClearError) {
+      console.error("gh-1842: failed to clear quotes.docusign_envelope_id:", quoteClearError);
+    }
+    const { error: claimClearError } = await supabase.from("claims").update({
+      docusign_envelope_id: null,
+      contract_sent_at: null
+    }).eq("id", claim_id).eq("docusign_envelope_id", envelopeId);
+    if (claimClearError) {
+      console.error("gh-1842: failed to clear claims.docusign_envelope_id:", claimClearError);
+    }
+    throw err;
+  }
 }
 // ========== HANDLER: HOMEOWNER SIGN (new — Step C) ==========
 async function handleHomeownerSign(supabase, requestBody, corsHeaders) {
