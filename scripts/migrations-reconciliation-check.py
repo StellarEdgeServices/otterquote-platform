@@ -20,6 +20,15 @@ THE ONE THING THIS SCRIPT GATES
   version -- that is a widening this script can see, because it is fully
   visible in a repo diff.
 
+WHAT COUNTS AS A MIGRATION (AMENDED, issuecomment-5571428783, 2026-09-07)
+
+  Filenames ending `_rollback.sql` or `_pre-flight.md` are excluded from
+  BOTH directions of the count, even when they sit in `supabase/migrations/`
+  with a valid 14-digit prefix (see EXCLUDED_SUFFIXES below). A rollback
+  script is never itself applied, so counting it toward "repo file but not
+  applied" makes that side of the ratchet unreachable regardless of real
+  backfill progress -- exactly the failure mode the CTO's ruling names.
+
 WHAT THIS SCRIPT DELIBERATELY DOES NOT GATE, AND WHY
 
   - New, not-yet-applied migration files added by a PR. Per this repo's own
@@ -65,16 +74,29 @@ import sys
 MIGRATIONS_DIR = "supabase/migrations"
 VERSION_RE = re.compile(r"^(\d{14})_.*\.sql$")
 
+# gh-1438 (issuecomment-5571428783, DECIDED 2026-09-07): rollback halves and
+# pre-flight planning docs filed directly into supabase/migrations/ are not
+# migrations -- they will never be applied, so counting them toward the
+# "repo file but not applied" side of the ratchet makes that side
+# unreachable no matter how much real backfill work lands. Excluded from
+# BOTH directions of the count by filename suffix, matching the naming
+# convention supabase/migrations/README.md already documents for these
+# companion files.
+EXCLUDED_SUFFIXES = ("_rollback.sql", "_pre-flight.md")
+
 
 def scan_repo_versions(root: str, migrations_dir: str = MIGRATIONS_DIR) -> set:
     """Return the set of distinct 14-digit version prefixes present under
-    supabase/migrations/ in the given repo root. Pure filesystem read, no
-    network."""
+    supabase/migrations/ in the given repo root, excluding rollback and
+    pre-flight companion files (see EXCLUDED_SUFFIXES). Pure filesystem
+    read, no network."""
     dir_path = os.path.join(root, migrations_dir)
     versions = set()
     if not os.path.isdir(dir_path):
         return versions
     for fname in os.listdir(dir_path):
+        if fname.endswith(EXCLUDED_SUFFIXES):
+            continue
         m = VERSION_RE.match(fname)
         if m:
             versions.add(m.group(1))
