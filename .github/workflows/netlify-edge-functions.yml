@@ -1,0 +1,201 @@
+name: Netlify Edge Function Tests (Deno)
+
+# gh-1738 -- "netlify/edge-functions/*.ts is exercised by NO CI check despite
+# two checks named 'Edge Function...'." Found by the fresh-context refuter of
+# PR #1789 (comment 5572265235 on gh-1738): "Edge Function Tests (Deno)"
+# (.github/workflows/e2e-tests.yml) runs `deno test` scoped to
+# `supabase/functions/` only, and "Edge Function Drift"
+# (.github/workflows/edge-function-drift.yml) compares deployed *Supabase*
+# functions against `main`. Neither has ever looked at this directory. Four
+# functions here -- including admin-auth-gate.ts, the only edge-layer defense
+# in front of every /admin-* page, and recruit-redirect.ts, "the single
+# highest-value entry point on the site" per its own header comment -- had
+# zero automated coverage; their only verification has been a one-time
+# manual curl at review time (see blog-guides-redirect.ts's header comment
+# for exactly that story on PR #1789).
+#
+# THE GATE ITSELF IS NOT TRUSTED UNTIL IT HAS BEEN OBSERVED FAILING (gh-1738's
+# own thesis, applied here rather than assumed of this workflow): the
+# "Negative control" step below runs the identical `deno test` command
+# against netlify/edge-functions-tests/negative-control-fixture/, a
+# deliberately-broken fixture that is NEVER part of the main test step, and
+# the job fails loudly if that command does NOT fail. A CI job that is red
+# for every real change and can never observe itself rejecting a broken case
+# is exactly the class this issue exists to end.
+#
+# CTO ruling (comment 5572644538, 2026-09-07T15:13:58Z, Option 1 "land the
+# mechanical half"): "YES -- netlify/edge-functions/*.ts gets a CI job with a
+# negative control... The redirect observed not firing for a path it should
+# ignore, beside firing for one it should catch." Each function's test suite
+# below includes exactly that shape (a matched path that fires, an unmatched
+# path that falls through via context.next()) in addition to its other
+# branches.
+#
+# TESTS LIVE IN A SIBLING DIRECTORY, NOT netlify/edge-functions/ ITSELF: an
+# earlier version of this PR co-located *.test.ts beside the real functions
+# (matching supabase/functions/'s convention) and it broke the Netlify
+# deploy-preview build (exit code 2) -- Netlify auto-discovers every .ts file
+# directly under netlify/edge-functions/ (no `directory` override in
+# netlify.toml) as a deployable edge-function candidate, test files included,
+# and a file with no compatible default-export handler fails that bundling
+# step. Tests and the negative-control fixture now live in
+# netlify/edge-functions-tests/, a sibling Netlify never scans, and import
+# each handler with a relative `../edge-functions/<name>.ts` path.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'netlify/edge-functions/**'
+      - 'netlify/edge-functions-tests/**'
+      - '.github/workflows/netlify-edge-functions.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'netlify/edge-functions/**'
+      - 'netlify/edge-functions-tests/**'
+      - '.github/workflows/netlify-edge-functions.yml'
+
+jobs:
+  netlify-edge-function-tests:
+    name: Netlify Edge Function Tests (Deno)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: '2.8.3'
+
+      # Pure-unit, same handler-testing convention as supabase/functions/
+      # (gh-422): each function's handler is imported directly and called
+      # with a real Request plus a minimal fake Netlify context
+      # (next()/rewrite() captured, never a live edge runtime) -- no
+      # network, no secrets. Test files live in netlify/edge-functions-tests/
+      # (a sibling of netlify/edge-functions/, not inside it -- see the
+      # workflow-level comment above for why) and are listed explicitly here
+      # (not a directory glob) so this step can never accidentally pick up
+      # the negative-control fixture -- that separation is what keeps this
+      # step's exit code meaningful.
+      #
+      # Deno's own pretty reporter prints each file's "N passed | M failed"
+      # summary; this loop captures it per file (ANSI stripped) so the job
+      # summary below shows each function's self-reported assertion count
+      # individually, not just one combined total.
+      - name: Run edge function tests (per-function assertion counts)
+        id: tests
+        run: |
+          set +e
+          FILES="netlify/edge-functions-tests/admin-auth-gate.test.ts netlify/edge-functions-tests/blog-guides-redirect.test.ts netlify/edge-functions-tests/recruit-redirect.test.ts netlify/edge-functions-tests/ref-redirect.test.ts"
+          OVERALL_EXIT=0
+          {
+            echo "## Per-function assertion counts"
+            echo
+            echo '| Function | Result |'
+            echo '|---|---|'
+          } > summary-body.md
+          for f in $FILES; do
+            out=$(deno test "$f" 2>&1)
+            code=$?
+            clean=$(echo "$out" | sed -E 's/\x1B\[[0-9;]*[mK]//g')
+            # "N passed | M failed" -> "N passed, M failed" -- the raw form
+            # has a pipe in it, which breaks the markdown table cell below.
+            line=$(echo "$clean" | grep -oE '[0-9]+ passed \| [0-9]+ failed' | tail -1 | sed 's/ | /, /')
+            name=$(basename "$f" .test.ts)
+            if [ "$code" -ne 0 ] || [ -z "$line" ]; then
+              echo "| \`$name\` | FAILED (exit $code) |" >> summary-body.md
+              echo "----- $f FAILED -----"
+              echo "$clean"
+              OVERALL_EXIT=1
+            else
+              echo "| \`$name\` | $line |" >> summary-body.md
+              echo "$name: $line"
+            fi
+          done
+          echo "overall_exit=$OVERALL_EXIT" >> "$GITHUB_OUTPUT"
+          exit $OVERALL_EXIT
+
+      # NEGATIVE CONTROL. This is the half that makes the step above trusted
+      # rather than merely green. It runs the SAME test command shape against
+      # a fixture engineered to fail (netlify/edge-functions-tests/
+      # negative-control-fixture/always-wrong.test.ts -- a wrong assertion
+      # AND a handler that always throws, unhandled). If `deno test` against
+      # that fixture exits 0, this step fails the job with an explicit
+      # message: the gate itself has gone blind, exactly the shape gh-1738
+      # was filed to end, and that must never pass silently.
+      #
+      # A bare non-zero exit code is NOT enough (PR #1820 review comment
+      # 5577474087): a missing/renamed fixture file also makes `deno test`
+      # exit non-zero ("Import ... failed, not found"), which is an
+      # unrelated error, not the fixture's own deliberate assertion firing.
+      # A step that only checked the exit code would report "observed
+      # failing as expected" in that case too -- a vacuous gate, exactly the
+      # defect class gh-1738 exists to catch, now latent in the control
+      # meant to guarantee it can't recur. This step therefore requires
+      # THREE things together, not just one:
+      #   1. the fixture file exists before it is even run;
+      #   2. `deno test` exits non-zero; and
+      #   3. the captured output both shows Deno's own "N passed | M failed"
+      #      summary line (proof the test actually ran to completion, not a
+      #      module-load/not-found error) AND contains the fixture's
+      #      distinctive marker string, NEGATIVE-CONTROL-EXPECTED-FAILURE-gh1738
+      #      (proof the failure is the fixture's own assertion, not some
+      #      other unrelated non-zero exit).
+      - name: Negative control -- observe the test command actually failing
+        id: negctrl
+        if: always()
+        run: |
+          set +e
+          FIXTURE="netlify/edge-functions-tests/negative-control-fixture/always-wrong.test.ts"
+          MARKER="NEGATIVE-CONTROL-EXPECTED-FAILURE-gh1738"
+
+          if [ ! -f "$FIXTURE" ]; then
+            echo "::error::negative-control fixture missing ($FIXTURE) -- cannot observe a deliberate failure that never ran. A missing/renamed fixture also makes 'deno test' exit non-zero for an UNRELATED reason (module not found), which would otherwise be misread as the control working. This check catches that before the test command even runs."
+            echo "negctrl_observed_failing=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          deno test "$FIXTURE" > nc.log 2>&1
+          code=$?
+          clean=$(sed -E 's/\x1B\[[0-9;]*[mK]//g' nc.log)
+          echo "$clean"
+
+          if [ "$code" -eq 0 ]; then
+            echo "::error::negative control PASSED -- it must always FAIL. The test command is no longer capable of failing, which means the tests above prove nothing. This is the exact defect class gh-1738 exists to catch, occurring in the gate meant to catch it."
+            echo "negctrl_observed_failing=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if ! echo "$clean" | grep -qE '(FAILED \| )?[0-9]+ passed \| [0-9]+ failed'; then
+            echo "::error::negative control did not actually run -- no Deno test summary line ('N passed | M failed') found in the output, which means 'deno test' exited non-zero for a reason OTHER than the fixture's own assertion (e.g. a module-load or not-found error). That would be a vacuous pass of this gate -- the same blind-gate defect class gh-1738 exists to catch, now latent in the control meant to guarantee it can't recur."
+            echo "negctrl_observed_failing=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if ! echo "$clean" | grep -qF "$MARKER"; then
+            echo "::error::negative control did not fail for the right reason -- expected marker '$MARKER' not found in the test output, even though a Deno test summary line was present. This means some assertion other than the fixture's own deliberately-wrong one is what failed, so this is not the observation the gate exists to make."
+            echo "negctrl_observed_failing=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "Negative control observed FAILING for the right reason (exit $code, fixture present, test summary line present, marker '$MARKER' present) -- the test command can fail on its own deliberate assertion, so the passing suite above is evidence."
+          echo "negctrl_observed_failing=true" >> "$GITHUB_OUTPUT"
+          echo "negctrl_exit=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          {
+            echo "# Netlify Edge Function Tests (Deno) -- gh-1738"
+            echo
+            cat summary-body.md 2>/dev/null || echo "(no per-function summary produced -- see step log above)"
+            echo
+            echo "## Negative control"
+            echo
+            echo "Observed failing as expected: \`${{ steps.negctrl.outputs.negctrl_observed_failing }}\` (exit code \`${{ steps.negctrl.outputs.negctrl_exit }}\`)"
+            echo
+            echo "A gate is not trusted until it has been observed rejecting the thing it exists to reject (gh-1738). The row above is that observation for THIS gate: \`netlify/edge-functions-tests/negative-control-fixture/always-wrong.test.ts\` is deliberately broken and must fail every run."
+          } >> "$GITHUB_STEP_SUMMARY"
