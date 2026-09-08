@@ -61,7 +61,7 @@
  * The single source of truth. Empty until Dustin answers #1824; replace this
  * ONE string with his answer and every footer that imports it is correct.
  */
-export const POSTAL_ADDRESS = "";
+export const POSTAL_ADDRESS = "Stellar Edge Services, LLC d/b/a Otter Quotes · 3410 N High School Rd, Ste G #102, Indianapolis, IN 46224";
 
 /**
  * The literal token a prior version of this file rendered unconditionally
