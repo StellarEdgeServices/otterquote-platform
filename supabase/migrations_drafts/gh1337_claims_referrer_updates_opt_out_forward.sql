@@ -7,7 +7,9 @@
 --
 -- STATUS: DRAFT ONLY. This file has NOT been applied to production
 -- (yeszghaspzwwstvsrioa) or to any branch. It ships in the gh-1337 PR as an
--- artifact for Dustin's R-120 read. Do not apply without his word.
+-- artifact for the legal read. (Written under R-120, when that read was Dustin's;
+-- R-177 moved it to a fresh-context refuter agent plus a CEO signature on the PR --
+-- see Docs/r177-legal-read.md. Do not apply without that pair.)
 --
 -- Tri-state semantics — the gate depends on all three being distinguishable:
 --   NULL   the homeowner was never shown the checkbox (every row predating the

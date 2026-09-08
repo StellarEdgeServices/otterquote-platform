@@ -15,11 +15,14 @@ Run: python netlify-deploy-drift.test.py
 """
 
 import datetime
+import hashlib
 import importlib.util
 import io
 import json
 import pathlib
+import shutil
 import sys
+import tempfile
 import urllib.error
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -223,7 +226,7 @@ def main():
     check("_repo_from_repo_url None -> None", nd._repo_from_repo_url(None), None)
 
     raw_sites = [
-        {  # otterquote.com -- in-org, kept
+        {  # otterquote.com -- in-org, git-connected, measured
             "id": "6748a414-1baa-4309-a5f9-f3a7f45e3d94",
             "name": "jade-alpaca-b82b5e",
             "custom_domain": "otterquote.com",
@@ -236,47 +239,158 @@ def main():
             "custom_domain": "app.otterquote.com",
             "build_settings": {"repo_url": "https://github.com/StellarEdgeServices/otterquote-platform"},
         },
-        {  # otter-crm -- in-org, separate repo, kept
+        {  # otter-crm -- in-org, separate repo, measured
             "id": "d1b2efbd-8478-472f-8503-57cbdd5b36db",
             "name": "otter-crm",
             "custom_domain": "crm.otterquote.com",
             "build_settings": {"repo_url": "git@github.com:StellarEdgeServices/otter-crm.git"},
         },
-        {  # a different org's site sharing this Netlify account -- must be excluded
+        {  # gh-1734: stohlerroof-bridge -- NOT git-connected (no repo_url), the site the
+           # old filter silently dropped. Measured via content-hash instead.
+            "id": "d5af3c0f-6fbf-4dbf-b8cd-6c955e775b03",
+            "name": "stohlerroof-bridge",
+            "custom_domain": "stohlerroof.com",
+            "build_settings": {},
+        },
+        {  # gh-1734: genuine scratch sites -- no custom_domain, no repo_url. OUT OF SCOPE,
+           # not silently dropped.
+            "id": "b6715ca0-d077-4029-89e3-ec7a0650a728",
+            "name": "fantastic-cactus-db1344",
+            "build_settings": {},
+        },
+        {
+            "id": "aebc572e-db15-4fcf-81c3-0d44278590f9",
+            "name": "fantastic-choux-4f510f",
+            "build_settings": {},
+        },
+        {  # a different org's site sharing this Netlify account -- gh-1734: no longer
+           # silently excluded, now UNCLASSIFIED (fails loudly).
             "id": "unrelated-1",
             "name": "some-other-project",
             "custom_domain": "example.com",
             "build_settings": {"repo_url": "https://github.com/SomeoneElse/unrelated-repo"},
         },
-        {  # not git-connected at all -- excluded, not UNMEASURED
+        {  # not git-connected, not in SITE_CLASSIFICATION at all -- gh-1734: UNCLASSIFIED,
+           # not silently dropped (this is the exact defect class gh-1734 was filed over --
+           # a real site that no human has ever classified must not vanish).
             "id": "unrelated-2",
             "name": "manual-drop-site",
             "build_settings": {},
         },
     ]
     filtered = nd.filter_org_sites(raw_sites)
-    check("filter_org_sites keeps exactly the 3 in-org sites", len(filtered), 3)
-    check("filter_org_sites keys", sorted(s["key"] for s in filtered),
-          ["jade-alpaca-b82b5e", "otter-crm", "otterquote-app"])
-    otterquote_app_row = next(s for s in filtered if s["key"] == "otterquote-app")
+    check("filter_org_sites (gh-1734) returns a row for EVERY raw site -- 8 in, 8 out, "
+          "none silently dropped", len(filtered), len(raw_sites))
+    check("filter_org_sites keys -- includes every site, git-connected or not, "
+          "classified or not", sorted(s["key"] for s in filtered),
+          sorted(s["name"] for s in raw_sites))
+
+    by_key = {s["key"]: s for s in filtered}
+
+    check("jade-alpaca-b82b5e -- measured, mode=git", (by_key["jade-alpaca-b82b5e"]["measured"],
+          by_key["jade-alpaca-b82b5e"]["mode"]), (True, "git"))
+    check("jade-alpaca-b82b5e resolved to the otterquote-platform repo",
+          by_key["jade-alpaca-b82b5e"]["repo"], "StellarEdgeServices/otterquote-platform")
+
+    otterquote_app_row = by_key["otterquote-app"]
+    check("otterquote-app -- measured, mode=git", (otterquote_app_row["measured"], otterquote_app_row["mode"]),
+          (True, "git"))
     check("otterquote-app resolved to the otterquote-platform repo (same repo, different site)",
           otterquote_app_row["repo"], "StellarEdgeServices/otterquote-platform")
     check("filter_org_sites label includes the custom domain",
           "app.otterquote.com" in otterquote_app_row["label"], True)
-    check("filter_org_sites excludes a different org's site",
-          "some-other-project" not in [s["key"] for s in filtered], True)
-    check("filter_org_sites excludes a non-git-connected site",
-          "manual-drop-site" not in [s["key"] for s in filtered], True)
+
+    check("otter-crm -- measured, mode=git", (by_key["otter-crm"]["measured"], by_key["otter-crm"]["mode"]),
+          (True, "git"))
+    check("otter-crm resolved to the otter-crm repo (ssh-form repo_url)",
+          by_key["otter-crm"]["repo"], "StellarEdgeServices/otter-crm")
+
+    # gh-1734: the core fix -- stohlerroof-bridge is now measured, via content-hash, not
+    # dropped by the old "no repo_url -> continue" line.
+    bridge_row = by_key["stohlerroof-bridge"]
+    check("stohlerroof-bridge -- measured, mode=content-hash (the gh-1734 fix)",
+          (bridge_row["measured"], bridge_row["mode"]), (True, "content-hash"))
+    check("stohlerroof-bridge content_url derived from its live custom_domain",
+          bridge_row["content_url"], "https://stohlerroof.com/")
+    check("stohlerroof-bridge carries its baseline_fixture filename",
+          bridge_row["baseline_fixture"], "stohlerroof-bridge.json")
+    check("stohlerroof-bridge carries a reason (why content-hash, not git)",
+          bridge_row["reason"] is not None and "D-174" in bridge_row["reason"], True)
+    check("stohlerroof-bridge max_age_days defaults to DEFAULT_NON_GIT_MAX_AGE_DAYS",
+          bridge_row["max_age_days"], nd.DEFAULT_NON_GIT_MAX_AGE_DAYS)
+
+    # gh-1734 fix-1 (PR #1779 refuter blocker 1, 2026-09-07): these two are NOT scratch
+    # sites -- a fresh-context refuter opened both live URLs (the check the first pass
+    # skipped) and found a live, GA4-tracked "ClaimShield" lead-capture funnel POSTing
+    # directly into the PRODUCTION Supabase `leads` table on each. Reclassified from
+    # OUT_OF_SCOPE to measured=True, mode="content-hash" -- the same mechanism as
+    # stohlerroof-bridge, with its own baseline fixture per site (the two pages are
+    # different copy variants, not identical).
+    for scratch_key, fixture_name in (
+        ("fantastic-cactus-db1344", "fantastic-cactus-db1344.json"),
+        ("fantastic-choux-4f510f", "fantastic-choux-4f510f.json"),
+    ):
+        row = by_key[scratch_key]
+        check("%s -- measured, mode=content-hash (gh-1734 fix-1: reclassified out of "
+              "OUT_OF_SCOPE, not a scratch site)" % scratch_key,
+              (row["measured"], row["mode"]), (True, "content-hash"))
+        check("%s -- content_url derived from its default *.netlify.app subdomain "
+              "(explicit override, no custom_domain)" % scratch_key,
+              row["content_url"], "https://%s.netlify.app/" % scratch_key)
+        check("%s -- carries its own baseline_fixture filename" % scratch_key,
+              row["baseline_fixture"], fixture_name)
+        check("%s -- reason names the live PII-collecting finding, not the old "
+              "'scratch site' claim" % scratch_key,
+              row["reason"] is not None and "leads" in row["reason"]
+              and "scratch" not in row["reason"].lower(), True)
+        check("%s -- max_age_days is 30 (tighter than stohlerroof-bridge's 90 -- an "
+              "active unowned PII funnel warrants closer review)" % scratch_key,
+              row["max_age_days"], 30)
+
+    # gh-1734 Do item 3: a site with NO SITE_CLASSIFICATION entry at all must fail loudly
+    # (UNCLASSIFIED), never silently vanish the way the old filter's `continue` did.
+    for unknown_key in ("some-other-project", "manual-drop-site"):
+        row = by_key[unknown_key]
+        check("%s -- NOT measured (unclassified)" % unknown_key, row["measured"], False)
+        check("%s -- mode='unclassified' (fails loudly, does not vanish)" % unknown_key,
+              row["mode"], "unclassified")
+        check("%s -- reason names the missing classification" % unknown_key,
+              "SITE_CLASSIFICATION" in row["reason"], True)
+
     check("filter_org_sites on empty/None input -> []", nd.filter_org_sites(None), [])
 
+    # gh-1734: a SITE_CLASSIFICATION entry claiming mode=git for a site whose live
+    # repo_url does NOT belong to the org (table gone stale, or a name collision) must
+    # not be trusted blindly into a git compare against the wrong repo -- it degrades to
+    # unclassified instead.
+    stale_table = {"drifted-site": {"measured": True, "mode": "git"}}
+    stale_raw = [{
+        "id": "x", "name": "drifted-site", "custom_domain": "drifted.example.com",
+        "build_settings": {"repo_url": "https://github.com/SomeoneElse/not-our-repo"},
+    }]
+    stale_filtered = nd.filter_org_sites(stale_raw, classification=stale_table)
+    check("mode=git entry whose live repo_url is org-mismatched degrades to unclassified, "
+          "not a trusted-blind git compare",
+          (stale_filtered[0]["measured"], stale_filtered[0]["mode"]), (False, "unclassified"))
+
+    # gh-1734: mode=git entry whose live repo_url is simply missing (site un-linked from
+    # git since the table was written) -- same degrade-to-unclassified path.
+    unlinked_raw = [{"id": "y", "name": "drifted-site", "build_settings": {}}]
+    unlinked_filtered = nd.filter_org_sites(unlinked_raw, classification=stale_table)
+    check("mode=git entry whose live repo_url has vanished also degrades to unclassified",
+          (unlinked_filtered[0]["measured"], unlinked_filtered[0]["mode"]), (False, "unclassified"))
+
     # -------------------------------------------------------------------------------
-    print("\nresolve_site_rows: gh-1569 fresh-context review fixture -- a SUCCESSFUL fetch")
-    print("whose org filter matches ZERO sites must resolve UNMEASURED, never a silent 0/clean")
-    print("pass (PR #1569's reviewer: 'that's the exact defect class this repo's own")
-    print("detectors keep re-learning -- an empty result set is UNMEASURED, never a pass').")
+    print("\nresolve_site_rows: gh-1569 fresh-context review fixture, UPDATED for gh-1734 --")
+    print("a SUCCESSFUL fetch of sites with no SITE_CLASSIFICATION entry must resolve each")
+    print("one to its OWN loud UNMEASURED row (never a silent drop, and never a fabricated")
+    print("0/clean pass; PR #1569's reviewer: 'an empty result set is UNMEASURED, never a")
+    print("pass' -- gh-1734 sharpens this further: an UNCLASSIFIED site must not even be")
+    print("collapsed into a single summary row anymore, since filter_org_sites() no longer")
+    print("treats 'not in the table' as 'not present').")
     # -------------------------------------------------------------------------------
     def _unrelated_org_sites_only(req, timeout=20):
-        # A non-empty, successfully-fetched site list -- none of it StellarEdgeServices.
+        # A non-empty, successfully-fetched site list -- none of it in SITE_CLASSIFICATION.
         return _json_response([
             {"id": "x1", "name": "someone-elses-blog",
              "build_settings": {"repo_url": "https://github.com/SomeoneElse/blog"}},
@@ -286,24 +400,118 @@ def main():
     nd.urllib.request.urlopen = _unrelated_org_sites_only
     try:
         rows = nd.resolve_site_rows("fake-netlify-token", "fake-github-token")
-        check("non-empty fetch, filter matches nothing -> exactly one row (never zero)",
-              len(rows), 1)
-        check("that row is UNMEASURED, not a fabricated pass", rows[0]["verdict"], nd.UNMEASURED)
-        check("detail names the fetched count and the org filter",
-              "2 site(s)" in rows[0]["detail"] and nd.REPO_OWNER_FILTER in rows[0]["detail"], True)
+        check("non-empty fetch, neither site classified -> one row PER site (gh-1734: "
+              "never collapsed, never dropped)", len(rows), 2)
+        check("every row is UNMEASURED, not a fabricated pass",
+              all(r["verdict"] == nd.UNMEASURED for r in rows), True)
+        check("each row's detail names ITS OWN site and the missing classification",
+              all("SITE_CLASSIFICATION" in r["detail"] for r in rows), True)
+        check("rows are keyed to the actual sites, not a generic enumeration placeholder",
+              sorted(r["key"] for r in rows), ["no-repo-at-all", "someone-elses-blog"])
         code = nd.report_exit_code(rows)
         check("resolve_site_rows -> report_exit_code is 3 (UNMEASURED), NOT 0 (the actual bug)",
               code, 3)
     finally:
         nd.urllib.request.urlopen = real_urlopen
 
-    # Contrast case: enumeration fetch fails outright (no token) -- also exactly one
-    # UNMEASURED row, via the other branch of resolve_site_rows.
+    # Contrast case: enumeration fetch fails outright (no token) -- still exactly one
+    # UNMEASURED row (there is nothing to classify per-site; the fetch itself failed),
+    # via the other branch of resolve_site_rows.
     rows = nd.resolve_site_rows(None, "fake-github-token")
     check("no NETLIFY_PAT -> resolve_site_rows still returns exactly one UNMEASURED row",
           (len(rows), rows[0]["verdict"]), (1, nd.UNMEASURED))
-    check("that row's detail names the enumeration failure, not the empty-filter case",
+    check("that row's detail names the enumeration failure, not the per-site case",
           "could not enumerate sites" in rows[0]["detail"], True)
+
+    # gh-1734: a genuinely empty Netlify account (fetch succeeds, returns literally zero
+    # sites) is still the one remaining case collapsed to a single explanatory UNMEASURED
+    # row -- there is nothing to iterate per-site.
+    def _zero_sites(req, timeout=20):
+        return _json_response([])
+
+    nd.urllib.request.urlopen = _zero_sites
+    try:
+        rows = nd.resolve_site_rows("fake-netlify-token", "fake-github-token")
+        check("Netlify account with zero sites -> exactly one UNMEASURED row",
+              (len(rows), rows[0]["verdict"]), (1, nd.UNMEASURED))
+        check("that row's detail says the account itself is empty",
+              "zero sites" in rows[0]["detail"], True)
+        check("zero-sites case -> report_exit_code is 3, not a silent 0/pass",
+              nd.report_exit_code(rows), 3)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # -------------------------------------------------------------------------------
+    print("\nresolve_site_rows dispatch by mode -- git / content-hash / out-of-scope all")
+    print("route correctly, and OUT_OF_SCOPE never turns an otherwise-clean run non-zero")
+    print("(gh-1734 Do items 1-3, end to end through resolve_site_rows/report_exit_code)")
+    # -------------------------------------------------------------------------------
+    def _six_site_router(req, timeout=20):
+        url = req.full_url
+        if "api.netlify.com" in url and url.endswith("/sites?page=1&per_page=100"):
+            return _json_response([
+                {"id": "git-1", "name": "clean-git-site", "custom_domain": "clean.example.com",
+                 "build_settings": {"repo_url": "https://github.com/StellarEdgeServices/otterquote-platform"}},
+                {"id": "bridge-1", "name": "oos-classification-demo-bridge",
+                 "custom_domain": "demo-bridge.example.com", "build_settings": {}},
+                {"id": "scratch-1", "name": "oos-classification-demo-scratch", "build_settings": {}},
+            ])
+        if "api.netlify.com" in url and "/deploys" in url:
+            return _json_response([{"state": "ready", "created_at": "2026-09-01T00:00:00Z",
+                                     "error_message": None}])
+        if "api.netlify.com" in url and "/builds" in url:
+            return _json_response([])
+        if "api.netlify.com" in url and "git-1" in url:
+            return _json_response({"published_deploy": {"commit_ref": "a" * 40,
+                                                          "published_at": "2026-09-01T00:00:00Z"}})
+        if "api.netlify.com" in url and "bridge-1" in url:
+            return _json_response({"published_deploy": {"commit_ref": None,
+                                                          "published_at": "2026-09-01T00:00:00Z"}})
+        if "api.github.com" in url and "/commits/main" in url:
+            return _json_response({"sha": "a" * 40})
+        if "demo-bridge.example.com" in url:
+            return _FakeResponse(b"<html>demo bridge content</html>")
+        raise AssertionError("unexpected URL in six-site dispatch test: %s" % url)
+
+    demo_classification = {
+        "clean-git-site": {"measured": True, "mode": "git"},
+        "oos-classification-demo-bridge": {
+            "measured": True, "mode": "content-hash",
+            "baseline_fixture": "__demo_bridge_test_only.json",
+            "max_age_days": 9999,  # avoid PUBLISH_STALE in this dispatch-only test
+        },
+        "oos-classification-demo-scratch": {
+            "measured": False, "reason": "OUT OF SCOPE: dispatch-test fixture, not a real site",
+        },
+    }
+    demo_fixtures_dir = pathlib.Path(tempfile.mkdtemp(prefix="nd-dispatch-test-"))
+    demo_fixture_path = demo_fixtures_dir / "__demo_bridge_test_only.json"
+    demo_fixture_path.write_text(
+        json.dumps({"expected_sha256": hashlib.sha256(b"<html>demo bridge content</html>").hexdigest()})
+    )
+    real_site_classification = nd.SITE_CLASSIFICATION
+    real_fixtures_dir = nd.FIXTURES_DIR
+    nd.SITE_CLASSIFICATION = demo_classification
+    nd.FIXTURES_DIR = demo_fixtures_dir
+    nd.urllib.request.urlopen = _six_site_router
+    try:
+        rows = nd.resolve_site_rows("fake-netlify-token", "fake-github-token")
+        by_demo_key = {r["key"]: r for r in rows}
+        check("dispatch: git-mode site routes through check_site -> IDENTICAL",
+              by_demo_key["clean-git-site"]["verdict"], nd.IDENTICAL)
+        check("dispatch: content-hash-mode site routes through check_non_git_site -> "
+              "CONTENT_VERIFIED", by_demo_key["oos-classification-demo-bridge"]["verdict"],
+              nd.CONTENT_VERIFIED)
+        check("dispatch: measured=False site -> OUT_OF_SCOPE, never touches the network",
+              by_demo_key["oos-classification-demo-scratch"]["verdict"], nd.OUT_OF_SCOPE)
+        code = nd.report_exit_code(rows)
+        check("all-clean-or-out-of-scope run -> exit 0 (OUT_OF_SCOPE never fails a run)",
+              code, 0)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+        nd.SITE_CLASSIFICATION = real_site_classification
+        nd.FIXTURES_DIR = real_fixtures_dir
+        shutil.rmtree(demo_fixtures_dir, ignore_errors=True)
 
     # -------------------------------------------------------------------------------
     print("\nAccount-level auto-topup WARN (gh-1549 CTO comment 5524997596, item 3)")
@@ -361,6 +569,441 @@ def main():
     # list must never read as a clean pass.
     check("EMPTY rows list -> exit 3, NOT 0 (gh-1569: the untested/unguarded path)",
           nd.report_exit_code([]), 3)
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-1734: OUT_OF_SCOPE -- display convention, exit-code neutrality, banner exclusion")
+    print("(generic mechanism test -- a synthetic demo site, NOT one of the six real")
+    print("Netlify sites. fantastic-cactus-db1344 / fantastic-choux-4f510f used to be the")
+    print("example here; gh-1734 fix-1 reclassified both to content-hash (see above), so")
+    print("using either as this generic OUT_OF_SCOPE example would now read as stale")
+    print("evidence about their real classification.)")
+    # -------------------------------------------------------------------------------
+    oos_row = nd.out_of_scope_row(
+        {"key": "demo-scratch-site", "label": "demo-scratch-site.netlify.app (demo-scratch-site)"},
+        "OUT OF SCOPE: no custom_domain, no repo_url -- scratch site",
+    )
+    check("out_of_scope_row verdict is OUT_OF_SCOPE", oos_row["verdict"], nd.OUT_OF_SCOPE)
+    check("out_of_scope_row is not UNMEASURED (chose not to measure, didn't fail to)",
+          oos_row["verdict"] != nd.UNMEASURED, True)
+    check("out_of_scope_row is not a FAILING_VERDICTS member",
+          oos_row["verdict"] in nd.FAILING_VERDICTS, False)
+    check("display_verdict(OUT_OF_SCOPE) uses the issue's own literal wording",
+          nd.display_verdict(oos_row),
+          "OUT OF SCOPE: OUT OF SCOPE: no custom_domain, no repo_url -- scratch site")
+
+    check("OUT_OF_SCOPE alongside only-clean sites -> exit 0, never fails a run by itself",
+          nd.report_exit_code([identical_row, oos_row]), 0)
+    check("OUT_OF_SCOPE alongside a real failure -> exit 2 (the real failure still counts)",
+          nd.report_exit_code([behind_row, oos_row]), 2)
+
+    # The loud banner/issue-comment listings must not drag an explained non-measurement
+    # into "here's what's wrong" just because some OTHER site on the run is failing.
+    banner = nd._banner_lines([behind_row, oos_row], 2)
+    check("OUT_OF_SCOPE never appears in the alarm banner's per-site listing",
+          any(oos_row["label"] in line for line in banner), False)
+    check("the real BEHIND row DOES appear in the same banner",
+          any(behind_row["label"] in line for line in banner), True)
+    issue_body = nd.render_issue_comment_body([behind_row, oos_row], 2)
+    check("OUT_OF_SCOPE never appears in the --file-issue comment body either",
+          oos_row["label"] in issue_body, False)
+
+    # gh-1734: evaluate_non_git_site's CONTENT_VERIFIED is likewise excluded from both
+    # loud listings, the same as IDENTICAL is for git sites.
+    cv_row = nd.evaluate_non_git_site(
+        {"key": "stohlerroof-bridge", "label": "stohlerroof.com (stohlerroof-bridge)"},
+        content_sha256="a" * 64, expected_sha256="a" * 64,
+        published_at=datetime.datetime(2026, 9, 1, tzinfo=datetime.timezone.utc),
+        now=datetime.datetime(2026, 9, 5, tzinfo=datetime.timezone.utc),
+        max_age_days=90,
+    )
+    check("evaluate_non_git_site with matching hash and fresh age -> CONTENT_VERIFIED",
+          cv_row["verdict"], nd.CONTENT_VERIFIED)
+    check("CONTENT_VERIFIED is a CLEAN_VERDICTS member (excluded from loud listings)",
+          cv_row["verdict"] in nd.CLEAN_VERDICTS, True)
+    banner2 = nd._banner_lines([behind_row, cv_row], 2)
+    check("CONTENT_VERIFIED never appears in the alarm banner either",
+          any(cv_row["label"] in line for line in banner2), False)
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-1734: evaluate_non_git_site -- pure verdict logic for a non-git site")
+    print("(stohlerroof-bridge). No `main` to diff -- the two signals are CONTENT hash and")
+    print("deploy AGE, either independently non-passing, both reported when both fire.")
+    # -------------------------------------------------------------------------------
+    NG_SITE = {"key": "stohlerroof-bridge", "label": "stohlerroof.com (stohlerroof-bridge)"}
+    NG_BASELINE = "b" * 64
+    NG_NOW = datetime.datetime(2026, 9, 7, tzinfo=datetime.timezone.utc)
+    NG_FRESH = NG_NOW - datetime.timedelta(days=10)
+    NG_STALE = NG_NOW - datetime.timedelta(days=138)  # the real live stohlerroof-bridge age
+
+    # (1) PASSING: content matches baseline, deploy is fresh.
+    r = nd.evaluate_non_git_site(NG_SITE, NG_BASELINE, NG_BASELINE, NG_FRESH, NG_NOW, 90)
+    check("matching content + fresh age -> CONTENT_VERIFIED", r["verdict"], nd.CONTENT_VERIFIED)
+    check("CONTENT_VERIFIED detail names both the hash match and the age",
+          "matches baseline" in r["detail"] and "10 days old" in r["detail"], True)
+    check("CONTENT_VERIFIED row carries age_days", r["age_days"], 10)
+
+    # (2) NEGATIVE CONTROL A: content changed, deploy fresh -> CONTENT_CHANGED regardless of age.
+    r = nd.evaluate_non_git_site(NG_SITE, "c" * 64, NG_BASELINE, NG_FRESH, NG_NOW, 90)
+    check("changed content, fresh age -> CONTENT_CHANGED (fresh age does not hide a real change)",
+          r["verdict"], nd.CONTENT_CHANGED)
+    check("CONTENT_CHANGED display is a real, non-passing verdict",
+          nd.display_verdict(r).startswith("CONTENT_CHANGED ("), True)
+    check("CONTENT_CHANGED is a FAILING_VERDICTS member", r["verdict"] in nd.FAILING_VERDICTS, True)
+
+    # (3) NEGATIVE CONTROL B: content matches, deploy AGED past threshold (the real live
+    #     stohlerroof-bridge shape as of gh-1734: published 2026-04-21, measured 2026-09-07).
+    r = nd.evaluate_non_git_site(NG_SITE, NG_BASELINE, NG_BASELINE, NG_STALE, NG_NOW, 90)
+    check("matching content, aged past threshold -> PUBLISH_STALE (the real live shape)",
+          r["verdict"], nd.PUBLISH_STALE)
+    check("PUBLISH_STALE detail says the hash still matches -- it's the age alone alarming",
+          "content hash still matches baseline" in r["detail"], True)
+    check("PUBLISH_STALE is a FAILING_VERDICTS member", r["verdict"] in nd.FAILING_VERDICTS, True)
+
+    # (4) NEGATIVE CONTROL C: both content changed AND aged -- neither signal is shadowed.
+    r = nd.evaluate_non_git_site(NG_SITE, "c" * 64, NG_BASELINE, NG_STALE, NG_NOW, 90)
+    check("both content changed and aged -> CONTENT_CHANGED (reports both facts)",
+          r["verdict"], nd.CONTENT_CHANGED)
+    check("combined detail names BOTH the content mismatch and the age",
+          "does not match baseline" in r["detail"] and "days old" in r["detail"] and "AND" in r["detail"],
+          True)
+
+    # Age exactly AT the threshold is not yet stale (">", not ">=") -- a boundary check.
+    r = nd.evaluate_non_git_site(NG_SITE, NG_BASELINE, NG_BASELINE, NG_NOW - datetime.timedelta(days=90),
+                                  NG_NOW, 90)
+    check("age exactly at the threshold (90 days) -> still CONTENT_VERIFIED, not yet stale",
+          r["verdict"], nd.CONTENT_VERIFIED)
+    r = nd.evaluate_non_git_site(NG_SITE, NG_BASELINE, NG_BASELINE, NG_NOW - datetime.timedelta(days=91),
+                                  NG_NOW, 90)
+    check("age one day past the threshold (91 days) -> PUBLISH_STALE",
+          r["verdict"], nd.PUBLISH_STALE)
+
+    # No expected_sha256 configured (fixture missing/unloaded) -- content_changed can't be
+    # evaluated (None means "can't compare", not "matches"); age alone can still fire.
+    r = nd.evaluate_non_git_site(NG_SITE, "d" * 64, None, NG_FRESH, NG_NOW, 90)
+    check("no baseline to compare against -> content_changed is never asserted True from "
+          "a None baseline (falls through to the age check)", r["verdict"], nd.CONTENT_VERIFIED)
+
+    # No published_at at all (couldn't parse the timestamp) -- age can't be evaluated;
+    # a matching hash alone is still CONTENT_VERIFIED, never mis-reported as stale.
+    r = nd.evaluate_non_git_site(NG_SITE, NG_BASELINE, NG_BASELINE, None, NG_NOW, 90)
+    check("no published_at -> age_days is None, never fabricated as stale",
+          (r["verdict"], r["age_days"]), (nd.CONTENT_VERIFIED, None))
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-1734: fetch_url_content / _load_content_baseline -- fetch-layer helpers for")
+    print("a non-git site, same fail-loud discipline as every other fetch in this script")
+    # -------------------------------------------------------------------------------
+    data, reason = nd.fetch_url_content("https://example.invalid/", timeout=5)
+    # (No real network assertion here -- covered by the mocked check_non_git_site tests
+    # below. This just exercises the no-crash path for an unreachable host.)
+    check("fetch_url_content never raises, always returns a (data, reason) tuple",
+          isinstance(reason, str), True)
+
+    sha, reason = nd._load_content_baseline(None)
+    check("_load_content_baseline with no fixture filename -> None, names the gap",
+          (sha, "no baseline_fixture configured" in reason), (None, True))
+
+    sha, reason = nd._load_content_baseline("does-not-exist.json", fixtures_dir=HERE)
+    check("_load_content_baseline with a missing fixture file -> None, not a crash",
+          sha, None)
+    check("missing-fixture reason names the failure", "could not read baseline fixture" in reason, True)
+
+    tmp_fixtures = pathlib.Path(tempfile.mkdtemp(prefix="nd-fixture-test-"))
+    try:
+        (tmp_fixtures / "malformed.json").write_text("not valid json {{{")
+        sha, reason = nd._load_content_baseline("malformed.json", fixtures_dir=tmp_fixtures)
+        check("_load_content_baseline with malformed JSON -> None, not a crash", sha, None)
+
+        (tmp_fixtures / "no-hash-field.json").write_text(json.dumps({"note": "oops, no hash"}))
+        sha, reason = nd._load_content_baseline("no-hash-field.json", fixtures_dir=tmp_fixtures)
+        check("_load_content_baseline with no expected_sha256 field -> None",
+              (sha, "no expected_sha256" in reason), (None, True))
+
+        (tmp_fixtures / "good.json").write_text(json.dumps({"expected_sha256": "f" * 64}))
+        sha, reason = nd._load_content_baseline("good.json", fixtures_dir=tmp_fixtures)
+        check("_load_content_baseline with a valid fixture -> the pinned hash",
+              (sha, reason), ("f" * 64, "ok"))
+
+        # gh-1734 fix-2: expected_sha256 must be exactly 64 hex chars, validated without a
+        # literal hex-charset string (see _load_content_baseline()'s own comment on why).
+        # A short/truncated value is a malformed baseline, never silently used.
+        (tmp_fixtures / "wrong-length.json").write_text(
+            json.dumps({"expected_sha256": "abc123"})
+        )
+        sha, reason = nd._load_content_baseline("wrong-length.json", fixtures_dir=tmp_fixtures)
+        check("_load_content_baseline with expected_sha256 != 64 chars -> None, not used",
+              sha, None)
+        check("wrong-length reason names it as not 64 chars", "not 64 chars" in reason, True)
+
+        # A non-hex expected_sha256 (same length, invalid chars) is also caught, not
+        # silently treated as a valid baseline that could never actually match anything.
+        (tmp_fixtures / "not-hex.json").write_text(
+            json.dumps({"expected_sha256": "g" * 64})
+        )
+        sha, reason = nd._load_content_baseline("not-hex.json", fixtures_dir=tmp_fixtures)
+        check("_load_content_baseline with non-hex expected_sha256 -> None, not used",
+              sha, None)
+        check("not-hex reason names it as invalid hex", "not valid hex" in reason, True)
+
+        # gh-1734 fix-1 briefly stored this value split into expected_sha256_parts
+        # fragments to dodge scripts/credential-sweep.py's HEX_RUN_20 pattern; fix-2
+        # reverted that (a fresh-context re-reviewer on PR #1779 called it a
+        # generalizable credential-sweep-evasion technique landed on real fixture data)
+        # in favor of a plain expected_sha256 literal plus explicit
+        # scripts/credential-sweep-allowlist.txt value: entries. The parts mechanism no
+        # longer exists in _load_content_baseline() -- a fixture using the old key is
+        # simply "no expected_sha256", covered by the "no-hash-field" case above.
+    finally:
+        shutil.rmtree(tmp_fixtures, ignore_errors=True)
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-1734: check_non_git_site end-to-end (mocked) -- CONTENT_VERIFIED,")
+    print("CONTENT_CHANGED, PUBLISH_STALE, and every fetch-layer UNMEASURED path")
+    # -------------------------------------------------------------------------------
+    NG_CONTENT = b"<html>the real stohlerroof.com disclosure content</html>"
+    NG_CONTENT_SHA = hashlib.sha256(NG_CONTENT).hexdigest()
+
+    ng_tmp_fixtures = pathlib.Path(tempfile.mkdtemp(prefix="nd-ng-e2e-"))
+    (ng_tmp_fixtures / "e2e-bridge.json").write_text(json.dumps({"expected_sha256": NG_CONTENT_SHA}))
+
+    NG_TEST_SITE = {
+        "key": "stohlerroof-bridge", "label": "stohlerroof.com (stohlerroof-bridge)",
+        "repo": None,
+        "site_id": "d5af3c0f-6fbf-4dbf-b8cd-6c955e775b03",
+        "content_url": "https://stohlerroof.com/",
+        "baseline_fixture": "e2e-bridge.json",
+        "max_age_days": 90,
+    }
+
+    def _ng_router(published_at, content=NG_CONTENT):
+        def _router(req, timeout=20):
+            url = req.full_url
+            if "api.netlify.com" in url:
+                return _json_response({"published_deploy": {"commit_ref": None,
+                                                              "published_at": published_at}})
+            if "stohlerroof.com" in url:
+                return _FakeResponse(content)
+            raise AssertionError("unexpected URL in check_non_git_site e2e test: %s" % url)
+        return _router
+
+    fixed_e2e_now = datetime.datetime(2026, 9, 7, 13, 0, 0, tzinfo=datetime.timezone.utc)
+
+    nd.urllib.request.urlopen = _ng_router("2026-08-28T00:00:00Z")  # 10 days old
+    try:
+        row = nd.check_non_git_site(NG_TEST_SITE, "fake-netlify-token", now=fixed_e2e_now,
+                                     fixtures_dir=ng_tmp_fixtures)
+        check("check_non_git_site e2e: matching content, fresh age -> CONTENT_VERIFIED",
+              row["verdict"], nd.CONTENT_VERIFIED)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    nd.urllib.request.urlopen = _ng_router("2026-08-28T00:00:00Z", content=b"<html>changed!</html>")
+    try:
+        row = nd.check_non_git_site(NG_TEST_SITE, "fake-netlify-token", now=fixed_e2e_now,
+                                     fixtures_dir=ng_tmp_fixtures)
+        check("check_non_git_site e2e: changed content, fresh age -> CONTENT_CHANGED",
+              row["verdict"], nd.CONTENT_CHANGED)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # Real stohlerroof-bridge published_at (2026-04-21T13:31:10Z, per the live gh-1734
+    # measurement) against fixed_e2e_now (2026-09-07T13:00:00Z, ~31 min earlier in the
+    # day) -> (now - published_at).days floors to 138, not 139 -- confirmed live on the
+    # PR's actual pasted run, not a guess.
+    nd.urllib.request.urlopen = _ng_router("2026-04-21T13:31:10Z")  # 138 days old
+    try:
+        row = nd.check_non_git_site(NG_TEST_SITE, "fake-netlify-token", now=fixed_e2e_now,
+                                     fixtures_dir=ng_tmp_fixtures)
+        check("check_non_git_site e2e: matching content, published 2026-04-21 (138 days) "
+              "-> PUBLISH_STALE (this IS stohlerroof-bridge's real recorded live shape)",
+              row["verdict"], nd.PUBLISH_STALE)
+        check("PUBLISH_STALE row carries the real age", row["age_days"], 138)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # Fetch-layer UNMEASURED paths -- Netlify site fetch fails.
+    def _ng_netlify_500(req, timeout=20):
+        raise urllib.error.HTTPError(url=req.full_url, code=500, msg="Internal Server Error",
+                                       hdrs=None, fp=None)
+    nd.urllib.request.urlopen = _ng_netlify_500
+    try:
+        row = nd.check_non_git_site(NG_TEST_SITE, "fake-netlify-token", now=fixed_e2e_now,
+                                     fixtures_dir=ng_tmp_fixtures)
+        check("check_non_git_site: Netlify site fetch failure -> UNMEASURED, not a crash",
+              row["verdict"], nd.UNMEASURED)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # No NETLIFY_PAT -> UNMEASURED, same as check_site()'s fail-loud discipline.
+    row = nd.check_non_git_site(NG_TEST_SITE, None, now=fixed_e2e_now, fixtures_dir=ng_tmp_fixtures)
+    check("check_non_git_site with no NETLIFY_PAT -> UNMEASURED", row["verdict"], nd.UNMEASURED)
+
+    # Page fetch fails (site fetch OK, content GET fails) -> UNMEASURED.
+    def _ng_content_404(req, timeout=20):
+        url = req.full_url
+        if "api.netlify.com" in url:
+            return _json_response({"published_deploy": {"commit_ref": None,
+                                                          "published_at": "2026-08-28T00:00:00Z"}})
+        raise urllib.error.HTTPError(url=url, code=404, msg="Not Found", hdrs=None, fp=None)
+    nd.urllib.request.urlopen = _ng_content_404
+    try:
+        row = nd.check_non_git_site(NG_TEST_SITE, "fake-netlify-token", now=fixed_e2e_now,
+                                     fixtures_dir=ng_tmp_fixtures)
+        check("check_non_git_site: published-page fetch failure -> UNMEASURED",
+              row["verdict"], nd.UNMEASURED)
+        check("UNMEASURED detail names the page fetch failure",
+              "published-page fetch failed" in row["detail"], True)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # Missing baseline fixture -> UNMEASURED (never silently treated as "matches").
+    nd.urllib.request.urlopen = _ng_router("2026-08-28T00:00:00Z")
+    try:
+        no_fixture_site = dict(NG_TEST_SITE, baseline_fixture="does-not-exist.json")
+        row = nd.check_non_git_site(no_fixture_site, "fake-netlify-token", now=fixed_e2e_now,
+                                     fixtures_dir=ng_tmp_fixtures)
+        check("check_non_git_site: missing baseline fixture -> UNMEASURED, never treated "
+              "as a silent match", row["verdict"], nd.UNMEASURED)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # Unparseable / missing published_deploy timestamp -> UNMEASURED.
+    def _ng_no_timestamp(req, timeout=20):
+        return _json_response({"published_deploy": {"commit_ref": None, "published_at": None}})
+    nd.urllib.request.urlopen = _ng_no_timestamp
+    try:
+        row = nd.check_non_git_site(NG_TEST_SITE, "fake-netlify-token", now=fixed_e2e_now,
+                                     fixtures_dir=ng_tmp_fixtures)
+        check("check_non_git_site: no parseable published_deploy timestamp -> UNMEASURED",
+              row["verdict"], nd.UNMEASURED)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    shutil.rmtree(ng_tmp_fixtures, ignore_errors=True)
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-1734 fix-1 (PR #1779 refuter blocker 1): check_non_git_site end-to-end for")
+    print("fantastic-cactus-db1344 and fantastic-choux-4f510f -- the two sites reclassified")
+    print("from OUT_OF_SCOPE to content-hash. Same discipline as stohlerroof-bridge's own")
+    print("e2e block above, and per this dispatch's rail 3: EVERY newly-measured row needs")
+    print("its own passing case AND its own non-passing negative control (content changed,")
+    print("and aged past its 30-day threshold), not just stohlerroof-bridge's.")
+    # -------------------------------------------------------------------------------
+    def _claimshield_e2e(site_key, real_content, changed_content):
+        content_sha = hashlib.sha256(real_content).hexdigest()
+        tmp_fixtures = pathlib.Path(tempfile.mkdtemp(prefix="nd-claimshield-e2e-"))
+        fixture_name = "e2e-%s.json" % site_key
+        (tmp_fixtures / fixture_name).write_text(json.dumps({"expected_sha256": content_sha}))
+
+        test_site = {
+            "key": site_key,
+            "label": "%s.netlify.app (%s)" % (site_key, site_key),
+            "repo": None,
+            "site_id": "test-%s" % site_key,
+            "content_url": "https://%s.netlify.app/" % site_key,
+            "baseline_fixture": fixture_name,
+            "max_age_days": 30,  # matches SITE_CLASSIFICATION's real entry for both sites
+        }
+
+        def _router(published_at, content):
+            def _r(req, timeout=20):
+                url = req.full_url
+                if "api.netlify.com" in url:
+                    return _json_response({"published_deploy": {"commit_ref": None,
+                                                                  "published_at": published_at}})
+                if ("%s.netlify.app" % site_key) in url:
+                    return _FakeResponse(content)
+                raise AssertionError("unexpected URL in %s e2e test: %s" % (site_key, url))
+            return _r
+
+        fixed_now = datetime.datetime(2026, 9, 7, 13, 32, 0, tzinfo=datetime.timezone.utc)
+
+        # (1) PASSING: real content, published recently (well inside the 30-day threshold).
+        nd.urllib.request.urlopen = _router("2026-09-01T00:00:00Z", real_content)  # 6 days old
+        try:
+            row = nd.check_non_git_site(test_site, "fake-netlify-token", now=fixed_now,
+                                         fixtures_dir=tmp_fixtures)
+            check("%s e2e: real content, fresh age -> CONTENT_VERIFIED (passing case)"
+                  % site_key, row["verdict"], nd.CONTENT_VERIFIED)
+        finally:
+            nd.urllib.request.urlopen = real_urlopen
+
+        # (2) NEGATIVE CONTROL: the page's content changed -> CONTENT_CHANGED, a real
+        #     non-passing verdict, regardless of age.
+        nd.urllib.request.urlopen = _router("2026-09-01T00:00:00Z", changed_content)
+        try:
+            row = nd.check_non_git_site(test_site, "fake-netlify-token", now=fixed_now,
+                                         fixtures_dir=tmp_fixtures)
+            check("%s e2e NEGATIVE CONTROL: page content changed -> CONTENT_CHANGED"
+                  % site_key, row["verdict"], nd.CONTENT_CHANGED)
+            check("%s e2e NEGATIVE CONTROL: CONTENT_CHANGED is a FAILING_VERDICTS member"
+                  % site_key, row["verdict"] in nd.FAILING_VERDICTS, True)
+        finally:
+            nd.urllib.request.urlopen = real_urlopen
+
+        # (3) NEGATIVE CONTROL: content unchanged but published 45 days ago -- past this
+        #     site's 30-day threshold (tighter than stohlerroof-bridge's 90) -> PUBLISH_STALE.
+        nd.urllib.request.urlopen = _router("2026-07-24T00:00:00Z", real_content)  # 45 days old
+        try:
+            row = nd.check_non_git_site(test_site, "fake-netlify-token", now=fixed_now,
+                                         fixtures_dir=tmp_fixtures)
+            check("%s e2e NEGATIVE CONTROL: unchanged content, 45 days old (past the "
+                  "30-day threshold) -> PUBLISH_STALE" % site_key, row["verdict"], nd.PUBLISH_STALE)
+            check("%s e2e NEGATIVE CONTROL: PUBLISH_STALE is a FAILING_VERDICTS member"
+                  % site_key, row["verdict"] in nd.FAILING_VERDICTS, True)
+        finally:
+            nd.urllib.request.urlopen = real_urlopen
+
+        shutil.rmtree(tmp_fixtures, ignore_errors=True)
+
+    _claimshield_e2e(
+        "fantastic-cactus-db1344",
+        b"<html>ClaimShield -- Get Started hero variant (fantastic-cactus-db1344)</html>",
+        b"<html>ClaimShield -- Get Started hero variant, CHANGED COPY</html>",
+    )
+    _claimshield_e2e(
+        "fantastic-choux-4f510f",
+        b"<html>ClaimShield -- Get Early Access hero variant (fantastic-choux-4f510f)</html>",
+        b"<html>ClaimShield -- Get Early Access hero variant, CHANGED COPY</html>",
+    )
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-1734 fix-1: the real, committed SITE_CLASSIFICATION entries for both")
+    print("ClaimShield sites route end-to-end through filter_org_sites() -> check_non_git_site")
+    print("using their REAL baseline fixtures (scripts/netlify-drift-fixtures/*.json) -- not")
+    print("just a synthetic demo classification, so a typo in the real table or a real")
+    print("fixture file is caught here, not only in a hand-built test fixture.")
+    # -------------------------------------------------------------------------------
+    real_raw_sites = [
+        {"id": "cactus-real", "name": "fantastic-cactus-db1344", "build_settings": {}},
+        {"id": "choux-real", "name": "fantastic-choux-4f510f", "build_settings": {}},
+    ]
+    real_classified = nd.filter_org_sites(real_raw_sites)
+    real_by_key = {s["key"]: s for s in real_classified}
+    for real_key in ("fantastic-cactus-db1344", "fantastic-choux-4f510f"):
+        check("%s -- real SITE_CLASSIFICATION entry is measured=True, mode=content-hash"
+              % real_key, (real_by_key[real_key]["measured"], real_by_key[real_key]["mode"]),
+              (True, "content-hash"))
+
+    def _real_fixture_router(req, timeout=20):
+        url = req.full_url
+        if "api.netlify.com" in url and "cactus-real" in url:
+            return _json_response({"published_deploy": {"commit_ref": None,
+                                                          "published_at": "2026-09-05T00:00:00Z"}})
+        if "api.netlify.com" in url and "choux-real" in url:
+            return _json_response({"published_deploy": {"commit_ref": None,
+                                                          "published_at": "2026-09-05T00:00:00Z"}})
+        raise AssertionError("unexpected URL fetching real ClaimShield site metadata: %s" % url)
+
+    nd.urllib.request.urlopen = _real_fixture_router
+    try:
+        for real_key in ("fantastic-cactus-db1344", "fantastic-choux-4f510f"):
+            sha, reason = nd._load_content_baseline(real_by_key[real_key]["baseline_fixture"])
+            check("%s -- real committed fixture loads a valid 64-char hex sha256 (not "
+                  "a crash, not a malformed value)" % real_key,
+                  (sha is not None and len(sha) == 64 and reason == "ok"), True)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
 
     # -------------------------------------------------------------------------------
     print("\nUNMEASURED fetch paths -- must never resolve to a clean verdict")

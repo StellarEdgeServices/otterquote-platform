@@ -21,6 +21,9 @@ import {
   buildCompareModel,
   EXPIRY_TOOLTIP,
   EMPTY_STATE,
+  mapAwardError,
+  NO_PAYMENT_METHOD_MESSAGE,
+  NO_PAYMENT_METHOD_SENTINEL,
 } from '../utils';
 import type { BidRow, ContractorProfile } from '../types';
 
@@ -313,5 +316,51 @@ describe('(e) empty + error states', () => {
     expect(screen.queryByText(/updated their bid/)).not.toBeInTheDocument();
     rerender(<BidUpdatedBanner count={2} onDismiss={() => {}} />);
     expect(screen.getByText(/2 contractors updated their bids/)).toBeInTheDocument();
+  });
+});
+
+// ── (f) gh-1532 award-refusal copy ──────────────────────────────────────────
+describe('(f) award-refusal copy (gh-1532)', () => {
+  const RAW =
+    'contractor_no_payment_method: the selected contractor has not added a payment method, ' +
+    'so this bid cannot be accepted yet';
+
+  it('maps the payment-method guard refusal to plain-English homeowner copy', () => {
+    expect(mapAwardError(RAW)).toBe(NO_PAYMENT_METHOD_MESSAGE);
+  });
+
+  it('never leaks the internal sentinel to the homeowner', () => {
+    expect(mapAwardError(RAW)).not.toContain(NO_PAYMENT_METHOD_SENTINEL);
+    expect(NO_PAYMENT_METHOD_MESSAGE).not.toContain('_');
+  });
+
+  it('states the reason and does not tell the homeowner to retry', () => {
+    expect(NO_PAYMENT_METHOD_MESSAGE).toMatch(/payment method/i);
+    expect(NO_PAYMENT_METHOD_MESSAGE).not.toMatch(/try again/i);
+  });
+
+  // Fix round 2 (LEGAL-READ: FAIL under R-177 on head 7af1587). The copy may not
+  // promise a notification this branch does not send. The notifier that exists
+  // (get-contractor-info with notify_no_payment_method, #486) is wired to the
+  // PRE-CHECK -- bids.html:2060 and SelectContractorModal.tsx:55-61 -- both of
+  // which return before accept_bid is called. This message is only reachable in
+  // the award-FAILURE branch downstream of that pre-check, which invokes nothing,
+  // and contractor-about.html has no pre-check at all, so "We've let them know."
+  // was false there unconditionally. This assertion binds the sentence to the
+  // absence of the call: it fails if any claim of having notified the contractor
+  // is reintroduced without a notifier on this path.
+  it('claims no notification, because the refusal branch sends none', () => {
+    expect(NO_PAYMENT_METHOD_MESSAGE).not.toMatch(
+      /let them know|we(?:'ve| have) (?:told|notified|informed|alerted)|notif(?:y|ied|ying)|informed them|alerted them/i,
+    );
+  });
+
+  // Negative control: the mapper is not a blanket rewrite -- unrelated errors
+  // pass through untouched, so a real failure is still legible in logs/UI.
+  it('passes unrelated errors through unchanged', () => {
+    expect(mapAwardError('permission denied for table claims')).toBe(
+      'permission denied for table claims',
+    );
+    expect(mapAwardError(null)).toBe('');
   });
 });

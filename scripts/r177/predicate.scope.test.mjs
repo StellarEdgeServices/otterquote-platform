@@ -1,10 +1,10 @@
-// node --test scripts/r120/verify.scope.test.mjs   (Node 20+, no deps)
+// node --test scripts/r177/predicate.scope.test.mjs   (Node 20+, no deps)
 //
-// gh-1701 (CTO RUN 27, 2026-09-06): R-120 predicate SCOPE.
+// gh-1701 (CTO RUN 27, 2026-09-06): the legal/money predicate SCOPE (R-120, now R-177).
 //
-// Companion to verify.test.mjs, which covers the signature half and the rule
+// Companion to predicate.test.mjs, which covers the rule
 // vocabulary. This file covers WHICH FILES and WHICH LINES the rules are allowed
-// to look at, because that is where the gate was misfiring: measured against the
+// to look at, because that is where the predicate was misfiring: measured against the
 // real diffs of the 15 open PRs on 2026-09-06, five PRs were blocking the merge
 // queue on lines that were not money, legal, consent or pricing content.
 import { describe, it } from 'node:test';
@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectR120Content, COPY_GUARD_FILES, scanModeFor } from './verify.mjs';
+import { detectLegalMoneyContent, COPY_GUARD_FILES, scanModeFor } from './predicate.mjs';
 
 // ---------------------------------------------------------------------------
 // gh-1701 (CTO RUN 27, 2026-09-06): predicate SCOPE.
@@ -22,11 +22,11 @@ import { detectR120Content, COPY_GUARD_FILES, scanModeFor } from './verify.mjs';
 // P* fixture must keep firing after the change — a fix that quiets the false
 // positives by also quieting the true ones is a regression, not a fix.
 // ---------------------------------------------------------------------------
-describe('detectR120Content — predicate scope (gh-1701, 2026-09-06)', () => {
+describe('detectLegalMoneyContent — predicate scope (gh-1701, 2026-09-06)', () => {
   const diff = (file, lines) =>
     `diff --git a/${file} b/${file}\n--- a/${file}\n+++ b/${file}\n@@ -1,1 +1,${lines.length + 1} @@\n x\n` +
     lines.map((l) => (l.startsWith('-') ? l : '+' + l)).join('\n') + '\n';
-  const hit = (file, lines) => detectR120Content(diff(file, lines));
+  const hit = (file, lines) => detectLegalMoneyContent(diff(file, lines));
 
   // ---- negative controls: each of these FIRED before this change -----------
   it('N1 Playwright fixture IDENTIFIERS do not fire, but a currency literal in the same file does (#1720, 19 hits)', () => {
@@ -44,7 +44,7 @@ describe('detectR120Content — predicate scope (gh-1701, 2026-09-06)', () => {
     assert.ok(priced.lines.some((l) => l.rule === 'currency-amount'));
   });
 
-  it("N2 does NOT fire on R-120's OWN text quoted in a script (#1735)", () => {
+  it("N2 does NOT fire on the rule's OWN text quoted in a script (#1735)", () => {
     assert.equal(hit('scripts/r120-gate-armed-check.py', [
       '    "     touching legal wording, consent, pricing, or money can merge unsigned",',
     ]).hit, false);
@@ -131,10 +131,10 @@ describe('detectR120Content — predicate scope (gh-1701, 2026-09-06)', () => {
     assert.equal(hit('scripts/seed-demo-data.py', ['MEASUREMENT_PRICE_CENTS = 1500']).hit, true);
   });
 
-  it('P10 fires on any change to the gate file itself (this PR needs a signature)', () => {
-    const r = hit('scripts/r120/verify.mjs', ['const MONEY_IDENT_RE = /(payment|payout)/i;']);
+  it('P10 fires on any change to the predicate file itself (that PR needs the R-177 pair)', () => {
+    const r = hit('scripts/r177/predicate.mjs', ['const MONEY_IDENT_RE = /(payment|payout)/i;']);
     assert.equal(r.hit, true);
-    assert.ok(r.lines.some((l) => l.rule === 'gate-file'));
+    assert.ok(r.lines.some((l) => l.rule === 'predicate-file'));
   });
 
   // gh-1701 / cto28: the hole a full `'none'` exclusion for `*.spec.*` would open.
@@ -160,13 +160,13 @@ describe('detectR120Content — predicate scope (gh-1701, 2026-09-06)', () => {
     assert.equal(scanModeFor('tests/e2e/helpers/seed.test.ts'), 'none');
     assert.equal(scanModeFor('scripts/netlify-deploy-drift.test.py'), 'none');
     assert.equal(scanModeFor('faq.html'), 'full');
-    assert.equal(scanModeFor('scripts/r120/verify.mjs'), 'none'); // GATE_FILES: reported whole
+    assert.equal(scanModeFor('scripts/r177/predicate.mjs'), 'none'); // PREDICATE_FILES: reported whole
   });
 
   // ---- the ratchet that keeps COPY_GUARD_FILES honest ----------------------
   // Harness paths lose the prose word rules, so a file under scripts/ or tools/
   // that HOLDS customer money/legal copy must be listed in COPY_GUARD_FILES or
-  // R-120 goes blind to it. This walks the tree and fails loudly instead.
+  // the predicate goes blind to it. This walks the tree and fails loudly instead.
   it('COPY_GUARD_FILES covers every copy-holding file under scripts/ and tools/', () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
     const COPY_VOCAB = /licensed, insured|licensed and insured|\bvetted\b|\bbonded\b|\bwarrant(y|ies)\b|\barbitration\b|public adjuster|\bdisclaimer\b|\bconsent\b|\brefunded?\b|\brebate|\bguarantee/i;
@@ -185,7 +185,7 @@ describe('detectR120Content — predicate scope (gh-1701, 2026-09-06)', () => {
       if (!fs.existsSync(dir)) continue;
       for (const abs of walk(dir)) {
         const rel = path.relative(root, abs).split(path.sep).join('/');
-        if (rel.startsWith('scripts/r120/')) continue;      // the gate's own directory is excluded
+        if (rel.startsWith('scripts/r177/')) continue;      // the predicate's own directory is excluded
         if (/\.test\.[^/]+$/i.test(rel)) continue;          // hard-excluded anyway
         // `*.spec.*` is NOT skipped: it is no longer path-excluded, so a spec file
         // under scripts/ or tools/ would be `currency-only` and lose the prose word
@@ -193,12 +193,25 @@ describe('detectR120Content — predicate scope (gh-1701, 2026-09-06)', () => {
         if (!TEXT_EXT.test(rel)) continue;
         let body;
         try { body = fs.readFileSync(abs, 'utf8'); } catch { continue; }
-        if (COPY_VOCAB.test(body) && !COPY_GUARD_FILES.has(rel)) missing.push(rel);
+        // gh-1738 (#1742, scripts/detector-negative-control-check.py): the
+        // "detector negative control" family of scripts keeps a registry of
+        // OTHER detector scripts' filenames (e.g. the quoted path literal
+        // "scripts/check-partner-consent-link.py"), and several of those
+        // filenames themselves contain COPY_VOCAB words (consent, guarantee,
+        // ...) as part of the hyphenated basename, not as prose. A quoted
+        // path-only token is a file reference, never customer copy — same
+        // idea as HARNESS_PATH_RES scoping scripts/ and tools/ to
+        // currency-only in predicate.mjs — so strip such tokens before
+        // testing for real copy vocabulary. This only narrows what a QUOTED,
+        // WHOLE-STRING file path can trigger; vocabulary appearing in actual
+        // prose is untouched.
+        const scanBody = body.replace(/(["'`])[\w./-]+\.(?:py|m?[jt]s|sh|sql|html?|txt)\1/g, '');
+        if (COPY_VOCAB.test(scanBody) && !COPY_GUARD_FILES.has(rel)) missing.push(rel);
       }
     }
     assert.deepEqual(missing, [],
       `These files under scripts/ or tools/ carry customer money/legal copy but are not in ` +
-      `COPY_GUARD_FILES in scripts/r120/verify.mjs, so R-120's prose rules will not see them:\n  ` +
+      `COPY_GUARD_FILES in scripts/r177/predicate.mjs, so the predicate's prose rules will not see them:\n  ` +
       missing.join('\n  ') +
       `\nAdd each one to COPY_GUARD_FILES (listing a file only makes the gate scan MORE), or, if it ` +
       `genuinely holds no customer copy, narrow the match rather than deleting this test.`);
