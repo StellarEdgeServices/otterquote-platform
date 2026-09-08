@@ -101,6 +101,7 @@ export const COPY_GUARD_FILES = new Set([
   'scripts/check-payout-timing-copy-drift.py',
   'scripts/credential-sweep.py',
   'scripts/find-legal-surface-links.py',
+  'scripts/permissions-ratchet.py',
   'scripts/smoke-test.sh',
   'tools/generate_contractor_pages.py',
   'tools/generate_location_pages.py',
