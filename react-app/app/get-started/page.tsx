@@ -77,6 +77,15 @@ function gtag(...args: unknown[]) {
   }
 }
 
+// gh-1817: Meta Pixel Lead event helper — same call-site guard shape as
+// gtag() above (fbq is defined by MetaPixelGate; a no-op queue push until a
+// real META_PIXEL_ID exists).
+function fbq(...args: unknown[]) {
+  if (typeof window !== 'undefined' && (window as any).fbq) {
+    (window as any).fbq(...args);
+  }
+}
+
 /**
  * True when Supabase is telling us this email already has an account.
  * GoTrue reports this two different ways depending on project settings, and
@@ -280,6 +289,9 @@ export default function GetStartedPage() {
       job_type: params.get('job_type') || null,
       source: params.get('utm_source') || referralSource || 'direct',
     });
+    // gh-1817: Meta Pixel Lead event — homeowner sign-up funnel completion,
+    // same firing point as the GA4 sign_up event above.
+    fbq('track', 'Lead');
   };
 
   // ── Google OAuth sign-up (primary path, Dustin 2026-08-26) ──
