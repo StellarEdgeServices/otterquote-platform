@@ -1,0 +1,8 @@
+gh-1888 CI negative-control fixture. DELETE before merge (removed by a
+follow-up commit in this same PR once the "Credential Shape Sweep" CI check
+is observed FAILING against it).
+
+Synthetic, non-real, obviously-a-test-marker value below -- plainly not
+usable as a credential -- exists only to prove the ASIA shape class added
+in this PR trips the sweep:
+ASIATESTFIXTURE1888Z
