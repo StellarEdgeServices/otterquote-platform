@@ -21,8 +21,8 @@ directions:
   - It OVER-FIRES on the safe ones: PR #1634 (merged as gh1529, "revoke anon
     EXECUTE on 23 of 29 orphaned SECURITY DEFINER functions") is entirely
     REVOKE statements -- the correct direction -- and produced 20 identical
-    R-120 rows because the operand names contain commission/payout/rebate/
-    fee_.
+    R-120 rows because the #1634 operand names (see that issue) contain
+    money words.
 
 Per the issue's own instruction, the `money-permission` branch in
 scripts/r177/predicate.mjs is NOT removed by this change -- that is its own
