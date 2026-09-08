@@ -110,6 +110,65 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: python3 scripts/ci-test-function-parity.py
 
+  is-test-cross-table-guard:
+    name: is-test Cross-Table Guard (gh-1763)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # No continue-on-error: same discipline as ci-test-function-parity above --
+    # this must actually be able to fail a PR, not just log a warning.
+    #
+    # gh-1763: profiles.is_test and contractors.is_test disagreed on 7 production
+    # rows and broke a real R-173 gate (claim 82f5dff4...). The CTO's ruling
+    # (comment 5572645535): profiles is authoritative; contractors mirrors it. A
+    # disagreement recurs the next time a test contractor is seeded by a path
+    # that writes one table and not the other -- which is exactly how the 7
+    # rows happened -- so per constitution entry 16 ("a recurring defect closes
+    # on a mechanism, not a rule"), this job is that mechanism, not a follow-up.
+    #
+    # Runs against the CI-test project (zsdvaqilfdclwosmiheh) -- the same DB
+    # `Seed Must Pass (gh-1584)` and `CI-test Edge Function Parity Check` already
+    # use -- via --self-test, which seeds one throwaway fixture row in the exact
+    # bad shape gh-1763 found, proves the guard goes RED, repairs it, proves
+    # GREEN, then deletes everything it created. It never runs against
+    # production (yeszghaspzwwstvsrioa): scripts/is-test-cross-table-check.py's
+    # self_test() refuses that project ref outright before making any network
+    # call, per gh-1763's hard limits -- the RED control's seeded write may only
+    # ever happen in a local/fixture context.
+    #
+    # PR #1826 review (comment 5577633751): this job proves the DETECTION LOGIC
+    # isn't regressed, and nothing else -- it says nothing about the actual
+    # production disagreement count on any given day. That coverage is the
+    # `is-test-cross-table-guard-prod` job in
+    # .github/workflows/edge-function-drift.yml, on the same daily schedule as
+    # the other production-drift detectors, reading production read-only via
+    # the Management API (--management-api --project-ref) since this job's
+    # PostgREST + service-role-key path is structurally unusable against
+    # production (no SUPABASE_SERVICE_ROLE_KEY for prod exists anywhere).
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # Pure client-side join+compare logic, no network -- catches a logic
+      # regression even on a run where the CI-test project is unreachable.
+      - name: Self-test the disagreement-detection logic (hermetic)
+        run: python3 scripts/is-test-cross-table-check.test.py
+
+      # Live RED/GREEN demonstration against the CI-test project's own DB.
+      # Reuses SUPABASE_TEST_SERVICE_ROLE_KEY -- the same secret the `test`
+      # job's Seed/Run/Teardown steps already use to write to this project --
+      # rather than requesting a new one, since this job needs the identical
+      # write scope (insert/update/delete one throwaway fixture row).
+      - name: RED/GREEN self-test against the CI-test project
+        env:
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+        run: python3 scripts/is-test-cross-table-check.py --self-test
+
   edge-function-tests:
     # Renamed from "Edge Function Tests (Deno)" (gh-1738): the old name was
     # load-bearing on trust it hadn't earned -- this job runs `deno test`
