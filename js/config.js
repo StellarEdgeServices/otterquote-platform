@@ -77,11 +77,17 @@ var CONFIG = {
 
   // NOTE: STRIPE_SECRET_KEY is server-side only (Edge Functions)
 
-  // ── DocuSign (e-signatures) ──
-  DOCUSIGN_INTEGRATION_KEY: '43f4a7d5-f1bf-45ec-8a97-264e3d473e42',
-  DOCUSIGN_ACCOUNT_ID:      '0b57b777-5c6e-4650-80d3-14152257ca82',
-  DOCUSIGN_BASE_URI:        'https://na3.docusign.net',
-  // NOTE: DOCUSIGN_USER_ID is server-side only (Edge Functions)
+  // ── E-signatures ──
+  // [#1339 / D-312, 2026-09-08] Three client-side e-signature constants stood
+  // here -- an integration key, an account id and a vendor API origin -- and
+  // they were REMOVED. They were read by nothing in the browser (the only other
+  // reference anywhere is a Node-side e2e helper reading process.env, never
+  // CONFIG), and they were config for the e-signature vendor the platform
+  // RETIRED under D-274 in August 2026. A public file every page loads was
+  // publishing a retired vendor's name, account identifiers and API origin into
+  // the served bytes of otterquote.com for no functional reason, which is
+  // exactly what D-312 forbids. Signing credentials live in Edge Function
+  // secrets; the browser never needs them.
 
   // ── Platform Settings ──
   PLATFORM_FEE_PERCENT: 5,         // Starting at 5%, target 10%, test 15%
